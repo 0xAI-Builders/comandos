@@ -1,0 +1,33 @@
+[package]
+name = "comandos-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+base64 = "=0.22.1"
+chrono.workspace = true
+chrono-tz.workspace = true
+comandos-core = { path = "../comandos-core" }
+comandos-store = { path = "../comandos-store" }
+serde_json.workspace = true
+rusqlite.workspace = true
+getrandom.workspace = true
+# Colación por locale del glob de bash en `hook claude-status` (ICU4X, sin `unsafe`).
+icu_collator = "=2.3.1"
+icu_locale_core = "=2.3.0"
+sha2.workspace = true
+bytes = "=1.12.1"
+http-body-util = "=0.1.5"
+hyper = { version = "=1.11.1", default-features = false, features = ["client", "http1"] }
+hyper-util = { version = "=0.1.21", default-features = false, features = ["tokio"] }
+tokio = { version = "=1.53.1", default-features = false, features = ["rt", "net", "time"] }
+nix = { version = "=0.31.3", default-features = false, features = ["feature"] }
+
+[dev-dependencies]
+# cc-notifyd falso de las pruebas de paridad del hook.
+hyper = { version = "=1.11.1", default-features = false, features = ["server", "http1"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,369 @@
+{
+  "steps": [
+    {
+      "method": "POST",
+      "target": "/work-marks",
+      "internal": false,
+      "data": {
+        "scope": "session",
+        "key": "sess",
+        "value": "resolved",
+        "expectedRevision": 0
+      },
+      "status": 200,
+      "body": {
+        "mark": {
+          "scope": "session",
+          "key": "sess",
+          "mark": "resolved",
+          "favorite": false,
+          "revision": 1,
+          "updatedAtMs": 123456,
+          "updatedBy": "user"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "target": "/events/v2",
+      "internal": true,
+      "data": {
+        "hookEvent": "Unknown"
+      },
+      "status": 202,
+      "body": {
+        "ignored": true
+      }
+    },
+    {
+      "method": "POST",
+      "target": "/events/v2",
+      "internal": true,
+      "data": {
+        "hookEvent": "UserPromptSubmit",
+        "agent": "codex",
+        "session": "sess",
+        "pane": "%3",
+        "turnId": "t1",
+        "occurredAtMs": 1000
+      },
+      "status": 200,
+      "body": {
+        "event": {
+          "sequence": 1,
+          "eventId": "event-fixture-1",
+          "sourceEventId": null,
+          "source": "hook:codex",
+          "harness": "codex",
+          "projectKey": null,
+          "sessionKey": "sess",
+          "paneKey": null,
+          "paneId": "%3",
+          "processKey": null,
+          "conversationId": null,
+          "turnId": "t1",
+          "requestId": null,
+          "kind": "prompt_accepted",
+          "evidence": "confirmed",
+          "correlation": "source",
+          "occurredAtMs": 1000,
+          "receivedAtMs": 123456,
+          "title": "",
+          "excerpt": "",
+          "destination": "session",
+          "duplicate": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "target": "/events/v2",
+      "internal": true,
+      "data": {
+        "hookEvent": "Stop",
+        "agent": "codex",
+        "session": "sess",
+        "pane": "%3",
+        "turnId": "t1",
+        "occurredAtMs": 1000
+      },
+      "status": 200,
+      "body": {
+        "event": {
+          "sequence": 2,
+          "eventId": "event-fixture-3",
+          "sourceEventId": null,
+          "source": "hook:codex",
+          "harness": "codex",
+          "projectKey": null,
+          "sessionKey": "sess",
+          "paneKey": null,
+          "paneId": "%3",
+          "processKey": null,
+          "conversationId": null,
+          "turnId": "t1",
+          "requestId": null,
+          "kind": "turn_completed",
+          "evidence": "confirmed",
+          "correlation": "source",
+          "occurredAtMs": 1000,
+          "receivedAtMs": 123456,
+          "title": "",
+          "excerpt": "",
+          "destination": "session",
+          "duplicate": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "target": "/events/v2",
+      "internal": true,
+      "data": {
+        "hookEvent": "Stop",
+        "agent": "codex",
+        "session": "sess",
+        "pane": "%3",
+        "turnId": "t1",
+        "occurredAtMs": 1000
+      },
+      "status": 200,
+      "body": {
+        "event": {
+          "sequence": 2,
+          "eventId": "event-fixture-3",
+          "sourceEventId": null,
+          "source": "hook:codex",
+          "harness": "codex",
+          "projectKey": null,
+          "sessionKey": "sess",
+          "paneKey": null,
+          "paneId": "%3",
+          "processKey": null,
+          "conversationId": null,
+          "turnId": "t1",
+          "requestId": null,
+          "kind": "turn_completed",
+          "evidence": "confirmed",
+          "correlation": "source",
+          "occurredAtMs": 1000,
+          "receivedAtMs": 123456,
+          "title": "",
+          "excerpt": "",
+          "destination": "session",
+          "duplicate": true
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "target": "/events/v2?after=0&limit=1&turns=1",
+      "internal": false,
+      "status": 200,
+      "body": {
+        "events": [
+          {
+            "sequence": 1,
+            "eventId": "event-fixture-1",
+            "sourceEventId": null,
+            "source": "hook:codex",
+            "harness": "codex",
+            "projectKey": null,
+            "sessionKey": "sess",
+            "paneKey": null,
+            "paneId": "%3",
+            "processKey": null,
+            "conversationId": null,
+            "turnId": "t1",
+            "requestId": null,
+            "kind": "prompt_accepted",
+            "evidence": "confirmed",
+            "correlation": "source",
+            "occurredAtMs": 1000,
+            "receivedAtMs": 123456,
+            "title": "",
+            "excerpt": "",
+            "destination": "session"
+          }
+        ],
+        "nextAfter": 1,
+        "latest": 2,
+        "turns": {
+          "tmux:sess:%3": {
+            "lastEventId": "event-fixture-3",
+            "updatedAtMs": 1000,
+            "evidence": "confirmed",
+            "state": "completed",
+            "turnId": "t1",
+            "correlation": "source",
+            "startedAtMs": 1000,
+            "requestId": null,
+            "target": "tmux:sess:%3",
+            "sessionKey": "sess",
+            "paneKey": null,
+            "paneId": "%3",
+            "projectKey": null,
+            "harness": "codex",
+            "finishedAtMs": 1000
+          }
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "target": "/work-marks",
+      "internal": false,
+      "status": 200,
+      "body": {
+        "marks": [
+          {
+            "scope": "session",
+            "key": "sess",
+            "mark": "none",
+            "favorite": false,
+            "revision": 2,
+            "updatedAtMs": 123456,
+            "updatedBy": "event:event-fixture-1"
+          }
+        ],
+        "panes": [],
+        "activity": {
+          "tmux:sess:%3": {
+            "state": "completed",
+            "paneKey": null,
+            "session": "sess",
+            "paneId": "%3"
+          }
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "target": "/work-marks",
+      "internal": false,
+      "rawData": "{\"scope\":\"pane\",\"key\":\"minus-zero\",\"value\":\"none\",\"expectedRevision\":-0}",
+      "status": 200,
+      "body": {
+        "mark": {
+          "scope": "pane",
+          "key": "minus-zero",
+          "mark": "none",
+          "favorite": false,
+          "revision": 1,
+          "updatedAtMs": 123456,
+          "updatedBy": "user"
+        }
+      }
+    }
+  ],
+  "splits": [
+    {
+      "target": "/events/v2?after=0#fragment",
+      "parts": [
+        "/events/v2",
+        "after=0"
+      ]
+    },
+    {
+      "target": "http://localhost/events/v2?after=0",
+      "parts": [
+        "/events/v2",
+        "after=0"
+      ]
+    },
+    {
+      "target": "\t/events/v2\r\n?after=0",
+      "parts": [
+        "/events/v2",
+        "after=0"
+      ]
+    },
+    {
+      "target": "/%65vents/v2",
+      "parts": [
+        "/%65vents/v2",
+        ""
+      ]
+    },
+    {
+      "target": "http://[bad/events/v2",
+      "parts": null
+    }
+  ],
+  "pairs": [
+    {
+      "query": "after=&after=%31&turns=%31&x=%FF&x=a+b&flag",
+      "keepBlank": false,
+      "pairs": [
+        [
+          "after",
+          "1"
+        ],
+        [
+          "turns",
+          "1"
+        ],
+        [
+          "x",
+          "�"
+        ],
+        [
+          "x",
+          "a b"
+        ]
+      ]
+    },
+    {
+      "query": "after=&flag",
+      "keepBlank": true,
+      "pairs": [
+        [
+          "after",
+          ""
+        ],
+        [
+          "flag",
+          ""
+        ]
+      ]
+    }
+  ],
+  "sqliteOverflows": [
+    {
+      "target": "/events/v2",
+      "exception": "OverflowError",
+      "status": 500
+    },
+    {
+      "target": "/work-marks",
+      "exception": "OverflowError",
+      "status": 500
+    },
+    {
+      "target": "/events/v2",
+      "exception": "OverflowError",
+      "status": 500
+    },
+    {
+      "target": "/events/v2",
+      "exception": "OverflowError",
+      "status": 500
+    },
+    {
+      "target": "/events/v2",
+      "exception": "OverflowError",
+      "status": 500
+    },
+    {
+      "target": "/events/v2",
+      "exception": "OverflowError",
+      "status": 500
+    },
+    {
+      "target": "/events/v2",
+      "legacyTs": "1e20",
+      "exception": "OverflowError",
+      "status": 500
+    }
+  ]
+}

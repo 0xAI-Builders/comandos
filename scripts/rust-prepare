@@ -1,0 +1,14 @@
+#!/bin/sh
+# Fetch build/test dependencies into this isolated worktree, without installing
+# anything into the active ComandOS installation. Fetch does not run Rust builds.
+set -eu
+task_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if [ ! -f "$task_root/.git" ]; then
+  echo 'Use a dedicated Git worktree for migration development.' >&2
+  exit 1
+fi
+task_cache="$task_root/.migration-build"
+mkdir -p "$task_cache/cargo" "$task_cache/python"
+CARGO_HOME="$task_cache/cargo" cargo fetch --locked --manifest-path "$task_root/Cargo.toml"
+uv pip install --python /usr/bin/python3 --target "$task_cache/python" \
+  --requirements "$task_root/tests/rust-oracle-requirements.txt"

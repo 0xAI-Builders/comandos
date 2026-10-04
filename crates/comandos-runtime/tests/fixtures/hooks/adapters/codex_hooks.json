@@ -1,0 +1,8 @@
+{
+  "prompt": {"session_id":"019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b","turn_id":"8","transcript_path":"/home/usuario/.codex/sessions/2026/10/04/rollout-anon.jsonl","cwd":"/home/usuario/proyecto-codex","hook_event_name":"UserPromptSubmit","model":"gpt-5-codex","permission_mode":"default","prompt":"<redactado>"},
+  "stop": {"session_id":"019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b","turn_id":"8","transcript_path":"/home/usuario/.codex/sessions/2026/10/04/rollout-anon.jsonl","cwd":"/home/usuario/proyecto-codex","hook_event_name":"Stop","model":"gpt-5-codex","stop_hook_active":false,"last_assistant_message":"Terminé la **migración**.\nSiguiente paso: `cargo clippy`."},
+  "permission": {"session_id":"019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b","turn_id":"9","cwd":"/home/usuario/proyecto-codex","hook_event_name":"PermissionRequest","tool_call":{"name":"shell","id":"call_anon01","command":"ignorado-porque-hay-otro"},"tool_input":{"command":"npm install --save-dev vitest"},"approval_request":{"reason":"necesita red\n"},"request":{"tool_name":"no-gana"}},
+  "permission_bare": {"hook_event_name":"PermissionRequest","tool_name":{"name":""},"tool":{"name":"apply_patch"},"command":["no","es","cadena"],"arguments":{"command":""},"params":{"command":"rm -rf build"},"requestId":7,"approval_id":"apr-2"},
+  "no_cwd": {"hook_event_name":"Stop","sessionId":"thr-sin-cwd","turnId":12,"message":"respuesta por .message"},
+  "other": {"hook_event_name":"PreToolUse","cwd":"/home/usuario/proyecto-codex"}
+}

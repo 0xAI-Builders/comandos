@@ -1,0 +1,7 @@
+{
+  "real": {"session_id":"anon","cwd":"/home/usuario/proyecto-agy","model":{"id":"gemini-3-pro-preview","display_name":"Gemini 3 Pro"},"account":{"email":"anon@example.invalid"},"plan_tier":"Google AI Pro","quota":{"3p-5h":{"remaining_fraction":1,"reset_time":"2026-10-04T08:12:22Z"},"3p-weekly":{"remaining_fraction":1.0,"reset_time":"2026-10-11T03:12:22Z"},"gemini-5h":{"remaining_fraction":0.9725484,"reset_time":"2026-10-04T06:28:13Z"},"gemini-weekly":{"remaining_fraction":0.59870625,"reset_time":"2026-10-07T17:21:23Z"}}},
+  "edge": {"plan_tier":12.5,"quota":{"bool":{"remaining_fraction":true,"reset_time":["a",{"b":null}]},"tiny":{"remaining_fraction":1e-7,"reset_time":0},"big":{"remaining_fraction":12345678901234567890,"reset_time":"x"},"nombre-larguísimo-con-acentos-y-más-de-cuarenta-caracteres-ñ":{"remaining_fraction":0.5,"reset_time":"es-una-cadena-muy-larga-de-más-de-cuarenta-caracteres-😀"},"str":{"remaining_fraction":"0.5"},"lista":[1],"sin":{"reset_time":"x"},"esc":{"remaining_fraction":-0.0,"reset_time":"comillas \" y \\ y \t"}}},
+  "no_buckets": {"plan_tier":"x","quota":{"a":{"remaining_fraction":null}}},
+  "no_quota": {"plan_tier":"x"},
+  "list": [1,2]
+}

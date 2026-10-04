@@ -1,0 +1,2 @@
+{"cmd":["python3.11","bin/cc-extensions","serve","fake"],"samples":3,"pss_kib_min":45345,"pss_kib_median":45349,"rss_kib_min":57760,"rss_kib_median":57764,"procs":1,"pss_exact":true,"unix_time":1791097832}
+{"cmd":["comandos","ext","serve","fake"],"samples":3,"pss_kib_min":5673,"pss_kib_median":5929,"rss_kib_min":7652,"rss_kib_median":7920,"procs":1,"pss_exact":true,"unix_time":1791097839}

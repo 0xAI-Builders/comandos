@@ -1,0 +1,885 @@
+//! Portable account-separated eight-day analytics; supplied rows and time only.
+use crate::{
+    allocation::{
+        Result, add_integers, default, divide_number, divide_positive, error, integer,
+        integer_float, integer_value, number, numeric, numeric_add, numeric_cmp, numeric_sub,
+        object, pyfloat, pymax, pymin, required, round_digits, round_int, round_value, string,
+    },
+    json::truthy,
+};
+use chrono::{
+    DateTime, Datelike, Duration, LocalResult, NaiveDate, NaiveDateTime, Offset, TimeZone, Timelike,
+};
+use serde_json::{Value, json};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, BTreeSet},
+};
+pub const TZ: &str = "America/Mexico_City";
+pub const WINDOW_DAYS: i64 = 8;
+pub const GAP_S: f64 = 900.;
+pub const WASTE_CYCLES: usize = 4;
+const PROVIDERS: [&str; 4] = ["claude", "codex", "grok", "agy"];
+const CLI: [&str; 4] = ["Claude", "Codex", "Grok", "Antigravity"];
+const EXTRA_COLORS: [&str; 5] = ["#2fd3c0", "#FF6B5B", "#FFAE1A", "#FF9AD5", "#9AA6BF"];
+const WD: [&str; 7] = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
+const MON: [&str; 12] = [
+    "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic",
+];
+pub struct WeekInput<'a> {
+    pub now: f64,
+    pub offset: i64,
+    pub limits: &'a [Value],
+    pub turns: &'a [Value],
+    pub spans: &'a [Value],
+    pub snapshots: &'a [Value],
+    pub records: &'a [Value],
+    pub tz_name: &'a str,
+}
+pub fn account_of(account: &Value) -> Result<String> {
+    let alias = if truthy(account) {
+        string(account)?
+    } else {
+        ""
+    };
+    let alias = alias.trim_matches(python_whitespace);
+    Ok(if alias.is_empty() || alias == "unknown" {
+        "main"
+    } else {
+        alias
+    }
+    .into())
+}
+pub fn account_id(provider: &str, account: &Value) -> Result<String> {
+    Ok(format!("{provider}:{}", account_of(account)?))
+}
+fn python_whitespace(c: char) -> bool {
+    c.is_whitespace() || matches!(c, '\u{1c}'..='\u{1f}')
+}
+pub fn project_of(path: &Value) -> Result<String> {
+    let path = if truthy(path) { string(path)? } else { "" }.trim_end_matches('/');
+    Ok(if path.is_empty() {
+        "Sin carpeta"
+    } else {
+        path.rsplit('/').next().expect("path segment")
+    }
+    .into())
+}
+pub fn pomodoro_project(name: &Value) -> Result<String> {
+    let name = if truthy(name) {
+        name.as_str()
+            .ok_or_else(|| error("TypeError", "proyecto sin texto"))?
+    } else {
+        ""
+    };
+    let mut start = None;
+    let mut cut = name.len();
+    for (i, c) in name.char_indices() {
+        if python_whitespace(c) {
+            if start.is_none() {
+                start = Some(i)
+            }
+        } else {
+            if matches!(c, '⎇' | '⫽')
+                && let Some(at) = start
+            {
+                cut = at;
+                break;
+            }
+            start = None;
+        }
+    }
+    let name = name[..cut].trim_matches(python_whitespace);
+    Ok(if name.is_empty() {
+        "Sin proyecto"
+    } else {
+        name
+    }
+    .into())
+}
+pub fn fmt_left(seconds: &Value) -> Result<String> {
+    let raw = integer(seconds)?;
+    let raw = if raw.starts_with('-') { "0" } else { &raw };
+    let (days, rest) = divide_positive(raw, 86400);
+    let (h, m) = (rest / 3600, rest % 3600 / 60);
+    Ok(if days != "0" {
+        format!("{days}d {h}h")
+    } else if h != 0 {
+        format!("{h}h {m}m")
+    } else {
+        format!("{m} min")
+    })
+}
+fn zone(name: &str) -> Result<chrono_tz::Tz> {
+    name.parse().map_err(|_| {
+        error(
+            "ZoneInfoNotFoundError",
+            format!("zona horaria inválida: {name}"),
+        )
+    })
+}
+#[derive(Clone, Copy)]
+struct LocalStamp {
+    civil: NaiveDateTime,
+    epoch: f64,
+}
+fn from_timestamp(at: f64, tz: chrono_tz::Tz) -> Result<LocalStamp> {
+    if !at.is_finite() {
+        return Err(error(
+            if at.is_nan() {
+                "ValueError"
+            } else {
+                "OverflowError"
+            },
+            "timestamp no finito",
+        ));
+    }
+    let floor = at.floor();
+    if floor < i64::MIN as f64 || floor >= i64::MAX as f64 {
+        return Err(error("OverflowError", "timestamp fuera de rango"));
+    }
+    let micro = ((at - floor) * 1e6).round_ties_even() as u32;
+    let (sec, micro) = if micro == 1000000 {
+        (
+            (floor as i64)
+                .checked_add(1)
+                .ok_or_else(|| error("OverflowError", "timestamp fuera de rango"))?,
+            0,
+        )
+    } else {
+        (floor as i64, micro)
+    };
+    let utc = DateTime::from_timestamp(sec, micro * 1000)
+        .ok_or_else(|| error("ValueError", "fecha fuera de rango"))?;
+    if !(1..=9999).contains(&utc.year()) {
+        return Err(error("ValueError", "año fuera de rango"));
+    }
+    let civil = utc.with_timezone(&tz).naive_local();
+    if !(1..=9999).contains(&civil.year()) {
+        return Err(error("ValueError", "año fuera de rango"));
+    }
+    Ok(LocalStamp {
+        civil,
+        epoch: sec as f64 + micro as f64 / 1e6,
+    })
+}
+// Python's same-zone datetime ordering compares civil fields, including at DST folds.
+// A freshly combined midnight uses fold=0, selecting the pre-gap offset if absent.
+fn local_midnight(date: NaiveDate, tz: chrono_tz::Tz) -> Result<LocalStamp> {
+    let civil = date.and_hms_opt(0, 0, 0).expect("midnight");
+    if !(1..=9999).contains(&civil.year()) {
+        return Err(error("ValueError", "año fuera de rango"));
+    }
+    let offset = match tz.offset_from_local_datetime(&civil) {
+        LocalResult::Single(o) => o.fix().local_minus_utc(),
+        LocalResult::Ambiguous(a, b) => a.fix().local_minus_utc().max(b.fix().local_minus_utc()),
+        LocalResult::None => {
+            let mut prior = civil;
+            loop {
+                prior = prior
+                    .checked_sub_signed(Duration::minutes(1))
+                    .ok_or_else(|| error("OverflowError", "medianoche fuera de rango"))?;
+                match tz.offset_from_local_datetime(&prior) {
+                    LocalResult::Single(o) => break o.fix().local_minus_utc(),
+                    LocalResult::Ambiguous(a, b) => {
+                        break a.fix().local_minus_utc().max(b.fix().local_minus_utc());
+                    }
+                    LocalResult::None => {}
+                }
+            }
+        }
+    };
+    Ok(LocalStamp {
+        civil,
+        epoch: civil.and_utc().timestamp() as f64 - offset as f64,
+    })
+}
+pub fn fmt_reset(ts: f64, tz: &str) -> Result<String> {
+    fmt_reset_in(ts, zone(tz)?)
+}
+fn fmt_reset_in(ts: f64, tz: chrono_tz::Tz) -> Result<String> {
+    let t = from_timestamp(ts, tz)?.civil;
+    Ok(format!(
+        "{} {} {}, {:02}:{:02}",
+        WD[t.weekday().num_days_from_monday() as usize],
+        t.day(),
+        MON[t.month0() as usize],
+        t.hour(),
+        t.minute()
+    ))
+}
+pub fn window_dates(now: f64, offset: i64, tz: &str) -> Result<Vec<NaiveDate>> {
+    window_dates_in(now, offset, zone(tz)?)
+}
+fn window_dates_in(now: f64, offset: i64, tz: chrono_tz::Tz) -> Result<Vec<NaiveDate>> {
+    let days = offset
+        .checked_mul(WINDOW_DAYS)
+        .and_then(Duration::try_days)
+        .ok_or_else(|| error("OverflowError", "ventana fuera de rango"))?;
+    let end = from_timestamp(now, tz)?
+        .civil
+        .date()
+        .checked_add_signed(days)
+        .ok_or_else(|| error("OverflowError", "fecha fuera de rango"))?;
+    (0..WINDOW_DAYS)
+        .map(|i| {
+            let d = end
+                .checked_sub_signed(Duration::days(i))
+                .ok_or_else(|| error("OverflowError", "fecha fuera de rango"))?;
+            if !(1..=9999).contains(&d.year()) {
+                return Err(error("OverflowError", "fecha fuera de rango"));
+            }
+            Ok(d)
+        })
+        .collect()
+}
+pub fn day_rows(dates: &[NaiveDate]) -> Vec<Value> {
+    dates
+        .iter()
+        .enumerate()
+        .map(|(i, d)| {
+            json!([
+                d.to_string(),
+                WD[d.weekday().num_days_from_monday() as usize],
+                if i == 0 || d.day() == 1 {
+                    format!("{} {}", d.day(), MON[d.month0() as usize])
+                } else {
+                    d.day().to_string()
+                }
+            ])
+        })
+        .collect()
+}
+pub fn week_label(dates: &[NaiveDate]) -> Result<String> {
+    let b = dates
+        .first()
+        .ok_or_else(|| error("IndexError", "fechas vacías"))?;
+    let a = dates.last().expect("first exists");
+    Ok(if a.month() == b.month() {
+        format!("{} – {} {}", a.day(), b.day(), MON[b.month0() as usize])
+    } else {
+        format!(
+            "{} {} – {} {}",
+            a.day(),
+            MON[a.month0() as usize],
+            b.day(),
+            MON[b.month0() as usize]
+        )
+    })
+}
+fn provider(row: &Value, required_key: bool) -> Result<Option<&str>> {
+    let value = if required_key {
+        required(row, "provider")?
+    } else {
+        &row["provider"]
+    };
+    Ok(value.as_str().filter(|p| PROVIDERS.contains(p)))
+}
+#[derive(Clone)]
+struct Interval {
+    start: f64,
+    end: f64,
+    tokens: String,
+}
+type IntervalGroup = ((String, String), Vec<Interval>);
+struct MergedInterval {
+    start: f64,
+    end: f64,
+    tokens: Vec<(f64, String)>,
+}
+fn intervals(turns: &[Value], spans: &[Value]) -> Result<Vec<IntervalGroup>> {
+    let mut groups: Vec<IntervalGroup> = vec![];
+    for (rows, is_span) in [(turns, false), (spans, true)] {
+        for row in rows {
+            let Some(p) = provider(row, true)? else {
+                continue;
+            };
+            let project = if is_span {
+                project_of(&row["git_root"])?
+            } else {
+                project_of(default(&row["git_root"], &row["pane_pwd"]))?
+            };
+            let key = (account_id(p, &row["account"])?, project);
+            let end = pyfloat(required(row, "finished")?)?;
+            let start = pymin(
+                end,
+                pyfloat(if is_span {
+                    required(row, "started")?
+                } else {
+                    default(&row["started"], &row["finished"])
+                })?,
+            );
+            let tokens = if is_span {
+                "0".into()
+            } else {
+                integer(default(&row["tokens"], &json!(0)))?
+            };
+            let item = Interval { start, end, tokens };
+            if let Some((_, items)) = groups.iter_mut().find(|(k, _)| k == &key) {
+                items.push(item)
+            } else {
+                groups.push((key, vec![item]))
+            }
+        }
+    }
+    Ok(groups)
+}
+pub fn sessions(turns: &[Value], spans: &[Value], tz: &str) -> Result<Vec<Value>> {
+    sessions_in(turns, spans, zone(tz)?)
+}
+fn sessions_in(turns: &[Value], spans: &[Value], tz: chrono_tz::Tz) -> Result<Vec<Value>> {
+    let mut out = vec![];
+    for ((acc, proj), mut items) in intervals(turns, spans)? {
+        items.sort_by(|a, b| {
+            a.start
+                .partial_cmp(&b.start)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| a.end.partial_cmp(&b.end).unwrap_or(Ordering::Equal))
+                .then_with(|| {
+                    crate::json::number_cmp(&integer_value(&a.tokens), &integer_value(&b.tokens))
+                })
+        });
+        let mut merged: Vec<MergedInterval> = vec![];
+        for item in items {
+            if let Some(last) = merged
+                .last_mut()
+                .filter(|last| item.start - last.end <= GAP_S)
+            {
+                last.end = pymax(last.end, item.end);
+                last.tokens.push((item.end, item.tokens));
+            } else {
+                merged.push(MergedInterval {
+                    start: item.start,
+                    end: item.end,
+                    tokens: vec![(item.end, item.tokens)],
+                });
+            }
+        }
+        for MergedInterval { start, end, tokens } in merged {
+            let mut cur = from_timestamp(start, tz)?;
+            let stop = from_timestamp(end, tz)?;
+            loop {
+                let midnight = local_midnight(
+                    cur.civil
+                        .date()
+                        .succ_opt()
+                        .ok_or_else(|| error("OverflowError", "fecha fuera de rango"))?,
+                    tz,
+                )?;
+                let piece_end = if midnight.civil < stop.civil {
+                    midnight
+                } else {
+                    stop
+                };
+                let (a, b) = (cur.epoch, piece_end.epoch);
+                let mut total = "0".to_string();
+                for (at, tok) in &tokens {
+                    if a <= *at && *at <= b && (*at < b || piece_end.civil == stop.civil) {
+                        total = add_integers(&total, tok);
+                    }
+                }
+                let st = cur.civil.hour() as f64
+                    + cur.civil.minute() as f64 / 60.
+                    + cur.civil.second() as f64 / 3600.;
+                let en = st + (b - a) / 3600.;
+                out.push(json!({"d":cur.civil.date().to_string(),"acc":acc,"proj":proj,"st":number(st),"en":number(en),"tok":number(integer_float(&total)?/1e6)}));
+                if piece_end.civil >= stop.civil {
+                    break;
+                }
+                cur = piece_end;
+            }
+        }
+    }
+    out.sort_by(|a, b| {
+        a["d"]
+            .as_str()
+            .cmp(&b["d"].as_str())
+            .then_with(|| {
+                a["st"]
+                    .as_f64()
+                    .partial_cmp(&b["st"].as_f64())
+                    .unwrap_or(Ordering::Equal)
+            })
+            .then_with(|| a["acc"].as_str().cmp(&b["acc"].as_str()))
+            .then_with(|| a["proj"].as_str().cmp(&b["proj"].as_str()))
+    });
+    Ok(out)
+}
+#[derive(Default)]
+struct Slot<'a> {
+    week: Option<&'a Value>,
+    model: Option<&'a Value>,
+    h5: Option<&'a Value>,
+}
+fn limit_slots(limits: &[Value]) -> Result<BTreeMap<String, Slot<'_>>> {
+    let mut slots: BTreeMap<String, Slot<'_>> = BTreeMap::new();
+    for row in limits {
+        let Some(p) = provider(row, false)? else {
+            continue;
+        };
+        if row["percent"].is_null() {
+            continue;
+        }
+        let acc = account_id(p, &row["account"])?;
+        let slot = slots.entry(acc).or_default();
+        if row["window"] == "5h" {
+            slot.h5 = Some(row)
+        } else if row["window"] == "7d" && truthy(&row["scope"]) {
+            if slot.model.is_none()
+                || numeric_cmp(&row["percent"], &slot.model.expect("model")["percent"])?
+                    == Some(Ordering::Greater)
+            {
+                slot.model = Some(row)
+            }
+        } else if row["window"] == "7d" {
+            slot.week = Some(row)
+        }
+    }
+    Ok(slots)
+}
+fn cycles<'a>(snapshots: &'a [Value], acc: &str) -> Result<Vec<&'a Value>> {
+    let mut out = vec![];
+    for row in snapshots {
+        let provider = required(row, "provider")?;
+        let p = provider
+            .as_str()
+            .map_or_else(|| provider.to_string(), str::to_string);
+        if account_id(&p, required(row, "account")?)? == acc
+            && required(row, "window")? == "7d"
+            && !truthy(&row["scope"])
+        {
+            if !matches!(
+                required(row, "resets_at")?,
+                Value::Number(_) | Value::Bool(_)
+            ) {
+                return Err(error("TypeError", "reset no numérico"));
+            }
+            out.push(row)
+        }
+    }
+    out.sort_by(|a, b| {
+        numeric_cmp(&b["resets_at"], &a["resets_at"])
+            .expect("validated numbers")
+            .unwrap_or(Ordering::Equal)
+    });
+    Ok(out)
+}
+pub fn waste(snapshots: &[Value], accounts: &[Value], now: f64) -> Result<Vec<Value>> {
+    let mut out = vec![];
+    for a in accounts {
+        let acc = string(required(a, "id")?)?;
+        let mut cyc = vec![];
+        for row in cycles(snapshots, acc)? {
+            if numeric_cmp(&row["resets_at"], &number(now))?.is_some_and(|o| !o.is_gt()) {
+                let percent = required(row, "percent")?;
+                let unused = if matches!(percent, Value::Bool(_))
+                    || percent
+                        .as_number()
+                        .is_some_and(|n| crate::pomodoro::integer_token(n.as_str()))
+                {
+                    let raw = integer(percent)?;
+                    integer_value(&add_integers(
+                        "100",
+                        &if let Some(stripped) = raw.strip_prefix('-') {
+                            stripped.into()
+                        } else {
+                            format!("-{raw}")
+                        },
+                    ))
+                } else {
+                    round_int(100. - numeric(percent)?)?
+                };
+                cyc.push(unused);
+                if cyc.len() == WASTE_CYCLES {
+                    break;
+                }
+            }
+        }
+        out.push(json!({"id":acc,"cyc":cyc}));
+    }
+    Ok(out)
+}
+fn reset(row: Option<&Value>, tz: chrono_tz::Tz) -> Result<Value> {
+    if let Some(row) = row {
+        let zero = json!(0);
+        let value = default(&row["resets_at"], &zero);
+        if numeric_cmp(value, &json!(0))? == Some(Ordering::Greater) {
+            return Ok(json!(fmt_reset_in(numeric(value)?, tz)?));
+        }
+    }
+    Ok(Value::Null)
+}
+fn left(row: Option<&Value>, now: f64) -> Result<Value> {
+    if let Some(row) = row {
+        let zero = json!(0);
+        let value = default(&row["resets_at"], &zero);
+        if numeric_cmp(value, &json!(0))? == Some(Ordering::Greater) {
+            return Ok(json!(fmt_left(&number(numeric(value)? - now))?));
+        }
+    }
+    Ok(Value::Null)
+}
+fn used_at(snapshots: &[Value], acc: &str, window_end: f64, now: f64) -> Result<Value> {
+    for row in cycles(snapshots, acc)?.into_iter().rev() {
+        if numeric_cmp(&row["resets_at"], &number(window_end))? == Some(Ordering::Greater) {
+            if numeric(&row["resets_at"])? - window_end > 608400. {
+                return Ok(Value::Null);
+            }
+            return if numeric_cmp(&row["resets_at"], &number(now))?.is_some_and(|o| !o.is_gt()) {
+                round_value(required(row, "percent")?)
+            } else {
+                Ok(Value::Null)
+            };
+        }
+    }
+    Ok(Value::Null)
+}
+pub struct AccountsInput<'a> {
+    pub limits: &'a [Value],
+    pub sessions: &'a [Value],
+    pub today: Option<&'a str>,
+    pub window_end: f64,
+    pub snapshots: &'a [Value],
+    pub now: f64,
+    pub tz_name: &'a str,
+    pub past: bool,
+}
+pub fn build_accounts(input: &AccountsInput<'_>) -> Result<Vec<Value>> {
+    build_accounts_in(input, zone(input.tz_name)?)
+}
+fn build_accounts_in(input: &AccountsInput<'_>, tz: chrono_tz::Tz) -> Result<Vec<Value>> {
+    let slots = limit_slots(input.limits)?;
+    let mut ids = slots.keys().cloned().collect::<BTreeSet<_>>();
+    for s in input.sessions {
+        ids.insert(string(required(s, "acc")?)?.into());
+    }
+    let mut order = ids.into_iter().collect::<Vec<_>>();
+    let rank = |a: &str| -> Result<(usize, bool, String)> {
+        let parts = a.split(':').collect::<Vec<_>>();
+        let p = PROVIDERS
+            .iter()
+            .position(|p| *p == parts[0])
+            .ok_or_else(|| error("ValueError", "proveedor desconocido"))?;
+        Ok((
+            p,
+            *parts
+                .get(1)
+                .ok_or_else(|| error("IndexError", "cuenta sin alias"))?
+                != "main",
+            a.into(),
+        ))
+    };
+    let mut ranked = order
+        .drain(..)
+        .map(|a| Ok((rank(&a)?, a)))
+        .collect::<Result<Vec<_>>>()?;
+    ranked.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut out = vec![];
+    let mut extra = 0;
+    for (_, acc) in ranked {
+        let (p, alias) = acc
+            .split_once(':')
+            .ok_or_else(|| error("ValueError", "cuenta sin alias"))?;
+        let idx = PROVIDERS
+            .iter()
+            .position(|v| *v == p)
+            .expect("validated provider");
+        let color = match (p, alias) {
+            ("claude", "main") => "#8B7CFF",
+            ("claude", "relotto") => "#FF9A5C",
+            ("codex", "main") => "#4CC2FF",
+            ("grok", "main") => "#C5E35A",
+            ("agy", "main") => "#5BD6A0",
+            _ => {
+                let color = EXTRA_COLORS[extra % 5];
+                extra += 1;
+                color
+            }
+        };
+        let empty = Slot::default();
+        let slot = slots.get(&acc).unwrap_or(&empty);
+        let mine = input
+            .sessions
+            .iter()
+            .filter(|s| s["acc"] == acc)
+            .collect::<Vec<_>>();
+        let today = mine
+            .iter()
+            .copied()
+            .filter(|s| s["d"].as_str() == input.today)
+            .collect::<Vec<_>>();
+        let stats = |rows: &[&Value], daily: bool| -> Result<Value> {
+            let (mut hours, mut tokens) = (0., 0.);
+            for s in rows {
+                hours += numeric(required(s, "en")?)? - numeric(required(s, "st")?)?;
+                tokens += numeric(required(s, "tok")?)?;
+            }
+            Ok(object([
+                ("h", number(hours)),
+                (
+                    "tok",
+                    if daily {
+                        round_int(tokens)?
+                    } else {
+                        number(round_digits(tokens / 1000., 1))
+                    },
+                ),
+                ("ses", json!(rows.len())),
+            ]))
+        };
+        let week = slot
+            .week
+            .map(|r| round_value(&r["percent"]))
+            .transpose()?
+            .unwrap_or(Value::Null);
+        let model = if let Some(r) = slot.model {
+            object([
+                ("n", r["scope"].clone()),
+                ("v", round_value(&r["percent"])?),
+                ("reset", reset(Some(r), tz)?),
+                ("left", left(Some(r), input.now)?),
+            ])
+        } else {
+            Value::Null
+        };
+        let mut item = json!({"id":acc,"provider":p,"cli":CLI[idx],"alias":alias,"color":color,"week":week,"h5":slot.h5.map(|r|round_value(&r["percent"])).transpose()?.unwrap_or(Value::Null),"reset":reset(slot.week,tz)?,"left":left(slot.week,input.now)?,"h5Reset":reset(slot.h5,tz)?,"h5Left":left(slot.h5,input.now)?,"weekUsed":if input.past{used_at(input.snapshots,&acc,input.window_end,input.now)?}else{week}});
+        item["model"] = model;
+        item["hoy"] = stats(&today, true)?;
+        item["sem"] = stats(&mine, false)?;
+        out.push(item);
+    }
+    Ok(out)
+}
+#[derive(Default)]
+struct Measured {
+    sessions: Vec<Value>,
+    tokens: String,
+    cost: f64,
+    models: Vec<Value>,
+}
+fn scalar_equal(a: &Value, b: &Value) -> bool {
+    if matches!(a, Value::Number(_) | Value::Bool(_))
+        && matches!(b, Value::Number(_) | Value::Bool(_))
+    {
+        numeric_cmp(a, b).is_ok_and(|cmp| cmp == Some(Ordering::Equal))
+    } else {
+        a == b
+    }
+}
+fn insert_scalar(values: &mut Vec<Value>, value: &Value) -> Result<()> {
+    if matches!(value, Value::Array(_) | Value::Object(_)) {
+        return Err(error("TypeError", "valor no hashable"));
+    }
+    if !values.iter().any(|v| scalar_equal(v, value)) {
+        values.push(value.clone())
+    }
+    Ok(())
+}
+pub fn sidebar_accounts(
+    accounts: &[Value],
+    limits: &[Value],
+    turns: &[Value],
+    now: f64,
+) -> Result<Vec<Value>> {
+    let mut out = accounts.to_vec();
+    let mut by_id = BTreeMap::new();
+    for (i, a) in out.iter().enumerate() {
+        by_id.insert(string(required(a, "id")?)?.to_string(), i);
+    }
+    for row in limits {
+        let provider = &row["provider"];
+        let p = provider.as_str().map_or_else(
+            || {
+                if provider.is_null() {
+                    "None".into()
+                } else {
+                    provider.to_string()
+                }
+            },
+            str::to_string,
+        );
+        let id = account_id(&p, &row["account"])?;
+        let plan = default(&row["plan_type"], &row["plan"]);
+        if let Some(i) = by_id.get(&id)
+            && truthy(plan)
+        {
+            out[*i]["plan"] = plan.clone();
+        }
+    }
+    let mut groups: BTreeMap<String, Measured> = BTreeMap::new();
+    for row in turns {
+        let finished = pyfloat(default(&row["finished"], &json!(0)))?;
+        if !(now - 604800. <= finished && finished <= now) {
+            continue;
+        }
+        let p = if row["agent"] == "opencode" {
+            "opencode".into()
+        } else {
+            row["provider"].as_str().map_or_else(
+                || {
+                    if row["provider"].is_null() {
+                        "None".into()
+                    } else {
+                        row["provider"].to_string()
+                    }
+                },
+                str::to_string,
+            )
+        };
+        let acc = account_id(&p, &row["account"])?;
+        if !by_id.contains_key(&acc) {
+            if p != "opencode" {
+                continue;
+            }
+            by_id.insert(acc.clone(), out.len());
+            out.push(json!({"id":acc,"provider":p,"cli":"OpenCode","alias":account_of(&row["account"])? ,"color":"#2fd3c0","week":null,"model":null,"h5":null}));
+        }
+        let group = groups.entry(acc).or_insert_with(|| Measured {
+            tokens: "0".into(),
+            ..Measured::default()
+        });
+        if truthy(&row["session"]) {
+            insert_scalar(&mut group.sessions, &row["session"])?
+        }
+        let tok = integer(default(&row["tokens"], &json!(0)))?;
+        if !tok.starts_with('-') {
+            group.tokens = add_integers(&group.tokens, &tok);
+        }
+        group.cost += pymax(0., pyfloat(default(&row["cost"], &json!(0)))?);
+        if truthy(&row["model"]) {
+            insert_scalar(&mut group.models, &row["model"])?
+        }
+    }
+    for (acc, mut group) in groups {
+        let mut sort_error = None;
+        group.models.sort_by(|a, b| match (a, b) {
+            (Value::String(a), Value::String(b)) => a.cmp(b),
+            _ => match numeric_cmp(a, b) {
+                Ok(o) => o.unwrap_or(Ordering::Equal),
+                Err(e) => {
+                    sort_error = Some(e);
+                    Ordering::Equal
+                }
+            },
+        });
+        if let Some(e) = sort_error {
+            return Err(e);
+        }
+        let mut measured = json!({"sessions":group.sessions.len()});
+        measured["tokens"] = integer_value(&group.tokens);
+        measured["costUsd"] = number(round_digits(group.cost, 6));
+        measured["models"] = Value::Array(group.models);
+        out[*by_id.get(&acc).expect("group account")]["measured"] = measured;
+    }
+    Ok(out)
+}
+pub fn pomodoros(records: &[Value], days: &[String], tz: &str) -> Result<Vec<Value>> {
+    pomodoros_in(records, days, zone(tz)?)
+}
+fn pomodoros_in(records: &[Value], days: &[String], tz: chrono_tz::Tz) -> Result<Vec<Value>> {
+    let keep = days.iter().collect::<BTreeSet<_>>();
+    let mut out = vec![];
+    for r in records {
+        if r["mode"] != "focus"
+            || !matches!(
+                r["status"].as_str(),
+                Some("completed" | "cancelled" | "skipped")
+            )
+        {
+            continue;
+        }
+        let start_ms = required(r, "startedAtMs")?;
+        let start = from_timestamp(divide_number(start_ms, 1000)?, tz)?.civil;
+        let day = start.date().to_string();
+        if !keep.contains(&day) {
+            continue;
+        }
+        let st = start.hour() as f64 + start.minute() as f64 / 60. + start.second() as f64 / 3600.;
+        let zero = json!(0);
+        let active = default(&r["activeMs"], &zero);
+        let ended = if truthy(&r["endedAtMs"]) {
+            r["endedAtMs"].clone()
+        } else {
+            numeric_add(start_ms, active)?
+        };
+        let target = default(&r["targetMs"], default(&r["plannedMs"], &zero));
+        out.push(json!({"d":day,"st":number(st),"en":number(pymin(24.,st+divide_number(&numeric_sub(&ended,start_ms)?,3600000)?)),"plan":round_int(divide_number(target,60000)?)?,"act":round_int(divide_number(default(&r["activeMs"],&zero),60000)?)?,"pause":0,"status":if r["status"]=="completed"{"completed"}else{"cancelled"},"proj":pomodoro_project(&r["project"])?}));
+    }
+    out.sort_by(|a, b| {
+        a["d"].as_str().cmp(&b["d"].as_str()).then_with(|| {
+            a["st"]
+                .as_f64()
+                .partial_cmp(&b["st"].as_f64())
+                .unwrap_or(Ordering::Equal)
+        })
+    });
+    Ok(out)
+}
+pub fn build_week(input: &WeekInput<'_>) -> Result<Value> {
+    let tz = zone(input.tz_name)?;
+    let dates = window_dates_in(input.now, input.offset, tz)?;
+    let prev = window_dates_in(
+        input.now,
+        input
+            .offset
+            .checked_sub(1)
+            .ok_or_else(|| error("OverflowError", "offset fuera de rango"))?,
+        tz,
+    )?;
+    let days = day_rows(&dates);
+    let iso = dates
+        .iter()
+        .map(ToString::to_string)
+        .collect::<BTreeSet<_>>();
+    let prev_iso = prev
+        .iter()
+        .map(ToString::to_string)
+        .collect::<BTreeSet<_>>();
+    let all = sessions_in(input.turns, input.spans, tz)?;
+    let mut sess = vec![];
+    let mut last: BTreeMap<String, f64> = BTreeMap::new();
+    for s in all {
+        let day = string(&s["d"])?;
+        if iso.contains(day) {
+            sess.push(s.clone())
+        }
+        if prev_iso.contains(day) {
+            *last.entry(string(&s["proj"])?.into()).or_default() +=
+                numeric(&s["en"])? - numeric(&s["st"])?;
+        }
+    }
+    let window_end = local_midnight(
+        dates[0]
+            .succ_opt()
+            .ok_or_else(|| error("OverflowError", "fecha fuera de rango"))?,
+        tz,
+    )?
+    .epoch;
+    let today = if input.offset == 0 {
+        Some(dates[0].to_string())
+    } else {
+        None
+    };
+    let accounts = build_accounts_in(
+        &AccountsInput {
+            limits: input.limits,
+            sessions: &sess,
+            today: today.as_deref(),
+            window_end,
+            snapshots: input.snapshots,
+            now: input.now,
+            tz_name: input.tz_name,
+            past: input.offset < 0,
+        },
+        tz,
+    )?;
+    let local = from_timestamp(input.now, tz)?.civil;
+    let last = last
+        .into_iter()
+        .map(|(k, v)| (k, number(v)))
+        .collect::<serde_json::Map<_, _>>();
+    let waste = waste(input.snapshots, &accounts, input.now)?;
+    let mut result = json!({"week":{"offset":input.offset,"label":week_label(&dates)? ,"start":dates[7].to_string(),"end":dates[0].to_string(),"today":today,"now":if input.offset==0{number(local.hour()as f64+local.minute()as f64/60.)}else{Value::Null},"measuredAt":format!("{:02}:{:02}",local.hour(),local.minute())},"days":days,"sessions":sess,"lastWeek":last,"waste":waste,"pomodoros":pomodoros_in(input.records,&iso.into_iter().collect::<Vec<_>>(),tz)?});
+    result["accounts"] = Value::Array(accounts);
+    Ok(result)
+}

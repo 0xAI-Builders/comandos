@@ -1,0 +1,3138 @@
+{
+  "baseline": "214e55a",
+  "complete": false,
+  "cutover": false,
+  "files": [
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/adapters/agy-hooks.sh",
+      "language": ".sh",
+      "category": "producto",
+      "lines": 41,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/adapters/agy-statusline.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 55,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/adapters/codex-hooks.sh",
+      "language": ".sh",
+      "category": "producto",
+      "lines": 98,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/adapters/codex-notify.sh",
+      "language": ".sh",
+      "category": "producto",
+      "lines": 45,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/adapters/gemini-hooks.sh",
+      "language": ".sh",
+      "category": "producto",
+      "lines": 21,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/adapters/grok-hooks.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 284,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/adapters/opencode-comandos.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 51,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/opentype/opentype.min.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 1,
+      "status": "Tercero sin modificaciones; conservar y verificar integración",
+      "rust": null,
+      "ownership": "third_party",
+      "provenance": {
+        "package": "opentype.js",
+        "version": "1.3.4",
+        "sha256": "c0f9c7ca85e18075a8819e5fe2dee6e1d535f9a2269f5314f36cce94a183adba",
+        "evidence": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/static-vendor-comparison-evidence.json"
+      }
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/uisfx/uisfx-0.4.0.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 1,
+      "status": "Tercero sin modificaciones; conservar y verificar integración",
+      "rust": null,
+      "ownership": "third_party",
+      "provenance": {
+        "package": "uisfx",
+        "version": "0.4.0",
+        "sha256": "d64edf28f823b2a52a38e8df41023d31fe62de04e822e0569f4cd2e00ddfa579",
+        "evidence": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/static-vendor-comparison-evidence.json"
+      }
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/addon-attach.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 1,
+      "status": "Tercero sin modificaciones; conservar y verificar integración",
+      "rust": null,
+      "ownership": "third_party",
+      "provenance": {
+        "package": "@xterm/addon-attach",
+        "version": "0.11.0",
+        "sha256": "af810fa330a1503cf3c305a0a68adc3b4361671fa58ec472b0fae8e59a7c3b66",
+        "evidence": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/static-vendor-comparison-evidence.json"
+      }
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/addon-canvas.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 1,
+      "status": "Tercero sin modificaciones; conservar y verificar integración",
+      "rust": null,
+      "ownership": "third_party",
+      "provenance": {
+        "package": "@xterm/addon-canvas",
+        "version": "0.7.0",
+        "sha256": "7b3e904d5bec98b54d26674994cf994396c4af0971010ffd0d4983229b65d933",
+        "evidence": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/static-vendor-comparison-evidence.json"
+      }
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/addon-fit.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 1,
+      "status": "Tercero sin modificaciones; conservar y verificar integración",
+      "rust": null,
+      "ownership": "third_party",
+      "provenance": {
+        "package": "@xterm/addon-fit",
+        "version": "0.10.0",
+        "sha256": "bdaefa370b1bfc42ee88d46fe6072400902a4d4b2d45cd93438dda9b23c97089",
+        "evidence": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/static-vendor-comparison-evidence.json"
+      }
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/addon-ligatures-web.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 270,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/addon-web-links.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 1,
+      "status": "Tercero sin modificaciones; conservar y verificar integración",
+      "rust": null,
+      "ownership": "third_party",
+      "provenance": {
+        "package": "@xterm/addon-web-links",
+        "version": "0.11.0",
+        "sha256": "f230a6c8211ce4614dda5441f27b603c7c1ca95151a655bc0efac6377ee643f0",
+        "evidence": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/static-vendor-comparison-evidence.json"
+      }
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/xterm.css",
+      "language": ".css",
+      "category": "producto",
+      "lines": 218,
+      "status": "Tercero sin modificaciones; conservar y verificar integración",
+      "rust": null,
+      "ownership": "third_party",
+      "provenance": {
+        "package": "@xterm/xterm",
+        "version": "5.5.0",
+        "sha256": "ba8e6985669488981ccf40c0cefe3aba80722cb6c92de7ad628b0bd717faf2b6",
+        "evidence": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/static-vendor-comparison-evidence.json"
+      }
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/assets/xterm/xterm.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 1,
+      "status": "Tercero sin modificaciones; conservar y verificar integración",
+      "rust": null,
+      "ownership": "third_party",
+      "provenance": {
+        "package": "@xterm/xterm",
+        "version": "5.5.0",
+        "sha256": "1f991ac3b4b283ebf96e60ae23a00a52765dd3a2e46fa6fdda9f1aab032f7495",
+        "evidence": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/static-vendor-comparison-evidence.json"
+      }
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-acp",
+      "language": "script",
+      "category": "producto",
+      "lines": 479,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-agents",
+      "language": "script",
+      "category": "producto",
+      "lines": 238,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-app",
+      "language": "script",
+      "category": "producto",
+      "lines": 9019,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-app-mac",
+      "language": "script",
+      "category": "producto",
+      "lines": 1348,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-browser-expose",
+      "language": "script",
+      "category": "producto",
+      "lines": 187,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-browser-npx-guard",
+      "language": "script",
+      "category": "producto",
+      "lines": 18,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-browser-remote",
+      "language": "script",
+      "category": "producto",
+      "lines": 3,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-centro",
+      "language": "script",
+      "category": "producto",
+      "lines": 4,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-codex-full-access",
+      "language": "script",
+      "category": "producto",
+      "lines": 10,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-dash",
+      "language": "script",
+      "category": "producto",
+      "lines": 9897,
+      "status": "Parcial: acceso, transporte y cuatro rutas de eventos/marcas revisados; resto de rutas e integración pendientes",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/dashboard_access.rs; /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-server/src/lib.rs; /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-server/src/events_routes.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/dashboard-access-20261004-review.md"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-doctor",
+      "language": "script",
+      "category": "producto",
+      "lines": 396,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-extension-session",
+      "language": "script",
+      "category": "producto",
+      "lines": 7,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-extensions",
+      "language": "script",
+      "category": "producto",
+      "lines": 98,
+      "status": "Parcial: serve/count/import/sync/status revisados; check e instalación pendientes",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/main.rs"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-keys",
+      "language": "script",
+      "category": "producto",
+      "lines": 33,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-mobile",
+      "language": "script",
+      "category": "producto",
+      "lines": 150,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-next",
+      "language": "script",
+      "category": "producto",
+      "lines": 60,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-notifyd",
+      "language": "script",
+      "category": "producto",
+      "lines": 1139,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-pane-model",
+      "language": "script",
+      "category": "producto",
+      "lines": 18,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-session-snapshot",
+      "language": "script",
+      "category": "producto",
+      "lines": 75,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-term",
+      "language": "script",
+      "category": "producto",
+      "lines": 7,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-webterm",
+      "language": "script",
+      "category": "producto",
+      "lines": 198,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-webterm-attach",
+      "language": "script",
+      "category": "producto",
+      "lines": 64,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-winstart",
+      "language": "script",
+      "category": "producto",
+      "lines": 83,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc_usage.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 3361,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/ccx",
+      "language": "script",
+      "category": "producto",
+      "lines": 132,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/analytics-render.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 195,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/analytics.css",
+      "language": ".css",
+      "category": "producto",
+      "lines": 606,
+      "status": "Estilo a conservar; verificar renderizado pixel perfect",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/analytics.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 135,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/buttons.css",
+      "language": ".css",
+      "category": "producto",
+      "lines": 39,
+      "status": "Estilo a conservar; verificar renderizado pixel perfect",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/chain-builder.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 287,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/command-sidebar.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 755,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/device-drafts.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 93,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/extensions.css",
+      "language": ".css",
+      "category": "producto",
+      "lines": 34,
+      "status": "Estilo a conservar; verificar renderizado pixel perfect",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/extensions.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 2,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/extensions.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 284,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/index.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 5956,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/news-reader.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 1204,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/notifications.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 851,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/pomodoro.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 662,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototype-grok-space.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 288,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-acomodar-pestanas.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 162,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-analytics.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 1127,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-avisos-resumenes.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 301,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-botones-arcade.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 140,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-desktop-unificado.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 184,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-deslizar-pestanas.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 177,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-iguales.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 275,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-orden-pestanas.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 130,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-pestanas-juego.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 263,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-pomodoro-audio.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 36,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-pomodoro-sync-repro.cjs",
+      "language": ".cjs",
+      "category": "producto",
+      "lines": 81,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-reloj-arena.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 127,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-reloj-comportamiento.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 120,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-semaforos.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 150,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-ui-sounds.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 124,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-usage-cards.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 296,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-v1-grill.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 888,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-v1-server.cjs",
+      "language": ".cjs",
+      "category": "producto",
+      "lines": 44,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-v2-barra.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 579,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-v2-fase2.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 196,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/prototype-v2-smoke.cjs",
+      "language": ".cjs",
+      "category": "producto",
+      "lines": 10,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/prototypes/vendor/uisfx-0.4.0.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 1,
+      "status": "Tercero sin modificaciones; conservar y verificar integración",
+      "rust": null,
+      "ownership": "third_party",
+      "provenance": {
+        "package": "uisfx",
+        "version": "0.4.0",
+        "sha256": "d64edf28f823b2a52a38e8df41023d31fe62de04e822e0569f4cd2e00ddfa579",
+        "evidence": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/static-vendor-comparison-evidence.json"
+      }
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/push-settings.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 198,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/quick-terminal.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 49,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/session-config.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 122,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/sw.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 80,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/term.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 2341,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/ui-sounds.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 184,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/vendor/markdown-it-15.0.2.umd.min.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 13,
+      "status": "Tercero sin modificaciones; conservar y verificar integración",
+      "rust": null,
+      "ownership": "third_party",
+      "provenance": {
+        "package": "markdown-it",
+        "version": "15.0.2",
+        "sha256": "635972b985228e8af9f0143647c68616b7a3bb09f6946e7e4a52e43dcf5e7be5",
+        "evidence": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/static-vendor-comparison-evidence.json"
+      }
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/vendor/purify-3.4.16.min.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 6,
+      "status": "Tercero sin modificaciones; conservar y verificar integración",
+      "rust": null,
+      "ownership": "third_party",
+      "provenance": {
+        "package": "dompurify",
+        "version": "3.4.16",
+        "sha256": "2c90a9b46d6463f26038a29b686e82bc91de01fdac9d5229e7cfe3b360134ea2",
+        "evidence": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/static-vendor-comparison-evidence.json"
+      }
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/work-marks.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 346,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/workspace-dock.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 412,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/workspace-layout.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 104,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/workspace.css",
+      "language": ".css",
+      "category": "producto",
+      "lines": 1105,
+      "status": "Estilo a conservar; verificar renderizado pixel perfect",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/workspace.js",
+      "language": ".js",
+      "category": "producto",
+      "lines": 147,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/design/proof.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 10,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/design/prototype-extensiones-pane.html",
+      "language": ".html",
+      "category": "producto",
+      "lines": 567,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/docs/research/extensiones-por-sesion/grok-ns.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 15,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/hooks/cc-notify.sh",
+      "language": ".sh",
+      "category": "producto",
+      "lines": 485,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/hooks/cc-status.sh",
+      "language": ".sh",
+      "category": "producto",
+      "lines": 54,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/hooks/cc-usage-tool.sh",
+      "language": ".sh",
+      "category": "producto",
+      "lines": 40,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/install.sh",
+      "language": ".sh",
+      "category": "producto",
+      "lines": 226,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/accounts.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 184,
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/accounts.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/accounts-catalog-20261004-review.md"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/acp.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 512,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/agent_stop.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 226,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/allocation.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 54,
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/allocation.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/usage-analytics-20261004-review.md"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/analytics_week.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 305,
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/analytics_week.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/usage-analytics-20261004-review.md"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/app_state.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 427,
+      "status": "Rust — revisado; sin despliegue",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/state_db/mod.rs"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/browser_config_migration.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 346,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/capabilities.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 507,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/claude_trust.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 143,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/cli_catalog.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 213,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/cli_help.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 157,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_full_access.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 494,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_thread_release.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 229,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_yolo_install.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 99,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_yolo_policy.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 62,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/command_chains.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 130,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/event_intake.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 262,
+      "status": "Rust — revisado; sin despliegue",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/bin/comandos-events.rs"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/event_store.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 184,
+      "status": "Rust",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/lib.rs"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_auth.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 251,
+      "status": "Rust — revisado; sin despliegue",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/auth.rs"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_catalog.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 462,
+      "status": "Rust — revisado; sin despliegue",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/catalog.rs"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_launch.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 607,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_metadata.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 241,
+      "status": "Parcial: metadatos y conteo Rust revisados; instalación por migrar",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/metadata.rs"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_observations.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 197,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/extension_proxy.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 176,
+      "status": "Parcial: serve y metadatos nativos; check pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/serve.rs"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/focus_progress.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 169,
+      "status": "Rust — revisado; integración pendiente",
+      "rust": [
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/focus.rs",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/focus.rs"
+      ],
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/pomodoro-focus-20261004-rereview.md"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/grok_state.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 109,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/gtk_tabstrip.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 334,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/gtk_workspace.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 402,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/mcp_descriptions.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 51,
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/mcp_descriptions.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/mcp-descriptions-20261004-review.md"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/model_catalog.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 112,
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/model_catalog.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/accounts-catalog-20261004-review.md"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/model_watch.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 337,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/news_editions.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 1208,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/news_radar.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 937,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/news_reading.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 327,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/news_watch.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 333,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/notification_delivery.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 381,
+      "status": "Rust — revisado; sin despliegue",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/notifications.rs"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/operator_catalog.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 321,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/operator_dispatch.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 285,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/operator_receipts.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 53,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/pane_extensions.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 113,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/pane_snapshot.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 259,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/pane_typing.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 53,
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/pane_typing.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/terminal-io-20261004-review.md"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/platform.sh",
+      "language": ".sh",
+      "category": "producto",
+      "lines": 180,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/pomodoro.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 528,
+      "status": "Rust — revisado; integración pendiente",
+      "rust": [
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/pomodoro.rs",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/pomodoro.rs"
+      ],
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/pomodoro-focus-20261004-rereview.md"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/providers.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 302,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/quick_terminal.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 155,
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/quick_terminal.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/quick-terminal-20261004-review.md"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/retire-telegram.sh",
+      "language": ".sh",
+      "category": "producto",
+      "lines": 44,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/session_operations.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 272,
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/session_operations.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/session-controls-20261004-review.md"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/session_profiles.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 515,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/session_tabs.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 6,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/terminal_history.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 60,
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/terminal_history.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/terminal-io-20261004-review.md"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/terminal_panes.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 169,
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/terminal_panes.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/session-controls-20261004-review.md"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/tmux_clipboard.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 62,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/tmux_snapshot.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 300,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/tui_state.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 236,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/turn_state.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 115,
+      "status": "Rust",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/turn.rs"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/web_push.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 428,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/work_marks.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 276,
+      "status": "Rust — almacenamiento y renderizado revisados; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/marks.rs; /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/work_marks.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/work-marks-render-20261004-review.md"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/workspace_layout.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 188,
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/workspace/layout.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/workspace-final-20261004-review.md"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/workspace_state.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 489,
+      "status": "Rust — dominio y persistencia revisados; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/workspace.rs",
+      "rust_adapters": [
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/workspace.rs"
+      ],
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/workspace-final-20261004-review.md"
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/scripts/install-extensions.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 73,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/services/browser/apparmor/install-chrome-apparmor.sh",
+      "language": ".sh",
+      "category": "producto",
+      "lines": 17,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/services/browser/broker.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 417,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/analytics_agy_checks.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 32,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/analytics_parity_checks.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 21,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/analytics_ui_checks.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 217,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/chain_builder_checks.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 251,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/command_sidebar_checks.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 444,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/conftest.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 43,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/dash_harness.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 136,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/device_drafts_checks.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 98,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/dom_stub.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 148,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/e2e_mobile_remote.js",
+      "language": ".js",
+      "category": "verificación",
+      "lines": 1888,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/e2e_pane_extensions.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 80,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/e2e_remote_browser.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 61,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/e2e_remote_pane_controls.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 113,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/e2e_remote_tab_selection.mjs",
+      "language": ".mjs",
+      "category": "verificación",
+      "lines": 172,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/e2e_remote_workspace.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 227,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/e2e_session_audit.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 106,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/e2e_session_workspace.js",
+      "language": ".js",
+      "category": "verificación",
+      "lines": 110,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/e2e_sidebar_parity.js",
+      "language": ".js",
+      "category": "verificación",
+      "lines": 116,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/e2e_terminal_native.js",
+      "language": ".js",
+      "category": "verificación",
+      "lines": 170,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/fake_acp_agent.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 83,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/news_reader_checks.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 208,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/notification_ui_checks.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 642,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/pomodoro_sync_checks.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 193,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/pomodoro_ui_checks.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 329,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/push_settings_checks.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 134,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/session_controls_fixture.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 44,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/sw_push_checks.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 106,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_account_login.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 83,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_acp_client.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 178,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_acp_reconfiguration.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 181,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_agent_launch.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 163,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_agent_stop.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 242,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_agy_grok_quota.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 176,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_allocation.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 56,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_allocation_dash.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 66,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_allocation_endpoints.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 16,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_analytics_checks.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 16,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_analytics_css.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 36,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_analytics_dash.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 164,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_analytics_endpoint.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 69,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_analytics_week.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 159,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_app_local_tabs.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 67,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_app_pane_targets.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 89,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_app_quick_terminal.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 44,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_app_reader.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 27,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_app_side_terminal.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 251,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_app_split_snapshot.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 141,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_app_tabs_lock.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 61,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_app_ui_thread.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 142,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_app_work_marks.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 235,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_app_workspace.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 444,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_browser_broker.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 171,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_browser_config_migration.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 183,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_browser_expose.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 158,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_browser_npx_guard.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 77,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_button_styles.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 147,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_capability_matrix.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 129,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_ccx_agent.sh",
+      "language": ".sh",
+      "category": "verificación",
+      "lines": 109,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_chain_builder_ui.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 98,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_chains_endpoints.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 46,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_claude_trust.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 295,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_cli_catalog.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 214,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_account_trust.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 41,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_adapters.sh",
+      "language": ".sh",
+      "category": "verificación",
+      "lines": 127,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_full_access.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 575,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_thread_release.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 193,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_yolo_policy.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 109,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_command_chains.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 83,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_command_sidebar_mount.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 119,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_command_sidebar_ui.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 35,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_commands_catalog_endpoint.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 194,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_dash_concurrency.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 535,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_dash_hardening.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 331,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_dashboard_assets.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 148,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_dashboard_cards.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 53,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_dashboard_grok.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 50,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_dashboard_layout.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 110,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_dashboard_markup.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 91,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_dashboard_security.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 394,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_desktop_launcher.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 28,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_desktop_links.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 569,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_desktop_performance.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 377,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_desktop_tabs.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 461,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_doctor.sh",
+      "language": ".sh",
+      "category": "verificación",
+      "lines": 11,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_e2e_harness.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 248,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_event_store.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 232,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_events_endpoints.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 151,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_extension_auth.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 101,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_extension_batches.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 35,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_extension_catalog.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 212,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_extension_coordinator.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 180,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_extension_desktop.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 80,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_extension_launch.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 373,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_extension_loading.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 183,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_extension_metadata.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 116,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_extension_observations.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 134,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_extension_proxy.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 69,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_extension_tmux.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 69,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_extension_viewport.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 32,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_focus_progress.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 213,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_grok_gateway.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 41,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_grok_hooks.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 302,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_grok_provider.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 66,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_gtk_tabstrip.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 131,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_gtk_workspace.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 263,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_header_layout.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 255,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_install_hooks.sh",
+      "language": ".sh",
+      "category": "verificación",
+      "lines": 153,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_js_parses.sh",
+      "language": ".sh",
+      "category": "verificación",
+      "lines": 14,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_live_pane_inventory.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 158,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_macos_app.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 380,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_mcp_descriptions.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 69,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_model_watch_discovery.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 224,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_native_extension_metadata.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 41,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_new_session_focus.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 27,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_news_editions.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 911,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_news_endpoints.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 192,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_news_radar.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 226,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_news_reading.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 143,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_notice_endpoints.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 236,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_notification_delivery.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 307,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_notify_hook.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 392,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_notifyd_robust.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 83,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_operator_analytics.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 140,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_operator_catalog.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 110,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_operator_dispatch.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 153,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_operator_recovery.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 25,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_operator_retired.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 62,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_operator_tabs_lock.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 40,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_pane_extensions.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 89,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_pane_extensions_api.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 143,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_pane_snapshot.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 245,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_pane_type_endpoint.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 108,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_pane_typing.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 54,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_platform.sh",
+      "language": ".sh",
+      "category": "verificación",
+      "lines": 111,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_pomodoro.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 422,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_pomodoro_analytics.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 153,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_pomodoro_endpoint.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 224,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_provider_accounts.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 223,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_provider_extensions.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 338,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_provider_registry.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 43,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_push_endpoints.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 144,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_quick_terminal.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 399,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_quick_terminal_client.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 73,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_readme_positioning.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 107,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_remote_controls.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 1025,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_remote_ui.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 3499,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_remote_workspace.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 50,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_selected_session_audit.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 99,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_session_brain_scope.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 136,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_session_config_history.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 171,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_session_config_ui.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 96,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_session_favorites.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 166,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_session_operations.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 451,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_session_profiles.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 272,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_session_route_matrix.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 468,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_session_tmux.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 178,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_session_verify_dialogs.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 290,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_sidebar_accounts.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 44,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_sidebar_parity.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 26,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_silent_agent_hooks.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 32,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_snippets_ccapp.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 64,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_snippets_endpoints.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 151,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_snippets_paste.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 115,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_snippets_store.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 128,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_snippets_ui.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 139,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_state_polling.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 40,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_status_hook.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 102,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_telegram_retirement.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 135,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_terminal_history.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 48,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_terminal_mobile_input.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 211,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_terminal_panes.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 192,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_terminal_prefs.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 132,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_terminal_protocol.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 97,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_terminal_selection.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 40,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_themes.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 609,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_tier_alert.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 44,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_tmux_clipboard.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 45,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_tmux_snapshot.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 383,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_tui_state.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 296,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_turn_state.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 131,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_usage_accounts.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 210,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_usage_core.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 1052,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_usage_dash.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 683,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_usage_hooks.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 15,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_usage_performance.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 128,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_usage_telemetry.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 442,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_usage_tool_hook.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 105,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_usage_ui.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 233,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_v1_migrations.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 142,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_web_push.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 327,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_webterm_auth.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 165,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_webterm_links.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 96,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_webterm_service.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 87,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_work_marks.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 224,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_work_marks_ui.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 51,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_workspace_cache.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 24,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_workspace_clients.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 121,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_workspace_close.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 114,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_workspace_endpoints.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 211,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_workspace_layout.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 33,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_workspace_reopen.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 58,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_workspace_state.py",
+      "language": ".py",
+      "category": "verificación",
+      "lines": 358,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/work_marks_checks.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 111,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/workspace_dock_checks.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 39,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/workspace_layout_checks.cjs",
+      "language": ".cjs",
+      "category": "verificación",
+      "lines": 21,
+      "status": "Oráculo de transición; conservar hasta reemplazo verificado",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tools/analytics_extract.cjs",
+      "language": ".cjs",
+      "category": "producto",
+      "lines": 91,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tools/analytics_fixture.cjs",
+      "language": ".cjs",
+      "category": "producto",
+      "lines": 42,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tools/analytics_scope_css.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 85,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tools/cli-commands/build.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 56,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tools/cli-commands/builtin_filter.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 9,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tools/cli-commands/scrape_prefix.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 25,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tools/cli-commands/verify_names.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 21,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tools/css_orphans.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 24,
+      "status": "Pendiente",
+      "rust": null
+    },
+    {
+      "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tools/png_diff.py",
+      "language": ".py",
+      "category": "producto",
+      "lines": 18,
+      "status": "Pendiente",
+      "rust": null
+    }
+  ],
+  "reference_additions": [
+    {
+      "captured_at": "2026-10-03T05:39:58.314312+00:00",
+      "source_root": "/home/someguy/codebase/0xJesus/ComandOS",
+      "migration_base": "263492fb996b5e782b2dc5ccd8c2dc36901c100f",
+      "manifest": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/incoming-source-20261003T0540/manifest.json",
+      "manifest_sha256": "faa170bb61ac883583058e83d6f1f4f850a3a6935fad5fe033a40e8259172801",
+      "purpose": "Preservar referencias actuales de lanzamiento y recuperación; no acredita migración Rust ni corte a producción.",
+      "added_files": [
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-codex-full-access",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_full_access.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_thread_release.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_yolo_install.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/codex_yolo_policy.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_full_access.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_thread_release.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_codex_yolo_policy.py"
+      ],
+      "updated_files": [
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/dash/command-sidebar.js",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/cli_catalog.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/pane_snapshot.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/command_sidebar_checks.cjs",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/fixtures/command-catalog.json",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_cli_catalog.py",
+        "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/tests/test_pane_snapshot.py"
+      ]
+    }
+  ]
+}

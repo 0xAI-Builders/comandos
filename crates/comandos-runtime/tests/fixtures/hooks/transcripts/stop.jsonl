@@ -1,0 +1,8 @@
+{"type": "summary", "summary": "Sesión de prueba", "leafUuid": "u1"}
+{"type": "user", "sessionId": "00000000-0000-4000-8000-000000000001", "message": {"role": "user", "content": "pregunta vieja"}}
+{"type": "assistant", "sessionId": "00000000-0000-4000-8000-000000000001", "message": {"role": "assistant", "model": "claude-prueba", "content": [{"type": "text", "text": "respuesta vieja que no debe salir"}]}}
+{"type": "user", "sessionId": "00000000-0000-4000-8000-000000000001", "message": {"role": "user", "content": [{"type": "text", "text": "haz la revisión"}]}}
+{"type": "assistant", "sessionId": "00000000-0000-4000-8000-000000000001", "message": {"role": "assistant", "model": "claude-prueba", "content": [{"type": "thinking", "thinking": "..."}, {"type": "text", "text": "Revisé el módulo **estado** y encontré `tres` casos: <ok> & [la guía](https://ejemplo.invalid/guia)."}, {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "ls"}}]}}
+{"type": "user", "sessionId": "00000000-0000-4000-8000-000000000001", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "a\nb"}]}}
+{"type": "system", "subtype": "info", "content": "nota"}
+{"type": "assistant", "sessionId": "00000000-0000-4000-8000-000000000001", "message": {"role": "assistant", "model": "claude-prueba", "content": [{"type": "text", "text": ""}, {"type": "text", "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxñandú terminó\n\n## Resumen\n- uno\n- dos\n"}]}}

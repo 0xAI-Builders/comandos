@@ -1,0 +1,514 @@
+{
+  "aliases": [
+    {
+      "input": null,
+      "alias": "main"
+    },
+    {
+      "input": false,
+      "alias": "main"
+    },
+    {
+      "input": 0,
+      "alias": "main"
+    },
+    {
+      "input": "",
+      "alias": "main"
+    },
+    {
+      "input": [],
+      "alias": "main"
+    },
+    {
+      "input": {},
+      "alias": "main"
+    },
+    {
+      "input": true,
+      "alias": "True"
+    },
+    {
+      "input": 12,
+      "alias": "12"
+    },
+    {
+      "input": 1.5,
+      "alias": "1.5"
+    },
+    {
+      "input": "a._-Z09",
+      "alias": "a._-Z09"
+    },
+    {
+      "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "alias": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "error": "AccountError",
+      "message": "alias de cuenta invalido"
+    },
+    {
+      "input": "../x",
+      "error": "AccountError",
+      "message": "alias de cuenta invalido"
+    },
+    {
+      "input": ".hidden",
+      "error": "AccountError",
+      "message": "alias de cuenta invalido"
+    },
+    {
+      "input": "-flag",
+      "error": "AccountError",
+      "message": "alias de cuenta invalido"
+    },
+    {
+      "input": "_flag",
+      "error": "AccountError",
+      "message": "alias de cuenta invalido"
+    },
+    {
+      "input": "\u00e9",
+      "error": "AccountError",
+      "message": "alias de cuenta invalido"
+    },
+    {
+      "input": "main\n",
+      "error": "AccountError",
+      "message": "alias de cuenta invalido"
+    },
+    {
+      "input": [
+        1
+      ],
+      "error": "AccountError",
+      "message": "alias de cuenta invalido"
+    }
+  ],
+  "menu": [
+    {
+      "input": null,
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "5 h",
+              "percent": 0,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "input": false,
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "5 h",
+              "percent": 0,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "input": 0,
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "5 h",
+              "percent": 0,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "input": -5,
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "5 h",
+              "percent": 0,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "input": 2.5,
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "5 h",
+              "percent": 2,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "input": 3.5,
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "5 h",
+              "percent": 4,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "input": 100.5,
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "5 h",
+              "percent": 100,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "input": "\u0662_\u0665.\u0665",
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "5 h",
+              "percent": 26,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "input": "NaN",
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": []
+        }
+      ]
+    },
+    {
+      "input": "Infinity",
+      "error": "OverflowError"
+    },
+    {
+      "input": "-Infinity",
+      "error": "OverflowError"
+    },
+    {
+      "input": "1e9999",
+      "error": "OverflowError"
+    },
+    {
+      "input": "bad",
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": []
+        }
+      ]
+    },
+    {
+      "input": "\u001c1",
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": []
+        }
+      ]
+    },
+    {
+      "input": "\u20001",
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "5 h",
+              "percent": 1,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "input": [],
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "5 h",
+              "percent": 0,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "input": [
+        1
+      ],
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": []
+        }
+      ]
+    },
+    {
+      "input": {},
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "5 h",
+              "percent": 0,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "input": true,
+      "output": [
+        {
+          "alias": "main",
+          "identity": "True",
+          "selectable": true,
+          "limits": [
+            {
+              "label": "5 h",
+              "percent": 1,
+              "resetsAt": null
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "catalog": {
+    "codex": [
+      {
+        "id": "gpt-6",
+        "name": "gpt-6",
+        "efforts": [
+          "high"
+        ],
+        "defaultEffort": "high",
+        "catalogSource": {
+          "provider": "codex",
+          "kind": "cli-cache",
+          "fetchedAt": null
+        }
+      },
+      {
+        "id": "gpt-6.1-sol",
+        "name": "gpt-6.1-sol",
+        "efforts": [
+          "high"
+        ],
+        "defaultEffort": "high",
+        "catalogSource": {
+          "provider": "codex",
+          "kind": "cli-cache",
+          "fetchedAt": null
+        }
+      },
+      {
+        "id": "gpt-\u0662.\u0665-x0",
+        "name": "gpt-\u0662.\u0665-x0",
+        "efforts": [
+          "high"
+        ],
+        "defaultEffort": "high",
+        "catalogSource": {
+          "provider": "codex",
+          "kind": "cli-cache",
+          "fetchedAt": null
+        }
+      },
+      {
+        "id": "gpt-\ud835\udfe1-astra",
+        "name": "gpt-\ud835\udfe1-astra",
+        "efforts": [
+          "high"
+        ],
+        "defaultEffort": "high",
+        "catalogSource": {
+          "provider": "codex",
+          "kind": "cli-cache",
+          "fetchedAt": null
+        }
+      }
+    ],
+    "grok": []
+  },
+  "jwt": [
+    {
+      "input": null,
+      "identity": ""
+    },
+    {
+      "input": "secret",
+      "identity": ""
+    },
+    {
+      "input": "x.!!.y",
+      "identity": ""
+    },
+    {
+      "input": "x.W10.y",
+      "identity": ""
+    },
+    {
+      "input": "x.eyJlbWFpbCI6dHJ1ZX0.y",
+      "identity": "True"
+    },
+    {
+      "input": "x.eyJlbWFpbCI6ImNvZGV4QGV4YW1wbGUudGVzdCJ9.y",
+      "identity": "codex@example.test"
+    }
+  ],
+  "byte_encodings": {
+    "utf-8-sig": [
+      {
+        "id": "gpt-6",
+        "name": "gpt-6",
+        "efforts": [
+          "high"
+        ],
+        "defaultEffort": "high",
+        "catalogSource": {
+          "provider": "codex",
+          "kind": "cli-cache",
+          "fetchedAt": null
+        }
+      }
+    ],
+    "utf-16": [
+      {
+        "id": "gpt-6",
+        "name": "gpt-6",
+        "efforts": [
+          "high"
+        ],
+        "defaultEffort": "high",
+        "catalogSource": {
+          "provider": "codex",
+          "kind": "cli-cache",
+          "fetchedAt": null
+        }
+      }
+    ],
+    "utf-16-be": [
+      {
+        "id": "gpt-6",
+        "name": "gpt-6",
+        "efforts": [
+          "high"
+        ],
+        "defaultEffort": "high",
+        "catalogSource": {
+          "provider": "codex",
+          "kind": "cli-cache",
+          "fetchedAt": null
+        }
+      }
+    ],
+    "utf-32": [
+      {
+        "id": "gpt-6",
+        "name": "gpt-6",
+        "efforts": [
+          "high"
+        ],
+        "defaultEffort": "high",
+        "catalogSource": {
+          "provider": "codex",
+          "kind": "cli-cache",
+          "fetchedAt": null
+        }
+      }
+    ],
+    "utf-32-be": [
+      {
+        "id": "gpt-6",
+        "name": "gpt-6",
+        "efforts": [
+          "high"
+        ],
+        "defaultEffort": "high",
+        "catalogSource": {
+          "provider": "codex",
+          "kind": "cli-cache",
+          "fetchedAt": null
+        }
+      }
+    ]
+  }
+}

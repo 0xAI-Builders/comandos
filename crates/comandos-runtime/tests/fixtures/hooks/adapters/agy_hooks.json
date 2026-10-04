@@ -1,0 +1,6 @@
+{
+  "stop": {"conversationId":"f3b0c2d1-9e8a-4b7c-a6d5-e4f3a2b1c0d9","workspacePaths":["/home/usuario/proyecto-agy","/home/usuario/otro"],"modelName":"gemini-3-pro-preview","trajectoryId":"traj-anon","stepIndex":14},
+  "bad_sid": {"conversationId":"con espacios","workspacePaths":[],"modelName":"x"},
+  "bad_model": {"conversationId":"conv_2","workspacePaths":"no-es-lista","modelName":"modelo con espacios"},
+  "no_paths": {"conversationId":"conv_3"}
+}

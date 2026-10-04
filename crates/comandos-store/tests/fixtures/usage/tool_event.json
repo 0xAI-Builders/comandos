@@ -1,0 +1,22 @@
+[
+  {"run": "lifecycle", "payload": {"status": "working", "harness": "claude", "tmux_session": "sess", "tmux_pane": "%1", "prompt_id": "p1", "agent_session_id": "a-1", "source": "hook:claude", "confidence": "exact", "at_ms": 1700000000000}},
+  {"run": "tool-event", "payload": {"phase": "start", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "Bash", "skill_name": "", "tool_use_id": "t1", "at_ms": 1700000000100, "confidence": "exact"}},
+  {"run": "tool-event", "payload": {"phase": "success", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "Bash", "skill_name": "", "tool_use_id": "t1", "at_ms": 1700000000350, "confidence": "exact"}},
+  {"run": "tool-event", "payload": {"phase": "start", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "Read", "skill_name": "", "tool_use_id": "", "at_ms": 1700000000400, "confidence": "exact"}},
+  {"run": "tool-event", "payload": {"phase": "failed", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "Read", "skill_name": "", "tool_use_id": "", "at_ms": 1700000000900, "confidence": "exact"}},
+  {"run": "tool-event", "payload": {"phase": "success", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "Grep", "skill_name": "", "tool_use_id": "", "at_ms": 1700000001000, "confidence": "exact"}},
+  {"run": "tool-event", "payload": {"phase": "failed", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "Edit", "skill_name": "", "tool_use_id": "t9", "at_ms": 1700000001050, "confidence": ""}},
+  {"run": "tool-event", "payload": {"phase": "start", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "Skill", "skill_name": "superpowers:tdd", "tool_use_id": "t2", "at_ms": 1700000001100, "confidence": "exact"}},
+  {"run": "tool-event", "payload": {"phase": "success", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "Skill", "skill_name": "superpowers:tdd", "tool_use_id": "t2", "at_ms": 1700000001200, "confidence": "exact"}},
+  {"run": "tool-event", "payload": {"phase": "start", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "Skill", "skill_name": "bad name!", "tool_use_id": "t3", "at_ms": 1700000001300, "confidence": "exact"}},
+  {"run": "tool-event", "payload": {"phase": "start", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "Bash", "skill_name": "should-not-store", "tool_use_id": "t4", "at_ms": 1700000001310, "confidence": "exact"}},
+  {"run": "tool-event", "payload": {"phase": "start", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "Task", "skill_name": "", "tool_use_id": "t5", "at_ms": 1700000001400, "confidence": "exact"}},
+  {"run": "tool-event", "payload": {"phase": "start", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "Write", "skill_name": "", "tool_use_id": "t6", "at_ms": 1700000001500, "confidence": "exact"}},
+  {"run": "tool-event", "payload": {"phase": "start", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "mcp__deepsearch__fetch", "skill_name": "", "tool_use_id": "t7", "at_ms": 1700000001600, "confidence": "exact"}},
+  {"run": "tool-event", "payload": {"phase": "start", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "mcp__x__y", "skill_name": "", "tool_use_id": "t8", "at_ms": 1700000001700, "confidence": "exact"}},
+  {"run": "tool-event", "payload": {"phase": "start", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "Bash", "skill_name": "", "tool_use_id": "t1", "at_ms": 1700000009999, "confidence": "exact"}},
+  {"run": "tool-event", "payload": {"phase": "middle", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "Bash", "skill_name": "", "tool_use_id": "t10", "at_ms": 1700000002000, "confidence": "exact"}},
+  {"run": "tool-event", "payload": {"phase": "start", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "", "skill_name": "", "tool_use_id": "t11", "at_ms": 1700000002000, "confidence": "exact"}},
+  {"run": "lifecycle", "payload": {"status": "done", "harness": "claude", "tmux_session": "sess", "tmux_pane": "%1", "prompt_id": "p1", "agent_session_id": "a-1", "source": "hook:claude", "confidence": "exact", "at_ms": 1700000003000}},
+  {"run": "tool-event", "payload": {"phase": "start", "tmux_session": "sess", "tmux_pane": "%1", "tool_name": "Bash", "skill_name": "", "tool_use_id": "t12", "at_ms": 1700000004000, "confidence": "exact"}}
+]

@@ -10,6 +10,7 @@ config/ssh_config
 # Runtime / estado
 state/
 *.jsonl
+!docs/verification/rss.jsonl
 prefs.json
 app-tabs.json
 hooks/state/
@@ -20,3 +21,9 @@ hooks/events.jsonl
 __pycache__/
 .DS_Store
 docs/superpowers/
+
+# Isolated Rust migration builds
+/target/
+/.migration-build/
+
+/.superpowers/

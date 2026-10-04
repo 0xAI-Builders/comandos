@@ -1,51 +1,44 @@
-// OpenCode -> ComandOS. Only process/session/configuration metadata is persisted.
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
+// OpenCode -> ComandOS. Shim mínimo: la API de plugins exige JS; todo lo demás vive
+// en `comandos hook opencode`. Aquí solo se filtran los eventos que importan (no se
+// lanza un proceso por cada fragmento de mensaje), se consulta la sesión con el SDK
+// (solo existe dentro del plugin) y se guarda en memoria el registro del proceso,
+// como el plugin original: `comandos` lo recibe, lo fusiona y devuelve el nuevo.
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+const EVENTS = new Set(['session.idle', 'session.error', 'permission.asked', 'permission.updated', 'message.updated']);
+// El `comandos` que instala ComandOS primero; si no está, el del PATH.
+const bin = () => {
+  const local = join(process.env.HOME || homedir(), '.local/share/comandos/bin/comandos');
+  return existsSync(local) ? local : 'comandos';
+};
+
 export const Comandos = async ({ directory, client }) => {
-  // Agents ComandOS itself launches (e.g. the news summarizer over ACP) are
-  // not the user's sessions: no events, no process record.
   if (process.env.COMANDOS_SILENT_AGENT === '1') return {};
-  const root = join(homedir(), '.claude/hooks/native-processes');
-  let start = '';
-  try { start = (await readFile(`/proc/${process.pid}/stat`, 'utf8')).split(')').slice(1).join(')').trim().split(/\s+/)[19]; } catch {}
   let current = null;
-  const persist = async (sessionID, patch = {}) => {
-    if (!start || !/^[A-Za-z0-9_-]{1,256}$/.test(sessionID || '')) return;
-    try {
-      const response = await client.session.get({ path: { id: sessionID } });
-      const session = response?.data || response;
-      if (!session || session.id !== sessionID || session.parentID) return;
-      current = { ...(current?.sessionId === sessionID ? current : {}),
-        pid: process.pid, start, harness: 'opencode', sessionId: sessionID,
-        parentId: '', updatedAt: Date.now(), ...patch };
-      await mkdir(root, { recursive: true, mode: 0o700 });
-      const path = join(root, `${process.pid}.json`);
-      const temp = `${path}.${Math.random().toString(16).slice(2)}.tmp`;
-      await writeFile(temp, JSON.stringify(current), { mode: 0o600, flag: 'wx' });
-      await rename(temp, path);
-    } catch {}
-  };
-  const post = (event) => fetch('http://127.0.0.1:4777/event', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ agent: 'opencode', cwd: directory, event }),
-  }).catch(() => {});
   return {
     event: async ({ event }) => {
-      const p = event?.properties || {};
-      const sessionID = p.sessionID || p.info?.sessionID;
-      if (event.type === 'session.idle') {
-        await persist(sessionID, { busy: false }); post('done');
-      } else if (event.type === 'permission.asked' || event.type === 'permission.updated' || event.type === 'session.error') {
-        await persist(sessionID, { busy: true }); post('waiting');
-      } else if (event.type === 'message.updated') {
-        const info = p.info || {};
-        const model = info.modelID && info.providerID ? `${info.providerID}/${info.modelID}` : '';
-        const patch = model ? { model } : {};
-        if (info.role === 'user') { patch.busy = true; post('working'); }
-        await persist(sessionID, patch);
-      }
+      if (!EVENTS.has(event?.type)) return;
+      const id = event.properties?.sessionID || event.properties?.info?.sessionID;
+      const s = /^[A-Za-z0-9_-]{1,256}$/.test(id || '')
+        ? await client.session.get({ path: { id } }).then((r) => r?.data || r, () => null) : null;
+      const input = JSON.stringify({ directory, event, session: s && { id: s.id, parentID: s.parentID }, current });
+      // Nunca más de 5 s: un hook colgado no puede detener a OpenCode.
+      const child = spawn(bin(), ['hook', 'opencode'], { stdio: ['pipe', 'pipe', 'ignore'], timeout: 5000 });
+      let out = '';
+      child.stdout?.on('data', (chunk) => { out += chunk; });
+      await new Promise((done) => {
+        child.on('error', done);
+        child.on('close', done);
+        child.stdin.on('error', () => {});
+        child.stdin.end(input);
+      });
+      try {
+        const next = JSON.parse(out);
+        if (next && typeof next === 'object') current = next;
+      } catch {}
     },
   };
 };

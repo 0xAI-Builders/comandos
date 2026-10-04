@@ -1,0 +1,1755 @@
+{
+  "digests": [
+    {
+      "digest": "6362ad78d54134e9c06acd79ea9d6e5b48b4d8102ca48232a73d3797c4f31e14",
+      "request": {
+        "action": "start",
+        "cycleIndex": -100,
+        "cycleTotal": 999,
+        "expectedRevision": 0,
+        "paneKey": {
+          "x": null
+        },
+        "project": "  México 😊  ",
+        "requestId": "r",
+        "sessionKey": [
+          "a",
+          true,
+          1.0
+        ],
+        "targetMs": 1500000
+      }
+    },
+    {
+      "digest": "e2de8b7b25e9673e7590aa684a49faba90a8be12b3d439afeb4e1c855e897ac8",
+      "request": {
+        "action": "start",
+        "extra": [
+          -0.0,
+          1e-05,
+          true,
+          null
+        ],
+        "requestId": "n",
+        "targetMs": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+      }
+    }
+  ],
+  "history": [
+    {
+      "id": "old",
+      "planned_minutes": "25",
+      "project": "MRP",
+      "started_at_ms": 2000000000000,
+      "status": "completed"
+    },
+    {
+      "id": "unknown",
+      "planned_minutes": 50,
+      "project": "MRP",
+      "started_at_ms": 2000000000000,
+      "status": "running"
+    },
+    {
+      "id": "skip",
+      "mode": "break",
+      "planned_minutes": 5,
+      "started_at_ms": 2000000000000,
+      "status": "skipped"
+    },
+    {
+      "id": "bad",
+      "started_at_ms": "invalid"
+    },
+    {
+      "id": "zero",
+      "planned_minutes": -1,
+      "started_at_ms": 0,
+      "status": "completed"
+    }
+  ],
+  "imported": 4,
+  "progress": {
+    "achievements": [
+      {
+        "asset": "first",
+        "id": "first",
+        "kind": "completedBlocks",
+        "threshold": 1,
+        "title": "Primer bloque",
+        "unlocked": true
+      },
+      {
+        "asset": "hundred",
+        "id": "hundred",
+        "kind": "focusMinutes",
+        "threshold": 100,
+        "title": "100 minutos",
+        "unlocked": false
+      },
+      {
+        "asset": "streak",
+        "id": "streak3",
+        "kind": "maxStreakDays",
+        "threshold": 3,
+        "title": "3 días seguidos",
+        "unlocked": false
+      }
+    ],
+    "activatedAtMs": 2000000000000,
+    "completedBlocks": 1,
+    "dailyGoalMinutes": 100,
+    "focusMinutes": 29,
+    "lastLevelUp": null,
+    "level": 1,
+    "levelPct": 29.0,
+    "maxStreakDays": 1,
+    "policyVersion": "v1",
+    "streakDays": 1,
+    "todayMinutes": 29,
+    "xp": 290,
+    "xpPerLevel": 1000,
+    "xpPerMinute": 10,
+    "xpToNextLevel": 710
+  },
+  "records": [
+    {
+      "activeMs": 1500000,
+      "blockId": "b4",
+      "endedAtMs": 2000005760000,
+      "mode": "focus",
+      "paneKey": "",
+      "plannedMs": 1500000,
+      "project": "",
+      "provenance": "measured",
+      "sessionKey": "",
+      "startedAtMs": 2000004260000,
+      "status": "completed",
+      "targetMs": 1500000
+    },
+    {
+      "activeMs": 300000,
+      "blockId": "b3",
+      "endedAtMs": 2000004200000,
+      "mode": "break",
+      "paneKey": "",
+      "plannedMs": 300000,
+      "project": "",
+      "provenance": "measured",
+      "sessionKey": "",
+      "startedAtMs": 2000003900000,
+      "status": "completed",
+      "targetMs": 300000
+    },
+    {
+      "activeMs": 240000,
+      "blockId": "b2",
+      "endedAtMs": 2000003840000,
+      "mode": "focus",
+      "paneKey": "{'x': None}",
+      "plannedMs": 1800000,
+      "project": "México 😊",
+      "provenance": "measured",
+      "sessionKey": "['a', True, 1.0]",
+      "startedAtMs": 2000000000000,
+      "status": "cancelled",
+      "targetMs": 1800000
+    },
+    {
+      "activeMs": null,
+      "blockId": "old",
+      "endedAtMs": null,
+      "mode": "focus",
+      "paneKey": "",
+      "plannedMs": 1500000,
+      "project": "MRP",
+      "provenance": "legacy-planned",
+      "sessionKey": "",
+      "startedAtMs": 2000000000000,
+      "status": "completed",
+      "targetMs": 1500000
+    },
+    {
+      "activeMs": null,
+      "blockId": "skip",
+      "endedAtMs": null,
+      "mode": "break",
+      "paneKey": "",
+      "plannedMs": 300000,
+      "project": "",
+      "provenance": "legacy-planned",
+      "sessionKey": "",
+      "startedAtMs": 2000000000000,
+      "status": "skipped",
+      "targetMs": 300000
+    },
+    {
+      "activeMs": null,
+      "blockId": "unknown",
+      "endedAtMs": null,
+      "mode": "focus",
+      "paneKey": "",
+      "plannedMs": 3000000,
+      "project": "MRP",
+      "provenance": "legacy-planned",
+      "sessionKey": "",
+      "startedAtMs": 2000000000000,
+      "status": "unknown",
+      "targetMs": 3000000
+    },
+    {
+      "activeMs": null,
+      "blockId": "zero",
+      "endedAtMs": null,
+      "mode": "focus",
+      "paneKey": "",
+      "plannedMs": 0,
+      "project": "",
+      "provenance": "legacy-planned",
+      "sessionKey": "",
+      "startedAtMs": 0,
+      "status": "completed",
+      "targetMs": 0
+    }
+  ],
+  "reports": [
+    {
+      "from": 1999999999999,
+      "project": null,
+      "report": {
+        "breaks": {
+          "activeMs": 300000,
+          "blocks": 1
+        },
+        "byDay": [
+          {
+            "activeMs": 1740000,
+            "cancelled": 1,
+            "completed": 1,
+            "date": "2033-05-17",
+            "legacyPlannedMs": 1500000
+          }
+        ],
+        "byProject": [
+          {
+            "activeMs": 1500000,
+            "cancelled": 0,
+            "completed": 1,
+            "legacyPlannedMs": 0,
+            "project": ""
+          },
+          {
+            "activeMs": 240000,
+            "cancelled": 1,
+            "completed": 0,
+            "legacyPlannedMs": 0,
+            "project": "México 😊"
+          },
+          {
+            "activeMs": 0,
+            "cancelled": 0,
+            "completed": 0,
+            "legacyPlannedMs": 1500000,
+            "project": "MRP"
+          }
+        ],
+        "history": [
+          {
+            "activeMs": 1500000,
+            "blockId": "b4",
+            "endedAtMs": 2000005760000,
+            "mode": "focus",
+            "paneKey": "",
+            "plannedMs": 1500000,
+            "project": "",
+            "provenance": "measured",
+            "sessionKey": "",
+            "startedAtMs": 2000004260000,
+            "status": "completed",
+            "targetMs": 1500000
+          },
+          {
+            "activeMs": 300000,
+            "blockId": "b3",
+            "endedAtMs": 2000004200000,
+            "mode": "break",
+            "paneKey": "",
+            "plannedMs": 300000,
+            "project": "",
+            "provenance": "measured",
+            "sessionKey": "",
+            "startedAtMs": 2000003900000,
+            "status": "completed",
+            "targetMs": 300000
+          },
+          {
+            "activeMs": 240000,
+            "blockId": "b2",
+            "endedAtMs": 2000003840000,
+            "mode": "focus",
+            "paneKey": "{'x': None}",
+            "plannedMs": 1800000,
+            "project": "México 😊",
+            "provenance": "measured",
+            "sessionKey": "['a', True, 1.0]",
+            "startedAtMs": 2000000000000,
+            "status": "cancelled",
+            "targetMs": 1800000
+          },
+          {
+            "activeMs": null,
+            "blockId": "old",
+            "endedAtMs": null,
+            "mode": "focus",
+            "paneKey": "",
+            "plannedMs": 1500000,
+            "project": "MRP",
+            "provenance": "legacy-planned",
+            "sessionKey": "",
+            "startedAtMs": 2000000000000,
+            "status": "completed",
+            "targetMs": 1500000
+          },
+          {
+            "activeMs": null,
+            "blockId": "skip",
+            "endedAtMs": null,
+            "mode": "break",
+            "paneKey": "",
+            "plannedMs": 300000,
+            "project": "",
+            "provenance": "legacy-planned",
+            "sessionKey": "",
+            "startedAtMs": 2000000000000,
+            "status": "skipped",
+            "targetMs": 300000
+          },
+          {
+            "activeMs": null,
+            "blockId": "unknown",
+            "endedAtMs": null,
+            "mode": "focus",
+            "paneKey": "",
+            "plannedMs": 3000000,
+            "project": "MRP",
+            "provenance": "legacy-planned",
+            "sessionKey": "",
+            "startedAtMs": 2000000000000,
+            "status": "unknown",
+            "targetMs": 3000000
+          }
+        ],
+        "legacy": {
+          "blocks": 2,
+          "completedBlocks": 1,
+          "note": "Historial anterior: solo minutos planeados, sin pausas medidas.",
+          "plannedMs": 1500000
+        },
+        "measured": {
+          "activeMs": 1740000,
+          "cancelled": {
+            "activeMs": 240000,
+            "blocks": 1,
+            "plannedMs": 1800000
+          },
+          "completed": {
+            "activeMs": 1500000,
+            "blocks": 1,
+            "plannedMs": 1500000
+          },
+          "completionRate": 0.5,
+          "plannedMs": 3300000
+        },
+        "project": null,
+        "projects": [
+          "MRP",
+          "México 😊"
+        ],
+        "range": {
+          "fromMs": 1999999999999,
+          "timezone": "America/Mexico_City",
+          "toMs": 2000006000000
+        }
+      },
+      "timezone": "America/Mexico_City",
+      "to": 2000006000000
+    },
+    {
+      "from": 1999999999999,
+      "project": "MRP",
+      "report": {
+        "breaks": {
+          "activeMs": 0,
+          "blocks": 0
+        },
+        "byDay": [
+          {
+            "activeMs": 0,
+            "cancelled": 0,
+            "completed": 0,
+            "date": "2033-05-17",
+            "legacyPlannedMs": 1500000
+          }
+        ],
+        "byProject": [
+          {
+            "activeMs": 0,
+            "cancelled": 0,
+            "completed": 0,
+            "legacyPlannedMs": 1500000,
+            "project": "MRP"
+          }
+        ],
+        "history": [
+          {
+            "activeMs": null,
+            "blockId": "old",
+            "endedAtMs": null,
+            "mode": "focus",
+            "paneKey": "",
+            "plannedMs": 1500000,
+            "project": "MRP",
+            "provenance": "legacy-planned",
+            "sessionKey": "",
+            "startedAtMs": 2000000000000,
+            "status": "completed",
+            "targetMs": 1500000
+          },
+          {
+            "activeMs": null,
+            "blockId": "unknown",
+            "endedAtMs": null,
+            "mode": "focus",
+            "paneKey": "",
+            "plannedMs": 3000000,
+            "project": "MRP",
+            "provenance": "legacy-planned",
+            "sessionKey": "",
+            "startedAtMs": 2000000000000,
+            "status": "unknown",
+            "targetMs": 3000000
+          }
+        ],
+        "legacy": {
+          "blocks": 2,
+          "completedBlocks": 1,
+          "note": "Historial anterior: solo minutos planeados, sin pausas medidas.",
+          "plannedMs": 1500000
+        },
+        "measured": {
+          "activeMs": 0,
+          "cancelled": {
+            "activeMs": 0,
+            "blocks": 0,
+            "plannedMs": 0
+          },
+          "completed": {
+            "activeMs": 0,
+            "blocks": 0,
+            "plannedMs": 0
+          },
+          "completionRate": null,
+          "plannedMs": 0
+        },
+        "project": "MRP",
+        "projects": [
+          "MRP",
+          "México 😊"
+        ],
+        "range": {
+          "fromMs": 1999999999999,
+          "timezone": "America/Mexico_City",
+          "toMs": 2000006000000
+        }
+      },
+      "timezone": "America/Mexico_City",
+      "to": 2000006000000
+    },
+    {
+      "from": 1999999999999,
+      "project": null,
+      "report": {
+        "breaks": {
+          "activeMs": 300000,
+          "blocks": 1
+        },
+        "byDay": [
+          {
+            "activeMs": 1740000,
+            "cancelled": 1,
+            "completed": 1,
+            "date": "2033-05-18",
+            "legacyPlannedMs": 1500000
+          }
+        ],
+        "byProject": [
+          {
+            "activeMs": 1500000,
+            "cancelled": 0,
+            "completed": 1,
+            "legacyPlannedMs": 0,
+            "project": ""
+          },
+          {
+            "activeMs": 240000,
+            "cancelled": 1,
+            "completed": 0,
+            "legacyPlannedMs": 0,
+            "project": "México 😊"
+          },
+          {
+            "activeMs": 0,
+            "cancelled": 0,
+            "completed": 0,
+            "legacyPlannedMs": 1500000,
+            "project": "MRP"
+          }
+        ],
+        "history": [
+          {
+            "activeMs": 1500000,
+            "blockId": "b4",
+            "endedAtMs": 2000005760000,
+            "mode": "focus",
+            "paneKey": "",
+            "plannedMs": 1500000,
+            "project": "",
+            "provenance": "measured",
+            "sessionKey": "",
+            "startedAtMs": 2000004260000,
+            "status": "completed",
+            "targetMs": 1500000
+          },
+          {
+            "activeMs": 300000,
+            "blockId": "b3",
+            "endedAtMs": 2000004200000,
+            "mode": "break",
+            "paneKey": "",
+            "plannedMs": 300000,
+            "project": "",
+            "provenance": "measured",
+            "sessionKey": "",
+            "startedAtMs": 2000003900000,
+            "status": "completed",
+            "targetMs": 300000
+          },
+          {
+            "activeMs": 240000,
+            "blockId": "b2",
+            "endedAtMs": 2000003840000,
+            "mode": "focus",
+            "paneKey": "{'x': None}",
+            "plannedMs": 1800000,
+            "project": "México 😊",
+            "provenance": "measured",
+            "sessionKey": "['a', True, 1.0]",
+            "startedAtMs": 2000000000000,
+            "status": "cancelled",
+            "targetMs": 1800000
+          },
+          {
+            "activeMs": null,
+            "blockId": "old",
+            "endedAtMs": null,
+            "mode": "focus",
+            "paneKey": "",
+            "plannedMs": 1500000,
+            "project": "MRP",
+            "provenance": "legacy-planned",
+            "sessionKey": "",
+            "startedAtMs": 2000000000000,
+            "status": "completed",
+            "targetMs": 1500000
+          },
+          {
+            "activeMs": null,
+            "blockId": "skip",
+            "endedAtMs": null,
+            "mode": "break",
+            "paneKey": "",
+            "plannedMs": 300000,
+            "project": "",
+            "provenance": "legacy-planned",
+            "sessionKey": "",
+            "startedAtMs": 2000000000000,
+            "status": "skipped",
+            "targetMs": 300000
+          },
+          {
+            "activeMs": null,
+            "blockId": "unknown",
+            "endedAtMs": null,
+            "mode": "focus",
+            "paneKey": "",
+            "plannedMs": 3000000,
+            "project": "MRP",
+            "provenance": "legacy-planned",
+            "sessionKey": "",
+            "startedAtMs": 2000000000000,
+            "status": "unknown",
+            "targetMs": 3000000
+          }
+        ],
+        "legacy": {
+          "blocks": 2,
+          "completedBlocks": 1,
+          "note": "Historial anterior: solo minutos planeados, sin pausas medidas.",
+          "plannedMs": 1500000
+        },
+        "measured": {
+          "activeMs": 1740000,
+          "cancelled": {
+            "activeMs": 240000,
+            "blocks": 1,
+            "plannedMs": 1800000
+          },
+          "completed": {
+            "activeMs": 1500000,
+            "blocks": 1,
+            "plannedMs": 1500000
+          },
+          "completionRate": 0.5,
+          "plannedMs": 3300000
+        },
+        "project": null,
+        "projects": [
+          "MRP",
+          "México 😊"
+        ],
+        "range": {
+          "fromMs": 1999999999999,
+          "timezone": "Asia/Tokyo",
+          "toMs": 2000006000000
+        }
+      },
+      "timezone": "Asia/Tokyo",
+      "to": 2000006000000
+    }
+  ],
+  "steps": [
+    {
+      "now": 2000000000000,
+      "request": null,
+      "result": {
+        "payload": {
+          "code": "invalid_request",
+          "error": "Solicitud inválida",
+          "ok": false
+        },
+        "status": 400
+      },
+      "snapshot": {
+        "block": null,
+        "revision": 0,
+        "serverNowMs": 2000000000000
+      }
+    },
+    {
+      "now": 2000000000000,
+      "request": {
+        "action": "start",
+        "requestId": " ",
+        "targetMs": 60000
+      },
+      "result": {
+        "payload": {
+          "code": "invalid_request_id",
+          "error": "requestId requerido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "snapshot": {
+        "block": null,
+        "revision": 0,
+        "serverNowMs": 2000000000000
+      }
+    },
+    {
+      "now": 2000000000000,
+      "request": {
+        "action": "finish",
+        "requestId": "bad-action"
+      },
+      "result": {
+        "payload": {
+          "code": "invalid_action",
+          "error": "Acción no soportada",
+          "ok": false
+        },
+        "status": 400
+      },
+      "snapshot": {
+        "block": null,
+        "revision": 0,
+        "serverNowMs": 2000000000000
+      }
+    },
+    {
+      "now": 2000000000000,
+      "request": {
+        "action": "start",
+        "expectedRevision": true,
+        "requestId": "bad-expected",
+        "targetMs": 60000
+      },
+      "result": {
+        "payload": {
+          "code": "invalid_expectedRevision",
+          "error": "expectedRevision inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "snapshot": {
+        "block": null,
+        "revision": 0,
+        "serverNowMs": 2000000000000
+      }
+    },
+    {
+      "now": 2000000000000,
+      "request": {
+        "action": "start",
+        "requestId": "bad-target",
+        "targetMs": 30000
+      },
+      "result": {
+        "payload": {
+          "code": "invalid_targetMs",
+          "error": "La duración debe estar entre 1 y 180 minutos",
+          "ok": false
+        },
+        "status": 400
+      },
+      "snapshot": {
+        "block": null,
+        "revision": 0,
+        "serverNowMs": 2000000000000
+      }
+    },
+    {
+      "now": 2000000000000,
+      "request": {
+        "action": "start",
+        "mode": null,
+        "requestId": "bad-mode",
+        "targetMs": 60000
+      },
+      "result": {
+        "payload": {
+          "code": "invalid_mode",
+          "error": "Modo inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "snapshot": {
+        "block": null,
+        "revision": 0,
+        "serverNowMs": 2000000000000
+      }
+    },
+    {
+      "now": 2000000000000,
+      "request": {
+        "action": "start",
+        "project": "a\u0001b",
+        "requestId": "bad-dest",
+        "targetMs": 60000
+      },
+      "result": {
+        "payload": {
+          "code": "invalid_project",
+          "error": "project inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "snapshot": {
+        "block": null,
+        "revision": 0,
+        "serverNowMs": 2000000000000
+      }
+    },
+    {
+      "now": 2000000000000,
+      "request": {
+        "action": "start",
+        "cycleIndex": -100,
+        "cycleTotal": 999,
+        "expectedRevision": 0,
+        "paneKey": {
+          "x": null
+        },
+        "project": "  México 😊  ",
+        "requestId": "r",
+        "sessionKey": [
+          "a",
+          true,
+          1.0
+        ],
+        "targetMs": 1500000
+      },
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": 2000001500000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 1500000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": 2000001500000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 1500000
+        },
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    {
+      "now": 2000000000000,
+      "request": {
+        "action": "start",
+        "requestId": "active",
+        "targetMs": 60000
+      },
+      "result": {
+        "payload": {
+          "code": "active_block",
+          "error": "Ya hay un bloque en curso",
+          "ok": false,
+          "state": {
+            "block": {
+              "activeMs": 0,
+              "blockId": "b2",
+              "cycleIndex": 1,
+              "cycleTotal": 99,
+              "deadlineMs": 2000001500000,
+              "endedAtMs": null,
+              "mode": "focus",
+              "paneKey": "{'x': None}",
+              "project": "México 😊",
+              "resumedAtMs": 2000000000000,
+              "revision": 1,
+              "sessionKey": "['a', True, 1.0]",
+              "source": "comandos",
+              "startedAtMs": 2000000000000,
+              "status": "running",
+              "targetMs": 1500000
+            },
+            "revision": 1,
+            "serverNowMs": 2000000000000
+          }
+        },
+        "status": 409
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": 2000001500000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 1500000
+        },
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    {
+      "now": 2000000000000,
+      "request": {
+        "action": "pause",
+        "expectedRevision": 0,
+        "requestId": "stale"
+      },
+      "result": {
+        "payload": {
+          "code": "stale_revision",
+          "error": "El temporizador cambió en otro dispositivo",
+          "ok": false,
+          "state": {
+            "block": {
+              "activeMs": 0,
+              "blockId": "b2",
+              "cycleIndex": 1,
+              "cycleTotal": 99,
+              "deadlineMs": 2000001500000,
+              "endedAtMs": null,
+              "mode": "focus",
+              "paneKey": "{'x': None}",
+              "project": "México 😊",
+              "resumedAtMs": 2000000000000,
+              "revision": 1,
+              "sessionKey": "['a', True, 1.0]",
+              "source": "comandos",
+              "startedAtMs": 2000000000000,
+              "status": "running",
+              "targetMs": 1500000
+            },
+            "revision": 1,
+            "serverNowMs": 2000000000000
+          }
+        },
+        "status": 409
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": 2000001500000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 1500000
+        },
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    {
+      "now": 2000000120000,
+      "request": {
+        "action": "pause",
+        "requestId": "pause"
+      },
+      "result": {
+        "block": {
+          "activeMs": 120000,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": null,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": null,
+          "revision": 2,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "paused",
+          "targetMs": 1500000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 2,
+        "serverNowMs": 2000000120000
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 120000,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": null,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": null,
+          "revision": 2,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "paused",
+          "targetMs": 1500000
+        },
+        "revision": 2,
+        "serverNowMs": 2000000120000
+      }
+    },
+    {
+      "now": 2000000180000,
+      "request": {
+        "action": "pause",
+        "requestId": "pause-again"
+      },
+      "result": {
+        "payload": {
+          "code": "not_active",
+          "error": "No hay un bloque en ese estado",
+          "ok": false,
+          "state": {
+            "block": {
+              "activeMs": 120000,
+              "blockId": "b2",
+              "cycleIndex": 1,
+              "cycleTotal": 99,
+              "deadlineMs": null,
+              "endedAtMs": null,
+              "mode": "focus",
+              "paneKey": "{'x': None}",
+              "project": "México 😊",
+              "resumedAtMs": null,
+              "revision": 2,
+              "sessionKey": "['a', True, 1.0]",
+              "source": "comandos",
+              "startedAtMs": 2000000000000,
+              "status": "paused",
+              "targetMs": 1500000
+            },
+            "revision": 2,
+            "serverNowMs": 2000000180000
+          }
+        },
+        "status": 409
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 120000,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": null,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": null,
+          "revision": 2,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "paused",
+          "targetMs": 1500000
+        },
+        "revision": 2,
+        "serverNowMs": 2000000180000
+      }
+    },
+    {
+      "now": 2000000180000,
+      "request": {
+        "action": "extend",
+        "deltaMs": 0,
+        "requestId": "zero"
+      },
+      "result": {
+        "payload": {
+          "code": "invalid_deltaMs",
+          "error": "deltaMs no puede ser 0",
+          "ok": false
+        },
+        "status": 400
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 120000,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": null,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": null,
+          "revision": 2,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "paused",
+          "targetMs": 1500000
+        },
+        "revision": 2,
+        "serverNowMs": 2000000180000
+      }
+    },
+    {
+      "now": 2000000180000,
+      "request": {
+        "action": "extend",
+        "deltaMs": -1440000,
+        "requestId": "small"
+      },
+      "result": {
+        "payload": {
+          "code": "invalid_deltaMs",
+          "error": "La duración resultante queda fuera de 1 a 180 minutos o antes del tiempo ya trabajado",
+          "ok": false
+        },
+        "status": 400
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 120000,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": null,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": null,
+          "revision": 2,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "paused",
+          "targetMs": 1500000
+        },
+        "revision": 2,
+        "serverNowMs": 2000000180000
+      }
+    },
+    {
+      "now": 2000000180000,
+      "request": {
+        "action": "extend",
+        "deltaMs": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000,
+        "requestId": "large"
+      },
+      "result": {
+        "payload": {
+          "code": "invalid_deltaMs",
+          "error": "La duración resultante queda fuera de 1 a 180 minutos o antes del tiempo ya trabajado",
+          "ok": false
+        },
+        "status": 400
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 120000,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": null,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": null,
+          "revision": 2,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "paused",
+          "targetMs": 1500000
+        },
+        "revision": 2,
+        "serverNowMs": 2000000180000
+      }
+    },
+    {
+      "now": 2000000180000,
+      "request": {
+        "action": "extend",
+        "deltaMs": 300000,
+        "project": "Other",
+        "requestId": "extend"
+      },
+      "result": {
+        "block": {
+          "activeMs": 120000,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": null,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": null,
+          "revision": 3,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "paused",
+          "targetMs": 1800000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 3,
+        "serverNowMs": 2000000180000
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 120000,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": null,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": null,
+          "revision": 3,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "paused",
+          "targetMs": 1800000
+        },
+        "revision": 3,
+        "serverNowMs": 2000000180000
+      }
+    },
+    {
+      "now": 2000003720000,
+      "request": {
+        "action": "resume",
+        "requestId": "resume"
+      },
+      "result": {
+        "block": {
+          "activeMs": 120000,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": 2000005400000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": 2000003720000,
+          "revision": 4,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 1800000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 4,
+        "serverNowMs": 2000003720000
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 120000,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": 2000005400000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": 2000003720000,
+          "revision": 4,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 1800000
+        },
+        "revision": 4,
+        "serverNowMs": 2000003720000
+      }
+    },
+    {
+      "now": 2000003780000,
+      "request": {
+        "action": "start",
+        "cycleIndex": -100,
+        "cycleTotal": 999,
+        "expectedRevision": 0,
+        "paneKey": {
+          "x": null
+        },
+        "project": "  México 😊  ",
+        "requestId": "r",
+        "sessionKey": [
+          "a",
+          true,
+          1.0
+        ],
+        "targetMs": 1500000
+      },
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": 2000001500000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 1500000
+        },
+        "ok": true,
+        "replayed": true,
+        "revision": 1,
+        "serverNowMs": 2000003780000
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 120000,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": 2000005400000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": 2000003720000,
+          "revision": 4,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 1800000
+        },
+        "revision": 4,
+        "serverNowMs": 2000003780000
+      }
+    },
+    {
+      "now": 2000003780000,
+      "request": {
+        "action": "start",
+        "cycleIndex": -100,
+        "cycleTotal": 999,
+        "expectedRevision": 0,
+        "paneKey": {
+          "x": null
+        },
+        "project": "  México 😊  ",
+        "requestId": "r",
+        "sessionKey": [
+          "a",
+          true,
+          1.0
+        ],
+        "targetMs": 60000
+      },
+      "result": {
+        "payload": {
+          "code": "request_reused",
+          "error": "requestId ya usado con otra operación",
+          "ok": false,
+          "state": {
+            "block": {
+              "activeMs": 120000,
+              "blockId": "b2",
+              "cycleIndex": 1,
+              "cycleTotal": 99,
+              "deadlineMs": 2000005400000,
+              "endedAtMs": null,
+              "mode": "focus",
+              "paneKey": "{'x': None}",
+              "project": "México 😊",
+              "resumedAtMs": 2000003720000,
+              "revision": 4,
+              "sessionKey": "['a', True, 1.0]",
+              "source": "comandos",
+              "startedAtMs": 2000000000000,
+              "status": "running",
+              "targetMs": 1800000
+            },
+            "revision": 4,
+            "serverNowMs": 2000003780000
+          }
+        },
+        "status": 409
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 120000,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": 2000005400000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": 2000003720000,
+          "revision": 4,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 1800000
+        },
+        "revision": 4,
+        "serverNowMs": 2000003780000
+      }
+    },
+    {
+      "now": 2000003840000,
+      "request": {
+        "action": "cancel",
+        "requestId": "cancel"
+      },
+      "result": {
+        "block": {
+          "activeMs": 240000,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": null,
+          "endedAtMs": 2000003840000,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": null,
+          "revision": 5,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "cancelled",
+          "targetMs": 1800000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 5,
+        "serverNowMs": 2000003840000
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 240000,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": null,
+          "endedAtMs": 2000003840000,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": null,
+          "revision": 5,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "cancelled",
+          "targetMs": 1800000
+        },
+        "revision": 5,
+        "serverNowMs": 2000003840000
+      }
+    },
+    {
+      "now": 2000003840000,
+      "request": {
+        "action": "resume",
+        "requestId": "not-live"
+      },
+      "result": {
+        "payload": {
+          "code": "not_active",
+          "error": "No hay un bloque en ese estado",
+          "ok": false,
+          "state": {
+            "block": {
+              "activeMs": 240000,
+              "blockId": "b2",
+              "cycleIndex": 1,
+              "cycleTotal": 99,
+              "deadlineMs": null,
+              "endedAtMs": 2000003840000,
+              "mode": "focus",
+              "paneKey": "{'x': None}",
+              "project": "México 😊",
+              "resumedAtMs": null,
+              "revision": 5,
+              "sessionKey": "['a', True, 1.0]",
+              "source": "comandos",
+              "startedAtMs": 2000000000000,
+              "status": "cancelled",
+              "targetMs": 1800000
+            },
+            "revision": 5,
+            "serverNowMs": 2000003840000
+          }
+        },
+        "status": 409
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 240000,
+          "blockId": "b2",
+          "cycleIndex": 1,
+          "cycleTotal": 99,
+          "deadlineMs": null,
+          "endedAtMs": 2000003840000,
+          "mode": "focus",
+          "paneKey": "{'x': None}",
+          "project": "México 😊",
+          "resumedAtMs": null,
+          "revision": 5,
+          "sessionKey": "['a', True, 1.0]",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "cancelled",
+          "targetMs": 1800000
+        },
+        "revision": 5,
+        "serverNowMs": 2000003840000
+      }
+    },
+    {
+      "now": 2000003900000,
+      "request": {
+        "action": "start",
+        "expectedRevision": 5,
+        "mode": "break",
+        "requestId": "break",
+        "targetMs": 300000
+      },
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "b3",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": 2000004200000,
+          "endedAtMs": null,
+          "mode": "break",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000003900000,
+          "revision": 6,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000003900000,
+          "status": "running",
+          "targetMs": 300000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 6,
+        "serverNowMs": 2000003900000
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "b3",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": 2000004200000,
+          "endedAtMs": null,
+          "mode": "break",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000003900000,
+          "revision": 6,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000003900000,
+          "status": "running",
+          "targetMs": 300000
+        },
+        "revision": 6,
+        "serverNowMs": 2000003900000
+      }
+    },
+    {
+      "now": 2000004260000,
+      "request": {
+        "action": "start",
+        "requestId": "due-invalid",
+        "targetMs": 0
+      },
+      "result": {
+        "payload": {
+          "code": "invalid_targetMs",
+          "error": "La duración debe estar entre 1 y 180 minutos",
+          "ok": false
+        },
+        "status": 400
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 300000,
+          "blockId": "b3",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": null,
+          "endedAtMs": 2000004200000,
+          "mode": "break",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": null,
+          "revision": 7,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000003900000,
+          "status": "completed",
+          "targetMs": 300000
+        },
+        "revision": 7,
+        "serverNowMs": 2000004260000
+      }
+    },
+    {
+      "now": 2000004260000,
+      "request": {
+        "action": "start",
+        "expectedRevision": 6,
+        "requestId": "after-completion",
+        "targetMs": 1500000
+      },
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "b4",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": 2000005760000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000004260000,
+          "revision": 8,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000004260000,
+          "status": "running",
+          "targetMs": 1500000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 8,
+        "serverNowMs": 2000004260000
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "b4",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": 2000005760000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000004260000,
+          "revision": 8,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000004260000,
+          "status": "running",
+          "targetMs": 1500000
+        },
+        "revision": 8,
+        "serverNowMs": 2000004260000
+      }
+    },
+    {
+      "now": 2000005820000,
+      "request": {
+        "action": "pause",
+        "requestId": "due-pause"
+      },
+      "result": {
+        "payload": {
+          "code": "not_active",
+          "error": "No hay un bloque en ese estado",
+          "ok": false,
+          "state": {
+            "block": {
+              "activeMs": 1500000,
+              "blockId": "b4",
+              "cycleIndex": null,
+              "cycleTotal": null,
+              "deadlineMs": null,
+              "endedAtMs": 2000005760000,
+              "mode": "focus",
+              "paneKey": "",
+              "project": "",
+              "resumedAtMs": null,
+              "revision": 9,
+              "sessionKey": "",
+              "source": "comandos",
+              "startedAtMs": 2000004260000,
+              "status": "completed",
+              "targetMs": 1500000
+            },
+            "revision": 9,
+            "serverNowMs": 2000005820000
+          }
+        },
+        "status": 409
+      },
+      "snapshot": {
+        "block": {
+          "activeMs": 1500000,
+          "blockId": "b4",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": null,
+          "endedAtMs": 2000005760000,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": null,
+          "revision": 9,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000004260000,
+          "status": "completed",
+          "targetMs": 1500000
+        },
+        "revision": 9,
+        "serverNowMs": 2000005820000
+      }
+    }
+  ]
+}

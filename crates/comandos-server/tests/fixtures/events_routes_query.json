@@ -1,0 +1,20 @@
+[
+  {"query":"","status":200,"after":0,"turns":false},
+  {"query":"after=&after=12","status":200,"after":12,"turns":false},
+  {"query":"after=12&after=13","status":200,"after":12,"turns":false},
+  {"query":"after=%31%32&limit=%30&turns=%31","status":200,"after":12,"turns":true},
+  {"query":"after=00012&limit=999999999999999","status":200,"after":12,"turns":false},
+  {"query":"turns=&turns=1","status":200,"after":0,"turns":true},
+  {"query":"turns=0&turns=1","status":200,"after":0,"turns":false},
+  {"query":"after=","status":200,"after":0,"turns":false},
+  {"query":"after=-1","status":400,"error":"after inválido"},
+  {"query":"after=+1","status":400,"error":"after inválido"},
+  {"query":"after=1.0","status":400,"error":"after inválido"},
+  {"query":"after=%EF%BC%91","status":400,"error":"after inválido"},
+  {"query":"after=0000000000000000","status":400,"error":"after inválido"},
+  {"query":"after=%00","status":400,"error":"after inválido"},
+  {"query":"after=%FF","status":400,"error":"after inválido"},
+  {"query":"after=1;limit=2","status":400,"error":"after inválido"},
+  {"query":"limit=bad","status":400,"error":"limit inválido"},
+  {"query":"limit=&limit=1","status":200,"after":0,"turns":false}
+]

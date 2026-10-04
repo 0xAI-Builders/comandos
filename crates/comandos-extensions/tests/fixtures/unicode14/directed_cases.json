@@ -1,0 +1,1480 @@
+{
+  "format": 1,
+  "lookup": [
+    {
+      "input": "",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501201,
+      "cohort": "directed"
+    },
+    {
+      "input": "LATIN CAPITAL LETTER A\u0000",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501202,
+      "cohort": "directed"
+    },
+    {
+      "input": "\u0000",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501203,
+      "cohort": "directed"
+    },
+    {
+      "input": " LATIN CAPITAL LETTER A",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501204,
+      "cohort": "directed"
+    },
+    {
+      "input": "LATIN CAPITAL LETTER A ",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501205,
+      "cohort": "directed"
+    },
+    {
+      "input": "LATIN  CAPITAL LETTER A",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501206,
+      "cohort": "directed"
+    },
+    {
+      "input": "LATIN-CAPITAL LETTER A",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501207,
+      "cohort": "directed"
+    },
+    {
+      "input": "HANGUL SYLLABLE ",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501208,
+      "cohort": "directed"
+    },
+    {
+      "input": "HANGUL SYLLABLE G",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501209,
+      "cohort": "directed"
+    },
+    {
+      "input": "HANGUL SYLLABLE GAX",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501210,
+      "cohort": "directed"
+    },
+    {
+      "input": "HANGUL SYLLABLE GGG",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501211,
+      "cohort": "directed"
+    },
+    {
+      "input": "HANGUL SYLLABLE GGWA",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          44872
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501212,
+      "cohort": "directed"
+    },
+    {
+      "input": "HANGUL SYLLABLE GAGS",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          44035
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501213,
+      "cohort": "directed"
+    },
+    {
+      "input": "HANGUL SYLLABLE GA\u0000",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501214,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501215,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-0004E00",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501216,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-4e00",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501217,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-04e00",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501218,
+      "cohort": "directed"
+    },
+    {
+      "input": "TANGUT IDEOGRAPH-17000",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501219,
+      "cohort": "directed"
+    },
+    {
+      "input": "NUSHU CHARACTER-1B170",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          110960
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501220,
+      "cohort": "directed"
+    },
+    {
+      "input": "KHITAN SMALL SCRIPT CHARACTER-18B00",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          101120
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501221,
+      "cohort": "directed"
+    },
+    {
+      "input": "é",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501222,
+      "cohort": "directed"
+    },
+    {
+      "input": "☃",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501223,
+      "cohort": "directed"
+    },
+    {
+      "input": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501224,
+      "cohort": "directed"
+    },
+    {
+      "input": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501225,
+      "cohort": "directed"
+    },
+    {
+      "input": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501226,
+      "cohort": "directed"
+    },
+    {
+      "input": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501227,
+      "cohort": "directed"
+    },
+    {
+      "input": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501228,
+      "cohort": "directed"
+    },
+    {
+      "input": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501229,
+      "cohort": "directed"
+    },
+    {
+      "input": [
+        55296
+      ],
+      "lookup": {
+        "class": "UnicodeEncodeError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501230,
+      "cohort": "directed"
+    },
+    {
+      "input": [
+        57343
+      ],
+      "lookup": {
+        "class": "UnicodeEncodeError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501231,
+      "cohort": "directed"
+    },
+    {
+      "input": [
+        65,
+        55296,
+        66
+      ],
+      "lookup": {
+        "class": "UnicodeEncodeError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501232,
+      "cohort": "directed"
+    },
+    {
+      "input": [
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        65,
+        55296
+      ],
+      "lookup": {
+        "class": "UnicodeEncodeError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501233,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-33FF",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501234,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-3400",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          13312
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501235,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-3401",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          13313
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501236,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-4DBE",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          19902
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501237,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-4DBF",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          19903
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501238,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-4DC0",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501239,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-4DFF",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501240,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-4E00",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          19968
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501241,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-4E01",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          19969
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501242,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-9FFE",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          40958
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501243,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-9FFF",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          40959
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501244,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-A000",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501245,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-1FFFF",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501246,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-20000",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          131072
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501247,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-20001",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          131073
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501248,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2A6DE",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          173790
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501249,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2A6DF",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          173791
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501250,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2A6E0",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501251,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2A6FF",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501252,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2A700",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          173824
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501253,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2A701",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          173825
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501254,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2B737",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          177975
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501255,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2B738",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          177976
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501256,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2B739",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501257,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2B73F",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501258,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2B740",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          177984
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501259,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2B741",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          177985
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501260,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2B81C",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          178204
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501261,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2B81D",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          178205
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501262,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2B81E",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501263,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2B81F",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501264,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2B820",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          178208
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501265,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2B821",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          178209
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501266,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2CEA0",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          183968
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501267,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2CEA1",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          183969
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501268,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2CEA2",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501269,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2CEAF",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501270,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2CEB0",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          183984
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501271,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2CEB1",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          183985
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501272,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2EBDF",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          191455
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501273,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2EBE0",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          191456
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501274,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2EBE1",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501275,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-2FFFF",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501276,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-30000",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          196608
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501277,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-30001",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          196609
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501278,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-31349",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          201545
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501279,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-3134A",
+      "lookup": {
+        "class": "Character",
+        "value": [
+          201546
+        ]
+      },
+      "re": [
+        "Compiled",
+        "Compiled"
+      ],
+      "id": 501280,
+      "cohort": "directed"
+    },
+    {
+      "input": "CJK UNIFIED IDEOGRAPH-3134B",
+      "lookup": {
+        "class": "KeyError"
+      },
+      "re": [
+        "error",
+        "error"
+      ],
+      "id": 501281,
+      "cohort": "directed"
+    }
+  ],
+  "points": [
+    {
+      "cp": 28,
+      "primitive_hex": "1c0000001c0000001c0000001800ff00",
+      "canonical": null
+    },
+    {
+      "cp": 29,
+      "primitive_hex": "1d0000001d0000001d0000001800ff00",
+      "canonical": null
+    },
+    {
+      "cp": 30,
+      "primitive_hex": "1e0000001e0000001e0000001800ff00",
+      "canonical": null
+    },
+    {
+      "cp": 31,
+      "primitive_hex": "1f0000001f0000001f0000000800ff00",
+      "canonical": null
+    },
+    {
+      "cp": 1633,
+      "primitive_hex": "61060000610600006106000087020100",
+      "canonical": "ARABIC-INDIC DIGIT ONE"
+    },
+    {
+      "cp": 65297,
+      "primitive_hex": "11ff000011ff000011ff000087020100",
+      "canonical": "FULLWIDTH DIGIT ONE"
+    },
+    {
+      "cp": 178,
+      "primitive_hex": "b2000000b2000000b20000000600ff00",
+      "canonical": "SUPERSCRIPT TWO"
+    },
+    {
+      "cp": 223,
+      "primitive_hex": "df000000df00000053000000e603ff00",
+      "canonical": "LATIN SMALL LETTER SHARP S"
+    },
+    {
+      "cp": 64256,
+      "primitive_hex": "00fb000000fb000046000000e603ff00",
+      "canonical": "LATIN SMALL LIGATURE FF"
+    },
+    {
+      "cp": 304,
+      "primitive_hex": "300100006900000030010000e603ff00",
+      "canonical": "LATIN CAPITAL LETTER I WITH DOT ABOVE"
+    },
+    {
+      "cp": 305,
+      "primitive_hex": "310100003101000049000000e603ff00",
+      "canonical": "LATIN SMALL LETTER DOTLESS I"
+    },
+    {
+      "cp": 383,
+      "primitive_hex": "7f0100007f01000053000000e603ff00",
+      "canonical": "LATIN SMALL LETTER LONG S"
+    },
+    {
+      "cp": 8490,
+      "primitive_hex": "2a2100006b0000002a210000e603ff00",
+      "canonical": "KELVIN SIGN"
+    },
+    {
+      "cp": 931,
+      "primitive_hex": "a3030000c3030000a3030000e603ff00",
+      "canonical": "GREEK CAPITAL LETTER SIGMA"
+    },
+    {
+      "cp": 962,
+      "primitive_hex": "c2030000c2030000a3030000e603ff00",
+      "canonical": "GREEK SMALL LETTER FINAL SIGMA"
+    },
+    {
+      "cp": 963,
+      "primitive_hex": "c3030000c3030000a3030000e603ff00",
+      "canonical": "GREEK SMALL LETTER SIGMA"
+    },
+    {
+      "cp": 769,
+      "primitive_hex": "0103000001030000010300008002ff00",
+      "canonical": "COMBINING ACUTE ACCENT"
+    },
+    {
+      "cp": 55296,
+      "primitive_hex": "00d8000000d8000000d800000000ff00",
+      "canonical": null
+    },
+    {
+      "cp": 57343,
+      "primitive_hex": "ffdf0000ffdf0000ffdf00000000ff00",
+      "canonical": null
+    },
+    {
+      "cp": 73472,
+      "primitive_hex": "001f0100001f0100001f01000000ff00",
+      "canonical": null
+    },
+    {
+      "cp": 124144,
+      "primitive_hex": "f0e40100f0e40100f0e401000000ff00",
+      "canonical": null
+    },
+    {
+      "cp": 201546,
+      "primitive_hex": "4a1303004a1303004a130300c603ff00",
+      "canonical": "CJK UNIFIED IDEOGRAPH-3134A"
+    },
+    {
+      "cp": 201547,
+      "primitive_hex": "4b1303004b1303004b1303000000ff00",
+      "canonical": null
+    },
+    {
+      "cp": 201552,
+      "primitive_hex": "5013030050130300501303000000ff00",
+      "canonical": null
+    },
+    {
+      "cp": 94208,
+      "primitive_hex": "007001000070010000700100c603ff00",
+      "canonical": null
+    }
+  ],
+  "upper_equivalence": "str.upper on one character uses full-upper sequence whose first entry equals _PyUnicode_ToUppercase; captured sharp s and ligatures independently"
+}

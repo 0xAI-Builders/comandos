@@ -1,0 +1,15 @@
+[Unit]
+Description=ComandOS — broker compartido de servidores MCP
+
+[Service]
+Environment=PATH=%h/.local/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.local/share/comandos/bin/comandos ext broker
+Restart=on-failure
+RestartSec=2
+MemoryMax=24G
+# Cada sesión ocupa un socket y cada upstream tres tuberías: 1024 no basta.
+LimitNOFILE=65536
+ManagedOOMPreference=avoid
+
+[Install]
+WantedBy=default.target

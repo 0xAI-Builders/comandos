@@ -1,0 +1,4820 @@
+{
+  "catalog": {
+    "atlassian": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+    "azure-devops": "Consulta proyectos, repositorios, tareas y alertas de seguridad de Azure DevOps.",
+    "chrome-bg": "Inspecciona y controla p\u00e1ginas de Chrome en el navegador configurado para segundo plano.",
+    "chrome-devtools": "Inspecciona p\u00e1ginas de Chrome, su consola, red y rendimiento; permite interactuar con ellas.",
+    "claude-in-chrome": "Controla pesta\u00f1as de Chrome mediante su extensi\u00f3n: navegaci\u00f3n, formularios y capturas.",
+    "clickup": "Busca y gestiona tareas de ClickUp, sus etiquetas, dependencias y relaciones.",
+    "context7": "Busca documentaci\u00f3n y ejemplos actuales de bibliotecas, frameworks y APIs.",
+    "gmail": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+    "godot": "Crea y modifica escenas y nodos de proyectos Godot, y exporta recursos.",
+    "google-calendar": "Consulta calendarios y crea, actualiza o elimina eventos.",
+    "google-drive": "Busca, descarga, crea y copia archivos de Google Drive.",
+    "jira-rovo": "Busca y gestiona contenido de Jira y Confluence mediante Atlassian Rovo.",
+    "lightpanda": "Navega p\u00e1ginas sin interfaz gr\u00e1fica, extrae su contenido e interact\u00faa con formularios.",
+    "mcp-image": "Genera im\u00e1genes a partir de texto o edita una imagen existente y guarda el resultado.",
+    "mobbin": "Busca pantallas y flujos de productos reales como referencia para dise\u00f1ar interfaces.",
+    "moneyhacktracker": "Busca hackathones y bounties de Web3 e IA y compara las oportunidades encontradas.",
+    "near-mcp": "Consulta cuentas y saldos de NEAR e interact\u00faa con transacciones y contratos.",
+    "node-repl": "Ejecuta JavaScript en una sesi\u00f3n persistente y permite reutilizar variables y m\u00f3dulos.",
+    "obscura": "Navega e inspecciona p\u00e1ginas web y permite interactuar con elementos y cookies.",
+    "openaideveloperdocs": "Busca documentaci\u00f3n oficial de OpenAI y consulta referencias de sus APIs.",
+    "playwright": "Automatiza el navegador: abre p\u00e1ginas, interact\u00faa con elementos y consulta la consola.",
+    "qcdr-search": "Busca en la web mediante QCDR y extrae texto de las p\u00e1ginas encontradas.",
+    "radek": "Lista y descarga documentos de RADEK en SharePoint usando la sesi\u00f3n autorizada.",
+    "screenwright": "Graba recorridos de navegador o Android y genera videos con subt\u00edtulos sincronizados.",
+    "slack": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+    "solana-dev": "Busca documentaci\u00f3n de Solana y consulta ayuda t\u00e9cnica para desarrollar en su ecosistema.",
+    "supabase": "Consulta bases de datos Supabase mediante SQL, genera tipos y revisa diagn\u00f3sticos del proyecto.",
+    "telegram": "Consulta conversaciones y adjuntos de Telegram y permite enviar o gestionar mensajes.",
+    "unreal-mcp": "Controla Unreal Editor: actores, Blueprints, materiales, secuencias y otros recursos del proyecto.",
+    "whatsapp": "Consulta conversaciones de WhatsApp y gestiona mensajes, contactos y grupos.",
+    "x-playwright": "Abre X en el navegador, lee la p\u00e1gina y prepara borradores de publicaciones.",
+    "x-suite": "Conecta una cuenta de X y ofrece herramientas para trabajar con ella mediante su API."
+  },
+  "ascii_casefold": [
+    [
+      223,
+      "ss"
+    ],
+    [
+      383,
+      "s"
+    ],
+    [
+      7838,
+      "ss"
+    ],
+    [
+      8490,
+      "k"
+    ],
+    [
+      64256,
+      "ff"
+    ],
+    [
+      64257,
+      "fi"
+    ],
+    [
+      64258,
+      "fl"
+    ],
+    [
+      64259,
+      "ffi"
+    ],
+    [
+      64260,
+      "ffl"
+    ],
+    [
+      64261,
+      "st"
+    ],
+    [
+      64262,
+      "st"
+    ]
+  ],
+  "rows": [
+    {
+      "name": "atlassian",
+      "description": null,
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "atlassian",
+      "description": "",
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "atlassian",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "atlassian",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "atlassian",
+      "description": 42,
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "atlassian",
+      "description": false,
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "ATLASSIAN",
+      "description": null,
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "ATLASSIAN",
+      "description": "",
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "ATLASSIAN",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "ATLASSIAN",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "ATLASSIAN",
+      "description": 42,
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "ATLASSIAN",
+      "description": false,
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "atlassian",
+      "description": null,
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "atlassian",
+      "description": "",
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "atlassian",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "atlassian",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "atlassian",
+      "description": 42,
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "atlassian",
+      "description": false,
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "azure-devops",
+      "description": null,
+      "expected": {
+        "description": "Consulta proyectos, repositorios, tareas y alertas de seguridad de Azure DevOps.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "azure-devops",
+      "description": "",
+      "expected": {
+        "description": "Consulta proyectos, repositorios, tareas y alertas de seguridad de Azure DevOps.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "azure-devops",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta proyectos, repositorios, tareas y alertas de seguridad de Azure DevOps.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "azure-devops",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "azure-devops",
+      "description": 42,
+      "expected": {
+        "description": "Consulta proyectos, repositorios, tareas y alertas de seguridad de Azure DevOps.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "azure-devops",
+      "description": false,
+      "expected": {
+        "description": "Consulta proyectos, repositorios, tareas y alertas de seguridad de Azure DevOps.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "AZURE-DEVOPS",
+      "description": null,
+      "expected": {
+        "description": "Consulta proyectos, repositorios, tareas y alertas de seguridad de Azure DevOps.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "AZURE-DEVOPS",
+      "description": "",
+      "expected": {
+        "description": "Consulta proyectos, repositorios, tareas y alertas de seguridad de Azure DevOps.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "AZURE-DEVOPS",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta proyectos, repositorios, tareas y alertas de seguridad de Azure DevOps.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "AZURE-DEVOPS",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "AZURE-DEVOPS",
+      "description": 42,
+      "expected": {
+        "description": "Consulta proyectos, repositorios, tareas y alertas de seguridad de Azure DevOps.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "AZURE-DEVOPS",
+      "description": false,
+      "expected": {
+        "description": "Consulta proyectos, repositorios, tareas y alertas de seguridad de Azure DevOps.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "azure_devops",
+      "description": null,
+      "expected": {
+        "description": "Consulta proyectos, repositorios, tareas y alertas de seguridad de Azure DevOps.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "azure_devops",
+      "description": "",
+      "expected": {
+        "description": "Consulta proyectos, repositorios, tareas y alertas de seguridad de Azure DevOps.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "azure_devops",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta proyectos, repositorios, tareas y alertas de seguridad de Azure DevOps.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "azure_devops",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "azure_devops",
+      "description": 42,
+      "expected": {
+        "description": "Consulta proyectos, repositorios, tareas y alertas de seguridad de Azure DevOps.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "azure_devops",
+      "description": false,
+      "expected": {
+        "description": "Consulta proyectos, repositorios, tareas y alertas de seguridad de Azure DevOps.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome-bg",
+      "description": null,
+      "expected": {
+        "description": "Inspecciona y controla p\u00e1ginas de Chrome en el navegador configurado para segundo plano.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome-bg",
+      "description": "",
+      "expected": {
+        "description": "Inspecciona y controla p\u00e1ginas de Chrome en el navegador configurado para segundo plano.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome-bg",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Inspecciona y controla p\u00e1ginas de Chrome en el navegador configurado para segundo plano.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome-bg",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "chrome-bg",
+      "description": 42,
+      "expected": {
+        "description": "Inspecciona y controla p\u00e1ginas de Chrome en el navegador configurado para segundo plano.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome-bg",
+      "description": false,
+      "expected": {
+        "description": "Inspecciona y controla p\u00e1ginas de Chrome en el navegador configurado para segundo plano.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CHROME-BG",
+      "description": null,
+      "expected": {
+        "description": "Inspecciona y controla p\u00e1ginas de Chrome en el navegador configurado para segundo plano.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CHROME-BG",
+      "description": "",
+      "expected": {
+        "description": "Inspecciona y controla p\u00e1ginas de Chrome en el navegador configurado para segundo plano.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CHROME-BG",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Inspecciona y controla p\u00e1ginas de Chrome en el navegador configurado para segundo plano.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CHROME-BG",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "CHROME-BG",
+      "description": 42,
+      "expected": {
+        "description": "Inspecciona y controla p\u00e1ginas de Chrome en el navegador configurado para segundo plano.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CHROME-BG",
+      "description": false,
+      "expected": {
+        "description": "Inspecciona y controla p\u00e1ginas de Chrome en el navegador configurado para segundo plano.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome_bg",
+      "description": null,
+      "expected": {
+        "description": "Inspecciona y controla p\u00e1ginas de Chrome en el navegador configurado para segundo plano.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome_bg",
+      "description": "",
+      "expected": {
+        "description": "Inspecciona y controla p\u00e1ginas de Chrome en el navegador configurado para segundo plano.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome_bg",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Inspecciona y controla p\u00e1ginas de Chrome en el navegador configurado para segundo plano.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome_bg",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "chrome_bg",
+      "description": 42,
+      "expected": {
+        "description": "Inspecciona y controla p\u00e1ginas de Chrome en el navegador configurado para segundo plano.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome_bg",
+      "description": false,
+      "expected": {
+        "description": "Inspecciona y controla p\u00e1ginas de Chrome en el navegador configurado para segundo plano.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome-devtools",
+      "description": null,
+      "expected": {
+        "description": "Inspecciona p\u00e1ginas de Chrome, su consola, red y rendimiento; permite interactuar con ellas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome-devtools",
+      "description": "",
+      "expected": {
+        "description": "Inspecciona p\u00e1ginas de Chrome, su consola, red y rendimiento; permite interactuar con ellas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome-devtools",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Inspecciona p\u00e1ginas de Chrome, su consola, red y rendimiento; permite interactuar con ellas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome-devtools",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "chrome-devtools",
+      "description": 42,
+      "expected": {
+        "description": "Inspecciona p\u00e1ginas de Chrome, su consola, red y rendimiento; permite interactuar con ellas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome-devtools",
+      "description": false,
+      "expected": {
+        "description": "Inspecciona p\u00e1ginas de Chrome, su consola, red y rendimiento; permite interactuar con ellas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CHROME-DEVTOOLS",
+      "description": null,
+      "expected": {
+        "description": "Inspecciona p\u00e1ginas de Chrome, su consola, red y rendimiento; permite interactuar con ellas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CHROME-DEVTOOLS",
+      "description": "",
+      "expected": {
+        "description": "Inspecciona p\u00e1ginas de Chrome, su consola, red y rendimiento; permite interactuar con ellas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CHROME-DEVTOOLS",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Inspecciona p\u00e1ginas de Chrome, su consola, red y rendimiento; permite interactuar con ellas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CHROME-DEVTOOLS",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "CHROME-DEVTOOLS",
+      "description": 42,
+      "expected": {
+        "description": "Inspecciona p\u00e1ginas de Chrome, su consola, red y rendimiento; permite interactuar con ellas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CHROME-DEVTOOLS",
+      "description": false,
+      "expected": {
+        "description": "Inspecciona p\u00e1ginas de Chrome, su consola, red y rendimiento; permite interactuar con ellas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome_devtools",
+      "description": null,
+      "expected": {
+        "description": "Inspecciona p\u00e1ginas de Chrome, su consola, red y rendimiento; permite interactuar con ellas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome_devtools",
+      "description": "",
+      "expected": {
+        "description": "Inspecciona p\u00e1ginas de Chrome, su consola, red y rendimiento; permite interactuar con ellas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome_devtools",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Inspecciona p\u00e1ginas de Chrome, su consola, red y rendimiento; permite interactuar con ellas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome_devtools",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "chrome_devtools",
+      "description": 42,
+      "expected": {
+        "description": "Inspecciona p\u00e1ginas de Chrome, su consola, red y rendimiento; permite interactuar con ellas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "chrome_devtools",
+      "description": false,
+      "expected": {
+        "description": "Inspecciona p\u00e1ginas de Chrome, su consola, red y rendimiento; permite interactuar con ellas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "claude-in-chrome",
+      "description": null,
+      "expected": {
+        "description": "Controla pesta\u00f1as de Chrome mediante su extensi\u00f3n: navegaci\u00f3n, formularios y capturas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "claude-in-chrome",
+      "description": "",
+      "expected": {
+        "description": "Controla pesta\u00f1as de Chrome mediante su extensi\u00f3n: navegaci\u00f3n, formularios y capturas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "claude-in-chrome",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Controla pesta\u00f1as de Chrome mediante su extensi\u00f3n: navegaci\u00f3n, formularios y capturas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "claude-in-chrome",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "claude-in-chrome",
+      "description": 42,
+      "expected": {
+        "description": "Controla pesta\u00f1as de Chrome mediante su extensi\u00f3n: navegaci\u00f3n, formularios y capturas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "claude-in-chrome",
+      "description": false,
+      "expected": {
+        "description": "Controla pesta\u00f1as de Chrome mediante su extensi\u00f3n: navegaci\u00f3n, formularios y capturas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CLAUDE-IN-CHROME",
+      "description": null,
+      "expected": {
+        "description": "Controla pesta\u00f1as de Chrome mediante su extensi\u00f3n: navegaci\u00f3n, formularios y capturas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CLAUDE-IN-CHROME",
+      "description": "",
+      "expected": {
+        "description": "Controla pesta\u00f1as de Chrome mediante su extensi\u00f3n: navegaci\u00f3n, formularios y capturas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CLAUDE-IN-CHROME",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Controla pesta\u00f1as de Chrome mediante su extensi\u00f3n: navegaci\u00f3n, formularios y capturas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CLAUDE-IN-CHROME",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "CLAUDE-IN-CHROME",
+      "description": 42,
+      "expected": {
+        "description": "Controla pesta\u00f1as de Chrome mediante su extensi\u00f3n: navegaci\u00f3n, formularios y capturas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CLAUDE-IN-CHROME",
+      "description": false,
+      "expected": {
+        "description": "Controla pesta\u00f1as de Chrome mediante su extensi\u00f3n: navegaci\u00f3n, formularios y capturas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "claude_in_chrome",
+      "description": null,
+      "expected": {
+        "description": "Controla pesta\u00f1as de Chrome mediante su extensi\u00f3n: navegaci\u00f3n, formularios y capturas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "claude_in_chrome",
+      "description": "",
+      "expected": {
+        "description": "Controla pesta\u00f1as de Chrome mediante su extensi\u00f3n: navegaci\u00f3n, formularios y capturas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "claude_in_chrome",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Controla pesta\u00f1as de Chrome mediante su extensi\u00f3n: navegaci\u00f3n, formularios y capturas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "claude_in_chrome",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "claude_in_chrome",
+      "description": 42,
+      "expected": {
+        "description": "Controla pesta\u00f1as de Chrome mediante su extensi\u00f3n: navegaci\u00f3n, formularios y capturas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "claude_in_chrome",
+      "description": false,
+      "expected": {
+        "description": "Controla pesta\u00f1as de Chrome mediante su extensi\u00f3n: navegaci\u00f3n, formularios y capturas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "clickup",
+      "description": null,
+      "expected": {
+        "description": "Busca y gestiona tareas de ClickUp, sus etiquetas, dependencias y relaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "clickup",
+      "description": "",
+      "expected": {
+        "description": "Busca y gestiona tareas de ClickUp, sus etiquetas, dependencias y relaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "clickup",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca y gestiona tareas de ClickUp, sus etiquetas, dependencias y relaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "clickup",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "clickup",
+      "description": 42,
+      "expected": {
+        "description": "Busca y gestiona tareas de ClickUp, sus etiquetas, dependencias y relaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "clickup",
+      "description": false,
+      "expected": {
+        "description": "Busca y gestiona tareas de ClickUp, sus etiquetas, dependencias y relaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CLICKUP",
+      "description": null,
+      "expected": {
+        "description": "Busca y gestiona tareas de ClickUp, sus etiquetas, dependencias y relaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CLICKUP",
+      "description": "",
+      "expected": {
+        "description": "Busca y gestiona tareas de ClickUp, sus etiquetas, dependencias y relaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CLICKUP",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca y gestiona tareas de ClickUp, sus etiquetas, dependencias y relaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CLICKUP",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "CLICKUP",
+      "description": 42,
+      "expected": {
+        "description": "Busca y gestiona tareas de ClickUp, sus etiquetas, dependencias y relaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CLICKUP",
+      "description": false,
+      "expected": {
+        "description": "Busca y gestiona tareas de ClickUp, sus etiquetas, dependencias y relaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "clickup",
+      "description": null,
+      "expected": {
+        "description": "Busca y gestiona tareas de ClickUp, sus etiquetas, dependencias y relaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "clickup",
+      "description": "",
+      "expected": {
+        "description": "Busca y gestiona tareas de ClickUp, sus etiquetas, dependencias y relaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "clickup",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca y gestiona tareas de ClickUp, sus etiquetas, dependencias y relaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "clickup",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "clickup",
+      "description": 42,
+      "expected": {
+        "description": "Busca y gestiona tareas de ClickUp, sus etiquetas, dependencias y relaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "clickup",
+      "description": false,
+      "expected": {
+        "description": "Busca y gestiona tareas de ClickUp, sus etiquetas, dependencias y relaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "context7",
+      "description": null,
+      "expected": {
+        "description": "Busca documentaci\u00f3n y ejemplos actuales de bibliotecas, frameworks y APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "context7",
+      "description": "",
+      "expected": {
+        "description": "Busca documentaci\u00f3n y ejemplos actuales de bibliotecas, frameworks y APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "context7",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca documentaci\u00f3n y ejemplos actuales de bibliotecas, frameworks y APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "context7",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "context7",
+      "description": 42,
+      "expected": {
+        "description": "Busca documentaci\u00f3n y ejemplos actuales de bibliotecas, frameworks y APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "context7",
+      "description": false,
+      "expected": {
+        "description": "Busca documentaci\u00f3n y ejemplos actuales de bibliotecas, frameworks y APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CONTEXT7",
+      "description": null,
+      "expected": {
+        "description": "Busca documentaci\u00f3n y ejemplos actuales de bibliotecas, frameworks y APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CONTEXT7",
+      "description": "",
+      "expected": {
+        "description": "Busca documentaci\u00f3n y ejemplos actuales de bibliotecas, frameworks y APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CONTEXT7",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca documentaci\u00f3n y ejemplos actuales de bibliotecas, frameworks y APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CONTEXT7",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "CONTEXT7",
+      "description": 42,
+      "expected": {
+        "description": "Busca documentaci\u00f3n y ejemplos actuales de bibliotecas, frameworks y APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "CONTEXT7",
+      "description": false,
+      "expected": {
+        "description": "Busca documentaci\u00f3n y ejemplos actuales de bibliotecas, frameworks y APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "context7",
+      "description": null,
+      "expected": {
+        "description": "Busca documentaci\u00f3n y ejemplos actuales de bibliotecas, frameworks y APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "context7",
+      "description": "",
+      "expected": {
+        "description": "Busca documentaci\u00f3n y ejemplos actuales de bibliotecas, frameworks y APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "context7",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca documentaci\u00f3n y ejemplos actuales de bibliotecas, frameworks y APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "context7",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "context7",
+      "description": 42,
+      "expected": {
+        "description": "Busca documentaci\u00f3n y ejemplos actuales de bibliotecas, frameworks y APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "context7",
+      "description": false,
+      "expected": {
+        "description": "Busca documentaci\u00f3n y ejemplos actuales de bibliotecas, frameworks y APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": null,
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": "",
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": 42,
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": false,
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GMAIL",
+      "description": null,
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GMAIL",
+      "description": "",
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GMAIL",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GMAIL",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "GMAIL",
+      "description": 42,
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GMAIL",
+      "description": false,
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": null,
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": "",
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": 42,
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": false,
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "godot",
+      "description": null,
+      "expected": {
+        "description": "Crea y modifica escenas y nodos de proyectos Godot, y exporta recursos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "godot",
+      "description": "",
+      "expected": {
+        "description": "Crea y modifica escenas y nodos de proyectos Godot, y exporta recursos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "godot",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Crea y modifica escenas y nodos de proyectos Godot, y exporta recursos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "godot",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "godot",
+      "description": 42,
+      "expected": {
+        "description": "Crea y modifica escenas y nodos de proyectos Godot, y exporta recursos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "godot",
+      "description": false,
+      "expected": {
+        "description": "Crea y modifica escenas y nodos de proyectos Godot, y exporta recursos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GODOT",
+      "description": null,
+      "expected": {
+        "description": "Crea y modifica escenas y nodos de proyectos Godot, y exporta recursos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GODOT",
+      "description": "",
+      "expected": {
+        "description": "Crea y modifica escenas y nodos de proyectos Godot, y exporta recursos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GODOT",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Crea y modifica escenas y nodos de proyectos Godot, y exporta recursos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GODOT",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "GODOT",
+      "description": 42,
+      "expected": {
+        "description": "Crea y modifica escenas y nodos de proyectos Godot, y exporta recursos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GODOT",
+      "description": false,
+      "expected": {
+        "description": "Crea y modifica escenas y nodos de proyectos Godot, y exporta recursos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "godot",
+      "description": null,
+      "expected": {
+        "description": "Crea y modifica escenas y nodos de proyectos Godot, y exporta recursos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "godot",
+      "description": "",
+      "expected": {
+        "description": "Crea y modifica escenas y nodos de proyectos Godot, y exporta recursos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "godot",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Crea y modifica escenas y nodos de proyectos Godot, y exporta recursos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "godot",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "godot",
+      "description": 42,
+      "expected": {
+        "description": "Crea y modifica escenas y nodos de proyectos Godot, y exporta recursos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "godot",
+      "description": false,
+      "expected": {
+        "description": "Crea y modifica escenas y nodos de proyectos Godot, y exporta recursos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google-calendar",
+      "description": null,
+      "expected": {
+        "description": "Consulta calendarios y crea, actualiza o elimina eventos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google-calendar",
+      "description": "",
+      "expected": {
+        "description": "Consulta calendarios y crea, actualiza o elimina eventos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google-calendar",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta calendarios y crea, actualiza o elimina eventos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google-calendar",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "google-calendar",
+      "description": 42,
+      "expected": {
+        "description": "Consulta calendarios y crea, actualiza o elimina eventos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google-calendar",
+      "description": false,
+      "expected": {
+        "description": "Consulta calendarios y crea, actualiza o elimina eventos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GOOGLE-CALENDAR",
+      "description": null,
+      "expected": {
+        "description": "Consulta calendarios y crea, actualiza o elimina eventos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GOOGLE-CALENDAR",
+      "description": "",
+      "expected": {
+        "description": "Consulta calendarios y crea, actualiza o elimina eventos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GOOGLE-CALENDAR",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta calendarios y crea, actualiza o elimina eventos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GOOGLE-CALENDAR",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "GOOGLE-CALENDAR",
+      "description": 42,
+      "expected": {
+        "description": "Consulta calendarios y crea, actualiza o elimina eventos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GOOGLE-CALENDAR",
+      "description": false,
+      "expected": {
+        "description": "Consulta calendarios y crea, actualiza o elimina eventos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google_calendar",
+      "description": null,
+      "expected": {
+        "description": "Consulta calendarios y crea, actualiza o elimina eventos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google_calendar",
+      "description": "",
+      "expected": {
+        "description": "Consulta calendarios y crea, actualiza o elimina eventos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google_calendar",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta calendarios y crea, actualiza o elimina eventos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google_calendar",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "google_calendar",
+      "description": 42,
+      "expected": {
+        "description": "Consulta calendarios y crea, actualiza o elimina eventos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google_calendar",
+      "description": false,
+      "expected": {
+        "description": "Consulta calendarios y crea, actualiza o elimina eventos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google-drive",
+      "description": null,
+      "expected": {
+        "description": "Busca, descarga, crea y copia archivos de Google Drive.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google-drive",
+      "description": "",
+      "expected": {
+        "description": "Busca, descarga, crea y copia archivos de Google Drive.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google-drive",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca, descarga, crea y copia archivos de Google Drive.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google-drive",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "google-drive",
+      "description": 42,
+      "expected": {
+        "description": "Busca, descarga, crea y copia archivos de Google Drive.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google-drive",
+      "description": false,
+      "expected": {
+        "description": "Busca, descarga, crea y copia archivos de Google Drive.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GOOGLE-DRIVE",
+      "description": null,
+      "expected": {
+        "description": "Busca, descarga, crea y copia archivos de Google Drive.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GOOGLE-DRIVE",
+      "description": "",
+      "expected": {
+        "description": "Busca, descarga, crea y copia archivos de Google Drive.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GOOGLE-DRIVE",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca, descarga, crea y copia archivos de Google Drive.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GOOGLE-DRIVE",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "GOOGLE-DRIVE",
+      "description": 42,
+      "expected": {
+        "description": "Busca, descarga, crea y copia archivos de Google Drive.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "GOOGLE-DRIVE",
+      "description": false,
+      "expected": {
+        "description": "Busca, descarga, crea y copia archivos de Google Drive.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google_drive",
+      "description": null,
+      "expected": {
+        "description": "Busca, descarga, crea y copia archivos de Google Drive.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google_drive",
+      "description": "",
+      "expected": {
+        "description": "Busca, descarga, crea y copia archivos de Google Drive.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google_drive",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca, descarga, crea y copia archivos de Google Drive.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google_drive",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "google_drive",
+      "description": 42,
+      "expected": {
+        "description": "Busca, descarga, crea y copia archivos de Google Drive.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "google_drive",
+      "description": false,
+      "expected": {
+        "description": "Busca, descarga, crea y copia archivos de Google Drive.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "jira-rovo",
+      "description": null,
+      "expected": {
+        "description": "Busca y gestiona contenido de Jira y Confluence mediante Atlassian Rovo.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "jira-rovo",
+      "description": "",
+      "expected": {
+        "description": "Busca y gestiona contenido de Jira y Confluence mediante Atlassian Rovo.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "jira-rovo",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca y gestiona contenido de Jira y Confluence mediante Atlassian Rovo.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "jira-rovo",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "jira-rovo",
+      "description": 42,
+      "expected": {
+        "description": "Busca y gestiona contenido de Jira y Confluence mediante Atlassian Rovo.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "jira-rovo",
+      "description": false,
+      "expected": {
+        "description": "Busca y gestiona contenido de Jira y Confluence mediante Atlassian Rovo.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "JIRA-ROVO",
+      "description": null,
+      "expected": {
+        "description": "Busca y gestiona contenido de Jira y Confluence mediante Atlassian Rovo.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "JIRA-ROVO",
+      "description": "",
+      "expected": {
+        "description": "Busca y gestiona contenido de Jira y Confluence mediante Atlassian Rovo.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "JIRA-ROVO",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca y gestiona contenido de Jira y Confluence mediante Atlassian Rovo.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "JIRA-ROVO",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "JIRA-ROVO",
+      "description": 42,
+      "expected": {
+        "description": "Busca y gestiona contenido de Jira y Confluence mediante Atlassian Rovo.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "JIRA-ROVO",
+      "description": false,
+      "expected": {
+        "description": "Busca y gestiona contenido de Jira y Confluence mediante Atlassian Rovo.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "jira_rovo",
+      "description": null,
+      "expected": {
+        "description": "Busca y gestiona contenido de Jira y Confluence mediante Atlassian Rovo.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "jira_rovo",
+      "description": "",
+      "expected": {
+        "description": "Busca y gestiona contenido de Jira y Confluence mediante Atlassian Rovo.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "jira_rovo",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca y gestiona contenido de Jira y Confluence mediante Atlassian Rovo.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "jira_rovo",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "jira_rovo",
+      "description": 42,
+      "expected": {
+        "description": "Busca y gestiona contenido de Jira y Confluence mediante Atlassian Rovo.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "jira_rovo",
+      "description": false,
+      "expected": {
+        "description": "Busca y gestiona contenido de Jira y Confluence mediante Atlassian Rovo.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "lightpanda",
+      "description": null,
+      "expected": {
+        "description": "Navega p\u00e1ginas sin interfaz gr\u00e1fica, extrae su contenido e interact\u00faa con formularios.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "lightpanda",
+      "description": "",
+      "expected": {
+        "description": "Navega p\u00e1ginas sin interfaz gr\u00e1fica, extrae su contenido e interact\u00faa con formularios.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "lightpanda",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Navega p\u00e1ginas sin interfaz gr\u00e1fica, extrae su contenido e interact\u00faa con formularios.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "lightpanda",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "lightpanda",
+      "description": 42,
+      "expected": {
+        "description": "Navega p\u00e1ginas sin interfaz gr\u00e1fica, extrae su contenido e interact\u00faa con formularios.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "lightpanda",
+      "description": false,
+      "expected": {
+        "description": "Navega p\u00e1ginas sin interfaz gr\u00e1fica, extrae su contenido e interact\u00faa con formularios.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "LIGHTPANDA",
+      "description": null,
+      "expected": {
+        "description": "Navega p\u00e1ginas sin interfaz gr\u00e1fica, extrae su contenido e interact\u00faa con formularios.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "LIGHTPANDA",
+      "description": "",
+      "expected": {
+        "description": "Navega p\u00e1ginas sin interfaz gr\u00e1fica, extrae su contenido e interact\u00faa con formularios.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "LIGHTPANDA",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Navega p\u00e1ginas sin interfaz gr\u00e1fica, extrae su contenido e interact\u00faa con formularios.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "LIGHTPANDA",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "LIGHTPANDA",
+      "description": 42,
+      "expected": {
+        "description": "Navega p\u00e1ginas sin interfaz gr\u00e1fica, extrae su contenido e interact\u00faa con formularios.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "LIGHTPANDA",
+      "description": false,
+      "expected": {
+        "description": "Navega p\u00e1ginas sin interfaz gr\u00e1fica, extrae su contenido e interact\u00faa con formularios.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "lightpanda",
+      "description": null,
+      "expected": {
+        "description": "Navega p\u00e1ginas sin interfaz gr\u00e1fica, extrae su contenido e interact\u00faa con formularios.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "lightpanda",
+      "description": "",
+      "expected": {
+        "description": "Navega p\u00e1ginas sin interfaz gr\u00e1fica, extrae su contenido e interact\u00faa con formularios.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "lightpanda",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Navega p\u00e1ginas sin interfaz gr\u00e1fica, extrae su contenido e interact\u00faa con formularios.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "lightpanda",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "lightpanda",
+      "description": 42,
+      "expected": {
+        "description": "Navega p\u00e1ginas sin interfaz gr\u00e1fica, extrae su contenido e interact\u00faa con formularios.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "lightpanda",
+      "description": false,
+      "expected": {
+        "description": "Navega p\u00e1ginas sin interfaz gr\u00e1fica, extrae su contenido e interact\u00faa con formularios.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mcp-image",
+      "description": null,
+      "expected": {
+        "description": "Genera im\u00e1genes a partir de texto o edita una imagen existente y guarda el resultado.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mcp-image",
+      "description": "",
+      "expected": {
+        "description": "Genera im\u00e1genes a partir de texto o edita una imagen existente y guarda el resultado.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mcp-image",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Genera im\u00e1genes a partir de texto o edita una imagen existente y guarda el resultado.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mcp-image",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "mcp-image",
+      "description": 42,
+      "expected": {
+        "description": "Genera im\u00e1genes a partir de texto o edita una imagen existente y guarda el resultado.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mcp-image",
+      "description": false,
+      "expected": {
+        "description": "Genera im\u00e1genes a partir de texto o edita una imagen existente y guarda el resultado.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "MCP-IMAGE",
+      "description": null,
+      "expected": {
+        "description": "Genera im\u00e1genes a partir de texto o edita una imagen existente y guarda el resultado.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "MCP-IMAGE",
+      "description": "",
+      "expected": {
+        "description": "Genera im\u00e1genes a partir de texto o edita una imagen existente y guarda el resultado.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "MCP-IMAGE",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Genera im\u00e1genes a partir de texto o edita una imagen existente y guarda el resultado.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "MCP-IMAGE",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "MCP-IMAGE",
+      "description": 42,
+      "expected": {
+        "description": "Genera im\u00e1genes a partir de texto o edita una imagen existente y guarda el resultado.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "MCP-IMAGE",
+      "description": false,
+      "expected": {
+        "description": "Genera im\u00e1genes a partir de texto o edita una imagen existente y guarda el resultado.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mcp_image",
+      "description": null,
+      "expected": {
+        "description": "Genera im\u00e1genes a partir de texto o edita una imagen existente y guarda el resultado.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mcp_image",
+      "description": "",
+      "expected": {
+        "description": "Genera im\u00e1genes a partir de texto o edita una imagen existente y guarda el resultado.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mcp_image",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Genera im\u00e1genes a partir de texto o edita una imagen existente y guarda el resultado.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mcp_image",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "mcp_image",
+      "description": 42,
+      "expected": {
+        "description": "Genera im\u00e1genes a partir de texto o edita una imagen existente y guarda el resultado.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mcp_image",
+      "description": false,
+      "expected": {
+        "description": "Genera im\u00e1genes a partir de texto o edita una imagen existente y guarda el resultado.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mobbin",
+      "description": null,
+      "expected": {
+        "description": "Busca pantallas y flujos de productos reales como referencia para dise\u00f1ar interfaces.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mobbin",
+      "description": "",
+      "expected": {
+        "description": "Busca pantallas y flujos de productos reales como referencia para dise\u00f1ar interfaces.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mobbin",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca pantallas y flujos de productos reales como referencia para dise\u00f1ar interfaces.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mobbin",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "mobbin",
+      "description": 42,
+      "expected": {
+        "description": "Busca pantallas y flujos de productos reales como referencia para dise\u00f1ar interfaces.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mobbin",
+      "description": false,
+      "expected": {
+        "description": "Busca pantallas y flujos de productos reales como referencia para dise\u00f1ar interfaces.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "MOBBIN",
+      "description": null,
+      "expected": {
+        "description": "Busca pantallas y flujos de productos reales como referencia para dise\u00f1ar interfaces.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "MOBBIN",
+      "description": "",
+      "expected": {
+        "description": "Busca pantallas y flujos de productos reales como referencia para dise\u00f1ar interfaces.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "MOBBIN",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca pantallas y flujos de productos reales como referencia para dise\u00f1ar interfaces.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "MOBBIN",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "MOBBIN",
+      "description": 42,
+      "expected": {
+        "description": "Busca pantallas y flujos de productos reales como referencia para dise\u00f1ar interfaces.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "MOBBIN",
+      "description": false,
+      "expected": {
+        "description": "Busca pantallas y flujos de productos reales como referencia para dise\u00f1ar interfaces.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mobbin",
+      "description": null,
+      "expected": {
+        "description": "Busca pantallas y flujos de productos reales como referencia para dise\u00f1ar interfaces.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mobbin",
+      "description": "",
+      "expected": {
+        "description": "Busca pantallas y flujos de productos reales como referencia para dise\u00f1ar interfaces.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mobbin",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca pantallas y flujos de productos reales como referencia para dise\u00f1ar interfaces.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mobbin",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "mobbin",
+      "description": 42,
+      "expected": {
+        "description": "Busca pantallas y flujos de productos reales como referencia para dise\u00f1ar interfaces.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "mobbin",
+      "description": false,
+      "expected": {
+        "description": "Busca pantallas y flujos de productos reales como referencia para dise\u00f1ar interfaces.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "moneyhacktracker",
+      "description": null,
+      "expected": {
+        "description": "Busca hackathones y bounties de Web3 e IA y compara las oportunidades encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "moneyhacktracker",
+      "description": "",
+      "expected": {
+        "description": "Busca hackathones y bounties de Web3 e IA y compara las oportunidades encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "moneyhacktracker",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca hackathones y bounties de Web3 e IA y compara las oportunidades encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "moneyhacktracker",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "moneyhacktracker",
+      "description": 42,
+      "expected": {
+        "description": "Busca hackathones y bounties de Web3 e IA y compara las oportunidades encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "moneyhacktracker",
+      "description": false,
+      "expected": {
+        "description": "Busca hackathones y bounties de Web3 e IA y compara las oportunidades encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "MONEYHACKTRACKER",
+      "description": null,
+      "expected": {
+        "description": "Busca hackathones y bounties de Web3 e IA y compara las oportunidades encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "MONEYHACKTRACKER",
+      "description": "",
+      "expected": {
+        "description": "Busca hackathones y bounties de Web3 e IA y compara las oportunidades encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "MONEYHACKTRACKER",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca hackathones y bounties de Web3 e IA y compara las oportunidades encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "MONEYHACKTRACKER",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "MONEYHACKTRACKER",
+      "description": 42,
+      "expected": {
+        "description": "Busca hackathones y bounties de Web3 e IA y compara las oportunidades encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "MONEYHACKTRACKER",
+      "description": false,
+      "expected": {
+        "description": "Busca hackathones y bounties de Web3 e IA y compara las oportunidades encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "moneyhacktracker",
+      "description": null,
+      "expected": {
+        "description": "Busca hackathones y bounties de Web3 e IA y compara las oportunidades encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "moneyhacktracker",
+      "description": "",
+      "expected": {
+        "description": "Busca hackathones y bounties de Web3 e IA y compara las oportunidades encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "moneyhacktracker",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca hackathones y bounties de Web3 e IA y compara las oportunidades encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "moneyhacktracker",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "moneyhacktracker",
+      "description": 42,
+      "expected": {
+        "description": "Busca hackathones y bounties de Web3 e IA y compara las oportunidades encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "moneyhacktracker",
+      "description": false,
+      "expected": {
+        "description": "Busca hackathones y bounties de Web3 e IA y compara las oportunidades encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "near-mcp",
+      "description": null,
+      "expected": {
+        "description": "Consulta cuentas y saldos de NEAR e interact\u00faa con transacciones y contratos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "near-mcp",
+      "description": "",
+      "expected": {
+        "description": "Consulta cuentas y saldos de NEAR e interact\u00faa con transacciones y contratos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "near-mcp",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta cuentas y saldos de NEAR e interact\u00faa con transacciones y contratos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "near-mcp",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "near-mcp",
+      "description": 42,
+      "expected": {
+        "description": "Consulta cuentas y saldos de NEAR e interact\u00faa con transacciones y contratos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "near-mcp",
+      "description": false,
+      "expected": {
+        "description": "Consulta cuentas y saldos de NEAR e interact\u00faa con transacciones y contratos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "NEAR-MCP",
+      "description": null,
+      "expected": {
+        "description": "Consulta cuentas y saldos de NEAR e interact\u00faa con transacciones y contratos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "NEAR-MCP",
+      "description": "",
+      "expected": {
+        "description": "Consulta cuentas y saldos de NEAR e interact\u00faa con transacciones y contratos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "NEAR-MCP",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta cuentas y saldos de NEAR e interact\u00faa con transacciones y contratos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "NEAR-MCP",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "NEAR-MCP",
+      "description": 42,
+      "expected": {
+        "description": "Consulta cuentas y saldos de NEAR e interact\u00faa con transacciones y contratos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "NEAR-MCP",
+      "description": false,
+      "expected": {
+        "description": "Consulta cuentas y saldos de NEAR e interact\u00faa con transacciones y contratos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "near_mcp",
+      "description": null,
+      "expected": {
+        "description": "Consulta cuentas y saldos de NEAR e interact\u00faa con transacciones y contratos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "near_mcp",
+      "description": "",
+      "expected": {
+        "description": "Consulta cuentas y saldos de NEAR e interact\u00faa con transacciones y contratos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "near_mcp",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta cuentas y saldos de NEAR e interact\u00faa con transacciones y contratos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "near_mcp",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "near_mcp",
+      "description": 42,
+      "expected": {
+        "description": "Consulta cuentas y saldos de NEAR e interact\u00faa con transacciones y contratos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "near_mcp",
+      "description": false,
+      "expected": {
+        "description": "Consulta cuentas y saldos de NEAR e interact\u00faa con transacciones y contratos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "node-repl",
+      "description": null,
+      "expected": {
+        "description": "Ejecuta JavaScript en una sesi\u00f3n persistente y permite reutilizar variables y m\u00f3dulos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "node-repl",
+      "description": "",
+      "expected": {
+        "description": "Ejecuta JavaScript en una sesi\u00f3n persistente y permite reutilizar variables y m\u00f3dulos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "node-repl",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Ejecuta JavaScript en una sesi\u00f3n persistente y permite reutilizar variables y m\u00f3dulos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "node-repl",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "node-repl",
+      "description": 42,
+      "expected": {
+        "description": "Ejecuta JavaScript en una sesi\u00f3n persistente y permite reutilizar variables y m\u00f3dulos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "node-repl",
+      "description": false,
+      "expected": {
+        "description": "Ejecuta JavaScript en una sesi\u00f3n persistente y permite reutilizar variables y m\u00f3dulos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "NODE-REPL",
+      "description": null,
+      "expected": {
+        "description": "Ejecuta JavaScript en una sesi\u00f3n persistente y permite reutilizar variables y m\u00f3dulos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "NODE-REPL",
+      "description": "",
+      "expected": {
+        "description": "Ejecuta JavaScript en una sesi\u00f3n persistente y permite reutilizar variables y m\u00f3dulos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "NODE-REPL",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Ejecuta JavaScript en una sesi\u00f3n persistente y permite reutilizar variables y m\u00f3dulos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "NODE-REPL",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "NODE-REPL",
+      "description": 42,
+      "expected": {
+        "description": "Ejecuta JavaScript en una sesi\u00f3n persistente y permite reutilizar variables y m\u00f3dulos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "NODE-REPL",
+      "description": false,
+      "expected": {
+        "description": "Ejecuta JavaScript en una sesi\u00f3n persistente y permite reutilizar variables y m\u00f3dulos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "node_repl",
+      "description": null,
+      "expected": {
+        "description": "Ejecuta JavaScript en una sesi\u00f3n persistente y permite reutilizar variables y m\u00f3dulos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "node_repl",
+      "description": "",
+      "expected": {
+        "description": "Ejecuta JavaScript en una sesi\u00f3n persistente y permite reutilizar variables y m\u00f3dulos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "node_repl",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Ejecuta JavaScript en una sesi\u00f3n persistente y permite reutilizar variables y m\u00f3dulos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "node_repl",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "node_repl",
+      "description": 42,
+      "expected": {
+        "description": "Ejecuta JavaScript en una sesi\u00f3n persistente y permite reutilizar variables y m\u00f3dulos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "node_repl",
+      "description": false,
+      "expected": {
+        "description": "Ejecuta JavaScript en una sesi\u00f3n persistente y permite reutilizar variables y m\u00f3dulos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "obscura",
+      "description": null,
+      "expected": {
+        "description": "Navega e inspecciona p\u00e1ginas web y permite interactuar con elementos y cookies.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "obscura",
+      "description": "",
+      "expected": {
+        "description": "Navega e inspecciona p\u00e1ginas web y permite interactuar con elementos y cookies.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "obscura",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Navega e inspecciona p\u00e1ginas web y permite interactuar con elementos y cookies.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "obscura",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "obscura",
+      "description": 42,
+      "expected": {
+        "description": "Navega e inspecciona p\u00e1ginas web y permite interactuar con elementos y cookies.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "obscura",
+      "description": false,
+      "expected": {
+        "description": "Navega e inspecciona p\u00e1ginas web y permite interactuar con elementos y cookies.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "OBSCURA",
+      "description": null,
+      "expected": {
+        "description": "Navega e inspecciona p\u00e1ginas web y permite interactuar con elementos y cookies.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "OBSCURA",
+      "description": "",
+      "expected": {
+        "description": "Navega e inspecciona p\u00e1ginas web y permite interactuar con elementos y cookies.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "OBSCURA",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Navega e inspecciona p\u00e1ginas web y permite interactuar con elementos y cookies.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "OBSCURA",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "OBSCURA",
+      "description": 42,
+      "expected": {
+        "description": "Navega e inspecciona p\u00e1ginas web y permite interactuar con elementos y cookies.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "OBSCURA",
+      "description": false,
+      "expected": {
+        "description": "Navega e inspecciona p\u00e1ginas web y permite interactuar con elementos y cookies.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "obscura",
+      "description": null,
+      "expected": {
+        "description": "Navega e inspecciona p\u00e1ginas web y permite interactuar con elementos y cookies.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "obscura",
+      "description": "",
+      "expected": {
+        "description": "Navega e inspecciona p\u00e1ginas web y permite interactuar con elementos y cookies.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "obscura",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Navega e inspecciona p\u00e1ginas web y permite interactuar con elementos y cookies.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "obscura",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "obscura",
+      "description": 42,
+      "expected": {
+        "description": "Navega e inspecciona p\u00e1ginas web y permite interactuar con elementos y cookies.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "obscura",
+      "description": false,
+      "expected": {
+        "description": "Navega e inspecciona p\u00e1ginas web y permite interactuar con elementos y cookies.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "openaideveloperdocs",
+      "description": null,
+      "expected": {
+        "description": "Busca documentaci\u00f3n oficial de OpenAI y consulta referencias de sus APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "openaideveloperdocs",
+      "description": "",
+      "expected": {
+        "description": "Busca documentaci\u00f3n oficial de OpenAI y consulta referencias de sus APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "openaideveloperdocs",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca documentaci\u00f3n oficial de OpenAI y consulta referencias de sus APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "openaideveloperdocs",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "openaideveloperdocs",
+      "description": 42,
+      "expected": {
+        "description": "Busca documentaci\u00f3n oficial de OpenAI y consulta referencias de sus APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "openaideveloperdocs",
+      "description": false,
+      "expected": {
+        "description": "Busca documentaci\u00f3n oficial de OpenAI y consulta referencias de sus APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "OPENAIDEVELOPERDOCS",
+      "description": null,
+      "expected": {
+        "description": "Busca documentaci\u00f3n oficial de OpenAI y consulta referencias de sus APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "OPENAIDEVELOPERDOCS",
+      "description": "",
+      "expected": {
+        "description": "Busca documentaci\u00f3n oficial de OpenAI y consulta referencias de sus APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "OPENAIDEVELOPERDOCS",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca documentaci\u00f3n oficial de OpenAI y consulta referencias de sus APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "OPENAIDEVELOPERDOCS",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "OPENAIDEVELOPERDOCS",
+      "description": 42,
+      "expected": {
+        "description": "Busca documentaci\u00f3n oficial de OpenAI y consulta referencias de sus APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "OPENAIDEVELOPERDOCS",
+      "description": false,
+      "expected": {
+        "description": "Busca documentaci\u00f3n oficial de OpenAI y consulta referencias de sus APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "openaideveloperdocs",
+      "description": null,
+      "expected": {
+        "description": "Busca documentaci\u00f3n oficial de OpenAI y consulta referencias de sus APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "openaideveloperdocs",
+      "description": "",
+      "expected": {
+        "description": "Busca documentaci\u00f3n oficial de OpenAI y consulta referencias de sus APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "openaideveloperdocs",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca documentaci\u00f3n oficial de OpenAI y consulta referencias de sus APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "openaideveloperdocs",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "openaideveloperdocs",
+      "description": 42,
+      "expected": {
+        "description": "Busca documentaci\u00f3n oficial de OpenAI y consulta referencias de sus APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "openaideveloperdocs",
+      "description": false,
+      "expected": {
+        "description": "Busca documentaci\u00f3n oficial de OpenAI y consulta referencias de sus APIs.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "playwright",
+      "description": null,
+      "expected": {
+        "description": "Automatiza el navegador: abre p\u00e1ginas, interact\u00faa con elementos y consulta la consola.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "playwright",
+      "description": "",
+      "expected": {
+        "description": "Automatiza el navegador: abre p\u00e1ginas, interact\u00faa con elementos y consulta la consola.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "playwright",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Automatiza el navegador: abre p\u00e1ginas, interact\u00faa con elementos y consulta la consola.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "playwright",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "playwright",
+      "description": 42,
+      "expected": {
+        "description": "Automatiza el navegador: abre p\u00e1ginas, interact\u00faa con elementos y consulta la consola.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "playwright",
+      "description": false,
+      "expected": {
+        "description": "Automatiza el navegador: abre p\u00e1ginas, interact\u00faa con elementos y consulta la consola.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "PLAYWRIGHT",
+      "description": null,
+      "expected": {
+        "description": "Automatiza el navegador: abre p\u00e1ginas, interact\u00faa con elementos y consulta la consola.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "PLAYWRIGHT",
+      "description": "",
+      "expected": {
+        "description": "Automatiza el navegador: abre p\u00e1ginas, interact\u00faa con elementos y consulta la consola.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "PLAYWRIGHT",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Automatiza el navegador: abre p\u00e1ginas, interact\u00faa con elementos y consulta la consola.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "PLAYWRIGHT",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "PLAYWRIGHT",
+      "description": 42,
+      "expected": {
+        "description": "Automatiza el navegador: abre p\u00e1ginas, interact\u00faa con elementos y consulta la consola.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "PLAYWRIGHT",
+      "description": false,
+      "expected": {
+        "description": "Automatiza el navegador: abre p\u00e1ginas, interact\u00faa con elementos y consulta la consola.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "playwright",
+      "description": null,
+      "expected": {
+        "description": "Automatiza el navegador: abre p\u00e1ginas, interact\u00faa con elementos y consulta la consola.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "playwright",
+      "description": "",
+      "expected": {
+        "description": "Automatiza el navegador: abre p\u00e1ginas, interact\u00faa con elementos y consulta la consola.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "playwright",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Automatiza el navegador: abre p\u00e1ginas, interact\u00faa con elementos y consulta la consola.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "playwright",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "playwright",
+      "description": 42,
+      "expected": {
+        "description": "Automatiza el navegador: abre p\u00e1ginas, interact\u00faa con elementos y consulta la consola.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "playwright",
+      "description": false,
+      "expected": {
+        "description": "Automatiza el navegador: abre p\u00e1ginas, interact\u00faa con elementos y consulta la consola.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "qcdr-search",
+      "description": null,
+      "expected": {
+        "description": "Busca en la web mediante QCDR y extrae texto de las p\u00e1ginas encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "qcdr-search",
+      "description": "",
+      "expected": {
+        "description": "Busca en la web mediante QCDR y extrae texto de las p\u00e1ginas encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "qcdr-search",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca en la web mediante QCDR y extrae texto de las p\u00e1ginas encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "qcdr-search",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "qcdr-search",
+      "description": 42,
+      "expected": {
+        "description": "Busca en la web mediante QCDR y extrae texto de las p\u00e1ginas encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "qcdr-search",
+      "description": false,
+      "expected": {
+        "description": "Busca en la web mediante QCDR y extrae texto de las p\u00e1ginas encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "QCDR-SEARCH",
+      "description": null,
+      "expected": {
+        "description": "Busca en la web mediante QCDR y extrae texto de las p\u00e1ginas encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "QCDR-SEARCH",
+      "description": "",
+      "expected": {
+        "description": "Busca en la web mediante QCDR y extrae texto de las p\u00e1ginas encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "QCDR-SEARCH",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca en la web mediante QCDR y extrae texto de las p\u00e1ginas encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "QCDR-SEARCH",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "QCDR-SEARCH",
+      "description": 42,
+      "expected": {
+        "description": "Busca en la web mediante QCDR y extrae texto de las p\u00e1ginas encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "QCDR-SEARCH",
+      "description": false,
+      "expected": {
+        "description": "Busca en la web mediante QCDR y extrae texto de las p\u00e1ginas encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "qcdr_search",
+      "description": null,
+      "expected": {
+        "description": "Busca en la web mediante QCDR y extrae texto de las p\u00e1ginas encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "qcdr_search",
+      "description": "",
+      "expected": {
+        "description": "Busca en la web mediante QCDR y extrae texto de las p\u00e1ginas encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "qcdr_search",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca en la web mediante QCDR y extrae texto de las p\u00e1ginas encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "qcdr_search",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "qcdr_search",
+      "description": 42,
+      "expected": {
+        "description": "Busca en la web mediante QCDR y extrae texto de las p\u00e1ginas encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "qcdr_search",
+      "description": false,
+      "expected": {
+        "description": "Busca en la web mediante QCDR y extrae texto de las p\u00e1ginas encontradas.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "radek",
+      "description": null,
+      "expected": {
+        "description": "Lista y descarga documentos de RADEK en SharePoint usando la sesi\u00f3n autorizada.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "radek",
+      "description": "",
+      "expected": {
+        "description": "Lista y descarga documentos de RADEK en SharePoint usando la sesi\u00f3n autorizada.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "radek",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Lista y descarga documentos de RADEK en SharePoint usando la sesi\u00f3n autorizada.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "radek",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "radek",
+      "description": 42,
+      "expected": {
+        "description": "Lista y descarga documentos de RADEK en SharePoint usando la sesi\u00f3n autorizada.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "radek",
+      "description": false,
+      "expected": {
+        "description": "Lista y descarga documentos de RADEK en SharePoint usando la sesi\u00f3n autorizada.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "RADEK",
+      "description": null,
+      "expected": {
+        "description": "Lista y descarga documentos de RADEK en SharePoint usando la sesi\u00f3n autorizada.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "RADEK",
+      "description": "",
+      "expected": {
+        "description": "Lista y descarga documentos de RADEK en SharePoint usando la sesi\u00f3n autorizada.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "RADEK",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Lista y descarga documentos de RADEK en SharePoint usando la sesi\u00f3n autorizada.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "RADEK",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "RADEK",
+      "description": 42,
+      "expected": {
+        "description": "Lista y descarga documentos de RADEK en SharePoint usando la sesi\u00f3n autorizada.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "RADEK",
+      "description": false,
+      "expected": {
+        "description": "Lista y descarga documentos de RADEK en SharePoint usando la sesi\u00f3n autorizada.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "radek",
+      "description": null,
+      "expected": {
+        "description": "Lista y descarga documentos de RADEK en SharePoint usando la sesi\u00f3n autorizada.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "radek",
+      "description": "",
+      "expected": {
+        "description": "Lista y descarga documentos de RADEK en SharePoint usando la sesi\u00f3n autorizada.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "radek",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Lista y descarga documentos de RADEK en SharePoint usando la sesi\u00f3n autorizada.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "radek",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "radek",
+      "description": 42,
+      "expected": {
+        "description": "Lista y descarga documentos de RADEK en SharePoint usando la sesi\u00f3n autorizada.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "radek",
+      "description": false,
+      "expected": {
+        "description": "Lista y descarga documentos de RADEK en SharePoint usando la sesi\u00f3n autorizada.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "screenwright",
+      "description": null,
+      "expected": {
+        "description": "Graba recorridos de navegador o Android y genera videos con subt\u00edtulos sincronizados.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "screenwright",
+      "description": "",
+      "expected": {
+        "description": "Graba recorridos de navegador o Android y genera videos con subt\u00edtulos sincronizados.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "screenwright",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Graba recorridos de navegador o Android y genera videos con subt\u00edtulos sincronizados.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "screenwright",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "screenwright",
+      "description": 42,
+      "expected": {
+        "description": "Graba recorridos de navegador o Android y genera videos con subt\u00edtulos sincronizados.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "screenwright",
+      "description": false,
+      "expected": {
+        "description": "Graba recorridos de navegador o Android y genera videos con subt\u00edtulos sincronizados.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SCREENWRIGHT",
+      "description": null,
+      "expected": {
+        "description": "Graba recorridos de navegador o Android y genera videos con subt\u00edtulos sincronizados.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SCREENWRIGHT",
+      "description": "",
+      "expected": {
+        "description": "Graba recorridos de navegador o Android y genera videos con subt\u00edtulos sincronizados.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SCREENWRIGHT",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Graba recorridos de navegador o Android y genera videos con subt\u00edtulos sincronizados.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SCREENWRIGHT",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "SCREENWRIGHT",
+      "description": 42,
+      "expected": {
+        "description": "Graba recorridos de navegador o Android y genera videos con subt\u00edtulos sincronizados.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SCREENWRIGHT",
+      "description": false,
+      "expected": {
+        "description": "Graba recorridos de navegador o Android y genera videos con subt\u00edtulos sincronizados.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "screenwright",
+      "description": null,
+      "expected": {
+        "description": "Graba recorridos de navegador o Android y genera videos con subt\u00edtulos sincronizados.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "screenwright",
+      "description": "",
+      "expected": {
+        "description": "Graba recorridos de navegador o Android y genera videos con subt\u00edtulos sincronizados.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "screenwright",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Graba recorridos de navegador o Android y genera videos con subt\u00edtulos sincronizados.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "screenwright",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "screenwright",
+      "description": 42,
+      "expected": {
+        "description": "Graba recorridos de navegador o Android y genera videos con subt\u00edtulos sincronizados.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "screenwright",
+      "description": false,
+      "expected": {
+        "description": "Graba recorridos de navegador o Android y genera videos con subt\u00edtulos sincronizados.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "slack",
+      "description": null,
+      "expected": {
+        "description": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "slack",
+      "description": "",
+      "expected": {
+        "description": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "slack",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "slack",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "slack",
+      "description": 42,
+      "expected": {
+        "description": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "slack",
+      "description": false,
+      "expected": {
+        "description": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SLACK",
+      "description": null,
+      "expected": {
+        "description": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SLACK",
+      "description": "",
+      "expected": {
+        "description": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SLACK",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SLACK",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "SLACK",
+      "description": 42,
+      "expected": {
+        "description": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SLACK",
+      "description": false,
+      "expected": {
+        "description": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "slack",
+      "description": null,
+      "expected": {
+        "description": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "slack",
+      "description": "",
+      "expected": {
+        "description": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "slack",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "slack",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "slack",
+      "description": 42,
+      "expected": {
+        "description": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "slack",
+      "description": false,
+      "expected": {
+        "description": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "solana-dev",
+      "description": null,
+      "expected": {
+        "description": "Busca documentaci\u00f3n de Solana y consulta ayuda t\u00e9cnica para desarrollar en su ecosistema.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "solana-dev",
+      "description": "",
+      "expected": {
+        "description": "Busca documentaci\u00f3n de Solana y consulta ayuda t\u00e9cnica para desarrollar en su ecosistema.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "solana-dev",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca documentaci\u00f3n de Solana y consulta ayuda t\u00e9cnica para desarrollar en su ecosistema.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "solana-dev",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "solana-dev",
+      "description": 42,
+      "expected": {
+        "description": "Busca documentaci\u00f3n de Solana y consulta ayuda t\u00e9cnica para desarrollar en su ecosistema.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "solana-dev",
+      "description": false,
+      "expected": {
+        "description": "Busca documentaci\u00f3n de Solana y consulta ayuda t\u00e9cnica para desarrollar en su ecosistema.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SOLANA-DEV",
+      "description": null,
+      "expected": {
+        "description": "Busca documentaci\u00f3n de Solana y consulta ayuda t\u00e9cnica para desarrollar en su ecosistema.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SOLANA-DEV",
+      "description": "",
+      "expected": {
+        "description": "Busca documentaci\u00f3n de Solana y consulta ayuda t\u00e9cnica para desarrollar en su ecosistema.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SOLANA-DEV",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca documentaci\u00f3n de Solana y consulta ayuda t\u00e9cnica para desarrollar en su ecosistema.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SOLANA-DEV",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "SOLANA-DEV",
+      "description": 42,
+      "expected": {
+        "description": "Busca documentaci\u00f3n de Solana y consulta ayuda t\u00e9cnica para desarrollar en su ecosistema.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SOLANA-DEV",
+      "description": false,
+      "expected": {
+        "description": "Busca documentaci\u00f3n de Solana y consulta ayuda t\u00e9cnica para desarrollar en su ecosistema.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "solana_dev",
+      "description": null,
+      "expected": {
+        "description": "Busca documentaci\u00f3n de Solana y consulta ayuda t\u00e9cnica para desarrollar en su ecosistema.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "solana_dev",
+      "description": "",
+      "expected": {
+        "description": "Busca documentaci\u00f3n de Solana y consulta ayuda t\u00e9cnica para desarrollar en su ecosistema.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "solana_dev",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Busca documentaci\u00f3n de Solana y consulta ayuda t\u00e9cnica para desarrollar en su ecosistema.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "solana_dev",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "solana_dev",
+      "description": 42,
+      "expected": {
+        "description": "Busca documentaci\u00f3n de Solana y consulta ayuda t\u00e9cnica para desarrollar en su ecosistema.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "solana_dev",
+      "description": false,
+      "expected": {
+        "description": "Busca documentaci\u00f3n de Solana y consulta ayuda t\u00e9cnica para desarrollar en su ecosistema.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "supabase",
+      "description": null,
+      "expected": {
+        "description": "Consulta bases de datos Supabase mediante SQL, genera tipos y revisa diagn\u00f3sticos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "supabase",
+      "description": "",
+      "expected": {
+        "description": "Consulta bases de datos Supabase mediante SQL, genera tipos y revisa diagn\u00f3sticos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "supabase",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta bases de datos Supabase mediante SQL, genera tipos y revisa diagn\u00f3sticos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "supabase",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "supabase",
+      "description": 42,
+      "expected": {
+        "description": "Consulta bases de datos Supabase mediante SQL, genera tipos y revisa diagn\u00f3sticos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "supabase",
+      "description": false,
+      "expected": {
+        "description": "Consulta bases de datos Supabase mediante SQL, genera tipos y revisa diagn\u00f3sticos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SUPABASE",
+      "description": null,
+      "expected": {
+        "description": "Consulta bases de datos Supabase mediante SQL, genera tipos y revisa diagn\u00f3sticos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SUPABASE",
+      "description": "",
+      "expected": {
+        "description": "Consulta bases de datos Supabase mediante SQL, genera tipos y revisa diagn\u00f3sticos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SUPABASE",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta bases de datos Supabase mediante SQL, genera tipos y revisa diagn\u00f3sticos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SUPABASE",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "SUPABASE",
+      "description": 42,
+      "expected": {
+        "description": "Consulta bases de datos Supabase mediante SQL, genera tipos y revisa diagn\u00f3sticos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "SUPABASE",
+      "description": false,
+      "expected": {
+        "description": "Consulta bases de datos Supabase mediante SQL, genera tipos y revisa diagn\u00f3sticos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "supabase",
+      "description": null,
+      "expected": {
+        "description": "Consulta bases de datos Supabase mediante SQL, genera tipos y revisa diagn\u00f3sticos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "supabase",
+      "description": "",
+      "expected": {
+        "description": "Consulta bases de datos Supabase mediante SQL, genera tipos y revisa diagn\u00f3sticos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "supabase",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta bases de datos Supabase mediante SQL, genera tipos y revisa diagn\u00f3sticos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "supabase",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "supabase",
+      "description": 42,
+      "expected": {
+        "description": "Consulta bases de datos Supabase mediante SQL, genera tipos y revisa diagn\u00f3sticos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "supabase",
+      "description": false,
+      "expected": {
+        "description": "Consulta bases de datos Supabase mediante SQL, genera tipos y revisa diagn\u00f3sticos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "telegram",
+      "description": null,
+      "expected": {
+        "description": "Consulta conversaciones y adjuntos de Telegram y permite enviar o gestionar mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "telegram",
+      "description": "",
+      "expected": {
+        "description": "Consulta conversaciones y adjuntos de Telegram y permite enviar o gestionar mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "telegram",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta conversaciones y adjuntos de Telegram y permite enviar o gestionar mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "telegram",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "telegram",
+      "description": 42,
+      "expected": {
+        "description": "Consulta conversaciones y adjuntos de Telegram y permite enviar o gestionar mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "telegram",
+      "description": false,
+      "expected": {
+        "description": "Consulta conversaciones y adjuntos de Telegram y permite enviar o gestionar mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "TELEGRAM",
+      "description": null,
+      "expected": {
+        "description": "Consulta conversaciones y adjuntos de Telegram y permite enviar o gestionar mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "TELEGRAM",
+      "description": "",
+      "expected": {
+        "description": "Consulta conversaciones y adjuntos de Telegram y permite enviar o gestionar mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "TELEGRAM",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta conversaciones y adjuntos de Telegram y permite enviar o gestionar mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "TELEGRAM",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "TELEGRAM",
+      "description": 42,
+      "expected": {
+        "description": "Consulta conversaciones y adjuntos de Telegram y permite enviar o gestionar mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "TELEGRAM",
+      "description": false,
+      "expected": {
+        "description": "Consulta conversaciones y adjuntos de Telegram y permite enviar o gestionar mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "telegram",
+      "description": null,
+      "expected": {
+        "description": "Consulta conversaciones y adjuntos de Telegram y permite enviar o gestionar mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "telegram",
+      "description": "",
+      "expected": {
+        "description": "Consulta conversaciones y adjuntos de Telegram y permite enviar o gestionar mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "telegram",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta conversaciones y adjuntos de Telegram y permite enviar o gestionar mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "telegram",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "telegram",
+      "description": 42,
+      "expected": {
+        "description": "Consulta conversaciones y adjuntos de Telegram y permite enviar o gestionar mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "telegram",
+      "description": false,
+      "expected": {
+        "description": "Consulta conversaciones y adjuntos de Telegram y permite enviar o gestionar mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "unreal-mcp",
+      "description": null,
+      "expected": {
+        "description": "Controla Unreal Editor: actores, Blueprints, materiales, secuencias y otros recursos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "unreal-mcp",
+      "description": "",
+      "expected": {
+        "description": "Controla Unreal Editor: actores, Blueprints, materiales, secuencias y otros recursos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "unreal-mcp",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Controla Unreal Editor: actores, Blueprints, materiales, secuencias y otros recursos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "unreal-mcp",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "unreal-mcp",
+      "description": 42,
+      "expected": {
+        "description": "Controla Unreal Editor: actores, Blueprints, materiales, secuencias y otros recursos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "unreal-mcp",
+      "description": false,
+      "expected": {
+        "description": "Controla Unreal Editor: actores, Blueprints, materiales, secuencias y otros recursos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "UNREAL-MCP",
+      "description": null,
+      "expected": {
+        "description": "Controla Unreal Editor: actores, Blueprints, materiales, secuencias y otros recursos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "UNREAL-MCP",
+      "description": "",
+      "expected": {
+        "description": "Controla Unreal Editor: actores, Blueprints, materiales, secuencias y otros recursos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "UNREAL-MCP",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Controla Unreal Editor: actores, Blueprints, materiales, secuencias y otros recursos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "UNREAL-MCP",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "UNREAL-MCP",
+      "description": 42,
+      "expected": {
+        "description": "Controla Unreal Editor: actores, Blueprints, materiales, secuencias y otros recursos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "UNREAL-MCP",
+      "description": false,
+      "expected": {
+        "description": "Controla Unreal Editor: actores, Blueprints, materiales, secuencias y otros recursos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "unreal_mcp",
+      "description": null,
+      "expected": {
+        "description": "Controla Unreal Editor: actores, Blueprints, materiales, secuencias y otros recursos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "unreal_mcp",
+      "description": "",
+      "expected": {
+        "description": "Controla Unreal Editor: actores, Blueprints, materiales, secuencias y otros recursos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "unreal_mcp",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Controla Unreal Editor: actores, Blueprints, materiales, secuencias y otros recursos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "unreal_mcp",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "unreal_mcp",
+      "description": 42,
+      "expected": {
+        "description": "Controla Unreal Editor: actores, Blueprints, materiales, secuencias y otros recursos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "unreal_mcp",
+      "description": false,
+      "expected": {
+        "description": "Controla Unreal Editor: actores, Blueprints, materiales, secuencias y otros recursos del proyecto.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "whatsapp",
+      "description": null,
+      "expected": {
+        "description": "Consulta conversaciones de WhatsApp y gestiona mensajes, contactos y grupos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "whatsapp",
+      "description": "",
+      "expected": {
+        "description": "Consulta conversaciones de WhatsApp y gestiona mensajes, contactos y grupos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "whatsapp",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta conversaciones de WhatsApp y gestiona mensajes, contactos y grupos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "whatsapp",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "whatsapp",
+      "description": 42,
+      "expected": {
+        "description": "Consulta conversaciones de WhatsApp y gestiona mensajes, contactos y grupos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "whatsapp",
+      "description": false,
+      "expected": {
+        "description": "Consulta conversaciones de WhatsApp y gestiona mensajes, contactos y grupos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "WHATSAPP",
+      "description": null,
+      "expected": {
+        "description": "Consulta conversaciones de WhatsApp y gestiona mensajes, contactos y grupos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "WHATSAPP",
+      "description": "",
+      "expected": {
+        "description": "Consulta conversaciones de WhatsApp y gestiona mensajes, contactos y grupos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "WHATSAPP",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta conversaciones de WhatsApp y gestiona mensajes, contactos y grupos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "WHATSAPP",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "WHATSAPP",
+      "description": 42,
+      "expected": {
+        "description": "Consulta conversaciones de WhatsApp y gestiona mensajes, contactos y grupos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "WHATSAPP",
+      "description": false,
+      "expected": {
+        "description": "Consulta conversaciones de WhatsApp y gestiona mensajes, contactos y grupos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "whatsapp",
+      "description": null,
+      "expected": {
+        "description": "Consulta conversaciones de WhatsApp y gestiona mensajes, contactos y grupos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "whatsapp",
+      "description": "",
+      "expected": {
+        "description": "Consulta conversaciones de WhatsApp y gestiona mensajes, contactos y grupos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "whatsapp",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Consulta conversaciones de WhatsApp y gestiona mensajes, contactos y grupos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "whatsapp",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "whatsapp",
+      "description": 42,
+      "expected": {
+        "description": "Consulta conversaciones de WhatsApp y gestiona mensajes, contactos y grupos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "whatsapp",
+      "description": false,
+      "expected": {
+        "description": "Consulta conversaciones de WhatsApp y gestiona mensajes, contactos y grupos.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x-playwright",
+      "description": null,
+      "expected": {
+        "description": "Abre X en el navegador, lee la p\u00e1gina y prepara borradores de publicaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x-playwright",
+      "description": "",
+      "expected": {
+        "description": "Abre X en el navegador, lee la p\u00e1gina y prepara borradores de publicaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x-playwright",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Abre X en el navegador, lee la p\u00e1gina y prepara borradores de publicaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x-playwright",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "x-playwright",
+      "description": 42,
+      "expected": {
+        "description": "Abre X en el navegador, lee la p\u00e1gina y prepara borradores de publicaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x-playwright",
+      "description": false,
+      "expected": {
+        "description": "Abre X en el navegador, lee la p\u00e1gina y prepara borradores de publicaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "X-PLAYWRIGHT",
+      "description": null,
+      "expected": {
+        "description": "Abre X en el navegador, lee la p\u00e1gina y prepara borradores de publicaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "X-PLAYWRIGHT",
+      "description": "",
+      "expected": {
+        "description": "Abre X en el navegador, lee la p\u00e1gina y prepara borradores de publicaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "X-PLAYWRIGHT",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Abre X en el navegador, lee la p\u00e1gina y prepara borradores de publicaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "X-PLAYWRIGHT",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "X-PLAYWRIGHT",
+      "description": 42,
+      "expected": {
+        "description": "Abre X en el navegador, lee la p\u00e1gina y prepara borradores de publicaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "X-PLAYWRIGHT",
+      "description": false,
+      "expected": {
+        "description": "Abre X en el navegador, lee la p\u00e1gina y prepara borradores de publicaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x_playwright",
+      "description": null,
+      "expected": {
+        "description": "Abre X en el navegador, lee la p\u00e1gina y prepara borradores de publicaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x_playwright",
+      "description": "",
+      "expected": {
+        "description": "Abre X en el navegador, lee la p\u00e1gina y prepara borradores de publicaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x_playwright",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Abre X en el navegador, lee la p\u00e1gina y prepara borradores de publicaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x_playwright",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "x_playwright",
+      "description": 42,
+      "expected": {
+        "description": "Abre X en el navegador, lee la p\u00e1gina y prepara borradores de publicaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x_playwright",
+      "description": false,
+      "expected": {
+        "description": "Abre X en el navegador, lee la p\u00e1gina y prepara borradores de publicaciones.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x-suite",
+      "description": null,
+      "expected": {
+        "description": "Conecta una cuenta de X y ofrece herramientas para trabajar con ella mediante su API.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x-suite",
+      "description": "",
+      "expected": {
+        "description": "Conecta una cuenta de X y ofrece herramientas para trabajar con ella mediante su API.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x-suite",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Conecta una cuenta de X y ofrece herramientas para trabajar con ella mediante su API.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x-suite",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "x-suite",
+      "description": 42,
+      "expected": {
+        "description": "Conecta una cuenta de X y ofrece herramientas para trabajar con ella mediante su API.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x-suite",
+      "description": false,
+      "expected": {
+        "description": "Conecta una cuenta de X y ofrece herramientas para trabajar con ella mediante su API.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "X-SUITE",
+      "description": null,
+      "expected": {
+        "description": "Conecta una cuenta de X y ofrece herramientas para trabajar con ella mediante su API.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "X-SUITE",
+      "description": "",
+      "expected": {
+        "description": "Conecta una cuenta de X y ofrece herramientas para trabajar con ella mediante su API.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "X-SUITE",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Conecta una cuenta de X y ofrece herramientas para trabajar con ella mediante su API.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "X-SUITE",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "X-SUITE",
+      "description": 42,
+      "expected": {
+        "description": "Conecta una cuenta de X y ofrece herramientas para trabajar con ella mediante su API.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "X-SUITE",
+      "description": false,
+      "expected": {
+        "description": "Conecta una cuenta de X y ofrece herramientas para trabajar con ella mediante su API.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x_suite",
+      "description": null,
+      "expected": {
+        "description": "Conecta una cuenta de X y ofrece herramientas para trabajar con ella mediante su API.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x_suite",
+      "description": "",
+      "expected": {
+        "description": "Conecta una cuenta de X y ofrece herramientas para trabajar con ella mediante su API.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x_suite",
+      "description": "\t\n\u0000\u007f\u0085",
+      "expected": {
+        "description": "Conecta una cuenta de X y ofrece herramientas para trabajar con ella mediante su API.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x_suite",
+      "description": " Configuraci\u00f3n\tpropia\u2028con \ud83e\udd80 ",
+      "expected": {
+        "description": "Configuraci\u00f3n propia con \ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "x_suite",
+      "description": 42,
+      "expected": {
+        "description": "Conecta una cuenta de X y ofrece herramientas para trabajar con ella mediante su API.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "x_suite",
+      "description": false,
+      "expected": {
+        "description": "Conecta una cuenta de X y ofrece herramientas para trabajar con ella mediante su API.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "atla\u00dfian",
+      "description": null,
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "atla\u017f\u017fian",
+      "description": null,
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "\u017flac\u212a",
+      "description": null,
+      "expected": {
+        "description": "Busca contenido de canales, env\u00eda mensajes y gestiona documentos canvas de Slack.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "gmail\ud83e\udd80",
+      "description": null,
+      "expected": {
+        "description": "",
+        "descriptionSource": "unavailable"
+      }
+    },
+    {
+      "name": " gmail ",
+      "description": null,
+      "expected": {
+        "description": "",
+        "descriptionSource": "unavailable"
+      }
+    },
+    {
+      "name": "unknown",
+      "description": null,
+      "expected": {
+        "description": "",
+        "descriptionSource": "unavailable"
+      }
+    },
+    {
+      "name": "\uff27\uff2d\uff21\uff29\uff2c",
+      "description": null,
+      "expected": {
+        "description": "",
+        "descriptionSource": "unavailable"
+      }
+    },
+    {
+      "name": "",
+      "description": null,
+      "expected": {
+        "description": "",
+        "descriptionSource": "unavailable"
+      }
+    },
+    {
+      "name": "atla\u1e9eian",
+      "description": null,
+      "expected": {
+        "description": "Busca y gestiona tareas de Jira, p\u00e1ginas de Confluence y componentes de Compass.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": "\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80",
+      "expected": {
+        "description": "\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80\ud83e\udd80",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": "                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                ",
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": "\u200b",
+      "expected": {
+        "description": "\u200b",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": "\u001c\u001d\u001e\u001f",
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\t\ud83e\udd80tail",
+      "expected": {
+        "description": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx ",
+        "descriptionSource": "configuration"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": {},
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    },
+    {
+      "name": "gmail",
+      "description": [],
+      "expected": {
+        "description": "Busca y lee correo de Gmail, descarga adjuntos y prepara o env\u00eda mensajes.",
+        "descriptionSource": "catalog"
+      }
+    }
+  ]
+}

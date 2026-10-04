@@ -1,0 +1,9 @@
+[package]
+name = "xtask"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+serde_json.workspace = true
+nix = { version = "0.31", features = ["signal", "process"] }
