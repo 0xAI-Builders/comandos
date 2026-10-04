@@ -11,7 +11,7 @@ servicios no se tocan; el único reinicio es el de `cc-dash.service`.
 |---|---|---|
 | Puerto 4777 | Python (`bin/cc-dash`) | Frente Rust (`comandos dash`), mismo puerto y misma puerta de seguridad |
 | Puerto 4781 | libre | Python heredado (`cc-dash-legacy.service`) |
-| Puerto 4782 | libre | solo la sombra del paso 2 |
+| Puerto 4782 | libre | solo la sombra del paso 1 |
 | `cc-dash.service` | sin cambios en el archivo: `ExecStart=%h/.local/bin/cc-dash 4777 --no-open` | igual; ahora ese comando es el frente |
 | `~/.local/bin/cc-dash` | symlink a `<repo>/bin/cc-dash` | symlink a `bin/comandos` (release activa) |
 | Binario `comandos` | `bin/comandos` | `bin/comandos` es symlink a `releases/<sha12>/comandos` |
@@ -81,36 +81,39 @@ tailscale serve status                          # anotar la salida para comparar
 ss -ltn 'sport = :4781 or sport = :4782'        # ambos libres
 ```
 
-### 1. Python heredado en 4781
+### 1. Sombra en 4782 contra el Python vivo (sin segundo Python)
+
+El frente de sombra reenvía **al `cc-dash` que ya corre en 4777**: ve el estado real, no arranca un
+segundo Python y, por tanto, no duplica ningún bucle de fondo. El Python vivo recibe las peticiones
+desde loopback con las mismas cabeceras, así que decide igual que si llegaran directas.
 
 ```sh
-ln -sf "$PWD/systemd/cc-dash-legacy.service" ~/.config/systemd/user/cc-dash-legacy.service
-systemctl --user daemon-reload
-systemctl --user enable --now cc-dash-legacy.service
-curl -s 127.0.0.1:4781/prefs                    # JSON de preferencias
-journalctl --user -u cc-dash-legacy.service -n 20 --no-pager
+~/.local/share/comandos/bin/comandos dash 4782 --legacy-port 4777     # en una terminal del controlador
 ```
 
-Ojo: este Python arranca los bucles de fondo una segunda vez mientras el de 4777 siga vivo. Para no
-tener dos instancias corriendo mucho tiempo, no demorar el paso 3 más de lo necesario.
-
-### 2. Sombra en 4782
-
-En una terminal del controlador:
-
-```sh
-target/release/comandos dash 4782 --legacy-port 4781
-```
-
-Desde otra:
+Desde otra, el arnés (sobre copias de `~/.claude/hooks` dentro de un namespace de red privado; nunca
+toca el estado real ni 4777/4778):
 
 ```sh
 cargo run -p xtask -- parity --fixture xtask/parity/frente.jsonl --hooks ~/.claude/hooks
 ```
 
 Debe salir sin `DIFF` (código 0). Navegación manual en `http://127.0.0.1:4782` con `chrome-bg`:
-índice (tarjetas y pestañas), notificaciones (incluido el long-poll) y uso. Parar la sombra con Ctrl+C
-(sale con 0).
+índice (tarjetas y pestañas), notificaciones (incluido el long-poll de 25 s) y uso; comparar con
+`http://127.0.0.1:4777`. Parar la sombra con Ctrl+C (sale con 0).
+
+### 2. Python heredado en 4781 — justo antes del cutover
+
+Este Python arranca los bucles de fondo una segunda vez mientras el de 4777 siga vivo (push a los
+30 s, modelos a los 90 s, noticias a los 120 s, Pomodoro ≤ 30 s): encadenar este paso con el 3 sin
+pausa, en la misma terminal.
+
+```sh
+ln -sf "$PWD/systemd/cc-dash-legacy.service" ~/.config/systemd/user/cc-dash-legacy.service
+systemctl --user daemon-reload
+systemctl --user enable --now cc-dash-legacy.service
+curl -s 127.0.0.1:4781/prefs >/dev/null && echo "4781 responde"
+```
 
 ### 3. Cutover
 
