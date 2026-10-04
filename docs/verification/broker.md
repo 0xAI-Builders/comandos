@@ -95,8 +95,13 @@ deben acabar en el journal del daemon.
 
 ## Límites
 
-- Línea máxima: 16 MiB por conexión de cliente y por upstream (cabe una captura de Chrome en
-  base64). Una línea mayor cierra solo esa conexión o ese upstream.
+- Línea máxima: 256 MiB por conexión de cliente y por upstream, la misma que el proxy directo
+  (`transport::MAX_RESPONSE`). Una línea de cliente mayor cierra solo esa conexión. Una línea
+  del upstream mayor no cierra el upstream compartido: se deja de guardar, se consume hasta su
+  `\n` buscando su `id` de primer nivel (aunque vaya al final, como en el SDK de TypeScript)
+  y, si es una respuesta, su dueño recibe `{"code":-32603,"message":"respuesta demasiado
+  grande"}` con su id; si es un request o una notificación del upstream, se descarta. El
+  registro anota el tamaño, nunca la carga.
 - Las líneas hacia el upstream (incluidas cancelaciones y errores del `Mux`) esperan hasta 2 s
   si el stdin está lleno; solo entonces se descartan con una línea de registro.
 - Un cliente con 1024 líneas sin leer se desconecta.
@@ -122,6 +127,8 @@ deben acabar en el journal del daemon.
 - Daemon con `PATH=/usr/bin:/bin`: un `command` sin `/` arranca solo si el `attach` trae `path`
   con su directorio; el upstream ve ese `PATH`; el `env.PATH` del spec gana.
 - SIGTERM al daemon cierra los upstreams, borra el socket y sale con 0.
+- Respuesta de 20 MiB: llega íntegra. Respuesta de 300 MiB a un cliente: ese cliente recibe
+  -32603 con su id, el otro cliente sigue con el mismo upstream y nada le llega.
 - El marcador que el upstream escribe en stderr no aparece en el registro del daemon.
 - Inactividad de 1 s cierra el upstream sin clientes.
 - Un segundo daemon con el primero vivo sale con error y el primero sigue sirviendo.

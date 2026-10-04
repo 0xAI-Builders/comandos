@@ -2,7 +2,7 @@
 //! `serve`, con stdin/stdout por tuberías y stderr a `/dev/null`, como el proxy directo y el
 //! Python: los servidores escriben ahí tokens y URLs de autorización que no deben acabar en
 //! el journal del daemon.
-use super::{blank, read_line};
+use super::{MAX_LINE, blank};
 use crate::Result;
 use nix::{
     sys::signal::{Signal, killpg},
@@ -10,12 +10,13 @@ use nix::{
 };
 use serde_json::Value;
 use std::{
+    io,
     path::{Path, PathBuf},
     process::Stdio,
     time::Duration,
 };
 use tokio::{
-    io::{AsyncWriteExt, BufReader},
+    io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::Child,
     sync::mpsc,
 };
@@ -107,18 +108,31 @@ pub(super) fn spawn(
         let mut reader = BufReader::new(stdout);
         let mut buf = Vec::new();
         loop {
-            match read_line(&mut reader, &mut buf).await {
-                Ok(true) if blank(&buf) => {}
-                Ok(true) => {
-                    if line_tx.send(buf.clone()).await.is_err() {
-                        break;
+            let line = match read_upstream(&mut reader, &mut buf).await {
+                Ok(Read::Line) if blank(&buf) => continue,
+                Ok(Read::Line) => buf.clone(),
+                Ok(Read::Oversized(size, reply)) => {
+                    let to = if reply.is_some() {
+                        "a su petición"
+                    } else {
+                        "sin destinatario"
+                    };
+                    eprintln!(
+                        "broker: upstream {pid}: línea de {size} bytes descartada (más de {MAX_LINE}); error {to}: respuesta demasiado grande"
+                    );
+                    match reply {
+                        Some(reply) => reply,
+                        None => continue,
                     }
                 }
-                Ok(false) => break,
+                Ok(Read::Eof) => break,
                 Err(e) => {
                     eprintln!("broker: upstream {pid}: salida ilegible ({e})");
                     break;
                 }
+            };
+            if line_tx.send(line).await.is_err() {
+                break;
             }
         }
     });
@@ -128,6 +142,182 @@ pub(super) fn spawn(
         child,
         pid,
     })
+}
+
+/// Resultado de leer una línea del stdout del upstream.
+#[derive(Debug, PartialEq)]
+enum Read {
+    Eof,
+    /// Línea completa (sin `\n`) en el búfer.
+    Line,
+    /// Línea de más de [`MAX_LINE`] bytes (tamaño total), ya descartada; con la respuesta de
+    /// error que sustituye a una respuesta JSON-RPC con `id`.
+    Oversized(usize, Option<Vec<u8>>),
+}
+
+/// Como `super::read_line`, pero una línea mayor que [`MAX_LINE`] no es un error: deja de
+/// guardarse, se consume hasta su `\n` mientras [`IdScan`] busca su `id` de primer nivel, y
+/// se devuelve [`Read::Oversized`]. Así el upstream compartido sigue vivo.
+async fn read_upstream<R: AsyncBufRead + Unpin>(r: &mut R, buf: &mut Vec<u8>) -> io::Result<Read> {
+    buf.clear();
+    let mut big: Option<(IdScan, usize)> = None;
+    loop {
+        let chunk = r.fill_buf().await?;
+        if chunk.is_empty() {
+            return Ok(match big {
+                Some((scan, size)) => Read::Oversized(size, scan.error_reply()),
+                None if buf.is_empty() => Read::Eof,
+                None => Read::Line,
+            });
+        }
+        let (n, done) = match chunk.iter().position(|b| *b == b'\n') {
+            Some(i) => (i + 1, true),
+            None => (chunk.len(), false),
+        };
+        match &mut big {
+            Some((scan, size)) => {
+                scan.feed(&chunk[..n]);
+                *size += n;
+            }
+            None => buf.extend_from_slice(&chunk[..n]),
+        }
+        r.consume(n);
+        if let Some((scan, size)) = big.take_if(|_| done) {
+            return Ok(Read::Oversized(size, scan.error_reply()));
+        }
+        if done {
+            buf.pop();
+            if buf.last() == Some(&b'\r') {
+                buf.pop();
+            }
+            return Ok(Read::Line);
+        }
+        if big.is_none() && buf.len() > MAX_LINE {
+            let mut scan = IdScan::default();
+            scan.feed(buf);
+            big = Some((scan, buf.len()));
+            *buf = Vec::new(); // suelta los 256 MiB ya leídos
+        }
+    }
+}
+
+/// Lee un objeto JSON en streaming y recuerda su `id` de primer nivel (y si tiene `method`),
+/// sin guardar el resto. Un `"id"` anidado (dentro de `result`) no cuenta.
+#[derive(Default)]
+struct IdScan {
+    depth: u32,
+    in_str: bool,
+    escaped: bool,
+    /// En el objeto de primer nivel, el siguiente valor de cadena es una clave.
+    key_next: bool,
+    key: Vec<u8>,
+    capturing: bool,
+    value: Vec<u8>,
+    id: Option<Vec<u8>>,
+    method: bool,
+}
+
+/// Bytes máximos de una clave o de un `id` de primer nivel que se recuerdan.
+const SCAN_FIELD: usize = 256;
+
+impl IdScan {
+    fn feed(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.byte(b);
+        }
+    }
+
+    fn byte(&mut self, b: u8) {
+        let top = self.depth == 1;
+        if self.in_str {
+            if self.capturing {
+                self.push_value(b);
+            } else if top && self.key_next && self.key.len() <= SCAN_FIELD {
+                self.key.push(b);
+            }
+            if self.escaped {
+                self.escaped = false;
+            } else if b == b'\\' {
+                self.escaped = true;
+            } else if b == b'"' {
+                self.in_str = false;
+                if top && self.key_next && !self.capturing {
+                    self.key.pop(); // comilla de cierre
+                }
+            }
+            return;
+        }
+        match b {
+            b'"' => {
+                self.in_str = true;
+                if self.capturing {
+                    self.push_value(b);
+                } else if top && self.key_next {
+                    self.key.clear();
+                }
+            }
+            b'{' | b'[' => {
+                if self.capturing {
+                    self.push_value(b);
+                }
+                self.depth += 1;
+                if self.depth == 1 {
+                    self.key_next = true;
+                }
+            }
+            b'}' | b']' => {
+                if top {
+                    self.finish();
+                } else if self.capturing {
+                    self.push_value(b);
+                }
+                self.depth = self.depth.saturating_sub(1);
+            }
+            b':' if top => {
+                self.key_next = false;
+                match self.key.as_slice() {
+                    b"id" if self.id.is_none() => {
+                        self.capturing = true;
+                        self.value.clear();
+                    }
+                    b"method" => self.method = true,
+                    _ => {}
+                }
+            }
+            b',' if top => {
+                self.finish();
+                self.key_next = true;
+            }
+            _ if self.capturing => self.push_value(b),
+            _ => {}
+        }
+    }
+
+    fn push_value(&mut self, b: u8) {
+        if self.value.len() <= SCAN_FIELD {
+            self.value.push(b);
+        }
+    }
+
+    fn finish(&mut self) {
+        if std::mem::take(&mut self.capturing) {
+            self.id = Some(std::mem::take(&mut self.value));
+        }
+    }
+
+    /// Error -32603 para el `id` de una respuesta (no de un request ni una notificación del
+    /// upstream, que no tienen a quién avisar). El `Mux` lo traduce y lo entrega a su dueño.
+    fn error_reply(&self) -> Option<Vec<u8>> {
+        if self.method {
+            return None;
+        }
+        let id: Value = serde_json::from_slice(self.id.as_deref()?).ok()?;
+        if !(id.is_u64() || id.is_string()) {
+            return None;
+        }
+        let reply = serde_json::json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":"respuesta demasiado grande"}});
+        serde_json::to_vec(&reply).ok()
+    }
 }
 
 /// SIGTERM al grupo, 5 s de gracia para el líder, SIGKILL; recoge al líder y al final manda
@@ -146,4 +336,46 @@ pub(super) async fn terminate(up: &mut Upstream) -> String {
     };
     let _ = killpg(group, Signal::SIGKILL);
     status.map_or_else(|_| "desconocido".into(), |s| s.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::IdScan;
+
+    fn reply(line: &str) -> Option<String> {
+        let mut scan = IdScan::default();
+        // En dos trozos partidos a mitad de la clave: el estado sobrevive entre llamadas.
+        let (a, b) = line.split_at(line.len() / 2);
+        scan.feed(a.as_bytes());
+        scan.feed(b.as_bytes());
+        scan.error_reply().map(|r| String::from_utf8(r).unwrap())
+    }
+
+    #[test]
+    fn finds_the_top_level_id_wherever_it_is() {
+        let first = reply(r#"{"jsonrpc":"2.0","id":5,"result":{"id":9,"text":"x"}}"#).unwrap();
+        assert!(first.contains(r#""id":5"#), "{first}");
+        let last =
+            reply(r#"{"result":{"content":[{"id":9,"t":"a\"id\":3"}]},"jsonrpc":"2.0","id":12}"#)
+                .unwrap();
+        assert!(last.contains(r#""id":12"#), "{last}");
+        let string = reply(r#"{ "id" : "a\"b" , "result" : {} }"#).unwrap();
+        assert!(string.contains(r#""id":"a\"b""#), "{string}");
+        assert!(last.contains(r#""code":-32603"#) && last.contains("respuesta demasiado grande"));
+    }
+
+    #[test]
+    fn requests_notifications_and_bad_ids_get_no_reply() {
+        assert_eq!(
+            reply(r#"{"jsonrpc":"2.0","id":3,"method":"sampling/createMessage","params":{}}"#),
+            None
+        );
+        assert_eq!(
+            reply(r#"{"jsonrpc":"2.0","method":"notifications/message","params":{"id":1}}"#),
+            None
+        );
+        assert_eq!(reply(r#"{"jsonrpc":"2.0","result":{"id":1}}"#), None);
+        assert_eq!(reply(r#"{"jsonrpc":"2.0","id":{"x":1},"result":{}}"#), None);
+        assert_eq!(reply(r#"{"jsonrpc":"2.0","id":null,"result":{}}"#), None);
+    }
 }

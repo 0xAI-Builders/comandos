@@ -595,3 +595,59 @@ fn spec_own_path_wins_over_attach_path() {
     assert_eq!(fs::read_to_string(&dump).unwrap(), own);
     let _ = fs::remove_dir_all(&bin_dir);
 }
+
+/// Catálogo con dos fakes compartibles que contestan `tools/call` con `bytes` de texto.
+fn huge_home(name: &str, bytes: usize) -> PathBuf {
+    let server =
+        format!(r#"{{"enabled":true,"command":"{FAKE}","env":{{"FAKE_MCP_HUGE":"{bytes}"}}}}"#);
+    home_with(name, &server)
+}
+
+/// Respuesta con un plazo amplio: mover cientos de MiB en un binario de depuración tarda.
+fn recv_slow(s: &mut Session) -> Value {
+    let line = (s.lines.recv_timeout(Duration::from_secs(120))).expect("respuesta del broker");
+    serde_json::from_str(&line).unwrap()
+}
+
+#[test]
+fn a_twenty_mib_response_passes_intact() {
+    const SIZE: usize = 20 * 1024 * 1024;
+    let home = huge_home("big", SIZE);
+    let mut daemon = Daemon::start(&home, "600");
+    let mut a = Session::open(&home, "eco");
+    a.pid(1, "initialize");
+    a.request(2, "tools/call", json!({"name": "x", "arguments": {}}));
+    let reply = recv_slow(&mut a);
+    assert_eq!(reply["id"], 2);
+    let text = reply["result"]["content"][0]["text"].as_str().unwrap();
+    assert_eq!(text.len(), SIZE, "la respuesta llega entera");
+    assert!(a.call(3, "ping")["result"].is_object());
+    assert!(daemon.stop().success());
+}
+
+#[test]
+fn an_oversized_response_errors_only_its_client_and_the_upstream_survives() {
+    let home = huge_home("huge", 300 * 1024 * 1024);
+    let mut daemon = Daemon::start(&home, "600");
+    let (mut a, mut b) = (Session::open(&home, "eco"), Session::open(&home, "eco"));
+    let pa = a.pid(1, "initialize");
+    assert_eq!(b.pid(1, "initialize"), pa, "comparten upstream");
+    a.request(7, "tools/call", json!({"name": "x", "arguments": {}}));
+    let reply = recv_slow(&mut a);
+    assert_eq!(reply["id"], 7, "el error va al dueño con su id: {reply}");
+    assert_eq!(reply["error"]["code"], -32603);
+    assert_eq!(reply["error"]["message"], "respuesta demasiado grande");
+    assert_eq!(
+        b.pid(2, "tools/list"),
+        pa,
+        "el otro cliente sigue con el mismo upstream"
+    );
+    assert!(
+        a.call(8, "ping")["result"].is_object(),
+        "y el dueño también"
+    );
+    assert!(b.lines.try_recv().is_err(), "nada llegó al otro cliente");
+    let log = daemon.log();
+    assert!(daemon.stop().success());
+    assert!(log.contains("demasiado"), "{log}");
+}

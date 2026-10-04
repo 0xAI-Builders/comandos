@@ -18,10 +18,11 @@ use std::{
 };
 use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 
-/// Línea JSON más larga (bytes) aceptada en cada conexión de cliente y en cada upstream.
-/// 16 MiB: cabe una captura de pantalla de Chrome en base64 con holgura; una línea mayor
-/// cierra esa conexión (o ese upstream), no las demás.
-const MAX_LINE: usize = 16 * 1024 * 1024;
+/// Línea JSON más larga (bytes) aceptada en cada conexión de cliente y en cada upstream: la
+/// misma que el proxy directo ([`crate::transport::MAX_RESPONSE`], 256 MiB). Una línea de
+/// cliente mayor cierra esa conexión; una del upstream se descarta y su petición recibe un
+/// error (ver `upstream::read_upstream`), sin cerrar el upstream compartido.
+const MAX_LINE: usize = crate::transport::MAX_RESPONSE;
 
 /// Un upstream solo se comparte si el proceso sería idéntico: mismo servidor, mismo
 /// directorio de trabajo y mismo `env` del catálogo ya expandido.
