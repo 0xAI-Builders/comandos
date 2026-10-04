@@ -599,6 +599,91 @@ fn make_fakebin(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Opciones de la pila aislada: las de la 2a (hooks, binario, `--keep`) más las de la 2b.
+pub struct StackOptions<'a> {
+    pub hooks: &'a Path,
+    pub comandos: &'a Path,
+    pub keep: bool,
+    /// Copia de solo lectura (backup de SQLite) en los dos HOME.
+    pub state_db: Option<&'a Path>,
+    /// Pasa `--no-native` al frente: A/B contra la 2a.
+    pub no_native: bool,
+}
+
+/// Copia la base con la API de backup: nunca escribe en `src`.
+fn copy_state_db(src: &Path, home: &Path) -> Result<(), String> {
+    let dest = home.join(".local/state/comandos/app-state.sqlite3");
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let source = rusqlite::Connection::open_with_flags(
+        src,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("--state-db {}: {e}", src.display()))?;
+    source
+        .backup(rusqlite::MAIN_DB, &dest, None)
+        .map_err(|e| format!("backup de {}: {e}", src.display()))
+}
+
+/// Sesiones `local` + claves de `app-tabs.json` (≤20, nombres válidos), creadas
+/// en el MISMO orden en los dos servidores privados: mismos `%pane` y `$id`.
+fn tmux_sessions_for(hooks: &Path) -> Vec<String> {
+    let mut names = vec!["local".to_string()];
+    if let Ok(text) = fs::read_to_string(hooks.join("app-tabs.json"))
+        && let Ok(Value::Object(tabs)) = serde_json::from_str::<Value>(&text)
+    {
+        for key in tabs.keys() {
+            let valid = (1..=80).contains(&key.len())
+                && key
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b));
+            if valid && !names.contains(key) && names.len() < 21 {
+                names.push(key.clone());
+            }
+        }
+    }
+    names
+}
+
+fn tmux_available() -> bool {
+    Command::new("tmux")
+        .arg("-V")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// Servidor tmux privado en `socket_dir`. `-f /dev/null`: el servidor nace sin
+/// la configuración del usuario (sus `run-shell` y plugins nunca corren aquí).
+fn start_tmux(socket_dir: &Path, sessions: &[String]) -> Result<(), String> {
+    for name in sessions {
+        let status = Command::new("tmux")
+            .args(["-f", "/dev/null", "new-session", "-d", "-s", name, "cat"])
+            .env_remove("TMUX")
+            .env("TMUX_TMPDIR", socket_dir)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map_err(|e| format!("tmux: {e}"))?;
+        if !status.success() {
+            return Err(format!("tmux new-session {name} falló"));
+        }
+    }
+    Ok(())
+}
+
+fn kill_tmux(socket_dir: &Path) {
+    let _ = Command::new("tmux")
+        .arg("kill-server")
+        .env_remove("TMUX")
+        .env("TMUX_TMPDIR", socket_dir)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
 struct SpawnEnv<'a> {
     home: &'a Path,
     tmux: &'a Path,
@@ -661,7 +746,8 @@ fn wait_ready(srv: &mut Server, port: u16) -> Result<(), String> {
 /// Rust B y un segundo Python C (ambos copia 2) son el lado bajo prueba (B reenvía a C).
 #[allow(dead_code)] // campos de diagnóstico y de propiedad (drop)
 pub struct Stack {
-    // Orden de campos = orden de drop: primero se matan los procesos, luego se borra la raíz.
+    // `Drop::drop` mata primero los tmux privados; luego, en el orden de los campos, los
+    // procesos y al final se borra la raíz.
     servers: Vec<Server>,
     pub token: String,
     pub p_py: u16,
@@ -670,11 +756,34 @@ pub struct Stack {
     pub pid_py: u32,
     pub pid_front: u32,
     pub pid_legacy: u32,
+    tmux_dirs: Vec<PathBuf>,
+    front_log: PathBuf,
     _root: TempRoot,
 }
 
+impl Drop for Stack {
+    fn drop(&mut self) {
+        for dir in &self.tmux_dirs {
+            kill_tmux(dir);
+        }
+    }
+}
+
+/// Mata los tmux privados si `start_with` falla a mitad (antes de existir `Stack`).
+struct TmuxGuard(Vec<PathBuf>);
+
+impl Drop for TmuxGuard {
+    fn drop(&mut self) {
+        for dir in &self.0 {
+            kill_tmux(dir);
+        }
+    }
+}
+
 impl Stack {
-    pub fn start(hooks: &Path, comandos: &Path, keep: bool) -> Result<Stack, String> {
+    /// Levanta la pila aislada (`parity` y `poll --shadow` la usan con sus opciones).
+    pub fn start_with(o: StackOptions) -> Result<Stack, String> {
+        let (hooks, comandos, keep) = (o.hooks, o.comandos, o.keep);
         ensure_isolated_marker()?;
         guard_hooks(hooks)?;
         let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -705,12 +814,23 @@ impl Stack {
         }
         let hooks1 = copy_hooks(hooks, &home1, &repo)?;
         copy_hooks(hooks, &home2, &repo)?;
+        if let Some(db) = o.state_db {
+            copy_state_db(db, &home1)?;
+            copy_state_db(db, &home2)?;
+        }
         let token = fs::read_to_string(hooks1.join("dash-token"))
             .map(|t| t.trim().to_string())
             .unwrap_or_default();
         let (dash, fakebin) = (d("dash"), d("fakebin"));
         stage_dash(&repo, &dash)?;
         make_fakebin(&fakebin)?;
+        // Desde aquí los dos servidores tmux privados mueren pase lo que pase.
+        let mut tmux_guard = TmuxGuard(vec![tmux1.clone(), tmux2.clone()]);
+        let sessions = tmux_sessions_for(&hooks1);
+        if tmux_available() {
+            start_tmux(&tmux1, &sessions)?;
+            start_tmux(&tmux2, &sessions)?;
+        }
 
         let (p_py, p_front, p_legacy) = (free_port()?, free_port()?, free_port()?);
         let py = |port: u16| {
@@ -728,6 +848,11 @@ impl Stack {
             "--legacy-port",
             &p_legacy.to_string(),
         ]);
+        if o.no_native {
+            front.arg("--no-native");
+        }
+        // `spawn` no la quita: el resumen de reenvíos sale de esta traza.
+        front.env("COMANDOS_DASH_TRACE_FORWARD", "1");
         let e1 = SpawnEnv {
             home: &home1,
             tmux: &tmux1,
@@ -743,7 +868,8 @@ impl Stack {
         // Locales sueltos en orden inverso si algo falla a mitad: ningún proceso queda vivo.
         let mut s_py = spawn("cc-dash (oráculo)", py(p_py), &e1, &d("py.log"))?;
         let mut s_leg = spawn("cc-dash (heredado)", py(p_legacy), &e2, &d("legacy.log"))?;
-        let mut s_front = spawn("comandos dash", front, &e2, &d("front.log"))?;
+        let front_log = d("front.log");
+        let mut s_front = spawn("comandos dash", front, &e2, &front_log)?;
         wait_ready(&mut s_py, p_py)?;
         wait_ready(&mut s_leg, p_legacy)?;
         wait_ready(&mut s_front, p_front)?;
@@ -758,12 +884,26 @@ impl Stack {
             pid_py: pids[0],
             pid_legacy: pids[1],
             pid_front: pids[2],
+            tmux_dirs: std::mem::take(&mut tmux_guard.0),
+            front_log,
             _root: root,
         })
     }
+
+    /// Rutas que el frente reenvió al heredado (de su traza), con su cuenta.
+    pub fn forwarded_summary(&self) -> Vec<(String, usize)> {
+        let text = fs::read_to_string(&self.front_log).unwrap_or_default();
+        let mut counts: std::collections::BTreeMap<String, usize> = Default::default();
+        for line in text.lines() {
+            if let Some(route) = line.strip_prefix("comandos dash: reenvío ") {
+                *counts.entry(route.to_string()).or_default() += 1;
+            }
+        }
+        counts.into_iter().collect()
+    }
 }
 
-/// Comprobación de que `Stack::start` solo corre dentro del namespace aislado.
+/// Comprobación de que `Stack::start_with` solo corre dentro del namespace aislado.
 fn ensure_isolated_marker() -> Result<(), String> {
     if std::env::var(NETNS_ENV).as_deref() == Ok("1") {
         Ok(())
@@ -784,6 +924,8 @@ struct Case {
     expect: Expect,
     forwarded: bool,
     reason: String,
+    /// Ruta que se pide al oráculo si difiere (p. ej. `/operator` por una ruta retirada).
+    oracle_path: Option<String>,
 }
 
 fn load_fixture(path: &Path) -> Result<Vec<Case>, String> {
@@ -831,6 +973,7 @@ fn load_fixture(path: &Path) -> Result<Vec<Case>, String> {
             expect,
             forwarded: v.get("forwarded").and_then(Value::as_bool).unwrap_or(false),
             reason: s("reason").unwrap_or_default(),
+            oracle_path: s("oracle_path"),
         });
     }
     Ok(cases)
@@ -847,17 +990,26 @@ struct Args {
     hooks: PathBuf,
     keep: bool,
     comandos: Option<PathBuf>,
+    /// `--state-db <ruta>`: base de estado copiada (solo lectura) a los dos HOME.
+    state_db: Option<PathBuf>,
+    /// `--no-native`: el frente reenvía todo, como en la 2a.
+    no_native: bool,
 }
 
 fn parse_args(args: &[String]) -> Result<Args, String> {
     let (mut fixture, mut hooks, mut keep, mut comandos) = (None, None, false, None);
+    let (mut state_db, mut no_native) = (None, false);
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--fixture" => fixture = it.next().map(PathBuf::from),
             "--hooks" => hooks = it.next().map(PathBuf::from),
             "--comandos" => comandos = it.next().map(PathBuf::from),
+            "--state-db" => {
+                state_db = Some(it.next().map(PathBuf::from).ok_or("--state-db sin ruta")?);
+            }
             "--keep" => keep = true,
+            "--no-native" => no_native = true,
             other => return Err(format!("argumento desconocido: {other}")),
         }
     }
@@ -866,6 +1018,8 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
         hooks: hooks.ok_or("falta --hooks")?,
         keep,
         comandos,
+        state_db,
+        no_native,
     })
 }
 
@@ -883,7 +1037,13 @@ pub fn run(args: &[String]) -> Result<i32, String> {
         Some(p) => p,
         None => default_comandos()?,
     };
-    let stack = Stack::start(&a.hooks, &comandos, a.keep)?;
+    let stack = Stack::start_with(StackOptions {
+        hooks: &a.hooks,
+        comandos: &comandos,
+        keep: a.keep,
+        state_db: a.state_db.as_deref(),
+        no_native: a.no_native,
+    })?;
     let results = std::env::temp_dir().join(format!("comandos-parity-results-{}", unix_secs()));
 
     let (mut ok, mut diff, mut skip) = (0, 0, 0);
@@ -894,8 +1054,9 @@ pub fn run(args: &[String]) -> Result<i32, String> {
             .iter()
             .map(|(k, v)| (k.clone(), v.replace("{{token}}", &stack.token)))
             .collect();
-        let go = |port| request(port, &c.method, &c.path, &headers, c.body.as_deref());
-        let (r_py, r_rs) = match (go(stack.p_py), go(stack.p_front)) {
+        let go = |port, path: &str| request(port, &c.method, path, &headers, c.body.as_deref());
+        let oracle = c.oracle_path.as_deref().unwrap_or(&c.path);
+        let (r_py, r_rs) = match (go(stack.p_py, oracle), go(stack.p_front, &c.path)) {
             (Ok(a), Ok(b)) => (a, b),
             (a, b) => {
                 println!(
@@ -953,6 +1114,14 @@ pub fn run(args: &[String]) -> Result<i32, String> {
                 dump("rs", &r_rs);
             }
         }
+    }
+    let forwarded = stack.forwarded_summary();
+    println!(
+        "\nreenviadas al heredado por el frente ({} rutas distintas):",
+        forwarded.len()
+    );
+    for (route, n) in &forwarded {
+        println!("  {n:>4}  {route}");
     }
     drop(stack);
     println!(

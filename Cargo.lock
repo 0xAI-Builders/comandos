@@ -2206,6 +2206,7 @@ version = "0.0.0"
 dependencies = [
  "comandos-core",
  "nix",
+ "rusqlite",
  "serde_json",
 ]
 

@@ -169,15 +169,24 @@ struct Opts {
     /// `None` = archivo de trabajo en el directorio temporal; el rastreado exige `--out`.
     out: Option<PathBuf>,
     shadow: Option<(PathBuf, Option<PathBuf>)>,
+    /// Con `--shadow`: base de estado copiada (solo lectura) a la pila aislada.
+    state_db: Option<PathBuf>,
+    /// Con `--shadow`: el frente arranca con `--no-native` (A/B contra la 2a).
+    no_native: bool,
 }
 
 fn parse(args: &[String]) -> Result<Opts, String> {
     let (mut base, mut token, mut minutes, mut pid, mut out) = (None, None, None, None, None);
     let (mut shadow, mut hooks, mut comandos) = (false, None, None);
+    let (mut state_db, mut no_native) = (None, false);
     let mut it = args.iter();
     while let Some(a) = it.next() {
         if a == "--shadow" {
             shadow = true;
+            continue;
+        }
+        if a == "--no-native" {
+            no_native = true;
             continue;
         }
         let v = it.next().ok_or_else(|| format!("{a} sin valor"))?;
@@ -189,6 +198,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--out" => out = Some(PathBuf::from(v)),
             "--hooks" => hooks = Some(PathBuf::from(v)),
             "--comandos" => comandos = Some(PathBuf::from(v)),
+            "--state-db" => state_db = Some(PathBuf::from(v)),
             other => return Err(format!("argumento desconocido: {other}")),
         }
     }
@@ -212,6 +222,8 @@ fn parse(args: &[String]) -> Result<Opts, String> {
         },
         out,
         shadow,
+        state_db,
+        no_native,
     })
 }
 
@@ -298,7 +310,15 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 Some(c) => c.clone(),
                 None => crate::parity::default_comandos()?,
             };
-            Some(crate::parity::Stack::start(hooks, &comandos, false)?)
+            Some(crate::parity::Stack::start_with(
+                crate::parity::StackOptions {
+                    hooks,
+                    comandos: &comandos,
+                    keep: false,
+                    state_db: o.state_db.as_deref(),
+                    no_native: o.no_native,
+                },
+            )?)
         }
         None => None,
     };
@@ -395,6 +415,16 @@ pub fn run(args: &[String]) -> Result<(), String> {
         stats.errors.load(Ordering::Relaxed),
         stats.non_2xx.load(Ordering::Relaxed)
     );
+    if let Some(stack) = &stack {
+        let forwarded = stack.forwarded_summary();
+        println!(
+            "\nreenviadas al heredado por el frente ({} rutas distintas):",
+            forwarded.len()
+        );
+        for (route, n) in &forwarded {
+            println!("  {n:>4}  {route}");
+        }
+    }
     Ok(())
 }
 

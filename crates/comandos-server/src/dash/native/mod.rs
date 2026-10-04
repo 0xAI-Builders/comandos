@@ -5,7 +5,11 @@
 //! `fc-list`, por `tokio::process`. Si una entrada no se puede reproducir con
 //! certeza, el manejador devuelve `Fault::Decline` ANTES de cualquier efecto
 //! y el frente reenvía la petición original al heredado.
+pub mod files;
+pub mod py;
+pub mod query;
 pub mod state;
+pub mod tmux;
 
 use crate::{
     HandlerError, Reply, Request,
@@ -119,6 +123,10 @@ pub struct NativeOptions {
     /// `~/.claude/hooks` (el `HOOKS` del Python).
     pub hooks: PathBuf,
     pub clock: Clock,
+    /// `tmux` como lo llama el Python (entorno heredado, plazo 5 s).
+    pub tmux: tmux::Tmux,
+    /// `fc-list` de `_installed_font_families` (7724).
+    pub fc_list: tmux::Program,
 }
 
 impl NativeOptions {
@@ -127,6 +135,8 @@ impl NativeOptions {
             state_db,
             hooks: home.join(".claude/hooks"),
             clock: Arc::new(wall_clock_ms),
+            tmux: tmux::Tmux::system(),
+            fc_list: tmux::Program::named("fc-list"),
         }
     }
 }
