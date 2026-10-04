@@ -6,7 +6,7 @@ Environment=PATH=%h/.local/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=%h/.local/share/comandos/bin/comandos ext broker
 Restart=on-failure
 RestartSec=2
-MemoryMax=4G
+MemoryMax=24G
 ManagedOOMPreference=avoid
 
 [Install]
