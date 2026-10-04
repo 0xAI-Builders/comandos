@@ -33,6 +33,12 @@ pub async fn oracle(home: &TestHome) -> Option<Oracle> {
         eprintln!("python3 no está instalado: se salta la comparación con el oráculo");
         return None;
     }
+    // `restore_requested_webterm()` al arrancar lanzaría el `cc-webterm` real
+    // del PATH y `tailscale serve`: la marca solo se crea con el oráculo vivo.
+    assert!(
+        !home.hooks().join("webterm-enabled").exists(),
+        "webterm-enabled antes de arrancar el oráculo tocaría el terminal web real"
+    );
     let port = super::dead_port();
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let err = std::fs::File::create(home.root.join("oracle.err")).unwrap();

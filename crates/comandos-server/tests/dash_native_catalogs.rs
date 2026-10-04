@@ -114,7 +114,6 @@ fn seed(home: &TestHome) {
         "cc-notify.conf",
         "# x\nNATIVE_NOTIFY=\"1\"\nVOLUME=40\n  # NATIVE_NOTIFY=0\n",
     );
-    home.write("webterm-enabled", "");
     home.write("providers.env", "X=1");
     fs::set_permissions(
         home.hooks().join("providers.env"),
@@ -157,6 +156,10 @@ async fn sovereignty_matches_python_oracle() {
     let Some(py) = oracle(&home).await else {
         return;
     };
+    // Después de arrancar el oráculo: con la marca presente al arrancar, el
+    // Python restauraría el terminal web real (`cc-webterm` del PATH y
+    // `tailscale serve`). `support::oracle` se niega a arrancar con ella.
+    home.write("webterm-enabled", "");
     let mut opts = home.options();
     opts.clock = Arc::new(wall_clock_ms);
     let front = front(&home, dead_port(), opts).await;
@@ -204,12 +207,31 @@ async fn sovereignty_matches_python_oracle() {
 
 const TOKEN_TEXT: &str = support::TOKEN;
 
+/// El Python crea y migra la base de uso en segundo plano al arrancar: se
+/// espera a que termine para no comparar contra una base a medio crear.
+async fn usage_db_settled(home: &TestHome) {
+    for _ in 0..200 {
+        let version = rusqlite::Connection::open_with_flags(
+            home.usage_db(),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )
+        .ok()
+        .and_then(|c| comandos_store::usage::schema_version(&c).ok());
+        if version == Some(comandos_store::usage::SCHEMA_VERSION) {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("el oráculo no terminó de crear la base de uso");
+}
+
 #[tokio::test]
-async fn sovereignty_without_usage_db_matches_python() {
+async fn sovereignty_bare_home_matches_python() {
     let home = TestHome::new("sovereignty-bare");
     let Some(py) = oracle(&home).await else {
         return;
     };
+    usage_db_settled(&home).await;
     let mut opts = home.options();
     opts.clock = Arc::new(wall_clock_ms);
     let front = front(&home, dead_port(), opts).await;
