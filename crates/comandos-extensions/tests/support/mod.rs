@@ -13,3 +13,45 @@ pub fn link_oracle_venv(home: &Path) {
     std::fs::create_dir_all(home.join(".local/share/comandos")).unwrap();
     std::os::unix::fs::symlink(&venv, home.join(".local/share/comandos/extensions-venv")).unwrap();
 }
+
+pub mod oracle {
+    //! Ejecución del proxy Rust y del oráculo Python con el mismo HOME temporal.
+    use std::{
+        path::{Path, PathBuf},
+        process::{Command, Output},
+    };
+
+    /// `python3.11` resuelto con el PATH del proceso de prueba (el del hijo se restringe).
+    pub fn python_bin() -> PathBuf {
+        std::env::split_paths(&std::env::var_os("PATH").expect("PATH"))
+            .map(|dir| dir.join("python3.11"))
+            .find(|p| p.is_file())
+            .expect("python3.11 no está en PATH")
+    }
+
+    fn root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    fn configure(cmd: &mut Command, home: &Path) {
+        cmd.current_dir("/")
+            .env("HOME", home)
+            .env("COMANDOS_INHERITED", "padre")
+            .env("PATH", format!("{}/bin:/usr/bin:/bin", home.display()))
+            .stdin(std::process::Stdio::null());
+    }
+
+    pub fn python(home: &Path, args: &[&str]) -> Output {
+        let mut cmd = Command::new(python_bin());
+        cmd.arg(root().join("bin/cc-extensions")).args(args);
+        configure(&mut cmd, home);
+        cmd.output().unwrap()
+    }
+
+    pub fn rust(home: &Path, args: &[&str]) -> Output {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_comandos-extensions"));
+        cmd.args(args);
+        configure(&mut cmd, home);
+        cmd.output().unwrap()
+    }
+}

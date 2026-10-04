@@ -1,6 +1,6 @@
-use crate::{Result, command, home_dir};
+use crate::{Result, home_dir};
 use serde_json::Value;
-use std::{os::unix::process::CommandExt, path::PathBuf};
+use std::path::PathBuf;
 pub fn run(args: Vec<String>) -> Result<i32> {
     let mut args = args.into_iter();
     let mut home = None;
@@ -80,7 +80,7 @@ pub fn run(args: Vec<String>) -> Result<i32> {
         {
             return Ok(code);
         }
-        let _ = command(spec, true)?.exec();
+        crate::exec_direct(spec)?;
         return Err("Extension command failed".into());
     }
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -116,7 +116,11 @@ pub(crate) fn server_spec(path: &std::path::Path, name: &str) -> Result<Value> {
     }
     catalog["servers"]
         .get_mut(name)
-        .filter(|s| s.is_object() && s["enabled"] != false)
+        .filter(|s| {
+            // Python: `not spec` o `not spec.get('enabled', True)` ⇒ no disponible.
+            s.as_object().is_some_and(|o| !o.is_empty())
+                && s.get("enabled").is_none_or(crate::py_truthy)
+        })
         .map(Value::take)
         .ok_or_else(|| format!("Server unavailable: {name}"))
 }

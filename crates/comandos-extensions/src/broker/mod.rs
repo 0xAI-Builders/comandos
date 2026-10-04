@@ -30,9 +30,10 @@ pub fn socket_path() -> PathBuf {
 
 /// Servidor stdio sin filtro de herramientas: el mismo caso que `serve` ejecuta directo.
 pub fn direct_stdio(spec: &Value) -> bool {
-    spec["command"].as_str().is_some()
+    // Mismas condiciones (verdad de Python) que `extension_proxy.serve`.
+    spec["command"].as_str().is_some_and(|c| !c.is_empty())
         && spec.get("enabled_tools").is_none()
-        && (spec.get("disabled_tools").and_then(Value::as_array)).is_none_or(Vec::is_empty)
+        && !spec.get("disabled_tools").is_some_and(crate::py_truthy)
 }
 
 /// Lo que el broker acepta compartir: stdio directo y compartible según el catálogo.

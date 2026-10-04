@@ -114,3 +114,28 @@ termina con el mismo código y sin salida en ambos.
 
 `status` coincide byte a byte. `count` no existe como en el brief: en el Rust es la orden
 interna del tokenizador (`tokenizer::count_command`), sin equivalente Python, y no se compara.
+
+### Ronda de corrección de stdio (verdad de Python y casos límite)
+
+La decisión «exec directo o proxy MCP» y el entorno ahora siguen la verdad de Python
+(`py_truthy` en `lib.rs`, usada por `cli::server_spec` y `broker::direct_stdio`):
+
+- `enabled` falso (`false`, `0`, `null`, `""`) o servidor vacío `{}` ⇒ `Server unavailable: <nombre>`.
+- `command` vacío o no cadena ⇒ proxy, no `exec`; `disabled_tools` verdadero no array (p. ej. una
+  cadena) ⇒ proxy; `enabled_tools` presente (incluso `null`) ⇒ proxy.
+- `cwd` vacío se omite. `cwd` inexistente: el Python falla en `chdir` y su envoltorio imprime
+  `Extension operation failed: FileNotFoundError` (exit 1); Rust hace `chdir` él mismo antes del
+  `exec` e imprime la misma línea (`PermissionError`/`NotADirectoryError`/`OSError` según errno).
+- `env` con listas/diccionarios: `str()` de Python da el `repr` (`['a', 1, None, True, "it's"]`,
+  `{'k': [1.5, {'z': False}]}`); los `float` usan el `repr` de Python (`1e10` ⇒ `10000000000.0`,
+  `1e-5` ⇒ `1e-05`, `1e16` ⇒ `1e+16`); `false`/`null` ⇒ `False`/`None`.
+- `env.PATH` propio: el comando se busca con el `PATH` nuevo en ambos (caso `pathenv`).
+
+Comando inexistente: stderr queda vacío en ambos aunque `main` imprima «Extension command failed»,
+porque `Command::exec` hace el `dup2` de stderr a `/dev/null` en el propio proceso antes del `execvp`
+fallido (Python también redirige antes). Mismo código de salida (1).
+
+Diferencia conocida, fuera del `exec`: en el camino proxy con stdin cerrado antes de que el upstream
+inicialice (caso `filtered`/`dstring`/`emptycmd` con un hijo que no habla MCP), Python sale con 1
+(`Extension operation failed: ExceptionGroup`) y Rust con 0; la prueba solo exige rama proxy (sin
+volcado del comando) y stdout igual.
