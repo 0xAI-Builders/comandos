@@ -55,3 +55,16 @@
 {"name":"a-sound","method":"POST","path":"/notices/sound","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"eventId":"no-existe","deviceId":"parity-a"},"volatile":[],"expect":"same"}
 {"name":"a-prefs-post","method":"POST","path":"/notices/prefs","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{},"volatile":[],"expect":"same"}
 {"name":"a-notifs-count-tras","method":"GET","path":"/notifs/count","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+# --- 2b · C: workspace (nativas salvo POST /workspace/close-group)
+{"name":"c-workspace","method":"GET","path":"/workspace","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"c-workspace-otra-vez","method":"GET","path":"/workspace","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"c-close-preview-nadie","method":"GET","path":"/workspace/close-group?groupId=no-existe","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"c-close-preview-local","method":"GET","path":"/workspace/close-group?groupId=group-local","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"c-client","method":"GET","path":"/workspace/client?deviceId=parity-c","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"c-client-post","method":"POST","path":"/workspace/client","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"deviceId":"parity-c","activeTabId":"local"},"volatile":[],"expect":"same"}
+{"name":"c-client-tras","method":"GET","path":"/workspace/client?deviceId=parity-c","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"c-client-post-malo","method":"POST","path":"/workspace/client","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"deviceId":5},"volatile":[],"expect":"same"}
+{"name":"c-save-malo","method":"POST","path":"/workspace","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"document":{},"expectedRevision":"1"},"volatile":[],"expect":"same"}
+{"name":"c-save-tabs","method":"POST","path":"/workspace","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"document":{"schema":1,"groups":[],"tabs":{}},"expectedRevision":0,"requestId":"parity-c"},"volatile":[],"expect":"same"}
+{"name":"c-sort-vacio","method":"POST","path":"/workspace/sort","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"restore":[]},"volatile":["/revision"],"expect":"same"}
+{"name":"c-close-group-post","method":"POST","path":"/workspace/close-group","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"expectedRevision":"x"},"volatile":[],"expect":"same","forwarded":true}

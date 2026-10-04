@@ -13,6 +13,7 @@ pub mod py;
 pub mod query;
 pub mod state;
 pub mod tmux;
+pub mod workspace;
 
 use crate::{
     HandlerError, Reply, Request,
@@ -39,6 +40,7 @@ pub enum NativeRoute {
     Light(light::LightRoute),
     Events,
     Notices(notices::NoticesRoute),
+    Workspace(workspace::WorkspaceRoute),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,7 +83,12 @@ pub struct Entry {
 }
 
 /// Una tabla por dominio; las tareas 3–7 añaden la suya.
-const TABLES: &[&[Entry]] = &[light::ROUTES, events::ROUTES, notices::ROUTES];
+const TABLES: &[&[Entry]] = &[
+    light::ROUTES,
+    events::ROUTES,
+    notices::ROUTES,
+    workspace::ROUTES,
+];
 
 pub fn route(method: &Method, target: &str) -> Option<NativeRoute> {
     let verb = if *method == Method::GET {
@@ -310,6 +317,7 @@ impl Native {
             NativeRoute::Light(route) => light::answer(self, route, request).await,
             NativeRoute::Events => events::answer(self, request).await,
             NativeRoute::Notices(route) => notices::answer(self, route, request).await,
+            NativeRoute::Workspace(route) => workspace::answer(self, route, request).await,
         }
     }
 
