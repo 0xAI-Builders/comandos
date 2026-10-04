@@ -67,21 +67,16 @@ async fn retired_body_is_pythons_operator_body() {
 fn retired_routes_have_no_live_caller() {
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut sources = Vec::new();
-    // dash/ (js y html), bin/ y lib/ salvo el propio cc-dash y el catálogo
-    // del chat retirado, que nombra las rutas para responderlas.
-    for (dir, only) in [("dash", true), ("bin", false), ("lib", false)] {
-        for entry in fs::read_dir(repo.join(dir)).unwrap().flatten() {
-            let path = entry.path();
-            let name = path.file_name().unwrap().to_string_lossy().into_owned();
-            let web = matches!(
-                path.extension().and_then(|e| e.to_str()),
-                Some("js" | "html")
-            );
-            if (only && !web) || name == "cc-dash" || name == "operator_catalog.py" {
-                continue;
-            }
-            sources.push(path);
-        }
+    // dash/ (js y html), bin/, lib/ y adapters/, recorridos enteros, salvo el
+    // propio cc-dash y el catálogo del chat retirado, que nombra las rutas
+    // para responderlas.
+    for (dir, only) in [
+        ("dash", true),
+        ("bin", false),
+        ("lib", false),
+        ("adapters", false),
+    ] {
+        collect_sources(&repo.join(dir), only, &mut sources);
     }
     // sw.js solo nombra /events en su lista de rutas que nunca se cachean.
     let allowed = [("sw.js", "/events")];
@@ -97,8 +92,13 @@ fn retired_routes_have_no_live_caller() {
                 continue;
             }
             for open in ['"', '\'', '`'] {
-                for close in ['"', '\'', '`', '?'] {
-                    if text.contains(&format!("{open}{path}{close}")) {
+                for close in ['"', '\'', '`', '?', '/'] {
+                    let needle = format!("{open}{path}{close}");
+                    // `/events/v2` es nativa (dominio B), no un llamador de `/events`.
+                    let hit = text
+                        .match_indices(&needle)
+                        .any(|(at, _)| !text[at + needle.len()..].starts_with("v2"));
+                    if hit {
                         callers.push(format!("{name}: {path}"));
                     }
                 }
@@ -109,6 +109,27 @@ fn retired_routes_have_no_live_caller() {
         callers.is_empty(),
         "rutas retiradas con llamador: {callers:?}"
     );
+}
+
+fn collect_sources(dir: &Path, only_web: bool, sources: &mut Vec<std::path::PathBuf>) {
+    for entry in fs::read_dir(dir).unwrap().flatten() {
+        let path = entry.path();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        if path.is_dir() {
+            if name != "__pycache__" {
+                collect_sources(&path, only_web, sources);
+            }
+            continue;
+        }
+        let web = matches!(
+            path.extension().and_then(|e| e.to_str()),
+            Some("js" | "html")
+        );
+        if (only_web && !web) || name == "cc-dash" || name == "operator_catalog.py" {
+            continue;
+        }
+        sources.push(path);
+    }
 }
 
 /// Método equivocado: el Python contesta él mismo, así que se reenvía.
