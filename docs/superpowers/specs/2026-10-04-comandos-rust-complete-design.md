@@ -251,3 +251,35 @@ anterior.
   usuario de Jesús, previa confirmación.
 - **Tiempo**: estimación honesta de 10–14 semanas de trabajo continuo con hasta cuatro agentes
   en paralelo. Las fases 1 y 2 ya reducen RAM de forma medible en los primeros días.
+
+## Enmiendas (4 de octubre de 2026, tras cerrar la Fase 0/1 y el inventario de la Fase 2)
+
+Hechos que el inventario `docs/research/2026-10-04-fase-2-inventario.md` corrige, y decisiones que
+cambian el orden de las fases sin quitar nada del alcance:
+
+1. **Rutas**: `cc-dash` tiene 161 pares método+ruta (63 GET, 97 POST, 1 DELETE), no 124; el
+   trabajo son ≈ 26 500 líneas de Python (`bin/cc-dash` + 46 módulos de `lib/`), no 10 000.
+   39 rutas no tienen llamador vivo (eran del chat retirado): se portan como `410 Ruta retirada`,
+   con lista, y se portan de verdad si aparece un llamador.
+2. **Transición de `cc-dash` por proxy inverso**: `comandos dash` toma el 4777 y reenvía al Python
+   (movido a 4781, `cc-dash-legacy.service`) todo lo que aún no es nativo; los dominios se cortan y
+   revierten uno a uno. El cutover único de §5.3 era inviable con 161 rutas.
+3. **Estáticos**: hasta la Fase 3 se sirven desde `H/dash` (disco), porque otras sesiones editan
+   `dash/*.js` en vivo; `include_bytes!` llega con `comandos-web`.
+4. **`cc-notifyd` solo hace popups GTK**: la voz y el chime ya los hace el hook Rust, los sonidos de
+   Pomodoro los hace `cc-dash`, Telegram está retirado. §4.3 queda corregido así. `comandos notifyd`
+   se porta en la **Fase 4** junto con el resto de GTK (el binario `comandos` sigue headless).
+5. **No existe SSE hoy**; lo único en vivo es el long-poll `GET /notices/watch` (25 s). SSE llega
+   con la interfaz de la Fase 3, no es una migración.
+6. **Terminal web**: la barra lateral del tablero en `cc-app` usa la UI embebida de ttyd (4779), no
+   `term.html`; ttyd se retira en la **Fase 3** con `comandos-term`, no en la 2. Los dos scripts
+   bash (`cc-webterm`, `cc-webterm-attach`) sí se portan en la 2b.
+7. **Memoria**: `cc-dash` está en 1.59 GB tras 40 h (pico 1.99 GB). El criterio de aceptación por
+   dominio es el RSS medido con carga sintética real (`xtask poll`, calendario del inventario §1.11).
+8. **Releases versionadas** del binario (`releases/<sha256:12>/comandos` + enlace `bin/comandos`,
+   `install --rollback-release`) antes de cualquier cutover nuevo (hallazgo de la revisión final
+   de la Fase 0/1).
+
+La Fase 2 se ejecuta en sub-planes: **2a** (releases, frente, estáticos, reenvío, arnés, carga
+sintética; `docs/superpowers/plans/2026-10-04-fase-2a-dash-cimientos.md`) y **2b** (dominios
+nativos por orden de carga; se planifica al cerrar la 2a).
