@@ -114,10 +114,12 @@ pub fn reduce_turn(
             return None;
         }
         let mut out = base(event, if foreign { &empty } else { cur });
-        identify(&mut out, event, at(event));
+        // `out.update(state=…, turnId=…, …)`: `state` va primero, y `pop` no
+        // mueve las demás claves (`remove` sería `swap_remove`).
         out.insert("state".into(), state.into());
+        identify(&mut out, event, at(event));
         out.insert("requestId".into(), Value::Null);
-        out.remove("finishedAtMs");
+        out.shift_remove("finishedAtMs");
         return Some(out);
     }
     let same_turn = !truthy(known)

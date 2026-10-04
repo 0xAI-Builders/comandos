@@ -152,3 +152,41 @@ fn folds_exact_panes_and_keeps_metadata_on_noop() {
     assert_eq!(turns["pane:a"]["projectKey"], "proj");
     assert_eq!(turns["tmux:s:%2"]["state"], "working");
 }
+
+/// El orden de las claves es el del `dict` del Python (`update` en orden de
+/// argumentos, `pop` sin mover el resto): `/events/v2?turns=1` lo serializa.
+#[test]
+fn key_order_follows_python_dict() {
+    let keys = |state: &serde_json::Map<String, Value>| state.keys().cloned().collect::<Vec<_>>();
+    let start = event("prompt_accepted", json!("a"), "", json!(10));
+    assert_eq!(
+        keys(&reduce_turn(None, &start).unwrap()),
+        [
+            "lastEventId",
+            "updatedAtMs",
+            "evidence",
+            "state",
+            "turnId",
+            "correlation",
+            "startedAtMs",
+            "requestId"
+        ]
+    );
+    let done =
+        json!({"state":"completed","finishedAtMs":5,"turnId":"a","harness":"x","startedAtMs":1});
+    let next = event("prompt_accepted", json!("b"), "", json!(10));
+    assert_eq!(
+        keys(&reduce_turn(done.as_object(), &next).unwrap()),
+        [
+            "state",
+            "turnId",
+            "harness",
+            "startedAtMs",
+            "lastEventId",
+            "updatedAtMs",
+            "evidence",
+            "correlation",
+            "requestId"
+        ]
+    );
+}
