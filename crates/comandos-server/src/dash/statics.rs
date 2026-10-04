@@ -38,6 +38,7 @@ pub fn mime_for(path: &str) -> &'static str {
         "ttf" => "font/ttf",
         "wasm" => "application/wasm",
         "txt" => "text/plain",
+        "md" => "text/markdown",
         "webp" => "image/webp",
         "jpg" | "jpeg" => "image/jpeg",
         "gif" => "image/gif",

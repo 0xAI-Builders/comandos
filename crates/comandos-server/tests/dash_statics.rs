@@ -224,6 +224,7 @@ fn mime_table_is_fixed_and_bare() {
         ("/s.mp3", "audio/mpeg"),
         ("/s.ogg", "audio/ogg"),
         ("/s.wav", "audio/x-wav"),
+        ("/assets/xterm/README.md", "text/markdown"),
         ("/blob.bin", "application/octet-stream"),
         ("/sin-extension", "application/octet-stream"),
         ("/comandos.desktop.in", "application/octet-stream"),
