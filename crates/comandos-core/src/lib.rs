@@ -13,3 +13,5 @@ pub mod workspace;
 
 pub mod pomodoro;
 pub mod focus;
+
+pub mod mcp_descriptions;

@@ -1097,8 +1097,9 @@
       "language": ".py",
       "category": "producto",
       "lines": 51,
-      "status": "Pendiente",
-      "rust": null
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/mcp_descriptions.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/mcp-descriptions-20261004-review.md"
     },
     {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/model_catalog.py",
