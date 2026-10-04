@@ -211,3 +211,18 @@ fn test_commands_never_see_the_real_broker() {
     support::isolate(&mut isolated);
     assert!(rejected(isolated).is_ok());
 }
+
+#[test]
+fn non_utf8_argument_exits_2_without_panicking() {
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_comandos-extensions"));
+    cmd.args(["serve"]).arg(OsStr::from_bytes(b"\xff\xfe"));
+    support::isolate(&mut cmd);
+    let out = cmd.output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "{stderr}");
+    assert!(
+        stderr.contains("UTF-8") && !stderr.contains("panicked"),
+        "{stderr}"
+    );
+}

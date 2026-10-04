@@ -1,8 +1,18 @@
 use comandos_cli::dispatch::{Command, resolve};
 
 fn main() {
-    let argv: Vec<String> = std::env::args().collect();
-    let code = match resolve(&argv[0], &argv[1..]) {
+    // `args()` entra en pánico con un argumento que no es UTF-8: se rechaza con 2.
+    let Ok(argv) = (std::env::args_os())
+        .map(std::ffi::OsString::into_string)
+        .collect::<Result<Vec<String>, _>>()
+    else {
+        eprintln!("comandos: argumento que no es UTF-8");
+        std::process::exit(2);
+    };
+    let (argv0, args) = argv
+        .split_first()
+        .map_or(("comandos", &[][..]), |(a, r)| (&**a, r));
+    let code = match resolve(argv0, args) {
         Command::Ext(args) => comandos_extensions::cli::run(args).unwrap_or_else(|e| {
             eprintln!("{e}");
             1
