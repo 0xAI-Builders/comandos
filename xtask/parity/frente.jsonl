@@ -113,3 +113,6 @@
 {"name":"f-ui-log","method":"POST","path":"/ui-log","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"events":[{"ts":1791115200.5,"k":"click","n":"btn","c":"x","d":3,"s":"main"},"no"]},"volatile":[],"expect":"same"}
 {"name":"f-ui-log-vacio","method":"POST","path":"/ui-log","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{},"volatile":[],"expect":"same"}
 {"name":"f-ui-log-roto","method":"POST","path":"/ui-log","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"events":[{"d":"x"}]},"volatile":[],"expect":"same"}
+# --- 2c · F2: Pomodoro (nativa; lee app-state, focus-queue y la base de uso)
+{"name":"f-pomodoro","method":"GET","path":"/pomodoro","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/serverNowMs"],"expect":"same"}
+{"name":"f-pomodoro-consulta","method":"GET","path":"/pomodoro?x=1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}

@@ -7,8 +7,10 @@
 //! y el frente reenvía la petición original al heredado.
 pub mod events;
 pub mod files;
+pub mod lanes;
 pub mod light;
 pub mod notices;
+pub mod pomodoro;
 pub mod py;
 pub mod query;
 pub mod retired;
@@ -46,6 +48,7 @@ pub enum NativeRoute {
     Workspace(workspace::WorkspaceRoute),
     Snippets(snippets::SnippetsRoute),
     UiLog,
+    Pomodoro,
     Retired,
 }
 
@@ -96,6 +99,7 @@ const TABLES: &[&[Entry]] = &[
     workspace::ROUTES,
     snippets::ROUTES,
     ui_log::ROUTES,
+    pomodoro::ROUTES,
     retired::ROUTES,
 ];
 
@@ -145,6 +149,31 @@ pub fn wall_clock_ms() -> i64 {
     comandos_runtime::now_ms().map_or(0, |ms| i64::try_from(ms).unwrap_or(i64::MAX))
 }
 
+/// `"desktop-" + re.sub(r"[^A-Za-z0-9_.-]", "-", os.uname().nodename or "local")[:60]`.
+/// `/proc/sys/kernel/hostname` es el `nodename` de `uname`.
+pub fn desktop_device() -> String {
+    let node = std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .map(|s| s.trim_end_matches('\n').to_owned())
+        .unwrap_or_default();
+    let node = if node.is_empty() {
+        "local".to_owned()
+    } else {
+        node
+    };
+    let clean: String = node
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .take(60)
+        .collect();
+    format!("desktop-{clean}")
+}
+
 #[derive(Clone)]
 pub struct NativeOptions {
     pub state_db: PathBuf,
@@ -155,6 +184,10 @@ pub struct NativeOptions {
     pub tmux: tmux::Tmux,
     /// `fc-list` de `_installed_font_families` (7603).
     pub fc_list: tmux::Program,
+    /// `~/.claude/hooks/comandos-usage.sqlite`.
+    pub usage_db: PathBuf,
+    /// `DESKTOP_DEVICE` del Python (999).
+    pub desktop_device: String,
 }
 
 impl NativeOptions {
@@ -165,6 +198,8 @@ impl NativeOptions {
             clock: Arc::new(wall_clock_ms),
             tmux: tmux::Tmux::system(),
             fc_list: tmux::Program::named("fc-list"),
+            usage_db: home.join(".claude/hooks/comandos-usage.sqlite"),
+            desktop_device: desktop_device(),
         }
     }
 }
@@ -181,11 +216,14 @@ pub struct Native {
     pub(crate) fonts: Mutex<Option<(std::time::Instant, std::collections::HashSet<String>)>>,
     /// La revisión de avisos que comparten las esperas de `/notices/watch`.
     pub(crate) notice_feed: notices::RevisionFeed,
+    /// Carril de la base de uso (`GET /pomodoro`).
+    pub(crate) usage: lanes::Lane<lanes::UsageBackend>,
 }
 
 impl Native {
     pub fn new(opts: NativeOptions) -> Self {
         Self {
+            usage: lanes::Lane::new(opts.usage_db.clone()),
             opts,
             enabled: AtomicBool::new(true),
             refusals: AtomicUsize::new(0),
@@ -329,6 +367,7 @@ impl Native {
             NativeRoute::Workspace(route) => workspace::answer(self, route, request).await,
             NativeRoute::Snippets(route) => snippets::answer(self, route, request).await,
             NativeRoute::UiLog => ui_log::answer(self, request).await,
+            NativeRoute::Pomodoro => pomodoro::answer(self).await,
             NativeRoute::Retired => {
                 let path = request
                     .target
@@ -347,5 +386,6 @@ impl Native {
         if let Some(worker) = worker {
             let _ = worker.shutdown().await;
         }
+        self.usage.shutdown().await;
     }
 }

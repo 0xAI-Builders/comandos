@@ -153,6 +153,9 @@ impl TestHome {
     pub fn state_db(&self) -> PathBuf {
         self.root.join(".local/state/comandos/app-state.sqlite3")
     }
+    pub fn usage_db(&self) -> PathBuf {
+        self.hooks().join("comandos-usage.sqlite")
+    }
     pub fn write(&self, name: &str, text: &str) {
         std::fs::write(self.hooks().join(name), text).unwrap();
     }

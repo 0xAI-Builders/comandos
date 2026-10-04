@@ -17,7 +17,7 @@ use std::{
 };
 
 const DB_FILENAME: &str = "comandos-usage.sqlite";
-const SCHEMA_VERSION: i64 = 11;
+pub const SCHEMA_VERSION: i64 = 11;
 /// Una configuración registrada poco después del primer turno es la de esa sesión.
 const CONFIG_RACE_WINDOW: i64 = 900;
 const OPEN_INTERACTION_SQL: &str = "select id,config_id from usage_interactions
@@ -416,6 +416,34 @@ fn init_db(conn: &Connection) -> Result<()> {
 
 fn user_version(conn: &Connection) -> Result<i64> {
     Ok(conn.query_row("pragma user_version", [], |r| r.get(0))?)
+}
+
+/// `pragma user_version` (la puerta del carril de uso del frente).
+pub fn schema_version(conn: &Connection) -> Result<i64> {
+    user_version(conn)
+}
+
+/// `init_db` de Python: tablas base y migración hasta `SCHEMA_VERSION`.
+pub fn ensure_schema(conn: &Connection) -> Result<()> {
+    init_db(conn)
+}
+
+/// `read_focus_settings` = `set_focus_settings(db, {})`: `init_db` y las filas
+/// en el orden de la tabla (misma consulta, sin ORDER BY). Un valor que no es
+/// texto se entrega como `None` para que quien llama decida.
+pub fn focus_settings_rows(conn: &Connection) -> Result<Vec<(String, Option<String>)>> {
+    init_db(conn)?;
+    let mut stmt = conn.prepare("select key,value from focus_settings")?;
+    let rows = stmt
+        .query_map([], |r| {
+            let value = match r.get_ref(1)? {
+                ValueRef::Text(t) => std::str::from_utf8(t).ok().map(str::to_owned),
+                _ => None,
+            };
+            Ok((r.get::<_, String>(0)?, value))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
 }
 
 fn migrate_schema(conn: &Connection, current: i64) -> Result<()> {

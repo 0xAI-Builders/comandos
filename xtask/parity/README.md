@@ -5,8 +5,14 @@ privadas de `~/.claude/hooks`.
 
 ```
 cargo build -p comandos-cli
-cargo run -p xtask -- parity --fixture xtask/parity/frente.jsonl --hooks ~/.claude/hooks [--keep] [--comandos RUTA]
+cargo run -p xtask -- parity --fixture xtask/parity/frente.jsonl --hooks ~/.claude/hooks [--keep] [--comandos RUTA] [--state-db RUTA] [--usage-db RUTA] [--no-native]
 ```
+
+- `--state-db <ruta>`: copia de solo lectura (backup de SQLite) de la base de estado a los dos
+  HOME; usar con `~/.local/state/comandos/app-state.sqlite3`.
+- `--usage-db <ruta>`: copia de solo lectura (backup) de la base de uso a los dos HOME, sobre la
+  que trajo `cp -a`; usar con `~/.claude/hooks/comandos-usage.sqlite` para que las rutas que la
+  leen (GET `/pomodoro`) comparen sobre datos consistentes.
 
 **Aislamiento.** El arnés (y `poll`) se reejecuta dentro de `unshare -Urn` con el loopback
 levantado: ahí 4777/4778/4779/4780/4781 no existen, así que el oráculo Python no puede llegar a

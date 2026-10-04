@@ -42,6 +42,23 @@ impl Refusal {
     }
 }
 
+impl Refusal {
+    /// La línea de un carril: nombra la base y las rutas que dejan de ser nativas.
+    pub fn lane_message(&self, path: &Path, routes: &str) -> String {
+        let detail = match self {
+            Refusal::Newer { found, known } => {
+                format!("tiene esquema {found} y este binario conoce hasta {known}")
+            }
+            Refusal::Unopened(error) => format!("no se pudo abrir: {error}"),
+            Refusal::Retired => "su worker se retiró tras un fallo".to_owned(),
+        };
+        format!(
+            "comandos dash: {}: {detail}; {routes} se reenvían al heredado",
+            path.display()
+        )
+    }
+}
+
 pub fn known_versions() -> BTreeSet<i64> {
     MIGRATIONS.iter().map(|m| m.version).collect()
 }
@@ -50,6 +67,9 @@ pub struct StateBackend {
     pub conn: Connection,
     /// Se crea al primer uso: su `import_done` es el `_EVENTS_V2_LEGACY` del Python.
     events: Option<EventRoutes<NativeFacts>>,
+    /// `focus_progress.ensure_policy` de `pomodoro_store()` ya se hizo en este
+    /// proceso (el Python lo repite por hilo; es idempotente).
+    pub(crate) pomodoro_policy: bool,
 }
 
 impl StateBackend {
@@ -59,7 +79,11 @@ impl StateBackend {
         let mut last = String::new();
         for attempt in 0..3u64 {
             let conn = state::connect(path).map_err(|e| Refusal::Unopened(e.to_string()))?;
-            let backend = Self { conn, events: None };
+            let backend = Self {
+                conn,
+                events: None,
+                pomodoro_policy: false,
+            };
             backend.admit()?;
             match state::migrate(&backend.conn, MIGRATIONS, now_seconds) {
                 Ok(_) => return Ok(backend),

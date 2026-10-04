@@ -606,6 +606,9 @@ pub struct StackOptions<'a> {
     pub keep: bool,
     /// Copia de solo lectura (backup de SQLite) en los dos HOME.
     pub state_db: Option<&'a Path>,
+    /// Base de uso copiada (backup de SQLite) a `~/.claude/hooks/comandos-usage.sqlite`
+    /// de los dos HOME.
+    pub usage_db: Option<&'a Path>,
     /// Pasa `--no-native` al frente: A/B contra la 2a.
     pub no_native: bool,
 }
@@ -621,6 +624,25 @@ fn copy_state_db(src: &Path, home: &Path) -> Result<(), String> {
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .map_err(|e| format!("--state-db {}: {e}", src.display()))?;
+    source
+        .backup(rusqlite::MAIN_DB, &dest, None)
+        .map_err(|e| format!("backup de {}: {e}", src.display()))
+}
+
+/// Copia la base de uso con la API de backup sobre la que trajo `cp -a`
+/// (que puede estar a medias si la real tenía WAL): nunca escribe en `src`.
+fn copy_usage_db(src: &Path, home: &Path) -> Result<(), String> {
+    let dest = home.join(".claude/hooks/comandos-usage.sqlite");
+    for suffix in ["", "-wal", "-shm"] {
+        let mut name = dest.as_os_str().to_owned();
+        name.push(suffix);
+        let _ = fs::remove_file(PathBuf::from(name));
+    }
+    let source = rusqlite::Connection::open_with_flags(
+        src,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("--usage-db {}: {e}", src.display()))?;
     source
         .backup(rusqlite::MAIN_DB, &dest, None)
         .map_err(|e| format!("backup de {}: {e}", src.display()))
@@ -870,6 +892,10 @@ impl Stack {
             copy_state_db(db, &home1)?;
             copy_state_db(db, &home2)?;
         }
+        if let Some(db) = o.usage_db {
+            copy_usage_db(db, &home1)?;
+            copy_usage_db(db, &home2)?;
+        }
         let token = fs::read_to_string(hooks1.join("dash-token"))
             .map(|t| t.trim().to_string())
             .unwrap_or_default();
@@ -1043,13 +1069,15 @@ struct Args {
     comandos: Option<PathBuf>,
     /// `--state-db <ruta>`: base de estado copiada (solo lectura) a los dos HOME.
     state_db: Option<PathBuf>,
+    /// `--usage-db <ruta>`: base de uso copiada (solo lectura) a los dos HOME.
+    usage_db: Option<PathBuf>,
     /// `--no-native`: el frente reenvía todo, como en la 2a.
     no_native: bool,
 }
 
 fn parse_args(args: &[String]) -> Result<Args, String> {
     let (mut fixture, mut hooks, mut keep, mut comandos) = (None, None, false, None);
-    let (mut state_db, mut no_native) = (None, false);
+    let (mut state_db, mut usage_db, mut no_native) = (None, None, false);
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -1058,6 +1086,9 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
             "--comandos" => comandos = it.next().map(PathBuf::from),
             "--state-db" => {
                 state_db = Some(it.next().map(PathBuf::from).ok_or("--state-db sin ruta")?);
+            }
+            "--usage-db" => {
+                usage_db = Some(it.next().map(PathBuf::from).ok_or("--usage-db sin ruta")?);
             }
             "--keep" => keep = true,
             "--no-native" => no_native = true,
@@ -1070,6 +1101,7 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
         keep,
         comandos,
         state_db,
+        usage_db,
         no_native,
     })
 }
@@ -1093,6 +1125,7 @@ pub fn run(args: &[String]) -> Result<i32, String> {
         comandos: &comandos,
         keep: a.keep,
         state_db: a.state_db.as_deref(),
+        usage_db: a.usage_db.as_deref(),
         no_native: a.no_native,
     })?;
     let results = std::env::temp_dir().join(format!("comandos-parity-results-{}", unix_secs()));

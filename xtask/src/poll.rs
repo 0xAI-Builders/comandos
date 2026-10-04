@@ -171,6 +171,8 @@ pub struct Opts {
     shadow: Option<(PathBuf, Option<PathBuf>)>,
     /// Con `--shadow`: base de estado copiada (solo lectura) a la pila aislada.
     state_db: Option<PathBuf>,
+    /// Con `--shadow`: base de uso copiada (solo lectura) a la pila aislada.
+    usage_db: Option<PathBuf>,
     /// Con `--shadow`: el frente arranca con `--no-native` (A/B contra la 2a).
     no_native: bool,
 }
@@ -179,7 +181,7 @@ pub struct Opts {
 pub fn parse(args: &[String]) -> Result<Opts, String> {
     let (mut base, mut token, mut minutes, mut pid, mut out) = (None, None, None, None, None);
     let (mut shadow, mut hooks, mut comandos) = (false, None, None);
-    let (mut state_db, mut no_native) = (None, false);
+    let (mut state_db, mut usage_db, mut no_native) = (None, None, false);
     let mut it = args.iter();
     while let Some(a) = it.next() {
         if a == "--shadow" {
@@ -200,12 +202,13 @@ pub fn parse(args: &[String]) -> Result<Opts, String> {
             "--hooks" => hooks = Some(PathBuf::from(v)),
             "--comandos" => comandos = Some(PathBuf::from(v)),
             "--state-db" => state_db = Some(PathBuf::from(v)),
+            "--usage-db" => usage_db = Some(PathBuf::from(v)),
             other => return Err(format!("argumento desconocido: {other}")),
         }
     }
     // Sin pila aislada no hay frente que arrancar: estas opciones no tienen efecto.
-    if !shadow && (state_db.is_some() || no_native) {
-        return Err("--state-db y --no-native requieren --shadow".into());
+    if !shadow && (state_db.is_some() || usage_db.is_some() || no_native) {
+        return Err("--state-db, --usage-db y --no-native requieren --shadow".into());
     }
     let shadow = if shadow {
         Some((hooks.ok_or("--shadow requiere --hooks")?, comandos))
@@ -228,6 +231,7 @@ pub fn parse(args: &[String]) -> Result<Opts, String> {
         out,
         shadow,
         state_db,
+        usage_db,
         no_native,
     })
 }
@@ -321,6 +325,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     comandos: &comandos,
                     keep: false,
                     state_db: o.state_db.as_deref(),
+                    usage_db: o.usage_db.as_deref(),
                     no_native: o.no_native,
                 },
             )?)

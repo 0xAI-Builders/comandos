@@ -88,7 +88,11 @@ fn shadow_only_options_require_shadow() {
         "1",
     ];
     assert!(poll::parse(&args(&base)).is_ok());
-    for extra in [&["--no-native"][..], &["--state-db", "/tmp/x.sqlite3"][..]] {
+    for extra in [
+        &["--no-native"][..],
+        &["--state-db", "/tmp/x.sqlite3"][..],
+        &["--usage-db", "/tmp/u.sqlite"][..],
+    ] {
         let mut v = args(&base);
         v.extend(args(extra));
         let error = poll::parse(&v).err().unwrap_or_default();
