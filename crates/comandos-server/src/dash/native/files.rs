@@ -30,9 +30,16 @@ pub fn read_json_strict(path: &Path) -> Strict {
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Strict::Missing,
         Err(_) => return Strict::Unsure,
     };
-    let Ok(text) = std::str::from_utf8(&bytes) else {
-        return Strict::Unsure;
-    };
+    match std::str::from_utf8(&bytes) {
+        Ok(text) => loads_strict(text),
+        Err(_) => Strict::Unsure,
+    }
+}
+
+/// `json.loads(texto)` sobre un `str` ya decodificado, con la misma
+/// clasificación que `read_json_strict` (BOM → ilegible; sustitutos sueltos o
+/// anidamiento profundo → incierto).
+pub fn loads_strict(text: &str) -> Strict {
     if text.starts_with('\u{feff}') {
         return Strict::Unreadable;
     }
@@ -61,6 +68,12 @@ fn deep(text: &str) -> bool {
 /// Bloquea: llamar dentro de `spawn_blocking`.
 pub fn write_json_atomic(path: &Path, value: &Value) -> io::Result<()> {
     let text = response_dumps(value).map_err(io::Error::other)?;
+    write_text_atomic(path, &text)
+}
+
+/// `write_file_atomic` (5063) con texto ya formado.
+/// Bloquea: llamar dentro de `spawn_blocking`.
+pub fn write_text_atomic(path: &Path, text: &str) -> io::Result<()> {
     let dir = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -96,4 +109,35 @@ pub fn write_json_atomic(path: &Path, value: &Value) -> io::Result<()> {
         let _ = fs::remove_file(&tmp);
     }
     result
+}
+
+/// `file_lock` (5168): `flock` exclusivo sobre `<ruta>.lock` (creado 0600),
+/// el mismo que toman el Python y cc-app. Se pide sin esperar: `Ok(None)` si
+/// otro lo tiene; quien llama declina antes de leer o escribir nada. Se suelta
+/// al soltar el valor (cerrar el descriptor suelta el `flock`).
+pub struct FileLock {
+    _file: fs::File,
+}
+
+impl FileLock {
+    pub fn try_acquire(path: &Path) -> io::Result<Option<FileLock>> {
+        let mut name = path.as_os_str().to_owned();
+        name.push(".lock");
+        let lock = std::path::PathBuf::from(name);
+        if let Some(dir) = lock.parent().filter(|d| !d.as_os_str().is_empty()) {
+            fs::create_dir_all(dir)?;
+        }
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .open(&lock)?;
+        match file.try_lock() {
+            Ok(()) => Ok(Some(FileLock { _file: file })),
+            Err(fs::TryLockError::WouldBlock) => Ok(None),
+            Err(fs::TryLockError::Error(e)) => Err(e),
+        }
+    }
 }

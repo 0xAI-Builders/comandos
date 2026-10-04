@@ -101,3 +101,15 @@
 {"name":"e-post-open-with-account","method":"POST","path":"/open-with-account","oracle_path":"/operator","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{},"volatile":[],"expect":"same"}
 {"name":"e-post-tab-new","method":"POST","path":"/tab-new","oracle_path":"/operator","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{},"volatile":[],"expect":"same"}
 {"name":"e-operator-sigue-reenviada","method":"GET","path":"/operator","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
+# --- 2c · F1: snippets y registro de uso (nativas; los POST escriben, el orden importa)
+{"name":"f-snippets","method":"GET","path":"/snippets","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"f-snippets-vacio","method":"POST","path":"/snippets","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"name":"","body":"x"},"volatile":[],"expect":"same"}
+{"name":"f-snippets-tags","method":"POST","path":"/snippets","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"name":"a","body":"x","tags":"uno"},"volatile":[],"expect":"same"}
+{"name":"f-snippets-nuevo","method":"POST","path":"/snippets","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"name":" Paridad ","body":"echo paridad","tags":[" xtask "]},"volatile":["/item/id","/item/updated_at"],"expect":"same"}
+{"name":"f-snippets-tras-nuevo","method":"GET","path":"/snippets","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/0/id","/0/updated_at"],"expect":"same"}
+{"name":"f-snippets-update-id","method":"POST","path":"/snippets/update","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"id":"zz"},"volatile":[],"expect":"same"}
+{"name":"f-snippets-update-404","method":"POST","path":"/snippets/update","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"id":"0000000000000000","name":"a","body":"b"},"volatile":[],"expect":"same"}
+{"name":"f-snippets-delete-404","method":"POST","path":"/snippets/delete","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"id":"0000000000000000"},"volatile":[],"expect":"same"}
+{"name":"f-ui-log","method":"POST","path":"/ui-log","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"events":[{"ts":1791115200.5,"k":"click","n":"btn","c":"x","d":3,"s":"main"},"no"]},"volatile":[],"expect":"same"}
+{"name":"f-ui-log-vacio","method":"POST","path":"/ui-log","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{},"volatile":[],"expect":"same"}
+{"name":"f-ui-log-roto","method":"POST","path":"/ui-log","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"events":[{"d":"x"}]},"volatile":[],"expect":"same"}

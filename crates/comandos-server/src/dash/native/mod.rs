@@ -12,8 +12,10 @@ pub mod notices;
 pub mod py;
 pub mod query;
 pub mod retired;
+pub mod snippets;
 pub mod state;
 pub mod tmux;
+pub mod ui_log;
 pub mod workspace;
 
 use crate::{
@@ -42,6 +44,8 @@ pub enum NativeRoute {
     Events,
     Notices(notices::NoticesRoute),
     Workspace(workspace::WorkspaceRoute),
+    Snippets(snippets::SnippetsRoute),
+    UiLog,
     Retired,
 }
 
@@ -90,6 +94,8 @@ const TABLES: &[&[Entry]] = &[
     events::ROUTES,
     notices::ROUTES,
     workspace::ROUTES,
+    snippets::ROUTES,
+    ui_log::ROUTES,
     retired::ROUTES,
 ];
 
@@ -321,6 +327,8 @@ impl Native {
             NativeRoute::Events => events::answer(self, request).await,
             NativeRoute::Notices(route) => notices::answer(self, route, request).await,
             NativeRoute::Workspace(route) => workspace::answer(self, route, request).await,
+            NativeRoute::Snippets(route) => snippets::answer(self, route, request).await,
+            NativeRoute::UiLog => ui_log::answer(self, request).await,
             NativeRoute::Retired => {
                 let path = request
                     .target

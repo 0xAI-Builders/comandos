@@ -42,6 +42,13 @@ pub fn response_dumps(value: &Value) -> Result<String, String> {
     encode(value, true, false, false, Policy::Workspace)
 }
 
+/// `json.dumps(value, ensure_ascii=False)` del Python: orden de inserción,
+/// separadores `", "`/`": "` y UTF-8 sin escapar (líneas de registros JSONL).
+pub fn response_dumps_unicode(value: &Value) -> Result<String, String> {
+    validate_workspace_depth(value, 0)?;
+    encode(value, false, false, false, Policy::Workspace)
+}
+
 fn encode(
     value: &Value,
     ascii: bool,

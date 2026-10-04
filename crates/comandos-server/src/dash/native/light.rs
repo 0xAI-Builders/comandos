@@ -122,7 +122,7 @@ pub(crate) fn error(status: StatusCode, message: &str) -> Answer {
 
 /// 200 de una ruta de solo lectura: si el codificador portado no puede escribir
 /// lo leído (el `json.dumps` del Python sí), se declina; no hubo efectos.
-fn read_reply(value: &Value) -> Answer {
+pub(crate) fn read_reply(value: &Value) -> Answer {
     Reply::json(StatusCode::OK, value).map_err(|_| Fault::Decline)
 }
 
@@ -154,7 +154,7 @@ fn prefs_defaults() -> [(&'static str, Value); 10] {
 
 /// `json.load(open(path))` dentro de un `try/except Exception` del Python.
 /// `Ok(None)`: el Python cae en su `except`; `Decline`: no se sabe qué leería.
-fn load(path: &Path) -> Result<Option<Value>, Fault> {
+pub(crate) fn load(path: &Path) -> Result<Option<Value>, Fault> {
     match files::read_json_strict(path) {
         Strict::Value(value) => Ok(Some(value)),
         Strict::Missing | Strict::Unreadable => Ok(None),
