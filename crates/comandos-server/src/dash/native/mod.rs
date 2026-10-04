@@ -11,6 +11,7 @@ pub mod light;
 pub mod notices;
 pub mod py;
 pub mod query;
+pub mod retired;
 pub mod state;
 pub mod tmux;
 pub mod workspace;
@@ -41,6 +42,7 @@ pub enum NativeRoute {
     Events,
     Notices(notices::NoticesRoute),
     Workspace(workspace::WorkspaceRoute),
+    Retired,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,6 +90,7 @@ const TABLES: &[&[Entry]] = &[
     events::ROUTES,
     notices::ROUTES,
     workspace::ROUTES,
+    retired::ROUTES,
 ];
 
 pub fn route(method: &Method, target: &str) -> Option<NativeRoute> {
@@ -318,6 +321,7 @@ impl Native {
             NativeRoute::Events => events::answer(self, request).await,
             NativeRoute::Notices(route) => notices::answer(self, route, request).await,
             NativeRoute::Workspace(route) => workspace::answer(self, route, request).await,
+            NativeRoute::Retired => retired::answer(),
         }
     }
 
