@@ -8,6 +8,7 @@
 pub mod events;
 pub mod files;
 pub mod light;
+pub mod notices;
 pub mod py;
 pub mod query;
 pub mod state;
@@ -37,6 +38,7 @@ pub const WORKER_CAPACITY: usize = 64;
 pub enum NativeRoute {
     Light(light::LightRoute),
     Events,
+    Notices(notices::NoticesRoute),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,7 +81,7 @@ pub struct Entry {
 }
 
 /// Una tabla por dominio; las tareas 3–7 añaden la suya.
-const TABLES: &[&[Entry]] = &[light::ROUTES, events::ROUTES];
+const TABLES: &[&[Entry]] = &[light::ROUTES, events::ROUTES, notices::ROUTES];
 
 pub fn route(method: &Method, target: &str) -> Option<NativeRoute> {
     let verb = if *method == Method::GET {
@@ -304,6 +306,7 @@ impl Native {
         match route {
             NativeRoute::Light(route) => light::answer(self, route, request).await,
             NativeRoute::Events => events::answer(self, request).await,
+            NativeRoute::Notices(route) => notices::answer(self, route, request).await,
         }
     }
 

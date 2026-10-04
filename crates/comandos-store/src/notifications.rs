@@ -109,7 +109,7 @@ pub fn save_prefs(conn: &Connection, update: &Value) -> Result<Value> {
     Ok(prefs)
 }
 
-fn recent(conn: &Connection) -> Result<Vec<Value>> {
+pub fn recent(conn: &Connection) -> Result<Vec<Value>> {
     list_events(
         conn,
         (latest_sequence(conn)? - policy::HISTORY_WINDOW).max(0),

@@ -40,3 +40,18 @@
 {"name":"b-events-v2-post-ajeno","method":"POST","path":"/events/v2","headers":{"Host":"127.0.0.1","Origin":"http://127.0.0.1","Content-Type":"application/json"},"body":{"hookEvent":"Stop"},"volatile":[],"expect":"same"}
 {"name":"b-events-v2-post-ignorado","method":"POST","path":"/events/v2","headers":{"Host":"127.0.0.1","X-Comandos-Token":"{{token}}","Content-Type":"application/json"},"body":{"hookEvent":"Unknown"},"volatile":[],"expect":"same"}
 {"name":"b-events-v2-post-registrado","method":"POST","path":"/events/v2","headers":{"Host":"127.0.0.1","X-Comandos-Token":"{{token}}","Content-Type":"application/json"},"body":{"hookEvent":"UserPromptSubmit","agent":"codex","session":"parity-b","pane":"%99","turnId":"parity-t1","occurredAtMs":1000},"volatile":["/event/eventId","/event/receivedAtMs"],"expect":"same"}
+# --- 2b · A: notificaciones (nativas)
+{"name":"a-notices","method":"GET","path":"/notices?limit=20","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"a-notices-device","method":"GET","path":"/notices?after=0&limit=5&deviceId=parity","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"a-notices-malo","method":"GET","path":"/notices?after=x","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"a-notices-prefs","method":"GET","path":"/notices/prefs","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"a-notifs-count","method":"GET","path":"/notifs/count","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"a-watch-ya","method":"GET","path":"/notices/watch?wait=0","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"a-watch-espera","method":"GET","path":"/notices/watch?rev=distinta&wait=1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"a-presence-malo","method":"POST","path":"/presence","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"deviceId":""},"volatile":[],"expect":"same"}
+{"name":"a-presence","method":"POST","path":"/presence","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"deviceId":"parity-a","visible":true,"canPlayAudio":false,"kind":"web"},"volatile":[],"expect":"same"}
+{"name":"a-read-malo","method":"POST","path":"/notices/read","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"eventIds":"x"},"volatile":[],"expect":"same"}
+{"name":"a-read-nada","method":"POST","path":"/notices/read","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"eventIds":["no-existe"]},"volatile":[],"expect":"same"}
+{"name":"a-sound","method":"POST","path":"/notices/sound","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"eventId":"no-existe","deviceId":"parity-a"},"volatile":[],"expect":"same"}
+{"name":"a-prefs-post","method":"POST","path":"/notices/prefs","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{},"volatile":[],"expect":"same"}
+{"name":"a-notifs-count-tras","method":"GET","path":"/notifs/count","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
