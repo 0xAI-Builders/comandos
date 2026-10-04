@@ -2,6 +2,8 @@
 //! única de events.jsonl compartida con el Python.
 mod support;
 
+use comandos_core::json::response_dumps;
+use rusqlite::Connection;
 use serde_json::Value;
 use support::{FakeLegacy, TestHome, Wire, dead_port, front, get, oracle::oracle, request_body};
 
@@ -175,30 +177,38 @@ async fn unsure_query_declines_before_importing() {
 }
 
 /// Quita los campos que dependen del reloj o de ids aleatorios (como los
-/// punteros `volatile` del arnés de paridad); el resto, en su orden.
+/// punteros `volatile` del arnés de paridad) y vuelve a volcar con el
+/// `json.dumps` del Python, así separadores, escapes y orden siguen
+/// comparándose; sin nada que quitar, se comparan los bytes del cable.
 fn stable(wire: &Wire) -> (u16, Option<String>, String) {
-    fn scrub(value: &mut Value) {
+    fn scrub(value: &mut Value) -> bool {
         match value {
             Value::Object(map) => {
+                let mut changed = false;
                 for (key, inner) in map.iter_mut() {
                     if matches!(
                         key.as_str(),
                         "updatedAtMs" | "receivedAtMs" | "eventId" | "lastEventId" | "receiptId"
                     ) {
                         *inner = Value::Null;
+                        changed = true;
                     } else {
-                        scrub(inner);
+                        changed |= scrub(inner);
                     }
                 }
+                changed
             }
-            Value::Array(items) => items.iter_mut().for_each(scrub),
-            _ => {}
+            Value::Array(items) => items.iter_mut().fold(false, |acc, item| scrub(item) | acc),
+            _ => false,
         }
     }
     let text = match serde_json::from_slice::<Value>(&wire.body) {
         Ok(mut value) => {
-            scrub(&mut value);
-            serde_json::to_string(&value).unwrap()
+            if scrub(&mut value) {
+                response_dumps(&value).unwrap()
+            } else {
+                wire.text()
+            }
         }
         Err(_) => wire.text(),
     };
@@ -301,5 +311,84 @@ async fn every_route_and_error_matches_python_oracle() {
         let (a, b) = (call(py.port).await, call(front.port).await);
         assert_eq!(stable(&a), stable(&b), "{method} {target} {body}");
     }
+    front.stop().await;
+}
+
+/// Corrompe la primera fila de `events` (un BLOB donde va texto): la
+/// lectura falla en el Rust y el Python responde lo suyo.
+fn corrupt_first_event(home: &TestHome) {
+    let conn = Connection::open(home.state_db()).unwrap();
+    conn.execute("UPDATE events SET title = X'FF' WHERE sequence = 1", [])
+        .unwrap();
+}
+
+#[tokio::test]
+async fn unreadable_row_declines_once_imported_and_fails_on_first_import() {
+    let home = TestHome::new("events-corrupt");
+    home.write(
+        "events.jsonl",
+        "{\"ts\": 1790000000, \"project\": \"p\", \"status\": \"done\"}\n",
+    );
+    let legacy = FakeLegacy::start().await;
+    let first_front = front(&home, legacy.port, home.options()).await;
+    // La primera importación ocurre aquí (la fila aún se lee bien).
+    let first = get(first_front.port, "/events/v2").await;
+    assert_eq!(first.status, 200, "{}", first.text());
+    corrupt_first_event(&home);
+    for target in ["/events/v2", "/events/v2?turns=1", "/work-marks"] {
+        let wire = get(first_front.port, target).await;
+        assert_eq!(wire.text(), r#"{"legacy": true}"#, "{target}");
+    }
+    assert_eq!(legacy.requests().len(), 3);
+    first_front.stop().await;
+
+    // En un proceso nuevo la importación corre en la misma petición que
+    // falla al leer: pudo escribir, así que no se reenvía.
+    let second_front = front(&home, legacy.port, home.options()).await;
+    let wire = get(second_front.port, "/events/v2").await;
+    assert_eq!(
+        (wire.status, wire.text().as_str()),
+        (500, r#"{"error": "Error interno del tablero"}"#)
+    );
+    assert_eq!(legacy.requests().len(), 3);
+    second_front.stop().await;
+}
+
+/// Con el Python como heredado: lo que el frente reenvía por una fila
+/// ilegible es exactamente lo que el Python responde directamente.
+#[tokio::test]
+async fn unreadable_row_answer_is_pythons() {
+    let home = TestHome::new("events-corrupt-oracle");
+    home.write(
+        "events.jsonl",
+        "{\"ts\": 1790000000, \"project\": \"p\", \"status\": \"done\"}\n",
+    );
+    let Some(py) = oracle(&home).await else {
+        return;
+    };
+    let front = front(&home, py.port, home.options()).await;
+    assert_eq!(get(front.port, "/events/v2").await.status, 200);
+    corrupt_first_event(&home);
+    for target in ["/events/v2", "/work-marks"] {
+        let (a, b) = (get(py.port, target).await, get(front.port, target).await);
+        assert_eq!((a.status, a.text()), (b.status, b.text()), "{target}");
+    }
+    front.stop().await;
+}
+
+/// El Python ignora la consulta de GET /work-marks: U+FFFD ahí no reenvía.
+#[tokio::test]
+async fn work_marks_ignores_unsure_query() {
+    let home = TestHome::new("events-marks-query");
+    let legacy = FakeLegacy::start().await;
+    let front = front(&home, legacy.port, home.options()).await;
+    let wire = get(front.port, "/work-marks?x=%FF").await;
+    assert_eq!(wire.status, 200, "{}", wire.text());
+    assert!(
+        wire.text().starts_with(r#"{"marks": []"#),
+        "{}",
+        wire.text()
+    );
+    assert!(legacy.requests().is_empty());
     front.stop().await;
 }

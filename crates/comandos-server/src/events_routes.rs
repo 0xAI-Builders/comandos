@@ -33,6 +33,23 @@ impl Facts for NativeFacts {
     }
 }
 
+/// Por qué `EventRoutes::handle_native` no respondió.
+pub enum Unanswered {
+    Failed(HandlerError),
+    /// Una lectura falló (p. ej. una fila guardada que no se decodifica) y
+    /// esta petición no escribió nada: se puede reenviar sin efectos.
+    Unsure,
+}
+
+impl From<HandlerError> for Unanswered {
+    fn from(error: HandlerError) -> Self {
+        Unanswered::Failed(error)
+    }
+}
+
+/// Una lectura de la base que no se pudo completar.
+struct ReadFailed;
+
 pub struct EventRoutes<F = NativeFacts> {
     legacy_path: PathBuf,
     facts: F,
@@ -55,44 +72,74 @@ impl<F: Facts> EventRoutes<F> {
         conn: &Connection,
         request: &Request,
     ) -> Result<Option<Reply>, HandlerError> {
+        self.handle_native(conn, request)
+            .map_err(|unanswered| match unanswered {
+                Unanswered::Failed(error) => error,
+                Unanswered::Unsure => HandlerError::Failure,
+            })
+    }
+
+    /// Como `handle`, pero distingue `Unanswered::Unsure`: una lectura de la
+    /// base falló sin que esta petición escribiera nada, y el frente nativo
+    /// puede reenviarla al Python para que responda lo suyo.
+    pub fn handle_native(
+        &mut self,
+        conn: &Connection,
+        request: &Request,
+    ) -> Result<Option<Reply>, Unanswered> {
         if request.method == Method::GET {
-            let (path, query) = dashboard_access::request_target_parts(&request.target)
-                .ok_or(HandlerError::Failure)?;
-            return match path.as_str() {
-                "/events/v2" => {
-                    let pairs = dashboard_access::query_pairs(&query, false);
-                    let after = match pagination(&pairs, "after", 0) {
-                        Ok(value) => value,
-                        Err(message) => return error(400, &message).map(Some),
-                    };
-                    let limit = match pagination(&pairs, "limit", 100) {
-                        Ok(value) => value,
-                        Err(message) => return error(400, &message).map(Some),
-                    };
-                    if let Err(problem) = self.import(conn) {
-                        return store_error(problem).map(Some);
-                    }
-                    let events = comandos_store::list_events(conn, after, limit)
-                        .map_err(|_| HandlerError::Failure)?;
-                    let next_after = events.last().map_or(after, |event| {
-                        event["sequence"].as_i64().expect("stored sequence")
-                    });
-                    let latest =
-                        comandos_store::latest_sequence(conn).map_err(|_| HandlerError::Failure)?;
-                    let mut value = json!({"events":events,"nextAfter":next_after,"latest":latest});
-                    if pairs
-                        .iter()
-                        .find(|(key, _)| key == "turns")
-                        .is_some_and(|(_, value)| value == "1")
-                    {
-                        value["turns"] = Value::Object(turns(conn)?);
-                    }
-                    Reply::json(StatusCode::OK, &value).map(Some)
-                }
-                "/work-marks" => Reply::json(StatusCode::OK, &work_marks_payload(conn)?).map(Some),
-                _ => Ok(None),
-            };
+            return self.get(conn, request);
         }
+        self.post(conn, request).map_err(Unanswered::Failed)
+    }
+
+    fn get(&mut self, conn: &Connection, request: &Request) -> Result<Option<Reply>, Unanswered> {
+        let (path, query) =
+            dashboard_access::request_target_parts(&request.target).ok_or(HandlerError::Failure)?;
+        match path.as_str() {
+            "/events/v2" => {
+                let pairs = dashboard_access::query_pairs(&query, false);
+                let after = match pagination(&pairs, "after", 0) {
+                    Ok(value) => value,
+                    Err(message) => return Ok(Some(error(400, &message)?)),
+                };
+                let limit = match pagination(&pairs, "limit", 100) {
+                    Ok(value) => value,
+                    Err(message) => return Ok(Some(error(400, &message)?)),
+                };
+                // Si la importación corre en esta petición ya pudo escribir:
+                // desde ahí un fallo de lectura es un 500, nunca un reenvío.
+                let fresh = !self.import_done;
+                if let Err(problem) = self.import(conn) {
+                    return Ok(Some(store_error(problem)?));
+                }
+                let with_turns = pairs
+                    .iter()
+                    .find(|(key, _)| key == "turns")
+                    .is_some_and(|(_, value)| value == "1");
+                let page = events_page(conn, after, limit, with_turns).map_err(|ReadFailed| {
+                    if fresh {
+                        Unanswered::Failed(HandlerError::Failure)
+                    } else {
+                        Unanswered::Unsure
+                    }
+                })?;
+                Ok(Some(Reply::json(StatusCode::OK, &page)?))
+            }
+            // Solo lee: cualquier fallo de lectura se puede reenviar.
+            "/work-marks" => {
+                let payload = work_marks_payload(conn).map_err(|ReadFailed| Unanswered::Unsure)?;
+                Ok(Some(Reply::json(StatusCode::OK, &payload)?))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn post(
+        &mut self,
+        conn: &Connection,
+        request: &Request,
+    ) -> Result<Option<Reply>, HandlerError> {
         if request.method != Method::POST
             || !matches!(request.target.as_str(), "/events/v2" | "/work-marks")
         {
@@ -216,26 +263,50 @@ fn pagination(pairs: &[(String, String)], name: &str, default: i64) -> Result<i6
     raw.parse().map_err(|_| format!("{name} inválido"))
 }
 
-fn turns(conn: &Connection) -> Result<Map<String, Value>, HandlerError> {
-    let latest = comandos_store::latest_sequence(conn).map_err(|_| HandlerError::Failure)?;
+/// `{"events","nextAfter","latest"}` (+ `turns`) de `events_v2_list`.
+fn events_page(
+    conn: &Connection,
+    after: i64,
+    limit: i64,
+    with_turns: bool,
+) -> Result<Value, ReadFailed> {
+    let events = comandos_store::list_events(conn, after, limit).map_err(|_| ReadFailed)?;
+    let next_after = match events.last() {
+        Some(event) => sequence(event)?,
+        None => after,
+    };
+    let latest = comandos_store::latest_sequence(conn).map_err(|_| ReadFailed)?;
+    let mut value = json!({"events":events,"nextAfter":next_after,"latest":latest});
+    if with_turns {
+        value["turns"] = Value::Object(turns(conn)?);
+    }
+    Ok(value)
+}
+
+/// `sequence` es la clave entera de la tabla; otra cosa es una fila ilegible.
+fn sequence(event: &Value) -> Result<i64, ReadFailed> {
+    event["sequence"].as_i64().ok_or(ReadFailed)
+}
+
+fn turns(conn: &Connection) -> Result<Map<String, Value>, ReadFailed> {
+    let latest = comandos_store::latest_sequence(conn).map_err(|_| ReadFailed)?;
     let mut after = (latest - 2000).max(0);
     let mut recent = Vec::new();
     loop {
-        let page =
-            comandos_store::list_events(conn, after, 500).map_err(|_| HandlerError::Failure)?;
+        let page = comandos_store::list_events(conn, after, 500).map_err(|_| ReadFailed)?;
         let Some(last) = page.last() else {
             break;
         };
-        after = last["sequence"].as_i64().expect("stored sequence");
+        after = sequence(last)?;
         recent.extend(page);
     }
     Ok(turn::turns_from_events(&recent))
 }
 
-fn work_marks_payload(conn: &Connection) -> Result<Value, HandlerError> {
+fn work_marks_payload(conn: &Connection) -> Result<Value, ReadFailed> {
     let current = comandos_store::workspace::WorkspaceStore::new(conn)
         .current()
-        .map_err(|_| HandlerError::Failure)?;
+        .map_err(|_| ReadFailed)?;
     let document = current.map_or_else(comandos_core::workspace::empty_document, |state| {
         state.document
     });
@@ -246,15 +317,13 @@ fn work_marks_payload(conn: &Connection) -> Result<Value, HandlerError> {
     for (key, turn) in turns(conn)? {
         activity.insert(key, json!({"state":turn["state"],"paneKey":turn["paneKey"],"session":turn["sessionKey"],"paneId":turn["paneId"]}));
     }
-    let marks = marks::list_marks(conn).map_err(|_| HandlerError::Failure)?;
+    let marks = marks::list_marks(conn).map_err(|_| ReadFailed)?;
     Ok(json!({"marks":marks,"panes":panes,"activity":activity}))
 }
 
 fn error(status: u16, message: &str) -> Result<Reply, HandlerError> {
-    Reply::json(
-        StatusCode::from_u16(status).expect("route status"),
-        &json!({"error":message}),
-    )
+    let status = StatusCode::from_u16(status).map_err(|_| HandlerError::Failure)?;
+    Reply::json(status, &json!({"error":message}))
 }
 
 fn store_error(problem: Error) -> Result<Reply, HandlerError> {

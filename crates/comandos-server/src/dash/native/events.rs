@@ -1,7 +1,7 @@
 //! B. Eventos y marcas. La lógica (y su paridad con el Python) vive en
 //! `events_routes.rs`; aquí solo se monta sobre el worker de la base.
 use super::{Answer, Entry, Fault, Key, Native, NativeRoute, Verb, query::Query};
-use crate::{HandlerError, Request};
+use crate::{HandlerError, Request, dash::router::path_of, events_routes::Unanswered};
 use http::Method;
 
 pub const ROUTES: &[Entry] = &[
@@ -30,8 +30,9 @@ pub const ROUTES: &[Entry] = &[
 pub async fn answer(native: &Native, request: &Request) -> Answer {
     // Antes de tocar la base (GET /events/v2 importa el events.jsonl
     // heredado): si el `urlsplit` portado ve otra ruta que la tabla o la
-    // consulta trae U+FFFD, se reenvía al Python.
-    if request.method == Method::GET {
+    // consulta trae U+FFFD, se reenvía al Python. GET /work-marks ignora su
+    // consulta, como el Python.
+    if request.method == Method::GET && path_of(&request.target) == "/events/v2" {
         Query::parse(&request.target)?;
     }
     let legacy = native.options().hooks.join("events.jsonl");
@@ -43,6 +44,8 @@ pub async fn answer(native: &Native, request: &Request) -> Answer {
         Ok(Some(reply)) => Ok(reply),
         // La tabla y `EventRoutes` reconocen las mismas cuatro rutas.
         Ok(None) => Err(Fault::Error(HandlerError::Failure)),
-        Err(error) => Err(error.into()),
+        // Lectura fallida sin escrituras: el Python responde lo suyo.
+        Err(Unanswered::Unsure) => Err(Fault::Decline),
+        Err(Unanswered::Failed(error)) => Err(Fault::Error(error)),
     }
 }

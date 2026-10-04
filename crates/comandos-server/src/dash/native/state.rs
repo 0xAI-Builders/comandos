@@ -2,8 +2,8 @@
 //! puerta de esquema: si el Python migró a una versión que este binario no
 //! conoce, se rechaza (y el frente reenvía todo al heredado).
 use crate::{
-    HandlerError, Reply, Request,
-    events_routes::{EventRoutes, NativeFacts},
+    Reply, Request,
+    events_routes::{EventRoutes, NativeFacts, Unanswered},
 };
 use comandos_store::state::{self, MIGRATIONS};
 use rusqlite::Connection;
@@ -106,10 +106,10 @@ impl StateBackend {
         &mut self,
         legacy: &Path,
         request: &Request,
-    ) -> Result<Option<Reply>, HandlerError> {
+    ) -> Result<Option<Reply>, Unanswered> {
         let routes = self
             .events
             .get_or_insert_with(|| EventRoutes::new(legacy.to_path_buf(), NativeFacts));
-        routes.handle(&self.conn, request)
+        routes.handle_native(&self.conn, request)
     }
 }
