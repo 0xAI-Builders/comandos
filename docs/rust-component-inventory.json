@@ -264,8 +264,9 @@
       "language": "script",
       "category": "producto",
       "lines": 9897,
-      "status": "Pendiente",
-      "rust": null
+      "status": "Parcial: control de acceso HTTP revisado; servidor y rutas pendientes",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/dashboard_access.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/dashboard-access-20261004-review.md"
     },
     {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-doctor",

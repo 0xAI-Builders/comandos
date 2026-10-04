@@ -35,7 +35,7 @@ Los assets, servicios e instaladores declarativos se deben contrastar en el empa
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-browser-remote | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-centro | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-codex-full-access | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-dash | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-dash | Parcial: control de acceso HTTP revisado; servidor y rutas pendientes | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/dashboard_access.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-doctor | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-extension-session | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/bin/cc-extensions | Parcial: serve/count/import/sync/status revisados; check e instalación pendientes | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-extensions/src/main.rs |

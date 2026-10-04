@@ -233,6 +233,7 @@ dependencies = [
  "chrono-tz",
  "serde",
  "serde_json",
+ "subtle",
 ]
 
 [[package]]
