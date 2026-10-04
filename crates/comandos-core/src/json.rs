@@ -1,3 +1,6 @@
+mod bytes;
+pub use bytes::workspace_loads_bytes;
+
 use serde_json::Value;
 
 mod comparison;
@@ -7,7 +10,7 @@ pub use comparison::python_eq;
 mod parser;
 pub use parser::{parse_slice, parse_unique_value, parse_value};
 mod python;
-pub use python::{dumps, workspace_dumps, workspace_dumps_with_options};
+pub use python::{dumps, response_dumps, workspace_dumps, workspace_dumps_with_options};
 
 // Legacy JSON semantics at the compatibility boundary (null, false, 0 and ""
 // all select defaults). Domain identifiers are validated before persistence.

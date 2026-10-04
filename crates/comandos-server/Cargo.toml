@@ -1,0 +1,24 @@
+[package]
+name = "comandos-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+comandos-core = { path = "../comandos-core" }
+serde_json.workspace = true
+bytes = "=1.12.1"
+http = "=1.5.0"
+http-body = "=1.1.0"
+http-body-util = "=0.1.5"
+hyper = { version = "=1.11.1", default-features = false, features = ["server", "http1"] }
+hyper-util = { version = "=0.1.21", default-features = false, features = ["tokio"] }
+tokio = { version = "=1.53.1", default-features = false, features = ["rt", "macros", "net", "sync", "time", "io-util"] }
+futures-util = { version = "=0.3.34", default-features = false, features = ["std", "async-await"] }
+
+[dev-dependencies]
+hyper = { version = "=1.11.1", default-features = false, features = ["client", "http1"] }
+
+[lints]
+workspace = true

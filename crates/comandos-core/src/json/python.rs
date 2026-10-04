@@ -1,4 +1,4 @@
-//! Python-compatible sorted JSON encoding for persisted values.
+//! Python-compatible JSON encoding for persisted values and responses.
 use super::workspace::validate_workspace_depth;
 use serde_json::Value;
 use std::fmt::Write;
@@ -12,7 +12,7 @@ enum Policy {
 /// Sorted keys; compact selects (",", ":") or Python's default separators.
 /// Metadata retains its 128-level limit and rejects overflowing decimals.
 pub fn dumps(value: &Value, ensure_ascii: bool, compact: bool) -> Result<String, String> {
-    encode(value, ensure_ascii, compact, Policy::Metadata)
+    encode(value, ensure_ascii, compact, true, Policy::Metadata)
 }
 
 /// Python workspace canonical JSON: sorted keys, compact UTF-8, and default
@@ -31,10 +31,24 @@ pub fn workspace_dumps_with_options(
     compact: bool,
 ) -> Result<String, String> {
     validate_workspace_depth(value, 0)?;
-    encode(value, ensure_ascii, compact, Policy::Workspace)
+    encode(value, ensure_ascii, compact, true, Policy::Workspace)
 }
 
-fn encode(value: &Value, ascii: bool, compact: bool, policy: Policy) -> Result<String, String> {
+/// Python json.dumps defaults for HTTP responses: insertion order, ASCII
+/// escapes and spaced separators. Canonical persistence APIs remain sorted.
+/// The retained-number/depth policy is shared with workspace values.
+pub fn response_dumps(value: &Value) -> Result<String, String> {
+    validate_workspace_depth(value, 0)?;
+    encode(value, true, false, false, Policy::Workspace)
+}
+
+fn encode(
+    value: &Value,
+    ascii: bool,
+    compact: bool,
+    sorted: bool,
+    policy: Policy,
+) -> Result<String, String> {
     enum Frame<'a> {
         Value(&'a Value, usize),
         Array(std::iter::Enumerate<std::slice::Iter<'a, Value>>, usize),
@@ -73,9 +87,10 @@ fn encode(value: &Value, ascii: bool, compact: bool, policy: Policy) -> Result<S
                         frames.push(Frame::Array(values.iter().enumerate(), depth + 1));
                     }
                     Value::Object(values) => {
-                        // Preserve sorting when another consumer enables preserve_order.
                         let mut entries: Vec<_> = values.iter().collect();
-                        entries.sort_unstable_by_key(|(key, _)| *key);
+                        if sorted {
+                            entries.sort_unstable_by_key(|(key, _)| *key);
+                        }
                         out.push('{');
                         frames.push(Frame::Object(entries.into_iter().enumerate(), depth + 1));
                     }
