@@ -32,7 +32,7 @@ fn base(home: &PathBuf) -> Command {
 }
 
 #[test]
-fn dash_prints_the_python_banner_serves_404_and_stops_on_sigterm() {
+fn dash_prints_the_python_banner_answers_502_without_legacy_and_stops_on_sigterm() {
     let home = temp_home("boot");
     let port = free_port();
     let mut child = base(&home)
@@ -72,12 +72,13 @@ fn dash_prints_the_python_banner_serves_404_and_stops_on_sigterm() {
     let mut wire = String::new();
     stream.read_to_string(&mut wire).unwrap();
     let (head, body) = wire.split_once("\r\n\r\n").unwrap();
-    assert!(head.starts_with("HTTP/1.1 404"), "{head}");
+    // Una ruta que no es archivo se reenvía al Python heredado; sin él, 502.
+    assert!(head.starts_with("HTTP/1.1 502"), "{head}");
     assert!(
         head.to_ascii_lowercase()
             .contains("cache-control: no-store")
     );
-    assert_eq!(body, r#"{"error": "No encontrado"}"#);
+    assert_eq!(body, r#"{"error": "Servidor heredado no disponible"}"#);
 
     let started = Instant::now();
     let killed = Command::new("kill")

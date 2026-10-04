@@ -47,6 +47,6 @@ archivo temporal (usar `--out` para añadir a `docs/verification/rss.jsonl`).
 Cuerpos: **sin `volatile` se comparan los bytes crudos** (el orden de claves, el espaciado y el
 formato de números cuentan). Con `volatile` se parsean ambos, se sustituyen los punteros y se
 reserializan con `comandos_core::json::response_dumps` (orden de inserción) antes de comparar;
-en ese modo `content-length` se compara solo tras reserializar, y el formato de floats y de
+en ese modo `content-length` no se compara (los valores volátiles cambian la longitud), y el formato de floats y de
 escapes **no** queda cubierto (lo canoniza el volcado). Las peticiones van con keep-alive para
 que el `Connection: close` de los rechazos sea observable.

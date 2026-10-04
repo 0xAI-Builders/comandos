@@ -30,7 +30,9 @@ const RELEVANT_HEADERS: [&str; 4] = [
 /// Marca de que ya estamos dentro del namespace de red aislado.
 const NETNS_ENV: &str = "COMANDOS_XTASK_NETNS";
 /// Ejecutables que el oráculo podría lanzar y que aquí no deben hacer nada.
-const FAKE_BINS: [&str; 10] = [
+const FAKE_BINS: [&str; 12] = [
+    "systemctl",
+    "wmctrl",
     "cc-webterm",
     "cc-webterm-attach",
     "systemd-run",
@@ -612,10 +614,16 @@ fn spawn(name: &'static str, mut cmd: Command, e: &SpawnEnv, log: &Path) -> Resu
         e.fakebin.display(),
         std::env::var("PATH").unwrap_or_default()
     );
+    // El namespace de red no aísla los sockets Unix con ruta: sin estas variables el oráculo
+    // no encuentra el systemd, el DBus ni la pantalla reales.
     cmd.env_remove("TMUX")
         .env_remove("CLAUDE_CONFIG_DIR")
         .env_remove("CODEX_HOME")
         .env_remove("GROK_HOME")
+        .env_remove("DBUS_SESSION_BUS_ADDRESS")
+        .env_remove("DISPLAY")
+        .env_remove("WAYLAND_DISPLAY")
+        .env("XDG_RUNTIME_DIR", e.tmux)
         .env("HOME", e.home)
         .env("TMUX_TMPDIR", e.tmux)
         .env("COMANDOS_DASH_DIR", e.dash)
