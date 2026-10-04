@@ -1,3 +1,5 @@
+mod parity;
+mod poll;
 mod rss;
 
 use std::{io::Write, process::exit};
@@ -23,9 +25,20 @@ fn median<T: Ord + Copy>(v: &[T]) -> T {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().map(String::as_str) != Some("rss") {
-        eprintln!("subcomandos: rss");
-        exit(2);
+    match args.first().map(String::as_str) {
+        Some("rss") => {}
+        Some("parity") => match parity::run(&args[1..]) {
+            Ok(code) => exit(code),
+            Err(e) => fail(e),
+        },
+        Some("poll") => match poll::run(&args[1..]) {
+            Ok(()) => exit(0),
+            Err(e) => fail(e),
+        },
+        _ => {
+            eprintln!("subcomandos: rss, parity, poll");
+            exit(2);
+        }
     }
     let Some(sep) = args.iter().position(|a| a == "--") else {
         usage()

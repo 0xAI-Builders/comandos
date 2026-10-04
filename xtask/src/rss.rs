@@ -102,6 +102,42 @@ fn kill_tree(child: &mut Child, pids: &[u32]) {
     let _ = child.wait();
 }
 
+/// Raíz + descendientes ya vivos: (pids, RSS total, Pss total, Pss exacto).
+fn totals(root: u32) -> (Vec<u32>, u64, u64, bool) {
+    let pids = process_tree(root);
+    let mut rss_kib_total = 0;
+    let mut pss_kib_total = 0;
+    let mut pss_exact = true;
+    for pid in &pids {
+        let rss = status_rss_kib(*pid).unwrap_or(0);
+        rss_kib_total += rss;
+        match rollup_pss_kib(*pid) {
+            Some(p) => pss_kib_total += p,
+            None => {
+                pss_exact = false;
+                pss_kib_total += rss;
+            }
+        }
+    }
+    (pids, rss_kib_total, pss_kib_total, pss_exact)
+}
+
+/// Mide un proceso ya existente (y sus descendientes) sin lanzarlo ni matarlo.
+#[allow(dead_code)] // lo usa `poll`; el test de calendario no lo enlaza
+pub fn sample(pid: u32) -> Result<Measure, String> {
+    if !alive(pid) {
+        return Err(format!("el pid {pid} no está vivo"));
+    }
+    let (pids, rss_kib_total, pss_kib_total, pss_exact) = totals(pid);
+    Ok(Measure {
+        rss_kib_total,
+        pss_kib_total,
+        pss_exact,
+        procs: pids.len(),
+        pids,
+    })
+}
+
 pub fn measure(cmd: &[String], settle_secs: u64) -> Result<Measure, String> {
     let program = cmd.first().ok_or("comando vacío")?;
     let mut child = Command::new(program)
@@ -120,21 +156,7 @@ pub fn measure(cmd: &[String], settle_secs: u64) -> Result<Measure, String> {
             "el proceso terminó antes de medir (estado {status:?})"
         ));
     }
-    let pids = process_tree(child.id());
-    let mut rss_kib_total = 0;
-    let mut pss_kib_total = 0;
-    let mut pss_exact = true;
-    for pid in &pids {
-        let rss = status_rss_kib(*pid).unwrap_or(0);
-        rss_kib_total += rss;
-        match rollup_pss_kib(*pid) {
-            Some(p) => pss_kib_total += p,
-            None => {
-                pss_exact = false;
-                pss_kib_total += rss;
-            }
-        }
-    }
+    let (pids, rss_kib_total, pss_kib_total, pss_exact) = totals(child.id());
     kill_tree(&mut child, &pids);
     Ok(Measure {
         rss_kib_total,
