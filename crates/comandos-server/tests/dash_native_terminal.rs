@@ -211,6 +211,86 @@ async fn terminal_panes_mutations_are_native() {
     front.stop().await;
 }
 
+/// Cuerpo de `/terminal-panes` sin lo que cambia entre dos procesos: las
+/// identidades y, del panel que abre un split, su id y su título (el proceso
+/// del panel recién creado puede no haber hecho `exec` todavía).
+fn panes_without_volatile(text: &str) -> String {
+    let mut value: serde_json::Value = serde_json::from_str(text).unwrap();
+    let opened = value
+        .get("opened")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned);
+    if opened.is_some() {
+        value["opened"] = "%N".into();
+    }
+    for pane in value["panes"].as_array_mut().unwrap() {
+        pane["identity"] = "".into();
+        if pane["id"].as_str() == opened.as_deref() {
+            pane["id"] = "%N".into();
+            pane["title"] = "".into();
+        }
+    }
+    serde_json::to_string(&value).unwrap()
+}
+
+/// `select`, `resize` y `split` que sí se aplican, comparados con el oráculo
+/// sobre el mismo tmux privado: primero el Python, luego el Rust desde el mismo
+/// estado (el panel que abre el split del Python se cierra antes del Rust).
+#[tokio::test]
+async fn terminal_panes_mutations_match_python_oracle() {
+    if !tmux_available() {
+        eprintln!("tmux no está instalado: se salta");
+        return;
+    }
+    let home = TestHome::new("term-mut-oracle");
+    two_panes(&home);
+    tmux(&home, &["set-option", "-g", "default-command", "cat"]);
+    let Some(py) = oracle(&home).await else {
+        return;
+    };
+    let front = front(&home, dead_port(), home.options()).await;
+    let listed = request_body(
+        front.port,
+        "POST",
+        "/terminal-panes",
+        "",
+        r#"{"session": "s1"}"#,
+    )
+    .await;
+    let value: serde_json::Value = serde_json::from_str(&listed.text()).unwrap();
+    let identity = value["panes"][0]["identity"].as_str().unwrap().to_owned();
+    let select = format!(
+        r#"{{"session": "s1", "action": "select", "pane": "%0", "identity": "{identity}"}}"#
+    );
+    let resize = r#"{"session": "s1", "action": "resize", "pane": "%1", "axis": "x", "size": 30}"#
+        .to_owned();
+    for body in [&select, &resize] {
+        let a = request_body(py.port, "POST", "/terminal-panes", "", body).await;
+        let b = request_body(front.port, "POST", "/terminal-panes", "", body).await;
+        assert_eq!(a.status, 200, "{body}: {}", a.text());
+        assert_eq!(seen(&a), seen(&b), "{body}");
+    }
+    let split = format!(
+        r#"{{"session": "s1", "action": "split", "pane": "%0", "identity": "{identity}", "direction": "down"}}"#
+    );
+    let a = request_body(py.port, "POST", "/terminal-panes", "", &split).await;
+    assert_eq!(a.status, 200, "{}", a.text());
+    let opened: serde_json::Value = serde_json::from_str(&a.text()).unwrap();
+    let opened = opened["opened"].as_str().unwrap().to_owned();
+    tmux(&home, &["kill-pane", "-t", &opened]);
+    tmux(&home, &["select-pane", "-t", "%0"]);
+    let b = request_body(front.port, "POST", "/terminal-panes", "", &split).await;
+    assert_eq!(
+        (a.status, a.header("content-type").map(str::to_owned)),
+        (b.status, b.header("content-type").map(str::to_owned))
+    );
+    assert_ne!(a.text(), b.text(), "el panel nuevo tiene otro id");
+    assert_eq!(
+        panes_without_volatile(&a.text()),
+        panes_without_volatile(&b.text())
+    );
+    front.stop().await;
+}
 #[tokio::test]
 async fn terminal_panes_close_declines() {
     let home = TestHome::new("term-close");

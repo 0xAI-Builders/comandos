@@ -8,7 +8,7 @@ use super::{
     py, reply,
     tmux::{Tmux, TmuxError},
 };
-use crate::{HandlerError, Request};
+use crate::Request;
 use comandos_runtime::{
     pane_typing::TmuxResult,
     terminal_history::{self, HistoryError},
@@ -45,10 +45,6 @@ const HISTORY_UNAVAILABLE: &str = "Historial temporalmente no disponible";
 const BRIDGE_FAILED: &str = "comandos: tmux no disponible";
 /// Comandos que mueven tmux: tras uno de ellos ya no se puede declinar.
 const MUTATING: [&str; 3] = ["resize-pane", "if-shell", "set-option"];
-
-fn failure() -> Fault {
-    Fault::Error(HandlerError::Failure)
-}
 
 /// `os.path.expanduser("~").rstrip("/")` de `friendly_path`: el HOME es el
 /// padre de `~/.claude/hooks`.
@@ -116,7 +112,7 @@ async fn history(native: &Native, data: Value) -> Answer {
     let home = home_text(native)?;
     let tmux = native.options().tmux.clone();
     let handle = Handle::current();
-    let (result, bridge) = tokio::task::spawn_blocking(move || {
+    let joined = tokio::task::spawn_blocking(move || {
         let bridge = RefCell::new(Bridge::default());
         let result = terminal_history::capture(
             |args| {
@@ -132,8 +128,11 @@ async fn history(native: &Native, data: Value) -> Answer {
         );
         (result, bridge.into_inner())
     })
-    .await
-    .map_err(|_| failure())?;
+    .await;
+    // Un pánico de la librería es el `except Exception` del Python: 503.
+    let Ok((result, bridge)) = joined else {
+        return error(StatusCode::SERVICE_UNAVAILABLE, HISTORY_UNAVAILABLE);
+    };
     if bridge.unavailable {
         return error(StatusCode::SERVICE_UNAVAILABLE, HISTORY_UNAVAILABLE);
     }
@@ -158,7 +157,7 @@ async fn panes(native: &Native, data: Value) -> Answer {
     let home = home_text(native)?;
     let tmux = native.options().tmux.clone();
     let handle = Handle::current();
-    let (result, bridge) = tokio::task::spawn_blocking(move || {
+    let joined = tokio::task::spawn_blocking(move || {
         let bridge = RefCell::new(Bridge::default());
         let result = terminal_panes::execute(
             |args| {
@@ -171,8 +170,11 @@ async fn panes(native: &Native, data: Value) -> Answer {
         );
         (result, bridge.into_inner())
     })
-    .await
-    .map_err(|_| failure())?;
+    .await;
+    // Un pánico de la librería es el `except Exception` del Python: 503.
+    let Ok((result, bridge)) = joined else {
+        return error(StatusCode::SERVICE_UNAVAILABLE, PANES_UNAVAILABLE);
+    };
     if bridge.unavailable {
         return error(StatusCode::SERVICE_UNAVAILABLE, PANES_UNAVAILABLE);
     }

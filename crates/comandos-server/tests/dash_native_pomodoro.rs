@@ -80,30 +80,35 @@ async fn pomodoro_matches_python_oracle() {
     let home = TestHome::new("pomo-oracle");
     seed_usage(&home, &[("cycles", "4"), ("autoBreak", "true")]);
     home.write("focus-queue.jsonl", "{\"title\": \"ñ\"}\n");
+    // Un bloque pagado hoy (progreso y `todayMinutes` distintos de cero), escrito
+    // ANTES de arrancar el oráculo: su hilo `pomodoro-scheduler` crea y migra
+    // app-state después de abrir el puerto, y un INSERT tras `oracle()` podía
+    // llegar antes que la migración («no such table») con la máquina cargada.
+    let now = wall_clock_ms();
+    std::fs::create_dir_all(home.state_db().parent().unwrap()).unwrap();
+    let conn = comandos_store::state::connect(&home.state_db()).unwrap();
+    comandos_store::state::migrate(&conn, comandos_store::state::MIGRATIONS, 0.0).unwrap();
+    conn.execute(
+        "insert into focus_rewards (block_id,policy_version,xp,minutes,status,\
+             started_at_ms,ended_at_ms,level_reached,awarded_at_ms) values (?,?,?,?,?,?,?,?,?)",
+        rusqlite::params![
+            "pagado",
+            "v1",
+            250,
+            25,
+            "completed",
+            now - 60_000,
+            now - 1_000,
+            1,
+            now
+        ],
+    )
+    .unwrap();
+    drop(conn);
     let Some(py) = oracle(&home).await else {
         return;
     };
-    // Un bloque pagado hoy (progreso y `todayMinutes` distintos de cero) y un
-    // bloque en curso que arranca el Python (POST /pomodoro sigue en él).
-    let now = wall_clock_ms();
-    rusqlite::Connection::open(home.state_db())
-        .unwrap()
-        .execute(
-            "insert into focus_rewards (block_id,policy_version,xp,minutes,status,\
-             started_at_ms,ended_at_ms,level_reached,awarded_at_ms) values (?,?,?,?,?,?,?,?,?)",
-            rusqlite::params![
-                "pagado",
-                "v1",
-                250,
-                25,
-                "completed",
-                now - 60_000,
-                now - 1_000,
-                1,
-                now
-            ],
-        )
-        .unwrap();
+    // Un bloque en curso que arranca el Python (POST /pomodoro sigue en él).
     let start =
         r#"{"requestId": "r-paridad", "action": "start", "mode": "focus", "targetMs": 1500000}"#;
     let started = request_body(py.port, "POST", "/pomodoro", "", start).await;
