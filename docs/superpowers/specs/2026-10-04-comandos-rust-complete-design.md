@@ -124,8 +124,12 @@ actuales porque los symlinks `cc-*` siguen existiendo.
 
 Un solo motor para web, móvil, macOS y escritorio Linux:
 
-- **Modelo VT** en Rust puro (crate elegido en el spike del 2026-10-04: ver
-  `docs/superpowers/plans/` y el informe `.spike/term/REPORT.md`), compilado a wasm y nativo.
+- **Modelo VT** en Rust puro: `alacritty_terminal` 0.26 vendorizado con un parche de dos líneas
+  que excluye sus módulos `tty`/`event_loop` para compilar a wasm, y un temporizador propio para
+  las actualizaciones sincronizadas (`CSI ? 2026 h`, que Claude Code emite). Validado en el spike
+  del 2026-10-04 (`docs/research/2026-10-04-spike-terminal-rust.md`): 191 KB de wasm, puente
+  PTY↔WebSocket de 2.5 MB de RSS, 5 ms de ida y vuelta por tecla hasta el navegador de macmini,
+  colores/atributos/UTF-8/ratón/resize correctos contra tmux.
 - **Transporte**: en web, WebSocket servido por `comandos dash` (`/term/ws?session=…`), un PTY
   por conexión que ejecuta `tmux attach -t =<sesión>` con el tamaño que informa el cliente
   antes del attach, para no encoger las sesiones (comportamiento actual de `cc-app` y
