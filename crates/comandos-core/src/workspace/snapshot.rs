@@ -14,7 +14,7 @@ pub enum Snapshot {
 
 fn digit_run(b: &[u8], from: usize) -> usize {
     let mut end = from;
-    while end < b.len() && b[end].is_ascii_digit() {
+    while b.get(end).is_some_and(u8::is_ascii_digit) {
         end += 1;
     }
     end
@@ -54,7 +54,10 @@ pub fn leaf_ids(layout: &str) -> Vec<&str> {
     while i < b.len() {
         match leaf_at(b, i) {
             Some((start, end)) => {
-                out.push(&layout[start..end]);
+                // Límites ASCII por construcción: `get` nunca falla aquí.
+                if let Some(id) = layout.get(start..end) {
+                    out.push(id);
+                }
                 i = end;
             }
             None => i += 1,

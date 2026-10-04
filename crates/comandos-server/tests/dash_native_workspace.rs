@@ -22,6 +22,21 @@ fn document_of(payload: &Value) -> Value {
     Value::Object(doc)
 }
 
+/// Un parche con borradores cuyos `updatedAt` mezclan tipos: el `sorted` de
+/// `_patch` en el Python lanza `TypeError` (500, sin escribir).
+const MIXED_STAMPS: &str = r#"{"deviceId": "d1", "drafts": {"a": {"text": "x", "updatedAt": "x"}, "b": {"text": "y", "updatedAt": 1}}, "draftsPatch": {}}"#;
+
+/// `sync-<rev>-<sha256(json.dumps(wanted, sort_keys=True))[:24]>` del Python.
+fn sync_request_id(revision: i64, wanted: &Value) -> String {
+    use sha2::{Digest, Sha256};
+    let encoded = comandos_core::json::workspace_dumps_with_options(wanted, true, false).unwrap();
+    let digest: String = Sha256::digest(encoded.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    format!("sync-{revision}-{}", &digest[..24])
+}
+
 fn revisions(home: &TestHome) -> i64 {
     let conn = rusqlite::Connection::open(home.state_db()).unwrap();
     conn.query_row(
@@ -296,6 +311,7 @@ async fn exotic_inputs_decline_to_legacy() {
         r#"{"deviceId": "d1", "drafts": [["a", {"text": "x"}]]}"#,
         r#"{"deviceId": "d1", "readingAnchors": "ab"}"#,
         r#"{"deviceId": "d1", "drafts": {"a": 5}, "draftsPatch": {}}"#,
+        MIXED_STAMPS,
     ] {
         let wire = request_body(front.port, "POST", "/workspace/client", "", body).await;
         assert_eq!(wire.text(), legacy_body, "{body}");
@@ -323,7 +339,7 @@ async fn exotic_inputs_decline_to_legacy() {
     )
     .await;
     assert_eq!(wire.text(), legacy_body);
-    assert_eq!(legacy.requests().len(), 12);
+    assert_eq!(legacy.requests().len(), 13);
     front.stop().await;
 }
 
@@ -363,6 +379,23 @@ async fn workspace_sync_interop_no_duplicate_revision() {
         "una sola revisión nueva para el mismo inventario"
     );
     assert_eq!(revisions(&home), 2);
+    // Los `requestId` de las dos sincronías son los que calcula el Python:
+    // `sync-<rev>-<sha256(json.dumps(wanted, sort_keys=True))[:24]>`.
+    let mut expected = vec![
+        sync_request_id(0, &document_of(&parse(&rs))),
+        sync_request_id(1, &document_of(&parse(&bodies[0]))),
+    ];
+    expected.sort();
+    let conn = rusqlite::Connection::open(home.state_db()).unwrap();
+    let mut stmt = conn
+        .prepare("SELECT request_id FROM workspace_requests ORDER BY request_id")
+        .unwrap();
+    let stored: Vec<String> = stmt
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(stored, expected);
     for target in [
         "/workspace/client?deviceId=x",
         "/workspace/close-group?groupId=nope",
@@ -574,5 +607,26 @@ async fn snapshot_edges_match_python_oracle() {
         parse(&rs.text())["bindings"]["k1"]["conversation"]["id"],
         "r9"
     );
+    front.stop().await;
+}
+
+/// Con el Python como heredado del frente: el cuerpo de `updatedAt` mezclados
+/// se declina, el Python responde su 500 y nadie escribe el cliente.
+#[tokio::test]
+async fn client_mixed_stamps_forward_to_python_500() {
+    let home = TestHome::new("ws-mixed-stamps");
+    let Some(py) = oracle(&home).await else {
+        return;
+    };
+    let front = front(&home, py.port, home.options()).await;
+    let direct = request_body(py.port, "POST", "/workspace/client", "", MIXED_STAMPS).await;
+    let forwarded = request_body(front.port, "POST", "/workspace/client", "", MIXED_STAMPS).await;
+    assert_eq!(direct.status, 500, "{}", direct.text());
+    assert_eq!(seen(&direct), seen(&forwarded));
+    let conn = rusqlite::Connection::open(home.state_db()).unwrap();
+    let clients: i64 = conn
+        .query_row("SELECT COUNT(*) FROM workspace_clients", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(clients, 0, "ni el Python ni el frente escriben");
     front.stop().await;
 }

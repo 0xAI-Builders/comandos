@@ -7,9 +7,11 @@
 //! fuera. POST /workspace/close-group sigue en el Python (`close_app_tab`).
 //!
 //! Sobre declinar: `workspace_sync` puede confirmar una revisión (efecto en un
-//! GET), pero con el `requestId` determinista del Python
-//! (`sync-<rev>-<sha256[:24]>`), así que si tras ella se declina, el Python
-//! que recibe la petición calcula el mismo acomodo y no crea otra revisión.
+//! GET) con el `requestId` determinista del Python (`sync-<rev>-<sha256[:24]>`).
+//! Si tras ella se declina, reenviar es seguro porque esa revisión no depende
+//! de la petición (solo del registro, las preferencias y el snapshot) y
+//! `reconcile` es idempotente: la `workspace_sync` del Python que recibe la
+//! petición ve `wanted == document` y no confirma nada.
 use super::{
     Answer, Entry, Fault, Key, Native, NativeRoute, Verb,
     files::{self, Strict},
@@ -192,7 +194,8 @@ fn sync_request_id(revision: i64, wanted: &Value) -> Result<String, Fault> {
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect();
-    Ok(format!("sync-{revision}-{}", &digest[..24]))
+    let short = digest.get(..24).ok_or(Fault::Decline)?;
+    Ok(format!("sync-{revision}-{short}"))
 }
 
 /// `workspace_sync` (6415). Solo declina antes de su commit.
@@ -294,9 +297,41 @@ async fn session_identity(tmux: &Tmux, sess: &str) -> Result<Value, Fault> {
     Ok(if is_id { json!(value) } else { Value::Null })
 }
 
+/// Anidamiento a partir del que el `json.dumps` de CPython agota la recursión
+/// (`RecursionError`, 500 sin escribir) y el core responde otra cosa.
+const MAX_CLIENT_DEPTH: usize = 900;
+
+/// Profundidad de contenedores de un valor, sin recursión.
+fn depth(value: &Value) -> usize {
+    let mut deepest = 0;
+    let mut stack = vec![(value, 0usize)];
+    while let Some((v, d)) = stack.pop() {
+        let children: Box<dyn Iterator<Item = &Value>> = match v {
+            Value::Array(items) => Box::new(items.iter()),
+            Value::Object(map) => Box::new(map.values()),
+            _ => continue,
+        };
+        deepest = deepest.max(d + 1);
+        stack.extend(children.map(|c| (c, d + 1)));
+    }
+    deepest
+}
+
+/// `updatedAt` que el `sorted(...)` de `_patch` compara como el core: ausente
+/// (vale 0), booleano o número finito. Texto, null, listas o NaN harían que
+/// el Python compare tipos mezclados (`TypeError`, 500) u ordene distinto.
+fn comparable_stamp(entry: &Value) -> bool {
+    match entry.get("updatedAt") {
+        None | Some(Value::Bool(_)) => true,
+        Some(Value::Number(n)) => n.as_f64().is_some_and(f64::is_finite),
+        Some(_) => false,
+    }
+}
+
 /// `save_client` sobre `drafts`/`readingAnchors` que el Python trata distinto
 /// del core: `dict(x or {})` de un no-objeto verdadero (lista de pares, texto,
-/// número) y, con un parche, entradas no-objeto (`target[k].get` revienta).
+/// número), anidamiento extremo y, con un parche, entradas no-objeto
+/// (`target[k].get` revienta) o con `updatedAt` no comparable.
 fn client_state_exotic(state: &Map<String, Value>, previous: &Value) -> bool {
     [
         ("drafts", "draftsPatch"),
@@ -306,10 +341,11 @@ fn client_state_exotic(state: &Map<String, Value>, previous: &Value) -> bool {
     .any(|(key, patch)| {
         let selected = state.get(key).or_else(|| previous.get(key));
         match selected {
+            Some(v) if depth(v) > MAX_CLIENT_DEPTH => true,
             Some(v) if truthy(v) && !v.is_object() => true,
-            Some(Value::Object(entries)) if state.contains_key(patch) => {
-                entries.values().any(|e| !e.is_object())
-            }
+            Some(Value::Object(entries)) if state.contains_key(patch) => entries
+                .values()
+                .any(|e| !e.is_object() || !comparable_stamp(e)),
             _ => false,
         }
     })
