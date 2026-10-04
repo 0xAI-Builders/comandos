@@ -1,5 +1,5 @@
 //! Carriles de base adicionales: un `BackendWorker` por archivo SQLite que no
-//! es `app-state` (la base de uso; el journal de operaciones en la Tarea 6).
+//! es `app-state` (la base de uso y el journal de operaciones de sesión).
 //! Misma semántica que `Native::with_state`, pero el apagado es del carril:
 //! una línea en stderr y solo las rutas que lo usan pasan a reenviarse.
 use super::{Fault, WORKER_CAPACITY, state::Refusal};
@@ -20,8 +20,9 @@ pub trait LaneBackend: Sized + Send + 'static {
     const ROUTES: &'static str;
     /// Abre y migra; la puerta va ANTES de tocar una base más nueva.
     fn open(path: &Path) -> Result<Self, Refusal>;
-    /// Se evalúa antes de cada trabajo. Solo `Refusal::Newer` apaga el
-    /// carril; cualquier otro rechazo declina esa petición.
+    /// Se evalúa antes de cada trabajo. Solo `Refusal::Newer` e
+    /// `Refusal::Incompatible` apagan el carril; cualquier otro rechazo
+    /// declina esa petición.
     fn admit(&self) -> Result<(), Refusal>;
 }
 
@@ -122,8 +123,8 @@ impl<B: LaneBackend> Lane<B> {
             .await;
         match called {
             Ok(Ok(value)) => Ok(value),
-            // Solo una base más nueva apaga el carril para siempre.
-            Ok(Err(refusal @ Refusal::Newer { .. })) => {
+            // Solo un esquema más nuevo o desconocido apaga el carril para siempre.
+            Ok(Err(refusal @ (Refusal::Newer { .. } | Refusal::Incompatible(_)))) => {
                 self.disable(&refusal);
                 Err(Fault::Decline)
             }
@@ -196,6 +197,78 @@ fn gate(conn: &Connection) -> Result<(), Refusal> {
         });
     }
     Ok(())
+}
+
+/// `~/.claude/hooks/session-operations.sqlite3` (`session_operation_store`,
+/// `bin/cc-dash:2132`). El Python no versiona su esquema: la puerta exige las
+/// 9 columnas de `session_operations` en su orden (`lib/session_operations.py:20`).
+pub struct JournalBackend {
+    pub conn: Connection,
+}
+
+const JOURNAL_COLUMNS: [&str; 9] = [
+    "id",
+    "pane_key",
+    "fingerprint",
+    "request",
+    "state",
+    "owner",
+    "snapshot",
+    "result",
+    "updated",
+];
+
+impl LaneBackend for JournalBackend {
+    const ROUTES: &'static str = "GET /model/status";
+
+    fn open(path: &Path) -> Result<Self, Refusal> {
+        // Sondeo de solo lectura: `open_journal` crea tablas e índices con
+        // `IF NOT EXISTS`, y una tabla desconocida no se toca ni para eso.
+        if path.exists() {
+            let probe = Connection::open_with_flags(
+                path,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+                    | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            )
+            .map_err(|e| Refusal::Unopened(e.to_string()))?;
+            let names = journal_columns(&probe)?;
+            // Sin tabla (archivo vacío o recién creado): la crea `open_journal`.
+            if !names.is_empty() {
+                known_journal(&names)?;
+            }
+        }
+        let conn = comandos_runtime::session_operations::open_journal(path)
+            .map_err(|e| Refusal::Unopened(e.to_string()))?;
+        let backend = Self { conn };
+        backend.admit()?;
+        Ok(backend)
+    }
+
+    fn admit(&self) -> Result<(), Refusal> {
+        known_journal(&journal_columns(&self.conn)?)
+    }
+}
+
+/// Nombres de columna de `session_operations` (vacío si la tabla no existe).
+fn journal_columns(conn: &Connection) -> Result<Vec<String>, Refusal> {
+    conn.prepare("PRAGMA table_info(session_operations)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |r| r.get::<_, String>(1))?
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .map_err(|e| Refusal::Unopened(e.to_string()))
+}
+
+/// Otras columnas (un Python más nuevo o una base ajena): se rechaza para siempre.
+fn known_journal(names: &[String]) -> Result<(), Refusal> {
+    if names.iter().map(String::as_str).eq(JOURNAL_COLUMNS) {
+        Ok(())
+    } else {
+        Err(Refusal::Incompatible(format!(
+            "columnas de session_operations: {}",
+            names.join(",")
+        )))
+    }
 }
 
 #[cfg(test)]

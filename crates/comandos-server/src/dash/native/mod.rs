@@ -11,6 +11,7 @@ pub mod files;
 pub mod lanes;
 pub mod light;
 pub mod notices;
+pub mod operations;
 pub mod pomodoro;
 pub mod py;
 pub mod query;
@@ -55,6 +56,7 @@ pub enum NativeRoute {
     Catalog(catalogs::CatalogRoute),
     Terminal(terminal::TerminalRoute),
     PaneType,
+    ModelStatus,
     Retired,
 }
 
@@ -109,6 +111,7 @@ const TABLES: &[&[Entry]] = &[
     catalogs::ROUTES,
     terminal::ROUTES,
     typing::ROUTES,
+    operations::ROUTES,
     retired::ROUTES,
 ];
 
@@ -195,6 +198,8 @@ pub struct NativeOptions {
     pub fc_list: tmux::Program,
     /// `~/.claude/hooks/comandos-usage.sqlite`.
     pub usage_db: PathBuf,
+    /// `~/.claude/hooks/session-operations.sqlite3` (journal de operaciones).
+    pub journal_db: PathBuf,
     /// `DESKTOP_DEVICE` del Python (999).
     pub desktop_device: String,
     /// Checkout del heredado (`REPO_ROOT`): de él sale `config/model-tiers.json`.
@@ -210,6 +215,7 @@ impl NativeOptions {
             tmux: tmux::Tmux::system(),
             fc_list: tmux::Program::named("fc-list"),
             usage_db: home.join(".claude/hooks/comandos-usage.sqlite"),
+            journal_db: home.join(".claude/hooks/session-operations.sqlite3"),
             desktop_device: desktop_device(),
             repo_root: None,
         }
@@ -230,6 +236,8 @@ pub struct Native {
     pub(crate) notice_feed: notices::RevisionFeed,
     /// Carril de la base de uso (`GET /pomodoro`, `GET /sovereignty`).
     pub(crate) usage: lanes::Lane<lanes::UsageBackend>,
+    /// Carril del journal de operaciones (`GET /model/status`).
+    pub(crate) journal: lanes::Lane<lanes::JournalBackend>,
     /// Caché por `requestId` y candados de `POST /pane/type`.
     pub(crate) typing: Arc<typing::TypingState>,
 }
@@ -238,6 +246,7 @@ impl Native {
     pub fn new(opts: NativeOptions) -> Self {
         Self {
             usage: lanes::Lane::new(opts.usage_db.clone()),
+            journal: lanes::Lane::new(opts.journal_db.clone()),
             opts,
             enabled: AtomicBool::new(true),
             refusals: AtomicUsize::new(0),
@@ -266,6 +275,11 @@ impl Native {
     /// El carril de la base de uso (estado y líneas de apagado, para las pruebas).
     pub fn usage_lane(&self) -> &lanes::Lane<lanes::UsageBackend> {
         &self.usage
+    }
+
+    /// El carril del journal de operaciones (estado y líneas de apagado).
+    pub fn journal_lane(&self) -> &lanes::Lane<lanes::JournalBackend> {
+        &self.journal
     }
 
     fn disable(&self, refusal: &Refusal) {
@@ -406,6 +420,7 @@ impl Native {
             NativeRoute::Catalog(route) => catalogs::answer(self, route).await,
             NativeRoute::Terminal(route) => terminal::answer(self, route, request).await,
             NativeRoute::PaneType => typing::answer(self, request).await,
+            NativeRoute::ModelStatus => operations::answer(self, request).await,
             NativeRoute::Retired => {
                 let path = request
                     .target
@@ -425,5 +440,6 @@ impl Native {
             let _ = worker.shutdown().await;
         }
         self.usage.shutdown().await;
+        self.journal.shutdown().await;
     }
 }

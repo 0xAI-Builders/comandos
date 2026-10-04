@@ -161,6 +161,9 @@ impl TestHome {
     pub fn usage_db(&self) -> PathBuf {
         self.hooks().join("comandos-usage.sqlite")
     }
+    pub fn journal_db(&self) -> PathBuf {
+        self.hooks().join("session-operations.sqlite3")
+    }
     pub fn write(&self, name: &str, text: &str) {
         std::fs::write(self.hooks().join(name), text).unwrap();
     }

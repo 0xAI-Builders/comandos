@@ -137,3 +137,8 @@
 {"name":"g-pane-type-salto","method":"POST","path":"/pane/type","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","pane":"%0","text":"a\nb"},"volatile":[],"expect":"same"}
 {"name":"g-pane-type","method":"POST","path":"/pane/type","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","pane":"%0","text":"ab","requestId":"paridad-1"},"volatile":["/durationMs"],"expect":"same"}
 {"name":"g-pane-type-reintento","method":"POST","path":"/pane/type","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","pane":"%0","text":"ab","requestId":"paridad-1"},"volatile":["/durationMs"],"expect":"same"}
+# --- 2c · H: estado de operaciones (nativa; sin registro se reenvía)
+{"name":"h-model-status-clave","method":"GET","path":"/model/status?operationKey=a%20b","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"h-model-status-id","method":"GET","path":"/model/status?operationKey=local&operationId=%24%24","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"h-model-status-ajena","method":"GET","path":"/model/status?operationKey=local&operationId=no-existe","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"h-model-status-sin-registro","method":"GET","path":"/model/status?operationKey=sin-registro-paridad","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}

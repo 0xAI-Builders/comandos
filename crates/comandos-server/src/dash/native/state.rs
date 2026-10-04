@@ -15,6 +15,9 @@ pub enum Refusal {
     Newer { found: i64, known: i64 },
     /// No se pudo abrir, consultar o migrar.
     Unopened(String),
+    /// La base tiene un esquema sin versión que este binario no reconoce
+    /// (p. ej. otras columnas): como `Newer`, se rechaza para siempre.
+    Incompatible(String),
     /// El worker de la base se retiró (un trabajo entró en pánico): el
     /// backend no se reutiliza y nunca se vuelve a abrir.
     Retired,
@@ -30,6 +33,11 @@ impl Refusal {
             ),
             Refusal::Unopened(error) => format!(
                 "comandos dash: no se pudo abrir {}: {error}; \
+                 rutas nativas desactivadas, todo se reenvía al heredado",
+                path.display()
+            ),
+            Refusal::Incompatible(detail) => format!(
+                "comandos dash: {} tiene un esquema desconocido ({detail}); \
                  rutas nativas desactivadas, todo se reenvía al heredado",
                 path.display()
             ),
@@ -50,6 +58,7 @@ impl Refusal {
                 format!("tiene esquema {found} y este binario conoce hasta {known}")
             }
             Refusal::Unopened(error) => format!("no se pudo abrir: {error}"),
+            Refusal::Incompatible(detail) => format!("tiene un esquema desconocido: {detail}"),
             Refusal::Retired => "su worker se retiró tras un fallo".to_owned(),
         };
         format!(
