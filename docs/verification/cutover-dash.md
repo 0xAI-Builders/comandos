@@ -404,3 +404,28 @@ Arnés en namespace de red privado, copia de `~/.claude/hooks` y copia de solo l
   (`/prefs`, `/active-tab`, `/notices`, `/notices/watch`, `/work-marks`, `/presence`,
   `/tab-models`, `/workspace`). El Python de la pila aislada pasó de 45 a 273 MiB en el mismo
   tiempo.
+
+### Ejecutado — 4 de octubre de 2026, 15:58 (release `2bae7f9cd7d6`, main `77cd5a5`)
+
+Sombra previa (`"$NEW" dash 4782 --legacy-port 4781` con traza de reenvío): `xtask parity` desde
+main con `--state-db` sobre la base real (copia de solo lectura): **98 OK, 0 DIFF**; comparación en
+vivo de 13 rutas nativas (prefs, tabs, tab-history, tab-models, active-tab, work-marks,
+notifs/count, notices/prefs, notices, events/v2, workspace, workspace/client, tmux-mouse) contra
+el Python de 4781: idénticas byte a byte; `/pomodoro/report` y `/dedication` 410 por diseño
+(retiradas); long-poll nativo `wait=3` → 3,07 s y cuerpo idéntico al del Python; remoto simulado
+a `/prefs`: 401 sin token, 200 con token; cero reenvíos y cero «nativas desactivadas» en la traza.
+`chrome-bg` seguía caído: la navegación manual no se hizo.
+
+Cutover (15:58:05–15:58:08): `install --stage` instaló `2bae7f9cd7d6` (anterior `17aa1bea2309`);
+`comandos hook claude-status` OK con la release nueva; `systemctl --user restart cc-dash.service`
+(≈2 s sin tablero). Sin operaciones de sesión en vuelo. tmux, cc-app y el broker sin tocar.
+
+Verificación: pancarta en el journal, `NRestarts=0`, 0 «rutas nativas desactivadas»; latencias
+reales en 4777: `/notifs/count` 30 ms, `/notices?limit=20` 33 ms, `/work-marks` 16 ms,
+`/active-tab` 5 ms, `/workspace` 1,2 ms, `/prefs` 0,4 ms; 7 rutas nativas idénticas al heredado;
+conexiones del frente al heredado: 0–1 por segundo (solo `/state`, `/terminal-panes`,
+`/usage/state`, `/pomodoro`, `/analytics/week`). Pss del frente 19,2 MiB al arrancar (el heredado,
+688 MiB tras 4 h desde su arranque de las 12:04).
+
+Reversión disponible: `COMANDOS_DASH_NATIVE=0` (env o drop-in) + reinicio, o
+`~/.local/share/comandos/bin/comandos install --rollback-release` (vuelve a `17aa1bea2309`) + reinicio.
