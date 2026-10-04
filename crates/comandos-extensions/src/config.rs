@@ -372,9 +372,15 @@ mod shared_tests {
         // x-suite guarda en memoria las operaciones pendientes de confirmar: por sesión.
         for name in ["x-suite", "chrome-bg", "claude-codex"] {
             assert!(!is_shared(&plain, name), "{name}");
-            assert!(is_shared(&json!({"command": "x", "shared": true}), name), "{name}");
+            assert!(
+                is_shared(&json!({"command": "x", "shared": true}), name),
+                "{name}"
+            );
         }
         assert!(is_shared(&plain, "mobbin"));
-        assert!(!is_shared(&json!({"command": "x", "shared": false}), "mobbin"));
+        assert!(!is_shared(
+            &json!({"command": "x", "shared": false}),
+            "mobbin"
+        ));
     }
 }
