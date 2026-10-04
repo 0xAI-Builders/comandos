@@ -1,0 +1,12 @@
+[Unit]
+Description=Centro Claude heredado (Python) detrás de comandos dash
+After=default.target
+
+[Service]
+ExecStart=/usr/bin/python3 %h/codebase/0xJesus/ComandOS/bin/cc-dash 4781 --no-open
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
