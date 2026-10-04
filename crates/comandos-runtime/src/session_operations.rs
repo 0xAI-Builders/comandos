@@ -1,5 +1,5 @@
 //! Durable isolated operation journal; owner, clock and terminal effects belong to callers.
-use comandos_core::json::dumps;
+use comandos_core::json::{dumps, response_dumps};
 use rusqlite::{
     Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior, params,
 };
@@ -67,8 +67,15 @@ fn initialize(conn: &Connection) -> Result<()> {
         Ok(())
     })
 }
-fn encode(value: &Value, compact: bool) -> Result<String> {
-    dumps(value, true, compact).map_err(Error::Persistence)
+/// `json.dumps(x, sort_keys=True, separators=(",", ":"))`: huella y claves de agrupación.
+fn canonical(value: &Value) -> Result<String> {
+    dumps(value, true, true).map_err(Error::Persistence)
+}
+/// `json.dumps(x)` del Python (`stage`, `cancel_waiting`): orden de inserción,
+/// ASCII escapado y separadores por omisión. Quien lee el journal (el
+/// `/model/status` de los dos frentes) responde con ese orden.
+fn python(value: &Value) -> Result<String> {
+    response_dumps(value).map_err(Error::Persistence)
 }
 fn decode(raw: Option<String>) -> Result<Value> {
     match raw {
@@ -135,7 +142,7 @@ impl<'a> OperationStore<'a> {
     }
     pub fn claim(&self, id: &str, pane_key: &str, request: &Value) -> Result<bool> {
         reject_transaction(self.connection)?;
-        let raw = encode(request, true)?;
+        let raw = canonical(request)?;
         let fingerprint = format!("{:x}", Sha256::digest(raw.as_bytes()));
         atomic(self.connection, |tx| {
             let existing: Option<String> = tx
@@ -180,9 +187,8 @@ impl<'a> OperationStore<'a> {
     }
     pub fn cancel_waiting(&self, id: &str) -> Result<bool> {
         atomic(self.connection, |tx| {
-            let result = encode(
+            let result = python(
                 &json!({"ok":false,"error":"operación cancelada antes de cerrar el origen","cancelled":true}),
-                false,
             )?;
             Ok(tx.execute("UPDATE session_operations SET state='failed',result=?,updated=? WHERE id=? AND state IN ('validating','waiting','snapshot')",params![result,(self.clock)(),id])?!=0)
         })
@@ -269,10 +275,10 @@ fn stage_in(
     if current.as_deref() == Some("failed") && state != "failed" {
         return Err(Error::Conflict("operación cancelada".into()));
     }
-    let saved = snapshot.map(|s| encode(s, false)).transpose()?;
-    let result_raw = result.map(|r| encode(r, false)).transpose()?;
+    let saved = snapshot.map(python).transpose()?;
+    let result_raw = result.map(python).transpose()?;
     tx.execute("UPDATE session_operations SET state=?,snapshot=COALESCE(?,snapshot),result=COALESCE(?,result),updated=? WHERE id=?",params![state,saved,result_raw,updated,id])?;
-    let detail = encode(result.filter(|r| truthy(r)).unwrap_or(&json!({})), false)?;
+    let detail = python(result.filter(|r| truthy(r)).unwrap_or(&json!({})))?;
     tx.execute(
         "INSERT INTO session_operation_events VALUES (?,?,?,?)",
         params![id, state, detail, at],
@@ -419,7 +425,7 @@ pub fn config_history(path: &Path, cwd: &str, pane_key: &str) -> Result<Value> {
         let Some(config) = history_config(&result["observed"]) else {
             continue;
         };
-        let config_key = encode(&config, true)?;
+        let config_key = canonical(&config)?;
         let item = groups
             .entry(config_key)
             .or_insert_with(|| json!({"config":config,"count":0,"lastUsed":updated}));

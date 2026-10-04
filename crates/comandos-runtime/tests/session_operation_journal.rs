@@ -851,3 +851,73 @@ fn owner_and_clock_are_evaluated_at_each_durable_write() {
     assert_eq!(row["owner"], 888);
     assert_eq!(row["updated"], 300.0);
 }
+/// `stage`/`cancel_waiting` guardan `json.dumps(x)` del Python: orden de
+/// inserción, ASCII escapado y separadores por omisión (el `/model/status`
+/// del Python y del Rust lee ese orden tal cual).
+#[test]
+fn durable_writes_keep_python_insertion_order() {
+    let raw = |conn: &Connection, column: &str| -> String {
+        conn.query_row(
+            &format!("SELECT {column} FROM session_operations WHERE id='request-1234'"),
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    let detail = |conn: &Connection| -> String {
+        conn.query_row(
+            "SELECT detail FROM session_operation_events ORDER BY rowid DESC LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    let f = Fixture::new();
+    let s = claimed(&f.conn);
+    s.stage("request-1234", "applying", None, None).unwrap();
+    s.recover_abandoned(|_| Ok(false)).unwrap();
+    let expected = ascii(
+        r#"{"ok": false, "error": "operación interrumpida; revisar recuperación", "recoveryRequired": true}"#,
+    );
+    assert_eq!(raw(&f.conn, "result"), expected);
+    assert_eq!(detail(&f.conn), expected);
+    let f = Fixture::new();
+    let s = claimed(&f.conn);
+    assert!(s.cancel_waiting("request-1234").unwrap());
+    assert_eq!(
+        raw(&f.conn, "result"),
+        ascii(
+            r#"{"ok": false, "error": "operación cancelada antes de cerrar el origen", "cancelled": true}"#
+        )
+    );
+    let f = Fixture::new();
+    let s = claimed(&f.conn);
+    s.stage(
+        "request-1234",
+        "snapshot",
+        Some(&json!({"z": 1, "a": {"y": 2, "b": 3}})),
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        raw(&f.conn, "snapshot"),
+        r#"{"z": 1, "a": {"y": 2, "b": 3}}"#
+    );
+    assert_eq!(detail(&f.conn), "{}");
+}
+
+/// `ensure_ascii` del Python: cada carácter no ASCII como escape UTF-16.
+fn ascii(s: &str) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        if c.is_ascii() {
+            out.push(c);
+        } else {
+            for unit in c.encode_utf16(&mut [0; 2]) {
+                out.push('\\');
+                out.push_str(&format!("u{unit:04x}"));
+            }
+        }
+    }
+    out
+}
