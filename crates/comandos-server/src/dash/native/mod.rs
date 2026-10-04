@@ -125,7 +125,7 @@ pub struct NativeOptions {
     pub clock: Clock,
     /// `tmux` como lo llama el Python (entorno heredado, plazo 5 s).
     pub tmux: tmux::Tmux,
-    /// `fc-list` de `_installed_font_families` (7724).
+    /// `fc-list` de `_installed_font_families` (7603).
     pub fc_list: tmux::Program,
 }
 

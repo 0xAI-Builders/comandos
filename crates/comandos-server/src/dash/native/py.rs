@@ -76,12 +76,18 @@ fn digits_with_underscores(s: &str) -> Option<String> {
     Some(out)
 }
 
+/// Lo que `int()`/`float()` quitan a los lados de un texto ASCII: solo
+/// `Py_ISSPACE` (` \t\n\v\f\r`), no U+001C–U+001F como `str.strip()`.
+fn strip_numeric(s: &str) -> &str {
+    s.trim_matches([' ', '\t', '\n', '\u{b}', '\u{c}', '\r'])
+}
+
 /// `int(text)` en base 10.
 pub fn int(text: &str) -> Result<i64, NumError> {
     if !text.is_ascii() {
         return Err(NumError::Exotic);
     }
-    let t = strip(text);
+    let t = strip_numeric(text);
     let (negative, body) = match t.as_bytes().first() {
         Some(b'-') => (true, &t[1..]),
         Some(b'+') => (false, &t[1..]),
@@ -93,9 +99,15 @@ pub fn int(text: &str) -> Result<i64, NumError> {
     i64::try_from(value).map_err(|_| NumError::Exotic)
 }
 
-/// `str(ValueError)` de `int(text)`; `None` si el texto no es ASCII.
+/// `str(ValueError)` de `int(text)`; `None` si el texto no es ASCII. CPython
+/// lo arma con `%.200R`: el `repr` se corta a 200 caracteres (comilla final incluida).
 pub fn int_error_message(text: &str) -> Option<String> {
-    repr_ascii(text).map(|r| format!("invalid literal for int() with base 10: {r}"))
+    repr_ascii(text).map(|r| {
+        format!(
+            "invalid literal for int() with base 10: {}",
+            take_chars(&r, 200)
+        )
+    })
 }
 
 /// `float(text)`.
@@ -103,7 +115,7 @@ pub fn float(text: &str) -> Result<f64, NumError> {
     if !text.is_ascii() {
         return Err(NumError::Exotic);
     }
-    let t = strip(text);
+    let t = strip_numeric(text);
     let lower = t.to_ascii_lowercase();
     let unsigned = lower.trim_start_matches(['+', '-']);
     if lower.len() - unsigned.len() > 1 {
@@ -243,17 +255,24 @@ pub fn int_of(value: &Value) -> Result<i64, Conversion> {
     }
 }
 
-/// `SESSION_RE = ^[A-Za-z0-9._-]{1,80}\Z` (`bin/cc-dash:5708`).
+/// `SESSION_RE = ^[A-Za-z0-9._-]{1,80}\Z` (`bin/cc-dash:5590`). La clase es
+/// ASCII explícita (sin `\d` ni `\w`): un sí/no exacto también con no-ASCII.
 pub fn is_session(s: &str) -> bool {
     (1..=80).contains(&s.len())
         && s.bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
-/// `PANE_RE = ^%\d{1,7}\Z` (5709). tmux solo emite dígitos ASCII.
-pub fn is_pane(s: &str) -> bool {
-    s.strip_prefix('%')
-        .is_some_and(|d| (1..=7).contains(&d.len()) && d.bytes().all(|b| b.is_ascii_digit()))
+/// `PANE_RE = ^%\d{1,7}\Z` (5591). `Some(sí/no)` para texto ASCII; `None` si hay
+/// no-ASCII: el `\d` de Python acepta dígitos Unicode (`%١٢`), así que se declina.
+pub fn is_pane(s: &str) -> Option<bool> {
+    if !s.is_ascii() {
+        return None;
+    }
+    Some(
+        s.strip_prefix('%')
+            .is_some_and(|d| (1..=7).contains(&d.len()) && d.bytes().all(|b| b.is_ascii_digit())),
+    )
 }
 
 /// `s[:n]` de Python (por caracteres).

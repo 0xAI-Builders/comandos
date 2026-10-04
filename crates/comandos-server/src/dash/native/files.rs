@@ -23,7 +23,7 @@ pub enum Strict {
     Value(Value),
 }
 
-/// `_tab_registry` (6466): ausente ≠ ilegible.
+/// `_tab_registry` (6348): ausente ≠ ilegible.
 pub fn read_json_strict(path: &Path) -> Strict {
     match fs::read(path) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => Strict::Missing,
@@ -32,7 +32,7 @@ pub fn read_json_strict(path: &Path) -> Strict {
     }
 }
 
-/// `write_json_file` (5232) → `write_file_atomic` (5208): temporal en el mismo
+/// `write_json_file` (5090) → `write_file_atomic` (5063): temporal en el mismo
 /// directorio, fsync, permisos del archivo previo (0600 si es nuevo) y rename.
 /// Bloquea: llamar dentro de `spawn_blocking`.
 pub fn write_json_atomic(path: &Path, value: &Value) -> io::Result<()> {

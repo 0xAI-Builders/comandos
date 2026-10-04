@@ -75,3 +75,34 @@ fn min_max_excludes_the_warmup() {
     assert_eq!(min_max_from(&pts, 0), Some((1000, 9999)));
     assert_eq!(min_max_from(&pts[..3], 5), None);
 }
+
+#[test]
+fn shadow_only_options_require_shadow() {
+    let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let base = [
+        "--base",
+        "http://127.0.0.1:1",
+        "--minutes",
+        "1",
+        "--pid",
+        "1",
+    ];
+    assert!(poll::parse(&args(&base)).is_ok());
+    for extra in [&["--no-native"][..], &["--state-db", "/tmp/x.sqlite3"][..]] {
+        let mut v = args(&base);
+        v.extend(args(extra));
+        let error = poll::parse(&v).err().unwrap_or_default();
+        assert!(error.contains("requieren --shadow"), "{extra:?}: {error}");
+    }
+    let shadow = args(&[
+        "--shadow",
+        "--hooks",
+        "/tmp/h",
+        "--minutes",
+        "1",
+        "--no-native",
+        "--state-db",
+        "/tmp/x",
+    ]);
+    assert!(poll::parse(&shadow).is_ok());
+}

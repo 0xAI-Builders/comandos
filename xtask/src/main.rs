@@ -36,6 +36,11 @@ fn main() {
             }
         }
         Some("poll") => {
+            // Errores de uso antes de entrar al namespace: salida 2, sin lanzar nada.
+            if let Err(e) = poll::parse(&args[1..]) {
+                eprintln!("error: {e}");
+                exit(2);
+            }
             parity::ensure_isolated().unwrap_or_else(|e| fail(e));
             match poll::run(&args[1..]) {
                 Ok(()) => exit(0),

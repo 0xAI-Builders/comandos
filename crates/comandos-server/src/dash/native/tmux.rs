@@ -98,7 +98,7 @@ pub enum TmuxError {
 
 impl Tmux {
     /// Producción: `tmux` del PATH con el entorno del proceso (`TMUX_TMPDIR`,
-    /// `TMUX`), igual que el Python. Plazo de `tmux()` (5833): 5 s.
+    /// `TMUX`), igual que el Python. Plazo de `tmux()` (5715): 5 s.
     pub fn system() -> Self {
         Self {
             program: Program::named("tmux"),
@@ -106,9 +106,12 @@ impl Tmux {
         }
     }
 
-    /// Servidor privado de pruebas: nunca el del usuario.
+    /// Servidor privado de pruebas: nunca el del usuario. `-f /dev/null`: si esta
+    /// llamada arranca el servidor, nace sin `~/.tmux.conf` (que lee
+    /// `~/.claude/hooks` y corre `cc-status.sh` en la barra de estado).
     pub fn private(socket_dir: &Path) -> Self {
         let mut program = Program::named("tmux");
+        program.prefix = vec!["-f".into(), "/dev/null".into()];
         program.env.push(("TMUX_TMPDIR".into(), socket_dir.into()));
         program.env_remove.push("TMUX".into());
         Self {

@@ -161,7 +161,7 @@ fn extract_rev(body: &[u8]) -> String {
         .collect()
 }
 
-struct Opts {
+pub struct Opts {
     base: String,
     token: String,
     minutes: u64,
@@ -175,7 +175,8 @@ struct Opts {
     no_native: bool,
 }
 
-fn parse(args: &[String]) -> Result<Opts, String> {
+/// Opciones de `poll`; un error aquí es de uso (salida 2).
+pub fn parse(args: &[String]) -> Result<Opts, String> {
     let (mut base, mut token, mut minutes, mut pid, mut out) = (None, None, None, None, None);
     let (mut shadow, mut hooks, mut comandos) = (false, None, None);
     let (mut state_db, mut no_native) = (None, false);
@@ -201,6 +202,10 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--state-db" => state_db = Some(PathBuf::from(v)),
             other => return Err(format!("argumento desconocido: {other}")),
         }
+    }
+    // Sin pila aislada no hay frente que arrancar: estas opciones no tienen efecto.
+    if !shadow && (state_db.is_some() || no_native) {
+        return Err("--state-db y --no-native requieren --shadow".into());
     }
     let shadow = if shadow {
         Some((hooks.ok_or("--shadow requiere --hooks")?, comandos))

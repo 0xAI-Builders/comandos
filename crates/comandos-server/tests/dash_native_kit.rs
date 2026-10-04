@@ -77,8 +77,13 @@ fn python_lines_and_names() {
     assert!(py::is_session("work_1.a-b"));
     assert!(!py::is_session("a\n"));
     assert!(!py::is_session(&"a".repeat(81)));
-    assert!(py::is_pane("%12"));
-    assert!(!py::is_pane("%12345678"));
+    assert_eq!(py::is_pane("%12"), Some(true));
+    assert_eq!(py::is_pane("%12345678"), Some(false));
+    assert_eq!(py::is_pane("12"), Some(false));
+    // `\d` de Python acepta dígitos árabes: no se adivina, se declina.
+    assert_eq!(py::is_pane("%١٢"), None);
+    // SESSION_RE es ASCII explícito: el no-ASCII es un «no» exacto.
+    assert!(!py::is_session("١"));
     assert_eq!(py::take_chars("ñandú", 3), "ñan");
 }
 
@@ -207,4 +212,64 @@ async fn tmux_timeout_missing_and_decode_errors() {
     let error = invalid.run(&["x"]).await.unwrap_err();
     assert!(matches!(error, TmuxError::Decode));
     assert_eq!(error.python_message(), None);
+}
+
+#[test]
+fn int_and_float_strip_only_ascii_space() {
+    // `int()`/`float()` quitan solo ` \t\n\v\f\r`; U+001C–U+001F no (`str.strip` sí).
+    assert_eq!(py::int(" 3\n").ok(), Some(3));
+    assert!(matches!(py::int("\x1c3\x1f"), Err(NumError::Invalid)));
+    assert_eq!(
+        py::int_of(&json!("\x1c3\x1f")),
+        Err(Conversion::Value(
+            r"invalid literal for int() with base 10: '\x1c3\x1f'".into()
+        ))
+    );
+    assert_eq!(py::float("\x0b2.5\x0c").ok(), Some(2.5));
+    assert!(matches!(py::float("\x1c3\x1f"), Err(NumError::Invalid)));
+}
+
+#[test]
+fn int_error_message_truncates_repr_to_200_chars() {
+    // `%.200R` de CPython: `int('x' * 300)` corta el repr sin comilla final.
+    let expected = format!(
+        "invalid literal for int() with base 10: '{}",
+        "x".repeat(199)
+    );
+    assert_eq!(py::int_error_message(&"x".repeat(300)), Some(expected));
+    let quoted = format!("'{}", "x".repeat(300));
+    let expected = format!(
+        "invalid literal for int() with base 10: \"'{}",
+        "x".repeat(198)
+    );
+    assert_eq!(py::int_error_message(&quoted), Some(expected));
+    // Un repr de 200 exactos queda entero.
+    let expected = format!(
+        "invalid literal for int() with base 10: '{}'",
+        "x".repeat(198)
+    );
+    assert_eq!(py::int_error_message(&"x".repeat(198)), Some(expected));
+}
+
+#[tokio::test]
+async fn private_tmux_ignores_user_config() {
+    if !tmux_available() {
+        eprintln!("tmux no está instalado: se salta");
+        return;
+    }
+    let home = TestHome::new("kit-tmux-conf");
+    let tmux = Tmux::private(&home.tmux_dir());
+    let made = tmux
+        .run(&["new-session", "-d", "-s", "kit", "cat"])
+        .await
+        .unwrap();
+    assert!(made.ok, "{}", made.stderr);
+    let shown = tmux
+        .run(&["show-options", "-g", "status-right"])
+        .await
+        .unwrap();
+    assert!(shown.ok, "{}", shown.stderr);
+    assert!(!shown.stdout.contains("cc-status"), "{}", shown.stdout);
+    assert!(!shown.stdout.contains(".claude"), "{}", shown.stdout);
+    tmux.run(&["kill-server"]).await.unwrap();
 }
