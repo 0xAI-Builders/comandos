@@ -17,12 +17,25 @@ use http_body_util::{BodyExt, Full};
 use hyper::{body::Incoming, client::conn::http1};
 use hyper_util::rt::TokioIo;
 use std::{io, net::SocketAddr, time::Duration};
-use tokio::{net::TcpStream, sync::mpsc, task::JoinHandle, time::timeout};
+use tokio::{
+    net::TcpStream,
+    sync::{Semaphore, mpsc},
+    task::JoinHandle,
+    time::timeout,
+};
 
 /// Máximo sin recibir un trozo del cuerpo heredado antes de cortar.
 pub const BODY_IDLE: Duration = Duration::from_secs(60);
 /// Trozos en vuelo entre el heredado y el cliente; acota la memoria.
 const CHANNEL_FRAMES: usize = 8;
+/// Ritmo de conexiones nuevas hacia el heredado. El `socketserver` del Python escucha con
+/// backlog 5 y acepta cada conexión en un milisegundo largo; más de cinco SYN pendientes a
+/// la vez esperan la retransmisión (≈ 1 s). Cada conexión nueva ocupa una plaza durante
+/// `CONNECT_PACE` tras conectar: como mucho cuatro conexiones por cada 20 ms, que el Python
+/// acepta sin llenar la cola, y la ráfaga la encola este proceso en microsegundos.
+const CONNECT_SLOTS: usize = 4;
+const CONNECT_PACE: Duration = Duration::from_millis(20);
+static CONNECT_GATE: Semaphore = Semaphore::const_new(CONNECT_SLOTS);
 pub const UNAVAILABLE: &str = "Servidor heredado no disponible";
 
 /// Cabeceras de un solo salto: no cruzan el proxy en ningún sentido.
@@ -37,20 +50,40 @@ pub fn is_hop_by_hop(name: &str) -> bool {
 /// Reenvía `request` a `legacy` y devuelve la respuesta en cuanto llegan sus
 /// cabeceras. Sin heredado (o si se cae antes de responder): 502.
 pub async fn relay(legacy: SocketAddr, request: Request) -> Result<Reply, HandlerError> {
+    let (method, target) = (request.method.clone(), request.target.clone());
     let outgoing = outgoing(request)?;
-    let Ok(stream) = TcpStream::connect(legacy).await else {
+    // El semáforo nunca se cierra: `acquire` solo falla si se cerrara.
+    let Ok(slot) = CONNECT_GATE.acquire().await else {
         return unavailable();
     };
+    let stream = match TcpStream::connect(legacy).await {
+        Ok(stream) => stream,
+        Err(err) => {
+            eprintln!("dash: 502 {method} {target}: sin heredado en {legacy}: {err}");
+            return unavailable();
+        }
+    };
+    // La plaza se libera pasado el ritmo, no al terminar la petición: un long-poll de 25 s
+    // no debe retener conexiones nuevas.
+    tokio::spawn(async move {
+        tokio::time::sleep(CONNECT_PACE).await;
+        drop(slot);
+    });
     let _ = stream.set_nodelay(true);
     let Ok((mut sender, connection)) = http1::handshake(TokioIo::new(stream)).await else {
+        eprintln!("dash: 502 {method} {target}: el heredado no habla HTTP/1.1");
         return unavailable();
     };
     // Si el transporte abandona este futuro (timeout), el guardia corta el socket.
     let connection = AbortOnDrop(tokio::spawn(async move {
         let _ = connection.await;
     }));
-    let Ok(response) = sender.send_request(outgoing).await else {
-        return unavailable();
+    let response = match sender.send_request(outgoing).await {
+        Ok(response) => response,
+        Err(err) => {
+            eprintln!("dash: 502 {method} {target}: el heredado cerró sin responder: {err}");
+            return unavailable();
+        }
     };
     drop(sender);
     let (parts, body) = response.into_parts();

@@ -523,3 +523,61 @@ async fn remote_without_token_never_reaches_legacy() {
     assert!(legacy.seen.lock().unwrap().is_empty());
     front.finish().await;
 }
+
+/// Heredado que escucha con backlog 5, como `socketserver` en Python: una ráfaga de 32
+/// peticiones a la vez no puede traducirse en SYN encolados (≈ 1 s de retransmisión);
+/// el frente limita las conexiones en curso y todas responden en bien menos de un segundo.
+#[tokio::test]
+async fn a_burst_against_a_backlog_5_legacy_has_no_syn_retransmit_stalls() {
+    let socket = socket2::Socket::new(
+        socket2::Domain::IPV4,
+        socket2::Type::STREAM,
+        Some(socket2::Protocol::TCP),
+    )
+    .unwrap();
+    socket
+        .bind(
+            &"127.0.0.1:0"
+                .parse::<std::net::SocketAddr>()
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+    socket.listen(5).unwrap();
+    socket.set_nonblocking(true).unwrap();
+    let std_listener: std::net::TcpListener = socket.into();
+    let listener = TcpListener::from_std(std_listener).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let log = seen.clone();
+    tokio::spawn(async move {
+        loop {
+            let Ok((stream, _)) = listener.accept().await else {
+                return;
+            };
+            // Acepta despacio, como un hilo por conexión que arranca: el backlog se llena.
+            sleep(Duration::from_millis(5)).await;
+            tokio::spawn(answer(stream, log.clone()));
+        }
+    });
+    let front = front("burst", port).await;
+    let started = Instant::now();
+    let mut tasks = Vec::new();
+    for i in 0..32 {
+        let p = front.port;
+        tasks.push(tokio::spawn(async move {
+            send(p, &get(&format!("/eco?i={i}"), p)).await
+        }));
+    }
+    for task in tasks {
+        let wire = task.await.unwrap();
+        assert_eq!(wire.status, 200);
+    }
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed < Duration::from_millis(900),
+        "la ráfaga tardó {elapsed:?}: hay SYN esperando retransmisión"
+    );
+    assert_eq!(seen.lock().unwrap().len(), 32);
+    front.finish().await;
+}
