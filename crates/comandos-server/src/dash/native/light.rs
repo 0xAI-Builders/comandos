@@ -1,17 +1,18 @@
 //! D. Lecturas ligeras y preferencias, rama a rama de `bin/cc-dash`.
 use super::{
-    Answer, Entry, Fault, Key, Native, NativeRoute, Verb, files, py,
+    Answer, Entry, Fault, Key, Native, NativeRoute, Verb,
+    files::{self, Strict},
+    py,
     query::Query,
     reply,
     tmux::{Tmux, TmuxError, run_program},
 };
-use crate::{HandlerError, Request};
-use comandos_core::json::{MAX_WORKSPACE_JSON_DEPTH, response_dumps, truthy, workspace_loads};
+use crate::{HandlerError, Reply, Request};
+use comandos_core::json::{response_dumps, truthy};
 use http::StatusCode;
 use serde_json::{Map, Value, json};
 use std::{
     collections::HashSet,
-    fs, io,
     path::Path,
     time::{Duration, Instant},
 };
@@ -62,7 +63,7 @@ pub async fn answer(native: &Native, route: LightRoute, request: &Request) -> An
         LightRoute::Prefs => {
             let mut prefs = read_prefs(hooks)?;
             prefs.insert("fonts".into(), fonts(native).await);
-            reply(StatusCode::OK, &Value::Object(prefs))
+            read_reply(&Value::Object(prefs))
         }
         LightRoute::PrefsSet => prefs_set(native, data(request)?).await,
         LightRoute::Tabs => tabs(hooks, tmux).await,
@@ -119,6 +120,12 @@ pub(crate) fn error(status: StatusCode, message: &str) -> Answer {
     reply(status, &json!({"error": message}))
 }
 
+/// 200 de una ruta de solo lectura: si el codificador portado no puede escribir
+/// lo leído (el `json.dumps` del Python sí), se declina; no hubo efectos.
+fn read_reply(value: &Value) -> Answer {
+    Reply::json(StatusCode::OK, value).map_err(|_| Fault::Decline)
+}
+
 fn mouse_error(message: &str) -> Answer {
     let status = if message.starts_with("No hay sesion") {
         StatusCode::NOT_FOUND
@@ -146,40 +153,13 @@ fn prefs_defaults() -> [(&'static str, Value); 10] {
 }
 
 /// `json.load(open(path))` dentro de un `try/except Exception` del Python.
-/// `Ok(None)`: el Python cae en su `except` (ausente, BOM, JSON roto).
-/// `Decline`: no se sabe con certeza qué leería (otro error de E/S, bytes que
-/// no son UTF-8, sustitutos sueltos o anidamiento que el parser portado
-/// rechaza y `json` acepta). `files::read_json` acepta BOM y UTF-16, que la
-/// lectura en modo texto del Python no admite: aquí no se usa.
+/// `Ok(None)`: el Python cae en su `except`; `Decline`: no se sabe qué leería.
 fn load(path: &Path) -> Result<Option<Value>, Fault> {
-    let bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(_) => return Err(Fault::Decline),
-    };
-    let text = std::str::from_utf8(&bytes).map_err(|_| Fault::Decline)?;
-    // `json.loads` de un texto con BOM: «Unexpected UTF-8 BOM».
-    if text.starts_with('\u{feff}') {
-        return Ok(None);
+    match files::read_json_strict(path) {
+        Strict::Value(value) => Ok(Some(value)),
+        Strict::Missing | Strict::Unreadable => Ok(None),
+        Strict::Unsure => Err(Fault::Decline),
     }
-    match workspace_loads(text) {
-        Ok(value) => Ok(Some(value)),
-        Err(_) if has_surrogate_escape(text) || deep(text) => Err(Fault::Decline),
-        Err(_) => Ok(None),
-    }
-}
-
-/// `\uD800`–`\uDFFF`: el `json` del Python los admite sueltos; el Rust no.
-fn has_surrogate_escape(text: &str) -> bool {
-    text.match_indices("\\u").any(|(i, _)| {
-        let hex = text.as_bytes().get(i + 2..i + 4).unwrap_or_default();
-        matches!(hex, [b'd' | b'D', b'8'..=b'9' | b'a'..=b'f' | b'A'..=b'F'])
-    })
-}
-
-/// El límite de anidamiento del parser portado no es el de CPython.
-fn deep(text: &str) -> bool {
-    text.bytes().filter(|b| matches!(b, b'[' | b'{')).count() >= MAX_WORKSPACE_JSON_DEPTH
 }
 
 /// `read_prefs` (7630).
@@ -593,7 +573,7 @@ async fn tabs(hooks: &Path, tmux: &Tmux) -> Answer {
             out.push(json!({"session": sess, "label": label}));
         }
     }
-    reply(StatusCode::OK, &Value::Array(out))
+    read_reply(&Value::Array(out))
 }
 
 /// `str(it.get(key) or default)[:n]`.
@@ -677,7 +657,7 @@ async fn tab_history(hooks: &Path, tmux: &Tmux) -> Answer {
         out.push(Value::Object(item));
     }
     out.truncate(40);
-    reply(StatusCode::OK, &Value::Array(out))
+    read_reply(&Value::Array(out))
 }
 
 fn tab_models(hooks: &Path, target: &str) -> Answer {
@@ -696,7 +676,7 @@ fn tab_models(hooks: &Path, target: &str) -> Answer {
         // `(entry or {}).get(...)` sobre lista/str/número: AttributeError.
         Some(_) => return Err(HandlerError::Failure.into()),
     };
-    reply(StatusCode::OK, &json!({"session": sess, "panes": panes}))
+    read_reply(&json!({"session": sess, "panes": panes}))
 }
 
 async fn active_tab(hooks: &Path, tmux: &Tmux) -> Answer {
@@ -733,7 +713,7 @@ async fn active_tab(hooks: &Path, tmux: &Tmux) -> Answer {
             }
         }
     }
-    reply(StatusCode::OK, &active)
+    read_reply(&active)
 }
 
 /// `str(exc).strip() or "tmux fallo"`; sin texto seguro, declinar.

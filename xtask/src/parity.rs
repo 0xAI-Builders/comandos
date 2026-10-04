@@ -674,6 +674,58 @@ fn start_tmux(socket_dir: &Path, sessions: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// `#{session_activity}` (segundos enteros) de cada sesión del servidor privado.
+fn tmux_activity(socket_dir: &Path) -> Result<Vec<String>, String> {
+    let out = Command::new("tmux")
+        .args(["list-sessions", "-F", "#{session_activity}"])
+        .env_remove("TMUX")
+        .env("TMUX_TMPDIR", socket_dir)
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|e| format!("tmux: {e}"))?;
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::to_owned)
+        .collect())
+}
+
+/// Duerme hasta poco después del próximo cambio de segundo del reloj.
+fn wait_next_second() {
+    let into = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_millis())
+        .unwrap_or(0);
+    thread::sleep(Duration::from_millis(u64::from(1000 - into) + 20));
+}
+
+/// Los dos servidores privados con las mismas sesiones y la MISMA
+/// `session_activity` en todas. `read_states` del Python ordena por ella (en
+/// segundos enteros): si la creación cruza un cambio de segundo, los empates
+/// se rompen distinto a cada lado y `/state` difiere sin que nada haya cambiado.
+fn start_tmux_pair(a: &Path, b: &Path, sessions: &[String]) -> Result<(), String> {
+    const TRIES: usize = 5;
+    for _ in 0..TRIES {
+        // Empezar justo tras un cambio de segundo deja casi un segundo entero.
+        wait_next_second();
+        start_tmux(a, sessions)?;
+        start_tmux(b, sessions)?;
+        let mut stamps = tmux_activity(a)?;
+        stamps.extend(tmux_activity(b)?);
+        stamps.sort();
+        stamps.dedup();
+        if stamps.len() <= 1 {
+            return Ok(());
+        }
+        kill_tmux(a);
+        kill_tmux(b);
+    }
+    Err(format!(
+        "tmux privado: tras {TRIES} intentos las sesiones de los dos servidores \
+         no comparten una única session_activity ({} sesiones por lado)",
+        sessions.len()
+    ))
+}
+
 fn kill_tmux(socket_dir: &Path) {
     let _ = Command::new("tmux")
         .arg("kill-server")
@@ -828,8 +880,7 @@ impl Stack {
         let mut tmux_guard = TmuxGuard(vec![tmux1.clone(), tmux2.clone()]);
         let sessions = tmux_sessions_for(&hooks1);
         if tmux_available() {
-            start_tmux(&tmux1, &sessions)?;
-            start_tmux(&tmux2, &sessions)?;
+            start_tmux_pair(&tmux1, &tmux2, &sessions)?;
         }
 
         let (p_py, p_front, p_legacy) = (free_port()?, free_port()?, free_port()?);

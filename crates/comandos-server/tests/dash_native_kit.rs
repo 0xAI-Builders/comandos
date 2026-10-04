@@ -122,10 +122,31 @@ fn atomic_json_write_keeps_mode_and_python_bytes() {
         fs::metadata(&path).unwrap().permissions().mode() & 0o7777,
         0o640
     );
-    assert_eq!(files::read_json(&path), Some(json!({})));
-    fs::write(&path, "{roto").unwrap();
-    assert_eq!(files::read_json(&path), None);
-    assert!(matches!(files::read_json_strict(&path), Strict::Unreadable));
+    assert!(matches!(files::read_json_strict(&path), Strict::Value(v) if v == json!({})));
+    // `json.load(open(path))` en modo texto: lo que el Python rechaza con
+    // certeza es `Unreadable`; lo que podría leer distinto, `Unsure`.
+    for (bytes, expected) in [
+        (&b"{roto"[..], "unreadable"),
+        (b"", "unreadable"),
+        (b"\xef\xbb\xbf{}", "unreadable"),
+        (b"\xff\xfe{\x00}\x00", "unsure"),
+        (b"{\x00}\x00", "unreadable"),
+        (b"{\"a\": \"\xff\"}", "unsure"),
+        (b"{\"a\": \"\\ud800\"}", "unsure"),
+        (b"{\"a\": \"\\ud83d\\ude00\"}", "value"),
+        (b"[1, NaN, -Infinity]", "value"),
+    ] {
+        fs::write(&path, bytes).unwrap();
+        let got = match files::read_json_strict(&path) {
+            Strict::Missing => "missing",
+            Strict::Unreadable => "unreadable",
+            Strict::Unsure => "unsure",
+            Strict::Value(_) => "value",
+        };
+        assert_eq!(got, expected, "{bytes:?}");
+    }
+    fs::write(&path, "[".repeat(1200)).unwrap();
+    assert!(matches!(files::read_json_strict(&path), Strict::Unsure));
     assert!(matches!(
         files::read_json_strict(&home.hooks().join("no-existe.json")),
         Strict::Missing

@@ -1,5 +1,5 @@
 //! Archivos JSON de `~/.claude/hooks` como los lee y escribe `bin/cc-dash`.
-use comandos_core::json::{response_dumps, workspace_loads_bytes};
+use comandos_core::json::{MAX_WORKSPACE_JSON_DEPTH, response_dumps, workspace_loads};
 use serde_json::Value;
 use std::{
     fs, io,
@@ -8,28 +8,52 @@ use std::{
     path::Path,
 };
 
-/// `json.load(open(path))` con `except Exception`: cualquier fallo es `None`.
-pub fn read_json(path: &Path) -> Option<Value> {
-    fs::read(path)
-        .ok()
-        .and_then(|bytes| workspace_loads_bytes(&bytes))
-}
-
 pub enum Strict {
     /// `FileNotFoundError`.
     Missing,
-    /// Otro `OSError` o `ValueError` (JSON roto, UTF-8 inválido).
+    /// El Python cae en su `except` con certeza: JSON roto o texto con BOM
+    /// (`json.loads` de un `str` que empieza por U+FEFF: «Unexpected UTF-8 BOM»).
     Unreadable,
+    /// No se sabe con certeza qué leería el Python: otro error de E/S, bytes
+    /// que no son UTF-8 (dependen de la codificación del proceso), sustitutos
+    /// sueltos o anidamiento que el parser portado rechaza y `json` acepta.
+    /// Quien lo reciba declina.
+    Unsure,
     Value(Value),
 }
 
-/// `_tab_registry` (6348): ausente ≠ ilegible.
+/// `json.load(open(path))` del Python: lectura en modo texto (UTF-8), así que
+/// un BOM o UTF-16 no se decodifican como en `json.loads(bytes)`.
 pub fn read_json_strict(path: &Path) -> Strict {
-    match fs::read(path) {
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Strict::Missing,
-        Err(_) => Strict::Unreadable,
-        Ok(bytes) => workspace_loads_bytes(&bytes).map_or(Strict::Unreadable, Strict::Value),
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Strict::Missing,
+        Err(_) => return Strict::Unsure,
+    };
+    let Ok(text) = std::str::from_utf8(&bytes) else {
+        return Strict::Unsure;
+    };
+    if text.starts_with('\u{feff}') {
+        return Strict::Unreadable;
     }
+    match workspace_loads(text) {
+        Ok(value) => Strict::Value(value),
+        Err(_) if has_surrogate_escape(text) || deep(text) => Strict::Unsure,
+        Err(_) => Strict::Unreadable,
+    }
+}
+
+/// `\uD800`–`\uDFFF`: el `json` del Python los admite sueltos; el Rust no.
+fn has_surrogate_escape(text: &str) -> bool {
+    text.match_indices("\\u").any(|(i, _)| {
+        let hex = text.as_bytes().get(i + 2..i + 4).unwrap_or_default();
+        matches!(hex, [b'd' | b'D', b'8'..=b'9' | b'a'..=b'f' | b'A'..=b'F'])
+    })
+}
+
+/// El límite de anidamiento del parser portado no es el de CPython.
+fn deep(text: &str) -> bool {
+    text.bytes().filter(|b| matches!(b, b'[' | b'{')).count() >= MAX_WORKSPACE_JSON_DEPTH
 }
 
 /// `write_json_file` (5090) → `write_file_atomic` (5063): temporal en el mismo

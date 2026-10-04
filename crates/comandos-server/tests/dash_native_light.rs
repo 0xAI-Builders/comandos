@@ -491,6 +491,29 @@ async fn light_errors_and_writes_match_python_oracle() {
             assert_eq!(a, b, "{prefs} {target}");
         }
     }
+    // Formas raras de `app-tabs.json` contra `/tabs` y `/tab-history`.
+    home.write("prefs.json", r#"{"favorites": ["s1"]}"#);
+    home.write(
+        "app-tabs-history.json",
+        r#"[{"session": "s1"}, {"session": "x"}, {"session": "hub"}]"#,
+    );
+    for tabs in [
+        "[1]",
+        r#""s1""#,
+        "null",
+        "roto",
+        r#"{"s1": 5, "x": ""}"#,
+        r#"{"s1": "A", "x": "X", "s1": "B"}"#,
+        r#"{"s1": "", "local": "L", "hub": "H"}"#,
+        r#"{"s1": null, "x": ["y"]}"#,
+        r#"{"hub": "H", "s1": "Uno ñ"}"#,
+    ] {
+        home.write("app-tabs.json", tabs);
+        for target in ["/tabs", "/tab-history"] {
+            let (a, b) = both(target).await;
+            assert_eq!(a, b, "{tabs} {target}");
+        }
+    }
     for target in [
         "/tmux-mouse",
         "/tmux-mouse?session=a%20b",
@@ -503,7 +526,8 @@ async fn light_errors_and_writes_match_python_oracle() {
     // Escrituras: el mismo estado inicial para cada lado; se comparan la
     // respuesta y los bytes que quedan en disco.
     let prefs_path = home.hooks().join("prefs.json");
-    let initial = r#"{"favorites": ["b", "local", 3, "b"], "theme": "dia", "nfSnooze": {"q": 1}}"#;
+    // Flotantes guardados: la reescritura los vuelve a escribir con el `repr` del Python.
+    let initial = r#"{"favorites": ["b", "local", 3, "b"], "theme": "dia", "nfSnooze": {"q": 1, "f": 1.10, "e": 1e5, "z": -0.0}, "x": [1.10, 1E-7, 123456789012345678.0]}"#;
     for body in [
         r#"{"favorite": {"session": "s1", "enabled": true}}"#,
         r#"{"favorite": {"session": "b", "enabled": false}}"#,
