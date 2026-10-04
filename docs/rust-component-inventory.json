@@ -1341,8 +1341,9 @@
       "language": ".py",
       "category": "producto",
       "lines": 276,
-      "status": "Parcial: almacenamiento; dibujo pendiente",
-      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/marks.rs"
+      "status": "Rust — almacenamiento y renderizado revisados; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-store/src/marks.rs; /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/work_marks.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/work-marks-render-20261004-review.md"
     },
     {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/workspace_layout.py",

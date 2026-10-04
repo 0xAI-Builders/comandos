@@ -18,3 +18,5 @@ pub mod mcp_descriptions;
 
 pub mod allocation;
 pub mod analytics_week;
+
+pub mod work_marks;
