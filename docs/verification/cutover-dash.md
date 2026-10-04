@@ -12,6 +12,7 @@ servicios no se tocan; el único reinicio es el de `cc-dash.service`.
 | Puerto 4777 | Python (`bin/cc-dash`) | Frente Rust (`comandos dash`), mismo puerto y misma puerta de seguridad |
 | Puerto 4781 | libre | Python heredado (`cc-dash-legacy.service`) |
 | Puerto 4782 | libre | solo la sombra del paso 1 |
+| `bin/comandos` (hooks `cc-notify.sh`/`cc-usage-tool.sh`/`cc-status.sh`, `cc-extensions`, broker) | release Fase 1 | **la release nueva al hacer `--stage`**: los hooks la usan en su siguiente turno y el broker en su siguiente arranque; por eso el paso 3 comprueba un hook antes de enlazar `cc-dash` |
 | `cc-dash.service` | sin cambios en el archivo: `ExecStart=%h/.local/bin/cc-dash 4777 --no-open` | igual; ahora ese comando es el frente |
 | `~/.local/bin/cc-dash` | symlink a `<repo>/bin/cc-dash` | symlink a `bin/comandos` (release activa) |
 | Binario `comandos` | `bin/comandos` | `bin/comandos` es symlink a `releases/<sha12>/comandos` |
@@ -88,7 +89,9 @@ segundo Python y, por tanto, no duplica ningún bucle de fondo. El Python vivo r
 desde loopback con las mismas cabeceras, así que decide igual que si llegaran directas.
 
 ```sh
-~/.local/share/comandos/bin/comandos dash 4782 --legacy-port 4777     # en una terminal del controlador
+NEW=$HOME/codebase/0xJesus/ComandOS/.build/target/release/comandos   # binario recién compilado desde main
+"$NEW" --help | grep -q dash || echo "ESE BINARIO NO TIENE dash: no seguir"
+"$NEW" dash 4782 --legacy-port 4777                                    # en una terminal del controlador
 ```
 
 Desde otra, el arnés (sobre copias de `~/.claude/hooks` dentro de un namespace de red privado; nunca
@@ -109,7 +112,7 @@ Este Python arranca los bucles de fondo una segunda vez mientras el de 4777 siga
 pausa, en la misma terminal.
 
 ```sh
-ln -sf "$PWD/systemd/cc-dash-legacy.service" ~/.config/systemd/user/cc-dash-legacy.service
+ln -sf "$HOME/codebase/0xJesus/ComandOS/systemd/cc-dash-legacy.service" ~/.config/systemd/user/cc-dash-legacy.service   # desde el checkout principal, nunca desde un worktree
 systemctl --user daemon-reload
 systemctl --user enable --now cc-dash-legacy.service
 curl -s 127.0.0.1:4781/prefs >/dev/null && echo "4781 responde"
@@ -118,8 +121,10 @@ curl -s 127.0.0.1:4781/prefs >/dev/null && echo "4781 responde"
 ### 3. Cutover
 
 ```sh
-comandos install --stage                        # o target/release/comandos install --stage
-comandos install --link cc-dash
+"$NEW" install --stage                          # instala la release y la enlaza en bin/comandos
+~/.local/share/comandos/bin/comandos --help | grep -q dash || echo "STAGE MALO: comandos install --rollback-release"
+~/.local/share/comandos/bin/comandos hook claude-status >/dev/null && echo "hooks OK con la release nueva"
+~/.local/share/comandos/bin/comandos install --link cc-dash
 systemctl --user restart cc-dash.service
 ```
 
@@ -136,7 +141,7 @@ readlink ~/.local/bin/cc-dash
 - Journal del frente: `journalctl --user -u cc-dash.service -n 50 --no-pager` con la línea de arranque y sin errores.
 - `tailscale serve status` idéntico a la salida anotada en el paso 0.
 - Tablero remoto desde el teléfono (con token): carga el índice, abre notificaciones y una pestaña de terminal.
-- Carga sostenida: `cargo run -p xtask -- poll --base http://127.0.0.1:4777 --token "$(cat ~/.claude/hooks/dash-token)" --minutes 10 --pid "$(systemctl --user show -p MainPID --value cc-dash.service)"`. El RSS/Pss del frente debe quedar plano (pendiente ≈ 0 entre el minuto 5 y el 10). Los puntos se anotan en un archivo compatible con `docs/verification/rss.jsonl`.
+- Carga sostenida: **nunca `xtask poll` contra 4777** (su `POST /presence` registra un dispositivo falso `xtask-poll` sin audio y silencia chimes y push reales durante ~11 min). Medir con la pila aislada: `cargo run -p xtask -- poll --shadow --minutes 10` (namespace de red privado, copia de `~/.claude/hooks`); el Pss del frente debe quedar plano (pendiente ≈ 0 entre el minuto 5 y el 10). Para el frente real, basta `grep Pss /proc/$(systemctl --user show -p MainPID --value cc-dash.service)/smaps_rollup` a intervalos.
 - `ss -ltn 'sport = :4777 or sport = :4781'` muestra ambos puertos con su proceso.
 
 ### 5. Reversión
