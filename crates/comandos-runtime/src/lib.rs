@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub mod legacy;
 pub mod pane_typing;
+pub mod session_operations;
 pub mod terminal_history;
+pub mod terminal_panes;
 
 pub fn state_path(
     explicit: Option<&Path>,

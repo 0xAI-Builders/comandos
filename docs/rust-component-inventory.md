@@ -155,11 +155,11 @@ Los assets, servicios e instaladores declarativos se deben contrastar en el empa
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/providers.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/quick_terminal.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/retire-telegram.sh | Pendiente | — |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/session_operations.py | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/session_operations.py | Rust — revisado; integración pendiente | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/session_operations.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/session_profiles.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/session_tabs.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/terminal_history.py | Rust — revisado; integración pendiente | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/terminal_history.rs |
-| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/terminal_panes.py | Pendiente | — |
+| /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/terminal_panes.py | Rust — revisado; integración pendiente | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/terminal_panes.rs |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/tmux_clipboard.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/tmux_snapshot.py | Pendiente | — |
 | /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/tui_state.py | Pendiente | — |
