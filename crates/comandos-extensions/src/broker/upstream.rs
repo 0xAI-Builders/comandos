@@ -2,7 +2,7 @@
 //! `serve`, con stdin/stdout por tuberías y stderr a `/dev/null`, como el proxy directo y el
 //! Python: los servidores escriben ahí tokens y URLs de autorización que no deben acabar en
 //! el journal del daemon.
-use super::{MAX_LINE, blank};
+use super::{MAX_LINE, blank, scan::IdScan};
 use crate::Result;
 use nix::{
     sys::signal::{Signal, killpg},
@@ -223,125 +223,6 @@ async fn read_upstream<R: AsyncBufRead + Unpin>(r: &mut R, buf: &mut Vec<u8>) ->
     }
 }
 
-/// Lee un objeto JSON en streaming y recuerda su `id` de primer nivel (y si tiene `method`),
-/// sin guardar el resto. Un `"id"` anidado (dentro de `result`) no cuenta.
-#[derive(Default)]
-struct IdScan {
-    depth: u32,
-    in_str: bool,
-    escaped: bool,
-    /// En el objeto de primer nivel, el siguiente valor de cadena es una clave.
-    key_next: bool,
-    key: Vec<u8>,
-    capturing: bool,
-    value: Vec<u8>,
-    id: Option<Vec<u8>>,
-    method: bool,
-}
-
-/// Bytes máximos de una clave o de un `id` de primer nivel que se recuerdan.
-const SCAN_FIELD: usize = 256;
-
-impl IdScan {
-    fn feed(&mut self, bytes: &[u8]) {
-        for &b in bytes {
-            self.byte(b);
-        }
-    }
-
-    fn byte(&mut self, b: u8) {
-        let top = self.depth == 1;
-        if self.in_str {
-            if self.capturing {
-                self.push_value(b);
-            } else if top && self.key_next && self.key.len() <= SCAN_FIELD {
-                self.key.push(b);
-            }
-            if self.escaped {
-                self.escaped = false;
-            } else if b == b'\\' {
-                self.escaped = true;
-            } else if b == b'"' {
-                self.in_str = false;
-                if top && self.key_next && !self.capturing {
-                    self.key.pop(); // comilla de cierre
-                }
-            }
-            return;
-        }
-        match b {
-            b'"' => {
-                self.in_str = true;
-                if self.capturing {
-                    self.push_value(b);
-                } else if top && self.key_next {
-                    self.key.clear();
-                }
-            }
-            b'{' | b'[' => {
-                if self.capturing {
-                    self.push_value(b);
-                }
-                self.depth += 1;
-                if self.depth == 1 {
-                    self.key_next = true;
-                }
-            }
-            b'}' | b']' => {
-                if top {
-                    self.finish();
-                } else if self.capturing {
-                    self.push_value(b);
-                }
-                self.depth = self.depth.saturating_sub(1);
-            }
-            b':' if top => {
-                self.key_next = false;
-                match self.key.as_slice() {
-                    b"id" if self.id.is_none() => {
-                        self.capturing = true;
-                        self.value.clear();
-                    }
-                    b"method" => self.method = true,
-                    _ => {}
-                }
-            }
-            b',' if top => {
-                self.finish();
-                self.key_next = true;
-            }
-            _ if self.capturing => self.push_value(b),
-            _ => {}
-        }
-    }
-
-    fn push_value(&mut self, b: u8) {
-        if self.value.len() <= SCAN_FIELD {
-            self.value.push(b);
-        }
-    }
-
-    fn finish(&mut self) {
-        if std::mem::take(&mut self.capturing) {
-            self.id = Some(std::mem::take(&mut self.value));
-        }
-    }
-
-    /// Error -32603 para el `id` de una respuesta (no de un request ni una notificación del
-    /// upstream, que no tienen a quién avisar). El `Mux` lo traduce y lo entrega a su dueño.
-    fn error_reply(&self) -> Option<Vec<u8>> {
-        if self.method {
-            return None;
-        }
-        let id: Value = serde_json::from_slice(self.id.as_deref()?).ok()?;
-        if !(id.is_u64() || id.is_string()) {
-            return None;
-        }
-        let reply = serde_json::json!({"jsonrpc":"2.0","id":id,"error":{"code":-32603,"message":"respuesta demasiado grande"}});
-        serde_json::to_vec(&reply).ok()
-    }
-}
-
 /// SIGTERM al grupo, 5 s de gracia para el líder, SIGKILL; recoge al líder y al final manda
 /// SIGKILL otra vez al grupo para los nietos que ignoren SIGTERM (ESRCH si ya no queda
 /// nadie). El líder sin recoger reserva su pid como id de grupo, así que la primera señal
@@ -358,46 +239,4 @@ pub(super) async fn terminate(up: &mut Upstream) -> String {
     };
     let _ = killpg(group, Signal::SIGKILL);
     status.map_or_else(|_| "desconocido".into(), |s| s.to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::IdScan;
-
-    fn reply(line: &str) -> Option<String> {
-        let mut scan = IdScan::default();
-        // En dos trozos partidos a mitad de la clave: el estado sobrevive entre llamadas.
-        let (a, b) = line.split_at(line.len() / 2);
-        scan.feed(a.as_bytes());
-        scan.feed(b.as_bytes());
-        scan.error_reply().map(|r| String::from_utf8(r).unwrap())
-    }
-
-    #[test]
-    fn finds_the_top_level_id_wherever_it_is() {
-        let first = reply(r#"{"jsonrpc":"2.0","id":5,"result":{"id":9,"text":"x"}}"#).unwrap();
-        assert!(first.contains(r#""id":5"#), "{first}");
-        let last =
-            reply(r#"{"result":{"content":[{"id":9,"t":"a\"id\":3"}]},"jsonrpc":"2.0","id":12}"#)
-                .unwrap();
-        assert!(last.contains(r#""id":12"#), "{last}");
-        let string = reply(r#"{ "id" : "a\"b" , "result" : {} }"#).unwrap();
-        assert!(string.contains(r#""id":"a\"b""#), "{string}");
-        assert!(last.contains(r#""code":-32603"#) && last.contains("respuesta demasiado grande"));
-    }
-
-    #[test]
-    fn requests_notifications_and_bad_ids_get_no_reply() {
-        assert_eq!(
-            reply(r#"{"jsonrpc":"2.0","id":3,"method":"sampling/createMessage","params":{}}"#),
-            None
-        );
-        assert_eq!(
-            reply(r#"{"jsonrpc":"2.0","method":"notifications/message","params":{"id":1}}"#),
-            None
-        );
-        assert_eq!(reply(r#"{"jsonrpc":"2.0","result":{"id":1}}"#), None);
-        assert_eq!(reply(r#"{"jsonrpc":"2.0","id":{"x":1},"result":{}}"#), None);
-        assert_eq!(reply(r#"{"jsonrpc":"2.0","id":null,"result":{}}"#), None);
-    }
 }

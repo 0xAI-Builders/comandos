@@ -818,3 +818,61 @@ fn a_session_variable_reaches_the_shared_upstream() {
         daemon.log()
     );
 }
+
+/// Sesión con una petición en vuelo (el fake ignora `tools/call`) cuando el daemon muere.
+/// `restart` mata el daemon (como lo haría systemd o un fallo) y arranca otro en el mismo socket.
+fn survives_a_daemon_restart(tag: &str, restart: impl Fn(&mut Daemon) -> Daemon) {
+    let server = format!(
+        r#"{{"enabled":true,"command":"{FAKE}","env":{{"FAKE_MCP_IGNORE":"tools/call"}}}}"#
+    );
+    let home = home_with(tag, &server);
+    let mut old = Daemon::start(&home, "600");
+    let mut a = Session::open(&home, "eco");
+    let first = a.pid(1, "initialize");
+    a.send(json!({"jsonrpc":"2.0","method":"notifications/initialized"}));
+    assert!(a.call(2, "ping")["result"].is_object());
+    a.request(3, "tools/call", json!({"name": "lento", "arguments": {}}));
+    thread::sleep(Duration::from_millis(100));
+    let mut new = restart(&mut old);
+    let lost = a.recv();
+    assert_eq!(
+        lost["id"], 3,
+        "la petición en vuelo recibe un error: {lost}"
+    );
+    assert_eq!(lost["error"]["code"], -32603);
+    assert_eq!(lost["error"]["message"], "broker reiniciado");
+    let pong = a.call(4, "ping");
+    assert!(
+        pong["result"].is_object(),
+        "la sesión sigue tras el reinicio: {pong}"
+    );
+    assert!(
+        a.lines.try_recv().is_err(),
+        "el cliente no ve la respuesta del initialize repetido"
+    );
+    assert_ne!(
+        a.pid(5, "tools/list"),
+        first,
+        "habla con el upstream del daemon nuevo"
+    );
+    assert!(new.log().contains("attach eco"), "{}", new.log());
+    a.close();
+    assert!(new.stop().success());
+}
+
+#[test]
+fn the_thin_client_reconnects_when_the_daemon_is_restarted() {
+    survives_a_daemon_restart("restart-term", |old| {
+        assert!(old.stop().success());
+        Daemon::start(&old.home.clone(), "600")
+    });
+}
+
+#[test]
+fn the_thin_client_reconnects_when_the_daemon_crashes() {
+    survives_a_daemon_restart("restart-kill", |old| {
+        old.child.kill().unwrap();
+        old.child.wait().unwrap();
+        Daemon::start(&old.home.clone(), "600")
+    });
+}

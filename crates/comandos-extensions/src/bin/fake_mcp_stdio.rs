@@ -6,6 +6,7 @@
 //! `FAKE_MCP_MAX_PROTOCOL` (versión máxima, por omisión `2025-11-25`: contesta
 //! `min(params.protocolVersion, máxima)` en orden de fecha, o la máxima si no pide ninguna).
 //! `FAKE_MCP_DUMP_ENV` (escribe su entorno, `CLAVE=valor` por línea, en ese archivo al arrancar),
+//! `FAKE_MCP_IGNORE=<método>` (nunca contesta a ese método: deja la petición en vuelo),
 //! `FAKE_MCP_HUGE=<bytes>`: cada `tools/call` se contesta con un texto de ese tamaño, con el
 //! `id` al final del objeto (como el SDK de TypeScript: `{"result":…,"jsonrpc","id"}`).
 //! Al arrancar escribe [`STDERR_MARKER`] en stderr (el broker debe mandarlo a `/dev/null`).
@@ -44,6 +45,7 @@ fn main() {
         std::process::exit(3);
     }
     let hang = knob("FAKE_MCP_HANG");
+    let ignore = std::env::var("FAKE_MCP_IGNORE").unwrap_or_default();
     let huge: Option<usize> = std::env::var("FAKE_MCP_HUGE")
         .ok()
         .and_then(|v| v.parse().ok());
@@ -56,6 +58,9 @@ fn main() {
         let Some(id) = msg.get("id").filter(|_| !hang) else {
             continue;
         };
+        if !ignore.is_empty() && msg["method"] == ignore.as_str() {
+            continue;
+        }
         if let Some(size) = huge.filter(|_| msg["method"] == "tools/call") {
             if write_huge(&mut out, id, size).is_err() {
                 break;

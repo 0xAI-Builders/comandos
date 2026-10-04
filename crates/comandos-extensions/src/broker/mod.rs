@@ -5,6 +5,7 @@ pub mod client;
 pub mod daemon;
 pub mod mux;
 mod registry;
+mod scan;
 mod translate;
 mod upstream;
 
@@ -150,11 +151,21 @@ fn check_private_dir(dir: &Path) -> io::Result<()> {
 /// Lee una línea sin el `\n` final en `buf`. `Ok(false)` en EOF sin datos; error si la
 /// línea supera [`MAX_LINE`]. Solo usa `fill_buf`/`consume`: no lee más allá del `\n`.
 async fn read_line<R: AsyncBufRead + Unpin>(r: &mut R, buf: &mut Vec<u8>) -> io::Result<bool> {
+    read_line_with(r, buf, true).await
+}
+
+/// Como [`read_line`]; con `keep_partial = false`, una línea sin `\n` cortada por el EOF se
+/// descarta y cuenta como EOF (un daemon que muere a mitad de escribirla).
+async fn read_line_with<R: AsyncBufRead + Unpin>(
+    r: &mut R,
+    buf: &mut Vec<u8>,
+    keep_partial: bool,
+) -> io::Result<bool> {
     buf.clear();
     loop {
         let chunk = r.fill_buf().await?;
         if chunk.is_empty() {
-            return Ok(!buf.is_empty());
+            return Ok(keep_partial && !buf.is_empty());
         }
         let (n, done) = match chunk.iter().position(|b| *b == b'\n') {
             Some(i) => (i + 1, true),

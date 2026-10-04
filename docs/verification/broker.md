@@ -104,10 +104,33 @@ deben acabar en el journal del daemon.
   daemon, plazo vencido): una línea `broker no disponible, proxy directo` en stderr y proxy
   directo.
 - Si el broker cierra antes de que la sesión haya leído un byte de stdin (y sin haber escrito
-  nada en stdout), también se vuelve al proxy directo. Después, el cierre es definitivo.
+  nada en stdout), también se vuelve al proxy directo.
 - Al cerrar stdin, la sesión cierra su mitad de escritura y sale cuando el broker cierra o a
   los 2 s.
 - Con `--home` o `--catalog` explícitos, `serve` usa siempre el proxy directo.
+
+## Reinicio del daemon con sesiones vivas
+
+El cliente fino reenvía por líneas y lleva la cuenta de su `initialize` original, de si ya
+mandó `notifications/initialized` y de sus peticiones en vuelo (ids con `method` sin respuesta;
+el `id` y el `method` de primer nivel se leen en streaming, sin deserializar la línea). Al
+recibir EOF del daemon decide si fue un reinicio:
+
+- Reinicio: el proceso del daemon (pid por `SO_PEERCRED` al conectar) ya no vive (o es zombi),
+  o el socket desapareció o es otro inodo. Un daemon parado con SIGTERM borra el socket antes
+  de cerrar a sus clientes, así que el caso `systemctl restart` se detecta aunque el proceso
+  viejo siga cerrando upstreams.
+- Cierre definitivo: el daemon sigue vivo con el mismo socket (el upstream terminó, cliente
+  lento, inactividad). La sesión sale como antes, con EOF.
+
+En un reinicio, cada petición en vuelo recibe en seguida
+`{"code":-32603,"message":"broker reiniciado"}` con su id, y el cliente intenta hasta tres
+veces (tras 200 ms, 1 s y 3 s) un `attach` nuevo con la misma línea. Si lo consigue, reenvía el
+`initialize` original (si ya tenía respuesta), descarta su respuesta, reenvía
+`notifications/initialized` (si se había mandado) y sigue. La sesión solo nota el error de sus
+peticiones en vuelo; el estado del servidor es el de un upstream nuevo. Sin daemon tras los
+tres intentos, la sesión sale como antes (ya no puede volver al proxy directo: habló con el
+broker).
 
 ## Límites
 
@@ -144,6 +167,10 @@ deben acabar en el journal del daemon.
   sesión con su id (el fake devuelve los `params` en `echo`).
 - Al cerrar una sesión la otra sigue; si el upstream muere (pasados los 500 ms) la sesión
   restante recibe EOF y el siguiente `attach` relanza.
+- Daemon parado con SIGTERM, y daemon matado con SIGKILL, con una sesión viva y una petición en
+  vuelo; otro daemon arranca en el mismo socket: la petición recibe -32603 «broker reiniciado»,
+  la sesión contesta `ping` y habla con el upstream del daemon nuevo, sin ver la respuesta del
+  `initialize` repetido.
 - Daemon con `PATH=/usr/bin:/bin`: un `command` sin `/` arranca solo si el `attach` trae `path`
   con su directorio; el upstream ve ese `PATH`; el `env.PATH` del spec gana.
 - `attach` con `environ`: el PATH del `environ` resuelve el comando, el upstream ve

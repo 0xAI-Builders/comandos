@@ -139,8 +139,8 @@ fn broker_session(name: &str, spec: &Value, catalog: &std::path::Path) -> Option
         .build()
         .ok()?;
     let relayed = runtime.block_on(async {
-        let stream = client::connect(&socket, &request).await?;
-        client::relay(stream).await
+        let conn = client::connect(&socket, &request).await?;
+        client::relay(conn, &socket, &request).await
     });
     // El hilo bloqueado en stdin no debe retrasar la salida.
     runtime.shutdown_timeout(std::time::Duration::from_millis(100));
