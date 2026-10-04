@@ -81,6 +81,12 @@ contestan `2024-11-05`) y `tools/list`.
 `unsupported_upstream_version_fails_like_python`: el upstream contesta `1999-01-01`. Ambos salen
 con código 1, stdout vacío y en stderr `Extension operation failed: ExceptionGroup`.
 
+`a_burst_of_ready_responses_is_all_delivered` (solo Rust): 20 `tools/call` contra
+`/mcp-burst`, que retiene las respuestas y las suelta juntas. Salen las 20 y el proxy contesta
+un `ping` después. La cola de salida (8) usa `send().await`: contrapresión como el stream de
+anyio del Python. Con el `try_send` anterior, la 9.ª respuesta lista en el mismo instante
+mataba el proxy con «Downstream output limit reached».
+
 ## Resultado
 
 - Ronda inicial: solo difería `isError:false` en `tools/call`.

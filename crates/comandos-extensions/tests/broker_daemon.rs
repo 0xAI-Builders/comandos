@@ -684,7 +684,10 @@ fn sharing_key_includes_command_and_args() {
 /// Límite de descriptores (blando, duro) de un proceso, leído de `/proc/<pid>/limits`.
 fn nofile(pid: u32) -> (String, String) {
     let limits = fs::read_to_string(format!("/proc/{pid}/limits")).unwrap();
-    let line = limits.lines().find(|l| l.starts_with("Max open files")).unwrap();
+    let line = limits
+        .lines()
+        .find(|l| l.starts_with("Max open files"))
+        .unwrap();
     let mut cols = line["Max open files".len()..].split_whitespace();
     (cols.next().unwrap().into(), cols.next().unwrap().into())
 }
@@ -707,5 +710,10 @@ fn daemon_raises_its_soft_fd_limit_to_the_hard_one() {
     };
     assert!(until(|| d.socket().exists()), "{}", d.log());
     let (soft, hard) = nofile(d.child.id());
-    assert_eq!(soft, hard, "el daemon sube el límite blando al duro: {}", d.log());
+    assert_eq!(
+        soft,
+        hard,
+        "el daemon sube el límite blando al duro: {}",
+        d.log()
+    );
 }

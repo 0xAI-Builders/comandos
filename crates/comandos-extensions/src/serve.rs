@@ -102,6 +102,9 @@ pub async fn serve(home: &Path, name: &str, spec: &Value) -> Result<()> {
     let mut closed = upstream.closed.clone();
     let upstream = Arc::new(upstream);
     let spec = Arc::new(spec.clone());
+    // Salida con contrapresión, como el stream de anyio del Python: si el escritor va atrás,
+    // el bucle espera a que haya hueco (no se pierde ni se aborta nada). Un envío fallido
+    // significa que el escritor terminó (stdout cerrado): fin limpio, como `output_closed`.
     let (output_tx, mut output_rx) = mpsc::channel::<Value>(8);
     let (output_end, mut output_closed) = watch::channel(false);
     let writer = tokio::spawn(async move {
@@ -153,13 +156,13 @@ pub async fn serve(home: &Path, name: &str, spec: &Value) -> Result<()> {
                                 }
                             } else {capture.invalidate();}
                     }
-                    if output_tx.try_send(response).is_err(){break Err("Downstream output limit reached".into());}
+                    if output_tx.send(response).await.is_err(){break Ok(());}
                 }
             },
             _=measurements.join_next(),if !measurements.is_empty()=>{},
             bytes=input_rx.recv()=> {
                 let Some(bytes)=bytes else {break Ok(())};
-                let request:Value=match comandos_core::json::parse_slice(&bytes){Ok(v)=>v,Err(_)=>{if output_tx.try_send(error(Value::Null,-32700,"Parse error")).is_err(){break Err("Downstream output limit reached".into());}continue;}};
+                let request:Value=match comandos_core::json::parse_slice(&bytes){Ok(v)=>v,Err(_)=>{if output_tx.send(error(Value::Null,-32700,"Parse error")).await.is_err(){break Ok(());}continue;}};
                 let method=request["method"].as_str().unwrap_or("");
                 if request.get("id").is_none() {
                     if method=="notifications/cancelled" {
@@ -175,7 +178,7 @@ pub async fn serve(home: &Path, name: &str, spec: &Value) -> Result<()> {
                 else if !matches!(method,"tools/list"|"tools/call"|"resources/list"|"resources/templates/list"|"resources/read"|"prompts/list"|"prompts/get"|"completion/complete") {Some(error(id.clone(),-32601,"Method not found"))}
                 else if method=="tools/call" && !permitted(&spec,request["params"]["name"].as_str().unwrap_or("")) {Some(error(id.clone(),-32601,"Tool disabled in shared catalog"))}
                 else if running.contains_key(&key) || running.len()>=MAX_INFLIGHT {Some(error(id.clone(),-32000,"Request limit reached"))} else {None};
-                if let Some(response)=immediate {if output_tx.try_send(response).is_err(){break Err("Downstream output limit reached".into());}continue;}
+                if let Some(response)=immediate {if output_tx.send(response).await.is_err(){break Ok(());}continue;}
                 let page=if method=="tools/list" {
                     let cursor=request["params"]["cursor"].clone();
                     if cursor.is_null() || capture_waiting {capture_generation=capture_generation.wrapping_add(1);capture.invalidate();}

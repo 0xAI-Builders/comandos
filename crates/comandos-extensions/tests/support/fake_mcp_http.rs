@@ -12,6 +12,8 @@
 //!   `405 Method Not Allowed`. El cliente Python lo reintenta una vez y desiste sin
 //!   afectar la sesión.
 //! - `DELETE /mcp` (cierre de sesión de ambos clientes): `200` vacío.
+//! - `/mcp-burst`: igual que `/mcp`, pero cada `tools/call` espera a que haya [`BURST`] en
+//!   curso y entonces contestan todas a la vez (respuestas listas en el mismo instante).
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
 use hyper::{Method, Request, Response, StatusCode, body::Incoming, service::service_fn};
@@ -25,6 +27,8 @@ use std::{
 };
 
 pub const SESSION: &str = "fake-session";
+/// `tools/call` que `/mcp-burst` retiene para soltarlas juntas.
+pub const BURST: usize = 20;
 
 /// Escucha en un puerto efímero ya reservado (sin carreras) y devuelve ese puerto.
 /// El hilo vive hasta que termina el proceso de pruebas.
@@ -40,14 +44,16 @@ pub fn spawn(log: Arc<Mutex<Vec<String>>>) -> (u16, JoinHandle<()>) {
             .build()
             .expect("runtime del upstream falso");
         runtime.block_on(async move {
+            let burst = Arc::new(tokio::sync::Barrier::new(BURST));
             let listener = tokio::net::TcpListener::from_std(listener).expect("listener tokio");
             loop {
                 let Ok((stream, _)) = listener.accept().await else {
                     continue;
                 };
-                let log = log.clone();
+                let (log, burst) = (log.clone(), burst.clone());
                 tokio::spawn(async move {
-                    let service = service_fn(move |request| handle(request, log.clone()));
+                    let service =
+                        service_fn(move |request| handle(request, log.clone(), burst.clone()));
                     let _ = hyper::server::conn::http1::Builder::new()
                         .serve_connection(TokioIo::new(stream), service)
                         .await;
@@ -134,6 +140,7 @@ fn answer(request: &Value, bad_version: bool) -> String {
 async fn handle(
     request: Request<Incoming>,
     log: Arc<Mutex<Vec<String>>>,
+    burst: Arc<tokio::sync::Barrier>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     let method = request.method().clone();
     let session = request
@@ -144,7 +151,8 @@ async fn handle(
         .to_owned();
     // `/mcp-badversion`: mismo servidor, pero con una versión de protocolo no soportada.
     let bad_version = request.uri().path() == "/mcp-badversion";
-    if request.uri().path() != "/mcp" && !bad_version {
+    let bursty = request.uri().path() == "/mcp-burst";
+    if request.uri().path() != "/mcp" && !bad_version && !bursty {
         log.lock()
             .unwrap()
             .push(format!("{method} {}", request.uri()));
@@ -184,6 +192,9 @@ async fn handle(
     log.lock().unwrap().push(entry);
     if message.get("id").is_none() {
         return Ok(reply(StatusCode::ACCEPTED, None, false));
+    }
+    if bursty && rpc == "tools/call" {
+        burst.wait().await;
     }
     Ok(reply(
         StatusCode::OK,

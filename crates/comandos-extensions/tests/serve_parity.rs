@@ -229,6 +229,51 @@ fn unsupported_upstream_version_fails_like_python() {
     assert!(rust.1.is_empty());
 }
 
+/// 20 `tools/call` cuyas respuestas llegan juntas: el proxy debe esperar a que se vacíe su
+/// salida (contrapresión, como el stream de anyio del Python) en vez de morir al 9.º envío.
+#[test]
+fn a_burst_of_ready_responses_is_all_delivered() {
+    use support::fake_mcp_http::BURST;
+    let (port, _fake) = support::fake_mcp_http::spawn(Arc::new(Mutex::new(Vec::new())));
+    let home = temp_home("burst", port, "/mcp-burst");
+    let mut child = spawn(rust_cmd(), &home.0);
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = BufReader::new(child.stdout.take().unwrap());
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        stdout
+            .lines()
+            .map_while(Result::ok)
+            .try_for_each(|l| tx.send(l))
+    });
+    writeln!(stdin, "{}", SEQUENCE[0]).unwrap();
+    writeln!(stdin, "{NOTIFY_INITIALIZED}").unwrap();
+    let wait = Duration::from_secs(30);
+    assert!(rx.recv_timeout(wait).unwrap().contains(r#""id":1"#));
+    for id in 0..BURST {
+        let call = format!(
+            r#"{{"jsonrpc":"2.0","id":{},"method":"tools/call","params":{{"name":"echo","arguments":{{"text":"t{id}"}}}}}}"#,
+            id + 100
+        );
+        writeln!(stdin, "{call}").unwrap();
+    }
+    let mut ids: Vec<u64> = (0..BURST)
+        .map(|_| {
+            let line = rx.recv_timeout(wait).expect("las 20 respuestas salen");
+            let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+            assert!(v["result"].is_object(), "{line}");
+            v["id"].as_u64().unwrap()
+        })
+        .collect();
+    ids.sort_unstable();
+    assert_eq!(ids, (100..100 + BURST as u64).collect::<Vec<_>>());
+    writeln!(stdin, r#"{{"jsonrpc":"2.0","id":2,"method":"ping"}}"#).unwrap();
+    let pong = rx.recv_timeout(wait).expect("el proxy sigue vivo");
+    assert!(pong.contains(r#""id":2"#), "{pong}");
+    drop(stdin);
+    let _ = child.wait();
+}
+
 /// Herramienta manual para la medición de memoria (docs/verification/serve-parity.md):
 /// prepara `COMANDOS_PARITY_HOME` y mantiene el upstream falso vivo
 /// `COMANDOS_PARITY_SECS` segundos (180 por omisión).
