@@ -47,6 +47,10 @@ const RETRY: [Duration; 5] = [
 ];
 /// Líneas pendientes en cada sentido entre las tareas lectoras y el bucle.
 const LINE_QUEUE: usize = 64;
+/// Tras un EOF del daemon, cuánto se espera a que su proceso figure muerto antes de dar el
+/// cierre por intencionado (ver `Live::daemon_gone_settled`), y cada cuánto se comprueba.
+const GONE_GRACE: Duration = Duration::from_secs(1);
+const GONE_POLL: Duration = Duration::from_millis(25);
 
 /// Conexión adjuntada al broker. Guarda quién era el daemon (pid por `SO_PEERCRED`) y el
 /// inodo del socket, para distinguir al recibir EOF un reinicio de un cierre definitivo.
@@ -146,6 +150,23 @@ impl Live {
         let ino = std::fs::metadata(socket).ok().map(|m| m.ino());
         let replaced = ino.is_none() || ino != self.socket_ino;
         replaced || self.daemon.is_some_and(|pid| !alive(pid))
+    }
+
+    /// Como `daemon_gone`, pero da al daemon hasta `GONE_GRACE` para terminar de morir: el
+    /// EOF de un proceso que muere (SIGKILL, pánico) llega al cerrar sus descriptores, antes
+    /// de que `/proc` lo marque zombi, y bajo carga ese hueco dura decenas de milisegundos.
+    /// Un daemon vivo que cerró a propósito sigue vivo con el mismo socket tras la espera.
+    async fn daemon_gone_settled(&self, socket: &Path) -> bool {
+        let deadline = Instant::now() + GONE_GRACE;
+        loop {
+            if self.daemon_gone(socket) {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            tokio::time::sleep(GONE_POLL).await;
+        }
     }
 }
 
@@ -319,7 +340,7 @@ pub async fn relay(conn: Connection, socket: &Path, request: &Value) -> Result<i
                     return Err("El broker cerró antes de empezar".into());
                 }
                 None => {
-                    if !live.daemon_gone(socket) {
+                    if !live.daemon_gone_settled(socket).await {
                         return Ok(0);
                     }
                     for error in session.lost() {
