@@ -67,6 +67,13 @@ fn text_of(value: Option<&Value>) -> Result<String, Fault> {
     }
 }
 
+/// `str(data.get("id", ""))` antes de `SNIPPET_ID_RE.match`: el `str()` de un
+/// flotante, una lista o un objeto nunca casa (lleva `.`, `+`, `i`, `n`, `[` o
+/// `{`), así que esos ids reciben el 400 `id invalido` del Python, sin declinar.
+fn id_of(value: Option<&Value>) -> String {
+    value.and_then(py::str_scalar).unwrap_or_default()
+}
+
 /// `snippet_validate` (5196), con `tags` tal cual lo recibe.
 fn validate(name: &str, body: &str, tags: &Value) -> Option<&'static str> {
     if py::strip(name).is_empty() {
@@ -116,15 +123,8 @@ fn read_snippets(path: &Path) -> Result<Vec<Value>, Fault> {
     let mut out = Vec::new();
     for item in raw {
         let Value::Object(it) = item else { continue };
-        // `str()` de un flotante o un contenedor nunca casa con el patrón
-        // (lleva `.`, `+`, `i`, `n`, `[` o `{`): esa fila se salta, sin declinar.
-        let id = match it.get("id") {
-            None => String::new(),
-            Some(v) => match py::str_scalar(v) {
-                Some(id) => id,
-                None => continue,
-            },
-        };
+        // Un id que `str()` no puede casar salta la fila, sin declinar.
+        let id = id_of(it.get("id"));
         if !snippet_id(&id) {
             continue;
         }
@@ -230,7 +230,7 @@ async fn create(path: PathBuf, data: &Map<String, Value>, now: i64) -> Answer {
 }
 
 async fn update(path: PathBuf, data: &Map<String, Value>, now: i64) -> Answer {
-    let id = text_of(data.get("id"))?;
+    let id = id_of(data.get("id"));
     if !snippet_id(&id) {
         return error(StatusCode::BAD_REQUEST, "id invalido");
     }
@@ -259,7 +259,7 @@ async fn update(path: PathBuf, data: &Map<String, Value>, now: i64) -> Answer {
 }
 
 async fn delete(path: PathBuf, data: &Map<String, Value>) -> Answer {
-    let id = text_of(data.get("id"))?;
+    let id = id_of(data.get("id"));
     if !snippet_id(&id) {
         return error(StatusCode::BAD_REQUEST, "id invalido");
     }

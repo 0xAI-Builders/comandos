@@ -502,3 +502,155 @@ async fn ui_log_uncertain_rotation_declines_without_writing() {
     assert_eq!(legacy.requests(), vec!["POST /ui-log HTTP/1.1".to_owned()]);
     front.stop().await;
 }
+
+#[tokio::test]
+async fn snippets_non_scalar_id_is_400_like_python() {
+    let home = TestHome::new("snip-id-kind");
+    home.write("snippets.json", MESSY);
+    let legacy = FakeLegacy::start().await;
+    let front = front(&home, legacy.port, home.options()).await;
+    let cases = [
+        (
+            "/snippets/update",
+            r#"{"id": 1.5, "name": "a", "body": "x"}"#,
+        ),
+        (
+            "/snippets/update",
+            r#"{"id": [1], "name": 2.5, "body": "x"}"#,
+        ),
+        ("/snippets/update", r#"{"id": {"a": 1}}"#),
+        ("/snippets/update", r#"{"id": 1e16}"#),
+        ("/snippets/delete", r#"{"id": 1.5}"#),
+        ("/snippets/delete", r#"{"id": ["0123456789abcdef"]}"#),
+        ("/snippets/delete", r#"{"id": {}}"#),
+        ("/snippets/delete", r#"{"id": null}"#),
+        ("/snippets/delete", r#"{}"#),
+    ];
+    for (path, body) in cases {
+        let wire = request_body(front.port, "POST", path, "", body).await;
+        assert_eq!(
+            (wire.status, wire.text().as_str()),
+            (400, r#"{"error": "id invalido"}"#),
+            "{path} {body}"
+        );
+    }
+    assert!(legacy.requests().is_empty(), "{:?}", legacy.requests());
+    if let Some(py) = oracle(&home).await {
+        for (path, body) in cases {
+            assert_eq!(
+                seen(&request_body(py.port, "POST", path, "", body).await),
+                seen(&request_body(front.port, "POST", path, "", body).await),
+                "{path} {body}"
+            );
+        }
+    }
+    assert_eq!(
+        fs::read_to_string(home.hooks().join("snippets.json")).unwrap(),
+        MESSY
+    );
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn ui_log_lock_contended_declines_without_writing() {
+    let home = TestHome::new("uilog-lock");
+    let old = "{\"ts\": 1.0, \"k\": \"previo\"}\n";
+    home.write("ui-events.jsonl", old);
+    let legacy = FakeLegacy::start().await;
+    let front = front(&home, legacy.port, home.options()).await;
+    let holder = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(home.hooks().join("ui-events.jsonl.lock"))
+        .unwrap();
+    holder.lock().unwrap();
+    let body = r#"{"events": [{"k": "a"}]}"#;
+    let wire = request_body(front.port, "POST", "/ui-log", "", body).await;
+    assert_eq!(wire.text(), r#"{"legacy": true}"#, "declina al heredado");
+    assert_eq!(
+        fs::read_to_string(home.hooks().join("ui-events.jsonl")).unwrap(),
+        old,
+        "el archivo queda intacto"
+    );
+    assert_eq!(legacy.requests(), vec!["POST /ui-log HTTP/1.1".to_owned()]);
+    holder.unlock().unwrap();
+    let wire = request_body(front.port, "POST", "/ui-log", "", body).await;
+    assert_eq!(wire.text(), r#"{"ok": true, "n": 1}"#, "libre: nativo");
+    front.stop().await;
+}
+
+/// `"updated_at": <n>` → `0`, para comparar archivos escritos a horas distintas.
+fn no_times(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(at) = rest.find("\"updated_at\": ") {
+        let start = at + "\"updated_at\": ".len();
+        out.push_str(&rest[..start]);
+        out.push('0');
+        let digits = rest[start..].bytes().take_while(u8::is_ascii_digit).count();
+        rest = &rest[start + digits..];
+    }
+    out.push_str(rest);
+    out
+}
+
+#[tokio::test]
+async fn snippets_update_replaces_every_duplicate_id() {
+    let start = r#"[{"id": "0123456789abcdef", "name": "uno", "body": "x"}, {"id": "aaaaaaaaaaaaaaaa", "name": "otro", "body": "y", "tags": [], "updated_at": 3}, {"id": "0123456789abcdef", "name": "dos", "body": "z", "tags": ["t"]}]"#;
+    let rust_home = TestHome::new("snip-dup-rs");
+    let python_home = TestHome::new("snip-dup-py");
+    for home in [&rust_home, &python_home] {
+        home.write("snippets.json", start);
+    }
+    let front = front(&rust_home, dead_port(), rust_home.options()).await;
+    let body = r#"{"id": "0123456789abcdef", "name": " nuevo ", "body": "b", "tags": [" k "]}"#;
+    let wire = request_body(front.port, "POST", "/snippets/update", "", body).await;
+    assert_eq!(
+        wire.text(),
+        r#"{"item": {"id": "0123456789abcdef", "name": "nuevo", "body": "b", "tags": ["k"], "updated_at": 1791115200}}"#
+    );
+    let written = fs::read_to_string(rust_home.hooks().join("snippets.json")).unwrap();
+    assert_eq!(
+        written,
+        r#"[{"id": "0123456789abcdef", "name": "nuevo", "body": "b", "tags": ["k"], "updated_at": 1791115200}, {"id": "aaaaaaaaaaaaaaaa", "name": "otro", "body": "y", "tags": [], "updated_at": 3}, {"id": "0123456789abcdef", "name": "nuevo", "body": "b", "tags": ["k"], "updated_at": 1791115200}]"#
+    );
+    if let Some(py) = oracle(&python_home).await {
+        let a = request_body(py.port, "POST", "/snippets/update", "", body).await;
+        assert_eq!(
+            (a.status, no_times(&a.text())),
+            (wire.status, no_times(&wire.text()))
+        );
+        assert_eq!(
+            no_times(&fs::read_to_string(python_home.hooks().join("snippets.json")).unwrap()),
+            no_times(&written)
+        );
+    }
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn new_snippets_file_and_lock_are_private() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = TestHome::new("snip-mode");
+    let front = front(&home, dead_port(), home.options()).await;
+    let wire = request_body(
+        front.port,
+        "POST",
+        "/snippets",
+        "",
+        r#"{"name": "a", "body": "b"}"#,
+    )
+    .await;
+    assert_eq!(wire.status, 200, "{}", wire.text());
+    for name in ["snippets.json", "snippets.json.lock"] {
+        let mode = fs::metadata(home.hooks().join(name))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o7777;
+        assert_eq!(mode, 0o600, "{name}: {mode:o}");
+    }
+    front.stop().await;
+}
