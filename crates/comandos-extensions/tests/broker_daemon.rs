@@ -1,4 +1,6 @@
 //! Daemon del broker: los clientes finos comparten un upstream; los dedicados no.
+#[allow(dead_code)] // cada prueba usa solo parte de las utilidades compartidas
+mod support;
 use nix::{sys::signal, unistd::Pid};
 use serde_json::{Value, json};
 use std::{
@@ -71,6 +73,7 @@ fn command(home: &Path, args: &[&str]) -> Command {
         .env("HOME", home)
         .env("XDG_RUNTIME_DIR", home.join("run"));
     c.env("FAKE_MCP_PIDFILE", home.join("pids"));
+    support::assert_isolated(&c);
     c
 }
 
@@ -439,15 +442,16 @@ fn concurrent_requests_with_the_same_ids_stay_with_their_client() {
 /// Daemon con entorno mínimo (`PATH=/usr/bin:/bin`), como bajo `systemd --user`.
 fn start_clean_daemon(home: &Path) -> Daemon {
     let log = fs::File::create(home.join("daemon.log")).unwrap();
-    let child = (Command::new(BIN).arg("broker").env_clear())
+    let mut cmd = Command::new(BIN);
+    (cmd.arg("broker").env_clear())
         .env("HOME", home)
         .env("XDG_RUNTIME_DIR", home.join("run"))
         .env("PATH", "/usr/bin:/bin")
         .env("COMANDOS_BROKER_IDLE_SECS", "600")
         .stdout(Stdio::null())
-        .stderr(log)
-        .spawn()
-        .unwrap();
+        .stderr(log);
+    support::assert_isolated(&cmd);
+    let child = cmd.spawn().unwrap();
     let d = Daemon {
         child,
         home: home.into(),

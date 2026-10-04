@@ -96,15 +96,15 @@ fn stdio_serve_execs_catalog_command_like_python() {
 #[test]
 fn stdio_serve_is_exec_not_a_wrapper() {
     let home = prepare_home("pid");
-    let child = Command::new(env!("CARGO_BIN_EXE_comandos-extensions"))
-        .args(["serve", "plain"])
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_comandos-extensions"));
+    cmd.args(["serve", "plain"])
         .current_dir("/")
         .env("HOME", &home)
         .env("PATH", format!("{}/bin:/usr/bin:/bin", home.display()))
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
+        .stderr(std::process::Stdio::piped());
+    support::isolate(&mut cmd);
+    let child = cmd.spawn().unwrap();
     let spawned = child.id();
     let out = child.wait_with_output().unwrap();
     let (_, reported) = split_pid(&out);
@@ -184,4 +184,30 @@ fn status_matches_python() {
     );
     assert_eq!(r.status.code(), p.status.code());
     let _ = fs::remove_dir_all(&home);
+}
+
+/// Guarda: un comando de prueba sin `XDG_RUNTIME_DIR` propio, o con el de la sesión real,
+/// no se deja lanzar (vería `/run/user/<uid>/comandos/broker.sock`, el broker en vivo).
+#[test]
+fn test_commands_never_see_the_real_broker() {
+    let rejected = |cmd: Command| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            support::assert_isolated(&cmd)
+        }))
+    };
+    let mut inherited = Command::new("true");
+    inherited.env("HOME", "/tmp");
+    assert!(
+        rejected(inherited).is_err(),
+        "sin XDG_RUNTIME_DIR explícito"
+    );
+    let mut real = Command::new("true");
+    real.env("XDG_RUNTIME_DIR", "/run/user/1000");
+    assert!(
+        rejected(real).is_err(),
+        "el XDG_RUNTIME_DIR de la sesión real"
+    );
+    let mut isolated = Command::new("true");
+    support::isolate(&mut isolated);
+    assert!(rejected(isolated).is_ok());
 }

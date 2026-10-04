@@ -93,9 +93,9 @@ fn spawn(mut cmd: Command, home: &Path) -> Child {
     cmd.env("HOME", home)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap()
+        .stderr(Stdio::piped());
+    support::isolate(&mut cmd);
+    cmd.spawn().unwrap()
 }
 
 /// Lanza el proxy, le da la secuencia mensaje a mensaje (esperando cada respuesta) y
