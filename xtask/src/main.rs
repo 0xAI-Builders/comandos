@@ -27,14 +27,21 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("rss") => {}
-        Some("parity") => match parity::run(&args[1..]) {
-            Ok(code) => exit(code),
-            Err(e) => fail(e),
-        },
-        Some("poll") => match poll::run(&args[1..]) {
-            Ok(()) => exit(0),
-            Err(e) => fail(e),
-        },
+        Some("parity") => {
+            // Falla cerrado: sin namespace de red propio no se lanza el oráculo.
+            parity::ensure_isolated().unwrap_or_else(|e| fail(e));
+            match parity::run(&args[1..]) {
+                Ok(code) => exit(code),
+                Err(e) => fail(e),
+            }
+        }
+        Some("poll") => {
+            parity::ensure_isolated().unwrap_or_else(|e| fail(e));
+            match poll::run(&args[1..]) {
+                Ok(()) => exit(0),
+                Err(e) => fail(e),
+            }
+        }
         _ => {
             eprintln!("subcomandos: rss, parity, poll");
             exit(2);

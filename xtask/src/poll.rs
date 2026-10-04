@@ -15,9 +15,17 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// (periodo en ms, método, ruta). El long-poll `/notices/watch` no entra: es continuo y lo
-/// llevan hilos propios.
-const TABLE: [(u64, &str, &str); 12] = [
+/// Cliente que genera la carga: el tablero (navegador) o la app de escritorio (`cc-app`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Client {
+    Dashboard,
+    App,
+}
+
+/// (periodo en ms, método, ruta) del tablero: `index.html`, `notifications.js`,
+/// `work-marks.js`, `pomodoro.js`, `term.html`. El long-poll `/notices/watch` no entra:
+/// es continuo y lo lleva un hilo propio por cliente.
+const DASHBOARD: [(u64, &str, &str); 11] = [
     (2_000, "GET", "/state"),
     (10_000, "GET", "/usage/state"),
     (5_000, "GET", "/prefs"),
@@ -29,18 +37,30 @@ const TABLE: [(u64, &str, &str); 12] = [
     (30_000, "POST", "/presence"),
     (2_000, "POST", "/terminal-panes"),
     (2_000, "GET", "/tab-models?session=poll"),
-    (2_000, "GET", "/workspace"),
 ];
 
-/// Todas las peticiones periódicas de `minutes` minutos, ordenadas por instante (ms desde el
-/// inicio). Cada ruta arranca en 0 y repite cada su periodo.
-pub fn schedule(minutes: u64) -> Vec<(u64, &'static str, String)> {
+/// Filas de `cc-app` (inventario §1.11).
+const APP: [(u64, &str, &str); 5] = [
+    (3_000, "GET", "/state"),
+    (3_000, "GET", "/prefs"),
+    (2_000, "GET", "/workspace"),
+    (5_000, "GET", "/work-marks"),
+    (30_000, "POST", "/presence"),
+];
+
+/// Peticiones periódicas de un cliente durante `minutes` minutos, ordenadas por instante
+/// (ms desde el inicio). Cada ruta arranca en 0 y repite cada su periodo.
+pub fn schedule(minutes: u64, client: Client) -> Vec<(u64, &'static str, String)> {
     let total = minutes * 60_000;
+    let table: &[(u64, &str, &str)] = match client {
+        Client::Dashboard => &DASHBOARD,
+        Client::App => &APP,
+    };
     let mut out = Vec::new();
-    for (period, method, path) in TABLE {
+    for (period, method, path) in table {
         let mut t = 0;
         while t < total {
-            out.push((t, method, path.to_string()));
+            out.push((t, *method, path.to_string()));
             t += period;
         }
     }
@@ -146,13 +166,20 @@ struct Opts {
     token: String,
     minutes: u64,
     pid: u32,
-    out: PathBuf,
+    /// `None` = archivo de trabajo en el directorio temporal; el rastreado exige `--out`.
+    out: Option<PathBuf>,
+    shadow: Option<(PathBuf, Option<PathBuf>)>,
 }
 
 fn parse(args: &[String]) -> Result<Opts, String> {
     let (mut base, mut token, mut minutes, mut pid, mut out) = (None, None, None, None, None);
+    let (mut shadow, mut hooks, mut comandos) = (false, None, None);
     let mut it = args.iter();
     while let Some(a) = it.next() {
+        if a == "--shadow" {
+            shadow = true;
+            continue;
+        }
         let v = it.next().ok_or_else(|| format!("{a} sin valor"))?;
         match a.as_str() {
             "--base" => base = Some(v.clone()),
@@ -160,24 +187,130 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--minutes" => minutes = v.parse::<u64>().ok().filter(|m| *m >= 1),
             "--pid" => pid = v.parse::<u32>().ok(),
             "--out" => out = Some(PathBuf::from(v)),
+            "--hooks" => hooks = Some(PathBuf::from(v)),
+            "--comandos" => comandos = Some(PathBuf::from(v)),
             other => return Err(format!("argumento desconocido: {other}")),
         }
     }
+    let shadow = if shadow {
+        Some((hooks.ok_or("--shadow requiere --hooks")?, comandos))
+    } else {
+        None
+    };
     Ok(Opts {
-        base: base.ok_or("falta --base")?,
+        base: if shadow.is_some() {
+            String::new()
+        } else {
+            base.ok_or("falta --base (o --shadow --hooks)")?
+        },
         token: token.unwrap_or_default(),
         minutes: minutes.ok_or("falta --minutes N (entero ≥ 1)")?,
-        pid: pid.ok_or("falta --pid")?,
-        out: out.unwrap_or_else(|| {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../docs/verification/rss.jsonl")
-        }),
+        pid: if shadow.is_some() {
+            0
+        } else {
+            pid.ok_or("falta --pid")?
+        },
+        out,
+        shadow,
     })
+}
+
+/// (mínimo, máximo) de los puntos `(minuto, kib)` desde el minuto `from`.
+pub fn min_max_from(points: &[(u64, u64)], from: u64) -> Option<(u64, u64)> {
+    let v: Vec<u64> = points
+        .iter()
+        .filter(|(m, _)| *m >= from)
+        .map(|p| p.1)
+        .collect();
+    Some((*v.iter().min()?, *v.iter().max()?))
+}
+
+/// Un cliente completo: su calendario periódico en un hilo y su long-poll en otro.
+fn spawn_client(
+    addr: &str,
+    token: &str,
+    client: Client,
+    minutes: u64,
+    t0: Instant,
+    stats: &Arc<Stats>,
+    stop: &Arc<AtomicBool>,
+) -> Vec<thread::JoinHandle<()>> {
+    let sched = schedule(minutes, client);
+    let (a1, t1, s1) = (addr.to_string(), token.to_string(), stats.clone());
+    let periodic = thread::spawn(move || {
+        for (ms, method, path) in sched {
+            let due = t0 + Duration::from_millis(ms);
+            if let Some(wait) = due.checked_duration_since(Instant::now()) {
+                thread::sleep(wait);
+            }
+            s1.sent.fetch_add(1, Ordering::Relaxed);
+            match http(
+                &a1,
+                method,
+                &path,
+                &t1,
+                body_for(&path_only(&path)),
+                Duration::from_secs(30),
+            ) {
+                Ok((st, _)) if (200..300).contains(&st) => {}
+                Ok(_) => {
+                    s1.non_2xx.fetch_add(1, Ordering::Relaxed);
+                }
+                Err(_) => {
+                    s1.errors.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+        }
+    });
+    let (a2, t2, st2, s2) = (
+        addr.to_string(),
+        token.to_string(),
+        stop.clone(),
+        stats.clone(),
+    );
+    let watcher = thread::spawn(move || {
+        let mut rev = String::new();
+        while !st2.load(Ordering::Relaxed) {
+            let p = format!("/notices/watch?rev={rev}&wait=25");
+            match http(&a2, "GET", &p, &t2, None, Duration::from_secs(40)) {
+                Ok((200, b)) => rev = extract_rev(&b),
+                Ok(_) => {
+                    s2.non_2xx.fetch_add(1, Ordering::Relaxed);
+                    thread::sleep(Duration::from_secs(2));
+                }
+                Err(_) => {
+                    s2.errors.fetch_add(1, Ordering::Relaxed);
+                    thread::sleep(Duration::from_secs(2));
+                }
+            }
+        }
+    });
+    vec![periodic, watcher]
 }
 
 pub fn run(args: &[String]) -> Result<(), String> {
     let o = parse(args)?;
-    let addr = o
-        .base
+    // Con --shadow se levanta la pila aislada (copia de hooks, Python heredado y frente) y se
+    // carga el frente. Sin --shadow solo se alcanzan servidores dentro del mismo namespace.
+    let stack = match &o.shadow {
+        Some((hooks, comandos)) => {
+            let comandos = match comandos {
+                Some(c) => c.clone(),
+                None => crate::parity::default_comandos()?,
+            };
+            Some(crate::parity::Stack::start(hooks, &comandos, false)?)
+        }
+        None => None,
+    };
+    let (base, token, pid) = match &stack {
+        Some(s) => (
+            format!("http://127.0.0.1:{}", s.p_front),
+            s.token.clone(),
+            s.pid_front,
+        ),
+        None => (o.base.clone(), o.token.clone(), o.pid),
+    };
+    let addr = base
         .strip_prefix("http://")
         .ok_or("--base debe ser http://host:puerto")?
         .trim_end_matches('/')
@@ -185,94 +318,53 @@ pub fn run(args: &[String]) -> Result<(), String> {
     if !addr.starts_with("127.0.0.1:") && !addr.starts_with("localhost:") {
         return Err("solo se permite cargar un servidor local (127.0.0.1)".into());
     }
-    let sched = schedule(o.minutes);
+    let out = o.out.clone().unwrap_or_else(|| {
+        std::env::temp_dir().join(format!("xtask-poll-{}.jsonl", std::process::id()))
+    });
     println!(
-        "poll: {} peticiones periódicas en {} min contra {addr}",
-        sched.len(),
-        o.minutes
+        "poll: tablero {} + app {} peticiones periódicas en {} min contra {addr}; salida {}",
+        schedule(o.minutes, Client::Dashboard).len(),
+        schedule(o.minutes, Client::App).len(),
+        o.minutes,
+        out.display()
     );
     let stats = Arc::new(Stats::default());
     let stop = Arc::new(AtomicBool::new(false));
     let t0 = Instant::now();
     let mut handles = Vec::new();
-
-    // Dos clientes (tablero y app) se reparten el calendario por índice.
-    for client in 0..2usize {
-        let mine: Vec<_> = sched.iter().skip(client).step_by(2).cloned().collect();
-        let (addr, token, stats) = (addr.clone(), o.token.clone(), stats.clone());
-        handles.push(thread::spawn(move || {
-            for (ms, method, path) in mine {
-                let due = t0 + Duration::from_millis(ms);
-                if let Some(wait) = due.checked_duration_since(Instant::now()) {
-                    thread::sleep(wait);
-                }
-                stats.sent.fetch_add(1, Ordering::Relaxed);
-                match http(
-                    &addr,
-                    method,
-                    &path,
-                    &token,
-                    body_for(&path_only(&path)),
-                    Duration::from_secs(30),
-                ) {
-                    Ok((st, _)) if (200..300).contains(&st) => {}
-                    Ok(_) => {
-                        stats.non_2xx.fetch_add(1, Ordering::Relaxed);
-                    }
-                    Err(_) => {
-                        stats.errors.fetch_add(1, Ordering::Relaxed);
-                    }
-                }
-            }
-        }));
+    for client in [Client::Dashboard, Client::App] {
+        handles.extend(spawn_client(
+            &addr, &token, client, o.minutes, t0, &stats, &stop,
+        ));
     }
-    // Long-poll continuo de 25 s, uno por cliente (tablero y app).
-    let watchers: Vec<_> = (0..2)
-        .map(|_| {
-            let (addr, token, stop, stats) =
-                (addr.clone(), o.token.clone(), stop.clone(), stats.clone());
-            thread::spawn(move || {
-                let mut rev = String::new();
-                while !stop.load(Ordering::Relaxed) {
-                    let p = format!("/notices/watch?rev={rev}&wait=25");
-                    match http(&addr, "GET", &p, &token, None, Duration::from_secs(40)) {
-                        Ok((200, b)) => rev = extract_rev(&b),
-                        Ok(_) => {
-                            stats.non_2xx.fetch_add(1, Ordering::Relaxed);
-                            thread::sleep(Duration::from_secs(2));
-                        }
-                        Err(_) => {
-                            stats.errors.fetch_add(1, Ordering::Relaxed);
-                            thread::sleep(Duration::from_secs(2));
-                        }
-                    }
-                }
-            })
-        })
-        .collect();
 
     // Muestreo de memoria cada 60 s (y uno inicial en el minuto 0).
     let mut points: Vec<(u64, u64)> = Vec::new();
-    if let Some(parent) = o.out.parent() {
+    if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let mut file = std::fs::OpenOptions::new()
         .append(true)
         .create(true)
-        .open(&o.out)
-        .map_err(|e| format!("{}: {e}", o.out.display()))?;
+        .open(&out)
+        .map_err(|e| format!("{}: {e}", out.display()))?;
     for minute in 0..=o.minutes {
         let due = t0 + Duration::from_secs(minute * 60);
         if let Some(wait) = due.checked_duration_since(Instant::now()) {
             thread::sleep(wait);
         }
-        let m = crate::rss::sample(o.pid)?;
+        let m = crate::rss::sample(pid)?;
         points.push((minute, m.pss_kib_total));
+        let legacy = stack
+            .as_ref()
+            .and_then(|s| crate::rss::sample(s.pid_legacy).ok())
+            .map(|l| l.pss_kib_total);
         let line = serde_json::json!({
-            "cmd": ["dash-poll", o.base],
+            "cmd": ["dash-poll", base],
             "minute": minute,
             "pss_kib": m.pss_kib_total,
             "rss_kib": m.rss_kib_total,
+            "legacy_pss_kib": legacy,
             "pss_exact": m.pss_exact,
             "procs": m.procs,
             "sent": stats.sent.load(Ordering::Relaxed),
@@ -282,25 +374,20 @@ pub fn run(args: &[String]) -> Result<(), String> {
         println!("{line}");
         writeln!(file, "{line}").map_err(|e| e.to_string())?;
     }
-    for h in handles {
-        let _ = h.join();
-    }
     stop.store(true, Ordering::Relaxed);
-    // Los watchers terminan al cerrar su espera (≤ 25 s); no se bloquea el informe en ellos.
-    drop(watchers);
+    // Los hilos periódicos ya terminaron; los long-poll cierran en ≤ 25 s al soltar la pila.
+    drop(handles);
 
-    let pss: Vec<u64> = points.iter().map(|p| p.1).collect();
-    let (min, max) = (
-        pss.iter().min().copied().unwrap_or(0),
-        pss.iter().max().copied().unwrap_or(0),
-    );
+    if let Some((lo, hi)) = min_max_from(&points, 0) {
+        println!("resumen (total): Pss min {lo} KiB, max {hi} KiB");
+    }
+    match min_max_from(&points, 5) {
+        Some((lo, hi)) => println!("resumen (desde min 5): Pss min {lo} KiB, max {hi} KiB"),
+        None => println!("resumen (desde min 5): n/d (la ventana es de menos de 5 min)"),
+    }
     match slope_kib_per_hour(&points) {
-        Some(s) => println!(
-            "resumen: Pss min {min} KiB, max {max} KiB, pendiente desde min 5: {s:.0} KiB/h"
-        ),
-        None => println!(
-            "resumen: Pss min {min} KiB, max {max} KiB, pendiente: n/d (menos de 2 puntos desde el min 5)"
-        ),
+        Some(sl) => println!("pendiente desde min 5: {sl:.0} KiB/h"),
+        None => println!("pendiente: n/d (menos de 2 puntos desde el min 5)"),
     }
     println!(
         "peticiones: {} enviadas, {} errores de transporte, {} no-2xx",
