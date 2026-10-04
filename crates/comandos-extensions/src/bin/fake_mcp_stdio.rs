@@ -5,6 +5,7 @@
 //! `FAKE_MCP_DIE=1` (sale nada más arrancar), `FAKE_MCP_HANG=1` (lee pero nunca contesta),
 //! `FAKE_MCP_MAX_PROTOCOL` (versión máxima, por omisión `2025-11-25`: contesta
 //! `min(params.protocolVersion, máxima)` en orden de fecha, o la máxima si no pide ninguna).
+//! `FAKE_MCP_DUMP_ENV` (escribe su entorno, `CLAVE=valor` por línea, en ese archivo al arrancar),
 //! `FAKE_MCP_HUGE=<bytes>`: cada `tools/call` se contesta con un texto de ese tamaño, con el
 //! `id` al final del objeto (como el SDK de TypeScript: `{"result":…,"jsonrpc","id"}`).
 //! Al arrancar escribe [`STDERR_MARKER`] en stderr (el broker debe mandarlo a `/dev/null`).
@@ -32,6 +33,12 @@ fn main() {
                 .unwrap_or_default()
                 .as_encoded_bytes(),
         );
+    }
+    if let Some(path) = std::env::var_os("FAKE_MCP_DUMP_ENV") {
+        let text: String = std::env::vars_os()
+            .map(|(k, v)| format!("{}={}\n", k.to_string_lossy(), v.to_string_lossy()))
+            .collect();
+        let _ = std::fs::write(path, text);
     }
     if knob("FAKE_MCP_DIE") {
         std::process::exit(3);

@@ -47,38 +47,60 @@ fn find_in_path(name: &str, path: &str) -> Option<PathBuf> {
         })
 }
 
-/// Lanza `spec` como lo habría lanzado el proxy directo de la sesión: en `cwd` y con su
-/// `env` expandido superpuesto al entorno del daemon. Con `path` (el `PATH` de la sesión)
-/// resuelve ahí un `command` sin `/` y lo da como `PATH` del upstream; el `PATH` propio del
-/// spec, si existe, gana.
+/// Entorno base del upstream, según lo que mandó la sesión en su `attach`.
+pub(super) enum Base<'a> {
+    /// Entorno completo de la sesión: sustituye al del daemon.
+    Environ(&'a [(String, String)]),
+    /// Protocolo anterior: solo el `PATH` de la sesión (si lo hay), sobre el entorno del daemon.
+    Path(Option<&'a str>),
+}
+
+/// Lanza `spec` como lo habría lanzado el proxy directo de la sesión: en `cwd`, con el entorno
+/// de la sesión (`Base::Environ`, sin nada del daemon) y su `env` expandido encima (el spec
+/// gana). Un `command` sin `/` se resuelve en el `PATH` efectivo: el del spec o el de la sesión.
+/// Con `Base::Path` el entorno es el del daemon con el `PATH` de la sesión.
 pub(super) fn spawn(
     spec: &Value,
     cwd: &Path,
     env: &[(String, String)],
-    path: Option<&str>,
+    base: Base<'_>,
 ) -> Result<Upstream> {
     let mut spec = spec.clone();
     if let Some(o) = spec.as_object_mut() {
         o.remove("cwd");
     }
     let mut env = env.to_vec();
-    if let Some(path) = path {
-        if !env.iter().any(|(k, _)| k == "PATH") {
-            env.push(("PATH".into(), path.into()));
+    let session_path = match base {
+        Base::Environ(environ) => environ.iter().find(|(k, _)| k == "PATH").map(|(_, v)| &**v),
+        Base::Path(path) => {
+            if let Some(path) = path
+                && !env.iter().any(|(k, _)| k == "PATH")
+            {
+                env.push(("PATH".into(), path.into()));
+            }
+            path
         }
-        // PATH efectivo del upstream (el del spec gana): ahí se busca el ejecutable.
-        let effective = env
-            .iter()
-            .find(|(k, _)| k == "PATH")
-            .map_or(path, |(_, v)| v);
-        let command = spec["command"].as_str().map(crate::expand_user);
-        if let Some(name) = command.filter(|c| !c.is_empty() && !c.contains('/'))
-            && let Some(found) = find_in_path(&name, effective)
-        {
-            spec["command"] = Value::String(found.to_string_lossy().into_owned());
-        }
+    };
+    // PATH efectivo del upstream (el del spec gana): ahí se busca el ejecutable.
+    let effective = env
+        .iter()
+        .find(|(k, _)| k == "PATH")
+        .map(|(_, v)| &**v)
+        .or(session_path);
+    let command = spec["command"].as_str().map(crate::expand_user);
+    if let Some(effective) = effective
+        && let Some(name) = command.filter(|c| !c.is_empty() && !c.contains('/'))
+        && let Some(found) = find_in_path(&name, effective)
+    {
+        spec["command"] = Value::String(found.to_string_lossy().into_owned());
     }
     let mut std_command = crate::command_env(&spec, true, Some(&env))?;
+    if let Base::Environ(environ) = base {
+        // `env_clear` borra también el `env` del spec: se vuelve a poner encima del environ.
+        std_command.env_clear();
+        std_command.envs(environ.iter().map(|(k, v)| (k, v)));
+        std_command.envs(env.iter().map(|(k, v)| (k, v)));
+    }
     std_command
         .current_dir(cwd)
         .stdin(Stdio::piped())

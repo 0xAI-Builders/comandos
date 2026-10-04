@@ -16,13 +16,17 @@ bytes entre su stdin/stdout y el socket. El daemon reparte las líneas JSON-RPC 
 La sesión envía, en una línea:
 
 ```json
-{"attach":"<nombre>","cwd":"<directorio absoluto>","env":{"CLAVE":"valor"},"catalog":"<ruta absoluta del catálogo>","home":"<HOME de la sesión>","path":"<PATH de la sesión>"}
+{"attach":"<nombre>","cwd":"<directorio absoluto>","env":{"CLAVE":"valor"},"catalog":"<ruta absoluta del catálogo>","home":"<HOME de la sesión>","environ":{"CLAVE":"valor"},"path":"<PATH de la sesión>"}
 ```
 
 - `cwd`: el directorio donde el proxy directo habría lanzado el proceso (el `cwd` del
   catálogo resuelto contra el directorio de la sesión, o el directorio de la sesión).
 - `env`: el `env` del catálogo con `${VAR}` expandido en el entorno de la sesión.
-- `path` (opcional): el `PATH` del proceso `serve`; se omite si no tiene PATH.
+- `environ` (opcional): el entorno completo del proceso `serve` (`std::env::vars_os`, solo los
+  pares UTF-8 válidos).
+- `path` (opcional, protocolo anterior): el `PATH` del proceso `serve`. Con `environ` ya no
+  hace falta; el cliente lo sigue mandando solo para un daemon anterior que no entienda
+  `environ`, y el daemon lo ignora si llega `environ`.
 - `catalog` y `home`: si no coinciden con los del daemon, la respuesta es
   `{"error":"catálogo distinto"}` o `{"error":"home distinto"}`.
 
@@ -72,14 +76,22 @@ con el `env` de la sesión superpuesto a su propio entorno, como haría el proxy
 
 ## Entorno del upstream
 
-El daemon corre bajo `systemd --user`, cuyo PATH no incluye nvm ni bun. Por eso el cliente manda
-su `PATH` en el `attach` y el daemon (a) resuelve ahí un `command` sin `/` (primer archivo
-regular ejecutable, como `execvp`) y (b) lo da como `PATH` del upstream, antes de superponer
-el `env` del spec (un `env.PATH` propio del spec gana). Sin `path`, se conserva el
-comportamiento anterior (PATH del daemon). `path` no forma parte de la clave de
-compartición: dos sesiones con distinto PATH y mismo spec comparten upstream, y la primera en
-llegar fija el PATH del proceso. La unidad fija solo un PATH mínimo para el propio binario, sin
-rutas de nvm con versión.
+El daemon corre bajo `systemd --user`, cuyo entorno no es el de la sesión (PATH sin nvm ni bun,
+sin las variables que exporta el shell del usuario). Por eso el cliente manda su entorno
+completo en `environ` y el daemon lanza el upstream con `env_clear()`, después ese `environ` y
+encima el `env` del spec (el spec gana, como en el proxy directo). Nada del entorno del daemon
+llega al upstream. Un `command` sin `/` se resuelve en el `PATH` efectivo: el `env.PATH` del
+spec si lo tiene, si no el `PATH` del `environ` (primer archivo regular ejecutable, como
+`execvp`).
+
+`environ` no forma parte de la clave de compartición: dos sesiones con distinto entorno y mismo
+spec comparten upstream, y la primera en llegar fija el entorno del proceso (igual que antes
+fijaba su PATH). Lo que un servidor necesita distinto por sesión debe ir en el `env` del
+catálogo, que sí entra en la clave. La unidad fija solo un PATH mínimo para el propio binario,
+sin rutas de nvm con versión.
+
+Sin `environ` (cliente anterior) se conserva el comportamiento previo: entorno del daemon, con
+el `path` del `attach` como `PATH` del upstream y para resolver el comando.
 
 El stderr del upstream va a `/dev/null`, como en el proxy directo y en el Python
 (`lib/extension_proxy.py`): los servidores escriben ahí tokens y URLs de autorización que no
@@ -134,6 +146,10 @@ deben acabar en el journal del daemon.
   restante recibe EOF y el siguiente `attach` relanza.
 - Daemon con `PATH=/usr/bin:/bin`: un `command` sin `/` arranca solo si el `attach` trae `path`
   con su directorio; el upstream ve ese `PATH`; el `env.PATH` del spec gana.
+- `attach` con `environ`: el PATH del `environ` resuelve el comando, el upstream ve
+  `SHADOW_ONLY=1` del `environ` y no ve variables del daemon; el `env.PATH` del spec gana.
+- Una sesión `serve` real con `SHADOW_ONLY=1` en su entorno (y no en el del daemon): el
+  upstream compartido la ve.
 - SIGTERM al daemon cierra los upstreams, borra el socket y sale con 0.
 - Respuesta de 20 MiB: llega íntegra. Respuesta de 300 MiB a un cliente: ese cliente recibe
   -32603 con su id, el otro cliente sigue con el mismo upstream y nada le llega.

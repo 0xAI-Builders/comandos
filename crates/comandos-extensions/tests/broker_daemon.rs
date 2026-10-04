@@ -717,3 +717,104 @@ fn daemon_raises_its_soft_fd_limit_to_the_hard_one() {
         d.log()
     );
 }
+
+/// Una línea `attach` cruda con `environ` (el entorno completo de la sesión) y sin `path`.
+fn raw_attach_environ(home: &Path, environ: Value) -> String {
+    let catalog = home.join(".config/comandos/extensions/catalog.json");
+    let spec: Value = serde_json::from_str(&fs::read_to_string(&catalog).unwrap()).unwrap();
+    let env = spec["servers"]["eco"]["env"].clone();
+    let attach = json!({"attach":"eco","cwd":home,"env":env,"catalog":catalog,"home":home,"environ":environ});
+    let mut stream =
+        std::os::unix::net::UnixStream::connect(home.join("run/comandos/broker.sock")).unwrap();
+    stream.set_read_timeout(Some(WAIT)).unwrap();
+    writeln!(stream, "{attach}").unwrap();
+    read_one(&stream)
+}
+
+#[test]
+fn attach_environ_is_the_whole_upstream_environment() {
+    let (home, bin_dir, dump) = bare_command_home("environ", "");
+    let env_dump = home.join("dump-env");
+    let catalog = home.join(".config/comandos/extensions/catalog.json");
+    let text = fs::read_to_string(&catalog).unwrap().replace(
+        r#""FAKE_MCP_DUMP_PATH""#,
+        &format!(
+            r#""FAKE_MCP_DUMP_ENV":"{}","FAKE_MCP_DUMP_PATH""#,
+            env_dump.display()
+        ),
+    );
+    fs::write(&catalog, text).unwrap();
+    let daemon = start_clean_daemon(&home);
+    let path = format!("{}:/usr/bin:/bin", bin_dir.display());
+    let reply = raw_attach_environ(&home, json!({"PATH": path, "SHADOW_ONLY": "1"}));
+    assert_eq!(reply.trim(), r#"{"ok":true}"#, "daemon: {}", daemon.log());
+    assert_eq!(
+        fs::read_to_string(&dump).unwrap(),
+        path,
+        "el PATH del environ resuelve el comando"
+    );
+    let seen = fs::read_to_string(&env_dump).unwrap();
+    assert!(seen.lines().any(|l| l == "SHADOW_ONLY=1"), "{seen}");
+    assert!(
+        !seen.contains("COMANDOS_BROKER_IDLE_SECS"),
+        "el upstream no hereda el entorno del daemon: {seen}"
+    );
+    let _ = fs::remove_dir_all(&bin_dir);
+}
+
+#[test]
+fn spec_own_path_wins_over_attach_environ() {
+    let (home, bin_dir, dump) = bare_command_home("environspec", "");
+    let own = format!("{}:/usr/bin:/bin", bin_dir.display());
+    let catalog = home.join(".config/comandos/extensions/catalog.json");
+    let text = fs::read_to_string(&catalog).unwrap().replace(
+        r#""FAKE_MCP_DUMP_PATH""#,
+        &format!(r#""PATH":"{own}","FAKE_MCP_DUMP_PATH""#),
+    );
+    fs::write(&catalog, text).unwrap();
+    let daemon = start_clean_daemon(&home);
+    let reply = raw_attach_environ(&home, json!({"PATH": "/nonexistent"}));
+    assert_eq!(reply.trim(), r#"{"ok":true}"#, "daemon: {}", daemon.log());
+    assert_eq!(fs::read_to_string(&dump).unwrap(), own);
+    let _ = fs::remove_dir_all(&bin_dir);
+}
+
+#[test]
+fn a_session_variable_reaches_the_shared_upstream() {
+    let home = fake_home("shadow");
+    let env_dump = home.join("dump-env");
+    let catalog = home.join(".config/comandos/extensions/catalog.json");
+    let spec = format!(r#"{{"enabled":true,"command":"{FAKE}"}}"#);
+    let with_dump = format!(
+        r#"{{"enabled":true,"command":"{FAKE}","env":{{"FAKE_MCP_DUMP_ENV":"{}"}}}}"#,
+        env_dump.display()
+    );
+    let text = fs::read_to_string(&catalog)
+        .unwrap()
+        .replace(&spec, &with_dump);
+    fs::write(&catalog, text).unwrap();
+    let mut daemon = Daemon::start(&home, "600");
+    let mut child = command(&home, &["serve", "eco"])
+        .env("SHADOW_ONLY", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    writeln!(child.stdin.as_mut().unwrap(), "{INIT}").unwrap();
+    let mut line = String::new();
+    BufReader::new(child.stdout.as_mut().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    assert!(line.contains(r#""id":1"#), "{line}");
+    let seen = fs::read_to_string(&env_dump).unwrap();
+    assert!(seen.lines().any(|l| l == "SHADOW_ONLY=1"), "{seen}");
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(daemon.stop().success());
+    assert!(
+        daemon.log().contains("spawn eco"),
+        "pasó por el broker: {}",
+        daemon.log()
+    );
+}

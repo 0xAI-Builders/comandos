@@ -50,11 +50,13 @@ struct Request {
     name: String,
     cwd: PathBuf,
     env: Vec<(String, String)>,
-    /// `PATH` del proceso `serve` que adjunta (opcional); no entra en la clave.
+    /// Entorno completo del proceso `serve` que adjunta (opcional); no entra en la clave.
+    environ: Option<Vec<(String, String)>>,
+    /// `PATH` de la sesión, del protocolo anterior (sin `environ`); no entra en la clave.
     path: Option<String>,
 }
 
-/// Valida `{"attach","cwd","env","catalog","home"[,"path"]}` y da de alta al cliente en el actor de
+/// Valida `{"attach","cwd","env","catalog","home"[,"environ"][,"path"]}` y da de alta al cliente en el actor de
 /// su clave. Si el actor se está cerrando, reintenta con uno nuevo (hasta tres veces).
 pub(super) async fn attach(ctx: &Ctx, line: &[u8]) -> Result<Attached> {
     let req = parse(ctx, line)?;
@@ -101,14 +103,21 @@ fn parse(ctx: &Ctx, line: &[u8]) -> Result<Request> {
     if !same_path(Path::new(field("home")?), &ctx.home) {
         return Err("home distinto".into());
     }
-    let env = (v
+    let pairs = |o: &serde_json::Map<String, Value>| {
+        (o.iter())
+            .map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_owned())))
+            .collect::<Option<Vec<_>>>()
+    };
+    let env = v
         .get("env")
         .and_then(Value::as_object)
-        .ok_or("attach incompleto")?
-        .iter())
-    .map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_owned())))
-    .collect::<Option<Vec<_>>>()
-    .ok_or("env inválido")?;
+        .ok_or("attach incompleto")?;
+    let env = pairs(env).ok_or("env inválido")?;
+    let environ = match v.get("environ") {
+        None | Some(Value::Null) => None,
+        Some(Value::Object(o)) => Some(pairs(o).ok_or("environ inválido")?),
+        Some(_) => return Err("environ inválido".into()),
+    };
     let path = match v.get("path") {
         None | Some(Value::Null) => None,
         Some(Value::String(p)) => Some(p.clone()),
@@ -118,6 +127,7 @@ fn parse(ctx: &Ctx, line: &[u8]) -> Result<Request> {
         name,
         cwd,
         env,
+        environ,
         path,
     })
 }
@@ -148,7 +158,11 @@ fn actor_for(ctx: &Ctx, key: &Key, spec: &Value, req: &Request) -> Result<Inbox>
             None => {}
         }
     }
-    let up = upstream::spawn(spec, &req.cwd, &req.env, req.path.as_deref())
+    let base = match &req.environ {
+        Some(environ) => upstream::Base::Environ(environ),
+        None => upstream::Base::Path(req.path.as_deref()),
+    };
+    let up = upstream::spawn(spec, &req.cwd, &req.env, base)
         .inspect_err(|e| eprintln!("broker: spawn {key} falló ({e})"))?;
     eprintln!("broker: spawn {key} pid {}", up.pid);
     let handle = actor::start(key.clone(), up, ctx.shared.clone());

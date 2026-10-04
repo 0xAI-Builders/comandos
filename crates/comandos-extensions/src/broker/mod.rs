@@ -101,9 +101,13 @@ pub fn attach_request(name: &str, spec: &Value, catalog: &Path) -> Option<Value>
         .collect();
     let home = crate::home_dir().ok()?;
     let catalog = std::path::absolute(catalog).ok()?;
-    let mut attach =
-        json!({"attach": name, "cwd": cwd, "env": env, "catalog": catalog, "home": home});
-    // El daemon resuelve el ejecutable y arma el PATH del upstream con el de la sesión.
+    // Entorno completo de la sesión (solo pares UTF-8): el daemon lanza el upstream con él,
+    // no con el suyo, igual que el proxy directo hereda el de la sesión.
+    let environ: Map<String, Value> = (std::env::vars_os())
+        .filter_map(|(k, v)| Some((k.into_string().ok()?, Value::String(v.into_string().ok()?))))
+        .collect();
+    let mut attach = json!({"attach": name, "cwd": cwd, "env": env, "catalog": catalog, "home": home, "environ": environ});
+    // Redundante con `environ`; solo para un daemon anterior que aún no lo entienda.
     if let Some(path) = std::env::var("PATH").ok().filter(|p| !p.is_empty()) {
         attach["path"] = Value::String(path);
     }
