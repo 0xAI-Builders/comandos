@@ -10,6 +10,7 @@ config/ssh_config
 # Runtime / estado
 state/
 *.jsonl
+!docs/verification/rss.jsonl
 prefs.json
 app-tabs.json
 hooks/state/
