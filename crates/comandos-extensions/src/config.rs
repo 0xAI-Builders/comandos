@@ -338,7 +338,8 @@ pub fn parse_json(raw: &[u8]) -> Result<Value> {
     restore(&mut value, &markers)?;
     Ok(value)
 }
-/// Servidores que mantienen estado por sesión (navegador, cuenta, ventana) y nunca se
+/// Servidores que mantienen estado por sesión (navegador, cuenta, ventana, operaciones
+/// pendientes de confirmar en memoria como `x-suite`) y nunca se
 /// comparten en el broker salvo que el catálogo diga `"shared": true`.
 pub const DEDICATED: &[&str] = &[
     "chrome-bg",
@@ -350,11 +351,30 @@ pub const DEDICATED: &[&str] = &[
     "screenwright",
     "teams",
     "claude-codex",
+    "x-suite",
 ];
 /// `shared` del catálogo manda; si falta, se comparte todo lo que no esté en [`DEDICATED`].
 pub fn is_shared(spec: &Value, name: &str) -> bool {
     match spec.get("shared").and_then(Value::as_bool) {
         Some(v) => v,
         None => !DEDICATED.contains(&name),
+    }
+}
+
+#[cfg(test)]
+mod shared_tests {
+    use super::is_shared;
+    use serde_json::json;
+
+    #[test]
+    fn per_session_state_servers_are_dedicated_unless_the_catalog_says_shared() {
+        let plain = json!({"command": "x"});
+        // x-suite guarda en memoria las operaciones pendientes de confirmar: por sesión.
+        for name in ["x-suite", "chrome-bg", "claude-codex"] {
+            assert!(!is_shared(&plain, name), "{name}");
+            assert!(is_shared(&json!({"command": "x", "shared": true}), name), "{name}");
+        }
+        assert!(is_shared(&plain, "mobbin"));
+        assert!(!is_shared(&json!({"command": "x", "shared": false}), "mobbin"));
     }
 }
