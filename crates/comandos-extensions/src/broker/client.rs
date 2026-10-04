@@ -173,7 +173,7 @@ struct Session {
 }
 
 impl Session {
-    fn from_client(&mut self, line: &[u8]) {
+    fn track_client(&mut self, line: &[u8]) {
         let scan = IdScan::of(line);
         let Some(method) = scan.method() else {
             return; // respuesta del cliente a un request del upstream
@@ -191,7 +191,7 @@ impl Session {
         self.inflight.insert(key, id);
     }
 
-    fn from_broker(&mut self, line: &[u8]) {
+    fn track_broker(&mut self, line: &[u8]) {
         if self.inflight.is_empty() {
             return;
         }
@@ -298,14 +298,14 @@ pub async fn relay(conn: Connection, socket: &Path, request: &Value) -> Result<i
         tokio::select! {
             line = input.recv() => match line {
                 Some(line) => {
-                    session.from_client(&line);
+                    session.track_client(&line);
                     live.send(&line).await;
                 }
                 None => return Ok(drain(live, &mut stdout).await),
             },
             line = live.lines.recv() => match line {
                 Some(line) => {
-                    session.from_broker(&line);
+                    session.track_broker(&line);
                     if emit(&mut stdout, &line).await.is_err() {
                         return Ok(1);
                     }

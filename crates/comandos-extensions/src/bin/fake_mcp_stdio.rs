@@ -87,6 +87,6 @@ fn write_huge(out: &mut impl Write, id: &serde_json::Value, size: usize) -> std:
         out.write_all(&chunk[..n])?;
         left -= n;
     }
-    write!(out, "\"}}]}},\"jsonrpc\":\"2.0\",\"id\":{id}}}\n")?;
+    writeln!(out, "\"}}]}},\"jsonrpc\":\"2.0\",\"id\":{id}}}")?;
     out.flush()
 }
