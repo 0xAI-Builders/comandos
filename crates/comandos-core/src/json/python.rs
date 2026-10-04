@@ -20,8 +20,18 @@ pub fn dumps(value: &Value, ensure_ascii: bool, compact: bool) -> Result<String,
 /// separately from the metadata nesting limit.
 /// Traversal uses heap frames, so directly supplied deep Values do not recurse.
 pub fn workspace_dumps(value: &Value) -> Result<String, String> {
+    workspace_dumps_with_options(value, false, true)
+}
+
+/// Python JSON with the workspace retained-number and depth policy.
+/// ASCII escaping and default separators support native request digests.
+pub fn workspace_dumps_with_options(
+    value: &Value,
+    ensure_ascii: bool,
+    compact: bool,
+) -> Result<String, String> {
     validate_workspace_depth(value, 0)?;
-    encode(value, false, true, Policy::Workspace)
+    encode(value, ensure_ascii, compact, Policy::Workspace)
 }
 
 fn encode(value: &Value, ascii: bool, compact: bool, policy: Policy) -> Result<String, String> {

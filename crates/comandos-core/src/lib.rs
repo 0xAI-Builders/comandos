@@ -10,3 +10,6 @@ pub use json::truthy as legacy_truthy;
 pub mod notifications;
 
 pub mod workspace;
+
+pub mod pomodoro;
+pub mod focus;

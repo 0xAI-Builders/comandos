@@ -237,3 +237,6 @@ impl From<std::io::Error> for Error {
 }
 
 pub mod workspace;
+
+pub mod pomodoro;
+pub mod focus;

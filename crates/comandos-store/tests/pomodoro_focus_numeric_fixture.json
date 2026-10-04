@@ -1,0 +1,2441 @@
+[
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "live",
+    "name": "mins-inf",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": 2000000060.0, \"startedAt\": 2000000000.0, \"mins\": Infinity}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "live",
+    "name": "mins-minus-inf",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": 2000000060.0, \"startedAt\": 2000000000.0, \"mins\": -Infinity}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": false
+    },
+    "kind": "live",
+    "name": "mins-nan",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": 2000000060.0, \"startedAt\": 2000000000.0, \"mins\": NaN}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": false
+    },
+    "kind": "live",
+    "name": "mins-huge-int",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": 2000000060.0, \"startedAt\": 2000000000.0, \"mins\": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": false
+    },
+    "kind": "live",
+    "name": "mins-huge-float",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": 2000000060.0, \"startedAt\": 2000000000.0, \"mins\": 1e+30}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": false
+    },
+    "kind": "live",
+    "name": "mins-malformed",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": 2000000060.0, \"startedAt\": 2000000000.0, \"mins\": \"bad\"}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": true
+    },
+    "kind": "live",
+    "name": "mins-unicode",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": 2000000060.0, \"startedAt\": 2000000000.0, \"mins\": \"٢_٥\"}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "legacy",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000000060000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 1999998560000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "legacy-focus-file",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 1500000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": false
+    },
+    "kind": "live",
+    "name": "until-invalid-before-start-overflow",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": \"bad\", \"startedAt\": Infinity, \"mins\": 1}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": false
+    },
+    "kind": "live",
+    "name": "until-invalid-before-start-overflow",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": NaN, \"startedAt\": Infinity, \"mins\": 1}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": false
+    },
+    "kind": "live",
+    "name": "until-invalid-before-start-overflow",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": null, \"startedAt\": Infinity, \"mins\": 1}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "live",
+    "name": "until-inf",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": Infinity, \"startedAt\": 2000000000.0, \"mins\": 1}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "live",
+    "name": "until-minus-inf",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": -Infinity, \"startedAt\": 2000000000.0, \"mins\": 1}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": false
+    },
+    "kind": "live",
+    "name": "until-nan",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": NaN, \"startedAt\": 2000000000.0, \"mins\": 1}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "live",
+    "name": "until-huge-int",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000, \"startedAt\": 2000000000.0, \"mins\": 1}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "live",
+    "name": "until-huge-float",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": 1e+30, \"startedAt\": 2000000000.0, \"mins\": 1}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "live",
+    "name": "started-inf",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": 2000000060.0, \"startedAt\": Infinity, \"mins\": 1}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "live",
+    "name": "started-minus-inf",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": 2000000060.0, \"startedAt\": -Infinity, \"mins\": 1}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": false
+    },
+    "kind": "live",
+    "name": "started-nan",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": 2000000060.0, \"startedAt\": NaN, \"mins\": 1}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "live",
+    "name": "started-huge-int",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": 2000000060.0, \"startedAt\": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000, \"mins\": 1}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "live",
+    "name": "started-huge-float",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": 2000000060.0, \"startedAt\": 1e+30, \"mins\": 1}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": false
+    },
+    "kind": "live",
+    "name": "invalid-duration-before-sqlite-start-overflow",
+    "prestart": false,
+    "raw": "{\"blockId\": \"legacy\", \"until\": 2000000060.0, \"startedAt\": 1e+30, \"mins\": 181}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "history",
+    "name": "planned_minutes-inf",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 2000000000000, \"planned_minutes\": Infinity, \"status\": \"completed\"}]",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "history",
+    "name": "planned_minutes-minus-inf",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 2000000000000, \"planned_minutes\": -Infinity, \"status\": \"completed\"}]",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": 1
+    },
+    "kind": "history",
+    "name": "planned_minutes-nan",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 2000000000000, \"planned_minutes\": NaN, \"status\": \"completed\"}]",
+    "records": [
+      {
+        "activeMs": null,
+        "blockId": "before",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 1500000
+      }
+    ],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "history",
+    "name": "planned_minutes-huge-int",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000, \"status\": \"completed\"}]",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "history",
+    "name": "planned_minutes-huge-float",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 1e+30, \"status\": \"completed\"}]",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": 1
+    },
+    "kind": "history",
+    "name": "planned_minutes-malformed",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 2000000000000, \"planned_minutes\": \"bad\", \"status\": \"completed\"}]",
+    "records": [
+      {
+        "activeMs": null,
+        "blockId": "before",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 1500000
+      }
+    ],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": 2
+    },
+    "kind": "history",
+    "name": "planned_minutes-unicode",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 2000000000000, \"planned_minutes\": \"٢_٥\", \"status\": \"completed\"}]",
+    "records": [
+      {
+        "activeMs": null,
+        "blockId": "after",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 1500000
+      },
+      {
+        "activeMs": null,
+        "blockId": "before",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 1500000
+      }
+    ],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "history",
+    "name": "started_at_ms-inf",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": Infinity, \"planned_minutes\": 25, \"status\": \"completed\"}]",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "history",
+    "name": "started_at_ms-minus-inf",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": -Infinity, \"planned_minutes\": 25, \"status\": \"completed\"}]",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": 1
+    },
+    "kind": "history",
+    "name": "started_at_ms-nan",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": NaN, \"planned_minutes\": 25, \"status\": \"completed\"}]",
+    "records": [
+      {
+        "activeMs": null,
+        "blockId": "before",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 1500000
+      }
+    ],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "history",
+    "name": "started_at_ms-huge-int",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}]",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "history",
+    "name": "started_at_ms-huge-float",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 1e+30, \"planned_minutes\": 25, \"status\": \"completed\"}]",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": 1
+    },
+    "kind": "history",
+    "name": "started_at_ms-malformed",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": \"bad\", \"planned_minutes\": 25, \"status\": \"completed\"}]",
+    "records": [
+      {
+        "activeMs": null,
+        "blockId": "before",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 1500000
+      }
+    ],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": 2
+    },
+    "kind": "history",
+    "name": "started_at_ms-unicode",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": \"٢_٥\", \"planned_minutes\": 25, \"status\": \"completed\"}]",
+    "records": [
+      {
+        "activeMs": null,
+        "blockId": "before",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 1500000
+      },
+      {
+        "activeMs": null,
+        "blockId": "after",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 25,
+        "status": "completed",
+        "targetMs": 1500000
+      }
+    ],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "history",
+    "name": "ended_at_ms-inf",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\", \"ended_at_ms\": Infinity}]",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "history",
+    "name": "ended_at_ms-minus-inf",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\", \"ended_at_ms\": -Infinity}]",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "ValueError",
+      "ok": false
+    },
+    "kind": "history",
+    "name": "ended_at_ms-nan",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\", \"ended_at_ms\": NaN}]",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "history",
+    "name": "ended_at_ms-huge-int",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\", \"ended_at_ms\": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000}]",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "exception": "OverflowError",
+      "ok": false
+    },
+    "kind": "history",
+    "name": "ended_at_ms-huge-float",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\", \"ended_at_ms\": 1e+30}]",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": 2
+    },
+    "kind": "history",
+    "name": "ended_at_ms-malformed",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\", \"ended_at_ms\": \"bad\"}]",
+    "records": [
+      {
+        "activeMs": null,
+        "blockId": "after",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 1500000
+      },
+      {
+        "activeMs": null,
+        "blockId": "before",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 1500000
+      }
+    ],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": 2
+    },
+    "kind": "history",
+    "name": "ended_at_ms-unicode",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\", \"ended_at_ms\": \"٢_٥\"}]",
+    "records": [
+      {
+        "activeMs": null,
+        "blockId": "after",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 1500000
+      },
+      {
+        "activeMs": null,
+        "blockId": "before",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 1500000
+      }
+    ],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": 1
+    },
+    "kind": "history",
+    "name": "invalid-plan-before-start-overflow",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": Infinity, \"planned_minutes\": \"bad\", \"status\": \"completed\"}]",
+    "records": [
+      {
+        "activeMs": null,
+        "blockId": "before",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 1500000
+      }
+    ],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": 1
+    },
+    "kind": "history",
+    "name": "nan-plan-before-start-overflow",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": Infinity, \"planned_minutes\": NaN, \"status\": \"completed\"}]",
+    "records": [
+      {
+        "activeMs": null,
+        "blockId": "before",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 1500000
+      }
+    ],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": 1
+    },
+    "kind": "history",
+    "name": "huge-plan-before-invalid-start",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": \"bad\", \"planned_minutes\": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000, \"status\": \"completed\"}]",
+    "records": [
+      {
+        "activeMs": null,
+        "blockId": "before",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 1500000
+      }
+    ],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": 2
+    },
+    "kind": "history",
+    "name": "negative-huge-plan",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 2000000000000, \"planned_minutes\": -10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000, \"status\": \"completed\"}]",
+    "records": [
+      {
+        "activeMs": null,
+        "blockId": "after",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 0,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 0
+      },
+      {
+        "activeMs": null,
+        "blockId": "before",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 1500000
+      }
+    ],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": 2
+    },
+    "kind": "history",
+    "name": "negative-huge-float-plan",
+    "prestart": false,
+    "raw": "[{\"id\": \"before\", \"started_at_ms\": 2000000000000, \"planned_minutes\": 25, \"status\": \"completed\"}, {\"id\": \"after\", \"started_at_ms\": 2000000000000, \"planned_minutes\": -1e+30, \"status\": \"completed\"}]",
+    "records": [
+      {
+        "activeMs": null,
+        "blockId": "after",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 0,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 0
+      },
+      {
+        "activeMs": null,
+        "blockId": "before",
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "plannedMs": 1500000,
+        "project": "",
+        "provenance": "legacy-planned",
+        "sessionKey": "",
+        "startedAtMs": 2000000000000,
+        "status": "completed",
+        "targetMs": 1500000
+      }
+    ],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_targetMs",
+          "error": "targetMs inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "targetMs-inf",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": Infinity}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_targetMs",
+          "error": "targetMs inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "targetMs-minus-inf",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": -Infinity}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_targetMs",
+          "error": "targetMs inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "targetMs-nan",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": NaN}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_targetMs",
+          "error": "La duración debe estar entre 1 y 180 minutos",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "targetMs-huge-int",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_targetMs",
+          "error": "targetMs inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "targetMs-huge-float",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 1e+30}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_targetMs",
+          "error": "targetMs inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "targetMs-malformed",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": \"bad\"}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_targetMs",
+          "error": "targetMs inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "targetMs-unicode",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": \"٢_٥\"}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_expectedRevision",
+          "error": "expectedRevision inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "expectedRevision-inf",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"expectedRevision\": Infinity}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_expectedRevision",
+          "error": "expectedRevision inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "expectedRevision-minus-inf",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"expectedRevision\": -Infinity}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_expectedRevision",
+          "error": "expectedRevision inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "expectedRevision-nan",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"expectedRevision\": NaN}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "stale_revision",
+          "error": "El temporizador cambió en otro dispositivo",
+          "ok": false,
+          "state": {
+            "block": null,
+            "revision": 0,
+            "serverNowMs": 2000000000000
+          }
+        },
+        "status": 409
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "expectedRevision-huge-int",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"expectedRevision\": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_expectedRevision",
+          "error": "expectedRevision inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "expectedRevision-huge-float",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"expectedRevision\": 1e+30}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_expectedRevision",
+          "error": "expectedRevision inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "expectedRevision-malformed",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"expectedRevision\": \"bad\"}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_expectedRevision",
+          "error": "expectedRevision inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "expectedRevision-unicode",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"expectedRevision\": \"٢_٥\"}",
+    "records": [],
+    "snapshot": {
+      "block": null,
+      "revision": 0,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "a",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": 2000000060000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 60000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    "kind": "command",
+    "name": "cycleIndex-inf",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"cycleIndex\": Infinity}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000000060000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 60000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "a",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": 2000000060000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 60000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    "kind": "command",
+    "name": "cycleIndex-minus-inf",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"cycleIndex\": -Infinity}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000000060000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 60000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "a",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": 2000000060000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 60000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    "kind": "command",
+    "name": "cycleIndex-nan",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"cycleIndex\": NaN}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000000060000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 60000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "a",
+          "cycleIndex": 99,
+          "cycleTotal": null,
+          "deadlineMs": 2000000060000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 60000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    "kind": "command",
+    "name": "cycleIndex-huge-int",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"cycleIndex\": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": 99,
+        "cycleTotal": null,
+        "deadlineMs": 2000000060000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 60000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "a",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": 2000000060000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 60000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    "kind": "command",
+    "name": "cycleIndex-huge-float",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"cycleIndex\": 1e+30}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000000060000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 60000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "a",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": 2000000060000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 60000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    "kind": "command",
+    "name": "cycleIndex-malformed",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"cycleIndex\": \"bad\"}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000000060000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 60000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "a",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": 2000000060000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 60000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    "kind": "command",
+    "name": "cycleIndex-unicode",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"cycleIndex\": \"٢_٥\"}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000000060000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 60000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "a",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": 2000000060000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 60000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    "kind": "command",
+    "name": "cycleTotal-inf",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"cycleTotal\": Infinity}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000000060000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 60000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "a",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": 2000000060000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 60000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    "kind": "command",
+    "name": "cycleTotal-minus-inf",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"cycleTotal\": -Infinity}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000000060000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 60000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "a",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": 2000000060000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 60000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    "kind": "command",
+    "name": "cycleTotal-nan",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"cycleTotal\": NaN}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000000060000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 60000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "a",
+          "cycleIndex": null,
+          "cycleTotal": 99,
+          "deadlineMs": 2000000060000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 60000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    "kind": "command",
+    "name": "cycleTotal-huge-int",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"cycleTotal\": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": 99,
+        "deadlineMs": 2000000060000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 60000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "a",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": 2000000060000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 60000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    "kind": "command",
+    "name": "cycleTotal-huge-float",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"cycleTotal\": 1e+30}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000000060000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 60000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "a",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": 2000000060000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 60000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    "kind": "command",
+    "name": "cycleTotal-malformed",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"cycleTotal\": \"bad\"}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000000060000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 60000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "ok": true,
+      "result": {
+        "block": {
+          "activeMs": 0,
+          "blockId": "a",
+          "cycleIndex": null,
+          "cycleTotal": null,
+          "deadlineMs": 2000000060000,
+          "endedAtMs": null,
+          "mode": "focus",
+          "paneKey": "",
+          "project": "",
+          "resumedAtMs": 2000000000000,
+          "revision": 1,
+          "sessionKey": "",
+          "source": "comandos",
+          "startedAtMs": 2000000000000,
+          "status": "running",
+          "targetMs": 60000
+        },
+        "ok": true,
+        "replayed": false,
+        "revision": 1,
+        "serverNowMs": 2000000000000
+      }
+    },
+    "kind": "command",
+    "name": "cycleTotal-unicode",
+    "prestart": false,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"start\", \"targetMs\": 60000, \"cycleTotal\": \"٢_٥\"}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000000060000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 60000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_deltaMs",
+          "error": "deltaMs inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "deltaMs-inf",
+    "prestart": true,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"extend\", \"targetMs\": 60000, \"deltaMs\": Infinity}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000001500000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 1500000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_deltaMs",
+          "error": "deltaMs inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "deltaMs-minus-inf",
+    "prestart": true,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"extend\", \"targetMs\": 60000, \"deltaMs\": -Infinity}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000001500000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 1500000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_deltaMs",
+          "error": "deltaMs inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "deltaMs-nan",
+    "prestart": true,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"extend\", \"targetMs\": 60000, \"deltaMs\": NaN}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000001500000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 1500000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_deltaMs",
+          "error": "La duración resultante queda fuera de 1 a 180 minutos o antes del tiempo ya trabajado",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "deltaMs-huge-int",
+    "prestart": true,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"extend\", \"targetMs\": 60000, \"deltaMs\": 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000001500000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 1500000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_deltaMs",
+          "error": "deltaMs inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "deltaMs-huge-float",
+    "prestart": true,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"extend\", \"targetMs\": 60000, \"deltaMs\": 1e+30}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000001500000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 1500000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_deltaMs",
+          "error": "deltaMs inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "deltaMs-malformed",
+    "prestart": true,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"extend\", \"targetMs\": 60000, \"deltaMs\": \"bad\"}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000001500000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 1500000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  },
+  {
+    "expected": {
+      "domain": {
+        "payload": {
+          "code": "invalid_deltaMs",
+          "error": "deltaMs inválido",
+          "ok": false
+        },
+        "status": 400
+      },
+      "ok": false
+    },
+    "kind": "command",
+    "name": "deltaMs-unicode",
+    "prestart": true,
+    "raw": "{\"requestId\": \"numeric\", \"action\": \"extend\", \"targetMs\": 60000, \"deltaMs\": \"٢_٥\"}",
+    "records": [],
+    "snapshot": {
+      "block": {
+        "activeMs": 0,
+        "blockId": "a",
+        "cycleIndex": null,
+        "cycleTotal": null,
+        "deadlineMs": 2000001500000,
+        "endedAtMs": null,
+        "mode": "focus",
+        "paneKey": "",
+        "project": "",
+        "resumedAtMs": 2000000000000,
+        "revision": 1,
+        "sessionKey": "",
+        "source": "comandos",
+        "startedAtMs": 2000000000000,
+        "status": "running",
+        "targetMs": 1500000
+      },
+      "revision": 1,
+      "serverNowMs": 2000000000000
+    }
+  }
+]
