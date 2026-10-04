@@ -150,14 +150,24 @@ pub fn step(capture: Option<Value>, lifecycle: Value) -> Value {
     json!({"capture": capture, "lifecycle": lifecycle})
 }
 
-/// Aplica los pasos en orden (captura, si la hay, y luego ciclo de vida); los
-/// errores se callan, como el `>/dev/null 2>&1 &` del bash.
+/// Un evento de herramienta (`hook claude-usage`) como paso del proceso de entrega:
+/// el `python3 cc_usage.py tool-event &` de `cc-usage-tool.sh`.
+pub fn tool_step(event: Value) -> Value {
+    json!({"tool": event})
+}
+
+/// Aplica los pasos en orden (evento de herramienta, o captura si la hay y luego
+/// ciclo de vida); los errores se callan, como el `>/dev/null 2>&1 &` del bash.
 pub fn apply(home: &Path, steps: &[Value]) {
     if steps.is_empty() {
         return;
     }
     let Ok(conn) = open(home) else { return };
     for step in steps {
+        if step["tool"].is_object() {
+            let _ = comandos_store::usage::tool_event(&conn, &step["tool"]);
+            continue;
+        }
         if step["capture"].is_object() {
             let _ = comandos_store::usage::capture_hook(&conn, &step["capture"]);
         }

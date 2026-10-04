@@ -1,7 +1,8 @@
 //! `comandos hook claude-usage`: transcripción de `hooks/cc-usage-tool.sh`, la
 //! telemetría de herramientas de cada `PreToolUse`/`PostToolUse`. Solo nombre,
 //! fase, momento y estado (nunca argumentos ni resultados), registrados con
-//! `comandos_store::usage::tool_event` en lugar de `cc_usage.py tool-event`.
+//! `comandos_store::usage::tool_event` (en el proceso de entrega desacoplado) en
+//! lugar de `cc_usage.py tool-event &`.
 use super::adapter::{get, jq_values, truthy};
 use super::input::{clock, env_bytes};
 use super::jq::jq_tostring;
@@ -10,7 +11,7 @@ use super::which;
 use serde_json::{Value, json};
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 /// `.campo // "" | if type == "string" then . else tojson end`.
@@ -73,14 +74,6 @@ fn tool_event(value: &Value, session: &str, pane: &str, at: i64) -> Result<Optio
     })))
 }
 
-/// Base de uso como `usage_db_path()` de `cc_usage.py` (misma regla que el hook claude).
-fn open(home: &Path) -> comandos_store::Result<rusqlite::Connection> {
-    match std::env::var_os("COMANDOS_USAGE_DB").filter(|p| !p.is_empty()) {
-        Some(path) => comandos_store::usage::open_usage_db_at(&PathBuf::from(path)),
-        None => comandos_store::usage::open_usage_db(home),
-    }
-}
-
 pub fn run(_args: &[String]) -> i32 {
     let pane = env_bytes("TMUX_PANE");
     if !(pane.len() > 1 && pane[0] == b'%' && pane[1..].iter().all(u8::is_ascii_digit)) {
@@ -114,9 +107,14 @@ pub fn run(_args: &[String]) -> i32 {
     let [event] = events.as_slice() else {
         return 0;
     };
-    let home = PathBuf::from(OsStr::from_bytes(&env_bytes("HOME")));
-    if let Ok(conn) = open(&home) {
-        let _ = comandos_store::usage::tool_event(&conn, event);
-    }
+    // Como el `&` del bash: el hook regresa ya; SQLite (compartida, a veces
+    // bloqueada hasta 10 s) la escribe el proceso de entrega desacoplado.
+    super::notify_http::spawn(super::notify_http::Job {
+        home: PathBuf::from(OsStr::from_bytes(&env_bytes("HOME"))),
+        usage: vec![super::usage_hook::tool_step(event.clone())],
+        volume: 60,
+        voice: None,
+        desktop: None,
+    });
     0
 }

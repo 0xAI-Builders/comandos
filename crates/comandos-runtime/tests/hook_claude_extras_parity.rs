@@ -6,7 +6,7 @@
 #[path = "support/parity.rs"]
 mod parity;
 
-use parity::{Window, dump_db, fake_bin};
+use parity::{Window, dump_db, fake_bin, wait_for_delivery};
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
@@ -189,7 +189,7 @@ fn claude_usage_matches_cc_usage_tool() {
                 .iter()
                 .zip(&homes)
                 .map(|(side, home)| {
-                    run(
+                    let out = run(
                         "hooks/cc-usage-tool.sh",
                         "claude-usage",
                         side,
@@ -197,7 +197,10 @@ fn claude_usage_matches_cc_usage_tool() {
                         &fake,
                         &env,
                         event,
-                    )
+                    );
+                    // El Rust escribe en el proceso de entrega desacoplado.
+                    wait_for_delivery(home);
+                    out
                 })
                 .collect();
             assert_eq!(
@@ -232,6 +235,53 @@ fn claude_usage_matches_cc_usage_tool() {
             .collect();
         assert_eq!(logs[0], logs[1], "{name}: llamadas a tmux");
     }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Un `PreToolUse` no espera a una base de uso ocupada: la escritura va al proceso
+/// de entrega desacoplado (como el `python3 cc_usage.py tool-event &` del bash) y
+/// llega en cuanto se libera el bloqueo.
+#[test]
+fn claude_usage_does_not_wait_for_a_busy_db() {
+    let dir = std::env::temp_dir().join(format!("comandos-usage-busy-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    let fake = fakebin(&dir);
+    let seed = seed_usage(&dir);
+    let home = dir.join("rust");
+    fs::create_dir_all(home.join(".claude/hooks")).unwrap();
+    let db = home.join(".claude/hooks/comandos-usage.sqlite");
+    fs::copy(&seed, &db).unwrap();
+    let lock = rusqlite::Connection::open(&db).unwrap();
+    lock.execute_batch("BEGIN EXCLUSIVE").unwrap();
+    let event =
+        br#"{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_use_id":"toolu_busy"}"#;
+    let started = std::time::Instant::now();
+    let (code, _) = run(
+        "",
+        "claude-usage",
+        "rust",
+        &home,
+        &fake,
+        &[("TMUX_PANE", "%7")],
+        event,
+    );
+    let elapsed = started.elapsed();
+    assert_eq!(code, Some(0));
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "el hook esperó {elapsed:?}"
+    );
+    std::thread::sleep(Duration::from_millis(300));
+    lock.execute_batch("ROLLBACK").unwrap();
+    wait_for_delivery(&home);
+    let rows: i64 = lock
+        .query_row(
+            "select count(*) from usage_tool_calls where tool_name = 'Bash'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rows, 1);
     let _ = fs::remove_dir_all(&dir);
 }
 
