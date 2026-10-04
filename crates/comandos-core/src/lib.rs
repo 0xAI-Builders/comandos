@@ -11,8 +11,8 @@ pub mod notifications;
 
 pub mod workspace;
 
-pub mod pomodoro;
 pub mod focus;
+pub mod pomodoro;
 
 pub mod mcp_descriptions;
 
