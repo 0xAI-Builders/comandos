@@ -50,7 +50,13 @@ pub fn is_hop_by_hop(name: &str) -> bool {
 /// Reenvía `request` a `legacy` y devuelve la respuesta en cuanto llegan sus
 /// cabeceras. Sin heredado (o si se cae antes de responder): 502.
 pub async fn relay(legacy: SocketAddr, request: Request) -> Result<Reply, HandlerError> {
-    let (method, target) = (request.method.clone(), request.target.clone());
+    // Al registro va solo la ruta, sin la consulta (como el `_fail` del Python): la consulta
+    // lleva `deviceId`, revisiones y otros datos del cliente.
+    let method = request.method.clone();
+    let target = request
+        .target
+        .split_once('?')
+        .map_or(request.target.clone(), |(path, _)| path.to_owned());
     let outgoing = outgoing(request)?;
     // El semáforo nunca se cierra: `acquire` solo falla si se cerrara.
     let Ok(slot) = CONNECT_GATE.acquire().await else {
