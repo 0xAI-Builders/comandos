@@ -1197,8 +1197,9 @@
       "language": ".py",
       "category": "producto",
       "lines": 53,
-      "status": "Pendiente",
-      "rust": null
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/pane_typing.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/terminal-io-20261004-review.md"
     },
     {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/platform.sh",
@@ -1269,8 +1270,9 @@
       "language": ".py",
       "category": "producto",
       "lines": 60,
-      "status": "Pendiente",
-      "rust": null
+      "status": "Rust — revisado; integración pendiente",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-runtime/src/terminal_history.rs",
+      "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/terminal-io-20261004-review.md"
     },
     {
       "source": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/lib/terminal_panes.py",
