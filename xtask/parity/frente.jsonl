@@ -1,0 +1,16 @@
+{"name":"root","method":"GET","path":"/","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"static-accepted"}
+{"name":"index.html","method":"GET","path":"/index.html","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"static-accepted"}
+{"name":"term.html","method":"GET","path":"/term.html","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"static-accepted"}
+{"name":"notifications.js","method":"GET","path":"/notifications.js","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"static-accepted"}
+{"name":"xterm.css","method":"GET","path":"/assets/xterm/xterm.css","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"static-accepted"}
+{"name":"vendor-listing","method":"GET","path":"/vendor/","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
+{"name":"no-existe.css","method":"GET","path":"/no-existe.css","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
+{"name":"state-local","method":"GET","path":"/state","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/generated_at","/panes/*/last_seen"],"expect":"same","forwarded":true}
+{"name":"workmarks-local","method":"GET","path":"/work-marks","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
+{"name":"state-remoto-con-token","method":"GET","path":"/state","headers":{"Host":"x.ts.net","X-Forwarded-For":"100.64.0.9","X-Comandos-Token":"{{token}}"},"body":null,"volatile":["/generated_at","/panes/*/last_seen"],"expect":"same","forwarded":true}
+{"name":"state-remoto-sin-token","method":"GET","path":"/state","headers":{"Host":"x.ts.net","X-Forwarded-For":"100.64.0.9"},"body":null,"volatile":[],"expect":"same"}
+{"name":"state-remoto-token-malo","method":"GET","path":"/state","headers":{"Host":"x.ts.net","X-Forwarded-For":"100.64.0.9","Authorization":"Bearer nope"},"body":null,"volatile":[],"expect":"same"}
+{"name":"post-cuerpo-no-objeto","method":"POST","path":"/pane/type","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":"[1,2]","volatile":[],"expect":"same"}
+{"name":"post-cuerpo-gigante-413","method":"POST","path":"/x","headers":{"Host":"127.0.0.1","Content-Type":"application/json","Content-Length":"20000001"},"body":null,"volatile":[],"expect":"same"}
+{"name":"get-origen-ajeno","method":"GET","path":"/prefs","headers":{"Host":"127.0.0.1","Origin":"http://evil.com"},"body":null,"volatile":[],"expect":"same"}
+{"name":"get-host-evil","method":"GET","path":"/state","headers":{"Host":"evil.com"},"body":null,"volatile":[],"expect":"same"}

@@ -3,12 +3,13 @@
 //!
 //! Herramienta de desarrollo, no código de producto. El Python solo corre como oráculo.
 //! Reglas de oro: jamás toca el `~/.claude/hooks` real, los puertos 4777/4778/4781 ni el
-//! tmux del usuario; todo vive bajo `std::env::temp_dir()`.
+//! tmux del usuario; todo vive bajo `std::env::temp_dir()` y dentro de un namespace de red
+//! propio (`unshare -Urn`) donde el loopback es privado: fallar cerrado si no se puede.
 
 use std::{
     fs,
     io::{Read, Write},
-    net::{TcpListener, TcpStream},
+    net::{SocketAddr, TcpListener, TcpStream},
     os::unix::process::CommandExt,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -20,7 +21,37 @@ use serde_json::Value;
 
 const MASK: &str = "<volátil>";
 /// Cabeceras que `same` compara; el resto (Date, Server…) es ruido por construcción.
-const RELEVANT_HEADERS: [&str; 3] = ["content-type", "content-length", "cache-control"];
+const RELEVANT_HEADERS: [&str; 4] = [
+    "content-type",
+    "content-length",
+    "cache-control",
+    "connection",
+];
+/// Marca de que ya estamos dentro del namespace de red aislado.
+const NETNS_ENV: &str = "COMANDOS_XTASK_NETNS";
+/// Ejecutables que el oráculo podría lanzar y que aquí no deben hacer nada.
+const FAKE_BINS: [&str; 10] = [
+    "cc-webterm",
+    "cc-webterm-attach",
+    "systemd-run",
+    "tailscale",
+    "notify-send",
+    "pw-play",
+    "paplay",
+    "spd-say",
+    "piper",
+    "xdg-open",
+];
+/// Archivos de la copia de hooks que activan servicios externos o red.
+const STRIP_FILES: [&str; 5] = [
+    "webterm-enabled",
+    "news-editions.json",
+    "news-watch.json",
+    "model-watch.json",
+    "push-subscriptions.json",
+];
+/// Tope de un symlink externo que se sustituye por copia.
+const MAX_LINK_COPY: u64 = 256 * 1024 * 1024;
 
 // ---------------------------------------------------------------- modelo puro
 
@@ -60,11 +91,13 @@ pub struct Resp {
 }
 
 impl Resp {
-    fn header(&self, name: &str) -> Option<&str> {
+    /// Todos los valores de una cabecera (puede repetirse), en orden.
+    fn header_values(&self, name: &str) -> Vec<&str> {
         self.headers
             .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .filter(|(k, _)| k.eq_ignore_ascii_case(name))
             .map(|(_, v)| v.as_str())
+            .collect()
     }
 }
 
@@ -107,24 +140,37 @@ fn mask(v: &mut Value, segs: &[String]) {
     }
 }
 
-fn body_diff(py: &Resp, rs: &Resp, volatile: &[String]) -> Option<String> {
-    let parsed = (
-        serde_json::from_slice::<Value>(&py.body),
-        serde_json::from_slice::<Value>(&rs.body),
-    );
-    if let (Ok(mut a), Ok(mut b)) = parsed {
-        normalize(&mut a, volatile);
-        normalize(&mut b, volatile);
-        // Igualdad semántica: el espaciado de `json.dumps` no cuenta, los valores sí.
-        return (a != b).then(|| format!("cuerpo JSON distinto:\n  py: {a}\n  rs: {b}"));
+/// Cuerpo normalizado de una respuesta cuando hay `volatile`: JSON parseado, punteros
+/// sustituidos y reserializado con el volcado de respuestas de Python (orden de inserción).
+fn masked_dump(body: &[u8], volatile: &[String]) -> Option<String> {
+    let mut v: Value = serde_json::from_slice(body).ok()?;
+    normalize(&mut v, volatile);
+    comandos_core::json::response_dumps(&v).ok()
+}
+
+/// Sin `volatile`: bytes crudos (el orden de claves y el formato de números cuentan). Con
+/// `volatile`: ambos cuerpos parseados, sustituidos y reserializados con `response_dumps`;
+/// ahí el formato de floats y escapes ya no se compara (lo canoniza el volcado).
+/// Devuelve (diferencia, true si se comparó reserializado).
+fn body_diff(py: &Resp, rs: &Resp, volatile: &[String]) -> (Option<String>, bool) {
+    if !volatile.is_empty()
+        && let (Some(a), Some(b)) = (
+            masked_dump(&py.body, volatile),
+            masked_dump(&rs.body, volatile),
+        )
+    {
+        let d =
+            (a != b).then(|| format!("cuerpo JSON (normalizado) distinto:\n  py: {a}\n  rs: {b}"));
+        return (d, true);
     }
-    (py.body != rs.body).then(|| {
+    let d = (py.body != rs.body).then(|| {
         format!(
             "cuerpo distinto ({} B py, {} B rs)",
             py.body.len(),
             rs.body.len()
         )
-    })
+    });
+    (d, false)
 }
 
 /// Compara la respuesta del oráculo (`py`) con la del frente (`rs`).
@@ -136,21 +182,24 @@ pub fn compare(py: &Resp, rs: &Resp, expect: Expect, volatile: &[String]) -> Out
     if py.status != rs.status {
         return Outcome::Diff(format!("status {} (py) vs {} (rs)", py.status, rs.status));
     }
-    if expect == Expect::Same {
-        for h in RELEVANT_HEADERS {
-            if py.header(h) != rs.header(h) {
-                return Outcome::Diff(format!(
-                    "cabecera {h}: {:?} (py) vs {:?} (rs)",
-                    py.header(h),
-                    rs.header(h)
-                ));
-            }
-        }
-    }
     if expect == Expect::StatusOnly {
         return Outcome::Ok;
     }
-    match body_diff(py, rs, volatile) {
+    let (body, reserialized) = body_diff(py, rs, volatile);
+    if expect == Expect::Same {
+        for h in RELEVANT_HEADERS {
+            // Con volátiles la longitud cruda cambia con los valores: solo cuenta la del
+            // cuerpo reserializado, que ya cubre `body`.
+            if h == "content-length" && reserialized {
+                continue;
+            }
+            let (a, b) = (py.header_values(h), rs.header_values(h));
+            if a != b {
+                return Outcome::Diff(format!("cabecera {h}: {a:?} (py) vs {b:?} (rs)"));
+            }
+        }
+    }
+    match body {
         Some(d) => Outcome::Diff(d),
         None => Outcome::Ok,
     }
@@ -162,29 +211,39 @@ fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
     hay.windows(needle.len()).position(|w| w == needle)
 }
 
-fn dechunk(mut raw: &[u8]) -> Result<Vec<u8>, String> {
+/// `Ok(None)` si el cuerpo chunked aún no está completo.
+fn dechunk(mut raw: &[u8]) -> Result<Option<Vec<u8>>, String> {
     let mut out = Vec::new();
     loop {
-        let eol = find(raw, b"\r\n").ok_or("chunk sin tamaño")?;
+        let Some(eol) = find(raw, b"\r\n") else {
+            return Ok(None);
+        };
         let line = std::str::from_utf8(&raw[..eol]).map_err(|e| e.to_string())?;
         let size = usize::from_str_radix(line.split(';').next().unwrap_or("").trim(), 16)
             .map_err(|e| format!("tamaño de chunk: {e}"))?;
         raw = &raw[eol + 2..];
         if size == 0 {
-            return Ok(out);
+            return Ok(Some(out));
         }
         if raw.len() < size + 2 {
-            return Err("chunk truncado".into());
+            return Ok(None);
         }
         out.extend_from_slice(&raw[..size]);
         raw = &raw[size + 2..];
     }
 }
 
-/// Interpreta una respuesta completa leída hasta EOF: `Content-Length`, `chunked` o cuerpo
-/// hasta el cierre.
-pub fn parse_response(raw: &[u8]) -> Result<Resp, String> {
-    let split = find(raw, b"\r\n\r\n").ok_or("respuesta sin cabeceras")?;
+/// Intenta cerrar una respuesta con lo leído hasta ahora. `Ok(None)` = falta leer.
+/// `eof`: el servidor ya cerró. `bodiless`: HEAD (sin cuerpo aunque haya longitud).
+/// Un cuerpo más corto que `Content-Length` al llegar el EOF es un error, no un recorte.
+fn frame(raw: &[u8], eof: bool, bodiless: bool) -> Result<Option<Resp>, String> {
+    let Some(split) = find(raw, b"\r\n\r\n") else {
+        return if eof {
+            Err("respuesta sin cabeceras".into())
+        } else {
+            Ok(None)
+        };
+    };
     let head = std::str::from_utf8(&raw[..split]).map_err(|e| e.to_string())?;
     let mut lines = head.split("\r\n");
     let status_line = lines.next().unwrap_or("");
@@ -207,21 +266,43 @@ pub fn parse_response(raw: &[u8]) -> Result<Resp, String> {
             .find(|(k, _)| k.eq_ignore_ascii_case(n))
             .map(|(_, v)| v.as_str())
     };
-    let body =
-        if get("transfer-encoding").is_some_and(|v| v.to_ascii_lowercase().contains("chunked")) {
-            dechunk(rest)?
-        } else if let Some(n) = get("content-length").and_then(|v| v.parse::<usize>().ok()) {
-            rest[..n.min(rest.len())].to_vec()
-        } else {
-            rest.to_vec()
-        };
-    Ok(Resp {
+    let body = if bodiless || status == 204 || status == 304 || (100..200).contains(&status) {
+        Vec::new()
+    } else if get("transfer-encoding").is_some_and(|v| v.to_ascii_lowercase().contains("chunked")) {
+        match dechunk(rest)? {
+            Some(b) => b,
+            None if eof => return Err("cuerpo chunked truncado".into()),
+            None => return Ok(None),
+        }
+    } else if let Some(n) = get("content-length").and_then(|v| v.parse::<usize>().ok()) {
+        if rest.len() < n {
+            return if eof {
+                Err(format!("cuerpo truncado: {} B de {n} B", rest.len()))
+            } else {
+                Ok(None)
+            };
+        }
+        rest[..n].to_vec()
+    } else if eof {
+        rest.to_vec()
+    } else {
+        return Ok(None); // cuerpo delimitado por el cierre de la conexión
+    };
+    Ok(Some(Resp {
         status,
         headers,
         body,
-    })
+    }))
 }
 
+/// Interpreta una respuesta completa (leída hasta EOF).
+#[allow(dead_code)] // lo ejercitan los tests de integración
+pub fn parse_response(raw: &[u8]) -> Result<Resp, String> {
+    frame(raw, true, false)?.ok_or_else(|| "respuesta incompleta".into())
+}
+
+/// Petición con keep-alive (sin `Connection: close`) para que el `Connection: close` de las
+/// respuestas de rechazo sea observable. Termina en cuanto la respuesta queda enmarcada.
 pub fn request(
     port: u16,
     method: &str,
@@ -243,9 +324,6 @@ pub fn request(
     if !has("content-length") && (body.is_some() || method == "POST") {
         head += &format!("Content-Length: {}\r\n", body.map_or(0, <[u8]>::len));
     }
-    if !has("connection") {
-        head += "Connection: close\r\n";
-    }
     head += "\r\n";
     let mut out = head.into_bytes();
     if let Some(b) = body {
@@ -255,8 +333,66 @@ pub fn request(
     // invalida la respuesta que ya haya enviado.
     let _ = s.write_all(&out);
     let mut raw = Vec::new();
-    let _ = s.read_to_end(&mut raw);
-    parse_response(&raw)
+    let mut buf = [0u8; 16 * 1024];
+    loop {
+        match s.read(&mut buf) {
+            Ok(0) => {
+                return frame(&raw, true, method == "HEAD")?.ok_or_else(|| "incompleta".into());
+            }
+            Ok(n) => {
+                raw.extend_from_slice(&buf[..n]);
+                if let Some(r) = frame(&raw, false, method == "HEAD")? {
+                    return Ok(r);
+                }
+            }
+            Err(e) => return Err(format!("lectura: {e}")),
+        }
+    }
+}
+
+// --------------------------------------------------------- aislamiento de red
+
+/// Reejecuta el proceso dentro de `unshare -Urn` (loopback privado). Si ya estamos dentro
+/// (marca en el entorno) comprueba que 4777/4778/4779/4780/4781 no responden. Falla cerrado:
+/// sin namespace no se lanza el oráculo y no hay opción para saltárselo.
+pub fn ensure_isolated() -> Result<(), String> {
+    if std::env::var(NETNS_ENV).as_deref() == Ok("1") {
+        for port in [4777u16, 4778, 4779, 4780, 4781] {
+            let addr = SocketAddr::from(([127, 0, 0, 1], port));
+            if TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok() {
+                return Err(format!(
+                    "el puerto {port} responde dentro del namespace: no está aislado, se aborta"
+                ));
+            }
+        }
+        return Ok(());
+    }
+    let probe = Command::new("unshare")
+        .args(["-Urn", "--", "sh", "-c", "ip link set lo up"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    if !matches!(probe, Ok(s) if s.success()) {
+        return Err(
+            "no se pudo crear un namespace de red (`unshare -Urn`): el oráculo Python podría \
+             alcanzar servicios reales, así que no se lanza nada"
+                .into(),
+        );
+    }
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let err = Command::new("unshare")
+        .args([
+            "-Urn",
+            "--",
+            "sh",
+            "-c",
+            "ip link set lo up && exec \"$0\" \"$@\"",
+        ])
+        .arg(exe)
+        .args(std::env::args().skip(1))
+        .env(NETNS_ENV, "1")
+        .exec();
+    Err(format!("exec unshare: {err}"))
 }
 
 // --------------------------------------------------------------- entorno aislado
@@ -282,6 +418,20 @@ impl Drop for Server {
     }
 }
 
+/// Directorio raíz temporal que se borra al soltarlo (también en las rutas de error).
+struct TempRoot {
+    path: PathBuf,
+    keep: bool,
+}
+
+impl Drop for TempRoot {
+    fn drop(&mut self) {
+        if !self.keep && under_tmp(&self.path) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+}
+
 fn free_port() -> Result<u16, String> {
     let l = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
     Ok(l.local_addr().map_err(|e| e.to_string())?.port())
@@ -293,8 +443,17 @@ fn unix_secs() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-/// Guardia previa a lanzar nada: `--hooks` debe ser un directorio con `state/` y todo `HOME`
-/// de hijo debe colgar de `temp_dir()`.
+fn tmp_canon() -> PathBuf {
+    let tmp = std::env::temp_dir();
+    tmp.canonicalize().unwrap_or(tmp)
+}
+
+fn under_tmp(p: &Path) -> bool {
+    let t = tmp_canon();
+    p.canonicalize().is_ok_and(|c| c.starts_with(&t) && c != t)
+}
+
+/// Guardia previa a lanzar nada: `--hooks` debe ser un directorio con `state/`.
 fn guard_hooks(hooks: &Path) -> Result<(), String> {
     if !hooks.is_dir() || !hooks.join("state").is_dir() {
         return Err(format!(
@@ -305,40 +464,109 @@ fn guard_hooks(hooks: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Todo `HOME`/`TMUX_TMPDIR` de hijo debe colgar de `temp_dir()`.
 fn guard_home(home: &Path) -> Result<(), String> {
-    let tmp = std::env::temp_dir();
-    let tmp = tmp.canonicalize().unwrap_or(tmp);
-    let h = home
-        .canonicalize()
-        .map_err(|e| format!("{}: {e}", home.display()))?;
-    if !h.starts_with(&tmp) || h == tmp {
-        return Err(format!(
+    if under_tmp(home) {
+        Ok(())
+    } else {
+        Err(format!(
             "HOME {} no está bajo {}: se aborta",
-            h.display(),
-            tmp.display()
-        ));
+            home.display(),
+            tmp_canon().display()
+        ))
     }
-    Ok(())
 }
 
-fn copy_hooks(src: &Path, home: &Path) -> Result<PathBuf, String> {
+fn target_of(link: &Path) -> Option<PathBuf> {
+    let t = fs::read_link(link).ok()?;
+    let abs = if t.is_absolute() {
+        t
+    } else {
+        link.parent()?.join(t)
+    };
+    abs.canonicalize().ok()
+}
+
+/// Symlinks de la copia cuyo destino cae fuera de las raíces permitidas (o está roto).
+pub fn outside_links(root: &Path, allowed: &[PathBuf]) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for e in fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let p = e.path();
+            let Ok(md) = fs::symlink_metadata(&p) else {
+                continue;
+            };
+            if md.is_dir() {
+                stack.push(p);
+            } else if md.file_type().is_symlink() {
+                match target_of(&p) {
+                    Some(t) if allowed.iter().any(|a| t.starts_with(a)) => {}
+                    _ => out.push(p),
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Sustituye cada symlink externo por una copia del archivo (si es regular y no enorme) o lo
+/// borra (directorio, roto o demasiado grande). Devuelve cuántos tocó.
+pub fn sanitize_links(root: &Path, allowed: &[PathBuf]) -> Result<usize, String> {
+    let bad = outside_links(root, allowed);
+    for p in &bad {
+        let target = target_of(p);
+        fs::remove_file(p).map_err(|e| format!("{}: {e}", p.display()))?;
+        if let Some(t) = target
+            && t.is_file()
+            && fs::metadata(&t).is_ok_and(|m| m.len() <= MAX_LINK_COPY)
+        {
+            fs::copy(&t, p).map_err(|e| format!("{}: {e}", p.display()))?;
+        }
+    }
+    Ok(bad.len())
+}
+
+/// Copia `--hooks` (`cp -a`), quita lo que activa servicios externos y neutraliza symlinks.
+fn copy_hooks(src: &Path, home: &Path, repo: &Path) -> Result<PathBuf, String> {
     let dest = home.join(".claude").join("hooks");
     fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
-    // `cp -a` conserva los symlinks como symlinks (nunca se sigue `dash/` al repo).
-    let st = Command::new("cp")
+    guard_home(&dest)?;
+    // Los hooks reales están vivos: un archivo (p. ej. un -wal de SQLite) puede desaparecer
+    // a mitad de la copia. Eso se tolera; cualquier otro error de `cp` no.
+    let out = Command::new("cp")
         .arg("-a")
         .arg(format!("{}/.", src.display()))
         .arg(&dest)
-        .status()
+        .output()
         .map_err(|e| format!("cp: {e}"))?;
-    if !st.success() {
-        return Err(format!("cp -a {} falló", src.display()));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if !out.status.success()
+        && stderr
+            .lines()
+            .any(|l| !l.is_empty() && !l.contains("No such file or directory"))
+    {
+        return Err(format!("cp -a {} falló: {stderr}", src.display()));
+    }
+    for e in fs::read_dir(&dest).map_err(|e| e.to_string())?.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if STRIP_FILES
+            .iter()
+            .any(|f| name == *f || name.starts_with(&format!("{f}.")))
+        {
+            let _ = fs::remove_file(e.path());
+        }
+    }
+    let allowed = [tmp_canon(), repo.to_path_buf()];
+    sanitize_links(&dest, &allowed)?;
+    let left = outside_links(&dest, &allowed);
+    if !left.is_empty() {
+        return Err(format!("quedan symlinks externos en la copia: {left:?}"));
     }
     Ok(dest)
 }
 
-/// Directorio estático común: symlinks a `<repo>/dash/*` más `assets -> <repo>/assets`,
-/// igual que `~/.claude/hooks/dash` en producción, pero sin depender de él.
+/// Directorio estático común: symlinks a `<repo>/dash/*` más `assets -> <repo>/assets`.
 fn stage_dash(repo: &Path, dest: &Path) -> Result<(), String> {
     fs::create_dir_all(dest).map_err(|e| e.to_string())?;
     for e in fs::read_dir(repo.join("dash"))
@@ -355,25 +583,43 @@ fn stage_dash(repo: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn spawn(
-    name: &'static str,
-    mut cmd: Command,
-    home: &Path,
-    tmux: &Path,
-    dash: &Path,
-    log: &Path,
-) -> Result<Server, String> {
-    guard_home(home)?;
-    guard_home(tmux)?;
+/// Ejecutables que no hacen nada, antepuestos al PATH de los hijos.
+fn make_fakebin(dir: &Path) -> Result<(), String> {
+    fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    for n in FAKE_BINS {
+        let p = dir.join(n);
+        fs::write(&p, "#!/bin/sh\nexit 0\n").map_err(|e| e.to_string())?;
+        fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+struct SpawnEnv<'a> {
+    home: &'a Path,
+    tmux: &'a Path,
+    dash: &'a Path,
+    fakebin: &'a Path,
+}
+
+fn spawn(name: &'static str, mut cmd: Command, e: &SpawnEnv, log: &Path) -> Result<Server, String> {
+    guard_home(e.home)?;
+    guard_home(e.tmux)?;
     let out = fs::File::create(log).map_err(|e| e.to_string())?;
     let err = out.try_clone().map_err(|e| e.to_string())?;
+    let path = format!(
+        "{}:{}",
+        e.fakebin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
     cmd.env_remove("TMUX")
         .env_remove("CLAUDE_CONFIG_DIR")
         .env_remove("CODEX_HOME")
         .env_remove("GROK_HOME")
-        .env("HOME", home)
-        .env("TMUX_TMPDIR", tmux)
-        .env("COMANDOS_DASH_DIR", dash)
+        .env("HOME", e.home)
+        .env("TMUX_TMPDIR", e.tmux)
+        .env("COMANDOS_DASH_DIR", e.dash)
+        .env("PATH", path)
         .stdin(Stdio::null())
         .stdout(out)
         .stderr(err)
@@ -394,6 +640,121 @@ fn wait_ready(srv: &mut Server, port: u16) -> Result<(), String> {
         thread::sleep(Duration::from_millis(100));
     }
     Err(format!("{} no abrió el puerto {port} en 20 s", srv.name))
+}
+
+/// Tres procesos y dos copias de hooks: Python A (copia 1) es el oráculo directo; el frente
+/// Rust B y un segundo Python C (ambos copia 2) son el lado bajo prueba (B reenvía a C).
+#[allow(dead_code)] // campos de diagnóstico y de propiedad (drop)
+pub struct Stack {
+    // Orden de campos = orden de drop: primero se matan los procesos, luego se borra la raíz.
+    servers: Vec<Server>,
+    pub token: String,
+    pub p_py: u16,
+    pub p_front: u16,
+    pub p_legacy: u16,
+    pub pid_py: u32,
+    pub pid_front: u32,
+    pub pid_legacy: u32,
+    _root: TempRoot,
+}
+
+impl Stack {
+    pub fn start(hooks: &Path, comandos: &Path, keep: bool) -> Result<Stack, String> {
+        ensure_isolated_marker()?;
+        guard_hooks(hooks)?;
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .canonicalize()
+            .map_err(|e| e.to_string())?;
+        if !comandos.is_file() {
+            return Err(format!(
+                "no existe {} (cargo build -p comandos-cli, o --comandos)",
+                comandos.display()
+            ));
+        }
+        let path = std::env::temp_dir().join(format!(
+            "comandos-parity-{}-{}",
+            std::process::id(),
+            unix_secs()
+        ));
+        fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+        let root = TempRoot {
+            path: path.clone(),
+            keep,
+        };
+        let d = |n: &str| path.join(n);
+        let (home1, home2, tmux1, tmux2) = (d("home1"), d("home2"), d("tmux1"), d("tmux2"));
+        for x in [&home1, &home2, &tmux1, &tmux2] {
+            fs::create_dir_all(x).map_err(|e| e.to_string())?;
+            guard_home(x)?;
+        }
+        let hooks1 = copy_hooks(hooks, &home1, &repo)?;
+        copy_hooks(hooks, &home2, &repo)?;
+        let token = fs::read_to_string(hooks1.join("dash-token"))
+            .map(|t| t.trim().to_string())
+            .unwrap_or_default();
+        let (dash, fakebin) = (d("dash"), d("fakebin"));
+        stage_dash(&repo, &dash)?;
+        make_fakebin(&fakebin)?;
+
+        let (p_py, p_front, p_legacy) = (free_port()?, free_port()?, free_port()?);
+        let py = |port: u16| {
+            let mut c = Command::new("python3");
+            c.arg(repo.join("bin/cc-dash"))
+                .arg(port.to_string())
+                .arg("--no-open");
+            c
+        };
+        let mut front = Command::new(comandos);
+        front.args([
+            "dash",
+            &p_front.to_string(),
+            "--no-open",
+            "--legacy-port",
+            &p_legacy.to_string(),
+        ]);
+        let e1 = SpawnEnv {
+            home: &home1,
+            tmux: &tmux1,
+            dash: &dash,
+            fakebin: &fakebin,
+        };
+        let e2 = SpawnEnv {
+            home: &home2,
+            tmux: &tmux2,
+            dash: &dash,
+            fakebin: &fakebin,
+        };
+        // Locales sueltos en orden inverso si algo falla a mitad: ningún proceso queda vivo.
+        let mut s_py = spawn("cc-dash (oráculo)", py(p_py), &e1, &d("py.log"))?;
+        let mut s_leg = spawn("cc-dash (heredado)", py(p_legacy), &e2, &d("legacy.log"))?;
+        let mut s_front = spawn("comandos dash", front, &e2, &d("front.log"))?;
+        wait_ready(&mut s_py, p_py)?;
+        wait_ready(&mut s_leg, p_legacy)?;
+        wait_ready(&mut s_front, p_front)?;
+        let pids = [s_py.child.id(), s_leg.child.id(), s_front.child.id()];
+        let servers = vec![s_py, s_leg, s_front];
+        Ok(Stack {
+            servers,
+            token,
+            p_py,
+            p_front,
+            p_legacy,
+            pid_py: pids[0],
+            pid_legacy: pids[1],
+            pid_front: pids[2],
+            _root: root,
+        })
+    }
+}
+
+/// Comprobación de que `Stack::start` solo corre dentro del namespace aislado.
+fn ensure_isolated_marker() -> Result<(), String> {
+    if std::env::var(NETNS_ENV).as_deref() == Ok("1") {
+        Ok(())
+    } else {
+        Err("el arnés debe correr dentro del namespace de red (ensure_isolated)".into())
+    }
 }
 
 // ------------------------------------------------------------------- ejecución
@@ -460,12 +821,10 @@ fn load_fixture(path: &Path) -> Result<Vec<Case>, String> {
     Ok(cases)
 }
 
-/// ¿La respuesta del frente es la de «ruta reenviada con el heredado muerto»? Antes de la
-/// Task 4 del plan es un 404 propio; después, un 502.
-fn is_forward_marker(r: &Resp) -> bool {
-    let body = String::from_utf8_lossy(&r.body);
-    (r.status == 502 && body.contains("Servidor heredado no disponible"))
-        || (r.status == 404 && body.contains("\"No encontrado\""))
+/// ¿El frente dice que el heredado no está disponible? Solo entonces una ruta reenviada
+/// se marca SKIP; con el heredado vivo cualquier otra cosa se compara.
+fn is_legacy_down(r: &Resp) -> bool {
+    r.status == 502 && String::from_utf8_lossy(&r.body).contains("Servidor heredado no disponible")
 }
 
 struct Args {
@@ -495,77 +854,22 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
     })
 }
 
+pub fn default_comandos() -> Result<PathBuf, String> {
+    Ok(std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .with_file_name("comandos"))
+}
+
 /// Devuelve el código de salida (1 si hay `DIFF`).
 pub fn run(args: &[String]) -> Result<i32, String> {
     let a = parse_args(args)?;
-    guard_hooks(&a.hooks)?;
-    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-    let repo = repo.canonicalize().map_err(|e| e.to_string())?;
+    let cases = load_fixture(&a.fixture)?;
     let comandos = match a.comandos {
         Some(p) => p,
-        None => std::env::current_exe()
-            .map_err(|e| e.to_string())?
-            .with_file_name("comandos"),
+        None => default_comandos()?,
     };
-    if !comandos.is_file() {
-        return Err(format!(
-            "no existe {} (cargo build -p comandos-cli, o --comandos)",
-            comandos.display()
-        ));
-    }
-    let cases = load_fixture(&a.fixture)?;
-
-    let root = std::env::temp_dir().join(format!("comandos-parity-{}", unix_secs()));
-    fs::create_dir_all(&root).map_err(|e| e.to_string())?;
-    let results = root.join(format!("parity-{}", unix_secs()));
-    fs::create_dir_all(&results).map_err(|e| e.to_string())?;
-    let (home_py, home_rs) = (root.join("home-py"), root.join("home-rs"));
-    let (tmux_py, tmux_rs) = (root.join("tmux-py"), root.join("tmux-rs"));
-    for d in [&home_py, &home_rs, &tmux_py, &tmux_rs] {
-        fs::create_dir_all(d).map_err(|e| e.to_string())?;
-        guard_home(d)?;
-    }
-    // Tras la guardia: ya se puede copiar y lanzar.
-    let hooks_py = copy_hooks(&a.hooks, &home_py)?;
-    copy_hooks(&a.hooks, &home_rs)?;
-    let token = fs::read_to_string(hooks_py.join("dash-token"))
-        .map(|t| t.trim().to_string())
-        .unwrap_or_default();
-    let dash = root.join("dash");
-    stage_dash(&repo, &dash)?;
-
-    let (p_py, p_rs, p_dead) = (free_port()?, free_port()?, free_port()?);
-    let mut py_cmd = Command::new("python3");
-    py_cmd
-        .arg(repo.join("bin/cc-dash"))
-        .arg(p_py.to_string())
-        .arg("--no-open");
-    let mut rs_cmd = Command::new(&comandos);
-    rs_cmd.args([
-        "dash",
-        &p_rs.to_string(),
-        "--no-open",
-        "--legacy-port",
-        &p_dead.to_string(),
-    ]);
-    let mut py = spawn(
-        "cc-dash",
-        py_cmd,
-        &home_py,
-        &tmux_py,
-        &dash,
-        &root.join("py.log"),
-    )?;
-    let mut rs = spawn(
-        "comandos dash",
-        rs_cmd,
-        &home_rs,
-        &tmux_rs,
-        &dash,
-        &root.join("rs.log"),
-    )?;
-    wait_ready(&mut py, p_py)?;
-    wait_ready(&mut rs, p_rs)?;
+    let stack = Stack::start(&a.hooks, &comandos, a.keep)?;
+    let results = std::env::temp_dir().join(format!("comandos-parity-results-{}", unix_secs()));
 
     let (mut ok, mut diff, mut skip) = (0, 0, 0);
     println!("{:<28} {:<7} detalle", "petición", "estado");
@@ -573,10 +877,10 @@ pub fn run(args: &[String]) -> Result<i32, String> {
         let headers: Vec<(String, String)> = c
             .headers
             .iter()
-            .map(|(k, v)| (k.clone(), v.replace("{{token}}", &token)))
+            .map(|(k, v)| (k.clone(), v.replace("{{token}}", &stack.token)))
             .collect();
         let go = |port| request(port, &c.method, &c.path, &headers, c.body.as_deref());
-        let (r_py, r_rs) = match (go(p_py), go(p_rs)) {
+        let (r_py, r_rs) = match (go(stack.p_py), go(stack.p_front)) {
             (Ok(a), Ok(b)) => (a, b),
             (a, b) => {
                 println!(
@@ -595,8 +899,8 @@ pub fn run(args: &[String]) -> Result<i32, String> {
             } else {
                 c.reason.clone()
             })
-        } else if c.forwarded && is_forward_marker(&r_rs) {
-            Outcome::Skip("reenviada".into())
+        } else if c.forwarded && is_legacy_down(&r_rs) {
+            Outcome::Skip("reenviada, heredado caído".into())
         } else {
             compare(&r_py, &r_rs, c.expect, &c.volatile)
         };
@@ -619,6 +923,7 @@ pub fn run(args: &[String]) -> Result<i32, String> {
                     c.name,
                     why.lines().next().unwrap_or("")
                 );
+                let _ = fs::create_dir_all(&results);
                 let dump = |ext: &str, r: &Resp| {
                     let mut t = format!("HTTP {}\n", r.status);
                     for (k, v) in &r.headers {
@@ -634,28 +939,13 @@ pub fn run(args: &[String]) -> Result<i32, String> {
             }
         }
     }
-    drop(py);
-    drop(rs);
+    drop(stack);
     println!(
         "\nresumen: {ok} OK, {diff} DIFF, {skip} SKIP de {}",
         cases.len()
     );
     if diff > 0 {
         println!("pares que difieren en {}", results.display());
-    }
-    // Las copias de hooks pesan cientos de MB: fuera salvo --keep. Los resultados se quedan
-    // si hay diferencias.
-    if a.keep {
-        println!("conservado: {}", root.display());
-    } else {
-        for d in [&home_py, &home_rs] {
-            if guard_home(d).is_ok() {
-                let _ = fs::remove_dir_all(d);
-            }
-        }
-        if diff == 0 {
-            let _ = fs::remove_dir_all(&root);
-        }
     }
     Ok(i32::from(diff > 0))
 }

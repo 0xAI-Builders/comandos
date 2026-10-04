@@ -4,7 +4,9 @@
 #[path = "../src/parity.rs"]
 mod parity;
 
-use parity::{Expect, Outcome, Resp, compare, normalize, parse_response};
+use parity::{
+    Expect, Outcome, Resp, compare, normalize, outside_links, parse_response, sanitize_links,
+};
 use serde_json::json;
 
 fn resp(status: u16, headers: &[(&str, &str)], body: &str) -> Resp {
@@ -63,29 +65,76 @@ fn same_equal_responses_are_ok() {
 }
 
 #[test]
-fn same_json_whitespace_is_semantic_but_header_length_is_not() {
-    // Python usa `", "`; el JSON equivale, pero Content-Length ya difiere.
+fn same_without_volatile_compares_raw_bytes_so_key_order_is_a_diff() {
+    let h = [
+        ("content-type", "application/json"),
+        ("content-length", "17"),
+    ];
+    let a = resp(200, &h, r#"{"a": 1, "b": 2}"#);
+    let b = resp(200, &h, r#"{"b": 2, "a": 1}"#);
+    assert!(matches!(
+        compare(&a, &b, Expect::Same, &[]),
+        Outcome::Diff(m) if m.contains("cuerpo")
+    ));
+    // Tampoco el espaciado: sin volatile son bytes.
+    let c = resp(200, &h, r#"{"a":1,"b":2}"#);
+    assert!(matches!(
+        compare(&a, &c, Expect::StaticAccepted, &[]),
+        Outcome::Diff(_)
+    ));
+}
+
+#[test]
+fn volatile_mode_reserializes_in_order_and_skips_raw_content_length() {
     let a = resp(
-        400,
+        200,
         &[
             ("content-type", "application/json"),
-            ("content-length", "17"),
+            ("content-length", "27"),
         ],
-        r#"{"a": 1, "b": 2}"#,
+        r#"{"t": 1, "k": "x"}"#,
     );
     let b = resp(
-        400,
+        200,
         &[
             ("content-type", "application/json"),
-            ("content-length", "13"),
+            ("content-length", "20"),
         ],
-        r#"{"a":1,"b":2}"#,
+        r#"{"t":22222,"k":"x"}"#,
     );
-    match compare(&a, &b, Expect::Same, &[]) {
-        Outcome::Diff(m) => assert!(m.contains("content-length"), "{m}"),
-        o => panic!("{o:?}"),
-    }
-    assert_eq!(compare(&a, &b, Expect::StaticAccepted, &[]), Outcome::Ok);
+    let v = vol(&["/t"]);
+    // Espaciado distinto y longitudes crudas distintas: tras reserializar es lo mismo.
+    assert_eq!(compare(&a, &b, Expect::Same, &v), Outcome::Ok);
+    // El orden de claves sigue contando también en este modo.
+    let c = resp(
+        200,
+        &[("content-type", "application/json")],
+        r#"{"k":"x","t":1}"#,
+    );
+    assert!(matches!(
+        compare(&a, &c, Expect::StaticAccepted, &v),
+        Outcome::Diff(_)
+    ));
+}
+
+#[test]
+fn connection_header_and_duplicates_are_compared() {
+    let a = resp(413, &[("Connection", "close")], "x");
+    let b = resp(413, &[], "x");
+    assert!(matches!(
+        compare(&a, &b, Expect::Same, &[]),
+        Outcome::Diff(m) if m.contains("connection")
+    ));
+    let d1 = resp(
+        200,
+        &[("Cache-Control", "no-store"), ("Cache-Control", "x")],
+        "x",
+    );
+    let d2 = resp(200, &[("Cache-Control", "no-store")], "x");
+    assert!(matches!(
+        compare(&d1, &d2, Expect::Same, &[]),
+        Outcome::Diff(m) if m.contains("cache-control")
+    ));
 }
 
 #[test]
@@ -186,6 +235,11 @@ fn skip_never_compares() {
 
 #[test]
 fn parse_response_content_length_and_chunked() {
+    // Cuerpo más corto que Content-Length: error, no recorte silencioso.
+    assert!(parse_response(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\ncorto").is_err());
+    assert!(
+        parse_response(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nho").is_err()
+    );
     let raw = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhola!EXTRA";
     let r = parse_response(raw).unwrap();
     assert_eq!((r.status, r.body.as_slice()), (200, &b"hola!"[..]));
@@ -217,4 +271,56 @@ fn status_only_ignores_body_and_headers() {
         compare(&a, &c, Expect::StatusOnly, &[]),
         Outcome::Diff(_)
     ));
+}
+
+#[test]
+fn sanitize_links_replaces_or_removes_external_symlinks() {
+    use std::{fs, os::unix::fs::symlink};
+    let base = std::env::temp_dir().join(format!("xtask-sanitize-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&base);
+    let (copy, repo, outside) = (base.join("copy"), base.join("repo"), base.join("outside"));
+    for d in [&copy, &repo, &outside, &outside.join("dir")] {
+        fs::create_dir_all(d).unwrap();
+    }
+    fs::write(repo.join("asset.css"), "ok").unwrap();
+    fs::write(outside.join("bin"), "binario").unwrap();
+    fs::write(copy.join("local"), "l").unwrap();
+    symlink(repo.join("asset.css"), copy.join("to-repo")).unwrap(); // permitido
+    symlink("local", copy.join("rel-inside")).unwrap(); // relativo interno
+    symlink(outside.join("bin"), copy.join("to-file")).unwrap(); // se copia
+    symlink(outside.join("dir"), copy.join("to-dir")).unwrap(); // se borra
+    symlink(outside.join("nope"), copy.join("dangling")).unwrap(); // se borra
+    fs::create_dir_all(copy.join("sub")).unwrap();
+    symlink(outside.join("bin"), copy.join("sub/deep")).unwrap();
+
+    let allowed = vec![copy.canonicalize().unwrap(), repo.canonicalize().unwrap()];
+    assert_eq!(outside_links(&copy, &allowed).len(), 4);
+    assert_eq!(sanitize_links(&copy, &allowed).unwrap(), 4);
+    assert!(outside_links(&copy, &allowed).is_empty());
+    assert_eq!(fs::read_to_string(copy.join("to-file")).unwrap(), "binario");
+    assert!(
+        !fs::symlink_metadata(copy.join("to-file"))
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(
+        fs::read_to_string(copy.join("sub/deep")).unwrap(),
+        "binario"
+    );
+    assert!(fs::symlink_metadata(copy.join("to-dir")).is_err());
+    assert!(fs::symlink_metadata(copy.join("dangling")).is_err());
+    assert!(
+        fs::symlink_metadata(copy.join("to-repo"))
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert!(
+        fs::symlink_metadata(copy.join("rel-inside"))
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    fs::remove_dir_all(&base).unwrap();
 }

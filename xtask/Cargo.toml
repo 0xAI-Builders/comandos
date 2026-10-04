@@ -6,4 +6,5 @@ publish = false
 
 [dependencies]
 serde_json.workspace = true
+comandos-core = { path = "../crates/comandos-core" }
 nix = { version = "0.31", features = ["signal", "process"] }
