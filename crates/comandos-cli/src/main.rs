@@ -24,7 +24,7 @@ fn main() {
             0
         }
         Command::Help => {
-            println!("uso: comandos <ext|hook|events|--version>");
+            println!("uso: comandos <ext|hook|events|install|--version>");
             0
         }
         Command::Unknown(w) => {
