@@ -41,6 +41,17 @@ pub fn run(args: Vec<String>) -> Result<i32> {
                 return Ok(i32::from(result?));
             }
             Some("serve") => break,
+            Some("broker") if args.next().is_none() => {
+                let home = home.map(Ok).unwrap_or_else(home_dir)?;
+                let path = catalog.unwrap_or_else(|| crate::config::catalog_path(&home));
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|_| "Runtime unavailable")?;
+                runtime.block_on(crate::broker::daemon::run(&path))?;
+                runtime.shutdown_timeout(std::time::Duration::from_millis(100));
+                return Ok(0);
+            }
             Some("count") if args.next().is_none() => {
                 let home = home.map(Ok).unwrap_or_else(home_dir)?;
                 crate::tokenizer::count_command(&home)?;
@@ -48,7 +59,7 @@ pub fn run(args: Vec<String>) -> Result<i32> {
             }
             _ => {
                 return Err(
-                    "Usage: comandos-extensions [--home PATH] [--catalog PATH] {import|sync|status|count|check [NAME...]|serve NAME}".into(),
+                    "Usage: comandos-extensions [--home PATH] [--catalog PATH] {import|sync|status|count|check [NAME...]|serve NAME|broker}".into(),
                 );
             }
         }
@@ -57,33 +68,18 @@ pub fn run(args: Vec<String>) -> Result<i32> {
     if args.next().is_some() {
         return Err("Unexpected arguments".into());
     }
+    // El broker es por usuario: con rutas explícitas se usa siempre el proxy directo.
+    let explicit = home.is_some() || catalog.is_some();
     let home = home.map(Ok).unwrap_or_else(home_dir)?;
-    let path = catalog.unwrap_or_else(|| home.join(".config/comandos/extensions/catalog.json"));
-    use std::io::Read;
-    let mut bytes = Vec::new();
-    std::fs::File::open(path)
-        .map_err(|_| "Catalog unavailable")?
-        .take(8 * 1024 * 1024 + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| "Catalog unavailable")?;
-    if bytes.len() > 8 * 1024 * 1024 {
-        return Err("Catalog too large".into());
-    }
-    let catalog: Value = crate::config::parse_json(&bytes)?;
-    if catalog["version"] != 1 {
-        return Err("Unsupported catalog".into());
-    }
-    let spec = catalog["servers"]
-        .get(&name)
-        .filter(|s| s.is_object() && s["enabled"] != false)
-        .ok_or_else(|| format!("Server unavailable: {name}"))?;
-    if spec["command"].as_str().is_some()
-        && spec.get("enabled_tools").is_none()
-        && spec
-            .get("disabled_tools")
-            .and_then(Value::as_array)
-            .is_none_or(Vec::is_empty)
-    {
+    let path = catalog.unwrap_or_else(|| crate::config::catalog_path(&home));
+    let spec = &server_spec(&path, &name)?;
+    if crate::broker::direct_stdio(spec) {
+        if !explicit
+            && crate::config::is_shared(spec, &name)
+            && let Some(code) = broker_session(&name)
+        {
+            return Ok(code);
+        }
         let _ = command(spec, true)?.exec();
         return Err("Extension command failed".into());
     }
@@ -101,6 +97,49 @@ pub fn run(args: Vec<String>) -> Result<i32> {
     runtime.shutdown_timeout(std::time::Duration::from_millis(100));
     result?;
     Ok(0)
+}
+/// Servidor `name` del catálogo, habilitado. Lo usan `serve` y el broker.
+pub(crate) fn server_spec(path: &std::path::Path, name: &str) -> Result<Value> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .map_err(|_| "Catalog unavailable")?
+        .take(8 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "Catalog unavailable")?;
+    if bytes.len() > 8 * 1024 * 1024 {
+        return Err("Catalog too large".into());
+    }
+    let mut catalog: Value = crate::config::parse_json(&bytes)?;
+    if catalog["version"] != 1 {
+        return Err("Unsupported catalog".into());
+    }
+    catalog["servers"]
+        .get_mut(name)
+        .filter(|s| s.is_object() && s["enabled"] != false)
+        .map(Value::take)
+        .ok_or_else(|| format!("Server unavailable: {name}"))
+}
+/// Sesión como cliente fino del broker. `None` ⇒ proxy directo. Sin socket (broker no
+/// instalado) se calla, para no ensuciar el stderr de la sesión.
+fn broker_session(name: &str) -> Option<i32> {
+    use crate::broker::{client, socket_path};
+    let socket = socket_path();
+    if !socket.exists() {
+        return None;
+    }
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .ok()?;
+    let Ok(stream) = runtime.block_on(client::connect(&socket, name)) else {
+        eprintln!("broker no disponible, proxy directo");
+        return None;
+    };
+    let relayed = runtime.block_on(client::relay(stream));
+    // El hilo bloqueado en stdin no debe retrasar la salida.
+    runtime.shutdown_timeout(std::time::Duration::from_millis(100));
+    Some(if relayed.is_ok() { 0 } else { 1 })
 }
 fn catalog_command(
     home: &std::path::Path,

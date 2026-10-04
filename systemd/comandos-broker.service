@@ -1,0 +1,13 @@
+[Unit]
+Description=ComandOS — broker compartido de servidores MCP
+After=default.target
+
+[Service]
+ExecStart=%h/.local/share/comandos/bin/comandos ext broker
+Restart=on-failure
+RestartSec=2
+MemoryMax=4G
+ManagedOOMPreference=avoid
+
+[Install]
+WantedBy=default.target

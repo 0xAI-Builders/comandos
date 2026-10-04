@@ -338,3 +338,23 @@ pub fn parse_json(raw: &[u8]) -> Result<Value> {
     restore(&mut value, &markers)?;
     Ok(value)
 }
+/// Servidores que mantienen estado por sesión (navegador, cuenta, ventana) y nunca se
+/// comparten en el broker salvo que el catálogo diga `"shared": true`.
+pub const DEDICATED: &[&str] = &[
+    "chrome-bg",
+    "claude-in-chrome",
+    "playwright",
+    "x-playwright",
+    "lightpanda",
+    "obscura",
+    "screenwright",
+    "teams",
+    "claude-codex",
+];
+/// `shared` del catálogo manda; si falta, se comparte todo lo que no esté en [`DEDICATED`].
+pub fn is_shared(spec: &Value, name: &str) -> bool {
+    match spec.get("shared").and_then(Value::as_bool) {
+        Some(v) => v,
+        None => !DEDICATED.contains(&name),
+    }
+}
