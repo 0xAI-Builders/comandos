@@ -7,6 +7,9 @@ publish.workspace = true
 
 [dependencies]
 comandos-core = { path = "../comandos-core" }
+comandos-store = { path = "../comandos-store" }
+comandos-runtime = { path = "../comandos-runtime" }
+rusqlite.workspace = true
 serde_json.workspace = true
 bytes = "=1.12.1"
 http = "=1.5.0"

@@ -1,0 +1,18 @@
+[
+  {"data":{},"status":400,"error":"Ámbito inválido"},
+  {"data":{"scope":null},"status":400,"error":"Ámbito inválido"},
+  {"data":{"scope":{}},"status":400,"error":"Ámbito inválido"},
+  {"data":{"scope":1},"status":400,"error":"Ámbito inválido"},
+  {"data":{"scope":"pane","key":null},"status":400,"error":"Clave inválida"},
+  {"data":{"scope":"pane","key":[]},"status":400,"error":"Clave inválida"},
+  {"data":{"scope":"pane","key":1},"status":400,"error":"Clave inválida"},
+  {"data":{"scope":"pane","key":"pk","value":null},"status":400,"error":"Valor inválido"},
+  {"data":{"scope":"pane","key":"pk","value":{}},"status":400,"error":"Valor inválido"},
+  {"data":{"scope":"pane","key":"pk","value":{"mark":[]}},"status":400,"error":"Marca inválida"},
+  {"data":{"scope":"pane","key":"pk","value":{"favorite":1}},"status":400,"error":"Favorito inválido"},
+  {"data":{"scope":"pane","key":"pk","value":"none","expectedRevision":null},"status":400,"error":"expectedRevision inválido"},
+  {"data":{"scope":"pane","key":"pk","value":"none","expectedRevision":true},"status":400,"error":"expectedRevision inválido"},
+  {"data":{"scope":"pane","key":"pk","value":"none","expectedRevision":-1},"status":400,"error":"expectedRevision inválido"},
+  {"data":{"scope":"pane","key":"pk","value":"none","expectedRevision":0.0},"status":400,"error":"expectedRevision inválido"},
+  {"data":{"scope":"pane","key":"pk","value":"none","expectedRevision":18446744073709551616},"status":409,"error":"Revisión desactualizada"}
+]

@@ -283,12 +283,15 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "comandos-core",
+ "comandos-runtime",
+ "comandos-store",
  "futures-util",
  "http",
  "http-body",
  "http-body-util",
  "hyper",
  "hyper-util",
+ "rusqlite",
  "serde_json",
  "tokio",
 ]

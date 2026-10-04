@@ -1,5 +1,6 @@
 //! Native dashboard transport. Construction never discovers live application state.
 pub mod blocking;
+pub mod events_routes;
 mod write_timeout;
 use bytes::Bytes;
 use comandos_core::dashboard_access as access;

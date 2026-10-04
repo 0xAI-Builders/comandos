@@ -264,8 +264,8 @@
       "language": "script",
       "category": "producto",
       "lines": 9897,
-      "status": "Parcial: control de acceso y transporte HTTP revisados; rutas e integración pendientes",
-      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/dashboard_access.rs; /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-server/src/lib.rs",
+      "status": "Parcial: acceso, transporte y cuatro rutas de eventos/marcas revisados; resto de rutas e integración pendientes",
+      "rust": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-core/src/dashboard_access.rs; /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-server/src/lib.rs; /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/crates/comandos-server/src/events_routes.rs",
       "review": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-migration/.superpowers/sdd/dashboard-access-20261004-review.md"
     },
     {
