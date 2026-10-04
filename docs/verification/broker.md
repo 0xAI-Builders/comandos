@@ -77,6 +77,10 @@ compartición: dos sesiones con distinto PATH y mismo spec comparten upstream, y
 llegar fija el PATH del proceso. La unidad fija solo un PATH mínimo para el propio binario, sin
 rutas de nvm con versión.
 
+El stderr del upstream va a `/dev/null`, como en el proxy directo y en el Python
+(`lib/extension_proxy.py`): los servidores escriben ahí tokens y URLs de autorización que no
+deben acabar en el journal del daemon.
+
 ## Respaldo al proxy directo
 
 - Sin socket: proxy directo y stderr vacío (broker no instalado).
@@ -118,6 +122,7 @@ rutas de nvm con versión.
 - Daemon con `PATH=/usr/bin:/bin`: un `command` sin `/` arranca solo si el `attach` trae `path`
   con su directorio; el upstream ve ese `PATH`; el `env.PATH` del spec gana.
 - SIGTERM al daemon cierra los upstreams, borra el socket y sale con 0.
+- El marcador que el upstream escribe en stderr no aparece en el registro del daemon.
 - Inactividad de 1 s cierra el upstream sin clientes.
 - Un segundo daemon con el primero vivo sale con error y el primero sigue sirviendo.
 - Un socket huérfano de un daemon muerto con SIGKILL se reemplaza.

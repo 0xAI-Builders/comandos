@@ -1,5 +1,7 @@
 //! Proceso upstream stdio compartido: lanzado con el mismo `command(spec, true)` que usa
-//! `serve`, con stdin/stdout por tuberías y stderr heredado (va al journal del daemon).
+//! `serve`, con stdin/stdout por tuberías y stderr a `/dev/null`, como el proxy directo y el
+//! Python: los servidores escriben ahí tokens y URLs de autorización que no deben acabar en
+//! el journal del daemon.
 use super::{blank, read_line};
 use crate::Result;
 use nix::{
@@ -80,7 +82,7 @@ pub(super) fn spawn(
         .current_dir(cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit());
+        .stderr(Stdio::null());
     let mut command = tokio::process::Command::from(std_command);
     // Grupo propio para que el cierre alcance a los nietos (npx → node). `kill_on_drop`
     // solo cubre al líder: es la red si el actor desaparece sin pasar por `terminate`.

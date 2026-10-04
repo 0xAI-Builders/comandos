@@ -5,10 +5,14 @@
 //! `FAKE_MCP_DIE=1` (sale nada más arrancar), `FAKE_MCP_HANG=1` (lee pero nunca contesta),
 //! `FAKE_MCP_MAX_PROTOCOL` (versión máxima, por omisión `2025-11-25`: contesta
 //! `min(params.protocolVersion, máxima)` en orden de fecha, o la máxima si no pide ninguna).
+//! Al arrancar escribe [`STDERR_MARKER`] en stderr (el broker debe mandarlo a `/dev/null`).
 use std::io::{BufRead, Write};
+
+const STDERR_MARKER: &str = "fake_mcp_stdio-stderr-marker";
 
 fn main() {
     let pid = std::process::id();
+    eprintln!("{STDERR_MARKER}");
     let knob = |k: &str| std::env::var_os(k).is_some_and(|v| v == "1");
     if let Some(path) = std::env::var_os("FAKE_MCP_PIDFILE") {
         let mut file = std::fs::OpenOptions::new()

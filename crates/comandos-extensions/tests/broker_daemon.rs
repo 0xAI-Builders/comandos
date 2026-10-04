@@ -233,6 +233,11 @@ fn two_clients_share_one_upstream_and_dedicated_is_not_shared() {
     let s2 = command(&home, &["serve", "solo"]).output().unwrap();
     assert_ne!(s1.stdout, s2.stdout, "dedicated_server_never_shared");
     assert!(daemon.stop().success());
+    let log = daemon.log();
+    assert!(
+        !log.contains("fake_mcp_stdio-stderr-marker"),
+        "el stderr del upstream (tokens, URLs de auth) no va al journal: {log}"
+    );
     assert!(!daemon.socket().exists(), "el socket se borra al salir");
 }
 
