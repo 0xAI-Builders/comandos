@@ -101,11 +101,23 @@ impl From<Error> for String {
 type Result<T> = std::result::Result<T, Error>;
 
 pub const MAX_MESSAGE: usize = 8 * 1024 * 1024;
+/// Tope de una respuesta del upstream (cuerpo HTTP, evento SSE o línea stdio). El proxy
+/// Python no pone límite y los upstream reales lo superan con holgura (capturas de
+/// chrome-bg pasan de 8 MiB); este tope solo evita que un upstream roto agote la memoria.
+pub const MAX_RESPONSE: usize = 256 * 1024 * 1024;
 pub const MAX_INFLIGHT: usize = 64;
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Value>>>>;
 
+/// Línea de hasta `MAX_MESSAGE` bytes (mensajes del cliente).
 pub async fn line<R: AsyncBufRead + Unpin>(reader: &mut R) -> crate::Result<Option<Vec<u8>>> {
+    line_up_to(reader, MAX_MESSAGE).await
+}
+
+pub async fn line_up_to<R: AsyncBufRead + Unpin>(
+    reader: &mut R,
+    limit: usize,
+) -> crate::Result<Option<Vec<u8>>> {
     let mut out = Vec::new();
     loop {
         let bytes = reader.fill_buf().await.map_err(|_| "Stream read failed")?;
@@ -121,7 +133,7 @@ pub async fn line<R: AsyncBufRead + Unpin>(reader: &mut R) -> crate::Result<Opti
             .position(|b| *b == b'\n')
             .map(|p| p + 1)
             .unwrap_or(bytes.len());
-        if out.len() + count > MAX_MESSAGE {
+        if out.len() + count > limit {
             return Err("Message too large".into());
         }
         out.extend_from_slice(&bytes[..count]);
@@ -271,7 +283,7 @@ struct Sse {
 }
 impl Sse {
     fn feed(&mut self, bytes: &[u8]) -> Result<Vec<(String, String)>> {
-        if self.buffer.len() + self.data.len() + bytes.len() > MAX_MESSAGE {
+        if self.buffer.len() + self.data.len() + bytes.len() > MAX_RESPONSE {
             return Err("SSE event too large".into());
         }
         self.buffer.extend_from_slice(bytes);
@@ -384,7 +396,7 @@ impl Transport {
             let pending = this.pending.clone();
             let died = dead.clone();
             this.tasks.push(tokio::spawn(async move {
-                while let Ok(Some(bytes)) = line(&mut output).await {
+                while let Ok(Some(bytes)) = line_up_to(&mut output, MAX_RESPONSE).await {
                     let Ok(value) = comandos_core::json::parse_slice(&bytes) else {
                         break;
                     };
@@ -598,7 +610,7 @@ impl Transport {
                                 }
                             }
                         } else {
-                            if data.len() + chunk.len() > MAX_MESSAGE {
+                            if data.len() + chunk.len() > MAX_RESPONSE {
                                 return Err("Response too large".into());
                             }
                             data.extend_from_slice(&chunk);

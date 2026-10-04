@@ -1,14 +1,16 @@
 # Paridad del proxy MCP HTTP (`comandos ext serve`) con el proxy Python
 
-Fecha: 2026-10-04. Prueba: `crates/comandos-extensions/tests/serve_parity.rs`.
+Fecha: 2026-10-04 (revisión 1 tras la revisión de código). Prueba:
+`crates/comandos-extensions/tests/serve_parity.rs`.
 
 ## Qué se compara
 
 El proxy Rust (`comandos-extensions serve fake`, el mismo código que `comandos ext serve`)
-y el proxy Python (`python3.11 bin/cc-extensions serve fake` → `lib/extension_proxy.py::serve_http`,
-SDK `mcp` 1.30.0) reciben por stdin la misma secuencia JSON-RPC. Ambos hablan con el mismo
-upstream falso streamable-HTTP escrito en Rust (`tests/support/fake_mcp_http.rs`, `hyper`).
-Las cinco líneas de stdout deben ser idénticas byte a byte.
+y el proxy Python (`python3.11 bin/cc-extensions serve fake` → `lib/extension_proxy.py::serve_http`)
+reciben por stdin la misma secuencia JSON-RPC. El oráculo corre en el venv de extensiones
+(`mcp` 1.30.0, pydantic 2.13.5, pydantic-core 2.46.5). Ambos hablan con el mismo upstream
+falso streamable-HTTP escrito en Rust (`tests/support/fake_mcp_http.rs`, `hyper`). Las líneas
+de stdout deben ser idénticas byte a byte.
 
 HOME temporal con un único servidor en `~/.config/comandos/extensions/catalog.json`:
 
@@ -19,123 +21,121 @@ HOME temporal con un único servidor en `~/.config/comandos/extensions/catalog.j
 El catálogo real del usuario no se usa. Con HOME temporal Python no ve el `mcp` instalado en
 el site de usuario; la prueba enlaza (solo lectura) `~/.local/share/comandos/extensions-venv`
 dentro del HOME temporal para que el fallback de `bin/cc-extensions` funcione sin modificarlo.
+El HOME se borra al terminar aunque la prueba falle (guarda con `Drop`).
 
-## Secuencia probada
+## Por qué el Rust reescribe las respuestas
 
-| # | Mensaje | Respuesta (idéntica en ambos) |
-|---|---------|-------------------------------|
-| 1 | `initialize` (cliente pide `2025-06-18`) | `{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"comandos-fake","version":"1"}}` |
-| 2 | `notifications/initialized` | ninguna |
-| 3 | `tools/list` | dos herramientas (`echo` con `inputSchema` anidado, `fail`) |
-| 4 | `tools/call echo {"text":"hola ñ 日本"}` | `{"content":[{"type":"text","text":"hola ñ 日本"}],"isError":false}` (UTF-8 sin escapar) |
-| 5 | `tools/call fail` | `{"content":[…],"isError":true}` |
-| 6 | `prompts/list` (el upstream no lo implementa) | `{"error":{"code":-32601,"message":"Method not found"}}` |
+El Python no reenvía bytes: valida cada resultado del upstream con su modelo pydantic y lo
+vuelve a serializar con `model_dump_json(by_alias=True, exclude_none=True)`. Para igualarlo,
+`src/serve/normalize.rs` describe los modelos de `mcp/types.py` (lista de campos sacada por
+introspección de `model_fields`) y aplica, por nivel de modelo:
+
+- campos declarados en orden de declaración y extras al final en su orden original
+  (todos los modelos son `extra="allow"`);
+- `null` omitido solo en campos del modelo y en extras de ese nivel; dentro de
+  `dict[str, Any]` (`inputSchema`, `outputSchema`, `structuredContent`, `_meta`, `data`) se
+  conserva (`"default": null` de un esquema sobrevive);
+- `CallToolResult.isError` con su valor por omisión `false`;
+- `AnyUrl` normalizado (`https://Example.COM/a/../b` → `https://example.com/b`);
+- `Annotations.priority` (`float`): un entero sale `1.0`;
+- números decimales reformateados como pydantic-core (`1.50` → `1.5`, `1e3` → `1000.0`,
+  `1e16` → `1e+16`);
+- un resultado que no valida (por ejemplo `tools/call` sin `content`) se convierte en
+  `{"code":-32603,"message":"Upstream request failed for <nombre>: ValidationError"}`;
+- el sobre JSON-RPC se reconstruye (`jsonrpc`, `id`, `result`/`error`) y el `error` del
+  upstream pasa por `ErrorData` (`code`, `message`, `data` sin `null`).
+
+Modelos cubiertos: `ListToolsResult`/`Tool`/`ToolAnnotations`/`ToolExecution`/`Icon`,
+`CallToolResult` con `ContentBlock` (`TextContent`, `ImageContent`, `AudioContent`,
+`ResourceLink`, `EmbeddedResource`) y `Annotations`, `ListResourcesResult`/`Resource`,
+`ListResourceTemplatesResult`/`ResourceTemplate`, `ReadResourceResult` con
+`TextResourceContents`/`BlobResourceContents`, `ListPromptsResult`/`Prompt`/`PromptArgument`,
+`GetPromptResult`/`PromptMessage`, `CompleteResult`/`Completion` y `ErrorData`.
+
+`initialize` también sigue al Python: hacia el upstream pide `2025-11-25`
+(`LATEST_PROTOCOL_VERSION`) y aborta si la versión que le contestan no está en
+`SUPPORTED_PROTOCOL_VERSIONS` (`2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25`); hacia el
+cliente contesta la versión que el cliente pidió si está en esa lista y, si no, la última.
+`instructions` solo se incluye si el upstream manda una cadena.
+
+## Secuencias probadas
+
+`rust_proxy_matches_python_proxy` (cliente pide `2025-06-18`; el falso contesta la versión que le
+piden y ambos proxies le piden `2025-11-25`):
+
+| # | Mensaje | Qué ejercita |
+|---|---------|--------------|
+| 1 | `initialize` | negociación hacia el cliente (`2025-06-18`), `instructions: null` del upstream omitido |
+| 2 | `notifications/initialized` | sin respuesta |
+| 3 | `tools/list` | sobre desordenado, `title`/`annotations`/extra `null` omitidos, `default: null`, `1.50` y `1e16` en el esquema, `nextCursor: null` |
+| 4 | `tools/call echo` | bloque con `annotations`/`_meta` `null`, `structuredContent: null`, `isError=false`, UTF-8 sin escapar |
+| 5 | `tools/call fail` | `isError: true` primero en el upstream, `priority: 1` → `1.0`, `structuredContent` con `null` y `1e3` |
+| 6 | `prompts/list` | error del upstream con claves desordenadas y `data: null` |
+| 7 | `tools/call bare` | resultado sin `content` → `-32603 … ValidationError` |
+| 8 | `resources/list` | `AnyUrl` (`HTTPS://Example.COM/docs/../a b` → `https://example.com/a%20b`), `title: null` |
+| 9 | `prompts/get` | `PromptMessage` y bloque de contenido con `null` |
+
+`old_client_version_is_negotiated_like_python`: `initialize` pidiendo `2024-11-05` (ambos
+contestan `2024-11-05`) y `tools/list`.
+
+`unsupported_upstream_version_fails_like_python`: el upstream contesta `1999-01-01`. Ambos salen
+con código 1, stdout vacío y en stderr `Extension operation failed: ExceptionGroup`.
 
 ## Resultado
 
-- RED (antes del cambio): solo difería la respuesta 4. El upstream no manda `isError`; Python
-  lo valida con `CallToolResult` (pydantic) y lo serializa con su valor por omisión `false`,
-  mientras Rust reenviaba el resultado crudo.
-- Corrección en `crates/comandos-extensions/src/serve.rs`: `normalize_call_tool_result` reescribe
-  los resultados de `tools/call` como pydantic con `exclude_none`: campos declarados en orden
-  (`_meta`, `content`, `structuredContent`, `isError`), `isError=false` si falta, extras al final
-  en su orden original y sin `null` de primer nivel. Prueba unitaria con salidas tomadas del SDK.
-- Corrección preventiva: las capacidades del `initialize` se emiten en el orden de
-  `ServerCapabilities` de Python (`prompts`, `resources`, `tools`, `completions`). La secuencia
-  no lo ejercita (el upstream solo anuncia `tools`).
-- GREEN: las cinco respuestas son idénticas; la prueba pasó 5 de 5 ejecuciones seguidas (~0,6 s).
+- Ronda inicial: solo difería `isError:false` en `tools/call`.
+- Revisión 1, RED con el `serve.rs` anterior contra la secuencia ampliada: fallan las tres
+  pruebas (versión `2025-03-26` en vez de la del cliente, `instructions: null` reenviado, sobre y
+  claves del upstream sin reordenar, `null` sin quitar, `priority: 1`, `{"isError":false}` en vez
+  del `-32603`, URL sin normalizar, y con versión no soportada el Rust seguía sirviendo).
+- GREEN: las tres pruebas pasan; 3 de 3 ejecuciones seguidas (~0,7 s).
 
 ## Detalles de protocolo que necesitó el upstream falso
 
 - `POST /mcp` con petición: una respuesta `Content-Type: application/json`.
-- `POST /mcp` con notificación: `202 Accepted`, cuerpo vacío (el SDK de Python acepta 202 y
-  descarta el cuerpo; Rust solo exige estado 2xx).
-- `initialize` devuelve `Mcp-Session-Id: fake-session`; ambos clientes lo reenvían en todas las
-  peticiones siguientes, y la prueba lo comprueba en el registro del falso.
-- `GET /mcp`: tras `notifications/initialized` el SDK de Python abre un stream SSE para mensajes
-  iniciados por el servidor. El falso responde `405`; Python lo registra, reintenta tras 1 s y
-  desiste sin afectar la sesión. Rust no hace este GET.
-- `DELETE /mcp`: ambos clientes cierran la sesión al terminar; el falso responde `200`.
-- Ambos envían `Accept: application/json, text/event-stream`; el falso no lo inspecciona.
-- El puerto se reserva con `bind(127.0.0.1:0)` dentro del propio falso antes de lanzar los
-  proxies, sin ventana de carrera.
+- `POST /mcp` con notificación: `202 Accepted`, cuerpo vacío.
+- `initialize` devuelve `Mcp-Session-Id: fake-session`; ambos clientes lo reenvían, y la prueba
+  lo comprueba en el registro del falso junto con la versión pedida (`2025-11-25` en ambos).
+- `GET /mcp`: tras `notifications/initialized` el SDK de Python abre un stream SSE. El falso
+  responde `405`; Python reintenta tras 1 s y desiste. Rust no hace este GET.
+- `DELETE /mcp`: ambos cierran la sesión al terminar; el falso responde `200`.
+- `/mcp-badversion`: mismo servidor con una versión de protocolo no soportada.
+- Las respuestas se escriben como texto crudo (no con `json!`) para poder mandar claves
+  desordenadas y grafías numéricas que pydantic reescribe.
+- El puerto se reserva con `bind(127.0.0.1:0)` dentro del propio falso, sin ventana de carrera.
 
-Registro del upstream por cliente en una ejecución:
+## Tamaño de las respuestas
 
-- Rust: `POST initialize`, `POST notifications/initialized`, `POST tools/list`, `POST tools/call` ×2,
-  `POST prompts/list`, `DELETE`.
-- Python: lo mismo más un `GET` (405) después de `notifications/initialized`.
+El tope de 8 MiB por respuesta del upstream desaparece: el Python no pone límite y upstreams
+reales (capturas de chrome-bg) lo superan. Queda `MAX_RESPONSE = 256 MiB`
+(`src/transport.rs`) para cuerpo HTTP, evento SSE y línea stdio del upstream, solo como defensa
+ante un upstream roto. Los mensajes del cliente siguen limitados a 8 MiB (`MAX_MESSAGE`).
 
 ## Memoria (Pss/RSS)
 
 Medido con `cargo xtask rss --samples 3`, mismo HOME temporal y el upstream falso vivo
 (`COMANDOS_PARITY_HOME=<dir> cargo test -p comandos-extensions --test serve_parity -- --ignored
-hold_fake_upstream_for_rss`). `xtask` mantiene abierto el stdin del proxy y mide a los 2 s, es
-decir, con la sesión upstream ya inicializada y el proxy en reposo. El árbol medido es solo el
-proceso del proxy (1 proceso en ambos casos; el re-exec de Python al venv conserva el PID).
-Binario Rust en release (`cargo build --release -p comandos-cli`).
+hold_fake_upstream_for_rss`), con `.build/target/release` en `PATH` para lanzar `comandos` por
+nombre. `xtask` mantiene abierto el stdin del proxy y mide a los 2 s, con la sesión upstream ya
+inicializada y el proxy en reposo. El árbol medido es solo el proceso del proxy (1 proceso en
+ambos casos; el re-exec de Python al venv conserva el PID). Binario Rust en release
+(`cargo build --release -p comandos-cli`), con la normalización de esta revisión.
 
 | Proxy | Pss mediana | RSS mediana |
 |-------|-------------|-------------|
-| Python (`python3.11 bin/cc-extensions serve fake`) | 45 388 KiB | 57 776 KiB |
-| Rust (`comandos ext serve fake`) | 5 605 KiB | 7 596 KiB |
+| Python (`python3.11 bin/cc-extensions serve fake`) | 45 349 KiB | 57 764 KiB |
+| Rust (`comandos ext serve fake`) | 5 929 KiB | 7 920 KiB |
 
-Unas 8 veces menos Pss por proxy. Filas en `docs/verification/rss.jsonl`.
+Unas 7,6 veces menos Pss por proxy. Filas en `docs/verification/rss.jsonl`.
 
 ## Límites conocidos
 
-- Python reserializa todas las respuestas con modelos pydantic; Rust reenvía el JSON del upstream
-  salvo en `initialize` y, ahora, en `tools/call`. Si un upstream ordena las claves de una
-  herramienta de otra forma que `Tool` (`name`, `title`, `description`, `inputSchema`, …), manda
-  `null` en campos opcionales o en bloques de contenido, la salida diferiría. La secuencia usa el
-  orden del modelo.
-- `protocolVersion` del `initialize`: Python responde con la versión que pide el cliente si la
-  soporta; Rust responde con la del upstream. Coinciden aquí porque ambas son `2025-06-18`.
-
-## Servidores stdio (`serve` hace `exec`)
-
-`crates/comandos-extensions/tests/serve_stdio_parity.rs` compara `serve <stdio>` con
-`python3.11 bin/cc-extensions serve <stdio>` usando un binario de prueba
-(`src/bin/env_dump.rs`) que vuelca cwd, argv y las variables `COMANDOS_*`/`HOME`.
-
-Lo que hace el Python (`lib/extension_proxy.py::serve`): `chdir(expanduser(cwd))`,
-`command=expanduser(command)`, stderr a `/dev/null` (`dup2`) y
-`os.execvpe(command, [command, *args], resolved_env(spec))`, con
-`resolved_env = os.environ + {k: expandvars(str(v))}`. Solo cuenta como stdio un servidor con
-`command` sin `enabled_tools`/`disabled_tools`; con filtros pasa por el proxy MCP.
-
-Resultado: el Rust (`cli.rs` → `command(spec, true).exec()`) ya era idéntico en volcado
-byte a byte (cwd con `~`, argv[0] expandido, `${VAR}`/`$VAR`/variable inexistente, valores
-numéricos y booleanos, herencia del entorno del padre, búsqueda en `PATH`), stderr vacío y
-sin proceso intermedio (el pid que reporta el comando es el del hijo lanzado). Única
-diferencia hallada y corregida: servidor inexistente o deshabilitado imprimía
-`Server unavailable` y el Python `Server unavailable: <nombre>`. Un comando inexistente
-termina con el mismo código y sin salida en ambos.
-
-`status` coincide byte a byte. `count` no existe como en el brief: en el Rust es la orden
-interna del tokenizador (`tokenizer::count_command`), sin equivalente Python, y no se compara.
-
-### Ronda de corrección de stdio (verdad de Python y casos límite)
-
-La decisión «exec directo o proxy MCP» y el entorno ahora siguen la verdad de Python
-(`py_truthy` en `lib.rs`, usada por `cli::server_spec` y `broker::direct_stdio`):
-
-- `enabled` falso (`false`, `0`, `null`, `""`) o servidor vacío `{}` ⇒ `Server unavailable: <nombre>`.
-- `command` vacío o no cadena ⇒ proxy, no `exec`; `disabled_tools` verdadero no array (p. ej. una
-  cadena) ⇒ proxy; `enabled_tools` presente (incluso `null`) ⇒ proxy.
-- `cwd` vacío se omite. `cwd` inexistente: el Python falla en `chdir` y su envoltorio imprime
-  `Extension operation failed: FileNotFoundError` (exit 1); Rust hace `chdir` él mismo antes del
-  `exec` e imprime la misma línea (`PermissionError`/`NotADirectoryError`/`OSError` según errno).
-- `env` con listas/diccionarios: `str()` de Python da el `repr` (`['a', 1, None, True, "it's"]`,
-  `{'k': [1.5, {'z': False}]}`); los `float` usan el `repr` de Python (`1e10` ⇒ `10000000000.0`,
-  `1e-5` ⇒ `1e-05`, `1e16` ⇒ `1e+16`); `false`/`null` ⇒ `False`/`None`.
-- `env.PATH` propio: el comando se busca con el `PATH` nuevo en ambos (caso `pathenv`).
-
-Comando inexistente: stderr queda vacío en ambos aunque `main` imprima «Extension command failed»,
-porque `Command::exec` hace el `dup2` de stderr a `/dev/null` en el propio proceso antes del `execvp`
-fallido (Python también redirige antes). Mismo código de salida (1).
-
-Diferencia conocida, fuera del `exec`: en el camino proxy con stdin cerrado antes de que el upstream
-inicialice (caso `filtered`/`dstring`/`emptycmd` con un hijo que no habla MCP), Python sale con 1
-(`Extension operation failed: ExceptionGroup`) y Rust con 0; la prueba solo exige rama proxy (sin
-volcado del comando) y stdout igual.
+- La validación replica presencia, `null`, tipos estructurales (objeto, lista, cadena, literal,
+  URL) y uniones; no replica las coerciones laxas de pydantic en escalares (por ejemplo
+  `"isError": 1` → `true`, `size: 3.0` → `3`, `"priority": "0.5"`), que el Rust reenvía tal cual.
+- En una unión `TextResourceContents | BlobResourceContents` con `text` y `blob` a la vez se
+  elige la primera variante; pydantic podría elegir otra en modo «smart».
+- Los fallos de transporte siguen saliendo como `-32603 "Upstream request failed"`; el Python
+  añade `for <nombre>: <clase de excepción>`.
+- El formato de los decimales coincide con el pydantic-core 2.46.5 del venv (`1e+16`); el
+  pydantic-core 2.33 del site de usuario escribe `1e16`. El oráculo es el venv.

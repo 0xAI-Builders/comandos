@@ -4,8 +4,10 @@
 //! necesitan para completar la secuencia de la prueba:
 //! - `POST /mcp` con una petición JSON-RPC: una única respuesta `application/json`.
 //! - `POST /mcp` con una notificación: `202 Accepted` y cuerpo vacío.
-//! - `initialize` emite `Mcp-Session-Id: fake-session`; las demás peticiones lo traen
-//!   de vuelta y se registra.
+//! - `initialize` contesta la versión pedida si el SDK Python la soporta (si no, la última) y
+//!   emite `Mcp-Session-Id: fake-session`; las demás peticiones lo traen de vuelta y se
+//!   registra (junto con la versión pedida en `initialize`).
+//! - `/mcp-badversion`: igual, pero `initialize` contesta una versión que nadie soporta.
 //! - `GET /mcp` (el SDK de Python abre ahí un stream SSE tras `notifications/initialized`):
 //!   `405 Method Not Allowed`. El cliente Python lo reintenta una vez y desiste sin
 //!   afectar la sesión.
@@ -14,7 +16,7 @@ use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
 use hyper::{Method, Request, Response, StatusCode, body::Incoming, service::service_fn};
 use hyper_util::rt::TokioIo;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::{
     convert::Infallible,
     net::TcpListener,
@@ -56,59 +58,77 @@ pub fn spawn(log: Arc<Mutex<Vec<String>>>) -> (u16, JoinHandle<()>) {
     (port, handle)
 }
 
-fn reply(status: StatusCode, body: Option<&Value>, session: bool) -> Response<Full<Bytes>> {
+fn reply(status: StatusCode, body: Option<String>, session: bool) -> Response<Full<Bytes>> {
     let mut builder = Response::builder().status(status);
     if session {
         builder = builder.header("mcp-session-id", SESSION);
     }
     let bytes = match body {
-        Some(value) => {
+        Some(text) => {
             builder = builder.header("content-type", "application/json");
-            Bytes::from(value.to_string())
+            Bytes::from(text)
         }
         None => Bytes::new(),
     };
     builder.body(Full::new(bytes)).expect("respuesta HTTP")
 }
 
-/// Respuesta JSON-RPC del servidor falso; claves en el orden en que las serializa el
-/// SDK de Python para que la paridad no dependa de reordenar.
-fn answer(request: &Value) -> Value {
-    let id = request["id"].clone();
+/// Versiones que acepta el SDK Python 1.30.0 (`mcp/shared/version.py`): el falso devuelve
+/// la pedida si está aquí, como hace un servidor MCP real.
+const SUPPORTED: [&str; 4] = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
+
+/// Respuesta JSON-RPC cruda. Se escribe a mano, no con `json!`, para mandar justo lo que
+/// pydantic reescribe en el Python: claves del sobre y de los modelos fuera de orden,
+/// `null` en campos opcionales y extras, `null` dentro de esquemas (que debe sobrevivir),
+/// enteros en `float` tipado (`priority`) y decimales con otra grafía (`1.50`, `1e3`, `1e16`).
+/// `bad_version` simula un upstream con una versión de protocolo que nadie soporta.
+fn answer(request: &Value, bad_version: bool) -> String {
+    let id = request["id"].to_string();
     let method = request["method"].as_str().unwrap_or("");
     let result = match method {
-        "initialize" => json!({
-            "protocolVersion": "2025-06-18",
-            "capabilities": {"tools": {}},
-            "serverInfo": {"name": "fake", "version": "1"}
-        }),
-        "tools/list" => json!({"tools": [
-            {
-                "name": "echo",
-                "description": "Devuelve el texto",
-                "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}}
-            },
-            {"name": "fail", "inputSchema": {"type": "object"}}
-        ]}),
+        "initialize" => {
+            let requested = request["params"]["protocolVersion"].as_str().unwrap_or("");
+            let version = if bad_version {
+                "1999-01-01"
+            } else if SUPPORTED.contains(&requested) {
+                requested
+            } else {
+                "2025-11-25"
+            };
+            format!(
+                r#"{{"protocolVersion":"{version}","capabilities":{{"tools":{{}}}},"serverInfo":{{"name":"fake","version":"1"}},"instructions":null}}"#
+            )
+        }
+        "tools/list" => {
+            return format!(
+                r#"{{"result":{{"tools":[{{"inputSchema":{{"type":"object","properties":{{"text":{{"type":"string","default":null,"x-weight":1.50,"x-max":1e16}}}}}},"name":"echo","title":null,"description":"Devuelve el texto","annotations":null}},{{"name":"fail","inputSchema":{{"type":"object"}},"x-extra":null}},{{"name":"bare","inputSchema":{{"type":"object"}}}}],"nextCursor":null}},"id":{id},"jsonrpc":"2.0"}}"#
+            );
+        }
         "tools/call" => match request["params"]["name"].as_str() {
-            Some("echo") => json!({"content": [
-                {"type": "text", "text": request["params"]["arguments"]["text"].clone()}
-            ]}),
-            Some("fail") => json!({
-                "content": [{"type": "text", "text": "fallo provocado"}],
-                "isError": true
-            }),
+            Some("echo") => {
+                let text = request["params"]["arguments"]["text"].to_string();
+                format!(
+                    r#"{{"content":[{{"text":{text},"type":"text","annotations":null,"_meta":null}}],"structuredContent":null}}"#
+                )
+            }
+            Some("fail") => r#"{"isError":true,"content":[{"type":"text","text":"fallo provocado","annotations":{"priority":1,"audience":null}}],"structuredContent":{"a":null,"n":1e3}}"#.into(),
+            // Sin `content`: el modelo `CallToolResult` no lo acepta.
+            Some("bare") => "{}".into(),
             _ => {
-                return json!({"jsonrpc": "2.0", "id": id,
-                    "error": {"code": -32602, "message": "Unknown tool"}});
+                return format!(
+                    r#"{{"jsonrpc":"2.0","id":{id},"error":{{"code":-32602,"message":"Unknown tool"}}}}"#
+                );
             }
         },
+        "resources/list" => r#"{"resources":[{"uri":"HTTPS://Example.COM/docs/../a b","name":"doc","title":null,"size":3}]}"#.into(),
+        "prompts/get" => r#"{"description":null,"messages":[{"content":{"type":"text","text":"hola","annotations":null},"role":"user"}]}"#.into(),
         _ => {
-            return json!({"jsonrpc": "2.0", "id": id,
-                "error": {"code": -32601, "message": "Method not found"}});
+            return format!(
+                r#"{{"jsonrpc":"2.0","id":{id},"error":{{"message":"Method not found","code":-32601,"data":null}}}}"#
+            );
         }
     };
-    json!({"jsonrpc": "2.0", "id": id, "result": result})
+    format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{result}}}"#)
 }
 
 async fn handle(
@@ -122,7 +142,9 @@ async fn handle(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("-")
         .to_owned();
-    if request.uri().path() != "/mcp" {
+    // `/mcp-badversion`: mismo servidor, pero con una versión de protocolo no soportada.
+    let bad_version = request.uri().path() == "/mcp-badversion";
+    if request.uri().path() != "/mcp" && !bad_version {
         log.lock()
             .unwrap()
             .push(format!("{method} {}", request.uri()));
@@ -151,15 +173,21 @@ async fn handle(
         return Ok(reply(StatusCode::BAD_REQUEST, None, false));
     };
     let rpc = message["method"].as_str().unwrap_or("").to_owned();
-    log.lock()
-        .unwrap()
-        .push(format!("POST {rpc} session={session}"));
+    let entry = if rpc == "initialize" {
+        format!(
+            "POST initialize session={session} version={}",
+            message["params"]["protocolVersion"]
+        )
+    } else {
+        format!("POST {rpc} session={session}")
+    };
+    log.lock().unwrap().push(entry);
     if message.get("id").is_none() {
         return Ok(reply(StatusCode::ACCEPTED, None, false));
     }
     Ok(reply(
         StatusCode::OK,
-        Some(&answer(&message)),
+        Some(answer(&message, bad_version)),
         rpc == "initialize",
     ))
 }
