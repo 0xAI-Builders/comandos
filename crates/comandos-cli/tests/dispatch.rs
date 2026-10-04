@@ -49,3 +49,13 @@ fn dispatch_install() {
         matches!(resolve("comandos", &v(&["install", "--stage"])), Command::Install(a) if a == v(&["--stage"]))
     );
 }
+
+#[test]
+fn dispatch_dash_and_cc_dash_alias() {
+    assert!(
+        matches!(resolve("comandos", &v(&["dash", "4777", "--no-open"])), Command::Dash(a) if a == v(&["4777", "--no-open"]))
+    );
+    assert!(
+        matches!(resolve("/home/x/.local/bin/cc-dash", &v(&["--no-open"])), Command::Dash(a) if a == v(&["--no-open"]))
+    );
+}
