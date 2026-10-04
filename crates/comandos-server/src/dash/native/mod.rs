@@ -208,7 +208,9 @@ impl Native {
     }
 
     /// Un trabajo sobre la base. `Err(Fault::Decline)` si el conjunto está
-    /// apagado o si la puerta de esquema rechaza ahora (y lo apaga).
+    /// apagado, si la puerta de esquema rechaza ahora o si el worker ya se
+    /// retiró (y en esos dos casos lo apaga). Solo el trabajo que entró en
+    /// pánico responde `HandlerError::Failure`; los demás se reenvían.
     pub async fn with_state<T, F>(&self, job: F) -> Result<T, Fault>
     where
         F: FnOnce(&mut StateBackend) -> T + Send + 'static,
@@ -220,13 +222,38 @@ impl Native {
         let Some(Some(caller)) = self.state.get() else {
             return Err(Fault::Decline);
         };
-        match caller
-            .call(move |backend: &mut StateBackend| backend.admit().map(|()| job(backend)))
-            .await?
-        {
-            Ok(value) => Ok(value),
-            Err(refusal) => {
+        if caller.stopped() {
+            self.disable(&Refusal::Retired);
+            return Err(Fault::Decline);
+        }
+        // Marca de que el trabajo empezó: si no empezó, no hubo efectos y
+        // se puede declinar con certeza.
+        let started = Arc::new(AtomicBool::new(false));
+        let mark = started.clone();
+        let called = caller
+            .call(move |backend: &mut StateBackend| {
+                mark.store(true, Ordering::Release);
+                backend.admit().map(|()| job(backend))
+            })
+            .await;
+        match called {
+            Ok(Ok(value)) => Ok(value),
+            Ok(Err(refusal)) => {
                 self.disable(&refusal);
+                Err(Fault::Decline)
+            }
+            // El trabajo corrió y no respondió: entró en pánico y el worker
+            // se retira. Esta petición es la única que recibe el 500.
+            Err(error) if started.load(Ordering::Acquire) => {
+                self.disable(&Refusal::Retired);
+                Err(Fault::Error(error))
+            }
+            // Nunca empezó (worker parado o retirado en la carrera): sin
+            // efectos, se reenvía al heredado.
+            Err(_) => {
+                if caller.stopped() {
+                    self.disable(&Refusal::Retired);
+                }
                 Err(Fault::Decline)
             }
         }
@@ -253,6 +280,8 @@ impl Native {
 
     /// Para el worker (si arrancó) y espera a que termine su trabajo en curso.
     pub async fn shutdown(&self) {
+        // Apagado ordenado: sin línea en stderr; lo que llegue tarde se reenvía.
+        self.enabled.store(false, Ordering::Release);
         let worker = self.worker.lock().unwrap_or_else(|p| p.into_inner()).take();
         if let Some(worker) = worker {
             let _ = worker.shutdown().await;

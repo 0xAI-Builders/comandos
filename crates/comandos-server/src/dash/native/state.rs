@@ -11,6 +11,9 @@ pub enum Refusal {
     Newer { found: i64, known: i64 },
     /// No se pudo abrir, consultar o migrar.
     Unopened(String),
+    /// El worker de la base se retiró (un trabajo entró en pánico): el
+    /// backend no se reutiliza y nunca se vuelve a abrir.
+    Retired,
 }
 
 impl Refusal {
@@ -23,6 +26,11 @@ impl Refusal {
             ),
             Refusal::Unopened(error) => format!(
                 "comandos dash: no se pudo abrir {}: {error}; \
+                 rutas nativas desactivadas, todo se reenvía al heredado",
+                path.display()
+            ),
+            Refusal::Retired => format!(
+                "comandos dash: el worker de {} se retiró tras un fallo; \
                  rutas nativas desactivadas, todo se reenvía al heredado",
                 path.display()
             ),

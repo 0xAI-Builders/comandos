@@ -172,6 +172,14 @@ impl<B> Clone for BackendCaller<B> {
     }
 }
 
+impl<B> BackendCaller<B> {
+    /// True once the worker stops admitting work (shutdown or retirement
+    /// after a panic). It never becomes false again.
+    pub fn stopped(&self) -> bool {
+        self.shared.stopping.load(Ordering::Acquire)
+    }
+}
+
 impl<B: 'static> BackendCaller<B> {
     pub async fn call<T, F>(&self, job: F) -> Result<T, HandlerError>
     where

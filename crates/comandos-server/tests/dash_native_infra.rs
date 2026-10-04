@@ -1,9 +1,9 @@
 //! Infraestructura de la Fase 2b: flag `--no-native`, ruta de la base,
 //! puerta de esquema y clase `Native` del enrutador.
 use comandos_server::dash::{
-    DEFAULT_LEGACY_PORT,
+    DEFAULT_LEGACY_PORT, build,
     native::{
-        Native, NativeOptions,
+        Fault, Native, NativeOptions,
         state::{Refusal, StateBackend},
     },
     parse_args,
@@ -12,6 +12,7 @@ use comandos_server::dash::{
 };
 use http::Method;
 use std::{fs, path::PathBuf, sync::Arc};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 fn root(tag: &str) -> PathBuf {
     let base = std::env::temp_dir().join(format!("cmd-native-{tag}-{}", std::process::id()));
@@ -133,5 +134,101 @@ async fn unopenable_database_disables_native() {
     assert!(!native.ready().await);
     assert!(!native.enabled());
     assert_eq!(native.refusals(), 1);
+    let _ = fs::remove_dir_all(&base);
+}
+
+/// Un pánico en un trabajo de la base retira el worker: esa petición es la
+/// única que recibe el fallo; las siguientes se declinan (y el frente las
+/// reenvía), con una sola línea en stderr y sin volver a abrir la base.
+#[tokio::test]
+async fn panicked_job_fails_once_then_native_declines() {
+    let base = root("panic");
+    let native = Native::new(options(&base));
+    assert!(native.ready().await);
+    let boom = native
+        .with_state(|_| -> u8 { panic!("estado inconsistente") })
+        .await;
+    assert!(matches!(
+        boom,
+        Err(Fault::Error(comandos_server::HandlerError::Failure))
+    ));
+    assert!(!native.enabled());
+    assert_eq!(native.refusals(), 1, "una sola línea en stderr");
+    for _ in 0..2 {
+        assert!(matches!(
+            native.with_state(|_| ()).await,
+            Err(Fault::Decline)
+        ));
+    }
+    assert!(!native.ready().await);
+    assert_eq!(native.refusals(), 1);
+    native.shutdown().await;
+    let _ = fs::remove_dir_all(&base);
+}
+
+/// Heredado falso: responde `{"legacy": true}` a una petición y cierra.
+async fn fake_legacy() -> (u16, tokio::task::JoinHandle<String>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let task = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut seen = Vec::new();
+        let mut chunk = [0u8; 1024];
+        while !seen.windows(4).any(|w| w == b"\r\n\r\n") {
+            let n = stream.read(&mut chunk).await.unwrap();
+            assert!(n > 0, "petición incompleta");
+            seen.extend_from_slice(&chunk[..n]);
+        }
+        let body = r#"{"legacy": true}"#;
+        let head = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+             Content-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        stream.write_all(head.as_bytes()).await.unwrap();
+        stream.write_all(body.as_bytes()).await.unwrap();
+        String::from_utf8_lossy(&seen).into_owned()
+    });
+    (port, task)
+}
+
+#[tokio::test]
+async fn front_forwards_after_worker_panic() {
+    let base = root("panic-front");
+    fs::create_dir_all(base.join("dash")).unwrap();
+    let (legacy_port, legacy) = fake_legacy().await;
+    let mut cfg = parse_args(&[], &base, Some(&legacy_port.to_string())).unwrap();
+    cfg.dash_dir = base.join("dash");
+    cfg.token = b"token-de-prueba".to_vec();
+    let (config, native) = build(cfg, Some(options(&base)));
+    let native = native.unwrap();
+    assert!(native.ready().await);
+    let boom = native.with_state(|_| -> u8 { panic!("fallo") }).await;
+    assert!(matches!(boom, Err(Fault::Error(_))));
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (stop, shutdown) = tokio::sync::watch::channel(false);
+    let front = tokio::spawn(comandos_server::serve(listener, config, shutdown));
+    let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
+        .await
+        .unwrap();
+    stream
+        .write_all(
+            format!("GET /prefs HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n")
+                .as_bytes(),
+        )
+        .await
+        .unwrap();
+    let mut wire = String::new();
+    stream.read_to_string(&mut wire).await.unwrap();
+    assert!(wire.starts_with("HTTP/1.1 200"), "{wire}");
+    assert!(wire.ends_with(r#"{"legacy": true}"#), "{wire}");
+    assert!(legacy.await.unwrap().starts_with("GET /prefs HTTP/1.1"));
+    assert_eq!(native.refusals(), 1, "una sola línea en stderr");
+
+    stop.send(true).unwrap();
+    front.await.unwrap().unwrap();
+    native.shutdown().await;
     let _ = fs::remove_dir_all(&base);
 }

@@ -134,3 +134,64 @@ fn cc_dash_alias_reaches_the_same_parser() {
     assert_eq!(output.status.code(), Some(2), "error de argumentos");
     assert!(String::from_utf8_lossy(&output.stderr).contains("--legacy-port"));
 }
+
+#[test]
+fn dash_native_off_never_opens_the_state_db_and_traces_forwards() {
+    let home = temp_home("native-off");
+    let port = free_port();
+    let mut child = base(&home)
+        .env("COMANDOS_DASH_NATIVE", "0")
+        .env("COMANDOS_DASH_TRACE_FORWARD", "1")
+        .args(["dash", &port.to_string()])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        let _ = BufReader::new(stdout).read_line(&mut line);
+        let _ = tx.send(line);
+    });
+    rx.recv_timeout(Duration::from_secs(10))
+        .expect("banner de arranque");
+
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    write!(
+        stream,
+        "GET /prefs?deviceId=secreto HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    let mut wire = String::new();
+    stream.read_to_string(&mut wire).unwrap();
+    assert!(wire.starts_with("HTTP/1.1 502"), "{wire}");
+
+    let killed = Command::new("kill")
+        .args(["-TERM", &child.id().to_string()])
+        .status()
+        .unwrap();
+    assert!(killed.success());
+    let output = child.wait_with_output().unwrap();
+    assert_eq!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // La traza es la línea exacta, sin la consulta (`deviceId` no aparece en ella).
+    assert_eq!(
+        stderr
+            .lines()
+            .filter(|l| *l == "comandos dash: reenvío GET /prefs")
+            .count(),
+        1,
+        "{stderr}"
+    );
+    assert!(
+        !home
+            .join(".local/state/comandos/app-state.sqlite3")
+            .exists(),
+        "con COMANDOS_DASH_NATIVE=0 la base no se abre"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
