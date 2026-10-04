@@ -152,6 +152,15 @@ Un solo motor para web, móvil, macOS y escritorio Linux:
   nunca la aplicación entera ni tmux. Corrige de raíz el incidente del 2026-10-02.
 - Móvil/tablet: la misma interfaz WASM como PWA por `tailscale serve` (`comandos mobile`), con
   la terminal web de §4.4. macOS: `comandos-app-mac` con la misma interfaz y terminal.
+- **Versión remota = versión de escritorio** (Jesús, 4-oct-2026): el tablero remoto/móvil es
+  exactamente el de escritorio — mismas pestañas, splits, sesiones, columna de uso, analítica,
+  notificaciones, sonidos, tipografía y diseño LED — sin recortes de funciones. Solo difieren
+  (1) los controles pensados para remoto: la barra de botones de la terminal (Esc, ⌫, flechas,
+  Ctrl+C, pegar…) y el campo de entrada que hoy documentan `docs/remote-terminal-input.md` y
+  `docs/remote-session-controls.md`, y (2) la disposición, que es *flex* y se adapta al ancho
+  del teléfono/tableta (columnas que se apilan, pestañas desplazables, terminal a ancho
+  completo con el teclado virtual abierto) sin cambiar los componentes ni su aspecto. Las
+  capturas de verificación de la Fase 3 comparan escritorio y remoto componente a componente.
 
 ### 4.6 Estado único
 
