@@ -236,7 +236,12 @@ fn claude_usage_matches_cc_usage_tool() {
 }
 
 /// (nombre, archivos de estado, caché previa con su antigüedad en s).
-type StatusScenario<'a> = (&'a str, &'a [(&'a str, String)], Option<(&'a str, u64)>);
+type StatusScenario<'a> = (
+    &'a str,
+    &'a [(&'a str, String)],
+    Option<(&'a str, u64)>,
+    &'a [(&'a str, &'a str)],
+);
 
 /// (stdout, código, archivos del directorio de la caché con modo y contenido).
 type StatusRun = (Vec<u8>, Option<i32>, Vec<(String, u32, Vec<u8>)>);
@@ -247,6 +252,7 @@ fn status_side(
     side: &str,
     states: &[(&str, String)],
     cache: Option<(&str, u64)>,
+    locale: &[(&str, &str)],
 ) -> StatusRun {
     let home = dir.join(format!("{name}-{side}"));
     let runtime = home.join("run");
@@ -272,13 +278,15 @@ fn status_side(
     }
     let fake = dir.join("fakebin");
     let runtime_env = runtime.to_string_lossy().into_owned();
+    let mut env = vec![("XDG_RUNTIME_DIR", runtime_env.as_str())];
+    env.extend_from_slice(locale);
     let (code, stdout) = run(
         "hooks/cc-status.sh",
         "claude-status",
         side,
         &home,
         &fake,
-        &[("XDG_RUNTIME_DIR", &runtime_env)],
+        &env,
         b"",
     );
     let mut files: Vec<(String, u32, Vec<u8>)> = fs::read_dir(&runtime)
@@ -377,20 +385,38 @@ fn claude_status_matches_cc_status() {
     ];
     let only_old: Vec<(&str, String)> = vec![("a.json", st("viejo", "waiting", 28801))];
     let empty_dir: Vec<(&str, String)> = vec![("leeme.txt", "x".into())];
-    let scenarios: Vec<StatusScenario> = vec![
-        ("mixto", &mixed, None),
-        ("aborta", &abort, None),
-        ("muchos", &many, None),
-        ("colgante", &dangling, None),
-        ("solo_viejos", &only_old, None),
-        ("sin_estado", &[], None),
-        ("estado_vacio", &empty_dir, None),
-        ("cache_fresca", &mixed, Some(("CACHÉ\n", 0))),
-        ("cache_vieja", &mixed, Some(("CACHÉ\n", 30))),
+    // El glob de bash ordena por la colación del locale: en bytes `Zeta` < `alfa` <
+    // `_b`, en `en_US`/`es_MX` `_b` < `alfa` < `éclair` < `Zeta`.
+    let collation: Vec<(&str, String)> = vec![
+        ("Zeta--s--1.json", st("Zeta", "waiting", 1)),
+        ("alfa--s--2.json", st("alfa", "waiting", 1)),
+        ("_b.json", st("guion", "done", 1)),
+        ("éclair.json", st("eclair", "done", 1)),
+        ("Abc.json", st("Abc", "waiting", 1)),
+        ("abc.json", st("abc", "done", 1)),
     ];
-    for (name, states, cache) in scenarios {
-        let bash = status_side(&dir, name, "bash", states, cache);
-        let rust = status_side(&dir, name, "rust", states, cache);
+    let en: &[(&str, &str)] = &[("LANG", "en_US.UTF-8")];
+    let es: &[(&str, &str)] = &[("LANG", "es_MX.UTF-8")];
+    let lc_all: &[(&str, &str)] = &[("LANG", "C.UTF-8"), ("LC_ALL", "en_US.UTF-8")];
+    let lc_collate: &[(&str, &str)] = &[("LANG", "en_US.UTF-8"), ("LC_COLLATE", "C")];
+    let scenarios: Vec<StatusScenario> = vec![
+        ("mixto", &mixed, None, &[]),
+        ("aborta", &abort, None, &[]),
+        ("muchos", &many, None, &[]),
+        ("colgante", &dangling, None, &[]),
+        ("solo_viejos", &only_old, None, &[]),
+        ("sin_estado", &[], None, &[]),
+        ("estado_vacio", &empty_dir, None, &[]),
+        ("cache_fresca", &mixed, Some(("CACHÉ\n", 0)), &[]),
+        ("cache_vieja", &mixed, Some(("CACHÉ\n", 30)), &[]),
+        ("colacion_en", &collation, None, en),
+        ("colacion_es", &collation, None, es),
+        ("colacion_lc_all", &collation, None, lc_all),
+        ("colacion_lc_collate", &collation, None, lc_collate),
+    ];
+    for (name, states, cache, locale) in scenarios {
+        let bash = status_side(&dir, name, "bash", states, cache, locale);
+        let rust = status_side(&dir, name, "rust", states, cache, locale);
         assert_eq!(
             String::from_utf8_lossy(&bash.0),
             String::from_utf8_lossy(&rust.0),

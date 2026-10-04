@@ -16,8 +16,8 @@ use std::path::{Path, PathBuf};
 const WAIT_ICON: &str = "\u{f0f3}";
 const DONE_ICON: &str = "\u{f00c}";
 
-/// Los `*.json` (sin ocultos) del directorio, ordenados como el glob de bash en un
-/// locale C/UTF-8 (orden de bytes).
+/// Los `*.json` (sin ocultos) del directorio, ordenados como el glob de bash: por
+/// la colación del locale del entorno (`LC_ALL` → `LC_COLLATE` → `LANG`).
 fn state_files(dir: &Path) -> Vec<PathBuf> {
     let mut files: Vec<OsString> = std::fs::read_dir(dir)
         .map(|entries| {
@@ -30,7 +30,8 @@ fn state_files(dir: &Path) -> Vec<PathBuf> {
                 .collect()
         })
         .unwrap_or_default();
-    files.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+    let order = super::collate::GlobOrder::from_env(env_bytes);
+    files.sort_by(|a, b| order.compare(a.as_bytes(), b.as_bytes()));
     files.into_iter().map(|n| dir.join(n)).collect()
 }
 

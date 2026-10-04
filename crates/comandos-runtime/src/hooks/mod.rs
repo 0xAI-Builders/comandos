@@ -12,6 +12,7 @@ mod claude_status;
 mod claude_usage;
 mod codex;
 mod codex_hooks;
+mod collate;
 mod conf;
 mod events_jsonl;
 mod gemini;
