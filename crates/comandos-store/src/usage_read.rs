@@ -1450,6 +1450,23 @@ pub fn record_pane(conn: &Connection, pane: &Object) -> Result<()> {
     Ok(())
 }
 
+/// `record_pane` de cada pane de `usage_live_panes` (cc-dash:7253), en una
+/// sola transacción: el error de un pane se ignora (su `except Exception:
+/// pass`) y los demás se registran. Devuelve cuántos se registraron; un fallo
+/// al abrir o confirmar la transacción es `Err` (que el que llama ignora).
+pub fn record_panes(conn: &Connection, panes: &[Object]) -> Result<usize> {
+    if panes.is_empty() {
+        return Ok(0);
+    }
+    let tx = conn.unchecked_transaction()?;
+    let recorded = panes
+        .iter()
+        .filter(|pane| record_pane(&tx, pane).is_ok())
+        .count();
+    tx.commit()?;
+    Ok(recorded)
+}
+
 /// `round(x)` de Python para `float`: entero, mitad al par.
 fn py_round(x: f64) -> Result<i64> {
     if x.is_nan() {

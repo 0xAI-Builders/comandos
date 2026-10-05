@@ -49,13 +49,15 @@ const SSH_TIMEOUT: Duration = Duration::from_secs(3);
 const IDENTITY_FORMAT: &str = "#{socket_path}\t#{pid}\t#{session_id}\t#{session_name}\t#{pane_id}\t#{pane_pid}\t#{pane_current_command}\t#{pane_current_path}";
 
 /// Lo que el trabajo bloqueante conserva entre cómputos (D1, D5): las cachés
-/// del Python que el frente tiene propias. Se toma sin `await` dentro.
+/// del Python que el frente tiene propias. Se toma sin `await` dentro. El
+/// registro de proveedores no vive aquí: es `Native::registry`, la caché
+/// única (B9) que comparten `/state`, `/usage/state` y `/providers`, con su
+/// propio candado corto (este se sostiene todo el escaneo de `/proc`).
 pub struct Blocking {
     records: RecordCache,
     transcripts: TranscriptCache,
     grok: GrokMetadataCache,
     accounts: AccountCache,
-    registry: RegistryCache,
 }
 
 impl Default for Blocking {
@@ -66,7 +68,6 @@ impl Default for Blocking {
             transcripts: TranscriptCache::new(128, 2_097_152),
             grok: GrokMetadataCache::new(128),
             accounts: AccountCache::default(),
-            registry: RegistryCache::default(),
         }
     }
 }
@@ -104,11 +105,13 @@ pub(crate) fn motor_results(hooks: &Path) -> Result<Map<String, Value>, StateFau
     }
 }
 
-/// `load_provider_registry()` con la caché compartida del motor de `/state`
-/// (B9 de la 2e: una sola `RegistryCache`). El candado solo cubre la carga.
+/// `load_provider_registry()` con la caché única del frente (`Native::registry`,
+/// B9 de la 2e). Su candado solo cubre la carga (lectura, validación e
+/// hidratación): nadie lo sostiene mientras escanea `/proc`, así que un
+/// `/usage/state` o un `/providers` no esperan al escaneo de `/state`.
 pub(crate) fn load_registry(
     opts: &NativeOptions,
-    cache: &mut Blocking,
+    cache: &Mutex<RegistryCache>,
 ) -> Result<Value, StateFault> {
     let repo = opts.repo_root.as_ref().ok_or(StateFault::Decline)?;
     let catalog = catalog_paths(
@@ -117,8 +120,7 @@ pub(crate) fn load_registry(
         opts.codex_home.as_deref(),
         opts.grok_home.as_deref(),
     );
-    cache
-        .registry
+    lock(cache)
         .load(&repo.join("config/providers.json"), &catalog)
         .map_err(unsure)
 }
@@ -160,9 +162,11 @@ fn scan(
     opts: &NativeOptions,
     panes: Vec<PaneRow>,
     shared: &Mutex<Blocking>,
+    registry: &Mutex<RegistryCache>,
 ) -> Result<Scan, StateFault> {
+    // El registro primero, con su candado corto y antes del de las cachés.
+    let registry = load_registry(opts, registry)?;
     let mut cache = lock(shared);
-    let registry = load_registry(opts, &mut cache)?;
     // `PaneInspector()` se crea al empezar `read_states`.
     let inspector = PaneInspector::new(&opts.home, opts.proc_root.as_path()).map_err(unsure)?;
     let (maps, external) = agent_maps(opts, &registry, &panes)?;
@@ -259,11 +263,12 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
     // 2. Escaneo bloqueante.
     *phase = "escaneo (registro, /proc, registros de estado, motor-results, tiers, pestañas)";
     let shared = native.states.shared.clone();
+    let registry_cache = native.registry.clone();
     let scan_opts = opts.clone();
     let scanned = native
         .states
         .serial
-        .run(move || scan(&scan_opts, panes, &shared))
+        .run(move || scan(&scan_opts, panes, &shared, &registry_cache))
         .await?;
     // 3. `session_labels()`: `tmux_sessions()` sin capturar sus excepciones.
     *phase = "sesiones de tmux";

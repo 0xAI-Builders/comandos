@@ -449,6 +449,12 @@ impl Native {
         &self.usage
     }
 
+    /// Las cachés que el escaneo de GET `/state` sostiene durante todo su salto
+    /// (para las pruebas de que ninguna otra ruta las espera).
+    pub fn state_caches(&self) -> &Arc<Mutex<states::gather::Blocking>> {
+        &self.states.shared
+    }
+
     /// La caché de límites de proveedor.
     pub fn limits(&self) -> &Arc<usage::limits::LimitsCache> {
         &self.limits

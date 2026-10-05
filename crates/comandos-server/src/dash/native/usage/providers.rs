@@ -13,11 +13,11 @@ use super::super::{
     files::{self, Strict},
     light::{error, read_reply},
     query::Query,
+    states::gather,
 };
 use crate::Request;
 use comandos_runtime::{
     Unsure, accounts,
-    model_catalog::catalog_paths,
     providers::{self, RegistryCache},
 };
 use http::StatusCode;
@@ -38,20 +38,10 @@ fn decline(_: Unsure) -> Fault {
 }
 
 /// `load_provider_registry()` en un hilo de bloqueo: lectura, validación e
-/// hidratación con el catálogo de modelos. Cualquier fallo declina.
+/// hidratación con el catálogo de modelos, con la caché única del frente (la
+/// misma de `/state` y `/usage/state`, B9). Cualquier fallo declina.
 fn load_registry(opts: &NativeOptions, cache: &Mutex<RegistryCache>) -> Result<Value, Fault> {
-    let repo = opts.repo_root.as_ref().ok_or(Fault::Decline)?;
-    let catalog = catalog_paths(
-        &opts.home,
-        &opts.cwd,
-        opts.codex_home.as_deref(),
-        opts.grok_home.as_deref(),
-    );
-    cache
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .load(&repo.join("config/providers.json"), &catalog)
-        .map_err(decline)
+    gather::load_registry(opts, cache).map_err(|_| Fault::Decline)
 }
 
 /// Lo que `provider_public_state` y `capability_matrix` leen del sistema.

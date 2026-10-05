@@ -5,8 +5,11 @@
 //! reenviada y el Python es dueño de sus efectos.
 //!
 //! Orden: el primer trabajo del carril de uso (`usage_settings`) es el único
-//! punto de declinar (D1); desde ahí un trabajo del carril que declina es un
-//! 500 (el carril se apagó a mitad y el Python habría leído). Saltos de
+//! punto de declinar (D1); desde ahí un trabajo del carril que declina se
+//! reintenta una vez (la puerta pudo dar `SQLITE_BUSY`) y, si vuelve a
+//! declinar, es un 500 (el carril se apagó a mitad y el Python habría leído).
+//! `record_pane` va en un trabajo propio del carril que la respuesta no espera
+//! (R3; la Tarea 8 lo pasa al carril de importación). Saltos de
 //! bloqueo por cómputo: uno (lecturas de `/proc`, registro, pestañas y
 //! archivos de entorno) y otro más solo cuando el memo no sirve (el ensamblado
 //! de `build_usage_state`); el resto son procesos async (`tmux`, `git`) y
@@ -25,7 +28,7 @@ use comandos_core::{
 };
 use comandos_runtime::{
     agent_procs::{AgentMaps, PANE_FORMAT, PaneRow, parse_pane_inventory},
-    providers,
+    providers::{self, RegistryCache},
 };
 use comandos_store::usage_read::{self, ReadError};
 use futures_util::{StreamExt, stream};
@@ -35,7 +38,7 @@ use std::{
     io,
     path::Path,
     sync::{
-        Arc, Mutex, MutexGuard,
+        Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
     time::Duration,
@@ -56,17 +59,14 @@ fn failure() -> Fault {
     Fault::Error(HandlerError::Failure)
 }
 
-/// D1: pasado el punto de declinar, un `Decline` (el carril se apagó a mitad)
-/// es el 500 que el Python no daría pero el frente tampoco puede reenviar.
+/// D1: pasado el punto de declinar, un `Decline` (el carril se apagó a mitad,
+/// o la puerta falló dos veces seguidas en `with_retry`) es el 500 que el
+/// Python no daría pero el frente tampoco puede reenviar.
 fn no_decline(fault: Fault) -> Fault {
     match fault {
         Fault::Decline => failure(),
         other => other,
     }
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(|p| p.into_inner())
 }
 
 /// La respuesta calculada: el cuerpo serializado, el estado del memo (lo que
@@ -149,7 +149,7 @@ impl UsageEngine {
         let want_panes = live.is_empty();
         let rows = native
             .usage
-            .with(move |u| -> Result<_, ReadError> {
+            .with_retry(move |u| -> Result<_, ReadError> {
                 let rows = usage_read::state_rows(&u.conn, now - STATE_WINDOW_S)?;
                 let panes = if want_panes {
                     usage_read::list_panes(&u.conn)?
@@ -276,23 +276,24 @@ struct Scanned {
     agents: Result<(HashMap<String, String>, AgentMaps), StateFault>,
 }
 
-/// El único salto de bloqueo de todo cómputo: pestañas, registro (con la caché
-/// del motor de `/state`, B9), agentes de `/proc` y los dos archivos de
-/// entorno. `live` son las sesiones de `tmux_sessions()`.
+/// El único salto de bloqueo de todo cómputo: pestañas, registro (la caché
+/// única del frente, B9), agentes de `/proc` y los dos archivos de entorno.
+/// `live` son las sesiones de `tmux_sessions()`. Ningún candado que sostenga
+/// el escaneo de `/state`: el del registro solo cubre su carga, así que este
+/// hilo del pool no queda aparcado detrás de `/state` (I2 de la revisión).
 fn scan(
     opts: &NativeOptions,
     panes: &[PaneRow],
     live: &HashSet<String>,
-    shared: &Mutex<gather::Blocking>,
+    registry: &Mutex<RegistryCache>,
 ) -> Scanned {
     let agents = (|| -> Result<_, StateFault> {
         // `session_labels()`: `tab_labels()` y `read_tab_history()`.
         let tabs = light::tab_labels(&opts.hooks)?;
         let history = light::read_tab_history(&opts.hooks)?;
         let labels = gather::session_labels(tabs, live, &history);
-        // `agent_pane_maps(agent_procs())`: el candado solo cubre la carga
-        // del registro.
-        let registry = gather::load_registry(opts, &mut lock(shared))?;
+        // `agent_pane_maps(agent_procs())`.
+        let registry = gather::load_registry(opts, registry)?;
         let (maps, _external) = gather::agent_maps(opts, &registry, panes)?;
         Ok((labels, maps))
     })();
@@ -324,10 +325,11 @@ async fn live_panes(
         Vec::new()
     };
     let scan_opts = opts.clone();
-    let shared = native.states.shared.clone();
-    let scanned = tokio::task::spawn_blocking(move || scan(&scan_opts, &panes, &sessions, &shared))
-        .await
-        .map_err(|_| failure())?;
+    let registry = native.registry.clone();
+    let scanned =
+        tokio::task::spawn_blocking(move || scan(&scan_opts, &panes, &sessions, &registry))
+            .await
+            .map_err(|_| failure())?;
     let (labels, maps) = match scanned.agents {
         Ok(found) => found,
         Err(StateFault::Decline) => return Ok((None, scanned.conf, scanned.usage_file)),
@@ -422,20 +424,23 @@ pub async fn compute(native: &Native) -> Result<UsageStateReply, Fault> {
     // 5. Límites (efecto: puede lanzar el refresco).
     let limits = native.limits.get(&native.refresh_deps());
     // 8. `record_pane` de cada panel vivo (errores ignorados, el `except
-    // Exception: pass` de 7253) y las dos lecturas del paso 7, en un solo
-    // trabajo del carril. El Python registra antes del memo; el memo no lee
-    // `usage_panes` cuando hay vivos, así que el orden no cambia la respuesta.
-    let to_record = if record && opts.usage_effects {
-        live.clone()
-    } else {
-        Vec::new()
-    };
+    // Exception: pass` de 7253): todos en una transacción, en un trabajo
+    // propio del carril que la respuesta no espera (R3). El Python registra
+    // antes del memo, pero el memo no lee `usage_panes` cuando hay vivos: el
+    // orden no cambia la respuesta, y un cómputo posterior sin vivos encola
+    // sus lecturas detrás (el carril es FIFO).
+    if record && opts.usage_effects && !live.is_empty() {
+        let usage = native.usage.clone();
+        let to_record = live.clone();
+        tokio::spawn(async move {
+            let _ = usage
+                .with(move |u| usage_read::record_panes(&u.conn, &to_record))
+                .await;
+        });
+    }
     let (alerts, recent) = native
         .usage
-        .with(move |u| -> Result<_, ReadError> {
-            for pane in &to_record {
-                let _ = usage_read::record_pane(&u.conn, pane);
-            }
+        .with_retry(|u| -> Result<_, ReadError> {
             let alerts = usage_read::list_alerts(&u.conn, ALERTS_LIMIT)?;
             let recent = usage_read::recent_interactions(&u.conn, 1)?;
             Ok((alerts, recent))

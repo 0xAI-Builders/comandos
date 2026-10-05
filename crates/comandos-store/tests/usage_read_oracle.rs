@@ -588,8 +588,15 @@ print(cc_usage.record_quota_snapshots(db, snaps, now=now))
         return;
     };
     let conn = usage::open_usage_db_at(&ours).unwrap();
-    usage_read::record_pane(&conn, pane.as_object().unwrap()).unwrap();
-    usage_read::record_pane(&conn, pane2.as_object().unwrap()).unwrap();
+    // `record_panes` (una transacción) con un pane que el Python no podría
+    // registrar (`raw` lista: `InterfaceError`, ignorado por su `except`): los
+    // otros dos quedan igual que con dos `record_pane` del Python.
+    let bad = json!({"tmux_session": "s9", "tmux_pane": "%9", "raw": [1]});
+    let panes: Vec<_> = [&pane, &bad, &pane2]
+        .iter()
+        .map(|p| p.as_object().unwrap().clone())
+        .collect();
+    assert_eq!(usage_read::record_panes(&conn, &panes).unwrap(), 2);
     let n = usage_read::record_quota_snapshots(&conn, snaps.as_array().unwrap(), NOW).unwrap();
     assert_eq!(n.to_string(), count.trim_end());
     let dump = |db: &Path| {

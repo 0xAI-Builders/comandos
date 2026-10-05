@@ -16,23 +16,63 @@ use std::{
 };
 use support::{TestHome, get, oracle::oracle, seed_usage, tmux_available};
 
-/// Lo volátil entre el frente y el Python (dos `time.time()` distintos).
-fn mask(text: &str) -> String {
+/// Los campos de `enrich_limits` que dependen del `time.time()` de cada lado:
+/// se comparan con tolerancia relativa en vez de borrarse.
+const TIMED: [&str; 3] = ["pace", "burn", "runsOutIn"];
+/// Tolerancia relativa de `TIMED` (los dos relojes distan poco: `pace` y
+/// `runsOutIn` cambian ~1e-5 relativo por segundo con ventanas de horas).
+const TOLERANCE: f64 = 1e-3;
+
+/// Lo volátil entre el frente y el Python (dos `time.time()` distintos):
+/// `generated_at`, `last_seen_at`, `captured_at` de los límites y
+/// `started_at` solo de los paneles vivos (`live`, por sesión; el de un panel
+/// guardado viene de la base y debe coincidir). Devuelve el cuerpo enmascarado
+/// y, aparte, los valores de `TIMED` por fila de límites.
+fn mask(text: &str, live: &[&str]) -> (String, Vec<Vec<Option<f64>>>) {
     let mut v: serde_json::Value = serde_json::from_str(text).unwrap();
     v["generated_at"] = serde_json::json!(0);
     for p in v["panes"].as_array_mut().into_iter().flatten() {
         p["last_seen_at"] = serde_json::json!(0);
-        p["started_at"] = serde_json::json!(0);
+        let session = p["tmux_session"].as_str().unwrap_or_default();
+        if live.contains(&session) {
+            p["started_at"] = serde_json::json!(0);
+        }
     }
-    // `enrich_limits` con el `time.time()` de cada lado.
+    let mut timed = Vec::new();
     for l in v["limits"].as_array_mut().into_iter().flatten() {
-        for key in ["captured_at", "pace", "burn", "runsOutIn"] {
+        if l.get("captured_at").is_some_and(|x| !x.is_null()) {
+            l["captured_at"] = serde_json::json!(0);
+        }
+        let mut row = Vec::new();
+        for key in TIMED {
+            row.push(l.get(key).and_then(serde_json::Value::as_f64));
             if l.get(key).is_some_and(|x| !x.is_null()) {
                 l[key] = serde_json::json!(0);
             }
         }
+        timed.push(row);
     }
-    comandos_core::json::response_dumps(&v).unwrap()
+    (comandos_core::json::response_dumps(&v).unwrap(), timed)
+}
+
+/// Cuerpos iguales salvo lo volátil, y `TIMED` dentro de `TOLERANCE`.
+fn assert_same_body(ours: &[u8], theirs: &str, live: &[&str]) {
+    let (ours, ours_timed) = mask(std::str::from_utf8(ours).unwrap(), live);
+    let (theirs, theirs_timed) = mask(theirs, live);
+    assert_eq!(ours, theirs);
+    for (a, b) in ours_timed
+        .iter()
+        .flatten()
+        .zip(theirs_timed.iter().flatten())
+    {
+        match (a, b) {
+            (Some(a), Some(b)) => {
+                let scale = a.abs().max(b.abs()).max(1.0);
+                assert!((a - b).abs() <= TOLERANCE * scale, "{a} frente a {b}");
+            }
+            (a, b) => assert_eq!(a, b),
+        }
+    }
 }
 
 /// `tmux` que siempre sale con 1 (sin servidor): ninguna prueba sin paneles
@@ -113,10 +153,7 @@ async fn usage_state_body_matches_python_without_live_panes() {
     let ours = state::compute(&native).await.ok().unwrap();
     let theirs = get(py.port, "/usage/state").await;
     assert_eq!(theirs.status, 200, "{}", theirs.text());
-    assert_eq!(
-        mask(std::str::from_utf8(&ours.body).unwrap()),
-        mask(&theirs.text())
-    );
+    assert_same_body(&ours.body, &theirs.text(), &[]);
     assert!(ours.live_panes.is_empty());
     let body: serde_json::Value = serde_json::from_slice(&ours.body).unwrap();
     let codex = body["limits"]
@@ -158,6 +195,36 @@ async fn usage_state_memo_single_flight() {
         !Arc::ptr_eq(&after, &states[0]),
         "otra generación: memo nuevo"
     );
+}
+
+#[tokio::test]
+async fn usage_state_does_not_wait_for_the_state_scan() {
+    // I2 de la revisión de T6: con las cachés de `/state` tomadas (su escaneo
+    // de `/proc` en curso), `/usage/state` carga el registro con su propio
+    // candado corto y termina; antes aparcaba un hilo del pool en ese candado.
+    let home = TestHome::new("ustate-unparked");
+    seed_usage(&home, "");
+    let mut opts = home.options();
+    opts.usage_effects = false;
+    no_tmux(&mut opts);
+    let native = Native::new(opts);
+    let caches = native.state_caches().clone();
+    let (held_tx, held_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let holder = std::thread::spawn(move || {
+        let _guard = caches.lock().unwrap_or_else(|p| p.into_inner());
+        held_tx.send(()).unwrap();
+        let _ = release_rx.recv_timeout(Duration::from_secs(30));
+    });
+    held_rx.recv().unwrap();
+    let done = tokio::time::timeout(Duration::from_secs(10), state::compute(&native)).await;
+    release_tx.send(()).unwrap();
+    holder.join().unwrap();
+    assert!(
+        matches!(done, Ok(Ok(_))),
+        "/usage/state esperó al escaneo de /state"
+    );
+    native.shutdown().await;
 }
 
 #[tokio::test]
@@ -234,6 +301,19 @@ async fn pane_rows(native: &Native) -> i64 {
         .unwrap()
 }
 
+/// `record_pane` va en un trabajo del carril que la respuesta no espera:
+/// las filas se miran hasta que lleguen a `want` (o 5 s).
+async fn settled_pane_rows(native: &Native, want: i64) -> i64 {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let rows = pane_rows(native).await;
+        if rows == want || std::time::Instant::now() > deadline {
+            return rows;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
 #[tokio::test]
 async fn usage_state_live_pane_records_and_git_root() {
     let home = TestHome::new("ustate-live");
@@ -262,7 +342,11 @@ async fn usage_state_live_pane_records_and_git_root() {
         assert_eq!(panes[0]["tmux_session"], "cx");
         assert_eq!(panes[0]["agent"], "codex");
         assert_eq!(reply.live_panes.len(), 1);
-        assert_eq!(pane_rows(&native).await, i64::from(effects));
+        // Sin efectos ni siquiera se lanza el trabajo de registro.
+        assert_eq!(
+            settled_pane_rows(&native, i64::from(effects)).await,
+            i64::from(effects)
+        );
         native.shutdown().await;
     }
 }
@@ -294,9 +378,9 @@ async fn usage_state_live_pane_matches_python() {
     let ours = state::compute(&native).await.ok().unwrap();
     let theirs = get(py.port, "/usage/state").await;
     assert_eq!(theirs.status, 200, "{}", theirs.text());
-    let ours = mask(std::str::from_utf8(&ours.body).unwrap());
-    assert!(ours.contains("\"cx\""), "{ours}");
-    assert_eq!(ours, mask(&theirs.text()));
+    let text = std::str::from_utf8(&ours.body).unwrap();
+    assert!(text.contains("\"cx\""), "{text}");
+    assert_same_body(&ours.body, &theirs.text(), &["cx"]);
 }
 
 /// Tiempos de un cómputo con 5000 turnos en la ventana: sin memo (un salto de
