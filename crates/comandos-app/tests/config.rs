@@ -1,7 +1,8 @@
 use comandos_app::config::{
     AppConfig, Entry, RunMode, TmuxServer, parse_args, resolve_entry, ui_lang,
 };
-use std::path::PathBuf;
+use std::os::unix::fs::{PermissionsExt, symlink};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn env_of(pairs: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<String> {
@@ -17,7 +18,68 @@ fn args(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| s.to_string()).collect()
 }
 
+/// Solo para sombra y live, que no tocan el disco al parsear.
 const SBX_ENV: &[(&str, &str)] = &[("HOME", "/h"), ("XDG_RUNTIME_DIR", "/run/user/1000")];
+
+/// Fixture del sandbox en un temporal propio: `run` (0700, el `XDG_RUNTIME_DIR`),
+/// `tmp` (el `TMPDIR`) y `home` (el `HOME`). Las pruebas del sandbox nunca usan el
+/// `/run/user/<uid>` real porque `parse_args` crea ahí la raíz.
+struct Fx {
+    base: PathBuf,
+    run: PathBuf,
+    tmp: PathBuf,
+    home: PathBuf,
+}
+
+impl Fx {
+    fn new(tag: &str) -> Self {
+        let base = scratch(tag);
+        let (run, tmp, home) = (base.join("run"), base.join("tmp"), base.join("home"));
+        for dir in [&run, &tmp, &home] {
+            std::fs::create_dir_all(dir).expect("fixture");
+        }
+        std::fs::set_permissions(&run, std::fs::Permissions::from_mode(0o700)).expect("0700");
+        Self {
+            base,
+            run,
+            tmp,
+            home,
+        }
+    }
+
+    fn env_with(
+        &self,
+        extra: &[(&'static str, String)],
+    ) -> impl Fn(&str) -> Option<String> + use<> {
+        let mut pairs = vec![
+            ("HOME", p(&self.home)),
+            ("XDG_RUNTIME_DIR", p(&self.run)),
+            ("TMPDIR", p(&self.tmp)),
+        ];
+        for (k, v) in extra {
+            pairs.retain(|(a, _)| a != k);
+            pairs.push((k, v.clone()));
+        }
+        env_owned(pairs)
+    }
+
+    fn env(&self) -> impl Fn(&str) -> Option<String> + use<> {
+        self.env_with(&[])
+    }
+
+    /// La raíz que el sandbox debe usar: `run` resuelto + `comandos-app-sbx`.
+    fn root(&self) -> PathBuf {
+        std::fs::canonicalize(&self.run)
+            .expect("run")
+            .join("comandos-app-sbx")
+    }
+}
+
+impl Drop for Fx {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.base);
+    }
+}
 
 #[test]
 fn entry_follows_argv0() {
@@ -37,18 +99,12 @@ fn entry_follows_argv0() {
 
 #[test]
 fn bare_comandos_app_is_sandbox() {
-    let env = env_of(&[
-        ("HOME", "/h"),
-        ("XDG_RUNTIME_DIR", "/run/user/1000"),
-        ("DISPLAY", ":1"),
-    ]);
+    let fx = Fx::new("bare");
+    let env = fx.env();
     let cfg = parse_args(&args(&[]), false, &env).expect("config");
     assert_eq!(cfg.mode(), RunMode::Sandbox);
     assert_eq!(cfg.tmux_socket(), Some("comandos-app-sbx"));
-    assert_eq!(
-        cfg.hooks_dir(),
-        PathBuf::from("/run/user/1000/comandos-app-sbx/hooks")
-    );
+    assert_eq!(cfg.hooks_dir(), fx.root().join("hooks"));
     assert_eq!(cfg.dash_url(), None);
     assert!(cfg.writes_allowed());
 }
@@ -122,7 +178,8 @@ fn lock_file_name_matches_python() {
     let env = env_of(SBX_ENV);
     let live = parse_args(&args(&["--mode", "live"]), false, &env).expect("live");
     let shadow = parse_args(&args(&["--mode", "shadow"]), false, &env).expect("shadow");
-    let sandbox = parse_args(&args(&[]), false, &env).expect("sandbox");
+    let fx = Fx::new("lock");
+    let sandbox = parse_args(&args(&[]), false, &fx.env()).expect("sandbox");
     assert_eq!(live.lock_file_name(":0/x"), "cc-app-0_x.lock");
     assert_eq!(shadow.lock_file_name(":0/x"), "sombra-app-rs-0_x.lock");
     assert_eq!(sandbox.lock_file_name(":0/x"), "comandos-app-sbx-0_x.lock");
@@ -149,7 +206,8 @@ fn lock_file_name_matches_python() {
 /// F20: el sandbox nunca habla con el tablero real; solo la banda de devhost.
 #[test]
 fn sandbox_dash_url_stays_in_devhost_band() {
-    let env = env_of(SBX_ENV);
+    let fx = Fx::new("band");
+    let env = fx.env();
     for port in ["4777", "4778", "4782", "7199", "7400", "8080", "40000"] {
         let url = format!("http://127.0.0.1:{port}");
         let err = parse_args(&args(&["--dash-url", &url]), false, &env).unwrap_err();
@@ -176,7 +234,8 @@ fn sandbox_dash_url_stays_in_devhost_band() {
 /// El sandbox siempre lleva un servidor tmux propio: ni ausente ni `default`.
 #[test]
 fn sandbox_always_carries_a_private_socket() {
-    let env = env_of(SBX_ENV);
+    let fx = Fx::new("socket");
+    let env = fx.env();
     for bad in ["default", "", "../x", "a/b", "con espacio"] {
         assert!(
             parse_args(&args(&["--tmux-socket", bad]), false, &env).is_err(),
@@ -204,24 +263,30 @@ fn sandbox_always_carries_a_private_socket() {
 /// F10: el sandbox no puede apuntar sus hooks a los reales.
 #[test]
 fn sandbox_refuses_real_hooks_dir() {
-    let env = env_of(SBX_ENV);
+    let fx = Fx::new("realhooks");
+    let env = fx.env();
+    let hooks = fx.home.join(".claude/hooks");
     for bad in [
-        "/h/.claude/hooks",
-        "/h/.claude/hooks/",
-        "/h/.claude/./hooks",
-        "/h/.claude/hooks/sub",
+        hooks.clone(),
+        hooks.join("sub"),
+        fx.home.join(".claude/./hooks"),
     ] {
         assert!(
-            parse_args(&args(&["--hooks-dir", bad]), false, &env).is_err(),
-            "{bad}"
+            parse_args(&args(&["--hooks-dir", &p(&bad)]), false, &env).is_err(),
+            "{}",
+            bad.display()
         );
     }
-    let cfg = parse_args(&args(&["--hooks-dir", "/tmp/sbx-hooks"]), false, &env).expect("temporal");
-    assert_eq!(cfg.hooks_dir(), PathBuf::from("/tmp/sbx-hooks"));
-    assert_eq!(
-        cfg.sandbox_root(),
-        Some(PathBuf::from("/run/user/1000/comandos-app-sbx").as_path())
-    );
+    let cfg = parse_args(
+        &args(&["--hooks-dir", &p(&fx.tmp.join("sbx-hooks"))]),
+        false,
+        &env,
+    )
+    .expect("temporal");
+    let tmp = std::fs::canonicalize(&fx.tmp).expect("tmp");
+    assert_eq!(cfg.hooks_dir(), tmp.join("sbx-hooks"));
+    assert_eq!(cfg.sandbox_root(), Some(fx.root().as_path()));
+    assert_eq!(cfg.sandbox_temp(), Some(tmp.as_path()));
 }
 
 fn scratch(tag: &str) -> PathBuf {
@@ -261,6 +326,7 @@ fn sandbox_writes_only_inside_its_roots() {
     ] {
         std::fs::create_dir_all(dir).expect("fixture");
     }
+    std::fs::set_permissions(&run, std::fs::Permissions::from_mode(0o700)).expect("0700");
     // Enlaces dentro del temporal permitido: uno sale a los hooks «reales», otro se queda dentro.
     std::os::unix::fs::symlink(home.join(".claude/hooks"), tmp.join("link")).expect("link");
     std::os::unix::fs::symlink(tmp.join("dentro"), tmp.join("inlink")).expect("inlink");
@@ -348,8 +414,10 @@ fn only_shadow_forbids_writes() {
     let env = env_of(SBX_ENV);
     let mode = |m: &str| parse_args(&args(&["--mode", m]), false, &env).expect(m);
     assert!(!mode("shadow").writes_allowed());
-    assert!(mode("sandbox").writes_allowed());
     assert!(mode("live").writes_allowed());
+    let fx = Fx::new("writes");
+    let sandbox = parse_args(&args(&["--mode", "sandbox"]), false, &fx.env()).expect("sbx");
+    assert!(sandbox.writes_allowed());
 }
 
 /// `COMANDOS_DASH_URL`: vacío = sin definir; se lee en sombra/live, nunca en sandbox.
@@ -368,7 +436,9 @@ fn dash_env_rules() {
     );
     let shadow = parse_args(&args(&["--mode", "shadow"]), true, &env).expect("shadow");
     assert_eq!(shadow.dash_url(), Some("http://127.0.0.1:7311"));
-    let sandbox = parse_args(&args(&["--mode", "sandbox"]), true, &env).expect("sandbox");
+    let fx = Fx::new("dashenv");
+    let env_sbx = fx.env_with(&[("COMANDOS_DASH_URL", "http://127.0.0.1:7311/".into())]);
+    let sandbox = parse_args(&args(&["--mode", "sandbox"]), true, &env_sbx).expect("sandbox");
     assert_eq!(sandbox.dash_url(), None);
     let env = env_of(&[("HOME", "/h"), ("COMANDOS_DASH_URL", "http://example.com")]);
     let err = parse_args(&args(&[]), true, &env).unwrap_err();
@@ -387,6 +457,171 @@ fn missing_home_and_dash_led_socket_are_errors() {
     assert!(parse_args(&args(&[]), true, &env).is_err());
     let env = env_of(SBX_ENV);
     assert!(parse_args(&args(&["--tmux-socket", "-x"]), false, &env).is_err());
+}
+
+fn mode_of(path: &Path) -> u32 {
+    std::fs::symlink_metadata(path)
+        .expect("lstat")
+        .permissions()
+        .mode()
+        & 0o7777
+}
+
+/// Ronda 2, N1: la raíz del sandbox es un directorio real y propio, creado 0700.
+#[test]
+fn sandbox_root_must_be_a_private_real_dir() {
+    // Se crea con 0700 si no existe.
+    let fx = Fx::new("rootnew");
+    let cfg = parse_args(&args(&[]), false, &fx.env()).expect("nueva");
+    assert_eq!(cfg.sandbox_root(), Some(fx.root().as_path()));
+    assert_eq!(mode_of(&fx.root()), 0o700);
+    // TMPDIR válido: no hace falta el temporal privado.
+    assert!(!fx.root().join("tmp").exists());
+
+    // La raíz como enlace: a estado real (fixture) o a cualquier otro sitio.
+    let fx = Fx::new("rootlink");
+    let state = fx.home.join(".claude/hooks");
+    std::fs::create_dir_all(&state).expect("fixture");
+    let other = fx.base.join("otro");
+    std::fs::create_dir_all(&other).expect("fixture");
+    for target in [&state, &other] {
+        let _ = std::fs::remove_file(fx.run.join("comandos-app-sbx"));
+        symlink(target, fx.run.join("comandos-app-sbx")).expect("link");
+        for extra in [vec![], vec!["--hooks-dir".to_string(), p(&state)]] {
+            let err = parse_args(&extra, false, &fx.env()).expect_err("enlace aceptado");
+            assert!(err.contains("enlace"), "{err}");
+        }
+    }
+    assert_eq!(std::fs::read_dir(&state).expect("hooks").count(), 0);
+
+    // Raíz existente con escritura de grupo u otros.
+    for mode in [0o770, 0o775, 0o757, 0o1777] {
+        let fx = Fx::new(&format!("rootmode{mode:o}"));
+        let root = fx.run.join("comandos-app-sbx");
+        std::fs::create_dir(&root).expect("raíz");
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(mode)).expect("chmod");
+        let err = parse_args(&args(&[]), false, &fx.env()).expect_err("modo aceptado");
+        assert!(
+            err.contains("escritura de grupo u otros"),
+            "{mode:o}: {err}"
+        );
+    }
+    // Raíz que no es directorio.
+    let fx = Fx::new("rootfile");
+    std::fs::write(fx.run.join("comandos-app-sbx"), "").expect("archivo");
+    assert!(parse_args(&args(&[]), false, &fx.env()).is_err());
+    // `XDG_RUNTIME_DIR` con escritura de grupo: tampoco.
+    let fx = Fx::new("runmode");
+    std::fs::set_permissions(&fx.run, std::fs::Permissions::from_mode(0o770)).expect("chmod");
+    assert!(parse_args(&args(&[]), false, &fx.env()).is_err());
+    assert!(!fx.run.join("comandos-app-sbx").exists());
+}
+
+/// Ronda 2, N1/N2: ninguna ancla puede pisar estado real (fixture con `HOME` propio).
+#[test]
+fn sandbox_anchors_never_land_on_real_state() {
+    let fx = Fx::new("anchors");
+    for dir in [".claude/hooks", ".local/state", ".ssh", ".codex", "tmp"] {
+        std::fs::create_dir_all(fx.home.join(dir)).expect("fixture");
+    }
+    symlink(fx.home.join(".claude"), fx.base.join("link-claude")).expect("link");
+    let acct = fx.base.join("acct");
+    std::fs::create_dir_all(acct.join("x")).expect("acct");
+    let root = fx.root();
+    // `XDG_RUNTIME_DIR` dentro de estado real: error, y no se crea nada ahí.
+    for runtime in [
+        fx.home.join(".claude"),
+        fx.base.join("link-claude"),
+        fx.home.join(".ssh"),
+    ] {
+        let env = fx.env_with(&[("XDG_RUNTIME_DIR", p(&runtime))]);
+        let err = parse_args(&args(&[]), false, &env).expect_err("runtime en estado real");
+        assert!(err.contains("estado real"), "{err}");
+        assert!(!runtime.join("comandos-app-sbx").exists());
+    }
+    // TMPDIR sobre estado real (igual, dentro, contiene, enlace, CLAUDE_CONFIG_DIR, casa):
+    // se descarta y el temporal pasa a `raíz/tmp`, privado.
+    let tmpdirs = [
+        fx.home.join(".claude"),
+        fx.home.join(".claude/hooks"),
+        fx.home.join(".claude/hooks/no-existe"),
+        fx.home.join(".local"),
+        fx.home.join(".codex"),
+        fx.base.join("link-claude"),
+        fx.home.clone(),
+        fx.base.clone(),
+        acct.join("x"),
+        PathBuf::from("/"),
+    ];
+    for tmpdir in &tmpdirs {
+        let env = fx.env_with(&[("TMPDIR", p(tmpdir)), ("CLAUDE_CONFIG_DIR", p(&acct))]);
+        let cfg = parse_args(&args(&[]), false, &env)
+            .unwrap_or_else(|e| panic!("{}: {e}", tmpdir.display()));
+        assert_eq!(
+            cfg.sandbox_temp(),
+            Some(root.join("tmp").as_path()),
+            "{}",
+            tmpdir.display()
+        );
+        assert_eq!(mode_of(&root.join("tmp")), 0o700);
+        for hooks in [
+            fx.home.join(".claude/hooks"),
+            tmpdir.join("hooks"),
+            acct.join("x/h"),
+        ] {
+            assert!(
+                parse_args(&args(&["--hooks-dir", &p(&hooks)]), false, &env).is_err(),
+                "TMPDIR={} --hooks-dir {}",
+                tmpdir.display(),
+                hooks.display()
+            );
+        }
+    }
+    // Dentro de la casa pero fuera del estado (`~/tmp`) sigue valiendo.
+    let env = fx.env_with(&[("TMPDIR", p(&fx.home.join("tmp")))]);
+    let cfg = parse_args(&args(&[]), false, &env).expect("~/tmp");
+    let home_tmp = std::fs::canonicalize(fx.home.join("tmp")).expect("tmp");
+    assert_eq!(cfg.sandbox_temp(), Some(home_tmp.as_path()));
+    assert_eq!(
+        std::fs::read_dir(fx.home.join(".claude/hooks"))
+            .expect("hooks")
+            .count(),
+        0
+    );
+}
+
+/// Ronda 2: con `HOME` falso, la lista de respaldo también usa la casa de passwd. Solo
+/// se pasan rutas como texto (TMPDIR y --hooks-dir); `parse_args` no escribe en ellas.
+#[test]
+fn faked_home_still_fences_the_passwd_home() {
+    let user = nix::unistd::User::from_uid(nix::unistd::getuid())
+        .expect("passwd")
+        .expect("usuario");
+    let fx = Fx::new("fakehome");
+    let root = fx.root();
+    let parent = user
+        .dir
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("/"));
+    for tmpdir in [
+        user.dir.join(".claude"),
+        user.dir.join(".ssh"),
+        user.dir.clone(),
+        parent,
+    ] {
+        let env = fx.env_with(&[("TMPDIR", p(&tmpdir))]);
+        let cfg = parse_args(&args(&[]), false, &env)
+            .unwrap_or_else(|e| panic!("{}: {e}", tmpdir.display()));
+        assert_eq!(
+            cfg.sandbox_temp(),
+            Some(root.join("tmp").as_path()),
+            "{}",
+            tmpdir.display()
+        );
+        let real_hooks = user.dir.join(".claude/hooks");
+        assert!(parse_args(&args(&["--hooks-dir", &p(&real_hooks)]), false, &env).is_err());
+    }
 }
 
 /// F21: `CC_LANG` de `cc-notify.conf`; si no, `$LANG`.

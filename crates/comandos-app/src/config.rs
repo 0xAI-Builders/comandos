@@ -8,10 +8,16 @@
 //! la configuración no puede caer por descuido en el servidor del usuario.
 //!
 //! En sandbox, además, toda ruta en la que la app escribe se resuelve (enlaces
-//! incluidos) y tiene que quedar dentro de `sandbox_root()` o del directorio temporal
-//! del proceso: es una lista de permitidos, no de prohibidos.
+//! incluidos) y tiene que quedar dentro de `sandbox_root()` o de `sandbox_temp()`: es
+//! una lista de permitidos. Las dos anclas se validan aparte: la raíz es un directorio
+//! real (no un enlace) del usuario, sin escritura de grupo ni de otros, dentro del
+//! `runtime_dir` resuelto; y ninguna ancla puede ser, contener ni estar dentro del
+//! estado real (lista de respaldo `STATE_DIRS`, con el `HOME` del entorno y el de passwd).
 use std::ffi::OsString;
+use std::fs::{DirBuilder, Metadata};
+use std::io::ErrorKind;
 use std::ops::RangeInclusive;
+use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 use std::path::{Component, Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,9 +91,17 @@ pub enum TmuxServer<'a> {
 /// El modo con lo que cada uno exige: el sandbox siempre trae socket y raíz propios.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Mode {
-    Sandbox { socket: SocketLabel, root: PathBuf },
-    Shadow { socket: Option<SocketLabel> },
-    Live { socket: Option<SocketLabel> },
+    Sandbox {
+        socket: SocketLabel,
+        root: PathBuf,
+        temp: PathBuf,
+    },
+    Shadow {
+        socket: Option<SocketLabel>,
+    },
+    Live {
+        socket: Option<SocketLabel>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,6 +156,16 @@ impl AppConfig {
     pub fn sandbox_root(&self) -> Option<&Path> {
         match &self.mode {
             Mode::Sandbox { root, .. } => Some(root),
+            Mode::Shadow { .. } | Mode::Live { .. } => None,
+        }
+    }
+
+    /// Temporal del sandbox, ya validado: `TMPDIR` (o `/tmp`) resuelto, o, si ese cae
+    /// sobre estado real, `sandbox_root()/tmp` (privado, 0700). Los temporales del
+    /// sandbox van aquí, no a `std::env::temp_dir()`.
+    pub fn sandbox_temp(&self) -> Option<&Path> {
+        match &self.mode {
+            Mode::Sandbox { temp, .. } => Some(temp),
             Mode::Shadow { .. } | Mode::Live { .. } => None,
         }
     }
@@ -297,18 +321,141 @@ fn resolve(path: &Path) -> Result<PathBuf, String> {
     Err(format!("{}: ningún ancestro existe", path.display()))
 }
 
-/// Raíces donde el sandbox puede escribir, ya resueltas. Se descarta la raíz que sea
-/// `/` o que contenga el `HOME` (un `TMPDIR=/home` no abre la puerta a `~`).
-fn sandbox_write_roots(root: &Path, temp: &Path, home: &Path) -> Result<Vec<PathBuf>, String> {
-    let home = resolve(home).unwrap_or_else(|_| home.to_path_buf());
-    let mut roots = Vec::new();
-    for candidate in [root, temp] {
-        let resolved = resolve(candidate)?;
-        if resolved.parent().is_some() && !home.starts_with(&resolved) {
-            roots.push(resolved);
+/// Estado real que ninguna ancla del sandbox puede ser, contener ni pisar
+/// (relativo a cada `HOME`; `$CLAUDE_CONFIG_DIR` se añade aparte).
+const STATE_DIRS: &[&str] = &[
+    ".claude",
+    ".claude-accounts",
+    ".codex",
+    ".config/comandos",
+    ".local/share/comandos",
+    ".cache/comandos",
+    ".local/state",
+    ".ssh",
+];
+
+/// Lista de respaldo: estado real y casas (del entorno y de passwd), cada una en forma
+/// absoluta y resuelta.
+struct Fence {
+    /// Ninguna ancla puede ser igual, contener ni estar dentro.
+    state: Vec<PathBuf>,
+    /// Ninguna ancla puede ser igual ni contener (dentro de la casa sí: `~/tmp`).
+    homes: Vec<PathBuf>,
+}
+
+impl Fence {
+    fn new(env_home: &Path, uid: nix::unistd::Uid, env: &dyn Fn(&str) -> Option<String>) -> Self {
+        let passwd_home = nix::unistd::User::from_uid(uid)
+            .ok()
+            .flatten()
+            .map(|u| u.dir);
+        let raw_homes: Vec<PathBuf> = std::iter::once(env_home.to_path_buf())
+            .chain(passwd_home)
+            .collect();
+        let mut raw_state: Vec<PathBuf> = raw_homes
+            .iter()
+            .flat_map(|h| STATE_DIRS.iter().map(move |d| h.join(d)))
+            .collect();
+        raw_state.extend(
+            env("CLAUDE_CONFIG_DIR")
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from),
+        );
+        Self {
+            state: Self::forms(&raw_state),
+            homes: Self::forms(&raw_homes),
         }
     }
-    Ok(roots)
+
+    fn forms(paths: &[PathBuf]) -> Vec<PathBuf> {
+        let mut out: Vec<PathBuf> = Vec::new();
+        for path in paths {
+            for form in [absolute(path).ok(), resolve(path).ok()]
+                .into_iter()
+                .flatten()
+            {
+                if !out.contains(&form) {
+                    out.push(form);
+                }
+            }
+        }
+        out
+    }
+
+    /// `None` si `anchor` (ya resuelta) es aceptable; si no, el motivo.
+    fn refuse(&self, anchor: &Path) -> Option<String> {
+        if anchor.parent().is_none() {
+            return Some("es la raíz del sistema".into());
+        }
+        if let Some(state) = self
+            .state
+            .iter()
+            .find(|d| anchor.starts_with(d) || d.starts_with(anchor))
+        {
+            return Some(format!("pisa estado real ({})", state.display()));
+        }
+        self.homes
+            .iter()
+            .find(|h| h.starts_with(anchor))
+            .map(|h| format!("contiene la casa {}", h.display()))
+    }
+}
+
+/// Lo que importa de un directorio para fiarse de él.
+#[derive(Debug, Clone, Copy)]
+struct DirFacts {
+    symlink: bool,
+    dir: bool,
+    owner: u32,
+    mode: u32,
+}
+
+impl DirFacts {
+    fn of(meta: &Metadata) -> Self {
+        Self {
+            symlink: meta.file_type().is_symlink(),
+            dir: meta.file_type().is_dir(),
+            owner: meta.uid(),
+            mode: meta.mode(),
+        }
+    }
+}
+
+/// Un directorio privado: real (no enlace), del usuario y sin escritura de grupo ni otros.
+fn private_dir_verdict(what: &str, path: &Path, facts: DirFacts, uid: u32) -> Result<(), String> {
+    let why = if facts.symlink {
+        "es un enlace simbólico".to_string()
+    } else if !facts.dir {
+        "no es un directorio".to_string()
+    } else if facts.owner != uid {
+        format!("es del uid {}, no del {uid}", facts.owner)
+    } else if facts.mode & 0o022 != 0 {
+        format!(
+            "tiene escritura de grupo u otros (modo {:o})",
+            facts.mode & 0o7777
+        )
+    } else {
+        return Ok(());
+    };
+    Err(format!("en sandbox {what} ({}) {why}", path.display()))
+}
+
+/// `lstat` de `path`; si no existe, `mkdir` 0700 (un solo nivel) y otra vez `lstat`.
+fn ensure_private_dir(what: &str, path: &Path, uid: u32) -> Result<(), String> {
+    let fail = |e: std::io::Error| format!("en sandbox {what} ({}): {e}", path.display());
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => {}
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            match DirBuilder::new().mode(0o700).create(path) {
+                Ok(()) => {}
+                Err(e) if e.kind() == ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(fail(e)),
+            }
+        }
+        Err(e) => return Err(fail(e)),
+    }
+    let meta = std::fs::symlink_metadata(path).map_err(fail)?;
+    private_dir_verdict(what, path, DirFacts::of(&meta), uid)
 }
 
 /// Resuelve `path` y exige que quede dentro de alguna de `roots`.
@@ -341,8 +488,13 @@ fn repo_root(hooks: &Path, env: &dyn Fn(&str) -> Option<String>) -> Option<PathB
 }
 
 /// Lee la configuración de los argumentos y del entorno `env` (en el binario, el del
-/// proceso). El temporal permitido al sandbox es `TMPDIR` o `/tmp`, la misma regla que
+/// proceso). El temporal candidato del sandbox es `TMPDIR` o `/tmp`, la misma regla que
 /// `std::env::temp_dir()`, leída de `env` para que las pruebas no muten el entorno.
+///
+/// En sandbox tiene un efecto: crea (`mkdir` 0700, un nivel) el `runtime_dir`, la raíz
+/// y, si hace falta, `raíz/tmp`, y comprueba con `lstat` que son directorios propios
+/// sin escritura de grupo ni de otros. Los errores de argumentos salen antes de tocar
+/// el disco.
 pub fn parse_args(
     args: &[String],
     default_live: bool,
@@ -401,26 +553,44 @@ pub fn parse_args(
     };
     let (mode, hooks_dir, dash_url, web_data_dir, web_cache_dir) = match mode {
         RunMode::Sandbox => {
-            let temp = env("TMPDIR")
-                .filter(|v| !v.is_empty())
-                .map_or_else(|| PathBuf::from("/tmp"), PathBuf::from);
-            let wanted_root = runtime_dir.join(SANDBOX_NAME);
-            let roots = sandbox_write_roots(&wanted_root, &temp, &home)?;
-            let root = confine("la raíz del sandbox", &wanted_root, &roots)?;
-            let hooks_dir = confine(
-                "--hooks-dir",
-                &hooks.unwrap_or_else(|| root.join("hooks")),
-                &roots,
-            )?;
+            // Primero lo que no toca el disco: un error aquí no crea nada.
             let socket = match socket {
                 Some(label) => label,
                 None => SocketLabel::new(SANDBOX_NAME)?,
             };
             let dash_url = dash.map(|u| sandbox_dash(&u)).transpose()?;
+            let fence = Fence::new(&home, uid, env);
+            // Ancla 1: la raíz cuelga del `runtime_dir` resuelto, nunca de sí misma.
+            let runtime =
+                resolve(&runtime_dir).map_err(|e| format!("en sandbox XDG_RUNTIME_DIR: {e}"))?;
+            let root = runtime.join(SANDBOX_NAME);
+            if let Some(why) = fence.refuse(&root) {
+                return Err(format!("en sandbox la raíz {} {why}", root.display()));
+            }
+            ensure_private_dir("XDG_RUNTIME_DIR", &runtime, uid.as_raw())?;
+            ensure_private_dir("la raíz", &root, uid.as_raw())?;
+            // Ancla 2: `TMPDIR` (o `/tmp`) si no pisa estado real; si no, uno privado.
+            let wanted_temp = env("TMPDIR")
+                .filter(|v| !v.is_empty())
+                .map_or_else(|| PathBuf::from("/tmp"), PathBuf::from);
+            let temp = match resolve(&wanted_temp) {
+                Ok(t) if fence.refuse(&t).is_none() => t,
+                _ => {
+                    let private = root.join("tmp");
+                    ensure_private_dir("el temporal privado", &private, uid.as_raw())?;
+                    private
+                }
+            };
+            let roots = [root.clone(), temp.clone()];
+            let hooks_dir = confine(
+                "--hooks-dir",
+                &hooks.unwrap_or_else(|| root.join("hooks")),
+                &roots,
+            )?;
             let data = confine("los datos web", &root.join("data"), &roots)?;
             let cache = confine("la caché web", &root.join("cache"), &roots)?;
             (
-                Mode::Sandbox { socket, root },
+                Mode::Sandbox { socket, root, temp },
                 hooks_dir,
                 dash_url,
                 data,
@@ -478,5 +648,43 @@ pub fn ui_lang(hooks_dir: &Path, lang_env: Option<&str>) -> &'static str {
         Some("en") => "en",
         _ if lang_env.is_some_and(|l| l.to_lowercase().starts_with("es")) => "es",
         _ => "en",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DirFacts, private_dir_verdict};
+    use std::path::Path;
+
+    fn facts(symlink: bool, dir: bool, owner: u32, mode: u32) -> DirFacts {
+        DirFacts {
+            symlink,
+            dir,
+            owner,
+            mode,
+        }
+    }
+
+    /// Lo que no se puede simular sin root (otro dueño) se prueba con metadatos inyectados.
+    #[test]
+    fn private_dir_needs_real_own_dir_without_group_or_other_write() {
+        let path = Path::new("/r/comandos-app-sbx");
+        let ok = |f| private_dir_verdict("la raíz", path, f, 1000);
+        assert!(ok(facts(false, true, 1000, 0o40700)).is_ok());
+        assert!(ok(facts(false, true, 1000, 0o40755)).is_ok());
+        assert!(ok(facts(false, true, 1000, 0o41755)).is_ok());
+        let cases = [
+            (facts(true, false, 1000, 0o120777), "enlace"),
+            (facts(false, false, 1000, 0o100600), "no es un directorio"),
+            (facts(false, true, 0, 0o40700), "uid 0"),
+            (facts(false, true, 1001, 0o40700), "uid 1001"),
+            (facts(false, true, 1000, 0o40770), "grupo"),
+            (facts(false, true, 1000, 0o40702), "grupo"),
+            (facts(false, true, 1000, 0o41777), "grupo"),
+        ];
+        for (f, want) in cases {
+            let err = ok(f).expect_err(&format!("{f:?}"));
+            assert!(err.contains(want), "{f:?}: {err}");
+        }
     }
 }
