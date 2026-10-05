@@ -1,16 +1,23 @@
 //! Binario `comandos-notifyd`: `POST 127.0.0.1:<puerto>/notify` y los popups.
+use comandos_notifyd::dash::{DashClient, POST_TIMEOUT, PrefsCache, PrefsSource};
 use comandos_notifyd::http::serve;
-use comandos_notifyd::notice::{Notice, ui_lang};
+use comandos_notifyd::notice::{Lang, Notice, ui_lang};
+use comandos_notifyd::popup::{self, Context};
+use comandos_notifyd::position::load_anchor;
+use comandos_notifyd::stack::valid_pane;
+use gtk::glib;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex, mpsc};
 
 /// Opciones de línea de órdenes (N3 del sub-plan).
 struct Options {
     headless: bool,
     port: u16,
     hooks: PathBuf,
+    dash: DashClient,
+    repo_root: Option<PathBuf>,
 }
 
 fn parse_options() -> Result<Options, String> {
@@ -21,6 +28,8 @@ fn parse_options() -> Result<Options, String> {
             .map(PathBuf::from)
             .unwrap_or_default()
             .join(".claude/hooks"),
+        dash: DashClient::parse("http://127.0.0.1:4777").ok_or("URL del tablero")?,
+        repo_root: None,
     };
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
@@ -36,49 +45,90 @@ fn parse_options() -> Result<Options, String> {
             Some("--hooks-dir") => {
                 options.hooks = args.next().ok_or("--hooks-dir necesita una ruta")?.into();
             }
+            Some("--dash-url") => {
+                let value = args.next().ok_or("--dash-url necesita una URL")?;
+                options.dash = value
+                    .to_str()
+                    .and_then(DashClient::parse)
+                    .ok_or("--dash-url necesita http://<host>[:<puerto>]")?;
+            }
+            Some("--repo-root") => {
+                options.repo_root =
+                    Some(args.next().ok_or("--repo-root necesita una ruta")?.into());
+            }
             _ => return Err(format!("opción desconocida: {}", arg.to_string_lossy())),
         }
     }
     Ok(options)
 }
 
-fn main() -> ExitCode {
-    let options = match parse_options() {
-        Ok(options) => options,
-        Err(err) => {
-            eprintln!("comandos-notifyd: {err}");
-            return ExitCode::from(2);
+/// `REPO_ROOT` del Python: `dirname(dirname(realpath(ejecutable)))`.
+fn default_repo_root() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
+    Some(exe.parent()?.parent()?.to_path_buf())
+}
+
+/// `SESSION_RE = ^[A-Za-z0-9._-]{1,80}$` con `match` (el `$` admite un `\n` final).
+fn session_ok(session: &str) -> bool {
+    let core = session.strip_suffix('\n').unwrap_or(session);
+    (1..=80).contains(&core.len())
+        && core
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+/// «Abrir»: `dash("/focus", …)` fuera del hilo de GTK. La caída a tmux
+/// (`switch-client` + `wmctrl`) es de la Tarea 3 (`actions.rs`), que sustituye
+/// esta función por `actions::open_session`.
+fn open_via_dash(dash: DashClient) -> popup::OpenAction {
+    Box::new(move |session: &str, pane: &str| {
+        if !session_ok(session) {
+            return;
         }
-    };
-    // `UI_LANG` se fija una vez al arrancar, como en el Python; lo usan los popups.
-    let _ui_lang = ui_lang(
-        &options.hooks.join("cc-notify.conf"),
-        std::env::var("LANG").ok().as_deref(),
-    );
-    if !options.headless {
-        eprintln!("comandos-notifyd: los popups GTK aún no están; usa --headless");
-        return ExitCode::from(2);
+        let mut payload = serde_json::json!({"session": session});
+        if valid_pane(pane) {
+            payload["pane"] = serde_json::Value::String(pane.to_string());
+        }
+        let dash = dash.clone();
+        let _ = std::thread::Builder::new()
+            .name("notifyd-open".into())
+            .spawn(move || {
+                if !dash.post_json("/focus", &payload, POST_TIMEOUT) {
+                    eprintln!("comandos-notifyd: el tablero no respondió a /focus");
+                }
+            });
+    })
+}
+
+fn listen(port: u16) -> Option<TcpListener> {
+    match TcpListener::bind(("127.0.0.1", port)) {
+        Ok(listener) => Some(listener),
+        Err(err) => {
+            eprintln!("comandos-notifyd: no se pudo escuchar en 127.0.0.1:{port}: {err}");
+            None
+        }
     }
-    let listener = match TcpListener::bind(("127.0.0.1", options.port)) {
-        Ok(listener) => listener,
-        Err(err) => {
-            eprintln!(
-                "comandos-notifyd: no se pudo escuchar en 127.0.0.1:{}: {err}",
-                options.port
-            );
-            return ExitCode::FAILURE;
-        }
-    };
-    let port = listener.local_addr().map_or(options.port, |a| a.port());
+}
+
+/// Arranca el hilo del servidor; los avisos aceptados salen por el canal.
+fn start_server(listener: TcpListener, hooks: PathBuf) -> Option<mpsc::Receiver<Notice>> {
     let (sink, notices) = mpsc::channel::<Notice>();
-    let hooks = options.hooks.clone();
     let server = std::thread::Builder::new()
         .name("notifyd-accept".into())
         .spawn(move || serve(listener, sink, hooks));
-    if let Err(err) = server {
-        eprintln!("comandos-notifyd: no se pudo arrancar el servidor: {err}");
-        return ExitCode::FAILURE;
+    match server {
+        Ok(_) => Some(notices),
+        Err(err) => {
+            eprintln!("comandos-notifyd: no se pudo arrancar el servidor: {err}");
+            None
+        }
     }
+}
+
+fn run_headless(listener: TcpListener, port: u16, hooks: PathBuf) -> ExitCode {
+    let Some(notices) = start_server(listener, hooks) else {
+        return ExitCode::FAILURE;
+    };
     println!("comandos-notifyd listo en 127.0.0.1:{port} (popups propios v3)");
     // Sin pantalla (solo pruebas): cada aviso aceptado es una línea JSON.
     for notice in notices {
@@ -91,4 +141,81 @@ fn main() -> ExitCode {
     // servicio, así que se sale con error para que systemd lo reinicie.
     eprintln!("comandos-notifyd: el servidor HTTP terminó; se sale");
     ExitCode::FAILURE
+}
+
+fn run_gtk(options: Options, lang: Lang, listener: TcpListener, port: u16) -> ExitCode {
+    if let Err(err) = gtk::init() {
+        eprintln!("comandos-notifyd: GTK no pudo arrancar (¿sin pantalla?): {err}");
+        return ExitCode::FAILURE;
+    }
+    let repo = options
+        .repo_root
+        .clone()
+        .or_else(default_repo_root)
+        .unwrap_or_default();
+    let cache = Arc::new(Mutex::new(PrefsCache::default()));
+    let source = PrefsSource {
+        dash: options.dash.clone(),
+        themes_file: repo.join("config/themes.json"),
+    };
+    // Como `apply_theme_css()` al principio de `main()`: el tema antes del bucle.
+    source.refresh(&cache);
+    let pos_file = options.hooks.join("notifyd-pos.json");
+    popup::install(
+        Context {
+            lang,
+            icons_dir: repo.join("dash/icons"),
+            pos_file: pos_file.clone(),
+            prefs: Arc::clone(&cache),
+            prefs_source: source.clone(),
+            on_open: open_via_dash(options.dash.clone()),
+        },
+        load_anchor(&pos_file),
+    );
+    let Some(notices) = start_server(listener, options.hooks.clone()) else {
+        return ExitCode::FAILURE;
+    };
+    // Puente al hilo de GTK: `/prefs` se refresca aquí (bloquea) y el popup se
+    // crea con `idle_add`, como el `GLib.idle_add(native_notify, …)` del Python.
+    let forwarder = std::thread::Builder::new()
+        .name("notifyd-forward".into())
+        .spawn(move || {
+            for notice in notices {
+                source.refresh(&cache);
+                glib::idle_add_once(move || popup::show(notice));
+            }
+            eprintln!("comandos-notifyd: el servidor HTTP terminó; se sale");
+            glib::idle_add_once(gtk::main_quit);
+        });
+    if let Err(err) = forwarder {
+        eprintln!("comandos-notifyd: no se pudo arrancar el puente a GTK: {err}");
+        return ExitCode::FAILURE;
+    }
+    println!("comandos-notifyd listo en 127.0.0.1:{port} (popups propios v3)");
+    gtk::main();
+    // Solo se llega aquí si el servidor terminó.
+    ExitCode::FAILURE
+}
+
+fn main() -> ExitCode {
+    let options = match parse_options() {
+        Ok(options) => options,
+        Err(err) => {
+            eprintln!("comandos-notifyd: {err}");
+            return ExitCode::from(2);
+        }
+    };
+    // `UI_LANG` se fija una vez al arrancar, como en el Python.
+    let lang = ui_lang(
+        &options.hooks.join("cc-notify.conf"),
+        std::env::var("LANG").ok().as_deref(),
+    );
+    let Some(listener) = listen(options.port) else {
+        return ExitCode::FAILURE;
+    };
+    let port = listener.local_addr().map_or(options.port, |a| a.port());
+    if options.headless {
+        return run_headless(listener, port, options.hooks);
+    }
+    run_gtk(options, lang, listener, port)
 }

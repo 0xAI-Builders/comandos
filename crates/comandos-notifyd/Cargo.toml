@@ -13,6 +13,8 @@ path = "src/main.rs"
 # Semántica de Python compartida: `json.loads(bytes)` y `str()`/`repr()` de valores JSON.
 comandos-core = { path = "../comandos-core" }
 serde_json.workspace = true
+# GTK3 (gtk3-rs 0.18, la última serie para GTK3): ventanas de los popups.
+gtk = { version = "=0.18.2", default-features = false }
 
 [dev-dependencies]
 tokio = { version = "=1.53.1", default-features = false, features = ["rt", "macros", "net", "io-util", "time"] }
