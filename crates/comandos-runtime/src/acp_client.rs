@@ -34,6 +34,7 @@ use nix::{
 };
 use serde_json::{Map, Value, json};
 use std::{
+    borrow::Cow,
     ffi::{OsStr, OsString},
     fmt,
     io::{BufRead, BufReader, Read, Write},
@@ -62,18 +63,23 @@ const USER_BIN_DIRS: [&str; 8] = [
 
 /// Líneas de stderr que se guardan (`del self.stderr[:-200]`).
 const STDERR_KEEP: usize = 200;
-/// Tope de una línea del agente (4 MiB). Una línea de `stdout` mayor es fin
-/// de flujo (la sesión falla y se cierra); una de `stderr` se recorta y se
-/// sigue leyendo. El Python no tiene tope: un agente que no para de escribir
-/// sin salto de línea agotaría la memoria del tablero.
-pub const MAX_LINE: usize = 4 * 1024 * 1024;
+/// Tope de una línea del agente (2 MiB sin contar el salto). Una línea de
+/// `stdout` mayor es fin de flujo (la sesión falla y se cierra); una de
+/// `stderr` se recorta y se sigue leyendo. El Python no tiene tope: un agente
+/// que no para de escribir sin salto de línea agotaría la memoria del
+/// tablero. Lo que se usa de una respuesta tiene su propio tope de 1 MiB
+/// (`news_agents::MAX_REPLY`); 2 MiB deja sitio a un trozo así entero.
+pub const MAX_LINE: usize = 2 * 1024 * 1024;
 /// Lo que se guarda de cada línea de stderr (solo acaba en textos de error).
 const STDERR_LINE_KEEP: usize = 4096;
-/// Presupuesto de líneas de `stdout` leídas y aún no consumidas: el lector
-/// espera (y con él el agente, por la tubería llena) hasta que la sesión las
-/// consuma. Cada línea cuesta 16 veces su tamaño (lo que puede ocupar ya
-/// convertida a `Value`) más un fijo.
-const LINES_BUDGET: usize = 64 * 1024 * 1024;
+/// Presupuesto de líneas de `stdout` leídas y aún no terminadas de atender:
+/// el lector espera (y con él el agente, por la tubería llena) hasta que la
+/// sesión las suelte. Cada línea cuesta lo que puede ocupar ya convertida a
+/// `Value` (con números de precisión arbitraria y mapas con orden, `[1,1,…]`
+/// ocupa unas 56 veces su tamaño) más un fijo: una línea de 2 MiB llena el
+/// presupuesto y no convive con otra.
+const LINES_BUDGET: usize = 128 * 1024 * 1024;
+const LINE_COST: usize = 64;
 const LINE_OVERHEAD: usize = 256;
 /// Líneas en la cola a lo sumo (además del presupuesto en bytes).
 const LINES_QUEUE: usize = 256;
@@ -216,22 +222,34 @@ fn repr_str(s: &str) -> String {
 /// `for x in value` del Python sobre un valor JSON: lista, claves de un
 /// `dict`, letras de un `str`; lo demás es `TypeError`.
 pub fn py_iter(value: &Value) -> Result<Vec<Value>, AcpError> {
+    Ok(py_iter_lazy(value)?.map(Cow::into_owned).collect())
+}
+
+/// `py_iter` sin copiar: los elementos de una lista se prestan; las claves
+/// de un `dict` y las letras de un `str` se crean de una en una.
+fn py_iter_lazy(value: &Value) -> Result<Box<dyn Iterator<Item = Cow<'_, Value>> + '_>, AcpError> {
     match value {
-        Value::Array(items) => Ok(items.clone()),
-        Value::Object(map) => Ok(map.keys().map(|k| Value::String(k.clone())).collect()),
-        Value::String(s) => Ok(s.chars().map(|c| Value::String(c.into())).collect()),
+        Value::Array(items) => Ok(Box::new(items.iter().map(Cow::Borrowed))),
+        Value::Object(map) => Ok(Box::new(
+            map.keys().map(|k| Cow::Owned(Value::String(k.clone()))),
+        )),
+        Value::String(s) => Ok(Box::new(
+            s.chars().map(|c| Cow::Owned(Value::String(c.into()))),
+        )),
         other => fail(format!("'{}' object is not iterable", py_type_name(other))),
     }
 }
 
 /// `x.get(...)` sobre algo que no es `dict`: `AttributeError`.
 fn as_dict(value: &Value) -> Result<&Map<String, Value>, AcpError> {
-    value.as_object().ok_or_else(|| {
-        AcpError(format!(
-            "'{}' object has no attribute 'get'",
-            py_type_name(value)
-        ))
-    })
+    value.as_object().ok_or_else(|| no_get(value))
+}
+
+fn no_get(value: &Value) -> AcpError {
+    AcpError(format!(
+        "'{}' object has no attribute 'get'",
+        py_type_name(value)
+    ))
 }
 
 /// `x or {}` y después `.get`: lo falso es un `dict` vacío.
@@ -252,6 +270,67 @@ fn or(map: &Map<String, Value>, key: &str, default: Value) -> Value {
         Some(v) if truthy(v) => v.clone(),
         _ => default,
     }
+}
+
+/// `map.get(key) or default`, prestado.
+fn or_ref<'a>(map: &'a Map<String, Value>, key: &str, default: &'a Value) -> &'a Value {
+    match map.get(key) {
+        Some(v) if truthy(v) => v,
+        _ => default,
+    }
+}
+
+/// `map.get(key) or default` sacando el valor del mapa: lo que llega del
+/// agente se mueve, no se copia.
+fn take(map: &mut Map<String, Value>, key: &str, default: Value) -> Value {
+    match map.remove(key) {
+        Some(v) if truthy(&v) => v,
+        _ => default,
+    }
+}
+
+/// `as_dict` de un valor propio: el mapa mismo, sin copiarlo.
+fn into_dict(value: Value) -> Result<Map<String, Value>, AcpError> {
+    match value {
+        Value::Object(map) => Ok(map),
+        other => Err(no_get(&other)),
+    }
+}
+
+/// `dict_or_empty` de un valor propio.
+fn take_dict(value: Option<Value>) -> Result<Map<String, Value>, AcpError> {
+    match value {
+        Some(v) if truthy(&v) => into_dict(v),
+        _ => Ok(Map::new()),
+    }
+}
+
+/// `dict_or_empty` solo por su excepción, sin copiar.
+fn check_dict(value: Option<&Value>) -> Result<(), AcpError> {
+    match value {
+        Some(v) if truthy(v) => as_dict(v).map(|_| ()),
+        _ => Ok(()),
+    }
+}
+
+/// Un objeto JSON con sus valores movidos (`json!` los copiaría) y las
+/// claves en orden.
+fn object<const N: usize>(entries: [(&str, Value); N]) -> Value {
+    Value::Object(
+        entries
+            .into_iter()
+            .map(|(k, v)| (k.to_owned(), v))
+            .collect(),
+    )
+}
+
+/// La respuesta JSON-RPC a una petición del agente.
+fn reply(id: Value, outcome: Result<Value, Value>) -> Value {
+    let (key, value) = match outcome {
+        Ok(result) => ("result", result),
+        Err(error) => ("error", error),
+    };
+    object([("jsonrpc", json!("2.0")), ("id", id), (key, value)])
 }
 
 // ---------------------------------------------------------------- agentes
@@ -427,8 +506,22 @@ enum Transport {
 
 /// Una línea de `stdout` ya leída (JSON y su coste en el presupuesto) o fin.
 enum Line {
-    Json(Value, usize),
+    Json(Value, Ticket),
     Eof,
+}
+
+/// El coste de una línea en el presupuesto: vuelve al soltarse, cuando la
+/// sesión ya atendió la línea (no al sacarla de la cola), así no se lee la
+/// siguiente mientras la anterior sigue en memoria.
+struct Ticket {
+    flow: Arc<Flow>,
+    cost: usize,
+}
+
+impl Drop for Ticket {
+    fn drop(&mut self) {
+        self.flow.release(self.cost);
+    }
 }
 
 /// El presupuesto en bytes de la cola de líneas (`LINES_BUDGET`).
@@ -583,17 +676,20 @@ fn pump_stdout(
     let mut raw = Vec::new();
     loop {
         raw.clear();
+        // `MAX_LINE` bytes y el salto caben; un byte más, no.
         match (&mut reader)
-            .take(MAX_LINE as u64 + 1)
+            .take(MAX_LINE as u64 + 2)
             .read_until(b'\n', &mut raw)
         {
             Ok(0) | Err(_) => break,
             Ok(_) => {}
         }
-        if raw.len() > MAX_LINE {
+        let content = raw.len() - usize::from(raw.last() == Some(&b'\n'));
+        if content > MAX_LINE {
             // Fin de flujo: la sesión falla («cerró stdout») y quien la usa
             // la cierra; el resto de la línea no se lee.
-            push_stderr(&stderr, "línea de más de 4 MiB en stdout");
+            let text = format!("línea de más de {} MiB en stdout", MAX_LINE >> 20);
+            push_stderr(&stderr, &text);
             break;
         }
         let Some(pieces) = universal_lines(&raw) else {
@@ -604,18 +700,25 @@ fn pump_stdout(
             if line.is_empty() {
                 continue;
             }
-            let cost = line.len().saturating_mul(16).saturating_add(LINE_OVERHEAD);
+            let cost = line
+                .len()
+                .saturating_mul(LINE_COST)
+                .saturating_add(LINE_OVERHEAD);
             if !flow.acquire(cost) {
                 return;
             }
+            let ticket = Ticket {
+                flow: Arc::clone(&flow),
+                cost,
+            };
             match comandos_store::news::py_loads(line) {
                 Ok(Some(value)) => {
-                    if lines.send(Line::Json(value, cost)).is_err() {
+                    if lines.send(Line::Json(value, ticket)).is_err() {
                         return;
                     }
                 }
                 _ => {
-                    flow.release(cost);
+                    drop(ticket);
                     push_stderr(&stderr, line);
                 }
             }
@@ -840,13 +943,10 @@ impl Session {
         }
     }
 
-    /// La siguiente línea de `stdout`; su coste vuelve al presupuesto.
+    /// La siguiente línea de `stdout`; su coste vuelve al presupuesto al
+    /// soltar su `Ticket`.
     fn next_line(&self, wait: Duration) -> Result<Line, RecvTimeoutError> {
-        let line = self.lines.recv_timeout(wait)?;
-        if let Line::Json(_, cost) = &line {
-            self.flow.release(*cost);
-        }
-        Ok(line)
+        self.lines.recv_timeout(wait)
     }
 
     /// `" | ".join(self.proc.stderr[-3:])`.
@@ -899,16 +999,17 @@ impl Session {
     fn request(&mut self, method: &str, params: Value) -> Result<i64, AcpError> {
         self.next_id += 1;
         let id = self.next_id;
-        self.write(&json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}))?;
+        self.write(&object([
+            ("jsonrpc", json!("2.0")),
+            ("id", json!(id)),
+            ("method", json!(method)),
+            ("params", params),
+        ]))?;
         Ok(id)
     }
 
-    fn respond(&mut self, id: &Value, outcome: Result<Value, Value>) -> Result<(), AcpError> {
-        let message = match outcome {
-            Ok(result) => json!({"jsonrpc": "2.0", "id": id, "result": result}),
-            Err(error) => json!({"jsonrpc": "2.0", "id": id, "error": error}),
-        };
-        self.write(&message)
+    fn respond(&mut self, id: Value, outcome: Result<Value, Value>) -> Result<(), AcpError> {
+        self.write(&reply(id, outcome))
     }
 
     /// Escribe una petición y espera su respuesta, con el vigía armado.
@@ -933,7 +1034,9 @@ impl Session {
         result
     }
 
-    /// `_pump_until(want_id, on_event, timeout)`.
+    /// `_pump_until(want_id, on_event, timeout)`. Cada línea se atiende sin
+    /// copiarla: sus partes se sacan del mapa (una línea hostil de 2 MiB
+    /// ocupa más de 100 MiB ya convertida) y su `Ticket` se suelta al acabar.
     fn pump_until(
         &mut self,
         want: i64,
@@ -946,7 +1049,7 @@ impl Session {
             if now >= deadline {
                 break;
             }
-            let message = match self.next_line(POLL.min(deadline - now)) {
+            let (message, _ticket) = match self.next_line(POLL.min(deadline - now)) {
                 Err(RecvTimeoutError::Timeout) => {
                     if !self.alive() {
                         return fail(format!("el agente murió: {}", self.tail()));
@@ -958,17 +1061,15 @@ impl Session {
                 | Ok(Line::Json(Value::Null, _)) => {
                     return fail(format!("el agente cerró stdout: {}", self.tail()));
                 }
-                Ok(Line::Json(message, _)) => message,
+                Ok(Line::Json(message, ticket)) => (message, ticket),
             };
-            let map = match &message {
+            let mut map = match message {
                 Value::Object(map) => map,
-                Value::Array(_) | Value::String(_) => {
-                    return Err(as_dict(&message).err().unwrap_or(AcpError(String::new())));
-                }
+                other @ (Value::Array(_) | Value::String(_)) => return Err(no_get(&other)),
                 other => {
                     return fail(format!(
                         "argument of type '{}' is not iterable",
-                        py_type_name(other)
+                        py_type_name(&other)
                     ));
                 }
             };
@@ -976,11 +1077,11 @@ impl Session {
                 self.handle_incoming(map, on_event.as_deref_mut())?;
                 continue;
             }
-            if python_eq(get(map, "id"), &json!(want)) {
+            if python_eq(get(&map, "id"), &json!(want)) {
                 if map.contains_key("error") {
-                    return Err(agent_error(get(map, "error"))?);
+                    return Err(agent_error(get(&map, "error"))?);
                 }
-                return Ok(or(map, "result", json!({})));
+                return Ok(take(&mut map, "result", json!({})));
             }
         }
         fail(format!("timeout esperando respuesta ({timeout:.0}s)"))
@@ -988,66 +1089,73 @@ impl Session {
 
     fn handle_incoming(
         &mut self,
-        message: &Map<String, Value>,
+        mut message: Map<String, Value>,
         on_event: Option<&mut (dyn FnMut(&Event) + '_)>,
     ) -> Result<(), AcpError> {
-        let method = get(message, "method").clone();
-        let params = match message.get("params") {
-            Some(v) if truthy(v) => v.clone(),
-            _ => json!({}),
-        };
-        let rid = get(message, "id").clone();
+        let method = message.remove("method").unwrap_or(Value::Null);
+        let params = take(&mut message, "params", json!({}));
+        let rid = message.remove("id").unwrap_or(Value::Null);
         match method.as_str() {
             Some("session/update") => {
-                let params = as_dict(&params)?;
-                let theirs = get(params, "sessionId");
+                let mut params = into_dict(params)?;
+                let theirs = get(&params, "sessionId");
                 if truthy(&self.session_id)
                     && truthy(theirs)
                     && !python_eq(theirs, &self.session_id)
                 {
                     return Ok(());
                 }
-                let update = match params.get("update") {
-                    Some(v) if truthy(v) => v.clone(),
-                    _ => json!({}),
-                };
-                session_update(&update, on_event)
+                session_update(take(&mut params, "update", json!({})), on_event)
             }
-            Some("session/request_permission") => self.permission(&params, &rid, on_event),
+            Some("session/request_permission") => self.permission(params, rid, on_event),
             // Endurecimiento: el agente de un resumen no lee ni escribe
             // archivos por el cliente (el Python lo haría).
             Some(name @ ("fs/read_text_file" | "fs/write_text_file")) => {
                 let error =
                     json!({"code": -32601, "message": format!("{name} no soportado por cc-acp")});
-                self.respond(&rid, Err(error))
+                self.respond(rid, Err(error))
             }
             _ if !rid.is_null() => {
                 let error = json!({"code": -32601, "message": format!("{} no soportado por cc-acp", py_str(&method))});
-                self.respond(&rid, Err(error))
+                self.respond(rid, Err(error))
             }
             _ => Ok(()),
         }
     }
 
-    /// `_permission` con `deny_agent_tools`: nunca se permite nada.
+    /// `_permission` con `deny_agent_tools`: nunca se permite nada. La
+    /// opción elegida sale de la petición sin copiarla, va en la respuesta y
+    /// de ahí al evento.
     fn permission(
         &mut self,
-        params: &Value,
-        rid: &Value,
+        params: Value,
+        rid: Value,
         on_event: Option<&mut (dyn FnMut(&Event) + '_)>,
     ) -> Result<(), AcpError> {
-        let params = as_dict(params)?;
-        let options = or(params, "options", json!([]));
-        let call = dict_or_empty(params.get("toolCall"))?;
-        let title = or(&call, "title", json!(""));
-        let decision = deny_agent_tools(&options)?;
-        match decision.as_ref().filter(|d| truthy(d)) {
-            Some(option) => self.respond(
-                rid,
-                Ok(json!({"outcome": {"outcome": "selected", "optionId": option}})),
-            )?,
-            None => self.respond(rid, Ok(json!({"outcome": {"outcome": "cancelled"}})))?,
-        }
+        let mut params = into_dict(params)?;
+        let mut options = take(&mut params, "options", json!([]));
+        let mut call = take_dict(params.remove("toolCall"))?;
+        let title = take(&mut call, "title", json!(""));
+        let decision = deny_position(&options)?.and_then(|index| {
+            options
+                .get_mut(index)
+                .and_then(Value::as_object_mut)
+                .and_then(|option| option.remove("optionId"))
+        });
+        let decision = match decision {
+            Some(option) if truthy(&option) => {
+                let outcome = object([("outcome", json!("selected")), ("optionId", option)]);
+                let mut message = reply(rid, Ok(object([("outcome", outcome)])));
+                self.write(&message)?;
+                message
+                    .pointer_mut("/result/outcome/optionId")
+                    .map(Value::take)
+            }
+            other => {
+                self.respond(rid, Ok(json!({"outcome": {"outcome": "cancelled"}})))?;
+                other
+            }
+        };
         if let Some(on_event) = on_event {
             on_event(&Event::Permission { title, decision });
         }
@@ -1068,8 +1176,8 @@ impl Session {
             None,
             timeout,
         )?;
-        let result = as_dict(&result)?.clone();
-        self.session_id = or(&result, "sessionId", json!(""));
+        let mut result = into_dict(result)?;
+        self.session_id = take(&mut result, "sessionId", json!(""));
         if !truthy(&self.session_id) {
             return fail("session/new sin sessionId");
         }
@@ -1083,12 +1191,19 @@ impl Session {
         on_event: &mut dyn FnMut(&Event),
         timeout: f64,
     ) -> Result<Value, AcpError> {
-        let params =
-            json!({"sessionId": self.session_id, "prompt": [{"type": "text", "text": text}]});
+        let params = object([
+            ("sessionId", self.session_id.clone()),
+            ("prompt", json!([{"type": "text", "text": text}])),
+        ]);
         let result = self.call("session/prompt", params, Some(&mut *on_event), timeout)?;
-        let stop = or(as_dict(&result)?, "stopReason", json!("end_turn"));
-        on_event(&Event::End(stop.clone()));
-        Ok(stop)
+        let stop = take(&mut into_dict(result)?, "stopReason", json!("end_turn"));
+        // El evento lleva el valor y después se devuelve, sin copiarlo.
+        let end = Event::End(stop);
+        on_event(&end);
+        match end {
+            Event::End(stop) => Ok(stop),
+            _ => Ok(json!("end_turn")),
+        }
     }
 
     /// `AgyStreamSession.prompt`.
@@ -1120,7 +1235,7 @@ impl Session {
             if now >= deadline {
                 break;
             }
-            let message = match self.next_line(POLL.min(deadline - now)) {
+            let (message, _ticket) = match self.next_line(POLL.min(deadline - now)) {
                 Err(RecvTimeoutError::Timeout) => {
                     if !self.alive() {
                         return fail(format!("agy murió: {}", self.tail()));
@@ -1132,21 +1247,26 @@ impl Session {
                 | Ok(Line::Json(Value::Null, _)) => {
                     return fail(format!("agy cerró stdout: {}", self.tail()));
                 }
-                Ok(Line::Json(message, _)) => message,
+                Ok(Line::Json(message, ticket)) => (message, ticket),
             };
-            let map = as_dict(&message)?;
-            match get(map, "event").as_str() {
-                Some("init") => {
-                    let id = get(map, "conversation_id");
-                    if truthy(id) {
-                        self.session_id = id.clone();
+            // Como en `pump_until`: las partes se sacan, no se copian.
+            let mut map = into_dict(message)?;
+            let event = match get(&map, "event").as_str() {
+                Some("init") => "init",
+                Some("step_update") => "step_update",
+                Some("result") => "result",
+                _ => "",
+            };
+            match event {
+                "init" => {
+                    if let Some(id) = map.remove("conversation_id").filter(truthy) {
+                        self.session_id = id;
                     }
                 }
-                Some("step_update") => {
-                    let step = dict_or_empty(map.get("step_update"))?;
-                    let delta = get(&step, "text_delta");
-                    if truthy(delta) {
-                        on_event(&Event::Text(delta.clone()));
+                "step_update" => {
+                    let mut step = take_dict(map.remove("step_update"))?;
+                    if let Some(delta) = step.remove("text_delta").filter(truthy) {
+                        on_event(&Event::Text(delta));
                     } else {
                         let kind = get(&step, "step_type");
                         if !matches!(kind.as_str(), Some("user_input" | "agent_response")) {
@@ -1162,11 +1282,10 @@ impl Session {
                         }
                     }
                 }
-                Some("result") => {
-                    let result = dict_or_empty(map.get("result"))?;
-                    let id = get(&result, "conversation_id");
-                    if truthy(id) {
-                        self.session_id = id.clone();
+                "result" => {
+                    let mut result = take_dict(map.remove("result"))?;
+                    if let Some(id) = result.remove("conversation_id").filter(truthy) {
+                        self.session_id = id;
                     }
                     if get(&result, "status").as_str() != Some("SUCCESS") {
                         let error = match (get(&result, "error"), get(&result, "status")) {
@@ -1251,8 +1370,14 @@ impl Drop for Session {
 
 /// El texto de una respuesta de error del agente (`_pump_until`).
 fn agent_error(error: &Value) -> Result<AcpError, AcpError> {
-    let error = dict_or_empty(Some(error))?;
-    let mut text = py_str(&or(&error, "message", json!("error del agente")));
+    let empty = Map::new();
+    let error = if truthy(error) {
+        as_dict(error)?
+    } else {
+        &empty
+    };
+    let fallback = json!("error del agente");
+    let mut text = py_str(or_ref(error, "message", &fallback));
     if let Some(detail) = error.get("data").and_then(Value::as_object) {
         let message = get(detail, "message");
         if truthy(message) {
@@ -1268,22 +1393,34 @@ fn agent_error(error: &Value) -> Result<AcpError, AcpError> {
 /// agente (modelos, modos, comandos) no se guarda: los Resúmenes no lo usan;
 /// solo se reproducen las excepciones que el Python lanzaría al absorberlo.
 fn session_update(
-    update: &Value,
+    update: Value,
     on_event: Option<&mut (dyn FnMut(&Event) + '_)>,
 ) -> Result<(), AcpError> {
-    let update = as_dict(update)?;
-    let kind = get(update, "sessionUpdate").as_str().unwrap_or_default();
+    const KINDS: [&str; 6] = [
+        "config_option_update",
+        "agent_message_chunk",
+        "agent_thought_chunk",
+        "tool_call",
+        "tool_call_update",
+        "plan",
+    ];
+    let mut update = into_dict(update)?;
+    let kind = get(&update, "sessionUpdate")
+        .as_str()
+        .and_then(|kind| KINDS.into_iter().find(|known| *known == kind))
+        .unwrap_or_default();
     if kind == "config_option_update" {
-        absorb_config_options(&or(update, "configOptions", json!([])))?;
+        let empty = json!([]);
+        absorb_config_options(or_ref(&update, "configOptions", &empty))?;
     }
     let Some(on_event) = on_event else {
         return Ok(());
     };
     match kind {
         "agent_message_chunk" | "agent_thought_chunk" => {
-            let content = dict_or_empty(update.get("content"))?;
+            let mut content = take_dict(update.remove("content"))?;
             if get(&content, "type").as_str() == Some("text") {
-                let text = content.get("text").cloned().unwrap_or_else(|| json!(""));
+                let text = content.remove("text").unwrap_or_else(|| json!(""));
                 on_event(&if kind == "agent_message_chunk" {
                     Event::Text(text)
                 } else {
@@ -1292,12 +1429,12 @@ fn session_update(
             }
         }
         "tool_call" | "tool_call_update" => on_event(&Event::Tool {
-            title: or(update, "title", json!("")),
-            status: or(update, "status", json!("")),
-            kind: or(update, "kind", json!("")),
-            id: or(update, "toolCallId", json!("")),
+            title: take(&mut update, "title", json!("")),
+            status: take(&mut update, "status", json!("")),
+            kind: take(&mut update, "kind", json!("")),
+            id: take(&mut update, "toolCallId", json!("")),
         }),
-        "plan" => on_event(&Event::Plan(or(update, "entries", json!([])))),
+        "plan" => on_event(&Event::Plan(take(&mut update, "entries", json!([])))),
         _ => {}
     }
     Ok(())
@@ -1306,7 +1443,7 @@ fn session_update(
 /// `_absorb_session`: solo sus excepciones posibles.
 fn absorb_session(result: &Map<String, Value>) -> Result<(), AcpError> {
     for key in ["models", "modes"] {
-        dict_or_empty(result.get(key))?;
+        check_dict(result.get(key))?;
     }
     if let Some(options) = result.get("configOptions") {
         absorb_config_options(options)?;
@@ -1314,13 +1451,19 @@ fn absorb_session(result: &Map<String, Value>) -> Result<(), AcpError> {
     Ok(())
 }
 
-/// `_absorb_config_options`: solo sus excepciones posibles.
+/// `_absorb_config_options`: solo sus excepciones posibles. Recorre sin
+/// copiar: la primera opción que no es `dict` es la excepción del Python
+/// (que antes junta todas, así un fallo del recorrido manda).
 fn absorb_config_options(options: &Value) -> Result<(), AcpError> {
-    let selects: Vec<Map<String, Value>> = py_iter(options)?
-        .into_iter()
-        .filter_map(|o| o.as_object().cloned())
-        .filter(|o| get(o, "type").as_str() == Some("select"))
-        .collect();
+    let mut selects: Vec<&Map<String, Value>> = Vec::new();
+    for option in py_iter_lazy(options)? {
+        if let Cow::Borrowed(Value::Object(map)) = option
+            && get(map, "type").as_str() == Some("select")
+        {
+            selects.push(map);
+        }
+    }
+    let empty = json!([]);
     for category in ["model", "mode", "thought_level"] {
         let Some(option) = selects
             .iter()
@@ -1328,9 +1471,14 @@ fn absorb_config_options(options: &Value) -> Result<(), AcpError> {
         else {
             continue;
         };
-        let mut values = Vec::new();
-        for item in py_iter(&or(option, "options", json!([])))? {
-            let nested = match &item {
+        let mut bad: Option<AcpError> = None;
+        let mut check = |value: &Value| {
+            if category != "thought_level" && bad.is_none() {
+                bad = as_dict(value).err();
+            }
+        };
+        for item in py_iter_lazy(or_ref(option, "options", &empty))? {
+            let nested = match &*item {
                 Value::Object(map) => map.contains_key("options"),
                 Value::Array(items) => items.iter().any(|i| i.as_str() == Some("options")),
                 Value::String(s) => s.contains("options"),
@@ -1342,42 +1490,47 @@ fn absorb_config_options(options: &Value) -> Result<(), AcpError> {
                 }
             };
             if nested {
-                let Value::Object(map) = &item else {
+                let Value::Object(map) = &*item else {
                     return fail(format!(
                         "{} indices must be integers",
                         if item.is_string() { "string" } else { "list" }
                     ));
                 };
-                values.extend(py_iter(get(map, "options"))?);
+                for value in py_iter_lazy(get(map, "options"))? {
+                    check(&value);
+                }
             } else {
-                values.push(item);
+                check(&item);
             }
         }
-        if category != "thought_level" {
-            for value in &values {
-                as_dict(value)?;
-            }
+        if let Some(error) = bad {
+            return Err(error);
         }
     }
     Ok(())
 }
 
-/// `deny_agent_tools(request)`: el `optionId` de la primera opción cuyo
-/// `kind` contiene `reject` o `deny`; `None` si no hay ninguna.
-pub fn deny_agent_tools(options: &Value) -> Result<Option<Value>, AcpError> {
-    let options = if truthy(options) {
-        options.clone()
-    } else {
-        json!([])
-    };
-    for option in py_iter(&options)? {
+/// La posición de la primera opción cuyo `kind` contiene `reject` o `deny`
+/// (solo una lista puede tenerla: con un `dict` o un `str` la primera
+/// opción ya no es un `dict`). No copia las opciones.
+fn deny_position(options: &Value) -> Result<Option<usize>, AcpError> {
+    if !truthy(options) {
+        return Ok(None);
+    }
+    for (index, option) in py_iter_lazy(options)?.enumerate() {
         let option = as_dict(&option)?;
         let kind = py_str_or_empty(get(option, "kind"));
         if kind.contains("reject") || kind.contains("deny") {
-            return Ok(option.get("optionId").cloned());
+            return Ok(Some(index));
         }
     }
     Ok(None)
+}
+
+/// `deny_agent_tools(request)`: el `optionId` de la primera opción cuyo
+/// `kind` contiene `reject` o `deny`; `None` si no hay ninguna.
+pub fn deny_agent_tools(options: &Value) -> Result<Option<Value>, AcpError> {
+    Ok(deny_position(options)?.and_then(|index| options.get(index)?.get("optionId").cloned()))
 }
 
 #[cfg(test)]
