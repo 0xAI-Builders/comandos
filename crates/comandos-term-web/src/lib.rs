@@ -200,6 +200,21 @@ pub fn selection_css(theme: &Theme) -> String {
     format!("rgba({r}, {g}, {b}, 0.3)")
 }
 
+/// `selectionBackgroundOpaque` de `ThemeService`: el color del tema tal cual,
+/// o blanco con alfa `0x4D` mezclado con el fondo. Los glifos seleccionados
+/// se rasterizan contra él.
+pub fn selection_opaque(theme: &Theme) -> [u8; 3] {
+    if let Some(color) = theme.selection {
+        return color;
+    }
+    let bg = theme.background.unwrap_or(theme::DEFAULT_BG);
+    let mix = |c: u8| {
+        let c = f64::from(c);
+        (c + metrics::js_round((255.0 - c) * 77.0 / 255.0)).clamp(0.0, 255.0) as u8
+    };
+    [mix(bg[0]), mix(bg[1]), mix(bg[2])]
+}
+
 fn canvas_theme(p: &Palette) -> CanvasTheme {
     CanvasTheme {
         bg: p.bg,
@@ -708,7 +723,10 @@ impl Inner {
 
     /// Selección actual para `comandos_term::select`.
     fn selection(&self) -> Option<Selection> {
-        self.select.selection(self.size.cols)
+        let engine = &self.engine;
+        self.select.selection_with(self.size.cols, |p| {
+            comandos_term::select::word_at(engine, p)
+        })
     }
 
     fn has_selection(&self) -> bool {
@@ -814,6 +832,16 @@ impl Inner {
         let scrolled = self.engine.scrolled_up();
         let lines = scrolled.wrapping_sub(self.scrolled_seen);
         self.scrolled_seen = scrolled;
+        // El contenido subió de fila absoluta: el enlace y su pulsación ya
+        // no están donde se guardaron (con la vista desplazada, alacritty
+        // sube `display_offset` y un enlace que cruza el borde inferior no
+        // cae por el repintado).
+        if lines > 0 {
+            self.link_down = None;
+            if self.hover.is_some() {
+                self.forget_hover();
+            }
+        }
         let modes = self.engine.modes();
         let mouse_changed = modes.mouse != self.mouse_seen;
         self.mouse_seen = modes.mouse;
@@ -853,14 +881,20 @@ impl Inner {
             self.link_down = None;
         }
         if stale(&self.hover) {
-            self.hover = None;
-            self.set_pointer(false);
-            self.overlay.dirty = true;
-            if self.drag.is_none()
-                && let Some((x, y)) = self.hover_xy
-            {
-                self.update_hover(x, y);
-            }
+            self.forget_hover();
+        }
+    }
+
+    /// Suelta el enlace bajo el ratón y lo vuelve a buscar en la última
+    /// posición del ratón (fuera de un arrastre).
+    fn forget_hover(&mut self) {
+        self.hover = None;
+        self.set_pointer(false);
+        self.overlay.dirty = true;
+        if self.drag.is_none()
+            && let Some((x, y)) = self.hover_xy
+        {
+            self.update_hover(x, y);
         }
     }
 
@@ -887,12 +921,11 @@ impl Inner {
             .set_property("cursor", if on { "pointer" } else { "" });
     }
 
-    /// Repinta la capa de selección y enlace.
-    fn paint_overlay(&mut self) {
+    /// Rectángulos de la selección en la vista.
+    fn selection_rects(&self) -> Vec<overlay::CellRect> {
         let offset = self.engine.display_offset();
         let (rows, cols) = (self.size.rows, self.size.cols);
-        let rects = self
-            .selection()
+        self.selection()
             .and_then(|s| {
                 let (lo, hi) = comandos_term::select::selection_bounds(&self.engine, &s)?;
                 let end = (hi.0, hi.1.saturating_add(1));
@@ -902,7 +935,14 @@ impl Inner {
                     overlay::selection_rects(lo, end, offset, rows, cols)
                 })
             })
-            .unwrap_or_default();
+            .unwrap_or_default()
+    }
+
+    /// Repinta la capa de selección y enlace.
+    fn paint_overlay(&mut self) {
+        let offset = self.engine.display_offset();
+        let (rows, cols) = (self.size.rows, self.size.cols);
+        let rects = self.selection_rects();
         let lines = self
             .hover
             .as_ref()
@@ -1077,6 +1117,13 @@ impl Inner {
         self.frame_id = None;
         let now = self.now();
         let input = self.cursor_input();
+        if self.overlay.dirty {
+            // Las filas cuyas celdas seleccionadas cambiaron se repintan:
+            // sus glifos van contra la selección opaca (`CellColorResolver`).
+            let ranges = overlay::row_ranges(&self.selection_rects(), self.size.rows);
+            self.scheduler
+                .set_selection(&ranges, selection_opaque(&self.opts.theme));
+        }
         let stats = self.scheduler.frame(
             &mut self.engine,
             &self.palette,
@@ -2015,6 +2062,17 @@ mod tests {
         assert_eq!(selection_css(&t), "rgba(255, 255, 255, 0.3)");
         t.selection = Some([0x2E, 0x38, 0x52]);
         assert_eq!(selection_css(&t), "rgba(46, 56, 82, 0.3)");
+    }
+
+    #[test]
+    fn selected_glyphs_rasterize_against_the_opaque_selection() {
+        let mut t = Theme::default();
+        // Blanco con alfa 0x4D sobre negro (`DEFAULT_SELECTION`).
+        assert_eq!(selection_opaque(&t), [0x4D, 0x4D, 0x4D]);
+        t.background = Some([0x0A, 0x0D, 0x13]);
+        assert_eq!(selection_opaque(&t), [84, 86, 90]);
+        t.selection = Some([0x2E, 0x38, 0x52]);
+        assert_eq!(selection_opaque(&t), [0x2E, 0x38, 0x52]);
     }
 
     #[test]

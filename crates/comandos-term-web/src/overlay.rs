@@ -111,6 +111,21 @@ pub fn block_rects(
     }
 }
 
+/// Tramo de celdas seleccionadas de cada fila de la vista (`inicio..fin`),
+/// sacado de los rectángulos de la capa: lo que `isCellSelected` dice al
+/// pintar la fila.
+pub fn row_ranges(rects: &[CellRect], rows: u16) -> Vec<Option<(u16, u16)>> {
+    let mut out = vec![None; usize::from(rows)];
+    for r in rects {
+        for y in r.y..r.y.saturating_add(r.h) {
+            if let Some(slot) = out.get_mut(usize::from(y)) {
+                *slot = Some((r.x, r.x.saturating_add(r.w)));
+            }
+        }
+    }
+    out
+}
+
 /// Secuencias de [`comandos_term::select::ligature_runs`] que tienen glifo
 /// `.liga` en `JetBrainsMonoNerdFontMono-Regular.ttf` (sacado de la tabla
 /// `post` de esa fuente: el addon descarta las que no lo tienen).
@@ -406,6 +421,21 @@ mod tests {
             selection_rects((-1_000_000, 0), (1_000_000, 0), 0, 3, 20).len(),
             3
         );
+    }
+
+    #[test]
+    fn row_ranges_follow_the_selection_rects() {
+        let rects = selection_rects((1, 15), (3, 4), 0, 5, 20);
+        assert_eq!(
+            row_ranges(&rects, 5),
+            vec![None, Some((15, 20)), Some((0, 20)), Some((0, 4)), None]
+        );
+        let block = block_rects((1, 3), (2, 7), 0, 5, 20);
+        assert_eq!(
+            row_ranges(&block, 5),
+            vec![None, Some((3, 7)), Some((3, 7)), None, None]
+        );
+        assert_eq!(row_ranges(&[], 2), vec![None, None]);
     }
 
     #[test]

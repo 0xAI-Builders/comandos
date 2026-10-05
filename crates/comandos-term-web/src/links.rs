@@ -8,7 +8,8 @@
 //! aparecen al pasar por encima; el subrayado usa el color de texto del tema
 //! (`_fireUnderlineEvent` no pasa color y addon-canvas usa
 //! `colors.foreground`). El enlace se olvida solo cuando se repintan sus
-//! filas ([`repainted`]); entonces se vuelve a buscar bajo el ratón.
+//! filas ([`repainted`]) o cuando el contenido sube de fila; entonces se
+//! vuelve a buscar bajo el ratón.
 //!
 //! ## Diferencias con `term.html`
 //!
@@ -33,9 +34,17 @@ pub fn span_contains(span: &UrlSpan, p: Point) -> bool {
 }
 
 /// `onRenderedViewportChange` de `Linkifier`: el cuadro repintó las filas
-/// `lo..=hi` de la vista y el enlace cae dentro (si el repintado empieza en
-/// la primera fila, también vale un enlace que empieza más arriba), así que
-/// ya no vale.
+/// `lo..=hi` de la vista y el enlace cae dentro, así que ya no vale. Si el
+/// repintado empieza en la fila 0, el principio del enlace puede estar más
+/// arriba, pero su final tiene que caer dentro.
+///
+/// **Diferencia con xterm.js:** allí un repintado que empieza en la fila 0
+/// suelta siempre el enlace (`startRow = 0` y `_clearCurrentLink` con `!e`),
+/// cubra o no sus filas. Aquí no: con la barra de tmux arriba
+/// (`status-position top`) o el cursor en la fila 0, xterm.js perdería el
+/// enlace y la pulsación cada segundo. El caso que deja un enlace por debajo
+/// de la vista lo cubre `after_output`, que lo suelta cuando el contenido sube
+/// de fila (`Engine::scrolled_up`).
 pub fn repainted(span: &UrlSpan, display_offset: usize, (lo, hi): (usize, usize)) -> bool {
     let view = |row: i32| i64::from(row) + i64::try_from(display_offset).unwrap_or(i64::MAX);
     let lo = i64::try_from(lo).unwrap_or(i64::MAX);
@@ -182,6 +191,13 @@ mod tests {
         assert!(!repainted(&span((-5, 0), (-5, 9)), 4, (2, 23)));
         // Un enlace que empieza encima de la vista solo cae con la fila 0.
         assert!(repainted(&span((-1, 70), (0, 3)), 0, (0, 1)));
+        // Diferencia documentada: un repintado desde la fila 0 que no llega
+        // al enlace no lo suelta (xterm.js sí).
+        assert!(!repainted(&span((5, 0), (5, 3)), 0, (0, 2)));
+        assert!(
+            !repainted(&span((5, 0), (6, 3)), 0, (0, 5)),
+            "su final queda fuera"
+        );
     }
 
     #[test]

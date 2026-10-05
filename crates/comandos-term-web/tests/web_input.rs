@@ -532,3 +532,77 @@ async fn a_resize_keeps_the_selection_on_its_text() {
     assert_eq!(t.get_selection(), "fila 38");
     h.remove();
 }
+
+/// N4: `SelectionService` escucha en la raíz, así que un doble clic sobre el
+/// `<textarea>` que tapa la celda del cursor también selecciona la palabra.
+#[wasm_bindgen_test]
+async fn a_double_click_on_the_cursor_cell_selects_under_the_textarea() {
+    let h = host(400, 200);
+    let (mut t, _sent) = term(&h);
+    t.write(b"hola mundo\x1b[1;7H");
+    next_frame().await;
+    let ta = textarea(&t);
+    let doc: EventTarget = document().into();
+    let _ = mouse(&t, &ta, "mousedown", 7.0, 0.0, 2);
+    let _ = mouse(&t, &doc, "mouseup", 7.0, 0.0, 2);
+    assert_eq!(t.get_selection(), "mundo");
+    h.remove();
+}
+
+/// N2: con la vista desplazada llega salida; alacritty sube `display_offset`
+/// y el enlace (que cruza el borde inferior) sube de fila absoluta. Se suelta
+/// y se vuelve a buscar, así que el subrayado sigue en su fila.
+#[wasm_bindgen_test]
+async fn the_link_follows_its_text_when_output_arrives_while_scrolled() {
+    let h = host(400, 200);
+    let (mut t, _sent) = term(&h);
+    let dims = t.dimensions();
+    let (cols, rows) = (num(&dims, "cols"), num(&dims, "rows"));
+    for i in 0..40 {
+        t.write(format!("l{i:02}\r\n").as_bytes());
+    }
+    let url = format!("https://ejemplo.mx/{}", "a".repeat(cols as usize));
+    t.write(url.as_bytes());
+    t.write(b"\r\nx1\r\nx2\r\nx3");
+    // La primera fila del enlace en la última fila de la vista; la segunda,
+    // debajo.
+    t.scroll_lines(4);
+    next_frame().await;
+    let sc: EventTarget = screen(&t).into();
+    let _ = mouse(&t, &sc, "mousemove", 2.0, rows - 1.0, 0);
+    t.write(b"\r\nx4");
+    next_frame().await;
+    next_frame().await;
+    let overlay = h
+        .query_selector_all(".xterm-screen canvas")
+        .ok()
+        .and_then(|list| {
+            (0..list.length())
+                .filter_map(|i| list.get(i))
+                .filter_map(|n| n.dyn_into::<web_sys::HtmlCanvasElement>().ok())
+                .find(|c| c.style().get_property_value("z-index").ok().as_deref() == Some("1"))
+        })
+        .unwrap_or_else(|| panic!("sin capa de selección"));
+    let ctx: web_sys::CanvasRenderingContext2d = overlay
+        .get_context("2d")
+        .ok()
+        .flatten()
+        .and_then(|c| c.dyn_into().ok())
+        .unwrap_or_else(|| panic!("sin contexto"));
+    let (cw, ch, dpr) = (
+        num(&dims, "deviceCellWidth"),
+        num(&dims, "deviceCellHeight"),
+        num(&dims, "dpr"),
+    );
+    // Raya de `dpr` sobre el último píxel de la fila `rows − 1`.
+    let y = rows * ch - dpr - 1.0;
+    let alpha = ctx
+        .get_image_data(cw * 2.5, y, 1.0, 1.0)
+        .map(|d| d.data().0.get(3).copied().unwrap_or(0))
+        .unwrap_or(0);
+    assert!(
+        alpha > 0,
+        "el subrayado sigue en la última fila de la vista"
+    );
+    h.remove();
+}

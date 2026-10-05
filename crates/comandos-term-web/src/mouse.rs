@@ -302,7 +302,7 @@ impl SelectModel {
     pub fn start_span(&mut self, first: Point, last: Point) {
         self.mode = Some(SelectMode::Word);
         self.anchor = Some(first);
-        self.head = Some(first);
+        self.head = None;
         self.span = Some((first, last));
     }
 
@@ -376,36 +376,28 @@ impl SelectModel {
 
     /// La selección para `comandos_term::select`, con la cabeza inclusiva;
     /// `None` si no hay nada seleccionado (un clic sin arrastre).
+    #[cfg(test)]
     pub fn selection(&self, cols: u16) -> Option<Selection> {
+        self.selection_with(cols, |_| None)
+    }
+
+    /// Como [`SelectModel::selection`]; `word` da la palabra de una celda
+    /// (primera y última), para el arrastre tras un doble clic sobre un
+    /// enlace.
+    pub fn selection_with(
+        &self,
+        cols: u16,
+        word: impl Fn(Point) -> Option<(Point, Point)>,
+    ) -> Option<Selection> {
+        if let Some((first, last)) = self.span {
+            return Some(span_selection(first, last, self.head, word));
+        }
         let (anchor, head, mode) = (self.anchor?, self.head?, self.mode?);
         match mode {
             SelectMode::Simple => {}
             SelectMode::Block => return block_selection(anchor, head, cols),
             SelectMode::Word | SelectMode::Line => {
-                let Some((first, last)) = self.span else {
-                    return Some(Selection { anchor, head, mode });
-                };
-                // El enlace del doble clic, y por palabras desde él si el
-                // arrastre sale de sus celdas.
-                return Some(if head > last {
-                    Selection {
-                        anchor: first,
-                        head,
-                        mode,
-                    }
-                } else if head < first {
-                    Selection {
-                        anchor: head,
-                        head: last,
-                        mode,
-                    }
-                } else {
-                    Selection {
-                        anchor: first,
-                        head: last,
-                        mode: SelectMode::Simple,
-                    }
-                });
+                return Some(Selection { anchor, head, mode });
             }
         }
         let (lo, hi) = if anchor <= head {
@@ -433,6 +425,33 @@ impl SelectModel {
             head: hi,
             mode,
         })
+    }
+}
+
+/// `finalSelectionStart`/`finalSelectionEnd` tras un doble clic sobre un
+/// enlace (`selectionStart` + `selectionStartLength`): el lado que no se
+/// arrastra queda en el borde exacto del enlace y la cabeza crece por
+/// palabras (`_selectToWordAt`). En la fila del principio del enlace, el
+/// final no baja del final del enlace; en otra fila es el de la palabra,
+/// aunque quede dentro del enlace.
+fn span_selection(
+    first: Point,
+    last: Point,
+    head: Option<Point>,
+    word: impl Fn(Point) -> Option<(Point, Point)>,
+) -> Selection {
+    let simple = |anchor, head| Selection {
+        anchor,
+        head,
+        mode: SelectMode::Simple,
+    };
+    match head {
+        None => simple(first, last),
+        Some(h) if h < first => simple(word(h).map_or(h, |w| w.0), last),
+        Some(h) => {
+            let end = word(h).map_or(h, |w| w.1);
+            simple(first, if h.0 == first.0 { end.max(last) } else { end })
+        }
     }
 }
 
@@ -574,12 +593,16 @@ mod web {
             Some(p)
         }
 
-        /// El evento ocurrió dentro de `.xterm-screen` (la selección y los
-        /// enlaces solo escuchan ahí; los informes, en toda la raíz).
+        /// El evento ocurrió dentro de `.xterm-screen` (los enlaces solo
+        /// escuchan ahí; los informes y la selección, en toda la raíz).
         fn in_screen(&self, e: &Event) -> bool {
+            self.target_in(e, &self.dom.screen)
+        }
+
+        fn target_in(&self, e: &Event, el: &web_sys::HtmlElement) -> bool {
             e.target()
                 .and_then(|t| t.dyn_into::<Node>().ok())
-                .is_some_and(|node| self.dom.screen.contains(Some(&node)))
+                .is_some_and(|node| el.contains(Some(&node)))
         }
 
         fn report(&mut self, r: Report) {
@@ -655,9 +678,11 @@ mod web {
             });
         }
 
-        /// `mousedown` en la raíz `.xterm` (`bindMouse`): foco e informe en
-        /// toda ella, acotado a la última celda en la franja que deja `fit`;
-        /// la selección y el enlace solo dentro de `.xterm-screen`.
+        /// `mousedown` en la raíz `.xterm` (`bindMouse` y `SelectionService`):
+        /// foco, informe y selección en toda ella (acotados a la última celda
+        /// en la franja que deja `fit`, y también sobre el `<textarea>` del
+        /// cursor), salvo la selección sobre la barra de desplazamiento; el
+        /// enlace solo dentro de `.xterm-screen`.
         pub(crate) fn on_mouse_down(&mut self, e: &Event) {
             let Some(me) = e.dyn_ref::<MouseEvent>() else {
                 return;
@@ -697,7 +722,10 @@ mod web {
                     }
                     self.begin_drag(DragKind::Report);
                 }
-                Some(_) if !in_screen => {}
+                // `SelectionService.handleMouseDown` escucha en la raíz: también
+                // sobre el `<textarea>` que tapa la celda del cursor. Solo la
+                // barra de desplazamiento queda fuera.
+                Some(_) if self.target_in(e, &self.dom.viewport) => {}
                 Some(Press::Select(mode)) => {
                     if m.mouse != MouseMode::Off {
                         // Shift fuerza la selección: tmux no lo ve.
@@ -1441,38 +1469,39 @@ mod tests {
         );
     }
 
+    /// N3: el lado fijo queda en el borde exacto del enlace y la cabeza
+    /// crece por palabras, como `finalSelectionStart/End` de xterm.js.
     #[test]
-    fn a_double_click_on_a_link_selects_the_whole_link() {
+    fn a_double_click_on_a_link_pins_its_edges_while_dragging() {
+        // Enlace (0, 18)–(1, 4); palabras de prueba de 3 celdas alrededor de
+        // la cabeza, que se salen del enlace a propósito.
+        let word = |p: Point| Some(((p.0, p.1.saturating_sub(1)), (p.0, p.1 + 1)));
+        let simple = |anchor, head| {
+            Some(Selection {
+                anchor,
+                head,
+                mode: SelectMode::Simple,
+            })
+        };
         let mut s = SelectModel::default();
         s.start_span((0, 18), (1, 4));
         assert_eq!(
-            s.selection(20),
-            Some(Selection {
-                anchor: (0, 18),
-                head: (1, 4),
-                mode: SelectMode::Simple
-            })
+            s.selection_with(20, word),
+            simple((0, 18), (1, 4)),
+            "exacto"
         );
-        s.extend((1, 2));
-        assert_eq!(s.selection(20).map(|x| x.head), Some((1, 4)), "dentro");
+        // Después del enlace: el principio fijo, el final por palabra.
         s.extend((2, 3));
-        assert_eq!(
-            s.selection(20),
-            Some(Selection {
-                anchor: (0, 18),
-                head: (2, 3),
-                mode: SelectMode::Word
-            })
-        );
-        s.extend((0, 1));
-        assert_eq!(
-            s.selection(20),
-            Some(Selection {
-                anchor: (0, 1),
-                head: (1, 4),
-                mode: SelectMode::Word
-            })
-        );
+        assert_eq!(s.selection_with(20, word), simple((0, 18), (2, 4)));
+        // Antes: el final fijo en el borde del enlace.
+        s.extend((0, 5));
+        assert_eq!(s.selection_with(20, word), simple((0, 4), (1, 4)));
+        // En la fila del principio, dentro del enlace: no baja de su final.
+        s.extend((0, 19));
+        assert_eq!(s.selection_with(20, word), simple((0, 18), (1, 4)));
+        // En otra fila dentro del enlace: el final de la palabra (más corto).
+        s.extend((1, 1));
+        assert_eq!(s.selection_with(20, word), simple((0, 18), (1, 2)));
         s.start(SelectMode::Word, (0, 2));
         assert_eq!(s.selection(20).map(|x| x.mode), Some(SelectMode::Word));
     }

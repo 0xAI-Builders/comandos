@@ -88,6 +88,12 @@ pub struct Style {
     pub underline_color: Option<[u8; 3]>,
     pub strike: bool,
     pub hidden: bool,
+    /// Vídeo inverso (SGR 7): `bg` sale del color del texto.
+    pub inverse: bool,
+    /// La celda no tiene fondo propio (el del tema). Con `inverse` lo usa
+    /// `CellColorResolver` de addon-canvas para el color de un glifo
+    /// seleccionado.
+    pub default_bg: bool,
 }
 
 /// Subrayado (SGR 4, 4:2–4:5, 21).
@@ -581,6 +587,8 @@ impl<'a> Resolver<'a> {
             underline_color,
             strike: flags.contains(Flags::STRIKEOUT),
             hidden,
+            inverse: flags.contains(Flags::INVERSE),
+            default_bg: cell.bg == Color::Named(NamedColor::Background),
         };
         if hidden {
             // xterm.js no dibuja nada de una celda oculta (`isInvisible`).

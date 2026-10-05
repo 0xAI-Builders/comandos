@@ -22,7 +22,10 @@
 //!
 //! Las cuentas puras (colores, `clearColor`, cajas, subrayados) se prueban
 //! en host; el resto necesita un navegador (pruebas de `tests/web.rs`).
-use crate::{metrics::CellMetrics, paint::Painter};
+use crate::{
+    metrics::CellMetrics,
+    paint::{Painter, Selected},
+};
 use comandos_term::{
     glyphs::{self, DrawOp},
     render::{CursorShape, CursorView, Run, RunKind, Underline},
@@ -132,6 +135,54 @@ pub fn cursor_scratch_size(dev_w: u32, dev_h: u32) -> (u32, u32) {
 /// `isPowerlineGlyph` de xterm.js: U+E0A4–U+E0D6 (sin `clearColor` difuso).
 pub fn is_powerline(c: char) -> bool {
     ('\u{E0A4}'..='\u{E0D6}').contains(&c)
+}
+
+/// `treatGlyphAsBackgroundColor`: powerline y U+2500–U+259F (cajas y
+/// bloques), cuyo color de texto también cambia al seleccionarlos.
+pub fn glyph_is_background(c: char) -> bool {
+    is_powerline(c) || ('\u{2500}'..='\u{259F}').contains(&c)
+}
+
+/// `rgba.blend(color, selección con alfa 128)` de xterm.js.
+pub fn blend_half(color: [u8; 3], selection: [u8; 3]) -> [u8; 3] {
+    let mix = |c: u8, s: u8| {
+        let (c, s) = (f64::from(c), f64::from(s));
+        (c + js_round((s - c) * 128.0 / 255.0)).clamp(0.0, 255.0) as u8
+    };
+    [
+        mix(color[0], selection[0]),
+        mix(color[1], selection[1]),
+        mix(color[2], selection[2]),
+    ]
+}
+
+/// `CellColorResolver` de addon-canvas para una celda seleccionada: el
+/// fondo contra el que se rasteriza el glifo (la selección opaca, o mezclada
+/// a medias con el fondo propio de la celda o con el de vídeo inverso) y el
+/// texto (solo cambia en los glifos que hacen de fondo). `fg` es el color del
+/// texto sin atenuar.
+pub fn selected_glyph_colors(
+    style: &comandos_term::render::Style,
+    fg: [u8; 3],
+    c: Option<char>,
+    selection: [u8; 3],
+) -> ([u8; 3], [u8; 3]) {
+    let bg = if style.inverse || !style.default_bg {
+        blend_half(style.bg, selection)
+    } else {
+        selection
+    };
+    let fg = match c {
+        Some(c) if glyph_is_background(c) => {
+            if style.inverse && style.default_bg {
+                selection
+            } else {
+                blend_half(fg, selection)
+            }
+        }
+        _ => fg,
+    };
+    (fg, bg)
 }
 
 /// `isRestrictedPowerlineGlyph`: U+E0B0–U+E0B7, recortados a la celda.
@@ -1400,7 +1451,7 @@ impl Canvas2d {
 
     /// Glifos de una tira. Un error en una celda se anota y se sigue con la
     /// siguiente (no se pierde el resto de la fila).
-    fn paint_glyphs(&mut self, run: &Run, y: f64) {
+    fn paint_glyphs(&mut self, run: &Run, y: f64, selected: Option<Selected>) {
         let style = &run.style;
         if style.hidden {
             return;
@@ -1436,6 +1487,16 @@ impl Canvas2d {
             if text == " " && !decorated {
                 continue;
             }
+            let (fg, bg) = match selected.filter(|s| s.contains(col)) {
+                Some(s) => {
+                    let c = match run.kind {
+                        RunKind::Box(c) => Some(c),
+                        _ => text.chars().next(),
+                    };
+                    selected_glyph_colors(style, fg, c, s.color)
+                }
+                None => (fg, style.bg),
+            };
             let phase = if style.underline == Underline::Dotted {
                 dotted_phase(col, self.m.dev_w, ul_w)
             } else {
@@ -1443,7 +1504,7 @@ impl Canvas2d {
             };
             let key = GlyphStyle {
                 fg,
-                bg: style.bg,
+                bg,
                 flags,
                 underline,
                 underline_color: style.underline_color,
@@ -1490,7 +1551,11 @@ impl Canvas2d {
         }
     }
 
-    fn try_paint_row(&mut self, row: &comandos_term::render::RowRender) -> Result<(), JsValue> {
+    fn try_paint_row(
+        &mut self,
+        row: &comandos_term::render::RowRender,
+        selected: Option<Selected>,
+    ) -> Result<(), JsValue> {
         let y = self.row_y(row.line);
         let (cw, ch) = (f64::from(self.m.dev_w), f64::from(self.m.dev_h));
         self.ctx.save();
@@ -1503,7 +1568,7 @@ impl Canvas2d {
                 .fill_rect(f64::from(col) * cw, y, f64::from(cells) * cw, ch);
         }
         for run in &row.runs {
-            self.paint_glyphs(run, y);
+            self.paint_glyphs(run, y, selected);
         }
         self.ctx.restore();
         // `restore` devuelve el relleno de antes del `save`.
@@ -1654,9 +1719,14 @@ impl Painter for Canvas2d {
         }
     }
 
-    fn paint_row(&mut self, row: &comandos_term::render::RowRender, _m: &CellMetrics) {
+    fn paint_row(
+        &mut self,
+        row: &comandos_term::render::RowRender,
+        selected: Option<Selected>,
+        _m: &CellMetrics,
+    ) {
         self.clear_cursor_on(row.line);
-        let r = self.try_paint_row(row);
+        let r = self.try_paint_row(row, selected);
         self.note(r);
     }
 
@@ -1718,6 +1788,59 @@ impl Canvas2d {
 
 #[cfg(test)]
 mod tests {
+
+    use comandos_term::render::Style;
+
+    fn style(fg: [u8; 3], bg: [u8; 3], inverse: bool, default_bg: bool) -> Style {
+        Style {
+            fg,
+            bg,
+            bold: false,
+            italic: false,
+            dim: false,
+            dim_fg: None,
+            underline: Underline::None,
+            underline_color: None,
+            strike: false,
+            hidden: false,
+            inverse,
+            default_bg,
+        }
+    }
+
+    /// `CellColorResolver` con una celda seleccionada.
+    #[test]
+    fn selected_cells_use_the_opaque_selection_or_a_half_blend() {
+        let sel = [0x2E, 0x38, 0x52];
+        let (fg, bg) = ([0xEA, 0xF0, 0xFB], [0x0A, 0x0D, 0x13]);
+        // Fondo del tema: la selección opaca; el texto no cambia.
+        assert_eq!(
+            selected_glyph_colors(&style(fg, bg, false, true), fg, Some('a'), sel),
+            (fg, sel)
+        );
+        // Fondo propio (rojo #cc0000): mezcla a medias (alfa 128/255).
+        let red = [0xCC, 0x00, 0x00];
+        assert_eq!(blend_half(red, sel), [0x7D, 0x1C, 0x29]);
+        assert_eq!(
+            selected_glyph_colors(&style(fg, red, false, false), fg, Some('a'), sel).1,
+            [0x7D, 0x1C, 0x29]
+        );
+        // Vídeo inverso: el fondo (el color del texto) también se mezcla.
+        assert_eq!(
+            selected_glyph_colors(&style(bg, fg, true, true), bg, Some('a'), sel).1,
+            blend_half(fg, sel)
+        );
+        // Bloques y powerline: el texto también cambia.
+        assert_eq!(
+            selected_glyph_colors(&style(fg, bg, false, true), fg, Some('█'), sel).0,
+            blend_half(fg, sel)
+        );
+        assert_eq!(
+            selected_glyph_colors(&style(bg, fg, true, true), bg, Some('\u{E0B0}'), sel).0,
+            sel
+        );
+        assert_eq!(blend_half(sel, sel), sel);
+    }
     use super::*;
 
     /// Atlas de mentira: cada página guarda el texto de sus glifos, con el

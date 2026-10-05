@@ -20,12 +20,29 @@ use comandos_term::{
 /// Intervalo de parpadeo del cursor de xterm.js (`BLINK_INTERVAL`).
 pub const BLINK_INTERVAL_MS: f64 = 600.0;
 
+/// Celdas seleccionadas de una fila: `cols` es `inicio..fin` (fin
+/// excluido) y `color` el de la selección opaca (`selectionBackgroundOpaque`).
+/// addon-canvas rasteriza los glifos de esas celdas contra ese color
+/// (`CellColorResolver`), y la capa de selección los tiñe después.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Selected {
+    pub cols: (u16, u16),
+    pub color: [u8; 3],
+}
+
+impl Selected {
+    pub fn contains(&self, col: u16) -> bool {
+        self.cols.0 <= col && col < self.cols.1
+    }
+}
+
 /// Quien pinta las filas en pantalla.
 pub trait Painter {
     /// Deja las filas de la vista con solo el fondo de la terminal.
     fn clear_rows(&mut self, rows: &[usize]);
-    /// Repinta una fila entera (fondo, fondos de celda, glifos).
-    fn paint_row(&mut self, row: &RowRender, m: &CellMetrics);
+    /// Repinta una fila entera (fondo, fondos de celda, glifos); `selected`
+    /// son sus celdas seleccionadas.
+    fn paint_row(&mut self, row: &RowRender, selected: Option<Selected>, m: &CellMetrics);
     /// Pinta el cursor encima de su fila ya pintada; `under` es la tira
     /// de la celda del cursor (su glifo va en el color de acento).
     fn paint_cursor(&mut self, c: &CursorView, under: Option<&Run>, m: &CellMetrics);
@@ -190,6 +207,10 @@ pub struct Scheduler {
     damage: Vec<usize>,
     /// Rango de filas con daño de contenido desde el último cuadro.
     content: Option<(usize, usize)>,
+    /// Celdas seleccionadas de cada fila de la vista.
+    selected: Vec<Option<(u16, u16)>>,
+    /// Color de la selección opaca.
+    selection_color: [u8; 3],
 }
 
 impl Scheduler {
@@ -202,6 +223,8 @@ impl Scheduler {
 
     /// Nuevo alto de la vista: todo sucio y sin cursor pintado.
     pub fn resize(&mut self, rows: u16) {
+        self.selected.clear();
+        self.selected.resize(usize::from(rows), None);
         self.dirty.resize(usize::from(rows));
         self.dirty.mark_all();
         self.note_all();
@@ -212,6 +235,25 @@ impl Scheduler {
     pub fn invalidate_all(&mut self) {
         self.dirty.mark_all();
         self.note_all();
+    }
+
+    /// Nuevas celdas seleccionadas por fila de la vista (`None` = ninguna;
+    /// lo que falte al final, tampoco). Solo se marcan para repintar las
+    /// filas cuyo tramo cambió; si cambia el color, todas las que tienen
+    /// selección. No cuenta como daño de contenido (no suelta el enlace).
+    pub fn set_selection(&mut self, rows: &[Option<(u16, u16)>], color: [u8; 3]) {
+        let recolor = color != self.selection_color;
+        self.selection_color = color;
+        for line in 0..self.selected.len() {
+            let new = rows.get(line).copied().flatten();
+            let Some(slot) = self.selected.get_mut(line) else {
+                continue;
+            };
+            if *slot != new || (recolor && new.is_some()) {
+                *slot = new;
+                self.dirty.mark(line);
+            }
+        }
     }
 
     /// Suma `lo..=hi` al rango de contenido del próximo cuadro.
@@ -315,13 +357,22 @@ impl Scheduler {
                 continue;
             }
             render_row_into(engine, line, palette, opts, &mut self.row);
+            let selected = self
+                .selected
+                .get(line)
+                .copied()
+                .flatten()
+                .map(|cols| Selected {
+                    cols,
+                    color: self.selection_color,
+                });
             let blank = self.row.bg_runs.is_empty() && self.row.runs.is_empty();
             let Some(c) = wanted.filter(|c| c.line == line) else {
                 if blank {
                     // Las filas vacías se limpian juntas al final.
                     self.empty.push(line);
                 } else {
-                    painter.paint_row(&self.row, m);
+                    painter.paint_row(&self.row, selected, m);
                     stats.painted += 1;
                 }
                 continue;
@@ -332,7 +383,7 @@ impl Scheduler {
                 painter.clear_rows(&[line]);
                 stats.cleared += 1;
             } else {
-                painter.paint_row(&self.row, m);
+                painter.paint_row(&self.row, selected, m);
                 stats.painted += 1;
             }
             let under = self
@@ -372,6 +423,7 @@ mod tests {
     enum Call {
         Clear(Vec<usize>),
         Row(usize, String),
+        Sel(usize, (u16, u16), [u8; 3]),
         Cursor(usize, u16, CursorShape, Option<String>),
         Resize(u16, u16),
     }
@@ -383,9 +435,12 @@ mod tests {
         fn clear_rows(&mut self, rows: &[usize]) {
             self.0.push(Call::Clear(rows.to_vec()));
         }
-        fn paint_row(&mut self, row: &RowRender, _m: &CellMetrics) {
+        fn paint_row(&mut self, row: &RowRender, selected: Option<Selected>, _m: &CellMetrics) {
             let text: String = row.runs.iter().map(|r| r.text.as_str()).collect();
             self.0.push(Call::Row(row.line, text));
+            if let Some(sel) = selected {
+                self.0.push(Call::Sel(row.line, sel.cols, sel.color));
+            }
         }
         fn paint_cursor(&mut self, c: &CursorView, under: Option<&Run>, _m: &CellMetrics) {
             self.0.push(Call::Cursor(
@@ -511,6 +566,91 @@ mod tests {
         s.invalidate_all();
         let (stats, _) = run(&mut e, &p, &mut s, &m, hidden);
         assert_eq!(stats.content, Some((0, 4)), "tema o fuente");
+    }
+
+    /// Cambiar la selección repinta solo las filas cuyo tramo de celdas
+    /// cambió, y cada fila se pinta con su tramo; el foco no repinta nada
+    /// (sin `selectionInactiveBackground` el color es el mismo).
+    #[test]
+    fn selection_changes_repaint_only_the_rows_whose_cells_changed() {
+        let (mut e, p, mut s, m) = setup(5);
+        e.advance(b"uno\r\ndos\r\ntres\r\ncuatro\r\ncinco", 0.0);
+        s.absorb(&mut e, FOCUSED);
+        run(&mut e, &p, &mut s, &m, FOCUSED);
+        let sel = [0x2E, 0x38, 0x52];
+        let rows = |calls: &[Call]| -> Vec<usize> {
+            calls
+                .iter()
+                .filter_map(|c| match c {
+                    Call::Row(line, _) => Some(*line),
+                    Call::Clear(lines) => lines.first().copied(),
+                    _ => None,
+                })
+                .collect()
+        };
+        // Filas 1 a 3.
+        s.set_selection(&[None, Some((2, 10)), Some((0, 10)), Some((0, 3))], sel);
+        assert!(s.wants_frame());
+        let (stats, calls) = run(&mut e, &p, &mut s, &m, FOCUSED);
+        assert_eq!(rows(&calls), vec![1, 2, 3]);
+        assert!(calls.contains(&Call::Sel(1, (2, 10), sel)));
+        assert!(calls.contains(&Call::Sel(3, (0, 3), sel)));
+        assert_eq!(stats.content, None, "no suelta el enlace");
+        // Se alarga por abajo: solo cambian la 3 y la 4.
+        s.set_selection(
+            &[
+                None,
+                Some((2, 10)),
+                Some((0, 10)),
+                Some((0, 10)),
+                Some((0, 1)),
+            ],
+            sel,
+        );
+        let (_, calls) = run(&mut e, &p, &mut s, &m, FOCUSED);
+        assert_eq!(rows(&calls), vec![3, 4]);
+        // Lo mismo otra vez: nada.
+        s.set_selection(
+            &[
+                None,
+                Some((2, 10)),
+                Some((0, 10)),
+                Some((0, 10)),
+                Some((0, 1)),
+            ],
+            sel,
+        );
+        assert!(!s.wants_frame());
+        // El foco no toca la selección (solo el cursor de la fila 4).
+        let blurred = CursorInput {
+            focused: false,
+            blink_on: true,
+        };
+        s.absorb_cursor(&e, blurred);
+        let (_, calls) = run(&mut e, &p, &mut s, &m, blurred);
+        assert_eq!(rows(&calls), vec![4]);
+        assert!(
+            calls.contains(&Call::Sel(4, (0, 1), sel)),
+            "sigue seleccionada"
+        );
+        // Otro color (tema nuevo): las filas con selección.
+        s.set_selection(
+            &[
+                None,
+                Some((2, 10)),
+                Some((0, 10)),
+                Some((0, 10)),
+                Some((0, 1)),
+            ],
+            [1, 2, 3],
+        );
+        let (_, calls) = run(&mut e, &p, &mut s, &m, blurred);
+        assert_eq!(rows(&calls), vec![1, 2, 3, 4]);
+        // Sin selección: las cuatro, sin tramo.
+        s.set_selection(&[], [1, 2, 3]);
+        let (_, calls) = run(&mut e, &p, &mut s, &m, blurred);
+        assert_eq!(rows(&calls), vec![1, 2, 3, 4]);
+        assert!(!calls.iter().any(|c| matches!(c, Call::Sel(..))));
     }
 
     #[test]
