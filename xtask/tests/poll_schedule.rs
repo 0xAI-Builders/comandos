@@ -175,12 +175,17 @@ fn load_options_parse_and_agents_require_shadow() {
         &["--pollers", "3"][..],
         &["--burst", "17"][..],
         &["--max-threads", "8", "--max-pss-mib", "64"][..],
+        &["--max-static-p95-ms", "100"][..],
     ] {
         let mut v = args(&base);
         v.extend(args(extra));
         assert!(poll::parse(&v).is_ok(), "{extra:?}");
     }
-    for extra in [&["--agents", "48"][..], &["--extra-panes", "190"][..]] {
+    for extra in [
+        &["--agents", "48"][..],
+        &["--extra-panes", "190"][..],
+        &["--slow-tmux-ms", "1500"][..],
+    ] {
         let mut v = args(&base);
         v.extend(args(extra));
         let error = poll::parse(&v).err().unwrap_or_default();

@@ -1212,12 +1212,25 @@ los hilos quedaron en 24 (a los 41 min: 26 hilos, 22 del pool de bloqueo, 256 Mi
 
 ### Arreglo (rama `migration/rust-ligero`)
 
-- `dash::runtime()`: `max_blocking_threads(4)` y `thread_keep_alive(2 s)`. Ningún trabajo de
-  bloqueo espera a otro trabajo de bloqueo (solo a procesos de tmux que mueve el hilo del
-  runtime), así que el tope no puede interbloquear; lo que no cabe espera en la cola del pool.
-- `states::serial`: los saltos de bloqueo de `/state` van a un hilo propio (un `BackendWorker<()>`
-  que se reemplaza si un trabajo entra en pánico) y el pool queda para el trabajo esporádico. La
-  escritura de `app-tab-models.json` sigue en el pool para completarse aunque el cliente se vaya.
+- `dash::runtime()`: `max_blocking_threads(8)` y `thread_keep_alive(2 s)`.
+- `states::serial`: los saltos de bloqueo de `/state` (escaneo; cuenta, Grok y evidencia por
+  pane; las rutas del contexto de sugerencias) van a un hilo propio (un `BackendWorker<()>` que
+  se reemplaza si un trabajo entra en pánico), cada uno con un plazo de 10 s que, vencido,
+  declina (falla cerrado: responde el heredado) en vez de colgar hasta los 120 s del manejador.
+  Solo la escritura de `app-tab-models.json` sigue en el pool, para completarse aunque el
+  cliente se vaya.
+- `terminal::PANES_GATE`: un semáforo asíncrono de 1 antes del `spawn_blocking` de
+  POST `/terminal-panes`. La librería ya serializa todo el proceso con su `SERIAL` (el `RLock`
+  del Python, `terminal_panes.rs`), pero lo toma dentro del hilo de bloqueo: sin la puerta, una
+  ola de 17 iframes llenaba el pool de hilos aparcados en ese candado y los estáticos, el
+  historial y el resto de saltos esperaban detrás (con tmux lento, 5 s × 17 seguidos). Con la
+  puerta la ola ocupa un hilo como mucho; el permiso viaja con el trabajo, así que un cliente
+  que se va no abre la puerta antes de que el hilo termine.
+- Con eso ningún trabajo del pool espera a otro del pool (los demás candados que se toman
+  dentro son `try_lock` de archivo), así que el tope no puede interbloquear: lo que no cabe
+  espera en la cola. Ocho deja sitio a varios tecleos largos de `/terminal/type` sin frenar los
+  estáticos. La primera versión (tope 4 y sin puerta) sí podía congelar el pool detrás de una
+  ola con tmux lento; ver la tabla.
 - `MALLOC_ARENA_MAX=2` en un drop-in de `cc-dash.service` también contiene la memoria (no los
   hilos) sin tocar código. Queda documentado como opción operativa; no se aplica.
 
@@ -1226,13 +1239,17 @@ los hilos quedaron en 24 (a los 41 min: 26 hilos, 22 del pool de bloqueo, 256 Mi
 `xtask poll --shadow` acepta `--agents N` (agentes falsos alternando Claude y Codex),
 `--extra-panes N` (ventanas `cat` repartidas), `--pollers N` (GET `/state` extra a 1 Hz),
 `--burst N` (cada 60 s, N iframes de terminal que refrescan a la vez) y los criterios
-`--max-threads` y `--max-pss-mib` (la orden falla si alguna muestra los supera):
+`--slow-tmux-ms N` (cada `tmux list-panes` de la pila tarda N ms) y los criterios
+`--max-threads`, `--max-pss-mib` y `--max-static-p95-ms` (la orden falla si alguna muestra los
+supera, o si el p95 de los estáticos pedidos durante la ola lo supera):
 
 ```sh
 "$XT" poll --shadow --minutes 10 --hooks ~/.claude/hooks \
   --state-db ~/.local/state/comandos/app-state.sqlite3 \
   --usage-db ~/.claude/hooks/comandos-usage.sqlite --comandos "$NEW" \
-  --agents 48 --extra-panes 190 --pollers 3 --burst 17 --max-threads 8 --max-pss-mib 48
+  --agents 48 --extra-panes 190 --pollers 3 --burst 17 \
+  --max-threads 12 --max-pss-mib 48 --max-static-p95-ms 100
+# lo mismo con tmux lento: añadir --slow-tmux-ms 1500
 ```
 
 ### Antes y después (`poll --shadow`, 10 min, 5 de octubre de 2026)
@@ -1249,7 +1266,7 @@ en ms (p50/p95/p99; el p50 de GET `/state` baja a 1–2 ms cuando la mayoría sa
 | Solo tope 4 | 44 904 → 45 757 | 7 | 2/701/761 | 2/640/777 | 125/218/244 |
 | Tope 4 + hilo de `/state` | 37 701 → 38 477 | 5 | 510/628/780 | 2/599/749 | 131/210/228 |
 | Antes (máquina cargada, carga 13) | 70 729 → 80 973 | 21–22 | 1/883/1245 | 1/917/1465 | 131/480/755 |
-| Después (misma máquina cargada) | 37 921 → 35 893 | 5–6 | 1/901/1295 | 1/978/1540 | 126/364/426 |
+| Primera versión (misma máquina cargada) | 37 921 → 35 893 | 5–6 | 1/901/1295 | 1/978/1540 | 126/364/426 |
 
 Sin la ola (`--burst 0`) el binario de antes se queda en 5 hilos y 33–36 MiB: la ola dispara los
 hilos y la recolección de `/state` los mantiene vivos. Con tope 2 y 3 (sin el hilo de `/state`):
@@ -1257,10 +1274,31 @@ hilos y la recolección de `/state` los mantiene vivos. Con tope 2 y 3 (sin el h
 controlador) tuvo 167 y 172 no-2xx en los dos binarios por igual; las demás corridas, 0.
 
 Carga estándar de la 2d (sin opciones nuevas): antes 32 177 → 34 657 KiB, 5 hilos, GET `/state`
-127/281/545; después 32 381 → 32 745 KiB, 5–6 hilos, 127/289/724 (p99 con carga de máquina 13).
+127/281/545; primera versión 32 381 → 32 745 KiB, 5–6 hilos, 127/289/724 (p99 con carga de máquina 13).
 
-- Suite del workspace: 841 pruebas, 0 fallos, 1 ignorada; `fmt` y `clippy -D warnings` limpios.
+Tras la revisión (tope 8, `PANES_GATE`, plazo de 10 s en `serial`), misma carga realista, más
+el caso de tmux lento (`--slow-tmux-ms 1500`). «Estáticos» es GET `/term.html` cada 100 ms
+mientras dura cada ola (100 muestras):
+
+| Binario | tmux | Pss min 1 → 10 (KiB) | Hilos | GET `/state` | `/state` 1 Hz | Estáticos en la ola |
+|---|---|---|---|---|---|---|
+| Final | normal | 33 833 → 33 697 | 5–6 | 539/701/835 | 2/672/870 | 0/5/7 |
+| Antes | lento | 62 694 → 88 127 | 23–24 | 340/2195/2319 | 0/2127/2298 | 0/4/7 |
+| Primera versión (tope 4, sin puerta) | lento | 37 969 → 38 767 | 6 | 114/2234/22 937 | 0/2097/18 248 | 0/22 310/23 347 |
+| Final | lento | 33 601 → 34 011 | 5–6 | 300/2185/2463 | 0/2113/2271 | 0/3/5 |
+
+La primera versión confirma el hallazgo de la revisión: con tmux lento la ola llenaba el pool de
+4 hilos aparcados en el `SERIAL` y los estáticos y `/state` esperaban hasta 23 s. Con la puerta,
+los estáticos quedan en 5 ms de p95 y el frente en 6 hilos. Con tmux lento, una ola de 17
+`/terminal-panes` serializados (≈ 1,5 s cada uno) pasa de los 30 s de plazo del cliente de
+`xtask`: 2 errores de transporte en el final, 22 en el de antes y 6 en la primera versión; es la
+serialización del `RLock` del Python, igual en los tres.
+
+- Suite del workspace: 846 pruebas, 0 fallos, 1 ignorada; `fmt` y `clippy -D warnings` limpios.
+  `tests/dash_terminal_wave.rs` comprueba la puerta: sin ella la ola de 8 con tmux lento usa
+  8 hilos de bloqueo; con ella, ≤ 2, y el estático responde en < 250 ms durante la ola.
 - `xtask parity` con nativo: 139 OK, 0 DIFF, 0 SKIP de 139, las mismas 8 rutas reenviadas.
 - Criterio para el cutover de este arreglo: `poll --shadow` con la carga realista y
-  `--max-threads 8 --max-pss-mib 48` sale 0, y en vivo, tras una vuelta de `cc-app` al frente,
-  el frente sigue en ≤ 8 hilos.
+  `--max-threads 12 --max-pss-mib 48 --max-static-p95-ms 100` sale 0 (con y sin
+  `--slow-tmux-ms 1500`), y en vivo, tras una vuelta de `cc-app` al frente, el frente sigue en
+  ≤ 12 hilos (principal, 2 `comandos-handler`, el de `/state` y hasta 8 del pool).

@@ -17,7 +17,15 @@ use comandos_runtime::{
 use http::StatusCode;
 use serde_json::{Map, Value};
 use std::{cell::RefCell, path::Path};
-use tokio::runtime::Handle;
+use tokio::{runtime::Handle, sync::Semaphore};
+
+/// Un solo `/terminal-panes` en un hilo de bloqueo a la vez. La librería ya
+/// serializa todo el proceso con su `SERIAL` (el `RLock` del Python), pero lo
+/// toma dentro del hilo: sin esta puerta, una ola de iframes de `term.html`
+/// ocuparía todo el pool con hilos aparcados en ese candado, y los estáticos y
+/// el resto de saltos esperarían detrás (con tmux lento, 5 s × 17 seguidos).
+/// Aquí la espera es asíncrona y la ola ocupa como mucho un hilo.
+static PANES_GATE: Semaphore = Semaphore::const_new(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalRoute {
@@ -157,7 +165,13 @@ async fn panes(native: &Native, data: Value) -> Answer {
     let home = home_text(native)?;
     let tmux = native.options().tmux.clone();
     let handle = Handle::current();
+    // El permiso viaja con el trabajo: si el cliente se va a mitad, la puerta
+    // sigue cerrada hasta que el hilo termine de verdad.
+    let Ok(permit) = PANES_GATE.acquire().await else {
+        return error(StatusCode::SERVICE_UNAVAILABLE, PANES_UNAVAILABLE);
+    };
     let joined = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
         let bridge = RefCell::new(Bridge::default());
         let result = terminal_panes::execute(
             |args| {

@@ -275,7 +275,7 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
         native
             .states
             .context
-            .get(opts, &registry, (opts.clock)())
+            .get(opts, &native.states.serial, &registry, (opts.clock)())
             .await?
     } else {
         Arc::new(SuggestContext::default())

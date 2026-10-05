@@ -483,6 +483,19 @@ fn spawn_burst(
                     timed_with(&s, "GET /tab-models (ola)", &a, "GET", &path, &t, None);
                 }));
             }
+            // Mientras dura la ola, un estático cada 100 ms: si la ola acapara el
+            // pool de bloqueo, su lectura espera detrás.
+            for _ in 0..10 {
+                timed(
+                    &stats,
+                    STATIC_DURING_WAVE,
+                    &addr,
+                    "GET",
+                    "/term.html",
+                    &token,
+                );
+                thread::sleep(Duration::from_millis(100));
+            }
             for t in wave {
                 let _ = t.join();
             }
@@ -490,6 +503,9 @@ fn spawn_burst(
         }
     })
 }
+
+/// Clave de latencia de los estáticos pedidos durante la ola.
+pub const STATIC_DURING_WAVE: &str = "GET /term.html (durante la ola)";
 
 /// Fallos de los criterios `--max-threads` y `--max-pss-mib` sobre las
 /// muestras `(minuto, Pss KiB, hilos)`; vacío si se cumplen.
@@ -581,6 +597,10 @@ pub struct Opts {
     max_threads: Option<usize>,
     /// Criterio: Pss del frente como mucho esto (MiB) en cada muestra.
     max_pss_mib: Option<u64>,
+    /// Con `--shadow`: cada `tmux list-panes` del frente y del heredado tarda esto.
+    slow_tmux_ms: Option<u64>,
+    /// Criterio: p95 de los estáticos pedidos durante la ola como mucho esto (ms).
+    max_static_p95_ms: Option<u32>,
 }
 
 /// Opciones de `poll`; un error aquí es de uso (salida 2).
@@ -590,6 +610,7 @@ pub fn parse(args: &[String]) -> Result<Opts, String> {
     let (mut state_db, mut usage_db, mut no_native) = (None, None, false);
     let (mut agents, mut extra_panes, mut pollers, mut burst) = (None, None, 0, 0);
     let (mut max_threads, mut max_pss_mib) = (None, None);
+    let (mut slow_tmux_ms, mut max_static_p95_ms) = (None, None);
     let count = |a: &str, v: &str| {
         v.parse::<usize>()
             .map_err(|_| format!("{a}: {v:?} no es un entero"))
@@ -621,6 +642,10 @@ pub fn parse(args: &[String]) -> Result<Opts, String> {
             "--burst" => burst = count(a, v)?,
             "--max-threads" => max_threads = Some(count(a, v)?),
             "--max-pss-mib" => max_pss_mib = Some(count(a, v)? as u64),
+            "--slow-tmux-ms" => slow_tmux_ms = Some(count(a, v)? as u64),
+            "--max-static-p95-ms" => {
+                max_static_p95_ms = Some(u32::try_from(count(a, v)?).unwrap_or(u32::MAX))
+            }
             other => return Err(format!("argumento desconocido: {other}")),
         }
     }
@@ -630,10 +655,12 @@ pub fn parse(args: &[String]) -> Result<Opts, String> {
             || usage_db.is_some()
             || no_native
             || agents.is_some()
-            || extra_panes.is_some())
+            || extra_panes.is_some()
+            || slow_tmux_ms.is_some())
     {
         return Err(
-            "--state-db, --usage-db, --no-native, --agents y --extra-panes requieren --shadow"
+            "--state-db, --usage-db, --no-native, --agents, --extra-panes y --slow-tmux-ms \
+             requieren --shadow"
                 .into(),
         );
     }
@@ -666,6 +693,8 @@ pub fn parse(args: &[String]) -> Result<Opts, String> {
         burst,
         max_threads,
         max_pss_mib,
+        slow_tmux_ms,
+        max_static_p95_ms,
     })
 }
 
@@ -818,6 +847,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 }
             }
             seed_agents(s, &shadow_agents(o.agents), o.extra_panes)?;
+            if let Some(ms) = o.slow_tmux_ms {
+                s.slow_tmux(ms)?;
+                println!("poll: cada `tmux list-panes` de la pila tarda {ms} ms");
+            }
             SHADOW_SESSIONS[0]
         }
         None => "poll",
@@ -945,7 +978,19 @@ pub fn run(args: &[String]) -> Result<(), String> {
         .zip(&thread_points)
         .map(|((m, pss), (_, t))| (*m, *pss, *t))
         .collect();
-    let failures = bound_failures(&samples, o.max_threads, o.max_pss_mib);
+    let mut failures = bound_failures(&samples, o.max_threads, o.max_pss_mib);
+    if let Some(max) = o.max_static_p95_ms {
+        let mut table = stats.latency.lock().unwrap_or_else(|p| p.into_inner());
+        match table.get_mut(STATIC_DURING_WAVE) {
+            Some(samples) if !samples.is_empty() => {
+                let p95 = percentile(samples, 95.0);
+                if p95 > max {
+                    failures.push(format!("estáticos durante la ola: p95 {p95} ms > {max} ms"));
+                }
+            }
+            _ => failures.push("estáticos durante la ola: sin muestras (¿--burst 0?)".into()),
+        }
+    }
     if let Some(stack) = &stack {
         let forwarded = stack.forwarded_summary();
         println!(
