@@ -156,11 +156,26 @@ pub fn blend_half(color: [u8; 3], selection: [u8; 3]) -> [u8; 3] {
     ]
 }
 
+/// [`selected_glyph_colors`] más las banderas del glifo: una celda
+/// seleccionada deja de estar atenuada (`CellColorResolver` quita
+/// `BgFlags.DIM` del fondo, y `TextureAtlas` decide la atenuación con él).
+fn selected_glyph(
+    style: &comandos_term::render::Style,
+    fg: [u8; 3],
+    flags: u8,
+    c: Option<char>,
+    selection: [u8; 3],
+) -> ([u8; 3], [u8; 3], u8) {
+    let (fg, bg) = selected_glyph_colors(style, fg, c, selection);
+    (fg, bg, flags & !DIM)
+}
+
 /// `CellColorResolver` de addon-canvas para una celda seleccionada: el
 /// fondo contra el que se rasteriza el glifo (la selección opaca, o mezclada
 /// a medias con el fondo propio de la celda o con el de vídeo inverso) y el
-/// texto (solo cambia en los glifos que hacen de fondo). `fg` es el color del
-/// texto sin atenuar.
+/// texto (solo cambia en los glifos que hacen de fondo, y entonces parte del
+/// color de la paleta sin aclarar por la negrita). `fg` es el color del texto
+/// sin atenuar.
 pub fn selected_glyph_colors(
     style: &comandos_term::render::Style,
     fg: [u8; 3],
@@ -177,7 +192,7 @@ pub fn selected_glyph_colors(
             if style.inverse && style.default_bg {
                 selection
             } else {
-                blend_half(fg, selection)
+                blend_half(style.fg_plain.unwrap_or(fg), selection)
             }
         }
         _ => fg,
@@ -1487,15 +1502,15 @@ impl Canvas2d {
             if text == " " && !decorated {
                 continue;
             }
-            let (fg, bg) = match selected.filter(|s| s.contains(col)) {
+            let (fg, bg, flags) = match selected.filter(|s| s.contains(col)) {
                 Some(s) => {
                     let c = match run.kind {
                         RunKind::Box(c) => Some(c),
                         _ => text.chars().next(),
                     };
-                    selected_glyph_colors(style, fg, c, s.color)
+                    selected_glyph(style, fg, flags, c, s.color)
                 }
-                None => (fg, style.bg),
+                None => (fg, style.bg, flags),
             };
             let phase = if style.underline == Underline::Dotted {
                 dotted_phase(col, self.m.dev_w, ul_w)
@@ -1805,6 +1820,7 @@ mod tests {
             hidden: false,
             inverse,
             default_bg,
+            fg_plain: None,
         }
     }
 
@@ -1840,6 +1856,46 @@ mod tests {
             sel
         );
         assert_eq!(blend_half(sel, sel), sel);
+    }
+
+    /// Ronda 4, I1: una celda atenuada (SGR 2) seleccionada pierde la
+    /// atenuación (`~BgFlags.DIM`); el resto de banderas se queda.
+    #[test]
+    fn selected_cells_are_not_dimmed() {
+        let sel = [0x2E, 0x38, 0x52];
+        let (fg, bg) = ([0xEA, 0xF0, 0xFB], [0x0A, 0x0D, 0x13]);
+        let dimmed = Style {
+            dim: true,
+            dim_fg: Some(fg),
+            ..style(fg, bg, false, true)
+        };
+        let (out_fg, out_bg, flags) =
+            selected_glyph(&dimmed, fg, DIM | BOLD | ITALIC, Some('a'), sel);
+        assert_eq!((out_fg, out_bg), (fg, sel));
+        assert_eq!(flags, BOLD | ITALIC);
+        assert_eq!(selected_glyph(&dimmed, fg, BOLD, Some('a'), sel).2, BOLD);
+    }
+
+    /// Ronda 4, m1: un glifo de fondo seleccionado con negrita mezcla el
+    /// color de la paleta sin aclarar.
+    #[test]
+    fn selected_bold_box_glyphs_blend_the_plain_palette_color() {
+        let sel = [0x2E, 0x38, 0x52];
+        let (bright, plain) = ([0xFF, 0x55, 0x55], [0xCD, 0x00, 0x00]);
+        let bold = Style {
+            bold: true,
+            fg_plain: Some(plain),
+            ..style(bright, [0, 0, 0], false, true)
+        };
+        assert_eq!(
+            selected_glyph_colors(&bold, bright, Some('█'), sel).0,
+            blend_half(plain, sel)
+        );
+        // Un glifo normal conserva el color aclarado (lo aclara el atlas).
+        assert_eq!(
+            selected_glyph_colors(&bold, bright, Some('a'), sel).0,
+            bright
+        );
     }
     use super::*;
 

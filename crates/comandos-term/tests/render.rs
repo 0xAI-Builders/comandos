@@ -41,6 +41,20 @@ fn bold_named_color_becomes_bright() {
     assert_eq!(render_row(&e, 0, &p, &O).runs[0].style.fg, p.ansi[12]);
 }
 
+/// Ronda 4, m1: el color sin aclarar queda a mano para los glifos de fondo
+/// seleccionados; solo existe si la negrita cambió el color.
+#[test]
+fn bold_keeps_the_plain_palette_color_only_when_it_brightened() {
+    let (mut e, p) = eng();
+    e.advance(b"\x1b[1;34mX\x1b[22mY\x1b[1;38;5;100mZ", 0.0);
+    let plain: Vec<_> = render_row(&e, 0, &p, &O)
+        .runs
+        .iter()
+        .map(|r| r.style.fg_plain)
+        .collect();
+    assert_eq!(plain, [Some(p.ansi[4]), None, None]);
+}
+
 #[test]
 fn inverse_swaps_and_default_bg_is_omitted() {
     let (mut e, p) = eng();

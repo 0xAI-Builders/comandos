@@ -94,6 +94,10 @@ pub struct Style {
     /// `CellColorResolver` de addon-canvas para el color de un glifo
     /// seleccionado.
     pub default_bg: bool,
+    /// Color del texto de la paleta sin aclarar por la negrita (`Some` solo
+    /// si la negrita lo aclaró): el que mezcla `CellColorResolver` en un
+    /// glifo de fondo seleccionado (`ansi[fg & 255]` en crudo).
+    pub fg_plain: Option<[u8; 3]>,
 }
 
 /// Subrayado (SGR 4, 4:2–4:5, 21).
@@ -551,6 +555,9 @@ impl<'a> Resolver<'a> {
         };
         let bg = self.color(bg_src, false);
         let mut fg = self.color(fg_src, bold && self.opts.bold_is_bright);
+        let fg_plain = (bold && self.opts.bold_is_bright)
+            .then(|| self.color(fg_src, false))
+            .filter(|plain| *plain != fg);
         let mut adjusted = false;
         if self.opts.min_contrast > 1.0 && !excluded_from_contrast(cell.c) {
             let ratio = if dim {
@@ -589,6 +596,7 @@ impl<'a> Resolver<'a> {
             hidden,
             inverse: flags.contains(Flags::INVERSE),
             default_bg: cell.bg == Color::Named(NamedColor::Background),
+            fg_plain,
         };
         if hidden {
             // xterm.js no dibuja nada de una celda oculta (`isInvisible`).
@@ -597,6 +605,7 @@ impl<'a> Resolver<'a> {
             style.underline = Underline::None;
             style.underline_color = None;
             style.strike = false;
+            style.fg_plain = None;
         }
         style
     }

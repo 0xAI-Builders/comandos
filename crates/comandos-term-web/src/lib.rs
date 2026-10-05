@@ -1349,10 +1349,12 @@ impl Inner {
 impl Drop for Inner {
     fn drop(&mut self) {
         if let Some(cb) = self.restored_cb.take() {
-            let _ = self.painter.element().remove_event_listener_with_callback(
-                "contextrestored",
-                cb.as_ref().unchecked_ref(),
-            );
+            for canvas in [self.painter.element(), self.painter.cursor_element()] {
+                let _ = canvas.remove_event_listener_with_callback(
+                    "contextrestored",
+                    cb.as_ref().unchecked_ref(),
+                );
+            }
         }
         if let Some(observer) = self.observer.take() {
             observer.disconnect();
@@ -1629,7 +1631,9 @@ impl WebTerm {
 
     /// Si el navegador pierde y restaura el contexto del canvas (reinicio de
     /// la GPU), las páginas del atlas pueden haber quedado vacías: se vacía
-    /// todo y se repinta. xterm.js 0.7 no lo trata.
+    /// todo y se repinta. La capa del cursor se vigila igual (perderla deja
+    /// el cursor sin pintar hasta que se repinte su fila). xterm.js 0.7 no lo
+    /// trata.
     fn watch_context(&self) {
         let weak = Rc::downgrade(&self.inner);
         let cb = Closure::<dyn FnMut()>::new(move || {
@@ -1640,11 +1644,16 @@ impl WebTerm {
             });
         });
         self.with(|i| {
-            let added = i
-                .painter
-                .element()
-                .add_event_listener_with_callback("contextrestored", cb.as_ref().unchecked_ref());
-            if added.is_ok() {
+            let mut added = false;
+            for canvas in [i.painter.element(), i.painter.cursor_element()] {
+                added |= canvas
+                    .add_event_listener_with_callback(
+                        "contextrestored",
+                        cb.as_ref().unchecked_ref(),
+                    )
+                    .is_ok();
+            }
+            if added {
                 i.restored_cb = Some(cb);
             }
         });

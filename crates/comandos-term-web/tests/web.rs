@@ -175,8 +175,19 @@ async fn paints_backgrounds_and_goes_idle() {
     assert_eq!(pixel(&canvas, cw * 0.5, ch * 0.5), [0xCC, 0x00, 0x00]);
     // Fondo del tema fuera del texto.
     assert_eq!(pixel(&canvas, cw * 10.5, ch * 1.5), [0x0A, 0x0D, 0x13]);
-    // Sin foco no parpadea: nada pendiente tras pintar.
-    assert!(term.is_idle());
+    // Sin foco no parpadea: nada pendiente tras pintar. Las pruebas corren
+    // a la vez en la página, y la promesa de la fuente (`watch_font`) puede
+    // resolverse un cuadro más tarde y pedir otro; se da un margen acotado.
+    let mut frames = 0;
+    while !term.is_idle() && frames < 8 {
+        next_frame().await;
+        frames += 1;
+    }
+    assert!(
+        term.is_idle(),
+        "sigue con trabajo tras {frames} cuadros más"
+    );
+    wasm_bindgen_test::console_log!("paints_backgrounds_and_goes_idle: {frames} cuadros más");
     assert!(term.take_paint_error().is_null());
     h.remove();
 }
@@ -184,7 +195,10 @@ async fn paints_backgrounds_and_goes_idle() {
 #[wasm_bindgen_test]
 async fn block_cursor_and_outline_when_blurred() {
     let h = host(400, 200);
-    let mut term = WebTerm::new(h.clone(), options()).unwrap_or_else(|e| panic!("{e:?}"));
+    // La captura de píxeles no depende de la fase del parpadeo.
+    let opts = options();
+    js_sys::Reflect::set(&opts, &"cursorBlink".into(), &false.into()).unwrap();
+    let mut term = WebTerm::new(h.clone(), opts).unwrap_or_else(|e| panic!("{e:?}"));
     term.resize_to_fit();
     term.set_focus(true);
     next_frame().await;
@@ -204,7 +218,7 @@ async fn block_cursor_and_outline_when_blurred() {
         pixel(&canvas_of(&h), cw * 0.5, ch * 0.5),
         [0x0A, 0x0D, 0x13]
     );
-    // Con foco y parpadeo hay un temporizador, pero ningún cuadro en vuelo.
+    // Sin foco se pinta el contorno y después queda inactiva.
     term.set_focus(false);
     next_frame().await;
     next_frame().await;
@@ -213,6 +227,63 @@ async fn block_cursor_and_outline_when_blurred() {
     assert_eq!(pixel(&seen, cw * 0.5, ch * 0.5), [0x0A, 0x0D, 0x13]);
     assert_eq!(pixel(&seen, 0.0, ch * 0.5), [0xFF, 0xAE, 0x1A]);
     assert!(term.is_idle());
+    h.remove();
+}
+
+/// Ronda 4, m2: la capa del cursor (z-index 3) también se vigila; si su
+/// contexto se pierde y se restaura, el cursor se vuelve a pintar.
+#[wasm_bindgen_test]
+async fn the_cursor_layer_repaints_when_its_context_is_restored() {
+    let h = host(400, 200);
+    // Fuera del flujo: las pruebas corren a la vez en la misma página, y
+    // quitar un contenedor en el flujo mueve los de las demás.
+    let _ = h.style().set_property("position", "absolute");
+    // La captura de píxeles no depende de la fase del parpadeo.
+    let opts = options();
+    js_sys::Reflect::set(&opts, &"cursorBlink".into(), &false.into()).unwrap();
+    let mut term = WebTerm::new(h.clone(), opts).unwrap_or_else(|e| panic!("{e:?}"));
+    term.resize_to_fit();
+    term.set_focus(true);
+    next_frame().await;
+    next_frame().await;
+    let dims = term.dimensions();
+    let (cw, ch) = (
+        num(&dims, "deviceCellWidth"),
+        num(&dims, "deviceCellHeight"),
+    );
+    let layers = h
+        .query_selector_all(".xterm-screen canvas")
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    let cursor = (0..layers.length())
+        .filter_map(|i| layers.get(i))
+        .filter_map(|n| n.dyn_into::<HtmlCanvasElement>().ok())
+        .find(|c| c.style().get_property_value("z-index").ok().as_deref() == Some("3"))
+        .unwrap_or_else(|| panic!("sin capa del cursor"));
+    // Contexto perdido: la capa queda en blanco.
+    let ctx: CanvasRenderingContext2d = cursor
+        .get_context("2d")
+        .ok()
+        .flatten()
+        .and_then(|c| c.dyn_into().ok())
+        .unwrap_or_else(|| panic!("sin contexto"));
+    ctx.clear_rect(
+        0.0,
+        0.0,
+        f64::from(cursor.width()),
+        f64::from(cursor.height()),
+    );
+    assert_eq!(
+        pixel(&composite(&h), cw * 0.5, ch * 0.5),
+        [0x0A, 0x0D, 0x13]
+    );
+    let restored = web_sys::Event::new("contextrestored").unwrap_or_else(|e| panic!("{e:?}"));
+    let _ = cursor.dispatch_event(&restored);
+    next_frame().await;
+    next_frame().await;
+    assert_eq!(
+        pixel(&composite(&h), cw * 0.5, ch * 0.5),
+        [0xFF, 0xAE, 0x1A]
+    );
     h.remove();
 }
 
