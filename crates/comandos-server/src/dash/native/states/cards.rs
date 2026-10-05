@@ -35,6 +35,9 @@ const TMUX_TIMEOUT: Duration = Duration::from_secs(5);
 const HINT_TIMEOUT: Duration = Duration::from_secs(2);
 
 // Expresiones fijas con las clases del Python: `\s` incluye U+001C–U+001F.
+// `\b` no es idéntico: `regex` cuenta las marcas Mn como letras de palabra y no
+// los números «No» (`²`), al revés que `re`; para «Working» de Codex (texto
+// ASCII de su pie) la diferencia es teórica.
 static WORKING: LazyLock<Option<Regex>> =
     LazyLock::new(|| Regex::new(r"\bWorking[\s\x1c-\x1f]*\(").ok());
 static INTERRUPT: LazyLock<Option<Regex>> = LazyLock::new(|| {

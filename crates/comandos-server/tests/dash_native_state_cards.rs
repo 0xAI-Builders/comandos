@@ -216,13 +216,30 @@ fn inputs(c: &Value, records: &mut RecordCache) -> Inputs {
     }
 }
 
-async fn rust_side(c: &Value) -> (String, String) {
+/// `default_context`: el contexto de cuando `needs_context` es falso (y del
+/// `except` de `_suggestion_context`), en vez del del caso.
+async fn rust_side_with(c: &Value, default_context: bool) -> (String, String) {
     let mut cache = RecordCache::default();
     let inputs = inputs(c, &mut cache);
     let effects = FakeEffects(c);
     let mut items = cards::build(&inputs, &effects).await.unwrap();
     let motor = c["motor"].as_object().cloned().unwrap();
-    let ctx = SuggestContext {
+    let ctx = if default_context {
+        SuggestContext::default()
+    } else {
+        case_context(c)
+    };
+    suggest::annotate_all(&mut items, &ctx, &motor, inputs.now).unwrap();
+    cards::sort_items(&mut items).unwrap();
+    let models = tab_models(&items, &c["registry"], &motor, &c["tiers"], inputs.now).unwrap();
+    (
+        response_dumps(&Value::Array(items)).unwrap(),
+        response_dumps(&models).unwrap(),
+    )
+}
+
+fn case_context(c: &Value) -> SuggestContext {
+    SuggestContext {
         guard: c["guard"].clone(),
         routes: c["routes"]
             .as_array()
@@ -236,14 +253,7 @@ async fn rust_side(c: &Value) -> (String, String) {
             .iter()
             .map(|l| ((l[0].clone(), l[1].clone()), (l[2].clone(), l[3].clone())))
             .collect(),
-    };
-    suggest::annotate_all(&mut items, &ctx, &motor, inputs.now).unwrap();
-    cards::sort_items(&mut items).unwrap();
-    let models = tab_models(&items, &c["registry"], &motor, &c["tiers"], inputs.now).unwrap();
-    (
-        response_dumps(&Value::Array(items)).unwrap(),
-        response_dumps(&models).unwrap(),
-    )
+    }
 }
 
 fn write_state(dir: &Path, name: &str, record: Value) {
@@ -362,6 +372,10 @@ fn case_dir(tag: &str) -> std::path::PathBuf {
 }
 
 async fn compare(tag: &str, case: Value, dir: &Path) {
+    compare_with(tag, case, dir, false).await;
+}
+
+async fn compare_with(tag: &str, case: Value, dir: &Path, default_context: bool) {
     let file = dir.join("case.json");
     fs::write(&file, case.to_string()).unwrap();
     let models_py = dir.join("models-py.json");
@@ -370,7 +384,7 @@ async fn compare(tag: &str, case: Value, dir: &Path) {
     else {
         return;
     };
-    let (items, models) = rust_side(&case).await;
+    let (items, models) = rust_side_with(&case, default_context).await;
     assert_eq!(items, expected.trim_end(), "{tag}: tarjetas");
     assert_eq!(
         models,
@@ -451,6 +465,21 @@ async fn annotation_error_stops_remaining_like_python() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn default_context_keeps_compact_suggestion_like_python() {
+    // El contexto por defecto es el `{}` que deja un `_suggestion_context`
+    // fallido: una tarjeta barata con contexto al 85 % recibe «Compactar».
+    let dir = case_dir("default-ctx");
+    let mut case = base_case(&dir);
+    case["motor"] = json!({});
+    case["guard"] = json!({});
+    case["routes"] = json!([]);
+    case["latency"] = json!([]);
+    case["accounts"]["601"]["contextPct"] = json!(85);
+    compare_with("default-ctx", case, &dir, true).await;
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn unsure_record_declines_scan() {
     let dir = case_dir("unsure");
@@ -489,8 +518,16 @@ fn record_cache_reuses_unchanged_and_drops_removed() {
     let first = cache.scan(&dir).unwrap();
     assert_eq!(first.len(), 2);
     assert!(first.iter().any(|r| r.timestamp == 5.0));
-    // Sin cambios: mismos registros.
+    assert_eq!(cache.parses(), 2);
+    // Sin cambios: mismos registros y ningún archivo reparseado.
     assert_eq!(cache.scan(&dir).unwrap().len(), 2);
+    assert_eq!(cache.parses(), 2);
+    // Reescrito en sitio con el mismo tamaño (cambia mtime/ctime): se reparsea.
+    std::thread::sleep(Duration::from_millis(50));
+    fs::write(dir.join("a.json"), r#"{"session":"s","ts":"6"}"#).unwrap();
+    let rewritten = cache.scan(&dir).unwrap();
+    assert_eq!(cache.parses(), 3);
+    assert!(rewritten.iter().any(|r| r.timestamp == 6.0));
     fs::remove_file(dir.join("b.json")).unwrap();
     fs::write(dir.join("a.json"), r#"{"session":"s","ts":7.5,"x":1}"#).unwrap();
     let again = cache.scan(&dir).unwrap();

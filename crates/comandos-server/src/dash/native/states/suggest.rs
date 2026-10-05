@@ -10,7 +10,7 @@ use serde_json::{Map, Value};
 use std::{collections::BTreeSet, sync::LazyLock};
 
 /// `(guard, routes, latency)` de `_suggestion_context`.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct SuggestContext {
     /// `token_guard_with_forecast()` (`{}` si falló).
     pub guard: Value,
@@ -18,6 +18,19 @@ pub struct SuggestContext {
     pub routes: BTreeSet<String>,
     /// `{(modelo, esfuerzo): (durationP50Ms, attempts)}` en orden de inserción.
     pub latency: Vec<((Value, Value), (Value, Value))>,
+}
+
+impl Default for SuggestContext {
+    /// El contexto de un `_suggestion_context` que falló entero: `guard` es
+    /// `{}` (su `except`), sin rutas ni latencia. Un `guard` nulo sería el
+    /// `AttributeError` que corta las anotaciones restantes.
+    fn default() -> Self {
+        Self {
+            guard: Value::Object(Map::new()),
+            routes: BTreeSet::new(),
+            latency: Vec::new(),
+        }
+    }
 }
 
 /// `_EXPENSIVE_MODEL_RE = re.compile(r"fable|opus|-sol", re.I)`.
@@ -89,6 +102,16 @@ fn get<'a>(value: &'a Value, key: &str) -> Step<Option<&'a Value>> {
 fn py_int(value: &Value) -> Step<i64> {
     match int_of(value) {
         Ok(n) => Ok(n),
+        // Texto no ASCII: `int()` admite dígitos decimales y blancos Unicode;
+        // con cualquier otro carácter no ASCII el `ValueError` es seguro (B7).
+        Err(Conversion::Exotic)
+            if value.as_str().is_some_and(|s| {
+                s.chars()
+                    .any(|c| !c.is_ascii() && !c.is_numeric() && !c.is_whitespace())
+            }) =>
+        {
+            Err(Halt::Raise)
+        }
         Err(Conversion::Exotic) => Err(Halt::Fault(StateFault::Decline)),
         Err(_) => Err(Halt::Raise),
     }
@@ -141,9 +164,12 @@ fn suggestible_agent(item: &Map<String, Value>) -> Option<&str> {
     matches!(agent, "claude" | "codex" | "grok").then_some(agent)
 }
 
-/// Si alguna tarjeta consultaría el contexto (`guard`, rutas, latencia): viva,
-/// con agente sugerible, sin cambio en curso y trabajando o con modelo caro.
-/// Las demás producen lo mismo con un contexto vacío.
+/// Si alguna tarjeta consultaría el contexto: viva, con agente sugerible y sin
+/// cambio en curso. Toda tarjeta así recorre los proyectos del `guard`, y un
+/// `guard` mal formado (proyectos que no son lista, un `project` que no es
+/// texto) es la excepción que corta las restantes; solo el real decide. Si no
+/// hay ninguna, `_annotate_suggestion` no mira el contexto y cualquiera da lo
+/// mismo.
 pub fn needs_context(items: &[Value], motor: &Map<String, Value>) -> Result<bool, StateFault> {
     for item in items {
         let Some(item) = item.as_object() else {
@@ -152,10 +178,7 @@ pub fn needs_context(items: &[Value], motor: &Map<String, Value>) -> Result<bool
         if !item.get("alive").is_some_and(truthy) || suggestible_agent(item).is_none() {
             continue;
         }
-        if pending_change(motor, &opkey(item)?)? {
-            continue;
-        }
-        if is_text(item.get("status"), "working") || expensive(&str_or_empty(item.get("model"))?)? {
+        if !pending_change(motor, &opkey(item)?)? {
             return Ok(true);
         }
     }
@@ -445,4 +468,26 @@ pub fn latency_from(stats: &Value) -> Vec<((Value, Value), (Value, Value))> {
         out.push(((model, effort), (p50.clone(), attempts)));
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn py_int_non_ascii_text() {
+        // `int("mañana")`: ValueError seguro; `int("١٢")` es 12 en CPython.
+        assert!(matches!(py_int(&json!("mañana")), Err(Halt::Raise)));
+        assert!(matches!(
+            py_int(&json!("١٢")),
+            Err(Halt::Fault(StateFault::Decline))
+        ));
+        assert!(matches!(py_int(&json!(" 7 ")), Ok(7)));
+    }
+
+    #[test]
+    fn default_context_guard_is_an_empty_object() {
+        assert_eq!(SuggestContext::default().guard, json!({}));
+    }
 }

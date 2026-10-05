@@ -24,6 +24,8 @@ type Signature = (u64, u64, u64, i64, i64, i64, i64);
 #[derive(Default)]
 pub struct RecordCache {
     entries: HashMap<PathBuf, (Signature, Option<Record>)>,
+    /// Archivos parseados (las pruebas comprueban que un acierto no reparsea).
+    parses: usize,
 }
 
 /// Un archivo como lo trata el `try` del bucle: `Ok(None)` = el `except`
@@ -60,6 +62,11 @@ fn parse_record(path: &Path) -> Result<Option<Record>, StateFault> {
 }
 
 impl RecordCache {
+    /// Cuántos archivos se han parseado desde que se creó la caché.
+    pub fn parses(&self) -> usize {
+        self.parses
+    }
+
     /// Los registros en el orden de `read_dir` (el `getdents` de `glob`).
     /// Bloquea: llamar dentro de `spawn_blocking`.
     pub fn scan(&mut self, dir: &Path) -> Result<Vec<Record>, StateFault> {
@@ -101,6 +108,7 @@ impl RecordCache {
                 out.extend(record.clone());
                 continue;
             }
+            self.parses += 1;
             let record = parse_record(&path)?;
             out.extend(record.clone());
             self.entries.insert(path, (signature, record));
