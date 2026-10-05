@@ -598,6 +598,11 @@ pub fn codex_trust_probe(
     ) else {
         return Ok(());
     };
+    // Como la herencia: un `config.toml` enlazado no hereda, no se lee.
+    let link = |p: &Path| fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink());
+    if link(&source) || link(&target) {
+        return Ok(());
+    }
     let cwd = String::from_utf8(realpath(cwd.as_bytes())).map_err(|_| Unsure)?;
     toml_key(&cwd)?;
     extension_launch::read_trust_toml(&source)?;

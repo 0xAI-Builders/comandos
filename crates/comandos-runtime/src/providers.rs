@@ -603,7 +603,8 @@ fn translate(p: &[char], fold: Fold) -> Result<String, Unsure> {
 
 /// `re.compile(pattern, re.M | (re.I if ignore_case else 0))` traducido para
 /// buscar en texto de varias líneas (`re.search` sobre una pantalla). Sin
-/// lookarounds. Quien busca comprueba antes `screen_safe` sobre el sujeto.
+/// lookarounds. Quien busca decide antes si el sujeto se lee igual en los dos
+/// motores (`dialogs`).
 pub fn py_regex_lines(pattern: &str, ignore_case: bool) -> Result<Regex, Unsure> {
     let chars: Vec<char> = pattern.chars().collect();
     let fold = if ignore_case {
@@ -614,51 +615,6 @@ pub fn py_regex_lines(pattern: &str, ignore_case: bool) -> Result<Regex, Unsure>
     let translated = translate(&chars, fold)?;
     let flags = if ignore_case { "(?im)" } else { "(?m)" };
     Regex::new(&format!("{flags}{translated}")).map_err(|_| Unsure)
-}
-
-/// ¿Da `py_regex_lines(pattern, …)` sobre `subject` lo mismo que `re.search`?
-/// No con U+001C–U+001F (el `\s` de Python los incluye), con `İ`/`ı` bajo
-/// `re.I` (Python las iguala a `i`), con `\B` y sujeto vacío, ni, si el patrón
-/// usa `\b \B \w \W`, con caracteres no ASCII cuya clase de palabra podría
-/// diferir (`str.isalnum` frente a la `\w` Unicode de `regex`).
-pub fn screen_safe(pattern: &str, ignore_case: bool, subject: &str) -> bool {
-    static WORD: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"^\w$").ok());
-    let chars: Vec<char> = pattern.chars().collect();
-    let mut escapes = Vec::new();
-    let mut i = 0;
-    while let Some(&c) = chars.get(i) {
-        if c == '\\' {
-            if let Some(&d) = chars.get(i + 1) {
-                escapes.push(d);
-            }
-            i += 2;
-        } else {
-            i += 1;
-        }
-    }
-    if subject.is_empty() && escapes.contains(&'B') {
-        return false;
-    }
-    let words = escapes.iter().any(|d| matches!(d, 'b' | 'B' | 'w' | 'W'));
-    subject.chars().all(|c| {
-        if ('\u{1c}'..='\u{1f}').contains(&c) {
-            return false;
-        }
-        if c.is_ascii() {
-            return true;
-        }
-        if ignore_case && matches!(c, '\u{130}' | '\u{131}') {
-            return false;
-        }
-        if !words {
-            return true;
-        }
-        let latin = ('\u{C0}'..='\u{24F}').contains(&c) && c.is_alphabetic();
-        let rust_word = WORD
-            .as_ref()
-            .is_some_and(|re| re.is_match(c.encode_utf8(&mut [0; 4])));
-        latin || (!c.is_alphanumeric() && !rust_word)
-    })
 }
 
 /// `?` perezoso opcional; otro cuantificador detrás es `multiple repeat`.

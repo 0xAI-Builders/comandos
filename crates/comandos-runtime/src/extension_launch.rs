@@ -272,29 +272,48 @@ fn toml_1_1(text: &str) -> bool {
     false
 }
 
-/// Un literal numérico que `toml_edit` no representa y `tomllib` sí: enteros
-/// fuera de `i64` (decimales largos o `0x`/`0o`/`0b`) y flotantes que se van
+/// Un literal numérico que `toml_edit` no representa y `tomllib` sí: un
+/// entero fuera de `i64` (decimal, `0x`, `0o` o `0b`) o un flotante que se va
 /// al infinito (`1e400`). Si `toml_edit` falla con uno así, el veredicto del
-/// Python es incierto.
+/// Python es incierto; con números que caben, el rechazo es seguro.
 fn risky_number(text: &str) -> bool {
     let source = Source::new(text);
     source.lex().into_vec().iter().any(|token| {
-        if token.kind() != TokenKind::Atom {
-            return false;
-        }
-        let Some(raw) = source.get(token) else {
-            return false;
-        };
-        let raw = raw.as_str().trim_start_matches(['+', '-']);
-        if !raw.starts_with(|c: char| c.is_ascii_digit()) {
-            return false;
-        }
-        raw.starts_with("0x")
-            || raw.starts_with("0o")
-            || raw.starts_with("0b")
-            || raw.contains(['e', 'E'])
-            || raw.bytes().filter(u8::is_ascii_digit).count() >= 19
+        token.kind() == TokenKind::Atom
+            && source.get(token).is_some_and(|raw| overflows(raw.as_str()))
     })
+}
+
+/// ¿Es `atom` un número TOML que no cabe en lo que `toml_edit` representa?
+fn overflows(atom: &str) -> bool {
+    let clean: String = atom.chars().filter(|c| *c != '_').collect();
+    let (negative, body) = match clean.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, clean.strip_prefix('+').unwrap_or(&clean)),
+    };
+    if !body.starts_with(|c: char| c.is_ascii_digit()) {
+        return false;
+    }
+    for (prefix, radix) in [("0x", 16), ("0o", 8), ("0b", 2)] {
+        if let Some(digits) = body.strip_prefix(prefix) {
+            let valid = !digits.is_empty() && digits.chars().all(|c| c.is_digit(radix));
+            return valid
+                && u128::from_str_radix(digits, radix).map_or(true, |v| v > i64::MAX as u128);
+        }
+    }
+    if body.chars().all(|c| c.is_ascii_digit()) {
+        let limit = if negative {
+            i64::MAX as u128 + 1
+        } else {
+            i64::MAX as u128
+        };
+        return body.parse::<u128>().map_or(true, |v| v > limit);
+    }
+    let float = body.contains(['.', 'e', 'E'])
+        && body
+            .chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'));
+    float && body.parse::<f64>().is_ok_and(f64::is_infinite)
 }
 
 /// Qué hacer con una fecha.
@@ -331,7 +350,12 @@ fn toml_value(value: &Tv, dates: Dates) -> Option<Value> {
         Tv::Boolean(b) => json!(b.value()),
         Tv::Datetime(dt) => {
             // Una hora sin segundos es TOML 1.1: `tomllib` 3.11 la rechaza.
-            if dates == Dates::Fail || dt.value().time.is_some_and(|t| t.second.is_none()) {
+            // `23:59:60`: `toml_edit` lo acepta; `tomllib` no (no es un `time`).
+            let unrepresentable = dt
+                .value()
+                .time
+                .is_some_and(|t| t.second.is_none_or(|second| second > 59));
+            if dates == Dates::Fail || unrepresentable {
                 return None;
             }
             json!(dt.value().to_string())
@@ -1334,6 +1358,16 @@ mod tests {
             assert!(parse_toml(text).is_err(), "{text}");
             assert!(parse_trust_toml(text).is_err(), "{text}");
         }
+        // Un documento roto con números que SÍ caben es un rechazo seguro.
+        for text in [
+            "a = 1e10\nb = [",
+            "a = 0x7fffffffffffffff\n[",
+            "a = 9223372036854775807\n[",
+            "a = 1.5\nb = =",
+            "1e5x = 1\n[",
+        ] {
+            assert_eq!(parse_toml(text), Ok(None), "{text}");
+        }
     }
 
     /// Lector de la confianza: las fechas son valores opacos (desviación: el
@@ -1349,6 +1383,8 @@ mod tests {
         for text in [
             "a = 07:32",
             "a = 1979-05-27T07:32",
+            "a = 23:59:60",
+            "a = 1979-05-27T23:59:60Z",
             "a = {b=1,}",
             "a = \"\\e\"",
             "\u{feff}a=1",

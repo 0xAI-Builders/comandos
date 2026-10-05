@@ -539,6 +539,19 @@ fn dialogs_match_python() {
         "panic: boom",
         "confías aquí",
         "─────╮\n│ ❯ hola                 │\n╰─────",
+        "Παρακαλώ συνδεθείτε\n /login για συνέχεια",
+        "请先登录\n/login 继续使用",
+        "Войдите\n  /login чтобы продолжить",
+        "Стоимость: estimated cost of max — дорого",
+        "/loginλ ok",
+        "/login中",
+        "/login\u{301} x",
+        "/login\u{2082}",
+        "/login\u{200d}",
+        "/login\u{203f}",
+        "/login\u{24b6}",
+        "estimated cost of high\u{301}",
+        "Ⓐ Accessing workspace ①",
         "",
     ];
     let mut calls = Vec::new();
@@ -1056,6 +1069,23 @@ fn codex_trust_probe_declines_what_it_cannot_read() {
     assert!(
         launch_command::inherit_trust_for_switch(&reg, &h.s(), &cwd, "main", "rel", "codex")
             .is_err()
+    );
+    // Como la herencia, la sonda no lee un `config.toml` enlazado (no
+    // heredaría): ni el destino roto tras el enlace la hace dudar.
+    fs::remove_file(h.path().join(".codex-accounts/rel/config.toml")).unwrap();
+    h.put("otro.toml", "n = 0x8000000000000000\n");
+    std::os::unix::fs::symlink(
+        h.path().join("otro.toml"),
+        h.path().join(".codex-accounts/rel/config.toml"),
+    )
+    .unwrap();
+    assert_eq!(
+        launch_command::codex_trust_probe(&reg, &h.s(), &cwd, "main", "rel"),
+        Ok(())
+    );
+    assert_eq!(
+        launch_command::inherit_trust_for_switch(&reg, &h.s(), &cwd, "main", "rel", "codex"),
+        Ok(false)
     );
     let mut relative = reg.clone();
     relative["harnesses"]["codex"]["accountsRoot"] = json!("cuentas-codex");

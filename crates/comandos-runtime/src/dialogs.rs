@@ -5,7 +5,8 @@
 //!
 //! Los patrones son `re` de Python: se traducen con `providers::py_regex_lines`
 //! y solo se buscan sobre pantallas donde el resultado es el mismo con certeza
-//! (`providers::screen_safe`). Un patrón que el port no traduce es
+//! (`Screen::search`: los caracteres cuya clase de palabra difiere entre
+//! `re` y `regex` se reclasifican antes de buscar). Un patrón que el port no traduce es
 //! `BadPattern` (se ve antes del `claim` con `probe`); una pantalla dudosa,
 //! `UnreadableScreen` (solo después de los efectos, donde se usa
 //! `screen_dialog_fail_closed`). Si el Python ya habría devuelto antes, no
@@ -19,7 +20,7 @@ use std::{
     collections::HashMap,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, LazyLock, Mutex},
 };
 
 /// `_LOGIN_LINE`.
@@ -87,8 +88,146 @@ fn default_dialogs() -> Vec<(&'static str, Vec<String>)> {
 /// Un patrón conservado: su texto y su forma compilada con `re.I | re.M`.
 #[derive(Debug, Clone)]
 struct Entry {
-    pattern: String,
     regex: Result<Regex, Unsure>,
+    traits: Traits,
+}
+
+/// Lo que de un patrón importa para saber si una pantalla se lee igual en
+/// `re` y en `regex`.
+#[derive(Debug, Clone, Copy, Default)]
+struct Traits {
+    /// Usa `\b \B \w \W`: depende de qué es palabra.
+    words: bool,
+    /// Usa `\B`: `re.search(r"\B", "")` no casa en el Python; `regex` sí.
+    not_boundary: bool,
+    /// Usa `\s \S`: el `\s` de Python incluye U+001C–U+001F.
+    spaces: bool,
+    /// Tiene `i`/`I` o una clase: bajo `re.I`, Python iguala `İ`/`ı` a `i`.
+    letter_i: bool,
+    /// Su propio texto lleva un carácter de clase de palabra discrepante.
+    odd_literal: bool,
+}
+
+impl Traits {
+    fn of(pattern: &str) -> Self {
+        let chars: Vec<char> = pattern.chars().collect();
+        let mut traits = Self {
+            letter_i: chars.iter().any(|c| matches!(c, 'i' | 'I' | '[')),
+            odd_literal: chars.iter().any(|c| word_disagrees(*c)),
+            ..Self::default()
+        };
+        let mut i = 0;
+        while let Some(&c) = chars.get(i) {
+            if c == '\\' {
+                match chars.get(i + 1) {
+                    Some('b' | 'w' | 'W') => traits.words = true,
+                    Some('B') => {
+                        traits.words = true;
+                        traits.not_boundary = true;
+                    }
+                    Some('s' | 'S') => traits.spaces = true,
+                    _ => {}
+                }
+                i += 2;
+            } else {
+                i += 1;
+            }
+        }
+        traits
+    }
+}
+
+fn entry(pattern: &str) -> Entry {
+    Entry {
+        regex: providers::py_regex_lines(pattern, true),
+        traits: Traits::of(pattern),
+    }
+}
+
+/// ¿Es `c` palabra en un motor y no en el otro? Python 3.10 (`re`, texto):
+/// `c.isalnum() or c == '_'`, es decir letras (`\p{L}`), números (`\p{N}`,
+/// también `²` o `①`) y `_`. `regex` (UTS #18): `Alphabetic`, marcas
+/// (`\p{M}`), `\p{Nd}`, `\p{Pc}` y `Join_Control`. Discrepan las marcas
+/// combinantes, la puntuación conectora distinta de `_`, ZWJ/ZWNJ, los números
+/// que no son `Nd`/`Nl` y los símbolos alfabéticos (`Ⓐ`). Letras y dígitos de
+/// cualquier escritura (griego, CJK, cirílico) coinciden.
+fn word_disagrees(c: char) -> bool {
+    static WORDS: LazyLock<Option<(Regex, Regex)>> = LazyLock::new(|| {
+        Some((
+            Regex::new(r"^\w$").ok()?,
+            Regex::new(r"^[\p{L}\p{N}_]$").ok()?,
+        ))
+    });
+    if c.is_ascii() {
+        return false;
+    }
+    let mut buf = [0; 4];
+    let text = c.encode_utf8(&mut buf);
+    // Sin las tablas: mejor dudar de todo lo no ASCII.
+    WORDS
+        .as_ref()
+        .is_none_or(|(rust, python)| rust.is_match(text) != python.is_match(text))
+}
+
+/// Una pantalla preparada una vez para todos los patrones.
+struct Screen<'a> {
+    text: &'a str,
+    /// La pantalla con cada carácter discrepante cambiado por uno que
+    /// `regex` clasifica como `re` clasifica el original: `ʬ` (U+02AC, letra
+    /// sin mayúsculas) si es palabra en Python, U+E000 (uso privado) si no.
+    /// Ninguno de los dos es espacio ni dígito en ningún motor, y `.` casa
+    /// con ambos. `None` si no hay ninguno.
+    reclassified: Option<String>,
+    /// U+001C–U+001F.
+    controls: bool,
+    /// `İ` o `ı`.
+    dotted: bool,
+}
+
+impl<'a> Screen<'a> {
+    fn new(text: &'a str) -> Self {
+        static PYTHON_WORD: LazyLock<Option<Regex>> =
+            LazyLock::new(|| Regex::new(r"^[\p{L}\p{N}_]$").ok());
+        let mut reclassified = None::<String>;
+        for (at, c) in text.char_indices() {
+            if word_disagrees(c) {
+                let out =
+                    reclassified.get_or_insert_with(|| text.get(..at).unwrap_or("").to_owned());
+                let mut buf = [0; 4];
+                let python_word = PYTHON_WORD
+                    .as_ref()
+                    .is_some_and(|re| re.is_match(c.encode_utf8(&mut buf)));
+                out.push(if python_word { '\u{2AC}' } else { '\u{E000}' });
+            } else if let Some(out) = reclassified.as_mut() {
+                out.push(c);
+            }
+        }
+        Self {
+            text,
+            reclassified,
+            controls: text.chars().any(|c| ('\u{1c}'..='\u{1f}').contains(&c)),
+            dotted: text.chars().any(|c| matches!(c, '\u{130}' | '\u{131}')),
+        }
+    }
+
+    /// `re.search(pattern, screen, re.I | re.M)` con certeza, o `Unsure`.
+    fn search(&self, regex: &Regex, traits: Traits) -> Result<bool, Unsure> {
+        let doubtful = (self.text.is_empty() && traits.not_boundary)
+            || (self.controls && traits.spaces)
+            || (self.dotted && traits.letter_i);
+        if doubtful {
+            return Err(Unsure);
+        }
+        match &self.reclassified {
+            Some(fixed) if traits.words => {
+                if traits.odd_literal {
+                    return Err(Unsure);
+                }
+                Ok(regex.is_match(fixed))
+            }
+            _ => Ok(regex.is_match(self.text)),
+        }
+    }
 }
 
 /// Los patrones de una categoría, o `Unsure` si no se sabe cuáles serían.
@@ -159,10 +298,7 @@ fn clean_patterns(raw: Option<&Value>) -> Result<HashMap<String, Kind>, Unsure> 
             } else {
                 doubtful += 1;
             }
-            entries.push(Entry {
-                pattern: pattern.to_owned(),
-                regex: providers::py_regex_lines(pattern, true),
-            });
+            entries.push(entry(pattern));
         }
         if certain == 0 && !list.is_empty() {
             if doubtful > 0 {
@@ -253,10 +389,7 @@ impl DialogCache {
                 Kind::Known(
                     fallback
                         .into_iter()
-                        .map(|pattern| Entry {
-                            regex: providers::py_regex_lines(&pattern, true),
-                            pattern,
-                        })
+                        .map(|pattern| entry(&pattern))
                         .collect(),
                 )
             });
@@ -289,6 +422,7 @@ impl DialogCache {
     /// `"effort"`, `"error"` o `""` según la pantalla.
     pub fn screen_dialog(&self, screen: &str) -> Result<&'static str, DialogError> {
         let patterns = self.patterns().map_err(|_| DialogError::BadPattern)?;
+        let text = Screen::new(screen);
         for kind in KINDS {
             match patterns.get(kind) {
                 None => {}
@@ -296,10 +430,10 @@ impl DialogCache {
                 Some(Kind::Known(entries)) => {
                     for entry in entries {
                         let regex = entry.regex.as_ref().map_err(|_| DialogError::BadPattern)?;
-                        if !providers::screen_safe(&entry.pattern, true, screen) {
-                            return Err(DialogError::UnreadableScreen);
-                        }
-                        if regex.is_match(screen) {
+                        let found = text
+                            .search(regex, entry.traits)
+                            .map_err(|_| DialogError::UnreadableScreen)?;
+                        if found {
                             return Ok(kind);
                         }
                     }
@@ -389,6 +523,74 @@ mod tests {
         );
         assert_eq!(cache.screen_dialog_fail_closed("ılogin required"), "error");
         assert_eq!(cache.probe(), Ok(()));
+    }
+
+    /// Vivacidad: texto griego, CJK o cirílico en pantalla se lee igual que en
+    /// Python (letras y números son palabra en ambos motores); solo los
+    /// caracteres cuya clase de palabra difiere cuentan, y se reclasifican.
+    #[test]
+    fn non_latin_screens_are_read() {
+        let dir = std::env::temp_dir().join(crate::fresh_id("dialogs-scripts").unwrap());
+        let cache = DialogCache::new(&dir);
+        assert_eq!(
+            cache.screen_dialog("Παρακαλώ συνδεθείτε\n /login για συνέχεια"),
+            Ok("login")
+        );
+        assert_eq!(
+            cache.screen_dialog("请先登录\n/login 继续使用"),
+            Ok("login")
+        );
+        assert_eq!(
+            cache.screen_dialog("Войдите\n  /login чтобы продолжить"),
+            Ok("login")
+        );
+        assert_eq!(
+            cache.screen_dialog("Стоимость: estimated cost of max — дорого"),
+            Ok("effort")
+        );
+        // Una letra pegada al límite: palabra en ambos motores, no hay `\b`.
+        assert_eq!(cache.screen_dialog("/loginλ ok"), Ok(""));
+        assert_eq!(cache.screen_dialog("/login中"), Ok(""));
+        // Una marca combinante pegada al límite: `regex` la toma por palabra y
+        // `re` no; se reclasifica y el resultado es el del Python.
+        assert_eq!(cache.screen_dialog("/login\u{301} x"), Ok("login"));
+        assert_eq!(cache.screen_dialog("/login\u{2082}"), Ok(""));
+        assert_eq!(cache.screen_dialog("/login\u{200d}"), Ok("login"));
+    }
+
+    /// Lo que queda incierto: un patrón cuyo propio texto contiene uno de
+    /// esos caracteres (no se puede reclasificar sin cambiar el literal), `İ`
+    /// con un patrón que tiene `i`, U+001C–U+001F con `\s`.
+    #[test]
+    fn remaining_doubts_are_narrow() {
+        let dir = std::env::temp_dir().join(crate::fresh_id("dialogs-narrow").unwrap());
+        std::fs::create_dir_all(dir.join("config")).unwrap();
+        std::fs::write(
+            dir.join("config/detectors.json"),
+            "{\"dialogPatterns\": {\"trust\": [\"x\\u0301\\\\b\"], \"login\": [\"\\\\sZQ\"], \"onboarding\": [\"tema\"], \"effort\": [], \"error\": []}}",
+        )
+        .unwrap();
+        let cache = DialogCache::new(&dir);
+        assert_eq!(cache.probe(), Ok(()));
+        assert_eq!(
+            cache.screen_dialog("a\u{301}b"),
+            Err(DialogError::UnreadableScreen)
+        );
+        assert_eq!(
+            cache.screen_dialog("x\u{301} tema"),
+            Err(DialogError::UnreadableScreen)
+        );
+        assert_eq!(
+            cache.screen_dialog("\u{1c}ZQ"),
+            Err(DialogError::UnreadableScreen)
+        );
+        assert_eq!(
+            cache.screen_dialog("x tema \u{1c}"),
+            Err(DialogError::UnreadableScreen)
+        );
+        assert_eq!(cache.screen_dialog("ıyi tema"), Ok("onboarding"));
+        assert_eq!(cache.screen_dialog("xz"), Ok(""));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Un patrón de configuración que el port no traduce se ve antes del
