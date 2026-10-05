@@ -949,11 +949,14 @@ mod scaffold_tests {
         assert_eq!(route(&Method::HEAD, "/state"), None);
         assert_eq!(route(&Method::HEAD, "/"), None);
         assert_eq!(route(&Method::PUT, "/state"), None);
+        // DELETE: solo `/push/subscription` (2f-3/T5), el único `do_DELETE`.
         assert!(
             TABLES
                 .iter()
                 .flat_map(|table| table.iter())
-                .all(|entry| entry.verb != Verb::Head && entry.verb != Verb::Delete)
+                .all(|entry| entry.verb != Verb::Head
+                    && (entry.verb != Verb::Delete
+                        || matches!(entry.key, Key::Raw("/push/subscription"))))
         );
     }
 

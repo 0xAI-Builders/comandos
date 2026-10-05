@@ -9,3 +9,6 @@
 {"name":"s-test-invalido","method":"POST","path":"/test","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"kind":"ruido"},"volatile":[],"expect":"same"}
 {"name":"s-remote-state-sin-host","method":"GET","path":"/remote-state","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"s-remote-qr-sin-host","method":"GET","path":"/remote-qr.png","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"s-push-key","method":"GET","path":"/push/key","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"s-push-test","method":"POST","path":"/push/test","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"endpoint":"https://push.example/x"},"volatile":[],"expect":"same"}
+{"name":"s-pomodoro-settings-invalido","method":"POST","path":"/pomodoro","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"settings":{"style":"neon","cycles":4}},"volatile":[],"expect":"same"}
