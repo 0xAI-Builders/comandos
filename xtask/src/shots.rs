@@ -328,8 +328,8 @@ fn rect_of(v: &Value) -> Option<[f64; 4]> {
 fn capture(page: &mut Page<'_>, url: &str, entry: &PairEntry) -> Result<Capture, String> {
     page.navigate(url)?;
     wait_ready(page)?;
-    let png = page.screenshot_png(entry.full_page)?;
-    let mut image = png_diff::decode(&png)?;
+    // Se mide antes de capturar: así máscara y recorte describen el mismo
+    // estado que la captura que sigue, sin una ventana entre ambas.
     let js = format!(
         "() => {{ const box = e => {{ const r = e.getBoundingClientRect(); \
          return [r.x + scrollX, r.y + scrollY, r.width, r.height]; }}; \
@@ -341,6 +341,8 @@ fn capture(page: &mut Page<'_>, url: &str, entry: &PairEntry) -> Result<Capture,
         mask = js_list(&entry.mask),
     );
     let data = page.eval(&js)?;
+    let png = page.screenshot_png(entry.full_page)?;
+    let mut image = png_diff::decode(&png)?;
     let scale = data.get("scale").and_then(Value::as_f64).unwrap_or(1.0);
     let list = |k: &str| {
         data.get(k)
@@ -502,26 +504,23 @@ fn write_report(out: &Path, name: &str, report: &Value) -> Result<(), String> {
     std::fs::write(&path, text + "\n").map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// `shots pair`: devuelve el número de recortes que fallan.
-pub fn run_pair(
-    client: &mut Client,
+/// Barrido de `pair`: emula, captura las dos variantes y compara; añade las
+/// filas a `rows` según avanza, para que un error deje el informe parcial.
+fn pair_combos(
+    page: &mut Page<'_>,
     base: &str,
-    suite_name: &str,
+    clock: u128,
     entries: &[PairEntry],
     out: &Path,
-) -> Result<usize, String> {
-    check_base(base)?;
-    mkdir(out)?;
-    let clock = clock_ms();
-    let mut rows = Vec::new();
-    let mut omitted = false;
-    let mut page = client.open_page("about:blank")?;
+    rows: &mut Vec<Value>,
+    omitted: &mut bool,
+) -> Result<(), String> {
     for entry in entries {
         for &width in &entry.widths {
             for &dpr in &entry.dpr {
                 for &touch in &entry.touch {
                     let mode = page.emulate(width, entry.height, dpr, touch)?;
-                    omitted |= mode == EmulationMode::ResizeOnly;
+                    *omitted |= mode == EmulationMode::ResizeOnly;
                     let combo = format!("{width}w-{dpr}x{}", if touch { "-touch" } else { "" });
                     let dir = out.join(slug(&entry.id)).join(&combo);
                     mkdir(&dir)?;
@@ -529,8 +528,8 @@ pub fn run_pair(
                         page_url(base, &entry.page, &format!("web=off&__clock={clock}"));
                     let web_url =
                         page_url(base, &entry.page, &format!("web=shadow&__clock={clock}"));
-                    let legacy = capture(&mut page, &legacy_url, entry)?;
-                    let web = capture(&mut page, &web_url, entry)?;
+                    let legacy = capture(page, &legacy_url, entry)?;
+                    let web = capture(page, &web_url, entry)?;
                     png_diff::write_png(&legacy.image, &dir.join("legacy-full.png"))?;
                     png_diff::write_png(&web.image, &dir.join("web-full.png"))?;
                     let base_row = json!({
@@ -551,7 +550,33 @@ pub fn run_pair(
             }
         }
     }
-    page.close()?;
+    Ok(())
+}
+
+/// `shots pair`: devuelve el número de recortes que fallan.
+pub fn run_pair(
+    client: &mut Client,
+    base: &str,
+    suite_name: &str,
+    entries: &[PairEntry],
+    out: &Path,
+) -> Result<usize, String> {
+    check_base(base)?;
+    mkdir(out)?;
+    let clock = clock_ms();
+    let mut rows = Vec::new();
+    let mut omitted = false;
+    let mut page = client.open_page("about:blank")?;
+    let outcome = pair_combos(
+        &mut page,
+        base,
+        clock,
+        entries,
+        out,
+        &mut rows,
+        &mut omitted,
+    )
+    .and_then(|()| page.close());
     let failures = rows
         .iter()
         .filter(|r| r.get("pass").and_then(Value::as_bool) != Some(true))
@@ -577,13 +602,17 @@ pub fn run_pair(
         println!("AVISO: el broker no emula viewport: DPR y táctil OMITIDOS (ver report.json)");
     }
     println!("{} recortes, {failures} fallan", rows.len());
+    let error = outcome.as_ref().err().cloned();
+    if let Some(e) = &error {
+        println!("ERROR (informe parcial): {e}");
+    }
     write_report(
         out,
         "report.json",
         &json!({"suite": suite_name, "base": base, "clock": clock.to_string(),
-            "touch_omitted": omitted, "failures": failures, "results": rows}),
+            "touch_omitted": omitted, "failures": failures, "error": error, "results": rows}),
     )?;
-    Ok(failures)
+    outcome.map(|()| failures)
 }
 
 fn styles_js(selectors: &[String]) -> String {

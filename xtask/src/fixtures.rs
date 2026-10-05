@@ -5,8 +5,10 @@
 //! - Si no, `GET /a/b` → `root/a_b.get.json` o, si falta, `root/a_b.json`.
 //! - `POST` se registra en `posts` y responde `root/a_b.post.json` o `{"ok":true}`.
 //! - Lo demás: `404 {"error":"fixture ausente"}` (el arnés lo cuenta como fallo).
+//! - Nada fuera de `root`: ni `..` ni enlaces simbólicos que salgan de él.
+//! - Cotas (`Limits`): cuerpo de POST y conexiones simultáneas.
 use bytes::Bytes;
-use http_body_util::{BodyExt as _, Full};
+use http_body_util::{BodyExt as _, Full, Limited};
 use hyper::{
     Request, Response, StatusCode, body::Incoming, server::conn::http1, service::service_fn,
 };
@@ -75,13 +77,21 @@ fn relative(target: &str) -> Option<String> {
     ok.then(|| path.to_string())
 }
 
+/// Archivo regular cuyo destino real (enlaces resueltos) queda dentro de `root`.
+fn inside_file(root: &Path, path: &Path) -> bool {
+    match (root.canonicalize(), path.canonicalize()) {
+        (Ok(root), Ok(real)) => real.starts_with(&root) && real.is_file(),
+        _ => false,
+    }
+}
+
 /// Resuelve `method target` dentro de `root`.
 pub fn resolve(root: &Path, method: &str, target: &str) -> Resolved {
     let Some(rel) = relative(target) else {
         return Resolved::Missing;
     };
     let direct = root.join(&rel);
-    if method != "POST" && direct.is_file() {
+    if method != "POST" && inside_file(root, &direct) {
         return Resolved::File {
             mime: mime_for(&rel),
             path: direct,
@@ -95,7 +105,7 @@ pub fn resolve(root: &Path, method: &str, target: &str) -> Resolved {
     }
     candidates
         .into_iter()
-        .find(|p| p.is_file())
+        .find(|p| inside_file(root, p))
         .map_or(Resolved::Missing, |path| Resolved::File {
             path,
             mime: "application/json",
@@ -115,9 +125,28 @@ fn reply(status: StatusCode, mime: &str, body: Vec<u8>) -> Response<Full<Bytes>>
     res
 }
 
+/// Cotas del servidor de fixtures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limits {
+    /// Bytes máximos del cuerpo de un POST; si se pasa, `413` y no se registra.
+    pub max_body: usize,
+    /// Conexiones atendidas a la vez; las demás esperan en la cola de `accept`.
+    pub max_connections: usize,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Limits {
+            max_body: 1 << 20,
+            max_connections: 64,
+        }
+    }
+}
+
 async fn handle(
     root: Arc<PathBuf>,
     posts: Arc<Mutex<Vec<Value>>>,
+    max_body: usize,
     req: Request<Incoming>,
 ) -> Result<Response<Full<Bytes>>, std::convert::Infallible> {
     let method = req.method().as_str().to_string();
@@ -126,12 +155,14 @@ async fn handle(
         |pq| pq.as_str().to_string(),
     );
     if method == "POST" {
-        let bytes = req
-            .into_body()
-            .collect()
-            .await
-            .map(|b| b.to_bytes())
-            .unwrap_or_default();
+        let Ok(collected) = Limited::new(req.into_body(), max_body).collect().await else {
+            return Ok(reply(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "application/json",
+                br#"{"error":"cuerpo demasiado grande o cortado"}"#.to_vec(),
+            ));
+        };
+        let bytes = collected.to_bytes();
         let body = serde_json::from_slice::<Value>(&bytes)
             .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned()));
         let path = target.split('?').next().unwrap_or("").to_string();
@@ -176,21 +207,48 @@ pub fn serve_listener(
     listener: std::net::TcpListener,
     posts: Arc<Mutex<Vec<Value>>>,
 ) -> io::Result<()> {
+    serve_listener_with(root, listener, posts, Limits::default())
+}
+
+/// `serve_listener` con cotas explícitas.
+pub fn serve_listener_with(
+    root: PathBuf,
+    listener: std::net::TcpListener,
+    posts: Arc<Mutex<Vec<Value>>>,
+    limits: Limits,
+) -> io::Result<()> {
     listener.set_nonblocking(true)?;
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_io()
+        .enable_time()
         .build()?;
     let root = Arc::new(root);
+    let slots = Arc::new(tokio::sync::Semaphore::new(limits.max_connections.max(1)));
     rt.block_on(async move {
         let listener = tokio::net::TcpListener::from_std(listener)?;
         loop {
-            let (stream, _) = listener.accept().await?;
+            // Sin hueco libre no se acepta: la conexión espera en el backlog.
+            let Ok(permit) = slots.clone().acquire_owned().await else {
+                return Ok(());
+            };
+            let stream = match listener.accept().await {
+                Ok((stream, _)) => stream,
+                Err(e) => {
+                    // EMFILE y similares: no tumban el servidor.
+                    eprintln!("fixtures: accept: {e}");
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    continue;
+                }
+            };
             let (root, posts) = (root.clone(), posts.clone());
             tokio::spawn(async move {
-                let service = service_fn(move |req| handle(root.clone(), posts.clone(), req));
+                let service = service_fn(move |req| {
+                    handle(root.clone(), posts.clone(), limits.max_body, req)
+                });
                 let _ = http1::Builder::new()
                     .serve_connection(TokioIo::new(stream), service)
                     .await;
+                drop(permit);
             });
         }
     })

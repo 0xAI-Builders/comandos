@@ -4,14 +4,26 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use xtask::{dom_diff, fixtures as fx, mcp, png_diff as pd, shots as sh};
 
-const SHOTS_USAGE: &str = "uso: cargo run -p xtask -- shots pair --base URL --suite NAME --out DIR [--broker CMD]\n     cargo run -p xtask -- shots remote-vs-desktop --base URL --out DIR [--suite NAME] [--remote-base URL] [--broker CMD]";
+const SHOTS_USAGE: &str = "uso: cargo run -p xtask -- shots pair --base URL --suite NAME --out DIR [-- BROKER ARGV…]\n     cargo run -p xtask -- shots remote-vs-desktop --base URL --out DIR [--suite NAME] [--remote-base URL] [-- BROKER ARGV…]\n     cargo run -p xtask -- shots check [-- BROKER ARGV…]\nSin BROKER se usa el «exec ssh» de ~/.local/bin/cc-browser-remote con keepalive.";
 
-/// Valor de `--name` en `args`.
+/// Separa las opciones del argv del broker (todo lo que sigue a `--`).
+fn split_broker(args: &[String]) -> (&[String], &[String]) {
+    match args.iter().position(|a| a == "--") {
+        Some(i) => (
+            args.get(..i).unwrap_or(&[]),
+            args.get(i + 1..).unwrap_or(&[]),
+        ),
+        None => (args, &[]),
+    }
+}
+
+/// Valor de `--name` en `args`; un valor que empieza por `--` no vale.
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter()
         .position(|a| a == name)
         .and_then(|i| args.get(i + 1))
         .map(String::as_str)
+        .filter(|v| !v.starts_with("--"))
 }
 
 fn usage(text: &str) -> i32 {
@@ -24,16 +36,44 @@ fn error(msg: impl std::fmt::Display) -> i32 {
     1
 }
 
-fn connect(args: &[String]) -> Result<mcp::Client, String> {
-    let command = flag(args, "--broker")
-        .map(str::to_string)
-        .unwrap_or_else(mcp::default_command);
-    let parts: Vec<&str> = command.split_whitespace().collect();
+/// Abre la sesión con el argv explícito del broker o el de por omisión.
+fn connect(broker: &[String]) -> Result<mcp::Client, String> {
+    let argv = if broker.is_empty() {
+        mcp::default_command()
+    } else {
+        broker.to_vec()
+    };
+    let parts: Vec<&str> = argv.iter().map(String::as_str).collect();
     mcp::Client::spawn(&parts)
 }
 
-pub fn shots(args: &[String]) -> i32 {
+/// `shots check`: abre una página en blanco, evalúa y la cierra (una sesión).
+fn check(broker: &[String]) -> i32 {
+    let result = connect(broker).and_then(|mut client| {
+        let schema = client.schema()?;
+        let mut page = client.open_page("about:blank")?;
+        let value = page.eval("() => [navigator.userAgent.includes('Chrome'), 1 + 1]")?;
+        page.close()?;
+        Ok((schema, value))
+    });
+    match result {
+        Ok((schema, value)) => {
+            println!(
+                "chrome-bg: esquema válido (emulate viewport: {}), eval → {value}",
+                schema.viewport_emulation
+            );
+            0
+        }
+        Err(e) => error(e),
+    }
+}
+
+pub fn shots(all: &[String]) -> i32 {
+    let (args, broker) = split_broker(all);
     let mode = args.first().map(String::as_str);
+    if mode == Some("check") {
+        return check(broker);
+    }
     let (Some(base), Some(out)) = (flag(args, "--base"), flag(args, "--out")) else {
         return usage(SHOTS_USAGE);
     };
@@ -47,7 +87,7 @@ pub fn shots(args: &[String]) -> i32 {
                 .and_then(|t| sh::parse_pair_suite(&t))
                 .and_then(|suite| {
                     sh::check_base(base)?;
-                    let mut client = connect(args)?;
+                    let mut client = connect(broker)?;
                     sh::run_pair(&mut client, base, name, &suite, &out)
                 });
             match result {
@@ -64,7 +104,7 @@ pub fn shots(args: &[String]) -> i32 {
                 .and_then(|suite| {
                     sh::check_base(base)?;
                     sh::check_base(remote_base)?;
-                    let mut client = connect(args)?;
+                    let mut client = connect(broker)?;
                     sh::run_remote_vs_desktop(&mut client, base, remote_base, &suite, &out)
                 });
             match result {
@@ -144,5 +184,42 @@ pub fn fixtures(args: &[String]) -> i32 {
     match fx::serve(&root, port, Arc::new(Mutex::new(Vec::new()))) {
         Ok(()) => 0,
         Err(e) => error(format!("fixtures: {e}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{flag, split_broker};
+
+    fn argv(s: &[&str]) -> Vec<String> {
+        s.iter().map(|a| (*a).to_string()).collect()
+    }
+
+    #[test]
+    fn broker_argv_is_everything_after_the_separator_unsplit() {
+        let a = argv(&[
+            "pair",
+            "--base",
+            "http://x",
+            "--",
+            "/ruta con espacios/broker",
+            "-v",
+        ]);
+        let (opts, broker) = split_broker(&a);
+        assert_eq!(opts, argv(&["pair", "--base", "http://x"]).as_slice());
+        assert_eq!(
+            broker,
+            argv(&["/ruta con espacios/broker", "-v"]).as_slice()
+        );
+        let b = argv(&["check"]);
+        assert!(split_broker(&b).1.is_empty());
+    }
+
+    #[test]
+    fn a_flag_never_takes_another_flag_as_its_value() {
+        let a = argv(&["pair", "--base", "--out", "dir"]);
+        assert_eq!(flag(&a, "--base"), None);
+        assert_eq!(flag(&a, "--out"), Some("dir"));
+        assert_eq!(flag(&argv(&["--base"]), "--base"), None);
     }
 }

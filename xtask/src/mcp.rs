@@ -10,6 +10,20 @@ use base64::Engine as _;
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
+use std::time::{Duration, Instant};
+
+/// Plazo por petición; las capturas (`fullPage` a DPR 2) tienen más margen.
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+pub const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Opciones de ssh que detectan un enlace muerto sin RST en ~45 s.
+pub const SSH_KEEPALIVE: [&str; 4] = [
+    "-o",
+    "ServerAliveInterval=15",
+    "-o",
+    "ServerAliveCountMax=3",
+];
 
 /// Herramienta anunciada por el broker.
 #[derive(Debug, Clone)]
@@ -37,10 +51,16 @@ pub enum EmulationMode {
 pub struct Client {
     child: Option<Child>,
     writer: Box<dyn Write + Send>,
-    reader: Box<dyn BufRead + Send>,
+    /// Líneas leídas por el hilo lector; `Err` si la lectura falló.
+    lines: Receiver<Result<String, String>>,
     next: u64,
     tools: Vec<ToolInfo>,
     schema: Option<BrowserSchema>,
+    timeout: Duration,
+    screenshot_timeout: Duration,
+    /// Tras un plazo vencido o un flujo roto el cliente no se reutiliza: una
+    /// respuesta tardía podría confundirse con la de la petición siguiente.
+    poisoned: Option<String>,
 }
 
 /// Petición JSON-RPC en una sola línea terminada en `\n`.
@@ -146,14 +166,70 @@ pub fn check_schema(tools: &[ToolInfo]) -> Result<BrowserSchema, String> {
     Ok(BrowserSchema { viewport_emulation })
 }
 
-/// Ruta por omisión del puente al broker.
-pub fn default_command() -> String {
+/// Ruta del puente al broker (`chrome-bg`).
+pub fn bridge_script() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     format!("{home}/.local/bin/cc-browser-remote")
 }
 
+/// Si el script es solo `exec ssh <args>` con palabras simples (sin comillas,
+/// variables ni redirecciones), devuelve ese argv para lanzar ssh directamente
+/// y poder añadirle las opciones de keepalive. Si no, `None`.
+pub fn broker_argv_from_script(script: &str) -> Option<Vec<String>> {
+    let mut exec = None;
+    for line in script.lines().map(str::trim) {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if exec.is_some() {
+            return None;
+        }
+        exec = Some(line.strip_prefix("exec ")?);
+    }
+    let words: Vec<String> = exec?.split_whitespace().map(str::to_string).collect();
+    let simple = |w: &String| {
+        w.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_.:=/@,+".contains(c))
+    };
+    (words.first().map(String::as_str) == Some("ssh") && words.iter().all(simple)).then_some(words)
+}
+
+/// Inserta `SSH_KEEPALIVE` tras `ssh`; cualquier otro programa queda igual.
+pub fn with_keepalive(argv: Vec<String>) -> Vec<String> {
+    let is_ssh = argv
+        .first()
+        .is_some_and(|p| p.rsplit('/').next() == Some("ssh"));
+    if !is_ssh {
+        return argv;
+    }
+    let mut out = Vec::with_capacity(argv.len() + SSH_KEEPALIVE.len());
+    let mut it = argv.into_iter();
+    out.extend(it.next());
+    out.extend(SSH_KEEPALIVE.iter().map(|s| (*s).to_string()));
+    out.extend(it);
+    out
+}
+
+/// Argv por omisión: el `exec ssh …` de `cc-browser-remote` con keepalive;
+/// si el script no tiene esa forma, el script tal cual (sin keepalive, pero
+/// con el plazo de lectura del cliente).
+pub fn default_command() -> Vec<String> {
+    let script = bridge_script();
+    match std::fs::read_to_string(&script)
+        .ok()
+        .as_deref()
+        .and_then(broker_argv_from_script)
+    {
+        Some(argv) => with_keepalive(argv),
+        None => {
+            eprintln!("aviso: {script} no es un «exec ssh» simple; se lanza sin keepalive");
+            vec![script]
+        }
+    }
+}
+
 impl Client {
-    /// Lanza `command` (por omisión `[~/.local/bin/cc-browser-remote]`) y
+    /// Lanza `command` (por omisión `default_command()`) y
     /// negocia la sesión. Cada `Client` es una sesión del broker (máximo dos).
     pub fn spawn(command: &[&str]) -> Result<Client, String> {
         let (program, args) = command.split_first().ok_or("comando vacío")?;
@@ -182,15 +258,56 @@ impl Client {
         Ok(c)
     }
 
-    fn bare(reader: Box<dyn BufRead + Send>, writer: Box<dyn Write + Send>) -> Client {
+    fn bare(mut reader: Box<dyn BufRead + Send>, writer: Box<dyn Write + Send>) -> Client {
+        // Hilo lector: así cada petición espera con plazo (`recv_timeout`).
+        // Termina al cerrarse el flujo (EOF) o al soltarse el receptor.
+        let (tx, lines) = channel();
+        std::thread::spawn(move || {
+            loop {
+                let mut line = String::new();
+                let msg = match reader.read_line(&mut line) {
+                    Ok(0) => return,
+                    Ok(_) => Ok(line),
+                    Err(e) => Err(format!("mcp: {e}")),
+                };
+                let failed = msg.is_err();
+                if tx.send(msg).is_err() || failed {
+                    return;
+                }
+            }
+        });
         Client {
             child: None,
             writer,
-            reader,
+            lines,
             next: 1,
             tools: Vec::new(),
             schema: None,
+            timeout: DEFAULT_TIMEOUT,
+            screenshot_timeout: SCREENSHOT_TIMEOUT,
+            poisoned: None,
         }
+    }
+
+    /// Cambia los plazos por petición (general y de `take_screenshot`).
+    pub fn set_timeouts(&mut self, general: Duration, screenshot: Duration) {
+        self.timeout = general;
+        self.screenshot_timeout = screenshot;
+    }
+
+    /// `true` si un plazo vencido o un flujo roto dejó el cliente inutilizable.
+    pub fn is_poisoned(&self) -> bool {
+        self.poisoned.is_some()
+    }
+
+    /// Marca el cliente como inutilizable y corta la sesión del broker.
+    fn poison(&mut self, why: String) -> String {
+        if let Some(child) = self.child.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        self.poisoned = Some(why.clone());
+        why
     }
 
     fn handshake(&mut self) -> Result<(), String> {
@@ -220,39 +337,83 @@ impl Client {
         &self.tools
     }
 
+    fn send_line(&mut self, line: &str) -> Result<(), String> {
+        let sent = self
+            .writer
+            .write_all(line.as_bytes())
+            .and_then(|()| self.writer.flush());
+        match sent {
+            Ok(()) => Ok(()),
+            Err(e) => Err(self.poison(format!("mcp: {e}"))),
+        }
+    }
+
     fn notify(&mut self, method: &str) -> Result<(), String> {
         let line = json!({"jsonrpc": "2.0", "method": method}).to_string() + "\n";
-        self.writer
-            .write_all(line.as_bytes())
-            .and_then(|()| self.writer.flush())
-            .map_err(|e| format!("mcp: {e}"))
+        self.send_line(&line)
+    }
+
+    /// Contesta una petición del servidor: `ping` con `{}`, el resto con
+    /// «método no encontrado» (el broker no espera nada más del arnés).
+    fn answer_server(&mut self, msg: &Value) -> Result<(), String> {
+        let id = msg.get("id").cloned().unwrap_or(Value::Null);
+        let reply = if msg.get("method").and_then(Value::as_str) == Some("ping") {
+            json!({"jsonrpc": "2.0", "id": id, "result": {}})
+        } else {
+            json!({"jsonrpc": "2.0", "id": id,
+                "error": {"code": -32601, "message": "método no soportado por xtask"}})
+        };
+        self.send_line(&(reply.to_string() + "\n"))
     }
 
     fn rpc(&mut self, method: &str, params: Value) -> Result<Value, String> {
+        self.rpc_within(method, params, self.timeout)
+    }
+
+    fn rpc_within(
+        &mut self,
+        method: &str,
+        params: Value,
+        timeout: Duration,
+    ) -> Result<Value, String> {
+        if let Some(why) = &self.poisoned {
+            return Err(format!("mcp {method}: cliente inutilizable ({why})"));
+        }
         let id = self.next;
         self.next += 1;
-        self.writer
-            .write_all(request_line(id, method, params).as_bytes())
-            .and_then(|()| self.writer.flush())
-            .map_err(|e| format!("mcp: {e}"))?;
-        let mut line = String::new();
+        self.send_line(&request_line(id, method, params))?;
+        let deadline = Instant::now() + timeout;
         loop {
-            line.clear();
-            if self
-                .reader
-                .read_line(&mut line)
-                .map_err(|e| format!("mcp: {e}"))?
-                == 0
-            {
-                return Err(format!("mcp {method}: el broker cerró la conexión"));
-            }
+            let left = deadline.saturating_duration_since(Instant::now());
+            let line = match self.lines.recv_timeout(left) {
+                Ok(Ok(line)) => line,
+                Ok(Err(e)) => return Err(self.poison(e)),
+                Err(RecvTimeoutError::Timeout) => {
+                    return Err(self.poison(format!(
+                        "mcp {method}: sin respuesta en {} s",
+                        timeout.as_secs_f64()
+                    )));
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    return Err(self.poison(format!("mcp {method}: el broker cerró la conexión")));
+                }
+            };
             if line.trim().is_empty() {
                 continue;
             }
-            let msg: Value =
-                serde_json::from_str(line.trim_end()).map_err(|e| format!("mcp: {e}"))?;
+            let msg: Value = match serde_json::from_str(line.trim_end()) {
+                Ok(v) => v,
+                Err(e) => return Err(self.poison(format!("mcp: {e}"))),
+            };
+            if msg.get("method").is_some() {
+                // Petición del servidor (con id) o notificación (sin id).
+                if msg.get("id").is_some() {
+                    self.answer_server(&msg)?;
+                }
+                continue;
+            }
             if msg.get("id").and_then(Value::as_u64) != Some(id) {
-                continue; // notificaciones y respuestas ajenas
+                continue; // respuestas ajenas
             }
             if let Some(err) = msg.get("error") {
                 return Err(format!("mcp {method}: {err}"));
@@ -269,7 +430,16 @@ impl Client {
         if !self.tools.iter().any(|t| t.name == tool) {
             return Err(format!("el broker no ofrece la herramienta {tool}"));
         }
-        let result = self.rpc("tools/call", json!({"name": tool, "arguments": args}))?;
+        let timeout = if tool == "take_screenshot" {
+            self.screenshot_timeout
+        } else {
+            self.timeout
+        };
+        let result = self.rpc_within(
+            "tools/call",
+            json!({"name": tool, "arguments": args}),
+            timeout,
+        )?;
         if result.get("isError").and_then(Value::as_bool) == Some(true) {
             return Err(format!("{tool}: {}", result_text(&result)));
         }
@@ -388,7 +558,8 @@ impl Page<'_> {
 
 impl Drop for Page<'_> {
     fn drop(&mut self) {
-        if self.open {
+        // Con el cliente envenenado no se envía nada: el broker no contesta.
+        if self.open && !self.client.is_poisoned() {
             let _ = self.client.call("close_page", json!({"pageId": self.id}));
         }
     }

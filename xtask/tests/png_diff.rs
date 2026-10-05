@@ -155,3 +155,72 @@ fn diff_png_marks_differences_in_red() {
     let _ = std::fs::remove_file(&out);
     assert_eq!(got.pixels, vec![0, 0, 0, 255, 255, 0, 0, 255]);
 }
+
+fn png_bytes(w: u32, h: u32, color: png::ColorType, depth: png::BitDepth, data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    {
+        let mut enc = png::Encoder::new(&mut out, w, h);
+        enc.set_color(color);
+        enc.set_depth(depth);
+        let mut wr = enc.write_header().unwrap();
+        wr.write_image_data(data).unwrap();
+    }
+    out
+}
+
+#[test]
+fn grey_pngs_become_rgba_like_pillow_convert_rgb() {
+    let g = png_bytes(
+        2,
+        1,
+        png::ColorType::Grayscale,
+        png::BitDepth::Eight,
+        &[10, 200],
+    );
+    assert_eq!(
+        decode(&g).unwrap().pixels,
+        vec![10, 10, 10, 255, 200, 200, 200, 255]
+    );
+    let ga = png_bytes(
+        1,
+        1,
+        png::ColorType::GrayscaleAlpha,
+        png::BitDepth::Eight,
+        &[7, 9],
+    );
+    assert_eq!(decode(&ga).unwrap().pixels, vec![7, 7, 7, 9]);
+}
+
+#[test]
+fn sixteen_bit_pngs_keep_the_high_byte_like_pillow() {
+    // Pillow abre RGB de 16 bits como "RGB" con el byte alto (rawmode RGB;16B).
+    let rgb16 = png_bytes(
+        1,
+        1,
+        png::ColorType::Rgb,
+        png::BitDepth::Sixteen,
+        &[0x12, 0x34, 0xab, 0xcd, 0xff, 0x00],
+    );
+    assert_eq!(decode(&rgb16).unwrap().pixels, vec![0x12, 0xab, 0xff, 255]);
+    let rgba16 = png_bytes(
+        1,
+        1,
+        png::ColorType::Rgba,
+        png::BitDepth::Sixteen,
+        &[1, 0, 2, 0, 3, 0, 4, 0],
+    );
+    assert_eq!(decode(&rgba16).unwrap().pixels, vec![1, 2, 3, 4]);
+    // Gris de 16 bits: Pillow 9 lo abre en modo "I" y convert("RGB") recorta a 0..=255
+    // (comprobado con Pillow 9.0.1: 0x0080 → 128, 0x1234 → 255).
+    let g16 = png_bytes(
+        2,
+        1,
+        png::ColorType::Grayscale,
+        png::BitDepth::Sixteen,
+        &[0x00, 0x80, 0x12, 0x34],
+    );
+    assert_eq!(
+        decode(&g16).unwrap().pixels,
+        vec![128, 128, 128, 255, 255, 255, 255, 255]
+    );
+}

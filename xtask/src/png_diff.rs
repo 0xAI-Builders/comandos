@@ -34,11 +34,16 @@ impl DiffStats {
     }
 }
 
-/// Decodifica un PNG a RGBA 8 bits; RGB, gris y paleta se expanden con alfa
-/// opaco (las capturas de Chrome llegan en RGB).
+/// Decodifica un PNG a RGBA 8 bits con las conversiones de Pillow
+/// (`Image.open(...).convert("RGB")` de png_diff.py; el alfa se conserva pero
+/// `diff` no lo mira):
+/// - paleta, gris de 1–4 bits y `tRNS` se expanden;
+/// - gris → R=G=B; RGB sin alfa → alfa opaco;
+/// - 16 bits: RGB(A) y gris con alfa toman el byte alto; el gris de 16 bits
+///   recorta a 0..=255, como el modo "I" de Pillow 9.
 pub fn decode(bytes: &[u8]) -> Result<Rgba, String> {
     let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
-    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::ALPHA);
+    decoder.set_transformations(png::Transformations::EXPAND);
     let mut reader = decoder.read_info().map_err(|e| format!("png: {e}"))?;
     let size = reader
         .output_buffer_size()
@@ -47,17 +52,61 @@ pub fn decode(bytes: &[u8]) -> Result<Rgba, String> {
     let info = reader
         .next_frame(&mut buf)
         .map_err(|e| format!("png: {e}"))?;
-    if info.color_type != png::ColorType::Rgba || info.bit_depth != png::BitDepth::Eight {
+    buf.truncate(info.buffer_size());
+    let channels = match info.color_type {
+        png::ColorType::Grayscale => 1,
+        png::ColorType::GrayscaleAlpha => 2,
+        png::ColorType::Rgb => 3,
+        png::ColorType::Rgba => 4,
+        png::ColorType::Indexed => return Err("png: paleta sin expandir".into()),
+    };
+    let wide = match info.bit_depth {
+        png::BitDepth::Eight => false,
+        png::BitDepth::Sixteen => true,
+        other => return Err(format!("png: profundidad {other:?} sin expandir")),
+    };
+    let sample_len = if wide { 2 } else { 1 };
+    let gray16 = wide && channels == 1;
+    // Muestra `i` del píxel, ya en 8 bits.
+    let sample = |px: &[u8], i: usize| -> u8 {
+        let at = i * sample_len;
+        match (wide, px.get(at), px.get(at + 1)) {
+            (false, Some(v), _) => *v,
+            (true, Some(hi), Some(lo)) if gray16 => {
+                u8::try_from(u16::from_be_bytes([*hi, *lo])).unwrap_or(u8::MAX)
+            }
+            (true, Some(hi), _) => *hi,
+            _ => 0,
+        }
+    };
+    let stride = channels * sample_len;
+    let mut pixels = Vec::with_capacity((info.width as usize) * (info.height as usize) * 4);
+    for px in buf.chunks_exact(stride) {
+        let rgba = match channels {
+            1 => {
+                let g = sample(px, 0);
+                [g, g, g, 255]
+            }
+            2 => {
+                let g = sample(px, 0);
+                [g, g, g, sample(px, 1)]
+            }
+            3 => [sample(px, 0), sample(px, 1), sample(px, 2), 255],
+            _ => [sample(px, 0), sample(px, 1), sample(px, 2), sample(px, 3)],
+        };
+        pixels.extend_from_slice(&rgba);
+    }
+    let expected = (info.width as usize) * (info.height as usize) * 4;
+    if pixels.len() != expected {
         return Err(format!(
-            "png: formato {:?}/{:?} no soportado",
-            info.color_type, info.bit_depth
+            "png: {} bytes de píxeles, se esperaban {expected}",
+            pixels.len()
         ));
     }
-    buf.truncate(info.buffer_size());
     Ok(Rgba {
         width: info.width,
         height: info.height,
-        pixels: buf,
+        pixels,
     })
 }
 

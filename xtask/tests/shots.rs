@@ -225,6 +225,38 @@ fn pair_with_identical_variants_passes_and_writes_the_report() {
         urls[1].split("__clock=").nth(1)
     );
     assert_eq!(calls.last().unwrap()["name"], "close_page");
+    // Se mide (rectángulos y máscaras) antes de capturar, en cada variante.
+    let seq: Vec<String> = calls
+        .iter()
+        .map(|c| match c["name"].as_str().unwrap() {
+            "evaluate_script"
+                if c["arguments"]["function"]
+                    .as_str()
+                    .unwrap()
+                    .contains("readyState") =>
+            {
+                "ready".to_string()
+            }
+            "evaluate_script" => "measure".to_string(),
+            other => other.to_string(),
+        })
+        .collect();
+    assert_eq!(
+        seq,
+        [
+            "new_page",
+            "emulate",
+            "navigate_page",
+            "ready",
+            "measure",
+            "take_screenshot",
+            "navigate_page",
+            "ready",
+            "measure",
+            "take_screenshot",
+            "close_page"
+        ]
+    );
     let _ = std::fs::remove_dir_all(&out);
 }
 
@@ -250,5 +282,42 @@ fn pair_with_a_different_crop_fails_and_locates_the_dom_difference() {
     );
     let d = row["dom_difference"].as_str().unwrap();
     assert!(d.contains("\\\"x\\\"") && d.contains("\\\"y\\\""), "{d}");
+    let _ = std::fs::remove_dir_all(&out);
+}
+
+#[test]
+fn an_error_mid_run_still_writes_the_partial_report() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let mut shots = 0;
+    let mut client = support::fake_broker(calls, move |name, args| match name {
+        "new_page" => support::text("## Pages\n3: about:blank [selected]"),
+        "take_screenshot" => {
+            shots += 1;
+            if shots > 2 {
+                json!({"content": [{"type": "text", "text": "pantalla rota"}], "isError": true})
+            } else {
+                json!({"content": [{"type": "image", "mimeType": "image/png", "data": png_b64([0, 0, 0, 255])}]})
+            }
+        }
+        "evaluate_script" if args["function"].as_str().unwrap().contains("readyState") => {
+            support::eval_reply(&json!(true))
+        }
+        "evaluate_script" => support::eval_reply(
+            &json!({"scale": 1, "sel": [[[[1, 1, 2, 2], "<b>x</b>"]]], "mask": [[]]}),
+        ),
+        _ => support::text("ok"),
+    });
+    let suite = parse_pair_suite(
+        r##"[{"id":"smoke","page":"/","selectors":["#b"],"widths":[390, 320],"dpr":[1]}]"##,
+    )
+    .unwrap();
+    let out = out_dir("partial");
+    let err = run_pair(&mut client, "http://127.0.0.1:7344", "smoke", &suite, &out).unwrap_err();
+    assert!(err.contains("pantalla rota"), "{err}");
+    let report: Value =
+        serde_json::from_str(&std::fs::read_to_string(out.join("report.json")).unwrap()).unwrap();
+    assert_eq!(report["results"].as_array().unwrap().len(), 1);
+    assert_eq!(report["results"][0]["width"], 390);
+    assert!(report["error"].as_str().unwrap().contains("pantalla rota"));
     let _ = std::fs::remove_dir_all(&out);
 }

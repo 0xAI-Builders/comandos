@@ -2,7 +2,9 @@ use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use xtask::fixtures::{MIME_TABLE, Resolved, mime_for, resolve, serve_listener};
+use xtask::fixtures::{
+    Limits, MIME_TABLE, Resolved, mime_for, resolve, serve_listener, serve_listener_with,
+};
 
 fn tmp_root(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("xtask-fixtures-{tag}-{}", std::process::id()));
@@ -141,4 +143,96 @@ fn server_answers_fixtures_404s_and_records_posts() {
         &[json!({"method": "POST", "path": "/pomo/start", "body": {"n": 5}})]
     );
     let _ = std::fs::remove_dir_all(Path::new(&root));
+}
+
+#[test]
+fn symlinks_leaving_the_root_are_refused() {
+    let root = tmp_root("link");
+    let outside = std::env::temp_dir().join(format!("xtask-fixtures-fuera-{}", std::process::id()));
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("secreto.txt"), "no").unwrap();
+    std::fs::write(outside.join("api.json"), "{}").unwrap();
+    std::os::unix::fs::symlink(outside.join("secreto.txt"), root.join("fuga.txt")).unwrap();
+    std::os::unix::fs::symlink(outside.join("api.json"), root.join("fuga_api.json")).unwrap();
+    std::os::unix::fs::symlink(&outside, root.join("dir")).unwrap();
+    assert!(matches!(
+        resolve(&root, "GET", "/fuga.txt"),
+        Resolved::Missing
+    ));
+    assert!(matches!(
+        resolve(&root, "GET", "/fuga/api"),
+        Resolved::Missing
+    ));
+    assert!(matches!(
+        resolve(&root, "GET", "/dir/secreto.txt"),
+        Resolved::Missing
+    ));
+    // Un enlace que se queda dentro de root sí vale.
+    std::os::unix::fs::symlink(root.join("index.html"), root.join("alias.html")).unwrap();
+    assert!(matches!(
+        resolve(&root, "GET", "/alias.html"),
+        Resolved::File { .. }
+    ));
+    let _ = std::fs::remove_dir_all(&outside);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+fn spawn_server(tag: &str, limits: Limits) -> (u16, Arc<Mutex<Vec<Value>>>) {
+    let root = tmp_root(tag);
+    let posts = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let p = posts.clone();
+    std::thread::spawn(move || serve_listener_with(root, listener, p, limits));
+    (port, posts)
+}
+
+#[test]
+fn oversized_post_bodies_are_rejected_and_not_recorded() {
+    let (port, posts) = spawn_server(
+        "body",
+        Limits {
+            max_body: 16,
+            max_connections: 8,
+        },
+    );
+    let body = "x".repeat(17);
+    let got = http(
+        port,
+        &format!(
+            "POST /a HTTP/1.1\r\nHost: x\r\nConnection: close\r\nContent-Length: 17\r\n\r\n{body}"
+        ),
+    );
+    assert!(got.starts_with("HTTP/1.1 413"), "{got}");
+    assert!(posts.lock().unwrap().is_empty());
+}
+
+#[test]
+fn connections_beyond_the_cap_wait_for_a_free_slot() {
+    let (port, _) = spawn_server(
+        "conns",
+        Limits {
+            max_body: 1024,
+            max_connections: 1,
+        },
+    );
+    // A ocupa el único hueco sin mandar petición.
+    let idle = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(150));
+    let mut b = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    b.write_all(b"GET /usage/state HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+        .unwrap();
+    b.set_read_timeout(Some(std::time::Duration::from_millis(300)))
+        .unwrap();
+    let mut buf = [0u8; 64];
+    assert!(
+        b.read(&mut buf).is_err(),
+        "B no debería ser atendido mientras A ocupa el hueco"
+    );
+    drop(idle);
+    b.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .unwrap();
+    let mut out = String::new();
+    b.read_to_string(&mut out).unwrap();
+    assert!(out.starts_with("HTTP/1.1 200"), "{out}");
 }

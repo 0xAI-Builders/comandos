@@ -21,4 +21,4 @@ bytes = "=1.12.1"
 http-body-util = "=0.1.5"
 hyper = { version = "=1.11.1", default-features = false, features = ["server", "http1"] }
 hyper-util = { version = "=0.1.21", default-features = false, features = ["tokio"] }
-tokio = { version = "=1.53.1", default-features = false, features = ["rt", "net", "macros"] }
+tokio = { version = "=1.53.1", default-features = false, features = ["rt", "net", "macros", "sync", "time"] }

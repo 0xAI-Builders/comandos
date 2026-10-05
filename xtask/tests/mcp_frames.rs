@@ -169,3 +169,130 @@ fn dropping_an_open_page_closes_it() {
     let calls = calls.lock().unwrap();
     assert_eq!(calls.last().unwrap()["name"], "close_page");
 }
+
+/// Ejecuta `f` en otro hilo y falla si no termina en `limit` (detecta cuelgues).
+fn within<T: Send + 'static>(
+    limit: std::time::Duration,
+    f: impl FnOnce() -> T + Send + 'static,
+) -> T {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(f());
+    });
+    rx.recv_timeout(limit)
+        .expect("se colgó: no terminó dentro del plazo")
+}
+
+#[test]
+fn a_silent_broker_times_out_and_poisons_the_client() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let calls2 = calls.clone();
+    let outcome = within(std::time::Duration::from_secs(5), move || {
+        // El broker contesta new_page y luego enmudece.
+        let mut client = support::fake_broker_with(calls2, false, |name, _| match name {
+            "new_page" => Some(support::text(
+                "## Pages\n1: about:blank\n2: about:blank [selected]",
+            )),
+            _ => None,
+        });
+        client.set_timeouts(
+            std::time::Duration::from_millis(200),
+            std::time::Duration::from_millis(400),
+        );
+        let started = std::time::Instant::now();
+        let mut page = client.open_page("about:blank").unwrap();
+        let err = page.eval("() => 1").unwrap_err();
+        let elapsed = started.elapsed();
+        // Soltar la página no debe intentar close_page ni colgarse.
+        drop(page);
+        let again = client.call("list_pages", json!({})).unwrap_err();
+        (err, elapsed, again, client.is_poisoned())
+    });
+    let (err, elapsed, again, poisoned) = outcome;
+    assert!(err.contains("sin respuesta"), "{err}");
+    assert!(elapsed < std::time::Duration::from_secs(2), "{elapsed:?}");
+    assert!(poisoned);
+    assert!(again.contains("inutilizable"), "{again}");
+    let names: Vec<String> = calls
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|c| c["name"].as_str().map(str::to_string))
+        .collect();
+    assert_eq!(names, ["new_page", "evaluate_script"]);
+}
+
+#[test]
+fn screenshots_get_the_longer_timeout() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let outcome = within(std::time::Duration::from_secs(5), move || {
+        let mut client = support::fake_broker_with(calls, false, |name, _| match name {
+            "new_page" => Some(support::text("## Pages\n2: about:blank [selected]")),
+            _ => None,
+        });
+        client.set_timeouts(
+            std::time::Duration::from_millis(100),
+            std::time::Duration::from_millis(900),
+        );
+        let mut page = client.open_page("about:blank").unwrap();
+        let started = std::time::Instant::now();
+        let err = page.screenshot_png(true).unwrap_err();
+        (err, started.elapsed())
+    });
+    let (err, elapsed) = outcome;
+    assert!(
+        err.contains("take_screenshot") || err.contains("sin respuesta"),
+        "{err}"
+    );
+    assert!(
+        elapsed >= std::time::Duration::from_millis(800),
+        "{elapsed:?}"
+    );
+}
+
+#[test]
+fn server_pings_are_answered_and_other_requests_refused() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let mut client = support::fake_broker_with(calls.clone(), true, |name, _| match name {
+        "new_page" => Some(support::text("## Pages\n2: about:blank [selected]")),
+        _ => Some(support::text("ok")),
+    });
+    client.call("list_pages", json!({})).unwrap();
+    let calls = calls.lock().unwrap();
+    let responses: Vec<&Value> = calls.iter().filter_map(|c| c.get("response")).collect();
+    let ping = responses.iter().find(|r| r["id"] == "srv-1").unwrap();
+    assert_eq!(ping["result"], json!({}));
+    let other = responses.iter().find(|r| r["id"] == "srv-x1").unwrap();
+    assert_eq!(other["error"]["code"], -32601);
+}
+
+#[test]
+fn keepalive_is_added_to_ssh_brokers() {
+    use xtask::mcp::{broker_argv_from_script, with_keepalive};
+    let script = "#!/bin/sh\n# Stream MCP JSONL directly to the remote browser broker.\nexec ssh -T -o BatchMode=yes -o ExitOnForwardFailure=yes -o ConnectTimeout=8 -W 127.0.0.1:19441 macmini\n";
+    let argv = broker_argv_from_script(script).unwrap();
+    assert_eq!(argv[0], "ssh");
+    assert_eq!(argv.last().unwrap(), "macmini");
+    let argv = with_keepalive(argv);
+    let joined = argv.join(" ");
+    assert!(
+        joined.starts_with("ssh -o ServerAliveInterval="),
+        "{joined}"
+    );
+    assert!(joined.contains("-o ServerAliveCountMax="), "{joined}");
+    assert!(joined.ends_with("-W 127.0.0.1:19441 macmini"), "{joined}");
+    // Scripts con algo más que un exec ssh simple no se reinterpretan.
+    assert_eq!(
+        broker_argv_from_script("#!/bin/sh\nexec ssh \"$@\" macmini\n"),
+        None
+    );
+    assert_eq!(
+        broker_argv_from_script("#!/bin/sh\nexport X=1\nexec ssh -W h:1 m\n"),
+        None
+    );
+    // Un broker que no es ssh queda igual.
+    assert_eq!(
+        with_keepalive(vec!["/tmp/fake".into()]),
+        vec!["/tmp/fake".to_string()]
+    );
+}
