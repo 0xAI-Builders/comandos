@@ -17,7 +17,7 @@ use crate::dash::native::{
     light, py,
     tmux::{Output, TmuxError},
 };
-use comandos_core::json::{response_dumps, response_dumps_chunks, truthy};
+use comandos_core::json::{response_dumps, truthy};
 use comandos_runtime::{
     Unsure,
     agent_procs::{
@@ -316,8 +316,7 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
     // 7. Serializar antes de escribir: nada se escribe si algo declinó.
     *phase = "serialización";
     let items = Value::Array(items);
-    let body = response_dumps_chunks(&items, super::super::body::CHUNK)
-        .map_err(|_| StateFault::Decline)?;
+    let body = response_dumps(&items).map_err(|_| StateFault::Decline)?;
     response_dumps(&models).map_err(|_| StateFault::Decline)?;
     // Ya no se declina: el rastreador de este cómputo pasa a ser el del frente.
     // El vuelo único (`StatesCache`) garantiza un solo cómputo a la vez.
@@ -336,7 +335,7 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
     };
     Ok(States {
         items: Arc::new(items),
-        body: super::super::body::ChunkedBody::from_chunks(body),
+        body: bytes::Bytes::from(body),
     })
 }
 

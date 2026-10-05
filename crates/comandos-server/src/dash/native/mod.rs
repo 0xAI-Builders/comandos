@@ -5,7 +5,6 @@
 //! `fc-list`, por `tokio::process`. Si una entrada no se puede reproducir con
 //! certeza, el manejador devuelve `Fault::Decline` ANTES de cualquier efecto
 //! y el frente reenvía la petición original al heredado.
-pub mod body;
 pub mod catalogs;
 pub mod events;
 pub mod files;

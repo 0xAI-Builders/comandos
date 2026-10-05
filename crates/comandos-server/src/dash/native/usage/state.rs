@@ -14,13 +14,12 @@
 //! trabajos del carril, que tiene hilo propio.
 use super::super::{
     Fault, Native, NativeOptions,
-    body::{self, ChunkedBody},
     lanes::{Lane, UsageImportBackend},
     light,
     states::{StateFault, gather},
     tmux::{self, Program},
 };
-use crate::HandlerError;
+use crate::{HandlerError, Reply, ReplyBody};
 use comandos_core::{
     allocation,
     json::response_dumps_entry_chunks,
@@ -77,7 +76,7 @@ fn no_decline(fault: Fault) -> Fault {
 /// la 2d declinó y `live_panes` va vacía sin serlo: esa vuelta no escribe
 /// bordes (D1; con la lista vacía los quitaría de todos los panes).
 pub struct UsageStateReply {
-    pub body: ChunkedBody,
+    pub body: UsageBody,
     pub state: Arc<UsageMemo>,
     pub live_panes: Vec<Row>,
     pub live_declined: bool,
@@ -136,7 +135,7 @@ impl UsageMemo {
         };
         let mut entries = Vec::with_capacity(map.len());
         for (key, value) in map {
-            let chunks = response_dumps_entry_chunks(key, value, body::CHUNK)?;
+            let chunks = response_dumps_entry_chunks(key, value, BODY_CHUNK)?;
             entries.push((
                 key.clone(),
                 chunks.into_iter().map(bytes::Bytes::from).collect(),
@@ -152,17 +151,17 @@ impl UsageMemo {
 
     /// El cuerpo de `dict(memo)` con `over` asignadas encima: las claves del
     /// memo en su sitio y las nuevas al final, en el orden en que se pusieron.
-    fn body(&self, over: &[(&str, Value)]) -> Result<ChunkedBody, String> {
+    fn body(&self, over: &[(&str, Value)]) -> Result<UsageBody, String> {
         let mut fresh: Vec<Vec<bytes::Bytes>> = Vec::with_capacity(over.len());
         for (key, value) in over {
-            let chunks = response_dumps_entry_chunks(key, value, body::CHUNK)?;
+            let chunks = response_dumps_entry_chunks(key, value, BODY_CHUNK)?;
             fresh.push(chunks.into_iter().map(bytes::Bytes::from).collect());
         }
         let pick = |key: &str| over.iter().position(|(k, _)| *k == key);
-        let mut body = ChunkedBody::default();
+        let mut body = UsageBody::default();
         body.push(bytes::Bytes::from_static(b"{"));
         let mut first = true;
-        let mut entry = |body: &mut ChunkedBody, parts: &[bytes::Bytes]| {
+        let mut entry = |body: &mut UsageBody, parts: &[bytes::Bytes]| {
             if !std::mem::take(&mut first) {
                 body.push(bytes::Bytes::from_static(b", "));
             }
@@ -183,6 +182,59 @@ impl UsageMemo {
         }
         body.push(bytes::Bytes::from_static(b"}"));
         Ok(body)
+    }
+}
+
+/// Trozos del memo y del cuerpo: 32 KiB, bajo el umbral de `mmap` de glibc
+/// (128 KiB). Un cuerpo de 1 MB en una sola asignación lo sirve glibc con
+/// `mmap` y, al soltarlo, sube el umbral de `mmap` y el de recorte; desde
+/// entonces las arenas no devuelven memoria.
+const BODY_CHUNK: usize = 32 * 1024;
+
+/// El cuerpo de GET `/usage/state` en trozos compartidos con el memo (sin
+/// copiarlos): se envía con su longitud, como un cuerpo de un solo bloque.
+#[derive(Default)]
+pub struct UsageBody {
+    parts: Vec<bytes::Bytes>,
+    len: usize,
+}
+
+impl UsageBody {
+    fn push(&mut self, part: bytes::Bytes) {
+        self.len += part.len();
+        self.parts.push(part);
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// El cuerpo entero en un bloque (para las pruebas).
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.parts.concat()
+    }
+
+    /// La respuesta `200 application/json` con `Content-Length`.
+    pub fn into_reply(self) -> Reply {
+        let mut reply = Reply::bytes(
+            http::StatusCode::OK,
+            "application/json",
+            bytes::Bytes::new(),
+        );
+        let (tx, receiver) = tokio::sync::mpsc::channel(self.parts.len().max(1));
+        for part in self.parts {
+            // Hay sitio para todos: el canal se creó con su número.
+            let _ = tx.try_send(Ok(part));
+        }
+        reply.body = ReplyBody::SizedStream {
+            length: self.len as u64,
+            receiver,
+        };
+        reply
     }
 }
 

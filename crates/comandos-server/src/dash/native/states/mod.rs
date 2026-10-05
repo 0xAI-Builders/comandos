@@ -12,7 +12,7 @@ pub mod suggest;
 pub mod tab_models;
 
 use super::{Answer, Entry, Fault, Key, Native, NativeRoute, Verb, tmux::TmuxError};
-use crate::HandlerError;
+use crate::{HandlerError, Reply};
 use comandos_core::json::truthy;
 use comandos_runtime::{
     hooks::py::{float_repr, int_text},
@@ -51,8 +51,7 @@ impl Default for Engine {
 /// cuerpo ya serializado que se responde tal cual.
 pub struct States {
     pub items: Arc<Vec<Value>>,
-    /// La respuesta ya escrita, en trozos (`body::ChunkedBody`).
-    pub body: super::body::ChunkedBody,
+    pub body: bytes::Bytes,
 }
 
 /// `self.path.startswith("/state")` reclamando solo la ruta exacta (con
@@ -66,7 +65,11 @@ pub const ROUTES: &[Entry] = &[Entry {
 /// `self._json(200, read_states_cached())`.
 pub async fn answer(native: &Native) -> Answer {
     let states = native.states_cached().await?;
-    Ok(states.body.reply())
+    Ok(Reply::bytes(
+        http::StatusCode::OK,
+        "application/json",
+        states.body.clone(),
+    ))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

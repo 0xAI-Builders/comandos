@@ -196,7 +196,7 @@ mod tests {
     fn states(tag: &'static str) -> States {
         States {
             items: Arc::new(Vec::new()),
-            body: crate::dash::native::body::ChunkedBody::from_chunks(vec![tag.to_owned()]),
+            body: bytes::Bytes::from_static(tag.as_bytes()),
         }
     }
 
