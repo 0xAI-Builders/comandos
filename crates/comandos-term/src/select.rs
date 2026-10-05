@@ -386,7 +386,7 @@ fn row_glyphs(row_cells: &[Cell], row: i32) -> Vec<Glyph> {
         }
         let col = col16(col);
         out.push(Glyph {
-            ch: cell.c,
+            ch: cell_char(cell),
             row,
             col,
         });
@@ -713,7 +713,10 @@ fn overlaps(a: &UrlSpan, b: &UrlSpan) -> bool {
 /// fila y la corta, p. ej. sin el «.» final de la fila llena), gana la
 /// del proveedor de tmux, para que una URL con wrap duro no se abra
 /// truncada. Con wrap suave ambas acaban en la misma fila y manda
-/// `WebLinksAddon`, que no incluye la puntuación final.
+/// `WebLinksAddon`, que no incluye la puntuación final. Al sustituir se
+/// retiran todas las coincidencias de `WebLinksAddon` que el tramo de tmux
+/// cubre (el resultado nunca tiene solapes); si pisara un enlace OSC 8 no se
+/// sustituye nada.
 pub fn find_urls(engine: &Engine, line: i32) -> Vec<UrlSpan> {
     /// Quién produjo cada enlace conservado.
     #[derive(PartialEq)]
@@ -734,19 +737,33 @@ pub fn find_urls(engine: &Engine, line: i32) -> Vec<UrlSpan> {
         }
     }
     for span in tmux_wrapped(engine, line) {
-        let clash = out.iter().position(|(_, kept)| overlaps(kept, &span));
-        match clash {
-            None => out.push((Source::Tmux, span)),
-            Some(index) => {
-                let longer = out.get(index).is_some_and(|(source, kept)| {
-                    *source == Source::WebLinks
-                        && kept.start == span.start
-                        && span.end.0 > kept.end.0
-                });
-                if longer && let Some(slot) = out.get_mut(index) {
-                    *slot = (Source::Tmux, span);
-                }
-            }
+        let clashes: Vec<usize> = out
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, kept))| overlaps(kept, &span))
+            .map(|(index, _)| index)
+            .collect();
+        if clashes.is_empty() {
+            out.push((Source::Tmux, span));
+            continue;
+        }
+        // Solo sustituye si todo lo que pisa es de WebLinks y el primero
+        // empieza en su misma celda y acaba antes; así no queda ningún solape.
+        let replaces = clashes.iter().all(|index| {
+            out.get(*index)
+                .is_some_and(|(source, _)| *source == Source::WebLinks)
+        }) && clashes
+            .first()
+            .and_then(|index| out.get(*index))
+            .is_some_and(|(_, kept)| kept.start == span.start && span.end.0 > kept.end.0);
+        if replaces {
+            let mut index = 0;
+            out.retain(|_| {
+                let drop = clashes.contains(&index);
+                index += 1;
+                !drop
+            });
+            out.push((Source::Tmux, span));
         }
     }
     let mut spans: Vec<UrlSpan> = out.into_iter().map(|(_, span)| span).collect();
@@ -797,4 +814,27 @@ pub fn ligature_runs(text: &str) -> Vec<(usize, usize)> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::{GridSize, Palette};
+
+    #[test]
+    fn row_glyphs_reads_tabs_as_spaces() {
+        let mut e = Engine::new(
+            GridSize { cols: 20, rows: 3 },
+            10,
+            Palette::xterm_default([255; 3], [0; 3], [255; 3], [0; 3], [80; 3]),
+        );
+        e.advance(b"a\tb", 0.0);
+        let text: String = cells(&e, 0)
+            .map(|row| row_glyphs(row, 0))
+            .unwrap_or_default()
+            .iter()
+            .map(|g| g.ch)
+            .collect();
+        assert_eq!(text, "a       b");
+    }
 }

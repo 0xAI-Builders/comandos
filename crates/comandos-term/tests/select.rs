@@ -12,7 +12,7 @@ fn eng(cols: u16) -> Engine {
 }
 
 #[test]
-fn wrapped_rows_copy_without_newline_and_trailing_spaces_are_trimmed() {
+fn wrapped_rows_copy_without_newline_and_written_trailing_spaces_are_kept() {
     let mut e = eng(10);
     e.advance(b"0123456789abc   \r\nfin", 0.0);
     let s = Selection {
@@ -287,4 +287,66 @@ fn idn_hosts_are_not_links_like_xterm() {
     let urls = find_urls(&e, 0);
     let list: Vec<&str> = urls.iter().map(|u| u.url.as_str()).collect();
     assert_eq!(list, vec!["https://ok.mx"]);
+}
+
+// --- ronda 2 de revisión ---
+
+#[test]
+fn tmux_exception_replaces_every_overlapped_weblinks_span() {
+    let mut e = eng(24);
+    e.advance(b"https://a.b(https://c.dd\r\nef/g ok", 0.0);
+    for line in [0, 1] {
+        let urls = find_urls(&e, line);
+        for (i, a) in urls.iter().enumerate() {
+            for b in urls.iter().skip(i + 1) {
+                assert!(a.end < b.start || b.end < a.start, "solape: {urls:?}");
+            }
+        }
+        assert_eq!(urls.len(), 1, "fila {line}: {urls:?}");
+        assert_eq!(urls[0].url, "https://a.b(https://c.ddef/g");
+    }
+}
+
+#[test]
+fn written_trailing_spaces_survive_a_column_shrink() {
+    let mut e = eng(10);
+    e.advance(b"abc      ", 0.0);
+    e.resize(GridSize { cols: 5, rows: 5 }, (8, 16));
+    // La línea lógica sigue siendo «abc» + 6 espacios escritos.
+    let text = selected_text(&e, &sel((0, 0), (0, 0), SelectMode::Line));
+    assert_eq!(text, "abc      ");
+}
+
+#[test]
+fn erase_and_shift_operations_leave_cells_that_are_not_written() {
+    use alacritty_terminal::{
+        index::{Column, Line},
+        term::cell::Flags,
+    };
+    let written = |e: &Engine, col: usize| {
+        e.term().grid()[Line(0)][Column(col)]
+            .flags
+            .contains(Flags::WRITTEN)
+    };
+    // Diez espacios escritos; cada operación borra o desplaza.
+    let spaces = "          ";
+    let mut e = eng(10);
+    e.advance(spaces.as_bytes(), 0.0);
+    assert!((0..10).all(|c| written(&e, c)));
+    // ECH: columnas 2..4 borradas.
+    e.advance(b"\x1b[1;3H\x1b[2X", 0.0);
+    assert!(!written(&e, 2) && !written(&e, 3) && written(&e, 4));
+    // EL (borrar hasta el final desde la columna 8).
+    e.advance(b"\x1b[1;9H\x1b[K", 0.0);
+    assert!(written(&e, 7) && !written(&e, 8) && !written(&e, 9));
+    // DCH: borra 3 desde la columna 0; las vacías de la derecha no están escritas.
+    let mut e = eng(10);
+    e.advance(spaces.as_bytes(), 0.0);
+    e.advance(b"\x1b[1;1H\x1b[3P", 0.0);
+    assert!(written(&e, 6) && !written(&e, 7) && !written(&e, 9));
+    // ICH: las 3 celdas insertadas no están escritas.
+    let mut e = eng(10);
+    e.advance(spaces.as_bytes(), 0.0);
+    e.advance(b"\x1b[1;1H\x1b[3@", 0.0);
+    assert!(!written(&e, 0) && !written(&e, 2) && written(&e, 3));
 }

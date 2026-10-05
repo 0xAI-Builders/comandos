@@ -31,7 +31,8 @@ bitflags! {
         const DOTTED_UNDERLINE          = 0b0010_0000_0000_0000;
         const DASHED_UNDERLINE          = 0b0100_0000_0000_0000;
         // COMANDOS: la celda la escribió la aplicación (aunque sea un espacio);
-        // lo pone `write_at_cursor` y lo quita `Cell::reset` al borrar. Permite
+        // lo pone `write_at_cursor` y desaparece al borrar (todo borrado vuelve
+        // a `Cell::default()`, sea por `Cell::reset` o por `bg.into()`). Permite
         // recortar filas como `getTrimmedLength` de xterm.js (ver COMANDOS-PATCH.md).
         const WRITTEN                   = 0b1000_0000_0000_0000;
         const ALL_UNDERLINES            = Self::UNDERLINE.bits() | Self::DOUBLE_UNDERLINE.bits()
@@ -237,6 +238,9 @@ impl GridCell for Cell {
                     | Flags::ALL_UNDERLINES
                     | Flags::STRIKEOUT
                     | Flags::WRAPLINE
+                    // COMANDOS: un espacio escrito no es una celda vacía; así el
+                    // reflow al reducir columnas no tira los espacios finales.
+                    | Flags::WRITTEN
                     | Flags::WIDE_CHAR_SPACER
                     | Flags::LEADING_WIDE_CHAR_SPACER,
             )
