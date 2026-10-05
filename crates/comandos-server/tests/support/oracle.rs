@@ -270,10 +270,43 @@ pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> 
 
 /// Ejecutable 0755 en `path`; sustituye lo que hubiera (también un enlace).
 pub fn write_executable(path: &Path, text: &str) {
-    use std::os::unix::fs::PermissionsExt;
-    let _ = std::fs::remove_file(path);
-    std::fs::write(path, text).unwrap();
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let dir = path.parent().unwrap();
+    let name = path.file_name().unwrap().to_string_lossy().into_owned();
+    install_executables(dir, &[(name, text.to_owned())]);
+}
+
+/// Instala ejecutables 0755 en `dir` (nombre → texto) sin que este proceso
+/// abra nunca para escritura un archivo que luego se ejecuta: el texto va a
+/// `<dir>/.src/` y un `sh` aparte lo copia. Si no, otro hilo de pruebas que
+/// hiciera `fork` mientras el descriptor de escritura sigue abierto (hasta su
+/// `exec`) provocaría `ETXTBSY` («Text file busy») al ejecutarlo.
+pub fn install_executables(dir: &Path, files: &[(String, String)]) {
+    let src = dir.join(".src");
+    std::fs::create_dir_all(&src).unwrap();
+    for (name, text) in files {
+        assert!(
+            !name.contains('/') && !name.is_empty(),
+            "nombre inválido: {name}"
+        );
+        std::fs::write(src.join(name), text).unwrap();
+    }
+    let names: Vec<&str> = files.iter().map(|(name, _)| name.as_str()).collect();
+    let sh = real_program("sh").unwrap_or_else(|| PathBuf::from("/bin/sh"));
+    let status = Command::new(sh)
+        .arg("-c")
+        .arg(
+            "cd \"$1\" || exit 1; shift; for n in \"$@\"; do \
+             rm -f \"./$n\" && cp \".src/$n\" \"./$n\" && chmod 755 \"./$n\" || exit 1; done",
+        )
+        .arg("sh")
+        .arg(dir)
+        .args(&names)
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .stdin(Stdio::null())
+        .status()
+        .unwrap();
+    assert!(status.success(), "no se pudieron instalar {names:?}");
 }
 
 /// Comillas simples de `sh`.
@@ -552,12 +585,15 @@ pub fn confined_fakebin(home: &TestHome, extra: &[(String, String)]) -> PathBuf 
             std::os::unix::fs::symlink(real, &link).unwrap();
         }
     }
-    for name in LOGGING_FAKES {
-        write_executable(&fakebin.join(name), &logging_fake(&home.root, name, 0));
-    }
-    for name in FAILING_FAKES {
-        write_executable(&fakebin.join(name), &logging_fake(&home.root, name, 1));
-    }
+    let mut files: Vec<(String, String)> = LOGGING_FAKES
+        .iter()
+        .map(|name| ((*name).to_owned(), logging_fake(&home.root, name, 0)))
+        .chain(
+            FAILING_FAKES
+                .iter()
+                .map(|name| ((*name).to_owned(), logging_fake(&home.root, name, 1))),
+        )
+        .collect();
     let socket = comandos_server::dash::native::tmux::private_socket(&home.tmux_dir());
     if let Some(parent) = socket.parent() {
         use std::os::unix::fs::DirBuilderExt;
@@ -568,26 +604,24 @@ pub fn confined_fakebin(home: &TestHome, extra: &[(String, String)]) -> PathBuf 
     }
     let guard = fakebin.join("tmux");
     let real_tmux = real_program("tmux").unwrap_or_else(|| PathBuf::from("/no-existe/tmux"));
-    write_executable(
-        &guard,
-        &confined_tmux_guard(
+    files.push((
+        "tmux".into(),
+        confined_tmux_guard(
             &real_tmux,
             &socket,
             &home.confined_env(),
             &home.root.join("tmux.log"),
         ),
-    );
-    write_executable(
-        &fakebin.join("systemd-run"),
-        &confined_scope(&home.root, &guard),
-    );
+    ));
+    files.push(("systemd-run".into(), confined_scope(&home.root, &guard)));
     for (name, text) in extra {
         assert!(
             !matches!(name.as_str(), "tmux" | "systemd-run") && !name.contains('/'),
             "fakebin_extra no puede sustituir {name}: es parte del confinamiento"
         );
-        write_executable(&fakebin.join(name), text);
+        files.push((name.clone(), text.clone()));
     }
+    install_executables(&fakebin, &files);
     let conf = home.hooks().join("cc-notify.conf");
     if !conf.exists() {
         std::fs::write(&conf, "DESKTOP_NOTIFY=0\n").unwrap();

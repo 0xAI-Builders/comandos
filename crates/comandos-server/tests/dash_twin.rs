@@ -20,7 +20,9 @@ use std::{
 };
 use support::{
     TestHome,
-    oracle::{FakeCall, OracleOpts, fake_calls, run_dash, run_dash_with, tmux_guard},
+    oracle::{
+        FakeCall, OracleOpts, fake_calls, run_dash, run_dash_with, tmux_guard, write_executable,
+    },
     twin::{Twin, TwinOpts, normalize},
 };
 
@@ -48,12 +50,10 @@ fn tmux_guard_refuses_missing_socket_dir() {
     // ejecutara, la marca aparecería.
     let marker = dir.join("lanzado");
     let real = dir.join("tmux-real");
-    std::fs::write(&real, format!("#!/bin/sh\ntouch '{}'\n", marker.display())).unwrap();
-    make_executable(&real);
+    write_executable(&real, &format!("#!/bin/sh\ntouch '{}'\n", marker.display()));
     let socket = dir.join("no-existe/tmux-1000/default");
     let guard = dir.join("tmux");
-    std::fs::write(&guard, tmux_guard(&real, &socket)).unwrap();
-    make_executable(&guard);
+    write_executable(&guard, &tmux_guard(&real, &socket));
     let out = Command::new(&guard)
         .arg("list-sessions")
         .env_remove("TMUX")
@@ -378,11 +378,6 @@ fn python_available() -> bool {
         .stderr(Stdio::null())
         .status()
         .is_ok_and(|s| s.success())
-}
-
-fn make_executable(path: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
 /// Espera (5 s) a que `path` contenga `needle` y devuelve su texto.
