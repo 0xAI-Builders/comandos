@@ -31,9 +31,10 @@ fn payload(percent: f64) -> Value {
     json!({"limits": [{"kind": "weekly_all", "percent": percent, "resets_at": "2026-10-06T00:00:00+00:00"}]})
 }
 
+/// El refresco y la escritura de sus fotos de cuota terminaron.
 async fn settle(cache: &LimitsCache) {
     for _ in 0..500 {
-        if !cache.refreshing() {
+        if !cache.refreshing() && !cache.writing_snapshots() {
             return;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;

@@ -15,7 +15,10 @@ use serde_json::{Map, Value};
 use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{
+        Arc, Mutex, MutexGuard,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::Duration,
 };
 
@@ -69,6 +72,25 @@ pub struct LimitsCache {
     emails: Mutex<lim::EmailCache>,
     /// Aviso de fin de refresco (se publicó la caché o terminó la tarea).
     done: tokio::sync::Notify,
+    /// Escrituras de fotos de cuota en vuelo: el refresco ya terminó y no las
+    /// espera (las pruebas sí, `writing_snapshots`).
+    writes: AtomicUsize,
+}
+
+/// Una escritura de fotos de cuota en vuelo mientras vive.
+struct Writing(Arc<LimitsCache>);
+
+impl Writing {
+    fn start(cache: &Arc<LimitsCache>) -> Self {
+        cache.writes.fetch_add(1, Ordering::AcqRel);
+        Self(cache.clone())
+    }
+}
+
+impl Drop for Writing {
+    fn drop(&mut self) {
+        self.0.writes.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 /// Lo que la tarea de refresco necesita, sin `&Native` (D13).
@@ -99,6 +121,11 @@ impl LimitsCache {
 
     pub fn refreshing(&self) -> bool {
         self.lock().refreshing
+    }
+
+    /// Hay fotos de cuota de un refresco ya terminado escribiéndose.
+    pub fn writing_snapshots(&self) -> bool {
+        self.writes.load(Ordering::Acquire) > 0
     }
 
     fn copy(st: &LimitsState) -> Limits {
@@ -263,12 +290,16 @@ async fn refresh(cache: Arc<LimitsCache>, deps: RefreshDeps) {
     }
     // El refresco termina aquí: quien espera la primera lectura (`get_loaded`)
     // no espera la escritura de las fotos de cuota, y un `get` posterior puede
-    // lanzar el siguiente mientras se escriben.
+    // lanzar el siguiente mientras se escriben. La escritura cuenta como en
+    // vuelo desde antes de soltar `reset`: sin hueco entre los dos estados.
+    let writing = (!done.snapshot.is_empty()).then(|| Writing::start(&cache));
     drop(reset);
     // `try: record_quota_snapshots(...) except: pass`. Va después de publicar la
     // caché, por el carril de escritura (R3: nadie espera la escritura ni la
     // escritura espera a las lecturas del carril de uso), y nunca crea la base (A3).
-    if !done.snapshot.is_empty() && db_exists(&deps.opts.usage_db).await {
+    if let Some(_writing) = writing
+        && db_exists(&deps.opts.usage_db).await
+    {
         let snapshot = done.snapshot;
         let _ = deps
             .import_lane
