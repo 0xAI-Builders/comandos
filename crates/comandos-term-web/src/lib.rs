@@ -32,7 +32,7 @@ use comandos_term::{
 };
 use metrics::CellMetrics;
 use paint::{Blink, CursorInput, Painter, Scheduler};
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, fmt::Write as _, rc::Rc};
 use theme::{ANSI_NAMES, Theme};
 use wasm_bindgen::{JsCast, JsValue, closure::Closure, prelude::wasm_bindgen};
 use web_sys::{
@@ -121,6 +121,12 @@ pub fn read_theme(obj: &JsValue) -> Theme {
     theme
 }
 
+/// Tamaño de letra aceptable: finito y positivo, acotado a 1–512 px (uno
+/// absurdo desbordaría las cuentas de los canvases).
+pub fn font_size_in_range(size: f64) -> Option<f64> {
+    (size.is_finite() && size > 0.0).then(|| size.clamp(1.0, 512.0))
+}
+
 /// Lee las opciones de `new Terminal({...})`.
 pub fn read_options(obj: &JsValue) -> Options {
     let d = Options::default();
@@ -129,12 +135,16 @@ pub fn read_options(obj: &JsValue) -> Options {
             .and_then(|v| v.as_string())
             .unwrap_or(d.font_family),
         font_size: get_f64(obj, "fontSize")
-            .filter(|v| *v > 0.0)
+            .and_then(font_size_in_range)
             .unwrap_or(d.font_size),
+        // xterm.js exige `lineHeight ≥ 1`; el tope evita celdas absurdas.
         line_height: get_f64(obj, "lineHeight")
             .filter(|v| *v >= 1.0)
+            .map(|v| v.min(10.0))
             .unwrap_or(d.line_height),
-        letter_spacing: get_f64(obj, "letterSpacing").unwrap_or(d.letter_spacing),
+        letter_spacing: get_f64(obj, "letterSpacing")
+            .map(|v| v.clamp(-100.0, 100.0))
+            .unwrap_or(d.letter_spacing),
         cursor_blink: get(obj, "cursorBlink")
             .and_then(|v| v.as_bool())
             .unwrap_or(d.cursor_blink),
@@ -234,6 +244,10 @@ struct Inner {
     /// `devicePixelContentBox` del canvas (si el navegador lo da).
     observer: Option<ResizeObserver>,
     observer_cb: Option<Closure<dyn FnMut(js_sys::Array)>>,
+    /// `contextrestored` del canvas (tras perderse la GPU).
+    restored_cb: Option<Closure<dyn FnMut()>>,
+    /// Texto reutilizado para la altura del área de desplazamiento.
+    css_buf: String,
     /// Temporizador armado y para cuándo (ms de `performance.now()`).
     timer: Option<(i32, f64)>,
     replies: Vec<u8>,
@@ -277,7 +291,7 @@ impl Inner {
     /// temporizador (como el `setInterval` de xterm.js), no al pintar: un
     /// cuadro retrasado no se salta una fase.
     fn cursor_input(&mut self) -> CursorInput {
-        self.blink.enabled = self.focused && self.engine.term().cursor_style().blinking;
+        self.blink.enabled = paint::blink_enabled(&self.engine, self.focused);
         CursorInput {
             focused: self.focused,
             blink_on: !self.blink.enabled || self.blink_on,
@@ -305,9 +319,22 @@ impl Inner {
 
     /// Recoge daños y pide cuadro si hace falta.
     fn touch(&mut self) {
-        let now = self.now();
         let input = self.cursor_input();
         self.scheduler.absorb(&mut self.engine, input);
+        self.after_touch();
+    }
+
+    /// Como [`Inner::touch`] cuando el motor no cambió (foco, parpadeo):
+    /// solo cuenta el cursor, no el daño que alacritty pone siempre en su
+    /// fila.
+    fn touch_cursor(&mut self) {
+        let input = self.cursor_input();
+        self.scheduler.absorb_cursor(&self.engine, input);
+        self.after_touch();
+    }
+
+    fn after_touch(&mut self) {
+        let now = self.now();
         self.request_frame();
         self.arm_timer(now);
     }
@@ -386,11 +413,16 @@ impl Inner {
     fn on_timer(&mut self) {
         self.timer = None;
         let now = self.now();
-        if self.engine.tick(now) {
+        let flushed = self.engine.tick(now);
+        if flushed {
             self.drain_engine();
         }
         self.blink_on = self.blink.visible(now);
-        self.touch();
+        if flushed {
+            self.touch();
+        } else {
+            self.touch_cursor();
+        }
     }
 
     /// `Viewport._innerRefresh`: alto del área y posición de la barra.
@@ -429,11 +461,13 @@ impl Inner {
         );
         if layout_changed {
             let height = metrics::js_round(row_h * buffer_len as f64) + (viewport_h - css_canvas_h);
+            self.css_buf.clear();
+            let _ = write!(self.css_buf, "{height}px");
             let _ = self
                 .dom
                 .scroll_area
                 .style()
-                .set_property("height", &format!("{height}px"));
+                .set_property("height", &self.css_buf);
         }
         self.dom.viewport.set_scroll_top(scroll_top.round() as i32);
         self.scroll_sync = next;
@@ -444,9 +478,13 @@ impl Inner {
         let changed = size != self.size;
         self.size = size;
         if changed {
+            let (cw, ch) = self
+                .metrics
+                .css_cell(size.cols, size.rows)
+                .unwrap_or((self.metrics.css_w, self.metrics.css_h));
             let cell = (
-                metrics::js_round(self.metrics.css_w).clamp(0.0, 65535.0) as u16,
-                metrics::js_round(self.metrics.css_h).clamp(0.0, 65535.0) as u16,
+                metrics::js_round(cw).clamp(0.0, 65535.0) as u16,
+                metrics::js_round(ch).clamp(0.0, 65535.0) as u16,
             );
             self.engine.resize(size, cell);
         }
@@ -489,6 +527,14 @@ impl Inner {
         let (Some(w), Some(h)) = (dim("inlineSize"), dim("blockSize")) else {
             return;
         };
+        // Otro monitor con otro `devicePixelRatio` sin cambio de tamaño CSS:
+        // hay que volver a medir, si no se pinta con la celda vieja.
+        if self.dpr() != self.metrics.dpr && matches!(self.remeasure(), Ok(true)) {
+            let grid = self.size;
+            self.painter.set_device_size(w, h);
+            self.relayout(grid);
+            return;
+        }
         if self.painter.set_device_size(w, h) {
             self.scheduler.resize(self.size.rows);
             self.touch();
@@ -507,6 +553,12 @@ impl Inner {
 
 impl Drop for Inner {
     fn drop(&mut self) {
+        if let Some(cb) = self.restored_cb.take() {
+            let _ = self.painter.element().remove_event_listener_with_callback(
+                "contextrestored",
+                cb.as_ref().unchecked_ref(),
+            );
+        }
         if let Some(observer) = self.observer.take() {
             observer.disconnect();
         }
@@ -602,6 +654,8 @@ impl WebTerm {
             timer_cb: None,
             observer: None,
             observer_cb: None,
+            restored_cb: None,
+            css_buf: String::new(),
             timer: None,
             replies: Vec::new(),
             title: None,
@@ -628,6 +682,7 @@ impl WebTerm {
         let term = WebTerm { inner };
         term.watch_font();
         term.observe_device_pixels();
+        term.watch_context();
         Ok(term)
     }
 
@@ -645,17 +700,46 @@ impl WebTerm {
         }) else {
             return;
         };
-        let done = Closure::<dyn FnMut(JsValue)>::once_into_js(move |_v: JsValue| {
+        // Un solo cierre para los dos casos: la promesa llama exactamente a
+        // uno, y `once_into_js` lo libera tras esa llamada (dos cierres
+        // dejarían siempre uno sin liberar).
+        let settle = Closure::<dyn FnMut(JsValue)>::once_into_js(move |_v: JsValue| {
             with_weak(&weak, |i| {
-                if let Ok(true) = i.remeasure() {
-                    let size = i.size;
-                    i.relayout(size);
-                }
+                // Aunque la celda mida igual, lo rasterizado con la fuente de
+                // respaldo sobra.
+                let (family, size) = (i.opts.font_family.clone(), i.opts.font_size);
+                i.painter.set_font(&family, size);
+                let _ = i.remeasure();
+                let grid = i.size;
+                i.relayout(grid);
             });
         });
-        let ignore = Closure::<dyn FnMut(JsValue)>::once_into_js(|_e: JsValue| {});
-        // `once_into_js` libera cada cierre tras su única llamada.
-        promise.unchecked_ref::<PromiseThen>().then2(&done, &ignore);
+        promise
+            .unchecked_ref::<PromiseThen>()
+            .then2(&settle, &settle);
+    }
+
+    /// Si el navegador pierde y restaura el contexto del canvas (reinicio de
+    /// la GPU), las páginas del atlas pueden haber quedado vacías: se vacía
+    /// todo y se repinta. xterm.js 0.7 no lo trata.
+    fn watch_context(&self) {
+        let weak = Rc::downgrade(&self.inner);
+        let cb = Closure::<dyn FnMut()>::new(move || {
+            with_weak(&weak, |i| {
+                i.painter.reset_caches();
+                let grid = i.size;
+                i.relayout(grid);
+            });
+        });
+        self.with(|i| {
+            let added = i
+                .painter
+                .element()
+                .add_event_listener_with_callback("contextrestored", cb.as_ref().unchecked_ref());
+            if added.is_ok() {
+                i.restored_cb = Some(cb);
+            }
+        });
     }
 
     /// `observeDevicePixelDimensions` de xterm.js: el almacén del canvas
@@ -722,7 +806,12 @@ impl WebTerm {
             } else {
                 i.scrollbar_w
             };
-            let (cols, rows) = metrics::fit(width, height, scrollbar, &i.metrics);
+            let current = (i.size.cols, i.size.rows);
+            let Some((cols, rows)) = metrics::fit(width, height, scrollbar, &i.metrics, current)
+            else {
+                // Sin celda medida FitAddon no toca la terminal.
+                return i.size;
+            };
             let size = GridSize { cols, rows };
             if size != i.size || i.painter_needs_layout() {
                 i.relayout(size);
@@ -760,9 +849,9 @@ impl WebTerm {
     /// [`WebTerm::resize_to_fit`].
     pub fn set_font(&mut self, family: &str, size: f64) {
         let changed = self.with(|i| {
-            if !(size.is_finite() && size > 0.0) {
+            let Some(size) = font_size_in_range(size) else {
                 return false;
-            }
+            };
             i.opts.font_family = family.to_string();
             i.opts.font_size = size;
             i.painter.set_font(family, size);
@@ -807,7 +896,7 @@ impl WebTerm {
                 i.focused = focused;
                 let now = i.now();
                 i.restart_blink(now);
-                i.touch();
+                i.touch_cursor();
             }
         });
     }
@@ -834,9 +923,11 @@ impl WebTerm {
         let obj = size_object(i.size.cols, i.size.rows);
         let m = &i.metrics;
         let (cw, ch) = m.css_canvas(i.size.cols, i.size.rows);
+        // La celda CSS de addon-canvas (la que usan FitAddon y el ratón).
+        let (cell_w, cell_h) = m.css_cell(i.size.cols, i.size.rows).unwrap_or((0.0, 0.0));
         for (key, value) in [
-            ("cssCellWidth", m.css_w),
-            ("cssCellHeight", m.css_h),
+            ("cssCellWidth", cell_w),
+            ("cssCellHeight", cell_h),
             ("deviceCellWidth", f64::from(m.dev_w)),
             ("deviceCellHeight", f64::from(m.dev_h)),
             ("dpr", m.dpr),
@@ -899,5 +990,15 @@ mod tests {
         let p = Palette::xterm_default([1; 3], [2; 3], [3; 3], [4; 3], [5; 3]);
         let t = canvas_theme(&p);
         assert_eq!((t.bg, t.cursor, t.cursor_accent), ([2; 3], [3; 3], [4; 3]));
+    }
+
+    #[test]
+    fn absurd_font_sizes_are_rejected_or_clamped() {
+        assert_eq!(font_size_in_range(14.0), Some(14.0));
+        assert_eq!(font_size_in_range(0.25), Some(1.0));
+        assert_eq!(font_size_in_range(1e9), Some(512.0));
+        for bad in [0.0, -3.0, f64::NAN, f64::INFINITY] {
+            assert_eq!(font_size_in_range(bad), None);
+        }
     }
 }

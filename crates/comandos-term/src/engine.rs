@@ -457,12 +457,29 @@ impl Engine {
 
     /// Líneas que cambiaron desde la última llamada (y las reinicia).
     pub fn take_damage(&mut self) -> Damage {
-        let damage = match self.term.damage() {
-            TermDamage::Full => Damage::Full,
-            TermDamage::Partial(lines) => Damage::Lines(lines.map(|bounds| bounds.line).collect()),
+        let mut lines = Vec::new();
+        if self.take_damage_into(&mut lines) {
+            Damage::Full
+        } else {
+            Damage::Lines(lines)
+        }
+    }
+
+    /// Como [`Engine::take_damage`] sin asignar: vacía `lines`, la llena con
+    /// los índices dañados (mismo significado que [`Damage::Lines`]) y
+    /// devuelve `true` si está todo dañado (entonces `lines` queda vacía).
+    /// Ojo: alacritty daña siempre la línea del cursor.
+    pub fn take_damage_into(&mut self, lines: &mut Vec<usize>) -> bool {
+        lines.clear();
+        let full = match self.term.damage() {
+            TermDamage::Full => true,
+            TermDamage::Partial(damaged) => {
+                lines.extend(damaged.map(|bounds| bounds.line));
+                false
+            }
         };
         self.term.reset_damage();
-        damage
+        full
     }
 
     /// Desplaza la vista por la historia (positivo = hacia atrás).

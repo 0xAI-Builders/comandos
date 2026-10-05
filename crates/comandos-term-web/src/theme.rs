@@ -5,6 +5,8 @@ use comandos_term::engine::Palette;
 /// Colores por omisión de xterm.js 5.5 (`ThemeService`).
 pub const DEFAULT_FG: [u8; 3] = [0xFF, 0xFF, 0xFF];
 pub const DEFAULT_BG: [u8; 3] = [0x00, 0x00, 0x00];
+pub const DEFAULT_CURSOR: [u8; 3] = [0xFF, 0xFF, 0xFF];
+pub const DEFAULT_CURSOR_ACCENT: [u8; 3] = [0x00, 0x00, 0x00];
 /// Selección por omisión: blanco al 30 % sobre el fondo negro.
 pub const DEFAULT_SELECTION: [u8; 3] = [0x4D, 0x4D, 0x4D];
 
@@ -41,15 +43,16 @@ pub struct Theme {
 
 impl Theme {
     /// La paleta del motor: la de xterm.js con los colores del tema encima.
-    /// Sin `cursor` usa el texto; sin `cursorAccent`, el fondo.
+    /// Sin `cursor` ni `cursorAccent`, los de `ThemeService` (`#ffffff` y
+    /// `#000000`), sea cual sea el texto o el fondo.
     pub fn palette(&self) -> Palette {
         let fg = self.foreground.unwrap_or(DEFAULT_FG);
         let bg = self.background.unwrap_or(DEFAULT_BG);
         let mut p = Palette::xterm_default(
             fg,
             bg,
-            self.cursor.unwrap_or(fg),
-            self.cursor_accent.unwrap_or(bg),
+            self.cursor.unwrap_or(DEFAULT_CURSOR),
+            self.cursor_accent.unwrap_or(DEFAULT_CURSOR_ACCENT),
             self.selection.unwrap_or(DEFAULT_SELECTION),
         );
         for (slot, color) in p.ansi.iter_mut().zip(self.ansi.iter()) {
@@ -128,7 +131,7 @@ mod tests {
         let p = t.palette();
         assert_eq!(
             (p.fg, p.bg, p.cursor, p.cursor_accent),
-            ([1, 2, 3], [4, 5, 6], [1, 2, 3], [4, 5, 6])
+            ([1, 2, 3], [4, 5, 6], DEFAULT_CURSOR, DEFAULT_CURSOR_ACCENT)
         );
         assert_eq!(p.ansi[1], [0xDA, 0x46, 0x2F]);
         // Lo que el tema no da es la paleta de xterm.js.

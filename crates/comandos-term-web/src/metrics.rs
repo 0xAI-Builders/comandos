@@ -106,21 +106,44 @@ impl CellMetrics {
         )
     }
 
+    /// `dimensions.css.cell` de addon-canvas para la rejilla actual:
+    /// `css.canvas / (cols, rows)`. Es lo que usan FitAddon y el ratón; no
+    /// es `dev / dpr` cuando el redondeo del canvas CSS reparte un píxel.
+    /// `None` sin tamaño de celda o de rejilla.
+    pub fn css_cell(&self, cols: u16, rows: u16) -> Option<(f64, f64)> {
+        if !self.is_valid() || cols == 0 || rows == 0 {
+            return None;
+        }
+        let (w, h) = self.css_canvas(cols, rows);
+        let cell = (w / f64::from(cols), h / f64::from(rows));
+        (cell.0 > 0.0 && cell.1 > 0.0).then_some(cell)
+    }
+
     /// La celda tiene tamaño (la medición dio algo).
     pub fn is_valid(&self) -> bool {
         self.dev_w > 0 && self.dev_h > 0
     }
 }
 
-/// `FitAddon.proposeDimensions`: `cols = max(2, floor((w − barra)/css_w))`,
-/// `rows = max(1, floor(h/css_h))`. Recibe el ancho y alto del padre ya
-/// truncados como hace el addon (`parseInt` del estilo calculado).
-pub fn fit(parent_w: f64, parent_h: f64, scrollbar_w: f64, m: &CellMetrics) -> (u16, u16) {
+/// `FitAddon.proposeDimensions` sobre las dimensiones de addon-canvas:
+/// `cols = max(2, floor((w − barra) / css.cell.width))`,
+/// `rows = max(1, floor(h / css.cell.height))`, con la celda CSS de la
+/// rejilla **actual** (`round(cols·dev_w/dpr) / cols`, ver
+/// [`CellMetrics::css_cell`]). Por eso el resultado depende del tamaño de
+/// partida, como en xterm.js (a dpr fraccionario o 3 un mismo contenedor
+/// puede alternar entre dos anchos). Recibe el ancho y alto del padre ya
+/// truncados (`parseInt`). `None` si la celda no tiene tamaño: FitAddon no
+/// toca la terminal entonces.
+pub fn fit(
+    parent_w: f64,
+    parent_h: f64,
+    scrollbar_w: f64,
+    m: &CellMetrics,
+    current: (u16, u16),
+) -> Option<(u16, u16)> {
+    let (cell_w, cell_h) = m.css_cell(current.0, current.1)?;
     let count = |avail: f64, cell: f64, min: u16| -> u16 {
-        if cell.is_nan() || cell <= 0.0 {
-            return min;
-        }
-        let n = (avail.max(0.0) / cell).floor();
+        let n = (avail / cell).floor();
         if n.is_finite() {
             // `clamp` deja el valor en el rango de u16 antes de convertir.
             (n.clamp(f64::from(min), f64::from(u16::MAX)) as u16).max(min)
@@ -128,10 +151,10 @@ pub fn fit(parent_w: f64, parent_h: f64, scrollbar_w: f64, m: &CellMetrics) -> (
             min
         }
     };
-    (
-        count(parent_w - scrollbar_w, m.css_w, 2),
-        count(parent_h, m.css_h, 1),
-    )
+    Some((
+        count(parent_w.max(0.0) - scrollbar_w, cell_w, 2),
+        count(parent_h, cell_h, 1),
+    ))
 }
 
 /// `parseInt` de una longitud CSS como `"783.5px"` (el que usa FitAddon).
@@ -228,8 +251,8 @@ mod tests {
     #[test]
     fn fit_mirrors_fitaddon() {
         let m = from_measure(6.6, 13.0, 1.0, 1.2, 0.0);
-        assert_eq!(fit(800.0, 450.0, 10.0, &m), (131, 30));
-        assert_eq!(fit(5.0, 5.0, 0.0, &m), (2, 1));
+        assert_eq!(fit(800.0, 450.0, 10.0, &m, (80, 24)), Some((131, 30)));
+        assert_eq!(fit(5.0, 5.0, 0.0, &m, (80, 24)), Some((2, 1)));
     }
 
     #[test]
@@ -254,16 +277,33 @@ mod tests {
         assert_eq!(m.device_canvas(81, 3), (1053, 93));
         // 1053 / 2 = 526.5 → 527; 93 / 2 = 46.5 → 47.
         assert_eq!(m.css_canvas(81, 3), (527.0, 47.0));
+        let (cw, ch) = m.css_cell(81, 3).unwrap_or_default();
+        assert!((cw - 527.0 / 81.0).abs() < 1e-12 && (ch - 47.0 / 3.0).abs() < 1e-12);
     }
 
     #[test]
     fn degenerate_measures_do_not_panic() {
         let m = from_measure(f64::NAN, -3.0, 0.0, 1.2, f64::INFINITY);
         assert!(!m.is_valid());
-        assert_eq!(fit(800.0, 450.0, 0.0, &m), (2, 1));
-        let huge = from_measure(1e-9, 1e-9, 1.0, 1.0, 0.0);
-        // Ancho 0 → mínimo; alto 1 px CSS con un padre enorme → tope de u16.
-        assert_eq!(fit(1e12, 1e12, 0.0, &huge), (2, u16::MAX));
+        // Sin celda FitAddon no propone nada (no se encoge a 2×1).
+        assert_eq!(fit(800.0, 450.0, 0.0, &m, (80, 24)), None);
+        assert_eq!(
+            fit(
+                800.0,
+                450.0,
+                0.0,
+                &from_measure(6.0, 13.0, 1.0, 1.0, 0.0),
+                (0, 24)
+            ),
+            None
+        );
+        let tiny = from_measure(1.0, 1.0, 1.0, 1.0, 0.0);
+        // Un padre enorme satura en el tope de u16.
+        assert_eq!(
+            fit(1e12, 1e12, 0.0, &tiny, (80, 24)),
+            Some((u16::MAX, u16::MAX))
+        );
+        assert_eq!(fit(-50.0, -50.0, 10.0, &tiny, (80, 24)), Some((2, 1)));
     }
 
     #[test]

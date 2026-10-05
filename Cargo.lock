@@ -446,6 +446,7 @@ version = "0.1.0"
 dependencies = [
  "comandos-term",
  "js-sys",
+ "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",

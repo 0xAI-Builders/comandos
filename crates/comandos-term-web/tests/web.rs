@@ -105,15 +105,18 @@ async fn mounts_with_xterm_dom_and_fits_like_fitaddon() {
             .flatten()
             .is_some()
     );
+    // FitAddon mide con la celda CSS de la rejilla actual (antes del ajuste).
+    let before = term.dimensions();
+    let (cw, ch) = (num(&before, "cssCellWidth"), num(&before, "cssCellHeight"));
+    assert!(cw > 0.0 && ch > 0.0);
     let size = term.resize_to_fit();
     let dims = term.dimensions();
-    assert!(num(&dims, "cssCellWidth") > 0.0);
     let cols = num(&size, "cols");
     let rows = num(&size, "rows");
     // Columnas: `floor((800 − barra) / cssCellWidth)`, con barra ≥ 0.
-    assert!(cols >= (785.0 / num(&dims, "cssCellWidth")).floor());
-    assert!(cols <= (800.0 / num(&dims, "cssCellWidth")).floor());
-    assert_eq!(rows, (450.0 / num(&dims, "cssCellHeight")).floor().max(1.0));
+    assert!(cols >= (785.0 / cw).floor());
+    assert!(cols <= (800.0 / cw).floor());
+    assert_eq!(rows, (450.0 / ch).floor().max(1.0));
     let canvas = canvas_of(&h);
     assert_eq!(
         f64::from(canvas.width()),

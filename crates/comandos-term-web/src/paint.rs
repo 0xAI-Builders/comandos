@@ -13,7 +13,7 @@
 //! reutilizan entre cuadros: pintar no deja basura.
 use crate::metrics::CellMetrics;
 use comandos_term::{
-    engine::{Damage, Engine, Palette},
+    engine::{Engine, Palette},
     render::{CursorShape, CursorView, RenderOpts, RowRender, Run, cursor, render_row_into},
 };
 
@@ -31,6 +31,17 @@ pub trait Painter {
     fn paint_cursor(&mut self, c: &CursorView, under: Option<&Run>, m: &CellMetrics);
     /// Nuevo tamaño de la rejilla o de la celda.
     fn resize(&mut self, cols: u16, rows: u16, m: &CellMetrics);
+}
+
+/// El cursor parpadea: hay foco (sin foco xterm.js lo pausa), la aplicación
+/// lo muestra dentro de la vista y su estilo parpadea (`cursorBlink` de la
+/// página o DECSCUSR). Sin cursor visible no hay temporizador.
+pub fn blink_enabled(engine: &Engine, focused: bool) -> bool {
+    let view = cursor(engine);
+    focused
+        && view.visible
+        && view.shape != CursorShape::Hidden
+        && engine.term().cursor_style().blinking
 }
 
 /// Estado del cursor que no viene del motor.
@@ -159,6 +170,8 @@ pub struct Scheduler {
     wanted_cursor: Option<CursorView>,
     row: RowRender,
     empty: Vec<usize>,
+    /// Índices de daño del motor (reutilizado).
+    damage: Vec<usize>,
 }
 
 impl Scheduler {
@@ -187,20 +200,28 @@ impl Scheduler {
     }
 
     /// Recoge los daños del motor y el estado del cursor. Llamar tras cada
-    /// cambio (bytes, foco, parpadeo, desplazamiento).
+    /// cambio del motor (bytes, desplazamiento, vencimiento de 2026).
     pub fn absorb(&mut self, engine: &mut Engine, input: CursorInput) {
-        match engine.take_damage() {
-            Damage::Full => self.dirty.mark_all(),
-            Damage::Lines(lines) => {
-                // alacritty da `línea de pantalla + display_offset`, que es
-                // justo la fila de la vista donde se ve esa línea; lo que
-                // queda debajo de la vista ya viene filtrado y `mark`
-                // descarta cualquier índice fuera de la pantalla.
-                for line in lines {
+        if engine.take_damage_into(&mut self.damage) {
+            self.dirty.mark_all();
+        } else {
+            // alacritty da `línea de pantalla + display_offset`, que es justo
+            // la fila de la vista donde se ve esa línea; lo que queda debajo
+            // de la vista ya viene filtrado y `mark` descarta cualquier
+            // índice fuera de la pantalla.
+            for i in 0..self.damage.len() {
+                if let Some(&line) = self.damage.get(i) {
                     self.dirty.mark(line);
                 }
             }
         }
+        self.absorb_cursor(engine, input);
+    }
+
+    /// Solo el cursor (foco, parpadeo): no toca los daños del motor, que
+    /// siempre incluyen la fila del cursor. Si el cursor dibujado no
+    /// cambia, no hay nada que pintar.
+    pub fn absorb_cursor(&mut self, engine: &Engine, input: CursorInput) {
         let wanted = cursor_to_paint(cursor(engine), input);
         if wanted != self.painted_cursor {
             if let Some(old) = self.painted_cursor {
@@ -239,7 +260,9 @@ impl Scheduler {
         painter: &mut P,
     ) -> FrameStats {
         self.in_flight = false;
-        self.absorb(engine, input);
+        // Los daños ya llegaron con cada `absorb`; aquí solo el cursor (la
+        // fase del parpadeo puede haber cambiado mientras tanto).
+        self.absorb_cursor(engine, input);
         let mut stats = FrameStats::default();
         if !self.has_work() {
             return stats;
@@ -343,13 +366,11 @@ mod tests {
 
     fn setup(rows: u16) -> (Engine, Palette, Scheduler, CellMetrics) {
         let palette = Palette::xterm_default([255; 3], [0; 3], [200; 3], [0; 3], [50; 3]);
-        let engine = Engine::new(GridSize { cols: 10, rows }, 100, palette.clone());
-        (
-            engine,
-            palette,
-            Scheduler::new(rows),
-            from_measure(7.0, 14.0, 1.0, 1.2, 0.0),
-        )
+        let mut engine = Engine::new(GridSize { cols: 10, rows }, 100, palette.clone());
+        let mut s = Scheduler::new(rows);
+        // Como `WebTerm`: el daño inicial (todo) se recoge al montar.
+        s.absorb(&mut engine, FOCUSED);
+        (engine, palette, s, from_measure(7.0, 14.0, 1.0, 1.2, 0.0))
     }
 
     fn run(
@@ -381,11 +402,13 @@ mod tests {
         // En reposo nadie llama a `absorb`: no hay trabajo ni cuadro.
         assert!(!s.has_work());
         assert!(!s.wants_frame());
-        // alacritty siempre daña la fila del cursor: un cuadro de más solo
-        // repinta esa fila.
+        // alacritty siempre daña la fila del cursor, pero sin cambio del
+        // cursor eso no pide cuadro ni repinta nada.
+        s.absorb_cursor(&e, FOCUSED);
+        assert!(!s.wants_frame());
         let (stats, calls) = run(&mut e, &p, &mut s, &m, FOCUSED);
-        assert_eq!(stats.cleared + stats.painted, 1);
-        assert_eq!(calls.len(), 2);
+        assert_eq!(stats, FrameStats::default());
+        assert!(calls.is_empty());
     }
 
     #[test]
@@ -446,7 +469,7 @@ mod tests {
             focused: true,
             blink_on: false,
         };
-        s.absorb(&mut e, hidden);
+        s.absorb_cursor(&e, hidden);
         assert!(s.wants_frame());
         let (_, calls) = run(&mut e, &p, &mut s, &m, hidden);
         assert_eq!(calls, vec![Call::Clear(vec![0])]);
@@ -454,7 +477,7 @@ mod tests {
             focused: false,
             blink_on: false,
         };
-        s.absorb(&mut e, blurred);
+        s.absorb_cursor(&e, blurred);
         let (_, calls) = run(&mut e, &p, &mut s, &m, blurred);
         assert_eq!(
             calls.last(),
@@ -489,6 +512,7 @@ mod tests {
         let (mut e, p, mut s, m) = setup(3);
         e.advance(b"1\r\n2\r\n3\r\n4\r\n5", 0.0);
         e.scroll_display(1);
+        s.absorb(&mut e, FOCUSED);
         run(&mut e, &p, &mut s, &m, FOCUSED);
         // La línea 0 de la pantalla se ve en la fila 1 de la vista.
         e.advance(b"\x1b[1;1HZ", 0.0);
@@ -514,6 +538,49 @@ mod tests {
         let mut rec = Recorder::default();
         rec.resize(80, 24, &m);
         assert_eq!(rec.0, vec![Call::Resize(80, 24)]);
+    }
+
+    #[test]
+    fn hidden_cursor_does_not_blink_and_idles_while_focused() {
+        let (mut e, p, mut s, m) = setup(2);
+        let blinking =
+            Engine::with_cursor_blink(GridSize { cols: 10, rows: 2 }, 100, p.clone(), true);
+        assert!(blink_enabled(&blinking, true));
+        assert!(!blink_enabled(&blinking, false));
+        // Sin parpadeo de la página (DECSCUSR por omisión) tampoco.
+        assert!(!blink_enabled(&e, true));
+        let mut e2 = blinking;
+        e2.advance(b"\x1b[?25l", 0.0);
+        assert!(!blink_enabled(&e2, true));
+        assert_eq!(
+            Blink::new(blink_enabled(&e2, true), 0.0).next_toggle(10.0),
+            None
+        );
+        // Con el cursor oculto y foco: tras el primer cuadro, nada que hacer.
+        e.advance(b"\x1b[?25l", 0.0);
+        s.absorb(&mut e, FOCUSED);
+        run(&mut e, &p, &mut s, &m, FOCUSED);
+        for phase in [false, true, false] {
+            let input = CursorInput {
+                focused: true,
+                blink_on: phase,
+            };
+            s.absorb_cursor(&e, input);
+            assert!(!s.wants_frame());
+        }
+    }
+
+    #[test]
+    fn writes_on_the_cursor_row_without_moving_it_still_repaint() {
+        let (mut e, p, mut s, m) = setup(2);
+        e.advance(b"ab", 0.0);
+        run(&mut e, &p, &mut s, &m, FOCUSED);
+        // Guarda el cursor, escribe en la misma fila y lo restaura.
+        e.advance(b"\x1b7\x1b[1;6HZ\x1b8", 0.0);
+        s.absorb(&mut e, FOCUSED);
+        assert!(s.wants_frame());
+        let (_, calls) = run(&mut e, &p, &mut s, &m, FOCUSED);
+        assert_eq!(calls.first(), Some(&Call::Row(0, "ab   Z".into())));
     }
 
     #[test]

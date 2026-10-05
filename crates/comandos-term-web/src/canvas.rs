@@ -157,6 +157,94 @@ fn js_round(v: f64) -> f64 {
     crate::metrics::js_round(v)
 }
 
+/// `textureSize` de `TextureAtlas` (xterm.js 5.5): tope del canvas auxiliar
+/// para un glifo que pide más (`Math.min(…, textureSize)`).
+pub const TEXTURE_SIZE: u32 = 512;
+
+/// Tope absoluto del auxiliar (con el tope de fuente, 512 px a dpr 3, una
+/// celda no pasa de ~1100 px de ancho).
+pub const TMP_MAX: u32 = 4096;
+
+/// Tamaño del canvas auxiliar para rasterizar un texto de `utf16_len`
+/// unidades, como `_drawToCache`: parte de `4·cellW + 4 × cellH + 4` (el de
+/// su constructor) y pide `min(cellW·max(len, 2) + 4, textureSize)` de
+/// ancho y `min(cellH + 8, textureSize)` de alto. A diferencia de xterm.js
+/// se vuelve al tamaño de partida tras un glifo grande (un texto «zalgo» no
+/// deja el auxiliar enorme para siempre).
+pub fn tmp_size(dev_w: u32, dev_h: u32, utf16_len: usize) -> (u32, u32) {
+    let len = u32::try_from(utf16_len).unwrap_or(u32::MAX).max(2);
+    let base_w = dev_w.saturating_mul(4).saturating_add(4);
+    let base_h = dev_h.saturating_add(4);
+    let need_w = dev_w
+        .saturating_mul(len)
+        .saturating_add(4)
+        .min(TEXTURE_SIZE);
+    let need_h = dev_h.saturating_add(8).min(TEXTURE_SIZE);
+    (
+        base_w.max(need_w).clamp(1, TMP_MAX),
+        base_h.max(need_h).clamp(1, TMP_MAX),
+    )
+}
+
+/// Un glifo mayor que esto no se guarda en el atlas: se rasteriza y se
+/// copia desde el auxiliar cada vez (no vacía el atlas una y otra vez).
+pub const UNCACHED_LIMIT: u32 = PAGE_SIZE / 2;
+
+// Un glifo de tamaño normal (auxiliar ≤ `textureSize`) siempre entra en el
+// atlas; solo las celdas enormes van sin guardar.
+const _: () = assert!(TEXTURE_SIZE <= UNCACHED_LIMIT);
+
+/// Mapa acotado: al pasar de `cap` entradas se descarta la más antigua
+/// (FIFO). Para cachés cuya clave puede venir de la salida (colores de 24
+/// bits).
+#[derive(Debug, Clone)]
+pub struct Bounded<K, V> {
+    cap: usize,
+    map: HashMap<K, V>,
+    order: std::collections::VecDeque<K>,
+}
+
+impl<K: std::hash::Hash + Eq + Clone, V> Bounded<K, V> {
+    pub fn new(cap: usize) -> Bounded<K, V> {
+        Bounded {
+            cap: cap.max(1),
+            map: HashMap::new(),
+            order: std::collections::VecDeque::new(),
+        }
+    }
+
+    pub fn get(&self, k: &K) -> Option<&V> {
+        self.map.get(k)
+    }
+
+    pub fn insert(&mut self, k: K, v: V) {
+        if self.map.insert(k.clone(), v).is_none() {
+            self.order.push_back(k);
+        }
+        while self.map.len() > self.cap {
+            match self.order.pop_front() {
+                Some(old) => {
+                    self.map.remove(&old);
+                }
+                None => break,
+            }
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.map.clear();
+        self.order.clear();
+    }
+}
+
 /// Reparto de los glifos en páginas del atlas por estantes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Shelf {
@@ -368,6 +456,9 @@ struct Slot {
 }
 
 impl Slot {
+    /// Página de un glifo que no se guardó: se copia desde el auxiliar.
+    const UNCACHED: u16 = u16::MAX;
+
     const EMPTY: Slot = Slot {
         page: 0,
         sx: 0,
@@ -392,6 +483,8 @@ const MAX_PAGES: usize = 4;
 /// Relleno actual del canvas auxiliar (`fillStyle` puede quedar en trama).
 enum Fill {
     Css(String),
+    /// Un color ya convertido (de `ColorCache`).
+    Js(JsValue),
     Pattern(CanvasPattern),
 }
 
@@ -402,7 +495,13 @@ struct Atlas {
     shelf: Shelf,
     single: HashMap<(char, GlyphStyle), Slot>,
     multi: HashMap<String, HashMap<GlyphStyle, Slot>>,
+    /// Entradas guardadas (incluidas las vacías, que no ocupan página).
+    entries: usize,
 }
+
+/// Entradas del atlas como mucho; al pasar se vacía entero (las vacías no
+/// llenan páginas y con colores de 24 bits crecerían sin tope).
+const MAX_ENTRIES: usize = 8192;
 
 /// Lo que el atlas necesita para rasterizar.
 struct RasterCtx<'a> {
@@ -417,7 +516,8 @@ struct RasterCtx<'a> {
 
 impl Atlas {
     fn new(document: &Document, m: &CellMetrics) -> Result<Atlas, JsValue> {
-        let tmp = new_canvas(document, 4 * m.dev_w + 4, m.dev_h + 4)?;
+        let (w, h) = tmp_size(m.dev_w, m.dev_h, 0);
+        let tmp = new_canvas(document, w, h)?;
         let tmp_ctx = context(&tmp, false, true)?;
         Ok(Atlas {
             tmp,
@@ -426,6 +526,7 @@ impl Atlas {
             shelf: Shelf::new(PAGE_SIZE),
             single: HashMap::new(),
             multi: HashMap::new(),
+            entries: 0,
         })
     }
 
@@ -434,6 +535,16 @@ impl Atlas {
         self.shelf = Shelf::new(PAGE_SIZE);
         self.single.clear();
         self.multi.clear();
+        self.entries = 0;
+    }
+
+    /// Canvas del que se copia un glifo.
+    fn source(&self, slot: &Slot) -> Option<&HtmlCanvasElement> {
+        if slot.page == Slot::UNCACHED {
+            Some(&self.tmp)
+        } else {
+            self.pages.get(usize::from(slot.page)).map(|p| &p.canvas)
+        }
     }
 
     fn lookup(&self, text: &str, key: &GlyphStyle) -> Option<Slot> {
@@ -445,6 +556,13 @@ impl Atlas {
     }
 
     fn store(&mut self, text: &str, key: GlyphStyle, slot: Slot) {
+        if slot.page == Slot::UNCACHED {
+            return;
+        }
+        if self.entries >= MAX_ENTRIES {
+            self.clear();
+        }
+        self.entries += 1;
         let mut chars = text.chars();
         match (chars.next(), chars.next()) {
             (Some(c), None) => {
@@ -485,16 +603,13 @@ impl Atlas {
         let (cell_w, cell_h) = (f64::from(m.dev_w), f64::from(m.dev_h));
         let char_h = f64::from(m.dev_char_h);
         let cells: u32 = if key.flags & WIDE != 0 { 2 } else { 1 };
-        // Tamaño del auxiliar: crece, nunca encoge (como xterm.js).
-        let utf16 = u32::try_from(text.encode_utf16().count()).unwrap_or(u32::MAX);
-        let need_w = m.dev_w.saturating_mul(utf16.max(2)).saturating_add(4);
-        if self.tmp.width() < need_w {
-            self.tmp.set_width(need_w);
+        let (tw, th) = tmp_size(m.dev_w, m.dev_h, text.encode_utf16().count());
+        if self.tmp.width() != tw {
+            self.tmp.set_width(tw);
         }
-        if self.tmp.height() < m.dev_h + 8 {
-            self.tmp.set_height(m.dev_h + 8);
+        if self.tmp.height() != th {
+            self.tmp.set_height(th);
         }
-        let (tw, th) = (self.tmp.width(), self.tmp.height());
         let ctx = &self.tmp_ctx;
         let single = {
             let mut chars = text.chars();
@@ -700,12 +815,21 @@ impl Atlas {
             return Ok(Slot::EMPTY);
         };
         let (w, h) = (right - left + 1, bottom - top + 1);
-        let (page, sx, sy) = self.place(rc.document, w, h)?;
-        let crop = crop(&bytes, tw, (left, top, w, h));
-        let data = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&crop), w, h)?;
-        if let Some(p) = self.pages.get(usize::from(page)) {
-            p.ctx.put_image_data(&data, f64::from(sx), f64::from(sy))?;
-        }
+        let (page, sx, sy) = if w > UNCACHED_LIMIT || h > UNCACHED_LIMIT {
+            // Demasiado grande para el atlas: la imagen ya limpia vuelve al
+            // auxiliar y se copia desde allí.
+            let data = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&bytes), tw, th)?;
+            self.tmp_ctx.put_image_data(&data, 0.0, 0.0)?;
+            (Slot::UNCACHED, left, top)
+        } else {
+            let (page, sx, sy) = self.place(rc.document, w, h)?;
+            let crop = crop(&bytes, tw, (left, top, w, h));
+            let data = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&crop), w, h)?;
+            if let Some(p) = self.pages.get(usize::from(page)) {
+                p.ctx.put_image_data(&data, f64::from(sx), f64::from(sy))?;
+            }
+            (page, sx, sy)
+        };
         // Destino respecto a la esquina de la celda (`offset` de xterm.js).
         let to_i32 = |v: u32| i32::try_from(v).unwrap_or(i32::MAX);
         let (dx0, dy0) = if custom || restricted {
@@ -763,6 +887,7 @@ fn crop(data: &[u8], width: u32, rect: (u32, u32, u32, u32)) -> Vec<u8> {
 fn set_stroke(ctx: &CanvasRenderingContext2d, fill: &Fill) {
     match fill {
         Fill::Css(css) => ctx.set_stroke_style_str(css),
+        Fill::Js(v) => set_stroke_js(ctx, v),
         Fill::Pattern(p) => ctx.set_stroke_style_canvas_pattern(p),
     }
 }
@@ -798,10 +923,20 @@ impl BoxCache {
     }
 }
 
-/// Tramas ░▒▓ por color (xterm.js las guarda por `fillStyle`).
-#[derive(Default)]
+/// Tramas ░▒▓ por color (xterm.js las guarda por `fillStyle`), acotadas.
 struct PatternCache {
-    patterns: HashMap<(usize, [u8; 3]), CanvasPattern>,
+    patterns: Bounded<(usize, [u8; 3]), CanvasPattern>,
+}
+
+/// Tramas guardadas como mucho (3 máscaras × colores en pantalla).
+const MAX_PATTERNS: usize = 64;
+
+impl Default for PatternCache {
+    fn default() -> PatternCache {
+        PatternCache {
+            patterns: Bounded::new(MAX_PATTERNS),
+        }
+    }
 }
 
 impl PatternCache {
@@ -944,7 +1079,11 @@ impl Canvas2d {
     ) -> Result<Canvas2d, JsValue> {
         let canvas = new_canvas(document, 0, 0)?;
         let ctx = context(&canvas, false, false)?;
-        let scratch = new_canvas(document, 4 * m.dev_w.max(1), m.dev_h.max(1))?;
+        let scratch = new_canvas(
+            document,
+            m.dev_w.max(1).saturating_mul(4).min(TMP_MAX),
+            m.dev_h.max(1),
+        )?;
         let scratch_ctx = context(&scratch, true, false)?;
         let agent = window.navigator().user_agent().unwrap_or_default();
         Ok(Canvas2d {
@@ -978,8 +1117,15 @@ impl Canvas2d {
     /// Nuevo tema: los glifos rasterizados con los colores viejos sobran.
     pub fn set_theme(&mut self, theme: CanvasTheme) {
         self.theme = theme;
+        self.reset_caches();
+    }
+
+    /// Vacía glifos y tramas (tema nuevo, fuente nueva, contexto del canvas
+    /// restaurado tras perderse la GPU).
+    pub fn reset_caches(&mut self) {
         self.atlas.clear();
         self.patterns = PatternCache::default();
+        self.current_fill = None;
     }
 
     /// Nueva fuente o tamaño (las medidas llegan después con `resize`).
@@ -987,7 +1133,7 @@ impl Canvas2d {
         self.family = family.to_string();
         self.font_size = font_size;
         self.fonts = Fonts::new(family, font_size, self.m.dpr);
-        self.atlas.clear();
+        self.reset_caches();
         self.boxes = BoxCache::default();
     }
 
@@ -1051,10 +1197,12 @@ impl Canvas2d {
         f64::from(u32::try_from(line).unwrap_or(u32::MAX)) * f64::from(self.m.dev_h)
     }
 
-    fn paint_glyphs(&mut self, run: &Run, y: f64) -> Result<(), JsValue> {
+    /// Glifos de una tira. Un error en una celda se anota y se sigue con la
+    /// siguiente (no se pierde el resto de la fila).
+    fn paint_glyphs(&mut self, run: &Run, y: f64) {
         let style = &run.style;
         if style.hidden {
-            return Ok(());
+            return;
         }
         let mut flags = 0;
         if style.bold {
@@ -1109,18 +1257,25 @@ impl Canvas2d {
                 boxes: &mut self.boxes,
                 patterns: &mut self.patterns,
             };
-            let slot = self.atlas.glyph(text, key, &mut rc)?;
+            let slot = match self.atlas.glyph(text, key, &mut rc) {
+                Ok(slot) => slot,
+                Err(e) => {
+                    self.note(Err(e));
+                    continue;
+                }
+            };
             if slot.w == 0 || slot.h == 0 {
                 continue;
             }
-            let Some(page) = self.atlas.pages.get(usize::from(slot.page)) else {
+            let Some(source) = self.atlas.source(&slot) else {
                 continue;
             };
             let x = f64::from(col) * f64::from(self.m.dev_w) + f64::from(slot.dx);
             let (w, h) = (f64::from(slot.w), f64::from(slot.h));
-            self.ctx
+            let drawn = self
+                .ctx
                 .draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
-                    &page.canvas,
+                    source,
                     f64::from(slot.sx),
                     f64::from(slot.sy),
                     w,
@@ -1129,9 +1284,9 @@ impl Canvas2d {
                     y + f64::from(slot.dy),
                     w,
                     h,
-                )?;
+                );
+            self.note(drawn);
         }
-        Ok(())
     }
 
     fn try_paint_row(&mut self, row: &comandos_term::render::RowRender) -> Result<(), JsValue> {
@@ -1146,17 +1301,13 @@ impl Canvas2d {
             self.ctx
                 .fill_rect(f64::from(col) * cw, y, f64::from(cells) * cw, ch);
         }
-        let mut result = Ok(());
         for run in &row.runs {
-            result = self.paint_glyphs(run, y);
-            if result.is_err() {
-                break;
-            }
+            self.paint_glyphs(run, y);
         }
         self.ctx.restore();
         // `restore` devuelve el relleno de antes del `save`.
         self.current_fill = None;
-        result
+        Ok(())
     }
 
     fn try_paint_cursor(&mut self, c: &CursorView, under: Option<&Run>) -> Result<(), JsValue> {
@@ -1214,8 +1365,8 @@ impl Canvas2d {
         let accent = self.theme.cursor_accent;
         self.clip_row(y);
         if let RunKind::Box(ch) = run.kind {
-            let accent_css = hex(accent);
-            self.ctx.set_fill_style_str(&accent_css);
+            let accent_js = self.colors.get(accent);
+            set_fill_js(&self.ctx, &accent_js);
             let ops = self.boxes.ops(ch, &m, self.font_size);
             apply_ops(
                 &self.ctx,
@@ -1223,7 +1374,7 @@ impl Canvas2d {
                 ops,
                 (x, y),
                 &m,
-                &Fill::Css(accent_css),
+                &Fill::Js(accent_js),
                 accent,
                 &mut self.patterns,
             )?;
@@ -1325,8 +1476,10 @@ impl Painter for Canvas2d {
                     self.note(Err(e));
                 }
             }
+            self.patterns = PatternCache::default();
             self.boxes = BoxCache::default();
-            self.scratch.set_width(4 * m.dev_w.max(1));
+            self.scratch
+                .set_width(m.dev_w.max(1).saturating_mul(4).min(TMP_MAX));
             self.scratch.set_height(m.dev_h.max(1));
         }
         // `_clearAll` de una capa opaca.
@@ -1428,6 +1581,42 @@ mod tests {
         assert_eq!(s.place(5, 4), Some((5, 3)));
         assert_eq!(s.place(10, 4), None);
         assert_eq!(s.place(11, 1), None);
+    }
+
+    #[test]
+    fn zalgo_and_long_combining_text_keep_the_scratch_canvas_bounded() {
+        // Celda de 14 px a dpr 3 (25 × 61): un carácter con 1000 marcas.
+        let zalgo: String = std::iter::once('Z')
+            .chain(std::iter::repeat_n('\u{0336}', 1000))
+            .collect();
+        let (w, h) = tmp_size(25, 61, zalgo.encode_utf16().count());
+        assert_eq!((w, h), (TEXTURE_SIZE, 69));
+        // Un glifo normal vuelve al tamaño de partida (4·cellW + 4).
+        assert_eq!(tmp_size(25, 61, 1), (104, 69));
+        // Celdas enormes (fuente de 512 px a dpr 3): con tope absoluto.
+        let (w, h) = tmp_size(u32::MAX / 2, u32::MAX / 2, 3);
+        assert_eq!((w, h), (TMP_MAX, TMP_MAX));
+    }
+
+    #[test]
+    fn bounded_cache_keeps_at_most_cap_entries_fifo() {
+        let mut cache: Bounded<[u8; 3], u32> = Bounded::new(MAX_PATTERNS);
+        // Muchos colores de 24 bits distintos.
+        for i in 0..10_000_u32 {
+            let [_, r, g, b] = i.to_be_bytes();
+            cache.insert([r, g, b], i);
+            assert!(cache.len() <= MAX_PATTERNS);
+        }
+        assert_eq!(cache.len(), MAX_PATTERNS);
+        // Quedan los últimos; los primeros se fueron.
+        let [_, r, g, b] = 9_999_u32.to_be_bytes();
+        assert_eq!(cache.get(&[r, g, b]), Some(&9_999));
+        assert_eq!(cache.get(&[0, 0, 0]), None);
+        // Reinsertar una clave no duplica su orden.
+        cache.insert([r, g, b], 1);
+        assert_eq!(cache.len(), MAX_PATTERNS);
+        cache.clear();
+        assert!(cache.is_empty());
     }
 
     #[test]

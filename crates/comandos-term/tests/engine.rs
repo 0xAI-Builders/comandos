@@ -344,3 +344,20 @@ fn set_palette_changes_color_replies() {
     assert!(replies.contains("rgb:0404/0505/0606"), "{replies}");
     assert!(replies.contains("rgb:abab/cdcd/efef"), "{replies}");
 }
+
+#[test]
+fn take_damage_into_reuses_the_buffer_and_matches_take_damage() {
+    let mut e = engine(10, 3);
+    let mut lines = vec![99, 98];
+    assert!(
+        e.take_damage_into(&mut lines),
+        "un motor nuevo está todo dañado"
+    );
+    assert!(lines.is_empty());
+    e.advance(b"\x1b[3;1Hx", 0.0);
+    assert!(!e.take_damage_into(&mut lines));
+    // La línea escrita y, como siempre en alacritty, las del cursor.
+    assert!(lines.contains(&2), "{lines:?}");
+    e.advance(b"\x1b[2;1Hy", 0.0);
+    assert!(matches!(e.take_damage(), Damage::Lines(l) if l.contains(&1)));
+}
