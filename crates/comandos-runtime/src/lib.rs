@@ -12,6 +12,7 @@ pub mod legacy;
 pub mod model_catalog;
 pub mod pane_snapshot;
 pub mod pane_typing;
+pub mod providers;
 pub mod quick_terminal;
 pub mod session_operations;
 pub mod terminal_history;
