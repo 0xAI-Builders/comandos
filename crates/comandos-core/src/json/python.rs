@@ -141,6 +141,24 @@ impl Out for Chunks {
     }
 }
 
+/// `response_dumps` escrita en trozos de como mucho `cap` bytes (los trozos
+/// unidos son la respuesta).
+pub fn response_dumps_chunks(value: &Value, cap: usize) -> Result<Vec<String>, String> {
+    validate_workspace_depth(value, 0)?;
+    let cap = cap.max(1);
+    let mut out = Chunks {
+        cap,
+        done: Vec::new(),
+        cur: String::with_capacity(cap),
+    };
+    encode_into(value, true, false, false, Policy::Workspace, &mut out)?;
+    let Chunks { mut done, cur, .. } = out;
+    if !cur.is_empty() {
+        done.push(cur);
+    }
+    Ok(done)
+}
+
 /// `response_dumps_entry` escrita en trozos de como mucho `cap` bytes (los
 /// trozos unidos son la entrada).
 pub fn response_dumps_entry_chunks(
@@ -365,7 +383,7 @@ fn python_float(value: f64, policy: Policy) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        dumps, response_dumps, response_dumps_entries, response_dumps_entry,
+        dumps, response_dumps, response_dumps_chunks, response_dumps_entries, response_dumps_entry,
         response_dumps_entry_chunks,
     };
     use serde_json::{Value, json};
@@ -390,6 +408,8 @@ mod tests {
                 chunks.concat(),
                 response_dumps_entry("clave", &big).unwrap()
             );
+            let whole = response_dumps_chunks(&big, cap).unwrap();
+            assert_eq!(whole.concat(), response_dumps(&big).unwrap());
         }
 
         let mut deep = Value::Null;
