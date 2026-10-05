@@ -182,6 +182,28 @@ pub fn shadow_agents(count: usize) -> Vec<(String, &'static str)> {
         .collect()
 }
 
+/// Agentes cuya ventana 0 no muestra su nombre en `pane_current_command`
+/// (`<sesión>: <lo que muestra>`), sobre la salida de `list-panes -a -F
+/// '#{session_name}\t#{window_index}\t#{pane_current_command}'`. Vacío si
+/// el frente los verá todos.
+pub fn hidden_agents(listing: &str, agents: &[(String, &'static str)]) -> Vec<String> {
+    let mut shown: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+    for line in listing.lines() {
+        let mut f = line.split('\t');
+        if let (Some(session), Some("0"), Some(command)) = (f.next(), f.next(), f.next()) {
+            shown.insert(session, command);
+        }
+    }
+    agents
+        .iter()
+        .filter_map(|(session, agent)| match shown.get(session.as_str()) {
+            Some(command) if command == agent => None,
+            Some(command) => Some(format!("{session}: {command}")),
+            None => Some(format!("{session}: sin pane")),
+        })
+        .collect()
+}
+
 /// Crea las sesiones de `agents` en el tmux privado del frente, una sesión de
 /// Claude (`~/.claude/sessions`) con su transcript por cada agente Claude y un
 /// registro de estado por agente, todo en el HOME temporal del frente y su
@@ -199,9 +221,13 @@ fn seed_agents(
         let exe = bin.join(kind);
         std::fs::copy("/bin/sleep", &exe).map_err(|e| format!("{}: {e}", exe.display()))?;
     }
+    // `exec`: con `SHELL=/bin/sh` (dash) el pane sería `sh` con el agente de
+    // hijo en su grupo de procesos, `pane_current_command` diría `sh` y el
+    // frente no vería ningún agente (`PANE_SHELLS`): `/state` no observaría
+    // nada y `/usage/state` haría su memo con todas las filas de `usage_panes`.
     for (session, agent) in agents {
         let cmd = format!(
-            "env -i HOME={home_text} PATH=/usr/bin:/bin {} 86400",
+            "exec env -i HOME={home_text} PATH=/usr/bin:/bin {} 86400",
             bin.join(agent).display()
         );
         stack.front_tmux(&["new-session", "-d", "-s", session, "-c", home_text, &cmd])?;
@@ -209,10 +235,29 @@ fn seed_agents(
     if !agents.is_empty() {
         for i in 0..extra_panes {
             let (session, _) = &agents[i % agents.len()];
-            stack.front_tmux(&["new-window", "-d", "-t", &format!("={session}:"), "cat"])?;
+            stack.front_tmux(&[
+                "new-window",
+                "-d",
+                "-t",
+                &format!("={session}:"),
+                "exec cat",
+            ])?;
         }
     }
     thread::sleep(Duration::from_millis(300));
+    let listing = stack.front_tmux_output(&[
+        "list-panes",
+        "-a",
+        "-F",
+        "#{session_name}\t#{window_index}\t#{pane_current_command}",
+    ])?;
+    let hidden = hidden_agents(&listing, agents);
+    if !hidden.is_empty() {
+        return Err(format!(
+            "los agentes falsos no son visibles para el frente (pane_current_command): {}",
+            hidden.join(", ")
+        ));
+    }
     let write = |path: PathBuf, text: String| -> Result<(), String> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -1041,6 +1086,22 @@ fn path_only(p: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hidden_agents_flags_panes_that_show_a_shell() {
+        let agents = shadow_agents(3);
+        let ok = "poll-claude\t0\tclaude\npoll-claude\t1\tcat\npoll-codex\t0\tcodex\n\
+                  poll-claude-2\t0\tclaude\nlocal\t0\tsh\n";
+        assert!(hidden_agents(ok, &agents).is_empty());
+        let shell = "poll-claude\t0\tsh\npoll-codex\t0\tcodex\n";
+        assert_eq!(
+            hidden_agents(shell, &agents),
+            vec![
+                "poll-claude: sh".to_string(),
+                "poll-claude-2: sin pane".to_string()
+            ]
+        );
+    }
 
     #[test]
     fn percentile_nearest_rank() {
