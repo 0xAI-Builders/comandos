@@ -19,6 +19,7 @@ pub mod retired;
 pub mod snippets;
 pub mod state;
 pub mod states;
+pub mod subrequest;
 pub mod terminal;
 pub mod tmux;
 pub mod typing;
@@ -33,6 +34,8 @@ use crate::{
 use http::Method;
 use state::{Refusal, StateBackend};
 use std::{
+    ffi::OsString,
+    net::{Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
@@ -58,6 +61,7 @@ pub enum NativeRoute {
     Terminal(terminal::TerminalRoute),
     PaneType,
     ModelStatus,
+    State,
     Retired,
 }
 
@@ -113,6 +117,7 @@ const TABLES: &[&[Entry]] = &[
     terminal::ROUTES,
     typing::ROUTES,
     operations::ROUTES,
+    states::ROUTES,
     retired::ROUTES,
 ];
 
@@ -230,6 +235,22 @@ pub struct NativeOptions {
     pub desktop_device: String,
     /// Checkout del heredado (`REPO_ROOT`): de él sale `config/model-tiers.json`.
     pub repo_root: Option<PathBuf>,
+    /// `HOME` del frente (`os.path.expanduser("~")` del Python).
+    pub home: PathBuf,
+    /// Raíz de `/proc` (las pruebas de capa usan una falsa; el frente, la real).
+    pub proc_root: PathBuf,
+    /// Heredado para el contexto de sugerencias (D1, D11). `build` lo fija.
+    pub legacy: SocketAddr,
+    pub legacy_token: Vec<u8>,
+    /// `PATH` del frente al arrancar, para `providers::which` (D9).
+    pub search_path: Option<OsString>,
+    /// Directorio de trabajo del frente (rutas relativas del catálogo y cuentas).
+    pub cwd: PathBuf,
+    /// `CODEX_HOME` / `GROK_HOME` del frente (catálogos de modelos).
+    pub codex_home: Option<PathBuf>,
+    pub grok_home: Option<PathBuf>,
+    /// `ssh` de `ssh_state` (7708).
+    pub ssh: tmux::Program,
 }
 
 impl NativeOptions {
@@ -245,8 +266,24 @@ impl NativeOptions {
             journal_db: home.join(".claude/hooks/session-operations.sqlite3"),
             desktop_device: desktop_device(),
             repo_root: None,
+            home: home.to_path_buf(),
+            proc_root: PathBuf::from("/proc"),
+            legacy: SocketAddr::from((Ipv4Addr::LOCALHOST, crate::dash::DEFAULT_LEGACY_PORT)),
+            legacy_token: Vec::new(),
+            search_path: std::env::var_os("PATH"),
+            cwd: std::env::current_dir().unwrap_or_else(|_| home.to_path_buf()),
+            codex_home: env_path("CODEX_HOME"),
+            grok_home: env_path("GROK_HOME"),
+            ssh: tmux::Program::named("ssh"),
         }
     }
+}
+
+/// Variable de entorno no vacía como ruta.
+fn env_path(name: &str) -> Option<PathBuf> {
+    std::env::var_os(name)
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
 }
 
 pub struct Native {
@@ -267,6 +304,8 @@ pub struct Native {
     pub(crate) journal: lanes::Lane<lanes::JournalBackend>,
     /// Caché por `requestId` y candados de `POST /pane/type`.
     pub(crate) typing: Arc<typing::TypingState>,
+    /// GET `/state`: caché de 1,2 s, vuelo único y cachés de los lectores.
+    pub(crate) states: states::Engine,
 }
 
 impl Native {
@@ -283,6 +322,7 @@ impl Native {
             fonts: Mutex::new(None),
             notice_feed: notices::RevisionFeed::default(),
             typing: Arc::default(),
+            states: states::Engine::default(),
         }
     }
 
@@ -456,6 +496,7 @@ impl Native {
             NativeRoute::Terminal(route) => terminal::answer(self, route, request).await,
             NativeRoute::PaneType => typing::answer(self, request).await,
             NativeRoute::ModelStatus => operations::answer(self, request).await,
+            NativeRoute::State => states::answer(self).await,
             NativeRoute::Retired => {
                 let path = request
                     .target
@@ -464,6 +505,17 @@ impl Native {
                 retired::answer(&request.method, path)
             }
         }
+    }
+
+    /// GET `/state` con la caché del Python (`read_states_cached`); también la
+    /// usará `/workspace/sort` en modo `by`.
+    pub async fn states_cached(&self) -> Result<Arc<states::States>, Fault> {
+        let clock = self.opts.clock.clone();
+        self.states
+            .cache
+            .get(&*clock, || states::gather::compute(self))
+            .await
+            .map_err(Fault::from)
     }
 
     /// Para el worker (si arrancó) y espera a que termine su trabajo en curso.

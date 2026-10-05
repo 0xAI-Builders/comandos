@@ -589,7 +589,7 @@ fn text_or(item: &Map<String, Value>, key: &str, default: &str, n: usize) -> Res
 }
 
 /// `read_tab_history` (5318).
-fn read_tab_history(hooks: &Path) -> Result<Vec<Map<String, Value>>, Fault> {
+pub(crate) fn read_tab_history(hooks: &Path) -> Result<Vec<Map<String, Value>>, Fault> {
     let Some(Value::Array(items)) = load(&hooks.join("app-tabs-history.json"))? else {
         return Ok(Vec::new());
     };

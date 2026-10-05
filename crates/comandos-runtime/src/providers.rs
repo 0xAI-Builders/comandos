@@ -32,6 +32,8 @@ pub struct PyRegex {
     plain: Option<Regex>,
     looks: Vec<Look>,
     ignore_case: bool,
+    /// Lleva `\B`: en CPython < 3.14 no casa con un sujeto vacío; en `regex` sí.
+    not_boundary: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -74,7 +76,24 @@ pub fn py_regex(pattern: &str, ignore_case: bool) -> Result<PyRegex, Unsure> {
         plain,
         looks,
         ignore_case,
+        not_boundary: has_not_boundary(&chars),
     })
+}
+
+/// ¿Aparece `\B` como escape (no `\\B`) en el patrón?
+fn has_not_boundary(chars: &[char]) -> bool {
+    let mut i = 0;
+    while let Some(&c) = chars.get(i) {
+        if c == '\\' {
+            if chars.get(i + 1) == Some(&'B') {
+                return true;
+            }
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    false
 }
 
 /// `re.search(...)` como booleano. Sujeto con `\n` (el `$` de Python también
@@ -86,6 +105,10 @@ pub fn py_search(re: &PyRegex, subject: &str) -> Result<bool, Unsure> {
             .bytes()
             .any(|b| b == b'\n' || (0x1c..=0x1f).contains(&b))
     {
+        return Err(Unsure);
+    }
+    // `re.search(r"\B", "")` no casa en el Python del heredado; `regex` sí.
+    if subject.is_empty() && re.not_boundary {
         return Err(Unsure);
     }
     if re.plain.as_ref().is_some_and(|p| p.is_match(subject)) {
@@ -1524,5 +1547,15 @@ mod tests {
         assert_eq!(py_search(&re, "x-sonnet"), Ok(true));
         assert!(py_regex(r"(?:a)(?!b)", false).is_err());
         assert!(py_regex(r"a(?!b(?=c))", false).is_err());
+    }
+
+    #[test]
+    fn not_boundary_on_empty_subject_is_unsure() {
+        // `re.search(r"\B", "")` es None en CPython 3.10; `regex` casaría.
+        let re = py_regex(r"x|\B", true).unwrap();
+        assert_eq!(py_search(&re, ""), Err(Unsure));
+        assert_eq!(py_search(&re, "ab"), Ok(true));
+        let escaped = py_regex(r"\\B", false).unwrap();
+        assert_eq!(py_search(&escaped, ""), Ok(false));
     }
 }

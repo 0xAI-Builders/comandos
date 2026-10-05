@@ -1,17 +1,69 @@
 //! GET `/state` (`read_states` 7035, `read_states_cached` 7191 en el `bin/cc-dash`
 //! confirmado). Tarea 4: ensamblado puro sobre `CardEffects`; Tarea 5: ruta,
 //! caché y recolección.
+pub mod cache;
 pub mod cards;
+pub mod context;
+pub mod gather;
 pub mod observe;
 pub mod records;
 pub mod suggest;
 pub mod tab_models;
 
-use super::{Fault, tmux::TmuxError};
-use crate::HandlerError;
+use super::{Answer, Entry, Fault, Key, Native, NativeRoute, Verb, tmux::TmuxError};
+use crate::{HandlerError, Reply};
 use comandos_core::json::truthy;
-use comandos_runtime::hooks::py::{float_repr, int_text};
+use comandos_runtime::{
+    hooks::py::{float_repr, int_text},
+    tui_state::StateTracker,
+};
 use serde_json::{Number, Value};
+use std::sync::{Arc, Mutex};
+
+/// Estado del frente para `/state`: cachés de los lectores (D1, D5), el
+/// rastreador de configuración, el contexto de sugerencias y el vuelo único.
+pub struct Engine {
+    pub(crate) cache: cache::StatesCache,
+    pub(crate) context: context::Context,
+    pub(crate) tracker: Mutex<StateTracker>,
+    pub(crate) shared: Arc<Mutex<gather::Blocking>>,
+}
+
+impl Default for Engine {
+    fn default() -> Self {
+        Self {
+            cache: cache::StatesCache::default(),
+            context: context::Context::default(),
+            tracker: gather::new_tracker(),
+            shared: Arc::default(),
+        }
+    }
+}
+
+/// Un cómputo terminado: las tarjetas (para `/workspace/sort` `by`) y el
+/// cuerpo ya serializado que se responde tal cual.
+pub struct States {
+    pub items: Arc<Vec<Value>>,
+    pub body: bytes::Bytes,
+}
+
+/// `self.path.startswith("/state")` reclamando solo la ruta exacta (con
+/// consulta opcional): `/states` y `/state/…` siguen en el Python.
+pub const ROUTES: &[Entry] = &[Entry {
+    verb: Verb::Get,
+    key: Key::Path("/state"),
+    route: NativeRoute::State,
+}];
+
+/// `self._json(200, read_states_cached())`.
+pub async fn answer(native: &Native) -> Answer {
+    let states = native.states_cached().await?;
+    Ok(Reply::bytes(
+        http::StatusCode::OK,
+        "application/json",
+        states.body.clone(),
+    ))
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StateFault {

@@ -68,6 +68,37 @@ pub async fn oracle(home: &TestHome) -> Option<Oracle> {
             std::os::unix::fs::symlink("/bin/true", &link).unwrap();
         }
     }
+    // El `tmux` del oráculo va siempre con `-S` al socket privado de la
+    // prueba: solo `TMUX_TMPDIR` no basta (tmux 3.2a cae en el servidor real
+    // del usuario si ese directorio desaparece).
+    // Sin tmux instalado el envoltorio llama a `true` (nunca a otro servidor).
+    let real_tmux = ["/usr/bin/tmux", "/bin/tmux", "/usr/local/bin/tmux"]
+        .into_iter()
+        .find(|p| Path::new(p).exists())
+        .unwrap_or("/bin/true");
+    let socket = comandos_server::dash::native::tmux::private_socket(&home.tmux_dir());
+    if let Some(parent) = socket.parent() {
+        use std::os::unix::fs::DirBuilderExt;
+        let _ = std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(parent);
+    }
+    let wrapper = fakebin.join("tmux");
+    let _ = std::fs::remove_file(&wrapper);
+    std::fs::write(
+        &wrapper,
+        format!(
+            "#!/bin/sh\nexec {real_tmux} -S '{}' \"$@\"\n",
+            socket.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(
+        &wrapper,
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .unwrap();
     let path = format!(
         "{}:{}",
         fakebin.display(),

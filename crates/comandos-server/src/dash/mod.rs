@@ -326,11 +326,15 @@ pub fn build(
     let asset_exists = asset_exists(&cfg.dash_dir);
     let token = cfg.token.clone();
     let native = cfg.native.then(|| {
-        Arc::new(native::Native::new(opts.unwrap_or_else(|| {
+        let mut o = opts.unwrap_or_else(|| {
             let mut o = native::NativeOptions::for_home(&cfg.home, cfg.state_db.clone());
             o.repo_root = cfg.repo_root.clone();
             o
-        })))
+        });
+        // El contexto de sugerencias habla con el MISMO heredado al que se reenvía.
+        o.legacy = SocketAddr::from((Ipv4Addr::LOCALHOST, cfg.legacy_port));
+        o.legacy_token = cfg.token.clone();
+        Arc::new(native::Native::new(o))
     });
     let state = Arc::new(DashState {
         config: cfg,

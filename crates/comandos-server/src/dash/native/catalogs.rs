@@ -1,13 +1,12 @@
 //! F. Catálogos de solo lectura: GET /model-tiers (8286, `load_model_tiers`
 //! 3714) y GET /sovereignty (8323, `sovereignty_report` 4275). Ninguna escribe.
 use super::{
-    Answer, Entry, Fault, Key, Native, NativeRoute, Verb,
+    Answer, Entry, Fault, Key, Native, NativeOptions, NativeRoute, Verb,
     files::{self, Strict},
     light::read_reply,
-    py, reply,
+    py,
 };
 use crate::HandlerError;
-use http::StatusCode;
 use serde_json::{Map, Value, json};
 use std::{
     fs,
@@ -49,13 +48,21 @@ pub async fn answer(native: &Native, route: CatalogRoute) -> Answer {
 /// parsea, devuelve lo último que cargó. Solo se responde lo que el archivo
 /// dice con certeza; lo demás lo sabe solo la caché del Python.
 fn model_tiers(native: &Native) -> Answer {
-    let Some(root) = native.options().repo_root.as_ref() else {
+    read_reply(&read_model_tiers(native.options())?)
+}
+
+/// `load_model_tiers()` cuando su resultado es seguro: el objeto del archivo
+/// (o `{}` si no es objeto). Ausente, ilegible o incierto: el Python devuelve
+/// su copia en caché, que solo él conoce → `Decline`. Lo comparten
+/// GET /model-tiers y GET /state (`write_app_tab_models`).
+pub fn read_model_tiers(opts: &NativeOptions) -> Result<Value, Fault> {
+    let Some(root) = opts.repo_root.as_ref() else {
         return Err(Fault::Decline);
     };
     match files::read_json_strict(&root.join("config/model-tiers.json")) {
-        Strict::Value(value @ Value::Object(_)) => read_reply(&value),
+        Strict::Value(value @ Value::Object(_)) => Ok(value),
         // `data if isinstance(data, dict) else {}`.
-        Strict::Value(_) => reply(StatusCode::OK, &json!({})),
+        Strict::Value(_) => Ok(json!({})),
         Strict::Missing | Strict::Unreadable | Strict::Unsure => Err(Fault::Decline),
     }
 }

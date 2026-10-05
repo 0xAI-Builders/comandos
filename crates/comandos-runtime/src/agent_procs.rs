@@ -571,7 +571,7 @@ fn join_realpath(
 }
 
 /// `os.path.realpath` (no estricto) sobre bytes.
-pub(crate) fn realpath(p: &[u8]) -> Vec<u8> {
+pub fn realpath(p: &[u8]) -> Vec<u8> {
     let (path, _) = join_realpath(Vec::new(), p, &mut HashMap::new());
     // `abspath`: relativo al directorio de trabajo, luego `normpath`.
     if path.starts_with(b"/") {

@@ -142,9 +142,20 @@ pub struct TestHome {
 impl TestHome {
     pub fn new(tag: &str) -> Self {
         let root = std::env::temp_dir().join(format!("cmd-native-{tag}-{}", std::process::id()));
+        // Un resto de una corrida anterior: primero se para SU servidor (por
+        // `-S`, nunca el del usuario) y solo después se borra el directorio.
+        let stale = private_socket(&root.join("tmux"));
+        if stale.exists() {
+            let _ = private_tmux_command(&root.join("tmux"))
+                .arg("kill-server")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join(".claude/hooks/state")).unwrap();
         std::fs::create_dir_all(root.join("tmux")).unwrap();
+        std::fs::create_dir_all(root.join("bin")).unwrap();
         std::fs::write(root.join(".claude/hooks/dash-token"), TOKEN).unwrap();
         std::fs::write(root.join(".claude/hooks/app-tabs.json"), "{}").unwrap();
         Self { root }
@@ -154,6 +165,13 @@ impl TestHome {
     }
     pub fn tmux_dir(&self) -> PathBuf {
         self.root.join("tmux")
+    }
+    /// `tmux -f /dev/null -S <tmux_dir>/tmux-<uid>/default` del servidor
+    /// privado de esta prueba. Es la ÚNICA forma de llamar a tmux a mano en las
+    /// pruebas: con `-S` explícito un directorio ausente da «no server running»
+    /// y nunca alcanza el `/tmp/tmux-<uid>/default` del usuario.
+    pub fn tmux_command(&self) -> Command {
+        private_tmux_command(&self.tmux_dir())
     }
     pub fn state_db(&self) -> PathBuf {
         self.root.join(".local/state/comandos/app-state.sqlite3")
@@ -174,8 +192,67 @@ impl TestHome {
         // Sin fc-list en las pruebas salvo que una prueba lo fije.
         opts.fc_list = Program::named("/no-existe/fc-list");
         opts.repo_root = std::fs::canonicalize(repo()).ok();
+        opts.home = self.root.clone();
+        // `which` solo ve el `bin` vacío de la prueba; nunca el ssh ni el
+        // heredado reales (el puerto 1 no escucha; `front` lo sustituye).
+        opts.search_path = Some(self.root.join("bin").into_os_string());
+        opts.ssh = Program::named("/no-existe/ssh");
+        opts.codex_home = None;
+        opts.grok_home = None;
+        opts.cwd = self.root.clone();
+        opts.legacy = std::net::SocketAddr::from(([127, 0, 0, 1], 1));
         opts
     }
+}
+
+/// Copia `/bin/sleep` como `<home>/bin/<name>`: un proceso con ese argv[0]
+/// para `agent_procs` (nunca un agente real).
+pub fn fake_agent(home: &TestHome, name: &str) -> PathBuf {
+    let path = home.root.join("bin").join(name);
+    std::fs::copy("/bin/sleep", &path).unwrap();
+    path
+}
+
+/// Sesión del tmux privado con `cmd` como proceso del pane, sin el entorno
+/// del desarrollador (`env -i`), con el HOME de la prueba.
+pub fn start_session(home: &TestHome, name: &str, cmd: &str) {
+    let status = home
+        .tmux_command()
+        .args(["new-session", "-d", "-s", name, "-c"])
+        .arg(&home.root)
+        .arg(format!(
+            "env -i HOME={} PATH=/usr/bin:/bin {cmd}",
+            home.root.display()
+        ))
+        .status()
+        .unwrap();
+    assert!(status.success());
+}
+
+/// El socket privado de `socket_dir` (`<socket_dir>/tmux-<uid>/default`).
+pub fn private_socket_of(socket_dir: &Path) -> PathBuf {
+    private_socket(socket_dir)
+}
+
+/// `tmux` con `-f /dev/null -S <socket_dir>/tmux-<uid>/default`; crea el
+/// directorio del socket (0700) para que tmux lo acepte.
+pub fn private_tmux_command(socket_dir: &Path) -> Command {
+    let socket = private_socket(socket_dir);
+    if let Some(parent) = socket.parent() {
+        use std::os::unix::fs::DirBuilderExt;
+        let _ = std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(parent);
+    }
+    let mut cmd = Command::new("tmux");
+    cmd.arg("-f")
+        .arg("/dev/null")
+        .arg("-S")
+        .arg(socket)
+        .env_remove("TMUX")
+        .env("TMUX_TMPDIR", socket_dir);
+    cmd
 }
 
 impl Drop for TestHome {
@@ -284,5 +361,56 @@ impl FakeLegacy {
     }
     pub fn requests(&self) -> Vec<String> {
         self.seen.lock().unwrap().clone()
+    }
+}
+
+/// Heredado con status y cuerpo fijos para cualquier ruta; anota la línea de
+/// petición. Al soltarse deja de escuchar.
+pub struct FixedLegacy {
+    pub port: u16,
+    pub seen: Arc<Mutex<Vec<String>>>,
+    task: JoinHandle<()>,
+}
+
+impl FixedLegacy {
+    pub async fn start(status: u16, body: &'static str) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = seen.clone();
+        let task = tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let log = log.clone();
+                tokio::spawn(async move {
+                    let mut buf = Vec::new();
+                    let mut chunk = [0u8; 4096];
+                    while !buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match stream.read(&mut chunk).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                        }
+                    }
+                    let head = String::from_utf8_lossy(&buf).to_string();
+                    log.lock()
+                        .unwrap()
+                        .push(head.lines().next().unwrap_or("").into());
+                    let reply = format!(
+                        "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = stream.write_all(reply.as_bytes()).await;
+                });
+            }
+        });
+        Self { port, seen, task }
+    }
+    pub fn requests(&self) -> Vec<String> {
+        self.seen.lock().unwrap().clone()
+    }
+}
+
+impl Drop for FixedLegacy {
+    fn drop(&mut self) {
+        self.task.abort();
     }
 }
