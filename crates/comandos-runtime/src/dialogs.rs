@@ -5,9 +5,11 @@
 //!
 //! Los patrones son `re` de Python: se traducen con `providers::py_regex_lines`
 //! y solo se buscan sobre pantallas donde el resultado es el mismo con certeza
-//! (`providers::screen_safe`). Un patrón que el port no traduce, o una
-//! pantalla dudosa, es `Unsure` en cuanto haría falta evaluarlo; si el Python
-//! ya habría devuelto antes, no estorba.
+//! (`providers::screen_safe`). Un patrón que el port no traduce es
+//! `BadPattern` (se ve antes del `claim` con `probe`); una pantalla dudosa,
+//! `UnreadableScreen` (solo después de los efectos, donde se usa
+//! `screen_dialog_fail_closed`). Si el Python ya habría devuelto antes, no
+//! estorba.
 use crate::{Unsure, claude_trust, providers};
 use comandos_core::json::truthy;
 use comandos_core::text::{int, strip};
@@ -22,6 +24,17 @@ use std::{
 
 /// `_LOGIN_LINE`.
 const LOGIN_LINE: &str = r"(^|\n)[\s│┃>]*";
+
+/// Por qué `screen_dialog` no decide con certeza.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DialogError {
+    /// La configuración (o un patrón) no se reproduce: se detecta antes del
+    /// `claim` con `DialogCache::probe`.
+    BadPattern,
+    /// La pantalla tiene caracteres que `re` y `regex` podrían leer distinto:
+    /// solo existe después de teclear el comando.
+    UnreadableScreen,
+}
 
 /// Orden en que `screen_dialog` prueba las categorías.
 pub const KINDS: [&str; 5] = ["trust", "login", "onboarding", "effort", "error"];
@@ -253,19 +266,38 @@ impl DialogCache {
         Ok(value)
     }
 
-    /// `screen_dialog(screen)`: `"trust"`, `"login"`, `"onboarding"`,
-    /// `"effort"`, `"error"` o `""` según la pantalla.
-    pub fn screen_dialog(&self, screen: &str) -> Result<&'static str, Unsure> {
-        let patterns = self.patterns()?;
+    /// Antes del `claim`: ¿son evaluables con certeza todos los patrones? Si
+    /// no (configuración ilegible, categoría dudosa, patrón sin traducir),
+    /// `BadPattern` y quien llama declina. Lo que dependa de la pantalla solo
+    /// se sabe después de teclear el comando.
+    pub fn probe(&self) -> Result<(), DialogError> {
+        let patterns = self.patterns().map_err(|_| DialogError::BadPattern)?;
         for kind in KINDS {
             match patterns.get(kind) {
                 None => {}
-                Some(Kind::Unsure) => return Err(Unsure),
+                Some(Kind::Unsure) => return Err(DialogError::BadPattern),
+                Some(Kind::Known(entries)) if entries.iter().any(|e| e.regex.is_err()) => {
+                    return Err(DialogError::BadPattern);
+                }
+                Some(Kind::Known(_)) => {}
+            }
+        }
+        Ok(())
+    }
+
+    /// `screen_dialog(screen)`: `"trust"`, `"login"`, `"onboarding"`,
+    /// `"effort"`, `"error"` o `""` según la pantalla.
+    pub fn screen_dialog(&self, screen: &str) -> Result<&'static str, DialogError> {
+        let patterns = self.patterns().map_err(|_| DialogError::BadPattern)?;
+        for kind in KINDS {
+            match patterns.get(kind) {
+                None => {}
+                Some(Kind::Unsure) => return Err(DialogError::BadPattern),
                 Some(Kind::Known(entries)) => {
                     for entry in entries {
-                        let regex = entry.regex.as_ref().map_err(|e| *e)?;
+                        let regex = entry.regex.as_ref().map_err(|_| DialogError::BadPattern)?;
                         if !providers::screen_safe(&entry.pattern, true, screen) {
-                            return Err(Unsure);
+                            return Err(DialogError::UnreadableScreen);
                         }
                         if regex.is_match(screen) {
                             return Ok(kind);
@@ -275,6 +307,15 @@ impl DialogCache {
             }
         }
         Ok("")
+    }
+
+    /// `screen_dialog` después de los efectos, a prueba de fallos: cualquier
+    /// duda es `"error"`. En `_verify` eso cuenta como diálogo presente (se
+    /// sigue esperando; como mucho se agota el plazo) y en
+    /// `pending_confirmation` como error (no se confirma). Nunca «seguir como
+    /// si nada» ni `Decline` (regla 2: ya hubo efectos).
+    pub fn screen_dialog_fail_closed(&self, screen: &str) -> &'static str {
+        self.screen_dialog(screen).unwrap_or("error")
     }
 }
 
@@ -326,7 +367,7 @@ pub fn verify_attempts(
 
 #[cfg(test)]
 mod tests {
-    use super::{DialogCache, attempts_value};
+    use super::{DialogCache, DialogError, attempts_value};
     use serde_json::json;
 
     #[test]
@@ -342,7 +383,31 @@ mod tests {
             Ok("login")
         );
         assert_eq!(cache.screen_dialog("x\n fatal: bad"), Ok("error"));
-        assert!(cache.screen_dialog("ılogin required").is_err());
+        assert_eq!(
+            cache.screen_dialog("ılogin required"),
+            Err(DialogError::UnreadableScreen)
+        );
+        assert_eq!(cache.screen_dialog_fail_closed("ılogin required"), "error");
+        assert_eq!(cache.probe(), Ok(()));
+    }
+
+    /// Un patrón de configuración que el port no traduce se ve antes del
+    /// `claim` (`probe`); los inválidos seguros se descartan como en el Python.
+    #[test]
+    fn probe_flags_untranslatable_config() {
+        let dir = std::env::temp_dir().join(crate::fresh_id("dialogs-probe").unwrap());
+        std::fs::create_dir_all(dir.join("config")).unwrap();
+        let write = |text: &str| std::fs::write(dir.join("config/detectors.json"), text).unwrap();
+        write(r#"{"dialogPatterns": {"login": ["(?P<x>a)", "sign in"]}}"#);
+        let cache = DialogCache::new(&dir);
+        assert_eq!(cache.probe(), Err(DialogError::BadPattern));
+        assert_eq!(cache.screen_dialog("x"), Err(DialogError::BadPattern));
+        assert_eq!(cache.screen_dialog_fail_closed("x"), "error");
+        let cache = DialogCache::new(&dir);
+        write(r#"{"dialogPatterns": {"login": ["(", "sign in"]}}"#);
+        assert_eq!(cache.probe(), Ok(()));
+        assert_eq!(cache.screen_dialog("please sign in"), Ok("login"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

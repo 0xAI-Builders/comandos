@@ -15,7 +15,10 @@
 //! El TOML se lee como lo hace el heredado en esta máquina: `python3` es 3.10
 //! (sin `tomllib`), así que `_parse_toml` lo pasa por `python3.11 -I` y
 //! `json.dumps`. Por eso un documento con fechas falla (no son JSON) y uno con
-//! sintaxis de TOML 1.1 (que `toml_edit` acepta y `tomllib` no) también.
+//! sintaxis de TOML 1.1 (que `toml_edit` acepta y `tomllib` no) también. La
+//! herencia de confianza de Codex usa `parse_trust_toml`, que sí acepta
+//! fechas (desviación deliberada: ver su comentario). Un número que
+//! `toml_edit` no representa (`1e400`, `0x8000000000000000`) es `Unsure`.
 use crate::Unsure;
 use comandos_core::json::{PythonLoads, python_eq, python_loads, response_dumps, truthy};
 use comandos_core::text::{shlex_quote, splitlines};
@@ -269,20 +272,43 @@ fn toml_1_1(text: &str) -> bool {
     false
 }
 
-/// Un entero que no cabe en `i64`: `toml_edit` lo rechaza, `tomllib` no.
-fn big_integer(text: &str) -> bool {
+/// Un literal numérico que `toml_edit` no representa y `tomllib` sí: enteros
+/// fuera de `i64` (decimales largos o `0x`/`0o`/`0b`) y flotantes que se van
+/// al infinito (`1e400`). Si `toml_edit` falla con uno así, el veredicto del
+/// Python es incierto.
+fn risky_number(text: &str) -> bool {
     let source = Source::new(text);
     source.lex().into_vec().iter().any(|token| {
-        token.kind() == TokenKind::Atom
-            && source
-                .get(token)
-                .is_some_and(|raw| raw.as_str().bytes().filter(u8::is_ascii_digit).count() >= 19)
+        if token.kind() != TokenKind::Atom {
+            return false;
+        }
+        let Some(raw) = source.get(token) else {
+            return false;
+        };
+        let raw = raw.as_str().trim_start_matches(['+', '-']);
+        if !raw.starts_with(|c: char| c.is_ascii_digit()) {
+            return false;
+        }
+        raw.starts_with("0x")
+            || raw.starts_with("0o")
+            || raw.starts_with("0b")
+            || raw.contains(['e', 'E'])
+            || raw.bytes().filter(u8::is_ascii_digit).count() >= 19
     })
 }
 
+/// Qué hacer con una fecha.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Dates {
+    /// `json.dumps` del resultado lanza: el `_parse_toml` del Python 3.10.
+    Fail,
+    /// Un valor opaco verdadero (su texto): el lector de la confianza.
+    Opaque,
+}
+
 /// Un valor de `toml_edit` como el JSON que devuelve `json.dumps(tomllib…)`;
-/// `None` si `json.dumps` lanzaría (fechas).
-fn toml_value(value: &Tv) -> Option<Value> {
+/// `None` si el Python lanzaría.
+fn toml_value(value: &Tv, dates: Dates) -> Option<Value> {
     Some(match value {
         Tv::String(s) => json!(s.value()),
         Tv::Integer(i) => json!(i.value()),
@@ -303,53 +329,78 @@ fn toml_value(value: &Tv) -> Option<Value> {
             }
         }
         Tv::Boolean(b) => json!(b.value()),
-        Tv::Datetime(_) => return None,
-        Tv::Array(items) => Value::Array(items.iter().map(toml_value).collect::<Option<_>>()?),
+        Tv::Datetime(dt) => {
+            // Una hora sin segundos es TOML 1.1: `tomllib` 3.11 la rechaza.
+            if dates == Dates::Fail || dt.value().time.is_some_and(|t| t.second.is_none()) {
+                return None;
+            }
+            json!(dt.value().to_string())
+        }
+        Tv::Array(items) => Value::Array(
+            items
+                .iter()
+                .map(|v| toml_value(v, dates))
+                .collect::<Option<_>>()?,
+        ),
         Tv::InlineTable(table) => {
             let mut map = Map::new();
             for (key, value) in table.iter() {
-                map.insert(key.to_owned(), toml_value(value)?);
+                map.insert(key.to_owned(), toml_value(value, dates)?);
             }
             Value::Object(map)
         }
     })
 }
 
-fn toml_item(item: &Item) -> Option<Value> {
+fn toml_item(item: &Item, dates: Dates) -> Option<Value> {
     match item {
         Item::None => None,
-        Item::Value(value) => toml_value(value),
+        Item::Value(value) => toml_value(value, dates),
         Item::Table(table) => {
             let mut map = Map::new();
             for (key, value) in table.iter() {
-                map.insert(key.to_owned(), toml_item(value)?);
+                map.insert(key.to_owned(), toml_item(value, dates)?);
             }
             Some(Value::Object(map))
         }
         Item::ArrayOfTables(tables) => Some(Value::Array(
             tables
                 .iter()
-                .map(|t| toml_item(&Item::Table(t.clone())))
+                .map(|t| toml_item(&Item::Table(t.clone()), dates))
                 .collect::<Option<_>>()?,
         )),
     }
 }
 
-/// `_parse_toml(text)`: `Ok(None)` = el `ValueError` del Python.
-pub fn parse_toml(text: &str) -> Result<Option<Value>, Unsure> {
+fn parse_with(text: &str, dates: Dates) -> Result<Option<Value>, Unsure> {
     if text.starts_with('\u{feff}') || toml_1_1(text) {
         return Ok(None);
     }
     match text.parse::<DocumentMut>() {
-        Ok(doc) => Ok(toml_item(doc.as_item())),
-        Err(_) if big_integer(text) => Err(Unsure),
+        Ok(doc) => Ok(toml_item(doc.as_item(), dates)),
+        Err(_) if risky_number(text) => Err(Unsure),
         Err(_) => Ok(None),
     }
 }
 
-/// `_read(path)` de un `.toml`: `Ok(None)` = `ValueError('Configuración
-/// ilegible…')`.
-pub(crate) fn read_config_toml(path: &Path) -> Result<Option<Value>, Unsure> {
+/// `_parse_toml(text)`: `Ok(None)` = el `ValueError` del Python.
+pub fn parse_toml(text: &str) -> Result<Option<Value>, Unsure> {
+    parse_with(text, Dates::Fail)
+}
+
+/// El TOML de la herencia de confianza de Codex. Como `parse_toml`, pero las
+/// fechas son valores opacos verdaderos (su texto): desviación deliberada, el
+/// Python solo falla con ellas por pasar el resultado por JSON, y entonces un
+/// `config.toml` con una fecha nunca heredaba la confianza (el cambio de
+/// cuenta se quedaba en el diálogo). Lo demás que `tomllib` 3.11 rechaza
+/// (sintaxis 1.1, BOM, hora sin segundos) se sigue rechazando.
+pub(crate) fn parse_trust_toml(text: &str) -> Result<Option<Value>, Unsure> {
+    parse_with(text, Dates::Opaque)
+}
+
+/// `_read(path)` de un `.toml` con el lector dado: `Ok(None)` =
+/// `ValueError('Configuración ilegible…')`.
+fn read_toml_with(path: &Path, dates: Dates) -> Result<Option<Value>, Unsure> {
     let meta = match fs::metadata(path) {
         Ok(meta) => meta,
         // `path.exists()` es falso con estos errores.
@@ -371,7 +422,12 @@ pub(crate) fn read_config_toml(path: &Path) -> Result<Option<Value>, Unsure> {
     let Some(text) = universal_text(bytes) else {
         return Ok(None);
     };
-    parse_toml(&text)
+    parse_with(&text, dates)
+}
+
+/// `_read(path)` para la confianza de Codex (`parse_trust_toml`).
+pub(crate) fn read_trust_toml(path: &Path) -> Result<Option<Value>, Unsure> {
+    read_toml_with(path, Dates::Opaque)
 }
 
 // ---------------------------------------------------------------- manifest
@@ -1085,6 +1141,80 @@ pub fn launch_from_pid(pid: u32) -> Result<Option<Value>, Unsure> {
     Ok(verify_launch(pid, &bundle)?.then_some(bundle))
 }
 
+// ------------------------------------------------- caminos aún sin portar
+
+/// Lo que decide, antes del `claim`, si una operación llegaría a
+/// `inventory`/`_internal_inventory`/`prepare_launch` (aún sin portar).
+#[derive(Debug, Clone, Copy)]
+pub struct InventoryNeed<'a> {
+    /// `request.extensionsOnly`: `PaneExtensionConfiguration.prepare`
+    /// (`bin/cc-dash:3332`) llama a `prepare_launch` siempre.
+    pub extensions_only: bool,
+    /// El harness del agente original (`frm`): con `opencode`, `snapshot`
+    /// (`:3075`) pide `inventory` para `capture_opencode_environment`.
+    pub from: &'a str,
+    /// `plan['to']`.
+    pub to: &'a str,
+    /// `plan['sameConversation']`.
+    pub same_conversation: bool,
+    /// `plan['unchanged']`: con él, `_preserve_extension_plan` (`:2712`)
+    /// reutiliza el lanzamiento verificado sin inventario.
+    pub unchanged: bool,
+    /// `adapter.original['pid']`.
+    pub original_pid: Option<u32>,
+    /// `plan['returnOrigin']['extensionLaunch']`.
+    pub return_origin_launch: Option<&'a Value>,
+}
+
+/// `true` si la operación pasaría por un camino que necesita
+/// `inventory`/`prepare_launch`: quien llama declina ANTES del `claim`.
+///
+/// Reproduce la decisión de `_preserve_extension_plan`: `prior` es el
+/// lanzamiento de `returnOrigin` o, con la misma conversación y un pid, el
+/// que `launch_from_pid` verifica. Si el proceso tiene
+/// `COMANDOS_EXTENSION_MANIFEST` pero no verifica, el Python lanza
+/// `ValueError('no se pudo verificar el lanzamiento original; el agente sigue
+/// abierto')` sin inventario: eso lo porta el adaptador, aquí es `false`.
+/// `Unsure` = `launch_from_pid` dudoso o un `prior` sin `harness`.
+pub fn needs_inventory(need: &InventoryNeed<'_>) -> Result<bool, Unsure> {
+    if need.extensions_only || need.from == "opencode" {
+        return Ok(true);
+    }
+    let mut prior = need.return_origin_launch.filter(|v| truthy(v)).cloned();
+    if need.same_conversation
+        && let Some(pid) = need.original_pid.filter(|p| *p != 0)
+    {
+        prior = launch_from_pid(pid)?;
+    }
+    let Some(prior) = prior.filter(truthy) else {
+        return Ok(false);
+    };
+    let harness = prior.get("harness").ok_or(Unsure)?;
+    if !python_eq(harness, &json!(need.to)) {
+        return Ok(false);
+    }
+    Ok(!need.unchanged)
+}
+
+/// La versión prudente de `needs_inventory` para cuando el plan aún no se
+/// conoce: declina con `extensionsOnly`, origen `opencode`, un
+/// `returnOrigin.extensionLaunch` o un proceso original con huella de
+/// lanzamiento gestionado (`COMANDOS_EXTENSION_MANIFEST` u
+/// `COMANDOS_EXTENSION_OPERATION_ID`), verificado o no.
+pub fn may_need_inventory(
+    extensions_only: bool,
+    from: &str,
+    original_pid: Option<u32>,
+    return_origin_launch: Option<&Value>,
+) -> bool {
+    extensions_only
+        || from == "opencode"
+        || return_origin_launch.is_some_and(truthy)
+        || original_pid
+            .filter(|p| *p != 0)
+            .is_some_and(|pid| configuration_status(Some(pid), false) != "external")
+}
+
 // ---------------------------------------------------------------- selección
 
 /// `_normalize(inv, selection)`: la selección completa (solo filas con estado
@@ -1154,7 +1284,7 @@ pub fn normalize(inventory: &Value, selection: &Value) -> Result<Value, LaunchEr
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_toml, shlex_split};
+    use super::{parse_toml, parse_trust_toml, shlex_split};
     use serde_json::json;
 
     #[test]
@@ -1187,5 +1317,43 @@ mod tests {
             Some(json!({"a": [1], "b": {"c": [1, 2]}}))
         );
         assert!(parse_toml("a = 99999999999999999999").is_err());
+    }
+
+    /// Lo que `toml_edit` no representa y `tomllib` sí: `Unsure`, nunca un
+    /// rechazo.
+    #[test]
+    fn overflowing_numbers_are_unsure() {
+        for text in [
+            "a = 1e400",
+            "a = -1e400",
+            "a = 1.8e308",
+            "a = 0x8000000000000000",
+            "a = 0o1777777777777777777777",
+            "a = 0b1000000000000000000000000000000000000000000000000000000000000000",
+        ] {
+            assert!(parse_toml(text).is_err(), "{text}");
+            assert!(parse_trust_toml(text).is_err(), "{text}");
+        }
+    }
+
+    /// Lector de la confianza: las fechas son valores opacos (desviación: el
+    /// Python 3.10 falla al pasarlas por JSON); lo que `tomllib` 3.11 rechaza
+    /// se sigue rechazando.
+    #[test]
+    fn trust_reader_accepts_dates() {
+        assert_eq!(
+            parse_trust_toml("a = 1979-05-27\nb = 1979-05-27T07:32:00Z\nc = 07:32:00").unwrap(),
+            Some(json!({"a": "1979-05-27", "b": "1979-05-27T07:32:00Z", "c": "07:32:00"}))
+        );
+        assert_eq!(parse_toml("a = 1979-05-27").unwrap(), None);
+        for text in [
+            "a = 07:32",
+            "a = 1979-05-27T07:32",
+            "a = {b=1,}",
+            "a = \"\\e\"",
+            "\u{feff}a=1",
+        ] {
+            assert_eq!(parse_trust_toml(text).unwrap(), None, "{text:?}");
+        }
     }
 }

@@ -362,6 +362,11 @@ fn claude_config_dir(registry: &Value, alias: &str, home: &str) -> Result<Option
         "~/.claude-accounts"
     };
     let root = claude_trust::expanduser(root, home)?;
+    // `os.path.join(root, alias)`: un alias absoluto descarta la raíz (el
+    // `from_alias` de `apply` sale del proceso observado, no se valida).
+    if alias.starts_with('/') {
+        return Ok(Some(alias.to_owned()));
+    }
     Ok(Some(if root.is_empty() || root.ends_with('/') {
         format!("{root}{alias}")
     } else {
@@ -377,6 +382,11 @@ fn or_main(alias: &str) -> &str {
 /// la aceptación de la carpeta de la cuenta origen a la destino, solo si la
 /// cuenta cambia y el origen ya la tenía. `Ok(false)` también para toda
 /// excepción del Python (la traga). `home` es `os.path.expanduser("~")`.
+///
+/// Antes del `claim`, quien llama comprueba `trust_probe` (Claude) o
+/// `codex_trust_probe` (Codex) y declina con `Unsure`. Después de los efectos
+/// (en `apply`, con el agente original ya cerrado), un `Unsure` se trata como
+/// `false`: lo mismo que la excepción que el Python traga, nunca `Decline`.
 ///
 /// El `cc_usage.record_change(... "trust_inherited" ...)` que sigue a un
 /// acierto lo escribe quien llama (la base de uso es del frente): su nota es
@@ -408,8 +418,18 @@ pub fn inherit_trust_for_switch(
 /// `account_home(registry, 'codex', alias) / 'config.toml'`. Una excepción del
 /// registro es el `except` de `inherit_trust_for_switch` (`None`).
 fn codex_config(registry: &Value, home: &str, alias: &str) -> Result<Option<PathBuf>, Unsure> {
-    // `Path.resolve()` de una ruta relativa dependería del directorio del
-    // proceso: el registro validado solo trae rutas con `~` o absolutas.
+    // `Path(os.path.expanduser(x)).resolve()`: con `~`, `~/…` o una ruta
+    // absoluta no depende del directorio del proceso; con una relativa o
+    // `~usuario`, sí (o de la base de usuarios): `Unsure`.
+    if let Some(spec) = registry["harnesses"]["codex"].as_object() {
+        for key in ["defaultHome", "accountsRoot"] {
+            if let Some(raw) = spec.get(key).and_then(Value::as_str)
+                && !(raw == "~" || raw.starts_with("~/") || raw.starts_with('/'))
+            {
+                return Err(Unsure);
+            }
+        }
+    }
     let paths = Paths::new(Path::new(home), Path::new("/"));
     match accounts::account_home(registry, "codex", &json!(or_main(alias)), &paths) {
         Ok(dir) => Ok(Some(dir.join("config.toml"))),
@@ -475,7 +495,7 @@ fn inherit_codex_trust(
         return Ok(false);
     }
     let cwd = realpath(cwd.as_bytes());
-    let Some(data) = extension_launch::read_config_toml(&source)? else {
+    let Some(data) = extension_launch::read_trust_toml(&source)? else {
         return Ok(false);
     };
     if codex_decision(&data, &cwd)? != Some(json!("trusted")) {
@@ -510,7 +530,7 @@ fn inherit_codex_trust(
 
 /// Lo que `_inherit_codex_trust` hace con el candado tomado.
 fn codex_stamp_locked(target: &Path, parent: &Path, cwd: &[u8]) -> Result<bool, Unsure> {
-    let Some(data) = extension_launch::read_config_toml(target)? else {
+    let Some(data) = extension_launch::read_trust_toml(target)? else {
         return Ok(false);
     };
     match codex_decision(&data, cwd)? {
@@ -527,15 +547,62 @@ fn codex_stamp_locked(target: &Path, parent: &Path, cwd: &[u8]) -> Result<bool, 
         Err(_) => return Ok(false),
     };
     let cwd = String::from_utf8(cwd.to_vec()).map_err(|_| Unsure)?;
-    let quoted = response_dumps(&json!(cwd)).map_err(|_| Unsure)?;
+    let quoted = toml_key(&cwd)?;
     let after = format!("{before}\n[projects.{quoted}]\ntrust_level = \"trusted\"\n");
-    if extension_launch::parse_toml(&after)?.is_none() {
+    if extension_launch::parse_trust_toml(&after)?.is_none() {
         return Ok(false);
     }
     let original = fs::metadata(target)
         .ok()
         .map(|meta| meta.permissions().mode() & 0o7777);
     Ok(write_replacing(target, parent, &after, original).is_ok())
+}
+
+/// `json.dumps(cwd)` como clave TOML. Desviación deliberada: un carácter
+/// fuera del plano básico (un emoji) sale como `\UXXXXXXXX`; `json.dumps` lo
+/// partía en sustitutos `\ud83d\ude00`, que TOML rechaza, y la carpeta nunca
+/// heredaba la confianza. Sin esos caracteres, el texto es el del Python.
+fn toml_key(cwd: &str) -> Result<String, Unsure> {
+    if cwd.chars().all(|c| u32::from(c) <= 0xFFFF) {
+        return response_dumps(&json!(cwd)).map_err(|_| Unsure);
+    }
+    let mut out = String::from("\"");
+    for c in cwd.chars() {
+        if u32::from(c) > 0xFFFF {
+            out.push_str(&format!("\\U{:08X}", u32::from(c)));
+        } else {
+            let one = response_dumps(&json!(c.to_string())).map_err(|_| Unsure)?;
+            out.push_str(one.get(1..one.len() - 1).ok_or(Unsure)?);
+        }
+    }
+    out.push('"');
+    Ok(out)
+}
+
+/// Antes del `claim`: ¿leería la herencia Codex algo que el port no reproduce?
+/// Lee (sin escribir) los `config.toml` de origen y destino con el mismo
+/// lector y comprueba la carpeta. Sin herencia posible no lee nada.
+pub fn codex_trust_probe(
+    registry: &Value,
+    home: &str,
+    cwd: &str,
+    from_alias: &str,
+    to_alias: &str,
+) -> Result<(), Unsure> {
+    if cwd.is_empty() || or_main(to_alias) == or_main(from_alias) {
+        return Ok(());
+    }
+    let (Some(source), Some(target)) = (
+        codex_config(registry, home, from_alias)?,
+        codex_config(registry, home, to_alias)?,
+    ) else {
+        return Ok(());
+    };
+    let cwd = String::from_utf8(realpath(cwd.as_bytes())).map_err(|_| Unsure)?;
+    toml_key(&cwd)?;
+    extension_launch::read_trust_toml(&source)?;
+    extension_launch::read_trust_toml(&target)?;
+    Ok(())
 }
 
 /// `mkstemp(prefix='.trust-', dir=…)` + escritura + `fsync` + `os.replace`; el

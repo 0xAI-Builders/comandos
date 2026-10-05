@@ -163,13 +163,16 @@ pub struct Oracle<'a> {
 }
 
 impl<'a> Oracle<'a> {
-    /// `None` (y un aviso) sin `python3` ni `python3.11`.
+    /// El oráculo; sin `/usr/bin/python3` o `/usr/bin/python3.11` la prueba
+    /// FALLA con un mensaje claro (no se salta en silencio: sin oráculo solo
+    /// quedarían las aserciones locales).
     pub fn new(home: &'a Home) -> Option<Self> {
         let python = PathBuf::from("/usr/bin/python3");
-        if !python.exists() || !home.bin().join("python3.11").exists() {
-            eprintln!("python3/python3.11 no están instalados: se salta el oráculo");
-            return None;
-        }
+        assert!(
+            python.exists() && home.bin().join("python3.11").exists(),
+            "el oráculo necesita /usr/bin/python3 (el del heredado) y /usr/bin/python3.11 \
+             (su lector TOML); instálalos o ejecuta solo las pruebas sin oráculo"
+        );
         Some(Self { home, python })
     }
 

@@ -180,6 +180,35 @@ fn configuration_command_matches_python() {
             false,
             false,
         ),
+        // Hostiles: comillas, `$(…)`, saltos de línea y `"` en el modelo de Codex.
+        (
+            up,
+            "claude",
+            "claude",
+            "",
+            "",
+            "main",
+            "a'b\"c $(id)\nx",
+            false,
+            false,
+        ),
+        (
+            up, "codex", "codex", "gpt\"5", "hi\"gh", "main", "s;rm", false, false,
+        ),
+        (
+            up, "grok", "grok", "m`x`", "", "main", "--resume", false, false,
+        ),
+        (
+            up,
+            "opencode",
+            "opencode",
+            "",
+            "",
+            "main",
+            "ses\tión",
+            false,
+            false,
+        ),
     ];
     let ctx_up = ctx(&home, up);
     let ctx_down = ctx(&home, down);
@@ -314,10 +343,13 @@ fn codex_cases() -> Vec<(&'static str, Seed, &'static str, &'static str, &'stati
             "rel",
         ),
         (
-            "origen-con-fecha",
+            "destino-variado",
             |h, _| {
-                let text = trusted(h, "code/p") + "when = 1979-05-27\n";
-                h.put(".codex/config.toml", &text);
+                h.put(".codex/config.toml", &trusted(h, "code/p"));
+                h.put(
+                    ".codex-accounts/rel/config.toml",
+                    "# cabecera\nmodel = 'gpt' # nota\nlist = [\n  1,\n  2,\n]\nt = {a = \"é\", b = [1, 2]}\n[projects.\"/otra\"]\ntrust_level = \"untrusted\"\n[[x]]\ny = 1",
+                );
             },
             "code/p",
             "main",
@@ -886,4 +918,276 @@ fn verify_launch_matches_python() {
     for (index, (a, b)) in ours.iter().zip(&theirs).enumerate() {
         assert_eq!(a, b, "{index}: {:?}", calls.get(index));
     }
+}
+
+// ---------------------------------------------------------- ronda 1 (revisión)
+
+/// Siembra Codex común: el origen `main` acepta `code/p`.
+fn trusted_main(h: &Home, extra: &str) -> String {
+    let cwd = h.path().join("code/p");
+    fs::create_dir_all(&cwd).unwrap();
+    h.put(
+        ".codex/config.toml",
+        &format!(
+            "[projects.\"{}\"]\ntrust_level = \"trusted\"\n{extra}",
+            cwd.display()
+        ),
+    );
+    cwd.display().to_string()
+}
+
+/// Desviación deliberada (I1): un `config.toml` con fechas, en el origen o en
+/// el destino, hereda la confianza. El Python 3.10 falla (sus fechas no pasan
+/// por JSON) y el cambio de cuenta se quedaba en el diálogo de confianza. El
+/// anexo es el mismo texto que escribiría el Python.
+#[test]
+fn codex_trust_with_dates_inherits() {
+    let (ours, theirs) = (Home::new("dates-a"), Home::new("dates-b"));
+    for h in [&ours, &theirs] {
+        trusted_main(h, "since = 1979-05-27T07:32:00Z\n");
+        h.put(".codex-accounts/rel/config.toml", "seen = 2026-10-05\n");
+    }
+    let cwd = ours.path().join("code/p").display().to_string();
+    assert_eq!(
+        launch_command::codex_trust_probe(&registry(), &ours.s(), &cwd, "main", "rel"),
+        Ok(())
+    );
+    let got = launch_command::inherit_trust_for_switch(
+        &registry(),
+        &ours.s(),
+        &cwd,
+        "main",
+        "rel",
+        "codex",
+    );
+    assert_eq!(got, Ok(true));
+    let text = fs::read_to_string(ours.path().join(".codex-accounts/rel/config.toml")).unwrap();
+    assert_eq!(
+        text,
+        format!("seen = 2026-10-05\n\n[projects.\"{cwd}\"]\ntrust_level = \"trusted\"\n")
+    );
+    let Some(oracle) = Oracle::new(&theirs) else {
+        return;
+    };
+    let theirs_cwd = theirs.path().join("code/p").display().to_string();
+    let py = oracle.run(
+        &[json!({"expr": format!("dash.inherit_trust_for_switch({theirs_cwd:?},'main','rel',harness='codex')")})],
+        &[],
+    );
+    assert_eq!(py, vec![json!({"ok": false})], "el Python falla con fechas");
+    // El anexo del port lo lee `tomllib` 3.11 con la clave exacta.
+    let check = format!(
+        "el._parse_toml(open({:?}).read().replace('seen = 2026-10-05', ''))['projects'][{cwd:?}]",
+        ours.path()
+            .join(".codex-accounts/rel/config.toml")
+            .display()
+            .to_string()
+    );
+    assert_eq!(
+        oracle.run(&[json!({"expr": check})], &[]),
+        vec![json!({"ok": {"trust_level": "trusted"}})]
+    );
+}
+
+/// Desviación deliberada (M1): una carpeta con un emoji hereda la confianza
+/// con la clave escapada como `\UXXXXXXXX`; el Python la escribía con
+/// sustitutos (`😀`), que TOML rechaza.
+#[test]
+fn codex_trust_emoji_folder_inherits() {
+    let h = Home::new("emoji");
+    let cwd = h.path().join("code/p😀é");
+    fs::create_dir_all(&cwd).unwrap();
+    let cwd = cwd.display().to_string();
+    h.put(
+        ".codex/config.toml",
+        &format!(
+            "[projects.\"{}\"]\ntrust_level = \"trusted\"\n",
+            cwd.replace('😀', "\\U0001F600")
+        ),
+    );
+    let got =
+        launch_command::inherit_trust_for_switch(&registry(), &h.s(), &cwd, "", "rel", "codex");
+    assert_eq!(got, Ok(true));
+    let path = h.path().join(".codex-accounts/rel/config.toml");
+    let text = fs::read_to_string(&path).unwrap();
+    assert!(text.contains("\\U0001F600\\u00e9\"]"), "{text}");
+    let Some(oracle) = Oracle::new(&h) else {
+        return;
+    };
+    let check = format!(
+        "el._parse_toml(open({:?}).read())['projects'][{cwd:?}]['trust_level']",
+        path.display().to_string()
+    );
+    assert_eq!(
+        oracle.run(&[json!({"expr": check})], &[]),
+        vec![json!({"ok": "trusted"})]
+    );
+    let py = oracle.run(
+        &[json!({"expr": format!("dash._inherit_codex_trust({cwd:?},'','otra')")})],
+        &[],
+    );
+    assert_eq!(
+        py,
+        vec![json!({"error": "Configuración TOML no soportada.", "value": true})]
+    );
+}
+
+/// I2/I3: un número que `toml_edit` no representa es `Unsure` en la sonda
+/// previa al `claim` y en la herencia (que tras los efectos cuenta como
+/// `false`); un registro con rutas relativas también.
+#[test]
+fn codex_trust_probe_declines_what_it_cannot_read() {
+    let h = Home::new("probe");
+    let cwd = trusted_main(&h, "");
+    let reg = registry();
+    assert_eq!(
+        launch_command::codex_trust_probe(&reg, &h.s(), &cwd, "main", "rel"),
+        Ok(())
+    );
+    assert_eq!(
+        launch_command::codex_trust_probe(&reg, &h.s(), &cwd, "", "main"),
+        Ok(())
+    );
+    h.put(
+        ".codex-accounts/rel/config.toml",
+        "n = 0x8000000000000000\n",
+    );
+    assert!(launch_command::codex_trust_probe(&reg, &h.s(), &cwd, "main", "rel").is_err());
+    assert!(
+        launch_command::inherit_trust_for_switch(&reg, &h.s(), &cwd, "main", "rel", "codex")
+            .is_err()
+    );
+    let mut relative = reg.clone();
+    relative["harnesses"]["codex"]["accountsRoot"] = json!("cuentas-codex");
+    assert!(launch_command::codex_trust_probe(&relative, &h.s(), &cwd, "main", "otra").is_err());
+}
+
+/// M3: un alias absoluto (el `from_alias` observado) descarta la raíz como
+/// `os.path.join`.
+#[test]
+fn claude_absolute_alias_matches_python() {
+    let (ours, theirs) = (Home::new("abs-a"), Home::new("abs-b"));
+    for h in [&ours, &theirs] {
+        let cwd = h.path().join("code/p");
+        fs::create_dir_all(&cwd).unwrap();
+        h.put(
+            "fuera/.claude.json",
+            &format!(
+                "{{\"projects\": {{\"{}\": {{\"hasTrustDialogAccepted\": true}}}}}}",
+                cwd.display()
+            ),
+        );
+    }
+    let args = |h: &Home| {
+        (
+            h.path().join("code/p").display().to_string(),
+            h.path().join("fuera").display().to_string(),
+        )
+    };
+    let (cwd, from) = args(&ours);
+    let got = launch_command::inherit_trust_for_switch(
+        &registry(),
+        &ours.s(),
+        &cwd,
+        &from,
+        "rel",
+        "claude",
+    )
+    .unwrap();
+    assert!(got);
+    let Some(oracle) = Oracle::new(&theirs) else {
+        return;
+    };
+    let (cwd, from) = args(&theirs);
+    let py = oracle.run(
+        &[json!({"expr": format!("dash.inherit_trust_for_switch({cwd:?},{from:?},'rel',harness='claude')")})],
+        &[],
+    );
+    assert_eq!(py, vec![json!({"ok": got})]);
+    let dest = |h: &Home| {
+        fs::read_to_string(h.path().join(".claude-accounts/rel/.claude.json"))
+            .unwrap()
+            .replace(&h.s(), "~")
+    };
+    assert_eq!(dest(&ours), dest(&theirs));
+}
+
+/// I4: los caminos que necesitan `inventory`/`prepare_launch` se detectan
+/// antes del `claim`.
+#[test]
+fn inventory_paths_are_detected_before_claim() {
+    use extension_launch::{InventoryNeed, may_need_inventory, needs_inventory};
+    let home = Home::new("inventory");
+    let prepared = prepare(&home, "inv", "codex", json!([]), json!({}), 0);
+    let manifest = prepared.bundle["manifest"].as_str().unwrap().to_owned();
+    let digest = sha256_hex(&fs::read(&manifest).unwrap());
+    let receipt = Path::new(&manifest).with_file_name("receipt-1.json");
+    let body =
+        json!({"manifestSha256": digest, "argv": [], "env": {}, "artifacts": {}}).to_string();
+    private_file(&receipt, &body);
+    let managed = Sleeper::spawn(&[
+        (extension_launch::MARKER, "op-inv".to_owned()),
+        (extension_launch::MANIFEST_ENV, manifest.clone()),
+        (extension_launch::DIGEST_ENV, digest),
+        (extension_launch::RECEIPT_ENV, receipt.display().to_string()),
+        (
+            extension_launch::RECEIPT_HASH_ENV,
+            sha256_hex(body.as_bytes()),
+        ),
+        ("HOME", home.s()),
+    ]);
+    let external = Sleeper::spawn(&[("HOME", home.s())]);
+    let base = InventoryNeed {
+        extensions_only: false,
+        from: "codex",
+        to: "codex",
+        same_conversation: true,
+        unchanged: false,
+        original_pid: Some(managed.pid()),
+        return_origin_launch: None,
+    };
+    let need = |n: InventoryNeed| needs_inventory(&n).unwrap();
+    assert!(need(base));
+    assert!(!need(InventoryNeed {
+        unchanged: true,
+        ..base
+    }));
+    assert!(!need(InventoryNeed {
+        to: "claude",
+        ..base
+    }));
+    assert!(!need(InventoryNeed {
+        original_pid: Some(external.pid()),
+        ..base
+    }));
+    assert!(need(InventoryNeed {
+        extensions_only: true,
+        original_pid: None,
+        ..base
+    }));
+    assert!(need(InventoryNeed {
+        from: "opencode",
+        original_pid: None,
+        ..base
+    }));
+    let saved = prepared.bundle.clone();
+    assert!(need(InventoryNeed {
+        same_conversation: false,
+        return_origin_launch: Some(&saved),
+        ..base
+    }));
+    assert!(may_need_inventory(
+        false,
+        "codex",
+        Some(managed.pid()),
+        None
+    ));
+    assert!(!may_need_inventory(
+        false,
+        "codex",
+        Some(external.pid()),
+        None
+    ));
+    assert!(may_need_inventory(false, "opencode", None, None));
+    assert!(may_need_inventory(true, "claude", None, None));
 }
