@@ -8,8 +8,8 @@ use comandos_server::dash::native::{
     Native,
     tmux::{Program, Tmux, private_socket},
     usage::pane_models::{
-        HyperNotify, NotifyPost, PaneModelWriter, TIER_ALERT_COOLDOWN_S, TierAlert, TierAlerts,
-        send_alerts, ui_lang_es,
+        HyperNotify, NotifyPost, PaneModelWriter, PaneOutcome, TIER_ALERT_COOLDOWN_S, TierAlert,
+        TierAlerts, live_rows, pane_values, send_alerts, ui_lang_es,
     },
 };
 use serde_json::{Value, json};
@@ -582,7 +582,8 @@ fn tier_style_and_lang_edges() {
         alert.texts(false).1,
         "The agent in this session switched to m : it uses quota faster."
     );
-    // `tiers` verdadero que no es objeto, o símbolo que no es texto: incierto.
+    // `tiers` verdadero que no es objeto, o símbolo contenedor (su `repr`):
+    // incierto. Un escalar pasa por el `str()` del f-string.
     assert!(TierAlert::styled("s", "a", "m", "high", &json!({"tiers": [1]})).is_err());
     assert!(
         TierAlert::styled(
@@ -590,9 +591,21 @@ fn tier_style_and_lang_edges() {
             "a",
             "m",
             "high",
-            &json!({"tiers": {"high": {"symbol": 3}}})
+            &json!({"tiers": {"high": {"symbol": [3]}}})
         )
         .is_err()
+    );
+    let scalar = TierAlert::styled(
+        "s",
+        "a",
+        "m",
+        "high",
+        &json!({"tiers": {"high": {"symbol": 3, "label": true}}}),
+    )
+    .unwrap();
+    assert_eq!(
+        (scalar.symbol.as_str(), scalar.label.as_str()),
+        ("3", "True")
     );
     let falsy = TierAlert::styled(
         "s",
@@ -883,4 +896,643 @@ fn production_default_targets_the_session_notifyd() {
         HyperNotify::default().addr,
         std::net::SocketAddr::from(([127, 0, 0, 1], 4778))
     );
+}
+
+// ---------------------------------------------------------------------------
+// Tarea 7b: filas vivas, valores de borde y el escritor con tmux falso
+// ---------------------------------------------------------------------------
+
+/// Proceso `sleep` propio con un entorno de cuenta conocido; se mata por su
+/// manejador (nunca por patrón) al soltarlo.
+struct Sleeper(std::process::Child);
+
+impl Drop for Sleeper {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+impl Sleeper {
+    fn spawn(env: &[(&str, &Path)]) -> Self {
+        let mut command = Command::new("sleep");
+        command
+            .arg("120")
+            .env_remove("CLAUDE_CONFIG_DIR")
+            .env_remove("CODEX_HOME")
+            .env_remove("GROK_HOME")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        for (key, value) in env {
+            command.env(key, value);
+        }
+        let child = command.spawn().unwrap();
+        // `/proc/<pid>/environ` solo es el del `sleep` tras el `exec`.
+        let comm = format!("/proc/{}/comm", child.id());
+        let start = Instant::now();
+        while std::fs::read_to_string(&comm).unwrap_or_default() != "sleep\n" {
+            assert!(start.elapsed() < Duration::from_secs(5), "sleep no arrancó");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        Self(child)
+    }
+
+    fn pid(&self) -> i64 {
+        i64::from(self.0.id())
+    }
+}
+
+/// `tmux` falso en `<home>/fakebin/tmux`: anota cada argv (un argumento por
+/// línea y `--` al final) en `fakebin/argv`; `list-panes` imprime
+/// `fakebin/options` (formato con `@ccmodel`) o `fakebin/ids`; `set-option`
+/// sobre `%8` o `%9` falla. Nunca habla con ningún servidor tmux.
+fn fake_tmux(home: &TestHome) -> (Tmux, PathBuf) {
+    let dir = home.root.join("fakebin");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("tmux");
+    std::fs::write(
+        &path,
+        "#!/bin/sh\n\
+         d=$(dirname \"$0\")\n\
+         for a in \"$@\"; do printf '%s\\n' \"$a\" >> \"$d/argv\"; done\n\
+         printf -- '--\\n' >> \"$d/argv\"\n\
+         case \"$1\" in\n\
+         list-panes) case \"$4\" in *ccmodel*) cat \"$d/options\" ;; *) cat \"$d/ids\" ;; esac ;;\n\
+         set-option) for a in \"$@\"; do case \"$a\" in %8|%9) exit 1 ;; esac; done ;;\n\
+         esac\n\
+         exit 0\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let tmux = Tmux {
+        program: Program::named(&path),
+        timeout: Duration::from_secs(5),
+    };
+    // Canario: el binario es el falso del HOME de la prueba, sin prefijo.
+    assert!(tmux.program.path.starts_with(&home.root));
+    assert!(tmux.program.prefix.is_empty());
+    (tmux, dir)
+}
+
+fn read_and_clear(path: &Path) -> String {
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    std::fs::write(path, "").unwrap();
+    text
+}
+
+/// `config/model-tiers.json` propio: patrones, un símbolo entero y colores
+/// de tmux.
+fn custom_tiers() -> Value {
+    json!({
+        "alertTier": "high",
+        "defaultTier": "mid",
+        "patterns": [
+            {"match": "opus|sol", "tier": "high"},
+            {"match": "haiku|mini", "tier": "low"}
+        ],
+        "tiers": {
+            "high": {"symbol": "$$$", "label": "Alto", "tmux": "196"},
+            "mid": {"symbol": "$$", "label": "Medio"},
+            "low": {"symbol": 1, "label": "Bajo", "tmux": 46}
+        }
+    })
+}
+
+fn write_tiers(root: &Path, tiers: &Value) -> PathBuf {
+    let file = root.join("repo/config/model-tiers.json");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(&file, tiers.to_string()).unwrap();
+    file
+}
+
+/// Fila del memo (`build_usage_state`) de un pane.
+fn memo_row(sess: &str, pane: &str, agent: &str, model: &str, pid: i64) -> Value {
+    json!({
+        "tmux_session": sess, "tmux_pane": pane, "session": sess, "agent": agent,
+        "provider": agent, "model": model, "pid": pid, "agent_pid": pid,
+        "pane_pwd": "/tmp", "reasoning_effort": ""
+    })
+}
+
+fn live_row(sess: &str, pane: &str, agent: &str) -> Value {
+    json!({"tmux_session": sess, "tmux_pane": pane, "agent": agent, "pane_pwd": "/tmp"})
+}
+
+fn card(pane: &str, agent: &str, model: &str) -> Value {
+    json!({"pane": pane, "agent": agent, "model": model, "effort": "high", "alive": true})
+}
+
+/// Seis vueltas de `/usage/state`: cambio de modelo con aviso, cambio en
+/// curso, pane muerto, enfriamiento de una hora y reintento.
+fn e2e_steps(work: i64, main: i64, gk: i64) -> Value {
+    let t = NOW;
+    let ids = "%1\n%2\n%3\n%4\n%5\n%6\n";
+    let live = json!([
+        live_row("alpha", "%1", "claude"),
+        live_row("alpha", "%2", "codex"),
+        live_row("beta", "%3", "grok"),
+        live_row("beta", "%4", "claude"),
+        live_row("gamma", "%5", "opencode"),
+        live_row("gamma", "%6", ""),
+    ]);
+    let memo = |m1: &str, m3: &str| {
+        json!([
+            memo_row("alpha", "%1", "claude", "claude-opus-4-7", work),
+            memo_row("alpha", "%2", "codex", "openai/gpt-5.6-sol", main),
+            memo_row("beta", "%3", "grok", m3, gk),
+            memo_row("beta", "%4", "claude", "", 0),
+            memo_row("gamma", "%5", "opencode", "", 0),
+            memo_row("gamma", "%6", "", "", 0),
+            memo_row("gamma", "%7", "codex", "gpt-5.5", main),
+            memo_row("local", "local", "codex", "gpt-5.5", main),
+            json!({"tmux_session": "alpha", "tmux_pane": "%1", "agent": "claude",
+                   "model": m1, "pid": work}),
+        ])
+    };
+    let cards = |m1: &str| {
+        json!([
+            card("%1", "claude", m1),
+            card("%2", "codex", ""),
+            card("", "codex", "x"),
+            card("%9", "codex", "gpt-5.5"),
+        ])
+    };
+    let switching = json!({"alpha|%2": {"stage": "cambiando", "ts": t - 10.0,
+                                         "model": "anthropic/claude-haiku-4"}});
+    let done = json!({"alpha|%2": {"stage": "listo", "ok": true, "ts": t - 10.0}});
+    let options = "%1\t\n%2\tviejo\n%7\tresto\n";
+    json!([
+        {"now": t, "ids": ids, "options": options, "motor": switching,
+         "live": live, "memo": memo("x", "grok-4-mini"), "cards": cards("claude-sonnet-4-5")},
+        {"now": t + 10.0, "ids": ids, "options": options, "motor": done,
+         "live": live, "memo": memo("x", "grok-4-mini"), "cards": cards("claude-opus-4-7")},
+        {"now": t + 20.0, "ids": ids, "options": options, "motor": done,
+         "live": [live[0], live[1], live[2], live_row("delta", "%9", "")],
+         "memo": [memo("x", "grok-4-sol")[0], memo("x", "grok-4-sol")[1],
+                  memo("x", "grok-4-sol")[2], memo_row("delta", "%9", "", "", 0)],
+         "cards": cards("claude-sonnet-4-5")},
+        {"now": t + 30.0, "ids": ids, "options": options, "motor": {},
+         "live": live, "memo": memo("x", "grok-4-sol"), "cards": cards("claude-opus-4-7")},
+        {"now": t + 3700.0, "ids": ids, "options": options, "motor": {},
+         "live": live, "memo": memo("x", "grok-4-sol"), "cards": cards("claude-sonnet-4-5")},
+        {"now": t + 3720.0, "ids": ids, "options": options, "motor": {},
+         "live": [live[0], live[1], live_row("eps", "%8", "opencode")],
+         "memo": [memo("x", "x")[0], memo("x", "x")[1], memo_row("eps", "%8", "opencode", "", 0)],
+         "cards": cards("claude-opus-4-7")},
+    ])
+}
+
+/// `write_pane_models(_pane_models_for_live_state(panes, state))` del
+/// `/usage/state` del Python, con hilos síncronos (la reconciliación corre
+/// dentro de la llamada), `usage_alert_send` anotado, `read_states_cached`
+/// sustituido y el `tmux` falso del PATH.
+const E2E_ORACLE: &str = r#"
+steps = json.load(open(sys.argv[2]))
+fake = sys.argv[3]
+dash.MODEL_TIERS_FILE = sys.argv[4]
+dash._model_tiers_cache.update(mtime=None, data={})
+dash.threading.Thread = SyncThread
+ALERTS = []
+def _alert(message, title=None, kind="info", project=None):
+    ALERTS.append([message, title, kind, project])
+dash.usage_alert_send = _alert
+open(os.path.join(fake, "argv"), "w").close()
+out = []
+for step in steps:
+    dash.time.time = lambda now=step["now"]: now
+    open(os.path.join(fake, "ids"), "w").write(step["ids"])
+    open(os.path.join(fake, "options"), "w").write(step["options"])
+    dash.MOTOR_RESULT.clear()
+    dash.MOTOR_RESULT.update(step["motor"])
+    dash.read_states_cached = lambda cards=step["cards"]: cards
+    rows = dash._pane_models_for_live_state(step["live"], {"panes": step["memo"]})
+    del ALERTS[:]
+    dash.write_pane_models(rows)
+    st = dash._pane_model_state
+    argv_file = os.path.join(fake, "argv")
+    argv = open(argv_file).read()
+    open(argv_file, "w").close()
+    f = dash.PANE_MODELS_FILE
+    out.append({"rows": rows, "applied": dict(st["applied"]), "argv": argv,
+                "file": open(f).read() if os.path.exists(f) else None,
+                "alerts": list(ALERTS), "retry": st["retry_after"] > time.monotonic(),
+                "known": len(set(dash._TIER_LAST) | set(dash._TIER_ALERTED))})
+print(json.dumps(out))
+"#;
+
+#[tokio::test]
+async fn usage_state_borders_match_python_twin() {
+    if !python_available() {
+        return;
+    }
+    let py = TestHome::new("borders-py");
+    let rs = TestHome::new("borders-rs");
+    // Cuentas: una de Claude con su carpeta, Codex en la principal (sin
+    // `CODEX_HOME`) y Grok con barra final. Las carpetas las leen los dos.
+    let shared = py.root.join("accounts");
+    std::fs::create_dir_all(shared.join("work")).unwrap();
+    std::fs::create_dir_all(shared.join("gk")).unwrap();
+    std::fs::write(
+        shared.join("work/.claude.json"),
+        r#"{"oauthAccount": {"emailAddress": "w@example.com"}}"#,
+    )
+    .unwrap();
+    let work = Sleeper::spawn(&[("CLAUDE_CONFIG_DIR", &shared.join("work"))]);
+    let main = Sleeper::spawn(&[]);
+    let gk_dir = PathBuf::from(format!("{}/", shared.join("gk").display()));
+    let gk = Sleeper::spawn(&[("GROK_HOME", &gk_dir)]);
+    let steps = e2e_steps(work.pid(), main.pid(), gk.pid());
+    for home in [&py, &rs] {
+        home.write("cc-notify.conf", "CC_LANG=es\n");
+    }
+
+    let (_, py_fake) = fake_tmux(&py);
+    let py_tiers = write_tiers(&py.root, &custom_tiers());
+    let steps_file = py.root.join("steps.json");
+    std::fs::write(&steps_file, steps.to_string()).unwrap();
+    let expected: Value = serde_json::from_str(&run_python(
+        &format!("{PRELUDE}{E2E_ORACLE}"),
+        &[
+            steps_file.as_os_str(),
+            py_fake.as_os_str(),
+            py_tiers.as_os_str(),
+        ],
+        &py,
+    ))
+    .unwrap();
+
+    let (tmux, rs_fake) = fake_tmux(&rs);
+    write_tiers(&rs.root, &custom_tiers());
+    let clock = Arc::new(std::sync::atomic::AtomicI64::new(NOW_MS));
+    let mut opts = rs.options();
+    opts.repo_root = Some(rs.root.join("repo"));
+    opts.tmux = tmux.clone();
+    let shared_clock = clock.clone();
+    opts.clock = Arc::new(move || shared_clock.load(std::sync::atomic::Ordering::SeqCst));
+    let native = Native::new(opts);
+    let writer = native.pane_models().clone();
+    let mut seen = Vec::new();
+    for step in steps.as_array().unwrap() {
+        let now = step["now"].as_f64().unwrap();
+        clock.store((now * 1000.0) as i64, std::sync::atomic::Ordering::SeqCst);
+        std::fs::write(rs_fake.join("ids"), step["ids"].as_str().unwrap()).unwrap();
+        std::fs::write(rs_fake.join("options"), step["options"].as_str().unwrap()).unwrap();
+        std::fs::write(
+            rs.hooks().join("motor-results.json"),
+            step["motor"].to_string(),
+        )
+        .unwrap();
+        let live: Vec<serde_json::Map<String, Value>> =
+            serde_json::from_value(step["live"].clone()).unwrap();
+        let cards = step["cards"].as_array().unwrap().clone();
+        let state = json!({"panes": step["memo"]});
+        let rows = live_rows(&live, &state, Some(&cards)).unwrap();
+        // El Python nunca olvida claves: para comparar `known` esta prueba no
+        // poda (sin lista de tmux). La poda tiene su propia prueba.
+        let PaneOutcome::Ready(values) = pane_values(&native, &rows, None).await else {
+            panic!("la vuelta debía escribir");
+        };
+        let alerts: Vec<Value> = values
+            .alerts
+            .iter()
+            .map(|a| {
+                let (title, msg) = a.texts(true);
+                json!([msg, title, "done", a.session])
+            })
+            .collect();
+        writer
+            .apply(values.values, values.file_text, tmux.clone(), rs.hooks())
+            .await;
+        wait_idle(&writer).await;
+        let file = std::fs::read_to_string(rs.hooks().join("pane-models.txt")).ok();
+        seen.push(json!({
+            "rows": rows, "applied": writer.applied(),
+            "argv": read_and_clear(&rs_fake.join("argv")),
+            "file": file, "alerts": alerts, "retry": writer.retry_pending(),
+            "known": native.tier_alerts().len(),
+        }));
+    }
+    native.shutdown().await;
+    let seen = Value::Array(seen);
+    for (i, (ours, theirs)) in seen
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(expected.as_array().unwrap())
+        .enumerate()
+    {
+        assert_eq!(sorted(ours), sorted(theirs), "vuelta {i}");
+    }
+    assert_eq!(seen.as_array().unwrap().len(), 6);
+    // Contenido concreto, por si los dos lados se equivocaran igual.
+    let first_file = seen[0]["file"].as_str().unwrap();
+    assert!(
+        first_file.contains("%1 work · claude · sonnet-4-5 $$\n"),
+        "{first_file}"
+    );
+    assert!(first_file.contains("%2 codex · cambiando → haiku-4\n"));
+    assert!(first_file.contains("%3 gk · grok · grok-4-mini 1\n"));
+    assert!(first_file.contains("%4 claude · detectando…\n"));
+    assert!(first_file.contains("%5 opencode\n"));
+    assert!(!first_file.contains("%6"));
+    assert!(seen[0]["argv"].as_str().unwrap().starts_with(
+        "list-panes\n-a\n-F\n#{pane_id}\t#{@ccmodel}\n--\nset-option\n-p\n-t\n%1\n@ccmodel\n"
+    ));
+    assert_eq!(seen[1]["alerts"][0][1], "Modelo Alto en uso");
+    assert_eq!(seen[2]["alerts"][0][3], "beta");
+    assert_eq!(seen[3]["alerts"], json!([]), "dentro de la hora no avisa");
+    assert_eq!(
+        seen[5]["alerts"].as_array().unwrap().len(),
+        1,
+        "pasada la hora sí"
+    );
+    assert_eq!(
+        seen[2]["applied"]["%9"],
+        Value::Null,
+        "pane muerto: quitado"
+    );
+    assert_eq!(seen[5]["retry"], true, "fallo con valor: reintento");
+    drop((work, main, gk));
+}
+
+/// `_pane_models_for_live_state` con tarjetas raras (excepción atrapada →
+/// sin reconciliar) y con el agente ausente en tarjeta y fila.
+const LIVE_ORACLE: &str = r#"
+cases = json.load(open(sys.argv[2]))
+out = []
+for case in cases:
+    dash.read_states_cached = lambda cards=case["cards"]: cards
+    out.append(dash._pane_models_for_live_state(case["live"], case["state"]))
+print(json.dumps(out))
+"#;
+
+#[test]
+fn live_rows_match_python() {
+    if !python_available() {
+        return;
+    }
+    let live = json!([
+        live_row("s", "%1", "codex"),
+        live_row("s", "%2", "claude"),
+        json!({"tmux_pane": "local"}),
+        json!({"tmux_pane": ""})
+    ]);
+    let state = json!({"panes": [
+        {"tmux_pane": "%1", "agent": "codex", "model": "a", "z": 1},
+        {"tmux_pane": "%2", "model": "b"},
+        {"tmux_pane": "%3", "agent": "codex", "model": "c"},
+        {"tmux_pane": "local", "agent": "codex", "model": "d"},
+    ]});
+    let cases = json!([
+        {"live": live, "state": state, "cards": [
+            {"pane": "%1", "model": "m1", "agent": "", "effort": "xhigh"},
+            {"pane": "%2", "model": "m2", "effort": ""},
+            {"pane": "%2", "model": "m2b"},
+            {"pane": 7, "model": "num"},
+            {"pane": "", "model": "nada"},
+        ]},
+        {"live": live, "state": state, "cards": [{"pane": "%1", "model": "m1"}, 5]},
+        {"live": live, "state": state, "cards": [{"pane": ["%1"], "model": "m1"}]},
+        {"live": live, "state": state, "cards": [{"pane": "%1", "model": ""}]},
+        {"live": live, "state": {"panes": null}, "cards": []},
+        {"live": [], "state": state, "cards": []},
+    ]);
+    let home = TestHome::new("live-rows");
+    let file = home.root.join("cases.json");
+    std::fs::write(&file, cases.to_string()).unwrap();
+    let expected: Value = serde_json::from_str(&run_python(
+        &format!("{PRELUDE}{LIVE_ORACLE}"),
+        &[file.as_os_str()],
+        &home,
+    ))
+    .unwrap();
+    let mut seen = Vec::new();
+    for case in cases.as_array().unwrap() {
+        let live: Vec<serde_json::Map<String, Value>> =
+            serde_json::from_value(case["live"].clone()).unwrap();
+        let cards = case["cards"].as_array().unwrap().clone();
+        seen.push(json!(
+            live_rows(&live, &case["state"], Some(&cards)).unwrap()
+        ));
+    }
+    assert_eq!(Value::Array(seen), expected);
+    assert_eq!(
+        expected[0][1]["agent"],
+        Value::Null,
+        "agente ausente → None"
+    );
+    assert!(
+        live_rows(&[], &state, None).is_none(),
+        "sin tarjetas no hay vuelta"
+    );
+}
+
+/// `_pane_model_values` por rondas: `ok` con valores y texto, o `raise`; y los
+/// avisos de cada ronda (también los de antes de una excepción).
+const VALUES_ORACLE: &str = r#"
+cases = json.load(open(sys.argv[2]))
+tiers_file = sys.argv[3]
+dash.threading.Thread = SyncThread
+ALERTS = []
+dash.usage_alert_send = lambda m, title=None, kind="info", project=None: ALERTS.append([m, title, project])
+out = []
+for case in cases:
+    open(tiers_file, "w").write(json.dumps(case["tiers"]))
+    dash.MODEL_TIERS_FILE = tiers_file
+    dash._model_tiers_cache.update(mtime=None, data={})
+    dash._TIER_LAST.clear(); dash._TIER_ALERTED.clear()
+    dash.MOTOR_RESULT.clear(); dash.MOTOR_RESULT.update(case["motor"])
+    dash.time.time = lambda now=case["now"]: now
+    rounds = []
+    for rows in case["rounds"]:
+        del ALERTS[:]
+        try:
+            values, text = dash._pane_model_values(rows)
+            rounds.append({"ok": [values, text], "alerts": list(ALERTS)})
+        except Exception:
+            rounds.append({"raise": True, "alerts": list(ALERTS)})
+    out.append(rounds)
+print(json.dumps(out))
+"#;
+
+#[tokio::test]
+async fn pane_values_raise_like_python() {
+    if !python_available() {
+        return;
+    }
+    let p = |extra: Value| {
+        let mut row = json!({"tmux_pane": "%1", "tmux_session": "s", "agent": "codex",
+                             "model": "gpt-5.5"});
+        for (k, v) in extra.as_object().unwrap() {
+            row[k] = v.clone();
+        }
+        row
+    };
+    let tiers = custom_tiers();
+    let cases = json!([
+        // Modelo que no es texto: `.replace` lanza.
+        {"now": NOW, "tiers": tiers, "motor": {}, "rounds": [[p(json!({"model": 5}))]]},
+        // `tmux_pane` que no es texto: `.startswith` lanza.
+        {"now": NOW, "tiers": tiers, "motor": {}, "rounds": [[p(json!({"tmux_pane": 7}))]]},
+        // Agente lista: `AGENT_ACCOUNT_ENV.get` lanza `TypeError`.
+        {"now": NOW, "tiers": tiers, "motor": {}, "rounds": [[p(json!({"agent": ["x"]}))]]},
+        // `float("abc")` de un cambio en curso.
+        {"now": NOW, "tiers": tiers, "motor": {"s|%1": {"stage": "x", "ts": "abc"}},
+         "rounds": [[p(json!({}))]]},
+        // `tiers` que no es objeto: `tier_style` lanza.
+        {"now": NOW, "tiers": {"tiers": [1]}, "motor": {}, "rounds": [[p(json!({}))]]},
+        // Agente numérico (sin cuenta, color 244) y sin `tmux_pane`/con otro.
+        {"now": NOW, "tiers": tiers, "motor": {}, "rounds": [[
+            p(json!({"agent": 3, "model": ""})),
+            p(json!({"tmux_pane": "", "model": 5})),
+            p(json!({"tmux_pane": "local", "model": 5})),
+            p(json!({"tmux_pane": "%2", "agent": "", "provider": "grok", "model": ""})),
+            p(json!({"tmux_pane": "%2", "agent": "", "model": ""})),
+        ]]},
+        // Aviso decidido antes de una excepción: sale igual.
+        {"now": NOW, "tiers": tiers, "motor": {}, "rounds": [
+            [p(json!({"model": "gpt-5.5"}))],
+            [p(json!({"model": "gpt-5.6-sol"})), p(json!({"tmux_pane": "%2", "model": 5}))],
+        ]},
+        // `alertTier` que no es texto: nunca avisa.
+        {"now": NOW, "tiers": {"alertTier": 1, "defaultTier": "mid",
+                   "patterns": [{"match": "sol", "tier": "high"}]},
+         "motor": {}, "rounds": [
+            [p(json!({"model": "gpt-5.5"}))],
+            [p(json!({"model": "gpt-5.6-sol"}))],
+        ]},
+    ]);
+    let py = TestHome::new("values-raise-py");
+    let file = py.root.join("cases.json");
+    std::fs::write(&file, cases.to_string()).unwrap();
+    let tiers_file = py.root.join("model-tiers.json");
+    let expected: Value = serde_json::from_str(&run_python(
+        &format!("{PRELUDE}{VALUES_ORACLE}"),
+        &[file.as_os_str(), tiers_file.as_os_str()],
+        &py,
+    ))
+    .unwrap();
+
+    let rs = TestHome::new("values-raise-rs");
+    rs.write("cc-notify.conf", "CC_LANG=es\n");
+    let mut seen = Vec::new();
+    for case in cases.as_array().unwrap() {
+        write_tiers(&rs.root, &case["tiers"]);
+        std::fs::write(
+            rs.hooks().join("motor-results.json"),
+            case["motor"].to_string(),
+        )
+        .unwrap();
+        let mut opts = rs.options();
+        opts.repo_root = Some(rs.root.join("repo"));
+        let native = Native::new(opts);
+        let mut rounds = Vec::new();
+        for rows in case["rounds"].as_array().unwrap() {
+            let rows: Vec<serde_json::Map<String, Value>> =
+                serde_json::from_value(rows.clone()).unwrap();
+            let texts = |alerts: &[TierAlert]| -> Value {
+                alerts
+                    .iter()
+                    .map(|a| {
+                        let (title, msg) = a.texts(false);
+                        json!([msg, title, a.session])
+                    })
+                    .collect()
+            };
+            rounds.push(match pane_values(&native, &rows, None).await {
+                PaneOutcome::Ready(v) => {
+                    json!({"ok": [v.values, v.file_text], "alerts": texts(&v.alerts)})
+                }
+                PaneOutcome::Raises(alerts) => json!({"raise": true, "alerts": texts(&alerts)}),
+                PaneOutcome::Skip => panic!("nada incierto en estos casos"),
+            });
+        }
+        native.shutdown().await;
+        seen.push(Value::Array(rounds));
+    }
+    assert_eq!(Value::Array(seen.clone()), expected);
+    assert_eq!(seen[6][1]["raise"], true);
+    assert_eq!(seen[6][1]["alerts"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        seen[5][0]["ok"][1], "%1 3\n%2 grok · detectando…\n",
+        "la línea anterior del pane se queda aunque el valor sea None"
+    );
+}
+
+#[tokio::test]
+async fn pane_values_skip_when_inputs_are_uncertain() {
+    let home = TestHome::new("values-skip");
+    let row = json!({"tmux_pane": "%1", "tmux_session": "s", "agent": "codex",
+                     "model": "gpt-5.6-sol"});
+    let rows: Vec<serde_json::Map<String, Value>> = vec![row.as_object().unwrap().clone()];
+    write_tiers(&home.root, &custom_tiers());
+    let native_with = |repo: Option<PathBuf>| {
+        let mut opts = home.options();
+        opts.repo_root = repo;
+        Native::new(opts)
+    };
+    let repo = Some(home.root.join("repo"));
+    // `motor-results.json` roto o con valores que no son objeto: incierto.
+    for broken in ["{", r#"{"s|%1": 3}"#] {
+        home.write("motor-results.json", broken);
+        let native = native_with(repo.clone());
+        assert_eq!(pane_values(&native, &rows, None).await, PaneOutcome::Skip);
+        assert!(native.tier_alerts().is_empty(), "sin observar nada");
+        native.shutdown().await;
+    }
+    std::fs::remove_file(home.hooks().join("motor-results.json")).unwrap();
+    // Sin `model-tiers.json` (el Python usaría su copia en caché): incierto.
+    let native = native_with(None);
+    assert_eq!(pane_values(&native, &rows, None).await, PaneOutcome::Skip);
+    native.shutdown().await;
+    // Sesión numérica (clave de `dict` que no se reproduce): incierto.
+    let native = native_with(repo.clone());
+    let mut odd = rows.clone();
+    odd[0].insert("tmux_session".into(), json!(4));
+    assert_eq!(pane_values(&native, &odd, None).await, PaneOutcome::Skip);
+    assert!(native.tier_alerts().is_empty());
+    // Pid que no es entero con cuenta posible: incierto.
+    let mut odd = rows.clone();
+    odd[0].insert("pid".into(), json!("12"));
+    assert_eq!(pane_values(&native, &odd, None).await, PaneOutcome::Skip);
+    // Lo normal sí escribe.
+    let PaneOutcome::Ready(values) = pane_values(&native, &rows, None).await else {
+        panic!("debía escribir");
+    };
+    assert_eq!(values.file_text, "%1 codex · gpt-5.6-sol $$$\n");
+    assert_eq!(native.tier_alerts().len(), 1);
+    native.shutdown().await;
+}
+
+#[tokio::test]
+async fn pane_values_bound_tier_memory_with_all_tmux_panes() {
+    let home = TestHome::new("values-prune");
+    write_tiers(&home.root, &custom_tiers());
+    let clock = Arc::new(std::sync::atomic::AtomicI64::new(NOW_MS));
+    let mut opts = home.options();
+    opts.repo_root = Some(home.root.join("repo"));
+    let shared = clock.clone();
+    opts.clock = Arc::new(move || shared.load(std::sync::atomic::Ordering::SeqCst));
+    let native = Native::new(opts);
+    let row = |pane: &str| {
+        json!({"tmux_pane": pane, "tmux_session": "s", "agent": "codex", "model": "gpt-5.5"})
+            .as_object()
+            .unwrap()
+            .clone()
+    };
+    let all: BTreeSet<String> = ["%1".to_owned(), "%2".to_owned()].into();
+    let _ = pane_values(&native, &[row("%1"), row("%2")], Some(&all)).await;
+    assert_eq!(native.tier_alerts().len(), 2);
+    // %2 sigue vivo en tmux aunque esta vuelta no tenga fila: no se olvida.
+    let _ = pane_values(&native, &[row("%1")], Some(&all)).await;
+    assert_eq!(native.tier_alerts().len(), 2);
+    // Sin la lista de tmux (falló) no se poda nada.
+    let only: BTreeSet<String> = ["%1".to_owned()].into();
+    let _ = pane_values(&native, &[row("%1")], None).await;
+    assert_eq!(native.tier_alerts().len(), 2);
+    // %2 murió en tmux y nunca avisó: se olvida.
+    let _ = pane_values(&native, &[row("%1")], Some(&only)).await;
+    assert_eq!(native.tier_alerts().len(), 1);
+    native.shutdown().await;
 }

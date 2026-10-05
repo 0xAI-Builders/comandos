@@ -34,7 +34,7 @@ use comandos_store::usage_read::{self, ReadError};
 use futures_util::{StreamExt, stream};
 use serde_json::{Map, Value};
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     io,
     path::Path,
     sync::{
@@ -70,11 +70,24 @@ fn no_decline(fault: Fault) -> Fault {
 }
 
 /// La respuesta calculada: el cuerpo serializado, el estado del memo (lo que
-/// usa el escritor de bordes de la Tarea 7) y los paneles vivos.
+/// usa el escritor de bordes de la Tarea 7), los paneles vivos con agente y
+/// todos los panes vivos de tmux (`None` si `list-panes` falló), con los que
+/// se acota la memoria de avisos de nivel.
 pub struct UsageStateReply {
     pub body: bytes::Bytes,
     pub state: Arc<Value>,
     pub live_panes: Vec<Row>,
+    pub tmux_panes: Option<BTreeSet<String>>,
+}
+
+/// Lo que devuelve el paso 2.
+struct Live {
+    /// `None` si la recolección de la 2d declinó.
+    panes: Option<Vec<Row>>,
+    /// Los ids de `list-panes -a` (sesiones válidas: las únicas con filas).
+    tmux_panes: Option<BTreeSet<String>>,
+    conf: ConfFile,
+    usage_file: ConfFile,
 }
 
 /// Memo de `build_usage_state` (`cached_usage_state` 269): una entrada.
@@ -306,10 +319,7 @@ fn scan(
 
 /// Paso 2 sin `record_pane` (`usage_live_panes` 7230): `None` si la
 /// recolección de la 2d declinó (lista vacía esta vuelta, sin `record_pane`).
-async fn live_panes(
-    native: &Native,
-    now: i64,
-) -> Result<(Option<Vec<Row>>, ConfFile, ConfFile), Fault> {
+async fn live_panes(native: &Native, now: i64) -> Result<Live, Fault> {
     let opts = native.options();
     // `tmux_sessions()` y `tmux_pane_inventory()`: excepciones sin capturar
     // (plazo → 504, el resto → 500); un código de salida distinto de 0 → vacío.
@@ -324,15 +334,32 @@ async fn live_panes(
     } else {
         Vec::new()
     };
+    let tmux_panes = listed.ok.then(|| {
+        panes
+            .iter()
+            .map(|p| p.pane.clone())
+            .collect::<BTreeSet<_>>()
+    });
     let scan_opts = opts.clone();
     let registry = native.registry.clone();
     let scanned =
         tokio::task::spawn_blocking(move || scan(&scan_opts, &panes, &sessions, &registry))
             .await
             .map_err(|_| failure())?;
-    let (labels, maps) = match scanned.agents {
+    let Scanned {
+        conf,
+        usage_file,
+        agents,
+    } = scanned;
+    let declined = |conf, usage_file| Live {
+        panes: None,
+        tmux_panes: tmux_panes.clone(),
+        conf,
+        usage_file,
+    };
+    let (labels, maps) = match agents {
         Ok(found) => found,
-        Err(StateFault::Decline) => return Ok((None, scanned.conf, scanned.usage_file)),
+        Err(StateFault::Decline) => return Ok(declined(conf, usage_file)),
         Err(fault) => return Err(fault.into()),
     };
     // Deduplicado por `(session, pane, agent)` en el orden de `by_cwd`.
@@ -373,11 +400,16 @@ async fn live_panes(
         raw.insert("pid".into(), info.pid.into());
         match usage_state::normalize_pane_identity(&Value::Object(raw), &labels, now) {
             Ok(pane) => out.push(pane),
-            Err(UsageError::Unsure) => return Ok((None, scanned.conf, scanned.usage_file)),
+            Err(UsageError::Unsure) => return Ok(declined(conf, usage_file)),
             Err(UsageError::Raises | UsageError::Overflow) => return Err(failure()),
         }
     }
-    Ok((Some(out), scanned.conf, scanned.usage_file))
+    Ok(Live {
+        panes: Some(out),
+        tmux_panes,
+        conf,
+        usage_file,
+    })
 }
 
 /// `usage_runtime_env()` (cc-dash:179): `cc-notify.conf`, `usage.env`, el
@@ -416,7 +448,12 @@ pub async fn compute(native: &Native) -> Result<UsageStateReply, Fault> {
     // Desde aquí nunca `Fault::Decline` (D1).
     let now = (opts.clock)().div_euclid(1000);
     // 2. Paneles vivos (y los dos archivos de entorno, en el mismo salto).
-    let (live, conf, usage_file) = live_panes(native, now).await.map_err(no_decline)?;
+    let Live {
+        panes: live,
+        tmux_panes,
+        conf,
+        usage_file,
+    } = live_panes(native, now).await.map_err(no_decline)?;
     let record = live.is_some();
     let live = live.unwrap_or_default();
     // 4. Entorno.
@@ -489,5 +526,6 @@ pub async fn compute(native: &Native) -> Result<UsageStateReply, Fault> {
         body: bytes::Bytes::from(body),
         state: memo,
         live_panes: live,
+        tmux_panes,
     })
 }

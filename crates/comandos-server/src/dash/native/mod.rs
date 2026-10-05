@@ -398,6 +398,9 @@ pub struct Native {
     pub(crate) pane_models: Arc<usage::pane_models::PaneModelWriter>,
     /// `_TIER_LAST`/`_TIER_ALERTED` de los avisos de nivel (latente).
     pub(crate) tier_alerts: Mutex<usage::pane_models::TierAlerts>,
+    /// `_ACCOUNT_PID_CACHE` de los valores de borde: caché propia, nunca la
+    /// del escaneo de GET `/state` (su candado cubre todo el escaneo).
+    pub(crate) pane_accounts: Arc<Mutex<comandos_runtime::agent_procs::AccountCache>>,
     /// Carril del journal de operaciones (`GET /model/status`).
     pub(crate) journal: lanes::Lane<lanes::JournalBackend>,
     /// Caché por `requestId` y candados de `POST /pane/type`.
@@ -416,6 +419,7 @@ impl Native {
             registry: Arc::default(),
             pane_models: Arc::default(),
             tier_alerts: Mutex::default(),
+            pane_accounts: Arc::default(),
             journal: lanes::Lane::new(opts.journal_db.clone()),
             opts,
             enabled: AtomicBool::new(true),

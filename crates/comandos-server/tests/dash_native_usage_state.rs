@@ -155,6 +155,7 @@ async fn usage_state_body_matches_python_without_live_panes() {
     assert_eq!(theirs.status, 200, "{}", theirs.text());
     assert_same_body(&ours.body, &theirs.text(), &[]);
     assert!(ours.live_panes.is_empty());
+    assert!(ours.tmux_panes.is_none(), "list-panes falló: no se sabe");
     let body: serde_json::Value = serde_json::from_slice(&ours.body).unwrap();
     let codex = body["limits"]
         .as_array()
@@ -342,6 +343,9 @@ async fn usage_state_live_pane_records_and_git_root() {
         assert_eq!(panes[0]["tmux_session"], "cx");
         assert_eq!(panes[0]["agent"], "codex");
         assert_eq!(reply.live_panes.len(), 1);
+        // Todos los panes de tmux para acotar los avisos de nivel (Tarea 7b).
+        let tmux_panes = reply.tmux_panes.as_ref().unwrap();
+        assert!(tmux_panes.contains(reply.live_panes[0]["tmux_pane"].as_str().unwrap()));
         // Sin efectos ni siquiera se lanza el trabajo de registro.
         assert_eq!(
             settled_pane_rows(&native, i64::from(effects)).await,
