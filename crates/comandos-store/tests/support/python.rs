@@ -1,12 +1,15 @@
 //! `python3 -c <texto> <repo> <args…>` sobre un HOME temporal; `None` sin python3.
-//! Mismo entorno que el oráculo de `comandos-server` (`tests/support/oracle.rs`):
-//! los ejecutables con efectos fuera del HOME son enlaces a `true`, y el guion no
-//! ve el tmux, el systemd ni el DBus de la sesión real.
+//! Copia del ayudante de `comandos-runtime` (`tests/support/python.rs`): los
+//! ejecutables con efectos fuera del HOME son enlaces a `true` (incluido `tmux`), el
+//! guion no ve el systemd ni el DBus de la sesión real, y se quitan las claves del
+//! entorno que cambian lo que calcula el Python (D7 del plan 2e). Zona fija
+//! `America/Mexico_City` y `LANG=C.UTF-8`, iguales en el lado Rust.
 #![allow(dead_code)]
 use std::{ffi::OsStr, path::Path, process::Command};
 
-/// Claves del entorno que cambian lo que calcula el Python de uso (D7 del plan 2e):
-/// el lado Rust las recibe por parámetro, así que el oráculo no debe heredarlas.
+pub const TZ: &str = "America/Mexico_City";
+
+/// Claves que el Python lee del entorno y que el Rust recibe por parámetro (D7).
 pub const D7_KEYS: &[&str] = &[
     "COMANDOS_DAILY_BUDGET_USD",
     "COMANDOS_USAGE_DAILY_BUDGET_USD",
@@ -42,8 +45,7 @@ pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> 
     }
     let fakebin = home.join("fakebin");
     let runtime = home.join("xdg-runtime");
-    let tmux = home.join("tmux");
-    for dir in [&fakebin, &runtime, &tmux] {
+    for dir in [&fakebin, &runtime] {
         std::fs::create_dir_all(dir).unwrap();
     }
     for name in [
@@ -60,6 +62,7 @@ pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> 
         "piper",
         "xdg-open",
         "tmux",
+        "git",
     ] {
         let link = fakebin.join(name);
         if !link.exists() {
@@ -72,22 +75,21 @@ pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> 
         std::env::var("PATH").unwrap_or_default()
     );
     let mut command = Command::new("python3");
-    for key in D7_KEYS {
-        command.env_remove(key);
-    }
-    let out = command
+    command
         .arg("-c")
         .arg(script)
         .arg(repo())
         .args(args)
-        .current_dir(repo())
+        .current_dir(home)
         .env("HOME", home)
         .env("PATH", &path)
+        .env("TZ", TZ)
+        .env("LANG", "C.UTF-8")
         .env("XDG_RUNTIME_DIR", &runtime)
         .env("XDG_STATE_HOME", home.join(".local/state"))
-        .env("TMUX_TMPDIR", &tmux)
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .env_remove("TMUX")
+        .env_remove("TMUX_TMPDIR")
         .env_remove("CLAUDE_CONFIG_DIR")
         .env_remove("CODEX_HOME")
         .env_remove("GROK_HOME")
@@ -95,9 +97,11 @@ pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> 
         .env_remove("COMANDOS_USAGE_DB")
         .env_remove("DBUS_SESSION_BUS_ADDRESS")
         .env_remove("DISPLAY")
-        .env_remove("WAYLAND_DISPLAY")
-        .output()
-        .unwrap();
+        .env_remove("WAYLAND_DISPLAY");
+    for key in D7_KEYS {
+        command.env_remove(key);
+    }
+    let out = command.output().unwrap();
     assert!(
         out.status.success(),
         "oráculo: {}",
