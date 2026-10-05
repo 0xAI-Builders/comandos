@@ -135,7 +135,7 @@ async fn api_null_body_error_is_the_engine_type_error() {
 }
 
 #[wasm_bindgen_test]
-async fn api_keeps_lone_surrogates_and_deep_nesting() {
+async fn api_turns_lone_surrogates_into_u_fffd_and_keeps_deep_nesting() {
     let body = format!(
         r#"{{"t": "x\ud800y", "d": {}1{}}}"#,
         "[".repeat(300),

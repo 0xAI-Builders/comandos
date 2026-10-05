@@ -286,6 +286,24 @@ fn builds_a_fixture_crate_end_to_end() {
         m.path("fixture_web_boot.js"),
         Some(format!("{hash}/boot.js").as_str())
     );
+    // El snippet de `inline_js` va plano junto al cargador, con clave de
+    // manifiesto prefijada por el crate, y el módulo JS lo importa por ese nombre.
+    let (key, snippet) = m
+        .files
+        .iter()
+        .find(|(k, _)| k.starts_with("fixture_web_snippets-fixture-web-"))
+        .unwrap_or_else(|| panic!("sin snippet en {m:?}"));
+    assert!(key.ends_with("-inline0.js"), "{key}");
+    let flat = snippet.strip_prefix(&format!("{hash}/")).unwrap();
+    assert_eq!(key, &format!("fixture_web_{flat}"));
+    assert!(
+        fs::read_to_string(out.join(snippet))
+            .unwrap()
+            .contains("export function twice")
+    );
+    let module = fs::read_to_string(out.join(hash).join("fixture_web.js")).unwrap();
+    assert!(module.contains(&format!("'./{flat}'")), "{module}");
+    assert!(!module.contains("./snippets/"));
     let wasm = fs::read(out.join(&wasm_rel)).unwrap();
     assert_eq!(wasm.get(..4), Some(b"\0asm".as_slice()));
     let boot = fs::read_to_string(out.join(hash).join("boot.js")).unwrap();
@@ -499,4 +517,17 @@ fn a_snippet_nobody_imports_is_not_shipped() {
 fn an_import_of_a_snippet_that_was_not_found_is_an_error() {
     let r = web_build::flatten_snippets("import { f } from './snippets/b/inline0.js';", vec![]);
     assert!(r.unwrap_err().contains("./snippets/"));
+}
+
+#[test]
+fn two_snippets_that_flatten_to_the_same_name_are_an_error() {
+    let js = "import './snippets/a-b/c.js';\nimport './snippets/a/b-c.js';\n";
+    let r = web_build::flatten_snippets(
+        js,
+        vec![
+            ("snippets/a-b/c.js".into(), vec![]),
+            ("snippets/a/b-c.js".into(), vec![]),
+        ],
+    );
+    assert!(r.unwrap_err().contains("snippets-a-b-c.js"));
 }

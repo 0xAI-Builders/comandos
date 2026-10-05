@@ -54,17 +54,16 @@ pub fn on_ready(f: impl FnOnce() + 'static) {
         f();
         return;
     }
-    let mut f = Some(f);
-    let opts = crate::events::Options {
-        once: true,
-        ..Default::default()
-    };
-    crate::events::on_with(&doc, "DOMContentLoaded", opts, move |_| {
-        if let Some(f) = f.take() {
-            f();
-        }
-    })
-    .forget();
+    // Una clausura de un solo uso que se libera al ejecutarse; sin `Listener`
+    // (su `Drop`/`removeEventListener` sobra para un `once`).
+    let cb = wasm_bindgen::closure::Closure::once_into_js(f);
+    let opts = web_sys::AddEventListenerOptions::new();
+    opts.set_once(true);
+    let _ = doc.add_event_listener_with_callback_and_add_event_listener_options(
+        "DOMContentLoaded",
+        wasm_bindgen::JsCast::unchecked_ref(&cb),
+        &opts,
+    );
 }
 
 /// `document.createElement(tag)`.

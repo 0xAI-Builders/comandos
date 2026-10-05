@@ -239,12 +239,12 @@ mod web {
         set(&opt, "headers", &headers)?;
         set(&opt, "body", &body(k, r)?)?;
         let fetch: Function = Reflect::get(&win, &"fetch".into())?.dyn_into()?;
-        let p = fetch.call2(&win, &"/web/ready".into(), &opt)?;
-        // Rechazo atendido. `boot` corre una vez por página: esta clausura
-        // queda viva sin acumularse.
-        let ignore = Closure::<dyn FnMut(JsValue)>::new(|_| {});
-        let _ = Promise::resolve(&p).catch(&ignore);
-        ignore.forget();
+        let p = Promise::resolve(&fetch.call2(&win, &"/web/ready".into(), &opt)?);
+        // Rechazo atendido sin clausura: `p.catch(Boolean)` con el `Boolean`
+        // del motor.
+        let catch: Function = Reflect::get(&p, &"catch".into())?.dyn_into()?;
+        let boolean = Reflect::get(&js_sys::global(), &"Boolean".into())?;
+        catch.call1(&p, &boolean)?;
         Ok(())
     }
 }

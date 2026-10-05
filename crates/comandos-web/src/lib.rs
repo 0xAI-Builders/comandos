@@ -34,14 +34,18 @@
 //! desde JS con `try/catch`, ver `registry`) la convierte en una entrada de
 //! `failed` y los demás componentes siguen, pero tras una trampa el estado de
 //! Rust (préstamos de `RefCell`, el asignador) no es fiable. Por eso los tres
-//! crates web niegan a nivel de crate `unwrap`, `expect`, la indexación que
-//! puede fallar, `panic!`, `unreachable!`, `todo!` y `unimplemented!`: sin
-//! esas vías un pánico no puede salir de código nuestro.
+//! crates web niegan a nivel de crate `unwrap`, `expect`, la indexación y el corte
+//! de `str` que pueden fallar, `panic!`, `unreachable!`, `todo!` y `unimplemented!`
+//! (y `scripts/rust-check` corre ese clippy también para `wasm32`). Eso cierra las
+//! vías explícitas en código nuestro; no cubre `assert!`, `RefCell::borrow*`
+//! (se usa `try_borrow*`), un `OnceCell` reentrante, el desbordamiento de
+//! capacidad de `Vec`/`String` ni el código de las dependencias.
 
 #![deny(
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::indexing_slicing,
+    clippy::string_slice,
     clippy::panic,
     clippy::unreachable,
     clippy::todo,

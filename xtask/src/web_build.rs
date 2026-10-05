@@ -47,8 +47,9 @@ pub type NamedFile = (String, Vec<u8>);
 /// `snippets/<crate>-<hash>/<archivo>.js` (los usan los crates web en lugar del
 /// constructor `Function`, para que una CSP sin `unsafe-eval` funcione). El
 /// frente sirve `/web/<hash>/<archivo>` con un solo segmento, así que cada uno
-/// pasa a `snippets-<crate>-<hash>-<archivo>.js` junto al cargador y su
-/// `import './snippets/…'` se reescribe. Un fragmento que nadie importa (LTO
+/// pasa a `snippets-<crate>-<hash>-<archivo>.js` junto al cargador (clave de
+/// manifiesto `<lib>_snippets-…`) y su `import './snippets/…'` se reescribe;
+/// dos rutas que se aplanen al mismo nombre son un error. Un fragmento que nadie importa (LTO
 /// quitó sus usos, p. ej. en el arranque vacío) no se copia; un `./snippets/`
 /// que queda sin reescribir es un error (el navegador no lo encontraría).
 pub fn flatten_snippets(
@@ -56,9 +57,13 @@ pub fn flatten_snippets(
     snippets: Vec<NamedFile>,
 ) -> Result<(String, Vec<NamedFile>), String> {
     let mut out = js.to_string();
-    let mut files = Vec::new();
+    let mut files: Vec<NamedFile> = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
     for (rel, bytes) in snippets {
         let flat = rel.replace('/', "-");
+        if !seen.insert(flat.clone()) {
+            return Err(format!("dos snippets se aplanan a {flat}"));
+        }
         let mut found = false;
         for q in ['\'', '"'] {
             let from = format!("{q}./{rel}{q}");
@@ -416,8 +421,11 @@ fn build_one(opts: &Options, c: &WasmCrate) -> Result<Built, String> {
         (js_name.clone(), js_name.clone(), js),
         (wasm_name.clone(), wasm_name.clone(), wasm),
     ];
+    // Clave lógica con el crate delante: dos WASM que usen el mismo crate
+    // (p. ej. `comandos-web-dom`) emiten el mismo nombre plano en sus `<hash>/`
+    // respectivos, y el manifiesto debe seguir siendo un mapa fiel.
     for (name, bytes) in snippets {
-        files.push((name.clone(), name, bytes));
+        files.push((format!("{}_{name}", c.lib), name, bytes));
     }
     if let Some(boot) = boot_name {
         let text = render_boot(&format!("./{js_name}"), &format!("./{wasm_name}"));

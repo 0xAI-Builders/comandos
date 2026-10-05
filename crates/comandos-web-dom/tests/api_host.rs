@@ -236,10 +236,10 @@ fn errors_from_the_engine_are_returned_not_turned_into_null() {
 }
 
 #[test]
-fn lone_surrogates_become_replacement_characters() {
-    // Un `String` de Rust no puede guardar un sustituto suelto; el texto
-    // conserva todo lo demás y el sustituto pasa a U+FFFD (lo que pinta el
-    // navegador para ese código), nunca a `null` ni a error.
+fn lone_surrogates_become_u_fffd_unlike_js() {
+    // Un `String` de Rust no puede guardar un sustituto suelto: pasa a U+FFFD
+    // (el JS lo conservaría; se pinta igual pero el dato difiere, ver la doc
+    // de `api`), nunca a `null` ni a error.
     assert_eq!(utf16_lossy(&[0x61, 0xD800, 0x62]), "a\u{FFFD}b");
     assert_eq!(utf16_lossy(&[0xD83C, 0xDF45]), "🍅");
     let v = walk(J::Obj(vec![("t", J::Str(utf16_lossy(&[0x78, 0xDC00])))]));

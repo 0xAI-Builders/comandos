@@ -64,15 +64,20 @@ pub enum CallError<E> {
 }
 
 impl<E> CallError<E> {
-    /// Texto del error (lo lanzado no se describe aquí: es del llamador). Sin
-    /// `format!`: el formateador pesa en el WASM.
+    /// Texto del error (lo lanzado no se describe aquí: es del llamador).
     pub fn describe(&self, name: &str) -> String {
         let tail = match self {
             CallError::Missing => " no existe (¿es un let/const del script en línea?)",
             CallError::NotCallable => " no es una función",
             CallError::Threw(_) => " lanzó una excepción",
         };
-        ["window.", name, tail].concat()
+        // `push_str` y no `concat()`/`format!`: estos meten en el WASM el
+        // formateador de enteros (por el pánico de `copy_from_slice`).
+        let mut s = String::with_capacity(7 + name.len() + tail.len());
+        s.push_str("window.");
+        s.push_str(name);
+        s.push_str(tail);
+        s
     }
 }
 

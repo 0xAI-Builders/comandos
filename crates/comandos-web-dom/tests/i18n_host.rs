@@ -40,21 +40,35 @@ fn t_translates_with_t_en_like_the_inline_t() {
     set_lang(Lang::Es);
 }
 
-/// Cadenas JS entre comillas dobles del bloque `const T_EN = {…};`, en orden.
+/// Cadenas JS del bloque `const T_EN = {…};`, en orden: comillas dobles,
+/// simples y plantillas sin huecos, con los escapes `\n`, `\t`, `\uXXXX`,
+/// `\u{…}` y el carácter escapado tal cual. Una plantilla con `${` hace fallar
+/// la prueba (no se puede comparar).
 fn js_strings(block: &str) -> Vec<String> {
     let mut out = Vec::new();
-    let mut it = block.chars();
-    while let Some(c) = it.next() {
-        if c != '"' {
+    let mut it = block.chars().peekable();
+    while let Some(q) = it.next() {
+        if !matches!(q, '"' | '\'' | '`') {
             continue;
         }
         let mut s = String::new();
         while let Some(c) = it.next() {
             match c {
-                '"' => break,
+                c if c == q => break,
+                '$' if q == '`' && it.peek() == Some(&'{') => panic!("plantilla con hueco en T_EN"),
                 '\\' => match it.next() {
                     Some('n') => s.push('\n'),
                     Some('t') => s.push('\t'),
+                    Some('u') => {
+                        let hex: String = if it.peek() == Some(&'{') {
+                            it.next();
+                            it.by_ref().take_while(|c| *c != '}').collect()
+                        } else {
+                            it.by_ref().take(4).collect()
+                        };
+                        let n = u32::from_str_radix(&hex, 16).expect("\\u válido");
+                        s.push(char::from_u32(n).expect("escalar"));
+                    }
                     Some(o) => s.push(o),
                     None => {}
                 },
@@ -67,9 +81,19 @@ fn js_strings(block: &str) -> Vec<String> {
 }
 
 #[test]
+fn js_strings_reads_every_quote_style() {
+    let got = js_strings(r#"{ "a\"b": 'c\'d', `e`: "\u00f1\u{1F345}\n" }"#);
+    assert_eq!(got, ["a\"b", "c'd", "e", "ñ🍅\n"]);
+}
+
+#[test]
 fn t_en_matches_the_inline_table() {
-    // Vigilancia de deriva: la tabla Rust es la de `dash/index.html`.
+    // Vigilancia de deriva: la tabla Rust es la de `dash/index.html`, y `t`/`tf`
+    // siguen siendo las funciones que copia `i18n`.
     let html = include_str!("../../../dash/index.html");
+    assert!(html.contains("\nconst t = s => L === \"en\" ? (T_EN[s] ?? s) : s;\n"));
+    assert!(html.contains("\nconst tf = (es, en) => L === \"en\" ? en : es;\n"));
+    assert!(html.contains("\nlet L = \"es\";\n"));
     let start = html.find("const T_EN = {").expect("T_EN en index.html");
     let rest = &html[start..];
     let block = &rest[..rest.find("\n};").expect("fin de T_EN")];

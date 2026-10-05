@@ -20,7 +20,8 @@
 //! - `fetch(path, opt)` y `r.json()` se evalúan en el motor con el mismo texto
 //!   que el JS (un módulo JS de `inline_js`, que `wasm-bindgen` emite como
 //!   archivo: nada de `eval` ni del constructor `Function`, así que una CSP sin
-//!   `unsafe-eval` sigue funcionando), de modo que `fetch` se resuelve en cada llamada (los dobles de prueba que
+//!   `unsafe-eval` sigue funcionando mientras permita `'wasm-unsafe-eval'`, que
+//!   necesita el propio WASM), de modo que `fetch` se resuelve en cada llamada (los dobles de prueba que
 //!   sustituyen `window.fetch` siguen funcionando), la respuesta se lee por
 //!   propiedades sin exigir un `Response` de verdad, y un error del motor trae
 //!   su propio texto nativo.
@@ -36,10 +37,17 @@
 //!   (índices enteros primero; `preserve_order`), `undefined` y funciones se
 //!   tratan como en `JSON.stringify`, y cada número conserva el texto de
 //!   `String(n)` (`arbitrary_precision`): `value.to_string()` pinta lo mismo que
-//!   el JS. La única pérdida posible es un sustituto UTF-16 suelto en una
-//!   cadena, que un `String` de Rust no puede guardar: pasa a U+FFFD
-//!   ([`utf16_lossy`]), lo mismo que pinta el navegador. Un fallo al recorrer
-//!   (un getter que lanza) es un error, nunca `null`.
+//!   el JS. Un fallo al recorrer (un getter que lanza) es un error, nunca
+//!   `null`.
+//! - **Divergencia conocida: sustitutos UTF-16 sueltos.** `r.json()` conserva
+//!   un `"\ud800"` suelto en la cadena de JS; un `String` de Rust no puede
+//!   guardarlo, así que aquí pasa a U+FFFD ([`utf16_lossy`]). Se **pinta**
+//!   igual (el motor dibuja U+FFFD para el sustituto), pero el **dato**
+//!   difiere: la igualdad con otra cadena, `JSON.stringify` (`"\ud800"` frente
+//!   a `"�"`) y `encodeURIComponent` (que lanza `URIError` en JS y no aquí).
+//!   El JSON válido del servidor (Rust, UTF-8) no los produce; un port que
+//!   reenvíe un valor recibido como clave o id (p. ej. texto crudo de una
+//!   transcripción) debe llevarlo por una ruta `JsValue`, no por `Value`.
 //! - Un `r.json()` que falla da `{}` (como `.catch(()=>({}))`).
 //! - Con `j === null` el JS lanza al leer `j.error` o `j.ok`: [`error_message`]
 //!   devuelve [`Failure::ReadNull`] y la lectura se hace de verdad en el motor,
