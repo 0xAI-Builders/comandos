@@ -647,7 +647,16 @@ fn close_group_replay_absent_or_empty_text_performs_and_saves_the_close() {
 
 #[test]
 fn close_group_replay_malformed_nonempty_text_fails_before_state_or_callbacks() {
-    for raw in ["{broken", " ", "false trailing"] {
+    // `json.loads(seen)` del Python: su `JSONDecodeError` (un `ValueError`) con
+    // el mismo texto, que la ruta devuelve como 400.
+    for (raw, python) in [
+        (
+            "{broken",
+            "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+        ),
+        (" ", "Expecting value: line 1 column 2 (char 1)"),
+        ("false trailing", "Extra data: line 1 column 7 (char 6)"),
+    ] {
         let temp = Temp::new();
         let conn = temp.open();
         let mut store = WorkspaceStore::new(&conn);
@@ -663,11 +672,9 @@ fn close_group_replay_malformed_nonempty_text_fails_before_state_or_callbacks() 
             |_| panic!("close on malformed replay"),
         )
         .unwrap_err();
-        let expected = comandos_core::json::workspace_loads(raw)
-            .unwrap_err()
-            .to_string();
         assert!(
-            matches!(error, domain::WorkspaceError::Callback(ref message) if message == &expected)
+            matches!(error, domain::WorkspaceError::Invalid(ref message) if message == python),
+            "{raw:?}: {error:?}"
         );
         assert_eq!(
             store.meta("close-group:close").unwrap().as_deref(),
@@ -823,5 +830,49 @@ fn retained_document_client_and_replay_metadata_beyond_128_depth_survive_reopen(
             .unwrap()
             .unwrap(),
         deep
+    );
+}
+
+/// Ronda 1 de la 2f-1/T2: el resultado de `close_group` se guarda como
+/// `json.dumps(result)` del Python (orden de inserción, ASCII, separadores por
+/// omisión), no en la forma canónica ordenada.
+#[test]
+fn close_group_saves_the_python_dumps_of_its_result() {
+    let temp = Temp::new();
+    let conn = temp.open();
+    let mut store = WorkspaceStore::new(&conn);
+    commit(&store, 0, "a", "seed", 1.0);
+    let result = domain::close_group(
+        &mut store,
+        "g",
+        &json!(1),
+        &json!([{"tabId":"a","session":"a","sessionId":"$1"}]),
+        "close",
+        |_| json!("$1"),
+        |_| Ok(None),
+    )
+    .unwrap();
+    assert_eq!(
+        store.meta("close-group:close").unwrap().as_deref(),
+        Some(r#"{"ok": true, "closed": ["a"], "remaining": [], "kept": [], "error": null}"#)
+    );
+    let replay = domain::close_group(
+        &mut store,
+        "g",
+        &json!(1),
+        &json!([]),
+        "close",
+        |_| panic!("identity on replay"),
+        |_| panic!("close on replay"),
+    )
+    .unwrap();
+    assert_eq!(replay, result);
+    let keys: Vec<&String> = replay.as_object().unwrap().keys().collect();
+    assert_eq!(keys, ["ok", "closed", "remaining", "kept", "error"]);
+    // Texto no ASCII: escapado como el `json.dumps` por omisión.
+    domain::CloseGroupState::set_meta(&mut store, "x", &json!({"e": "ñ"})).unwrap();
+    assert_eq!(
+        store.meta("x").unwrap().as_deref(),
+        Some(r#"{"e": "\u00f1"}"#)
     );
 }

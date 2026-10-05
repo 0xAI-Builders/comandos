@@ -3,6 +3,9 @@ pub use bytes::workspace_loads_bytes;
 
 use serde_json::Value;
 
+mod decode_error;
+pub use decode_error::{PythonLoads, python_loads};
+
 mod comparison;
 pub(crate) use comparison::number_cmp;
 pub use comparison::python_eq;

@@ -1,5 +1,7 @@
 //! SQLite workspace persistence over an explicitly borrowed connection.
-use comandos_core::json::{python_eq, workspace_dumps, workspace_loads};
+use comandos_core::json::{
+    PythonLoads, python_eq, python_loads, response_dumps, workspace_dumps, workspace_loads,
+};
 use comandos_core::workspace::{self, CloseGroupState, WorkspaceError};
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use serde_json::{Value, json};
@@ -323,18 +325,32 @@ impl CloseGroupState for WorkspaceStore<'_> {
             .map(|s| s.map(|s| s.as_json()))
             .map_err(|e| WorkspaceError::Callback(e.to_string()))
     }
+    /// `seen = store.meta(key); if seen: return json.loads(seen)`. Un texto
+    /// guardado que el Python no decodifica es el `ValueError` de su
+    /// `JSONDecodeError` (`Invalid` con el mismo `str(exc)`: la ruta responde
+    /// 400); lo que no se reproduce con certeza queda como `Callback`.
     fn meta(&mut self, key: &str) -> workspace::Result<Option<Value>> {
-        WorkspaceStore::meta(self, key)
-            .and_then(|value| {
-                value
-                    .filter(|v| !v.is_empty())
-                    .map(|v| workspace_loads(&v).map_err(Error::from))
-                    .transpose()
-            })
-            .map_err(|e| WorkspaceError::Callback(e.to_string()))
+        let raw =
+            WorkspaceStore::meta(self, key).map_err(|e| WorkspaceError::Callback(e.to_string()))?;
+        let Some(raw) = raw.filter(|v| !v.is_empty()) else {
+            return Ok(None);
+        };
+        match workspace_loads(&raw) {
+            Ok(value) => Ok(Some(value)),
+            Err(error) => Err(match python_loads(&raw) {
+                PythonLoads::Error(message) => WorkspaceError::Invalid(message),
+                PythonLoads::Ok | PythonLoads::Unsure => {
+                    WorkspaceError::Callback(error.to_string())
+                }
+            }),
+        }
     }
+    /// `store.set_meta(key, json.dumps(result))`: el texto del Python (orden de
+    /// inserción, ASCII escapado, separadores por omisión), el mismo que lee la
+    /// repetición en los dos lados.
     fn set_meta(&mut self, key: &str, value: &Value) -> workspace::Result<()> {
-        canonical(value)
+        response_dumps(value)
+            .map_err(Error::Invalid)
             .and_then(|encoded| WorkspaceStore::set_meta(self, key, &encoded))
             .map_err(|e| WorkspaceError::Callback(e.to_string()))
     }
