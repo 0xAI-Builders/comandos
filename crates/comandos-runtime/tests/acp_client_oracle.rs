@@ -476,3 +476,117 @@ fn instructions_match_python() {
         ]
     );
 }
+
+/// Un agente generado por la prueba: el guion `body` por ruta absoluta.
+fn custom_agent(home: &Home, name: &str, body: &str) -> Value {
+    let script = home.root.join(name);
+    fs::write(&script, body).unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
+    json!({"command": [script.display().to_string()],
+           "env": {"LANEB_MARK": home.root.display().to_string()}})
+}
+
+/// Mata (por PID exacto) los procesos que llevan la marca de esta prueba en
+/// su entorno: solo los que lanzó el agente falso.
+fn kill_marked(home: &Home) {
+    let mark = format!("LANEB_MARK={}", home.root.display());
+    for entry in fs::read_dir("/proc").unwrap().flatten() {
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|s| s.parse::<i32>().ok())
+        else {
+            continue;
+        };
+        let Ok(environ) = fs::read(entry.path().join("environ")) else {
+            continue;
+        };
+        if environ.split(|b| *b == 0).any(|v| v == mark.as_bytes()) {
+            let _ = nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(pid),
+                nix::sys::signal::Signal::SIGKILL,
+            );
+        }
+    }
+}
+
+const ANSWER_NEW: &str = r#"printf '{"jsonrpc": "2.0", "id": 1, "result": {"sessionId": "s1"}}\n'"#;
+
+/// Ronda 1, M1: bytes que no son UTF-8 en stderr no paran de vaciarlo: el
+/// agente escribe 256 KiB más (más que la tubería) y responde.
+#[test]
+fn stderr_with_bad_utf8_keeps_draining() {
+    let home = Home::new("badutf8");
+    let body = format!(
+        "#!/bin/sh\nPATH=/usr/bin:/bin\nIFS= read -r line\n{ANSWER_NEW}\nIFS= read -r line\n\
+         printf '\\377\\376 malo\\n' >&2\nhead -c 262144 /dev/zero | tr '\\0' b >&2\nprintf '\\n' >&2\n\
+         printf '%s\\n' '{{\"jsonrpc\": \"2.0\", \"id\": 2, \"result\": {{\"stopReason\": \"end_turn\"}}}}'\nsleep 5\n"
+    );
+    let spec = custom_agent(&home, "utf8-acp", &body);
+    let mut session = Session::open(&spec, &home.root.join("cwd"), &options(&home)).unwrap();
+    session.new_session(10.0).unwrap();
+    let got = session.prompt("x", &mut |_: &Event| {}, Duration::from_secs(10));
+    session.close();
+    assert_eq!(got.unwrap(), json!("end_turn"));
+}
+
+/// Ronda 1, M2: plazos no finitos o enormes no entran en pánico.
+#[test]
+fn non_finite_timeouts_do_not_panic() {
+    let home = Home::new("nan");
+    let body = format!(
+        "#!/bin/sh\nPATH=/usr/bin:/bin\nIFS= read -r line\nsleep 0.3\n{ANSWER_NEW}\n\
+         IFS= read -r line\nprintf '%s\\n' '{{\"jsonrpc\": \"2.0\", \"id\": 2, \"result\": {{}}}}'\nsleep 5\n"
+    );
+    let spec = custom_agent(&home, "nan-acp", &body);
+    let mut session = Session::open(&spec, &home.root.join("cwd"), &options(&home)).unwrap();
+    // `NaN` y negativo: ya vencido (como el Python, que no espera nada).
+    assert!(
+        session
+            .new_session(f64::NAN)
+            .unwrap_err()
+            .0
+            .starts_with("timeout esperando respuesta")
+    );
+    session.close();
+    let mut session = Session::open(&spec, &home.root.join("cwd"), &options(&home)).unwrap();
+    assert_eq!(session.new_session(f64::INFINITY).unwrap(), json!("s1"));
+    let got = session.prompt("x", &mut |_: &Event| {}, Duration::MAX);
+    assert_eq!(got.unwrap(), json!("end_turn"));
+    session.close();
+    let mut session = Session::open(&spec, &home.root.join("cwd"), &options(&home)).unwrap();
+    assert!(session.new_session(1e300).is_ok());
+    session.close();
+}
+
+/// Ronda 1, M3: un descendiente que se escapó del grupo (`setsid`) con
+/// `stdin` abierto sin leerlo no deja colgada la escritura del prompt: vence
+/// el plazo de la llamada. (`exec 3<&0`: una lista asíncrona del `sh` sin
+/// control de trabajos recibe `/dev/null` como entrada antes de sus
+/// redirecciones; así el descendiente hereda de verdad la tubería.)
+#[test]
+fn stalled_stdin_does_not_hang_the_writer() {
+    let home = Home::new("stall");
+    let body = format!(
+        "#!/bin/sh\nPATH=/usr/bin:/bin\nexec 3<&0\nsetsid sleep 37 0<&3 3<&- >/dev/null 2>&1 &\nexec 3<&-\nIFS= read -r line\n{ANSWER_NEW}\nexec sleep 37\n"
+    );
+    let spec = custom_agent(&home, "stall-acp", &body);
+    let mut session = Session::open(&spec, &home.root.join("cwd"), &options(&home)).unwrap();
+    session.new_session(10.0).unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        // 1 MiB: más que la tubería, que nadie vacía.
+        let text = "a".repeat(1024 * 1024);
+        let started = std::time::Instant::now();
+        let got = session.prompt(&text, &mut |_: &Event| {}, Duration::from_secs(2));
+        session.close();
+        let _ = tx.send((got, started.elapsed()));
+    });
+    let outcome = rx.recv_timeout(Duration::from_secs(20));
+    // Pase lo que pase, nada de esta prueba queda vivo.
+    kill_marked(&home);
+    let _ = worker.join();
+    let (got, elapsed) = outcome.expect("la escritura del prompt se quedó colgada");
+    assert_eq!(got.unwrap_err().0, "timeout esperando respuesta (2s)");
+    assert!(elapsed < Duration::from_secs(6), "{elapsed:?}");
+}

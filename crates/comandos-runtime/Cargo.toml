@@ -25,7 +25,7 @@ hyper-util = { version = "=0.1.21", default-features = false, features = ["tokio
 tokio = { version = "=1.53.1", default-features = false, features = ["rt", "net", "time"] }
 # Expresiones fijas de `lib/tui_state.py` portadas con las clases de `re`.
 regex = "=1.13.1"
-nix = { version = "=0.31.3", default-features = false, features = ["feature", "fs", "process", "signal"] }
+nix = { version = "=0.31.3", default-features = false, features = ["feature", "fs", "poll", "process", "signal"] }
 
 [dev-dependencies]
 # cc-notifyd falso de las pruebas de paridad del hook.

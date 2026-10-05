@@ -544,6 +544,8 @@ pub struct Session {
     stderr: Arc<Mutex<Vec<String>>>,
     flow: Arc<Flow>,
     watch: Arc<Watch>,
+    /// Plazo de las escrituras de la llamada en curso y su texto de fallo.
+    limit: Option<(Instant, String)>,
     next_id: i64,
     session_id: Value,
     cwd: PathBuf,
@@ -677,6 +679,64 @@ fn push_stderr(stderr: &Mutex<Vec<String>>, line: &str) {
     lines.drain(..extra);
 }
 
+/// Plazo de una escritura fuera de una llamada (no ocurre en el uso actual).
+const WRITE_WAIT: Duration = Duration::from_secs(30);
+/// Tope de cualquier plazo (un `timeout` infinito o enorme se recorta aquí).
+const MAX_WAIT: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// El plazo de `timeout` segundos desde ahora, sin pánico: negativo o `NaN`
+/// → ya vencido; infinito o enorme → `MAX_WAIT`.
+fn deadline_after(timeout: f64) -> Instant {
+    let wait = Duration::try_from_secs_f64(timeout.max(0.0))
+        .unwrap_or(MAX_WAIT)
+        .min(MAX_WAIT);
+    let now = Instant::now();
+    now.checked_add(wait).unwrap_or(now)
+}
+
+/// Por qué no se pudo escribir.
+enum WriteFail {
+    /// Venció el plazo con la tubería llena.
+    Late,
+    /// El agente cerró su `stdin` (o falló la escritura).
+    Closed,
+}
+
+/// `O_NONBLOCK` en el extremo de escritura de `stdin` (solo es nuestro).
+fn set_nonblocking(fd: &impl std::os::fd::AsFd) {
+    use nix::fcntl::{FcntlArg, OFlag, fcntl};
+    if let Ok(bits) = fcntl(fd, FcntlArg::F_GETFL) {
+        let flags = OFlag::from_bits_truncate(bits) | OFlag::O_NONBLOCK;
+        let _ = fcntl(fd, FcntlArg::F_SETFL(flags));
+    }
+}
+
+/// Escribe todo antes de `deadline`, esperando con `poll` mientras la
+/// tubería esté llena.
+fn write_until(stdin: &mut ChildStdin, bytes: &[u8], deadline: Instant) -> Result<(), WriteFail> {
+    use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
+    use std::os::fd::AsFd;
+    let mut rest = bytes;
+    while !rest.is_empty() {
+        match stdin.write(rest) {
+            Ok(0) => return Err(WriteFail::Closed),
+            Ok(n) => rest = rest.get(n..).unwrap_or_default(),
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                let left = deadline.saturating_duration_since(Instant::now());
+                if left.is_zero() {
+                    return Err(WriteFail::Late);
+                }
+                let wait = u16::try_from(left.min(POLL).as_millis()).unwrap_or(250);
+                let mut fds = [PollFd::new(stdin.as_fd(), PollFlags::POLLOUT)];
+                let _ = poll(&mut fds, PollTimeout::from(wait));
+            }
+            Err(_) => return Err(WriteFail::Closed),
+        }
+    }
+    Ok(())
+}
+
 /// `ETXTBSY` (26): el ejecutable sigue abierto para escribir en algún
 /// proceso (típico justo después de crearlo mientras otro hilo hace `fork`).
 const TEXT_FILE_BUSY: i32 = 26;
@@ -733,6 +793,9 @@ impl Session {
             wake: Condvar::new(),
         });
         let stdin = child.stdin.take();
+        if let Some(stdin) = &stdin {
+            set_nonblocking(stdin);
+        }
         let mut session = Session {
             child,
             group,
@@ -741,6 +804,7 @@ impl Session {
             stderr: Arc::clone(&stderr),
             flow: Arc::clone(&flow),
             watch: Arc::clone(&watch),
+            limit: None,
             next_id: 0,
             session_id: json!(""),
             cwd: cwd.to_path_buf(),
@@ -804,16 +868,32 @@ impl Session {
         )
     }
 
+    /// `proc.stdin.write(json.dumps(obj) + "\n")`, sin bloquear más allá del
+    /// plazo de la llamada en curso: `stdin` es no bloqueante y se espera con
+    /// `poll`. Un descendiente que se escapó del grupo (`setsid`) con `stdin`
+    /// abierto sin leer no puede dejar colgado el hilo (el Python sí).
     fn write(&mut self, message: &Value) -> Result<(), AcpError> {
-        let text = response_dumps(message).map_err(AcpError)?;
-        let written = match self.stdin.as_mut() {
-            Some(stdin) => stdin
-                .write_all(text.as_bytes())
-                .and_then(|()| stdin.write_all(b"\n"))
-                .and_then(|()| stdin.flush()),
-            None => Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe)),
+        let mut text = response_dumps(message).map_err(AcpError)?;
+        text.push('\n');
+        let (deadline, late) = match &self.limit {
+            Some((deadline, late)) => (*deadline, late.clone()),
+            None => (
+                Instant::now() + WRITE_WAIT,
+                format!(
+                    "timeout esperando respuesta ({:.0}s)",
+                    WRITE_WAIT.as_secs_f64()
+                ),
+            ),
         };
-        written.map_err(|_| AcpError(format!("el agente cerró la conexión: {}", self.tail())))
+        let written = match self.stdin.as_mut() {
+            Some(stdin) => write_until(stdin, text.as_bytes(), deadline),
+            None => Err(WriteFail::Closed),
+        };
+        match written {
+            Ok(()) => Ok(()),
+            Err(WriteFail::Late) => Err(AcpError(late)),
+            Err(WriteFail::Closed) => fail(format!("el agente cerró la conexión: {}", self.tail())),
+        }
     }
 
     fn request(&mut self, method: &str, params: Value) -> Result<i64, AcpError> {
@@ -839,11 +919,16 @@ impl Session {
         on_event: Option<&mut (dyn FnMut(&Event) + '_)>,
         timeout: f64,
     ) -> Result<Value, AcpError> {
-        let deadline = Instant::now() + Duration::from_secs_f64(timeout.max(0.0));
+        let deadline = deadline_after(timeout);
         self.watch.arm(Some(deadline + WATCH_GRACE));
+        self.limit = Some((
+            deadline,
+            format!("timeout esperando respuesta ({timeout:.0}s)"),
+        ));
         let result = self
             .request(method, params)
             .and_then(|id| self.pump_until(id, on_event, deadline, timeout));
+        self.limit = None;
         self.watch.arm(None);
         result
     }
@@ -1013,9 +1098,11 @@ impl Session {
         on_event: &mut dyn FnMut(&Event),
         timeout: f64,
     ) -> Result<Value, AcpError> {
-        let deadline = Instant::now() + Duration::from_secs_f64(timeout.max(0.0));
+        let deadline = deadline_after(timeout);
         self.watch.arm(Some(deadline + WATCH_GRACE));
+        self.limit = Some((deadline, format!("timeout esperando a agy ({timeout:.0}s)")));
         let result = self.agy_turn(text, on_event, deadline, timeout);
+        self.limit = None;
         self.watch.arm(None);
         result
     }
