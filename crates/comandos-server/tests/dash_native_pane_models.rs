@@ -427,6 +427,44 @@ async fn writer_without_tmux_retries_later() {
     assert!(!writer.retry_pending());
 }
 
+/// M1 de la revisión final: tras un declinar, el Python pudo reescribir
+/// `pane-models.txt` con su estado viejo. `forget_discovery` olvida también el
+/// texto recordado, así que la siguiente vuelta del frente vuelve a escribirlo
+/// aunque sus valores no hayan cambiado.
+#[tokio::test]
+async fn forget_discovery_rewrites_the_file() {
+    let home = TestHome::new("pane-models-forget-file");
+    let mut tmux = home.options().tmux;
+    tmux.program = Program::named("/no-existe/tmux");
+    let writer = Arc::new(PaneModelWriter::default());
+    let file = home.hooks().join("pane-models.txt");
+    let mut values = BTreeMap::new();
+    values.insert("%0".to_owned(), Some("x".to_owned()));
+    writer
+        .apply(values.clone(), "%0 x\n".into(), tmux.clone(), home.hooks())
+        .await;
+    wait_idle(&writer).await;
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "%0 x\n");
+    // El Python atiende una vuelta y deja su versión del archivo.
+    std::fs::write(&file, "%0 viejo\n").unwrap();
+    // Sin olvidar, el frente no lo reescribe: su texto no cambió.
+    writer
+        .apply(values.clone(), "%0 x\n".into(), tmux.clone(), home.hooks())
+        .await;
+    wait_idle(&writer).await;
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "%0 viejo\n");
+    writer.forget_discovery();
+    writer
+        .apply(values, "%0 x\n".into(), tmux, home.hooks())
+        .await;
+    wait_idle(&writer).await;
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "%0 x\n",
+        "tras el declinar el frente vuelve a escribir su versión"
+    );
+}
+
 #[test]
 fn tier_alert_once_per_pane_per_hour() {
     let mut alerts = TierAlerts::default();

@@ -913,11 +913,14 @@ impl PaneModelWriter {
 
     /// R1 (b) del preflight: si el heredado pudo escribir bordes (un declinar de
     /// `/usage/state` con el carril encendido), la próxima reconciliación vuelve
-    /// a leer las opciones físicas en vez de fiarse de `applied`.
+    /// a leer las opciones físicas en vez de fiarse de `applied`. El Python pudo
+    /// reescribir también `pane-models.txt` con su estado viejo: se olvida el
+    /// texto recordado y la próxima vuelta lo vuelve a escribir (M1).
     pub fn forget_discovery(&self) {
         let mut st = self.lock();
         st.discovered = false;
         st.retry_after = None;
+        st.file_text = None;
     }
 
     /// `write_pane_models` (cc-dash:4641) con los valores ya calculados: el
