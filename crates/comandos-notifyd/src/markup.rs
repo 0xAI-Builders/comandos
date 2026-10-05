@@ -15,6 +15,10 @@ pub fn py_strip(text: &str) -> &str {
 
 /// `str.splitlines()` de Python: corta en `\n`, `\r`, `\r\n`, `\v`, `\f`,
 /// `\x1c`–`\x1e`, `\x85`, ` ` y ` `; sin elemento vacío final.
+///
+/// Pendiente tras fusionar con `main`: allí llega `comandos_core::text::splitlines`
+/// con la misma regla; unificar en una sola (esta, sin indexado) en una pasada
+/// posterior (M10 de la revisión final). No está en esta rama.
 pub fn py_splitlines(text: &str) -> Vec<&str> {
     let mut lines = Vec::new();
     let mut start = 0;

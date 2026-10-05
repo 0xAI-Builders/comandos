@@ -48,7 +48,8 @@ pub fn evict_candidate(wins: &[PopupMeta]) -> Option<usize> {
 
 /// `PANE_RE = ^%\d{1,7}$` con `fullmatch`. Solo dígitos ASCII: `\d` de
 /// Python acepta también otros dígitos decimales de Unicode, que tmux nunca
-/// usa en un id de pane (diferencia documentada).
+/// usa en un id de pane (diferencia aceptada, ver
+/// `docs/verification/cutover-notifyd.md`).
 pub fn valid_pane(pane: &str) -> bool {
     pane.strip_prefix('%').is_some_and(|digits| {
         (1..=7).contains(&digits.len()) && digits.bytes().all(|b| b.is_ascii_digit())
