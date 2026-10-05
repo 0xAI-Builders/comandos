@@ -1,0 +1,3 @@
+Origen: `alacritty_terminal` de crates.io (`~/.cargo/registry/src/*/alacritty_terminal-0.26.0`, git 94e7c8874e526b1e67b349d9ba30ddf81669119e), Apache-2.0; se usa vía `[patch.crates-io]` del `Cargo.toml` raíz.
+Versión: 0.26.0, sin `tests/` (46 MB de referencias) ni `Cargo.lock`; por eso se quitó también el `[[test]] ref` del `Cargo.toml`.
+Modificaciones (para compilar en `wasm32-unknown-unknown`): (1) `src/lib.rs`: `#[cfg(not(target_arch = "wasm32"))]` delante de `pub mod event_loop;` y `pub mod tty;`; (2) `Cargo.toml`: `home`, `libc` y `polling` pasan a `[target.'cfg(not(target_arch = "wasm32"))'.dependencies]`.
