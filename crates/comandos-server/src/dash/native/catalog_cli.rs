@@ -510,7 +510,9 @@ async fn payload(native: &Arc<Native>) -> Result<(Value, f64), Fault> {
     let (home, cwd) = (opts.home.clone(), opts.cwd.clone());
     let binaries: Vec<String> = clis.iter().map(|(_, b)| b.clone()).collect();
     let resolve = which_all(native, binaries);
-    let mut detect = std::mem::take(&mut cache.detect);
+    // Copia (unos cientos de nombres): si el cliente se va durante el salto,
+    // el candado se suelta con la caché intacta en lugar de vacía.
+    let mut detect = cache.detect.clone();
     let catalog_for_job = Arc::clone(&catalog);
     let clis_for_job = clis.clone();
     type Scan = (
@@ -822,10 +824,19 @@ async fn refresh_opencode(native: Arc<Native>, done: watch::Sender<bool>) {
 /// `_opencode_models_fetch()`: cualquier excepción es `[]`.
 async fn fetch_opencode(native: &Native) -> Result<Vec<Value>, Unsure> {
     let opts = native.options();
-    let binary = which_in(opts.search_path.as_deref(), "opencode")
-        .unwrap_or_else(|| opts.home.join(".opencode/bin/opencode"));
+    // `shutil.which` (un `stat` por entrada del `PATH`) en el pool de bloqueo.
+    let (search, home) = (opts.search_path.clone(), opts.home.clone());
+    let Ok((binary, sh)) = tokio::task::spawn_blocking(move || {
+        let binary = which_in(search.as_deref(), "opencode")
+            .unwrap_or_else(|| home.join(".opencode/bin/opencode"));
+        (binary, which_in(search.as_deref(), "sh"))
+    })
+    .await
+    else {
+        return Ok(Vec::new());
+    };
     let binary = binary.to_str().ok_or(Unsure)?.to_owned();
-    let Some(sh) = which_in(opts.search_path.as_deref(), "sh") else {
+    let Some(sh) = sh else {
         return Ok(Vec::new());
     };
     let script = format!(
