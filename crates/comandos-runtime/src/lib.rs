@@ -22,6 +22,7 @@ pub mod limits;
 pub mod model_catalog;
 pub mod news_agents;
 pub mod pane_exit;
+pub mod pane_extensions;
 pub mod pane_observe;
 pub mod pane_snapshot;
 pub mod pane_typing;
