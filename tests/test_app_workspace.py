@@ -198,12 +198,12 @@ def test_desktop_drag_scrolls_the_strip_at_its_edges():
 
 def test_desktop_pane_card_has_no_yes_no_and_shows_semaforo_session_model_and_buttons():
     """Fix 1 (30-sep): Sí/No leave the desktop card (they live in the remote touch bar);
-    the card is semáforo + session | logo + model + ✓ | «IA» and «MCPs · Skills»."""
+    the card is semáforo + session | logo + model + ✓ | «Cuenta» and «MCPs · Skills»."""
     assert 'def pane_answer' not in SOURCE and '_answer_button' not in SOURCE and 'pill-yes' not in SOURCE
     src = SOURCE.split('def _pane_pill(sess, p, keys=True):')[1].split('\ndef ')[0]
     assert '_pane_card_ai(sess)' in src and 'getattr(box, "_label", None) or sess' in src, 'semáforo + tab name (not the tmux key) first'
     keys = SOURCE.split('def _pane_card_keys(sess, p, harness):')[1].split('\ndef ')[0]
-    assert '_card_button("ia-gear", "IA"' in keys and '_extension_pill(sess' in keys
+    assert '_card_button("ia-gear", "IA"' not in keys and '_extension_pill(sess' in keys
     place = SOURCE.split('def _place_pills(box, panes, geo=None):')[1].split('\ndef ')[0]
     assert 'ov.set_overlay_pass_through(pill, True)' in place, 'the card never blocks dragging the tmux border'
     assert 'add_class("pane-card")' in src
@@ -412,7 +412,7 @@ def test_pane_header_matches_the_remote_and_prototype_b():
     exec(src[src.index("MOTOR_LOGO = {"):src.index("\n\n\ndef _motor_badge")], ns)
     assert ns["MOTOR_LOGO"] == logo_js, "same letters and colours on desktop and remote"
     assert ns["MOTOR_LOGO"]["claude"] == ("A", "#d97757")
-    for name, js in (("ia-gear", "gear"), ("ia-spark", "spark")):
+    for name, js in (("ia-spark", "spark"),):
         path = re.search(r'<path d="([^"]+)"', Path(f"dash/icons/{name}.svg").read_text()).group(1)
         assert path in term.split(f"{js}: '", 1)[1].split("'", 1)[0], f"{name}.svg = term.html ICON.{js}"
     assert "min-width:1px;min-height:14px;margin:0;" in src and "sep.set_valign(Gtk.Align.CENTER)" in src
@@ -423,15 +423,16 @@ def test_pane_header_matches_the_remote_and_prototype_b():
     assert src.count('b"paned.cc-paned > separator,paned.cc-paned paned > separator{"') == 2
 
 
-def test_the_account_button_sits_beside_ia_on_desktop_and_remote():
-    """Grill 2-oct: «Cuenta: alias» al lado de IA y MCPs · Skills; su menú lista las
+def test_the_account_button_sits_beside_extensions_on_desktop_and_remote():
+    """Grill 2-oct: «Cuenta: alias» al lado de MCPs · Skills; su menú lista las
     cuentas con 5 h / semana / modelo y cambia con /account/switch (misma conversación)."""
     keys = SOURCE.split('def _pane_card_keys(')[1].split('\ndef ')[0]
-    assert '"user", f"Cuenta: {alias}"' in keys and keys.index('"user"') < keys.index('"ia-gear"')
+    assert '"user", f"Cuenta: {alias}"' in keys and keys.index('"user"') < keys.index('_extension_pill')
     pop = SOURCE.split('def _account_popover(')[1].split('\ndef ')[0]
     assert '"/accounts?harness="' in pop and '"/account/switch"' in pop and 'Gtk.LevelBar' in pop
     term = Path('dash/term.html').read_text()
     assert 'data-act="acct"' in term and "fetch('/account/switch'" in term and "'/accounts?harness='" in term
+    assert 'data-act="ia"' not in term and 'openMotorFor' not in SOURCE
     assert Path('dash/icons/user.svg').exists()
     # 2-oct: el cambio NO espera el fin del turno — interrumpe y cambia al instante — y
     # las dos versiones siguen la operación hasta su resultado real (/model/status).

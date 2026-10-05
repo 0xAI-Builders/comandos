@@ -22,13 +22,10 @@ def test_grok_models_and_per_model_efforts_are_exposed():
     models = {m["id"]: m for m in REGISTRY["motors"]["grok"]["models"]}
     assert models["grok-4.6"]["efforts"] == ["low", "medium", "high", "xhigh"]
     assert models["grok-4.5"]["efforts"] == ["low", "medium", "high"]
-    assert 'function effortsFor(prov, model)' in HTML
-    assert "tileEfforts.map" in HTML
+    assert '(nsModel().efforts||[]).map' in HTML
 
 
-def test_picker_and_wizard_are_matrix_driven():
-    assert "function matrixRoute(harness,motor)" in HTML
-    assert "function matrixMotors(harness)" in HTML
+def test_wizard_is_matrix_driven():
     assert "const nsMatrix =" in HTML
     assert 'routeId:NS.routeId' in HTML
     assert '5 disponibles' not in HTML  # counts come from runtime matrix
@@ -39,19 +36,15 @@ def test_harness_accounts_are_registry_driven_for_all_providers():
     assert "nsHarness(provider).accounts" in HTML
     assert 'NS.harness === "grok"' not in HTML
     assert "PROXY.accounts || []" not in HTML
-    assert 'provider: (item&&item.agent)==="acp"?(item.motor||"claude"):((item&&item.agent)||"claude")' in HTML
 
 
 def test_switch_loading_and_results_are_pane_keyed():
-    assert "const motorTargetKey = it => it ? rowKey(it)" in HTML
     assert "r.operationKey" in HTML
-    assert 'stageTxt: r && r.queued ?' in HTML
+    assert "pend.stageCode" in HTML
     assert 'confirmando modelo y esfuerzo' not in HTML  # stage comes from backend, not a fake optimistic string
 
 
 def test_native_and_cross_engine_routes_have_explicit_backend_ids():
-    # el picker decide por harness vivo (acp/opencode/agy inclusive), no el triple legado
-    assert "function liveHarnesses()" in HTML
-    assert "tileAction(item" in HTML
+    assert "const nsMatrix =" in HTML
     assert "routeId: s2.routeId" in HTML   # sugerencia aplicada desde el cajón (la tarjeta Centro se retiró en S2)
     assert 'Harness' in HTML and 'Motor' in HTML and 'Pensamiento' in HTML

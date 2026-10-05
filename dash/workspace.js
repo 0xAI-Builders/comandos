@@ -127,12 +127,11 @@ function renderSessionOverview(list) {
   box.innerHTML=rows.map(it=>{
     const usage=usageForItem(it)||{};
     const tokens=usage.tokens??usage.totalTokens??usage.total_tokens;
-    return `<article class="overview-card" data-key="${attrEsc(rowKey(it))}"><h3>${mdEsc(it.project||it.session)} · ${mdEsc(it.pane||'')}</h3><p>${mdEsc(LABEL[it.status]||it.status)}</p><p>${mdEsc(it.agent||'shell')} → ${mdEsc(it.model||'modelo sin confirmar')}${it.effort?' · '+mdEsc(it.effort):''}</p><p>Cuenta ${mdEsc(it.harnessAccount||it.account||'sin confirmar')}${tokens!=null?' · '+mdEsc(fmtTokens(tokens))+' tokens':''}</p><div class="sc-actions"><button class="sc-btn" data-open>Terminal</button><button class="sc-btn" data-config>Configurar</button><button class="sc-btn" data-tools>Herramientas</button></div></article>`;
+    return `<article class="overview-card" data-key="${attrEsc(rowKey(it))}"><h3>${mdEsc(it.project||it.session)} · ${mdEsc(it.pane||'')}</h3><p>${mdEsc(LABEL[it.status]||it.status)}</p><p>${mdEsc(it.agent||'shell')} → ${mdEsc(it.model||'modelo sin confirmar')}${it.effort?' · '+mdEsc(it.effort):''}</p><p>Cuenta ${mdEsc(it.harnessAccount||it.account||'sin confirmar')}${tokens!=null?' · '+mdEsc(fmtTokens(tokens))+' tokens':''}</p><div class="sc-actions"><button class="sc-btn" data-open>Terminal</button><button class="sc-btn" data-tools>Herramientas</button></div></article>`;
   }).join('')||'<p class="sc-note">No hay sesiones activas.</p>';
   box.querySelectorAll('[data-key]').forEach(card=>{
     const it=rows.find(i=>rowKey(i)===card.dataset.key);
     card.querySelector('[data-open]').onclick=()=>openSession(it);
-    card.querySelector('[data-config]').onclick=e=>motorPopOpen(e.currentTarget,{mode:'session',item:it,model:it.model});
     card.querySelector('[data-tools]').onclick=()=>openSessionProfiles(it);
   });
 }

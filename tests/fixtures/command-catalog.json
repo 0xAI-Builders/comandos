@@ -486,7 +486,8 @@
        }
       ]
      }
-    ]
+    ],
+    "shortcuts": []
    },
    "groups": [
     {
@@ -1279,6 +1280,23 @@
        }
       ]
      }
+    ],
+    "shortcuts": [
+     {
+      "text": "codex --sandbox danger-full-access --ask-for-approval on-request",
+      "description": "Acceso completo: escritura y red. Permite aprobar solicitudes de herramientas.",
+      "args": []
+     },
+     {
+      "text": "codex resume --sandbox danger-full-access --ask-for-approval on-request",
+      "description": "Retomar una sesión con escritura y red completas. Abre el selector de sesiones.",
+      "args": []
+     },
+     {
+      "text": "codex resume --dangerously-bypass-approvals-and-sandbox",
+      "description": "Retomar con todos los permisos: escritura, red y ejecución sin sandbox ni aprobaciones.",
+      "args": []
+     }
     ]
    },
    "groups": [
@@ -1928,7 +1946,8 @@
        }
       ]
      }
-    ]
+    ],
+    "shortcuts": []
    },
    "groups": [
     {
@@ -2626,7 +2645,8 @@
        }
       ]
      }
-    ]
+    ],
+    "shortcuts": []
    },
    "groups": [
     {
@@ -2933,7 +2953,8 @@
        }
       ]
      }
-    ]
+    ],
+    "shortcuts": []
    },
    "groups": [
     {

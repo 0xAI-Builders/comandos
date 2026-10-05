@@ -80,6 +80,13 @@ def test_resume_flags_preserve_explicit_sandbox_approvals_and_config(tmp_path):
                      '-c', 'model_reasoning_effort="high"', '--add-dir', '/tmp/allowed']
 
 
+def test_codex_yolo_alias_and_standalone_mode_survive_snapshot(tmp_path):
+    m = module(); root = tmp_path / 'proc'; home = tmp_path / 'home'; home.mkdir()
+    proc(root, 1, 0, ['codex', '--yolo', '--no-daemon', 'private prompt'])
+    assert m.PaneInspector(home=home, proc_root=root)._flags(1) == [
+        '--dangerously-bypass-approvals-and-sandbox', '--no-daemon']
+
+
 def test_acp_snapshot_preserves_explicit_danger_mode(tmp_path):
     m = module(); root = tmp_path / 'proc'; home = tmp_path / 'home'; home.mkdir()
     proc(root, 1, 0, ['sh']); proc(root, 2, 1, ['cc-acp', '--agent', 'claude', '--danger'])

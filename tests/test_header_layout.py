@@ -239,17 +239,10 @@ def test_modal_content_follows_the_modal_width_not_the_window():
         assert gone not in index, gone
 
 
-def test_new_session_profiles_and_motor_picker_stay_in_the_column_on_split_remote():
-    """1-oct: «+» (asistente), Uso de skills/Perfiles (.sc-modal) y el selector de motor (IA)
-    llenan la columna izquierda en el escritorio; en el remoto partido iban sobre toda la pantalla."""
-    index = (ROOT / "dash" / "index.html").read_text()
+def test_new_session_profiles_keep_their_layout_without_ai_picker():
     css = (ROOT / "dash" / "workspace.css").read_text()
-    # 2-oct: «+» y .sc-modal ya no se encierran en la columna (modales en medio).
     assert ":is(#newsess,.sc-modal){right:auto;width:var(--split-left,380px)}" not in css
-    assert "#motor-pop.open.mp-column:not(.inline){" in css
-    place = index.split('pop.classList.remove("inline");', 1)[1].split("pop.classList.add(\"open\");", 1)[0]
-    assert "window.panelViewport()" in place and 'pop.classList.toggle("mp-column", column);' in place
-    assert "vp.left + vp.width - w - 8" in place
+    assert "#motor-pop" not in css
 
 
 def test_phone_strip_plus_and_terminal_switch_to_the_panel_view_first():

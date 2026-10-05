@@ -277,3 +277,23 @@ afectadas.
   de feedback pide «texto completo SIEMPRE». Se queda en 16 000 por paridad; las opciones son subir
   el tope o añadir una línea «… recortado: Copiar lleva N caracteres».
 - gtk3-rs frente a GTK4 (sección anterior).
+
+## Ejecutado (5 de octubre de 2026, 08:50)
+
+Con Jesús delante, binario `comandos-notifyd-9a9007e8b5…` (main 9a9007e) copiado en
+`~/.local/share/comandos/notifyd/` y enlazado en `~/.local/bin/comandos-notifyd`.
+
+- Paso 0: entorno de la unidad con `DISPLAY=:1`, `XDG_RUNTIME_DIR`, `tmux` y `wmctrl` en el
+  `PATH`; `POPUPS=1`, `CC_LANG=es`; sin bibliotecas faltantes.
+- Paso 1: pruebas GTK (`COMANDOS_GTK_TESTS=1`): la primera corrida falló en
+  `stack_evicts_oldest_calm` (7 popups en vez de 8 a los 2,6 s, carrera de tiempos al mapear
+  ventanas); las dos siguientes pasaron (14 s). Instancia de prueba en **7461** (7391 lo ocupa
+  otro proyecto): «te espera» con markdown, «Ver TODO», «listo» que se cierra solo, aviso sin
+  sesión y ráfaga de 20 — Jesús los vio bien. RSS 25 → 45 MB tras la ráfaga, 7 hilos estables.
+  Observación de Jesús: la aparición se siente lenta; es idéntica al Python (6 pasos de 25 ms +
+  ajustes de altura a 40/220/450 ms) → mejora aparte, no regresión.
+- Pasos 3–4: drop-in `10-rust.conf` puesto, `restart` de `cc-notifyd` (tmux y demás servicios
+  intactos). `ss` muestra `comandos-notify` en 4778, `NRestarts=0`, journal con
+  `comandos-notifyd listo en 127.0.0.1:4778 (popups propios v3)`, RSS 25 MB y 7 hilos (el Python
+  rondaba 41 MB). Aviso real de comprobación mostrado.
+- Pendiente: verificación a las 24 h (paso 4) y la prueba de resistencia de 200 avisos.

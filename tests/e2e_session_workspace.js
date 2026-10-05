@@ -59,28 +59,8 @@ async function main(){
     await page.locator('#toggle-overview').click();
     assert.equal(await page.locator('.overview-card').count(),2);
     await page.screenshot({path:'/tmp/comandos-overview-mobile.png'});
-    await page.locator('.overview-card [data-config]').first().click();
-    await page.waitForFunction(()=>MPOP&&!MPOP.statusLoading&&!MPOP.historyLoading);
-    const choose=async(field,value)=>{
-      await page.locator(`#motor-pop [data-word="${field}"]`).click();
-      await page.locator(`#motor-pop [data-choice="${field}"][data-value="${value}"]`).click();
-    };
-    await choose('toHarness','codex');
-    assert.equal(posts.filter(p=>p.path==='/session/configure').length,0);
-    await choose('harnessAccount','work');
-    await choose('effort','ultra');
-    assert.equal(await page.locator('#motor-pop [data-confirm]').count(),1);
-    assert.equal(posts.filter(p=>p.path==='/session/configure').length,0);
-    await page.screenshot({path:'/tmp/comandos-selector-mobile.png'});
-    await page.locator('#motor-pop [data-confirm]').click();
-    await page.waitForFunction(()=>MOTOR_PENDING.has('test|%1'));
-    assert(await page.locator('#motor-pop').isVisible());
-    assert(await page.locator('#motor-pop [data-word=model]').isDisabled());
-    const changes=posts.filter(p=>p.path==='/session/configure');assert.equal(changes.length,1);
-    assert.equal(changes[0].data.harnessAccount,'work');assert.equal(changes[0].data.toHarness,'codex');assert.equal(changes[0].data.effort,'ultra');
-    assert.equal(changes[0].data.session,'test');assert.equal(changes[0].data.pane,'%1');
-    assert.equal(changes[0].data.expectedIdentity,'identity-%1');assert.equal(changes[0].data.expectedConversationId,'thread-%1');
-    await page.locator('#motor-pop .mp-close').click();
+    assert.equal(await page.locator('#motor-pop').count(),0);
+    assert.equal(await page.locator('.overview-card [data-config]').count(),0);
     await page.locator('#btn-menu').click();   // H1: vive en ☰
     await page.locator('#open-session-profiles').click();
     await page.locator('.sc-extensions .mcp-description').first().waitFor();
@@ -102,15 +82,12 @@ async function main(){
     await page.screenshot({path:'/tmp/comandos-workspace-mobile.png'});
     await page.locator('[data-close-sc]').click();
     await page.setViewportSize({width:1440,height:960});
-    await page.locator('.overview-card [data-config]').last().click();
-    assert(await page.locator('#motor-pop').evaluate(el=>el.getBoundingClientRect().right<=innerWidth));
     await page.screenshot({path:'/tmp/comandos-workspace-desktop.png'});
     await page.evaluate(items=>render([...items,{session:'old',project:'Historial',status:'waiting',detail:'Pregunta conservada',alive:false,operable:false,agent:'claude'}]),items);
     const historical=page.locator('.row[data-rk="old"]');
     assert(await historical.locator('.up').isDisabled());
     assert(await historical.locator('.kill').isDisabled());
     assert.match(await historical.innerText(),/Pregunta conservada/);
-    await page.locator('#motor-pop .mp-close').click();
     await page.evaluate(items=>{CENTRO_VIEW.item=items[0];renderCentro(items);},items);
     await page.locator('#centro .cx-more').click();
     await page.locator('#centro .cx-tabs [data-pane=mcps]').click();
@@ -124,12 +101,10 @@ async function main(){
     await page.waitForFunction(()=>document.querySelector('#centro .cx-model')?.textContent.includes('ultra'));
     assert.match(await page.locator('.overview-card[data-key="test|%1"]').innerText(),/gpt-6-astra.*ultra/);
     items[0]={...items[0],model:'opus',motor:'claude',effort:'',observedConfig:{model:'opus',effort:'',confirmed:true}};
-    await page.evaluate(()=>{PROXY={...(PROXY||{}),alive:true,sessionEffort:{'test|%1':'ultra'}};});
     await page.evaluate(()=>tick());
     await page.waitForFunction(()=>!document.querySelector('#centro .cx-model')?.textContent.includes('ultra'));
-    assert.doesNotMatch(await page.locator('#centro .motor-pill').innerText(),/ultra/);
     assert.deepEqual(errors,[]);
-    console.log('PASS: mobile chat persistence, overview, confirmed route switch with exact pane pins and pending controls, profiles launch, observed extension analytics; no page errors.');
+    console.log('PASS: mobile chat persistence, overview, profiles launch, observed extension analytics; no page errors.');
   }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

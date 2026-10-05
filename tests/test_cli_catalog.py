@@ -184,6 +184,18 @@ def test_native_binary_resolves_node_wrapper_to_platform_package(tmp_path):
     assert cli_catalog.native_binary(str(tmp_path / "missing")) is None
 
 
+def test_native_binary_follows_the_persistent_yolo_launcher(tmp_path):
+    native = tmp_path / 'vendor/codex'
+    native.parent.mkdir()
+    native.write_bytes(b'\x7fELF/models /status')
+    wrapper = tmp_path / 'codex'
+    wrapper.write_text('#!/usr/bin/env python3\n# COMANDOS_CODEX_YOLO_LAUNCHER\n'
+                       '# COMANDOS_CODEX_ORIGINAL=' + json.dumps(str(native)) + '\n')
+    assert cli_catalog.native_binary(str(wrapper)) == str(native)
+    wrapper.write_text('#!/usr/bin/env python3\n# COMANDOS_CODEX_ORIGINAL=' + json.dumps(str(wrapper)) + '\n')
+    assert cli_catalog.native_binary(str(wrapper)) is None
+
+
 def test_detected_commands_reads_slash_names_from_each_binary(tmp_path):
     cat = cli_catalog.load_catalog()
     claude = tmp_path / "claude"

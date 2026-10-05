@@ -2018,7 +2018,7 @@
   const HEADER_EXTRA = 14, KEY_H = 22;
   const LOGO = { claude: ['A', '#d97757'], codex: ['O', '#10a37f'], grok: ['G', '#fb923c'], opencode: ['OC', '#f0abfc'],
                  gemini: ['G', '#4285f4'], agy: ['AG', '#93c5fd'], acp: ['AC', '#67e8f9'] };
-  const ICON = { gear: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
+  const ICON = {
                  spark: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>',
                  user: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>' };
   const ACCOUNT_CLIS = new Set(['claude', 'codex', 'grok']);
@@ -2084,7 +2084,6 @@
         + (m.effort ? `<span class="pc-eff">${esc(m.effort)}</span>` : '') + (m.state === 'verified' ? '<span class="pc-ok">✓</span>' : '')
         + `<span class="pc-keys">`
         + (ACCOUNT_CLIS.has(m.harness) ? `<button type="button" data-act="acct" data-pane="${esc(p.id)}" data-harness="${esc(m.harness)}" title="Pasar este pane a otra cuenta sin perder la conversación">${ICON.user}<span>Cuenta:</span> <b>${esc(m.hAcct && m.hAcct !== 'unknown' ? m.hAcct : '…')}</b></button>` : '')
-        + `<button type="button" data-act="ia" data-pane="${esc(p.id)}" title="Cambiar motor / modelo / cuenta de este pane">${ICON.gear}<span>IA</span></button>`
         + `<button type="button" data-act="ext" data-pane="${esc(p.id)}" data-harness="${esc(m.harness)}" title="Extensiones de este pane">${ICON.spark}<span>MCPs · Skills</span></button></span></div>`;
     }
     // Solo se reconstruye el DOM si algo cambió (antes, en cada movimiento del mouse).
@@ -2208,8 +2207,7 @@
     if (!b) return;
     try {
       if (b.dataset.act === 'acct') { openAccounts(b); return; }
-      if (b.dataset.act === 'ia') parent.openMotorFor(session, b.dataset.pane);
-      else parent.openPaneExtensions(session, b.dataset.pane, b.dataset.harness || '');
+      if (b.dataset.act === 'ext') parent.openPaneExtensions(session, b.dataset.pane, b.dataset.harness || '');
     } catch (_) {}
   });
   // «Cuenta» (grill 2-oct): mismo Claude Code, otra cuenta, misma conversación.
@@ -2234,16 +2232,38 @@
       if (!r.ok) throw new Error(data.error || 'No se pudieron leer las cuentas');
       if (acctFor !== pane) return;
       box.innerHTML = '<h4>CUENTA DE ESTE PANE</h4>' + data.accounts.map(a => {
-        const on = a.alias === current, can = a.selectable && !on;
+        const on = a.alias === current && a.selectable, can = !on;
         const bars = a.limits.map(l => `<span>${esc(l.label)}</span><span class="bar"><i class="${pctClass(l.percent)}" style="width:${l.percent}%"></i></span><span>${l.percent}%</span>`).join('');
         return `<button type="button" class="acc${on ? ' on' : ''}" data-alias="${esc(a.alias)}" ${can ? '' : 'disabled'} title="${esc(a.identity)}">`
-          + `<b>${esc(a.alias)}</b><span class="tag">${on ? 'en uso' : a.selectable ? 'cambiar →' : 'sin login'}</span>`
+          + `<b>${esc(a.alias)}</b><span class="tag">${on ? 'en uso' : a.selectable ? 'cambiar →' : 'iniciar sesión →'}</span>`
+          + (a.identity ? `<span>${esc(a.identity)}</span>` : '')
           + (bars ? `<span class="bars">${bars}</span>` : '') + '</button>';
-      }).join('') + '<p class="foot">Sigue la misma conversación. Si está respondiendo, se interrumpe y cambia al instante.</p>';
-      box.querySelectorAll('.acc[data-alias]:not(:disabled)').forEach(b => b.addEventListener('click', () => switchAccount(box, pane, b.dataset.alias)));
+      }).join('') + '<button type="button" class="acc" data-add-account>+ Añadir cuenta</button><p class="foot">Sigue la misma conversación. Si está respondiendo, se interrumpe y cambia al instante.</p>';
+      box.querySelectorAll('.acc[data-alias]:not(:disabled)').forEach(b => b.addEventListener('click', () => {
+        const a=data.accounts.find(a=>a.alias===b.dataset.alias);
+        if(a.selectable)switchAccount(box,pane,a.alias);else addAccount(box,harness,a.alias);
+      }));
+      box.querySelector('[data-add-account]').onclick=()=>addAccount(box,harness);
     } catch (error) {
       if (acctFor === pane) box.innerHTML = `<h4>CUENTA DE ESTE PANE</h4><p class="msg err">${esc(error.message)}</p>`;
     }
+  }
+  async function addAccount(box, harness, alias='') {
+    box.querySelectorAll('button').forEach(b=>b.disabled=true);
+    const note=box.querySelector('.foot, .msg');
+    note.textContent='Abriendo el login de '+harness+'…';
+    try {
+      const r=await fetch('/account/add',{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json','X-Comandos-Token':token},body:JSON.stringify({provider:harness,alias,deviceAuth:true})});
+      const data=await r.json();
+      if(!r.ok||data.ok===false)throw new Error(data.error||'No se pudo abrir el login');
+      const link=document.createElement('a');
+      const url=new URL(location.href);url.searchParams.set('arg',data.session);
+      link.href=url.href;link.target='_blank';link.rel='noopener';
+      link.textContent='Abrir login · '+data.alias;
+      note.textContent='Completa el login y vuelve a Cuenta para elegirla. ';
+      note.append(link);
+    } catch(e) {note.textContent=e.message;}
+    finally {box.querySelectorAll('button').forEach(b=>b.disabled=b.classList.contains('on'));}
   }
   // Etapas de /model/status mientras el pane cambia de cuenta (2-oct: interrumpe y cambia ya).
   const ACCT_STAGES = { validating: 'Validando…', waiting: 'Interrumpiendo lo que está haciendo…', snapshot: 'Guardando la conversación…',
