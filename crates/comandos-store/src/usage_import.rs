@@ -1274,6 +1274,7 @@ pub fn record_local_grok_updates(
     }
     let files = sort_and_cut(files, Some(GROK_MAX_FILES));
     let mut sink = Sink::new(plan);
+    let mut lookup = None;
     for (_mtime, path) in files {
         plan.check()?;
         let Some(path_str) = path_text(&path) else {
@@ -1308,7 +1309,7 @@ pub fn record_local_grok_updates(
             effort,
         };
         each_line(handle, |no, text| {
-            grok_line(conn, &mut sink, &file, no, text).map(|_| ())
+            grok_line(conn, &mut lookup, &mut sink, &file, no, text).map(|_| ())
         })?;
     }
     sink.finish(conn)
@@ -1324,8 +1325,9 @@ fn sql_truthy(v: &Sql) -> bool {
     }
 }
 
-fn grok_line(
-    conn: &Connection,
+fn grok_line<'c>(
+    conn: &'c Connection,
+    lookup: &mut Option<rusqlite::Statement<'c>>,
     sink: &mut Sink<'_>,
     f: &GrokFile<'_>,
     no: usize,
@@ -1356,8 +1358,12 @@ fn grok_line(
     }
     let prompt_id = take!(usage_state::text(&update.get("prompt_id")));
     let external = take!(text_or(&params.get("sessionId"), &f.session_id));
-    let interaction: Option<[Sql; 4]> = conn
-        .prepare(GROK_INTERACTION)?
+    // La consulta se prepara una vez por llamada, no por línea.
+    let stmt = match lookup {
+        Some(stmt) => stmt,
+        None => lookup.insert(conn.prepare(GROK_INTERACTION)?),
+    };
+    let interaction: Option<[Sql; 4]> = stmt
         .query_row(params![external, prompt_id, prompt_id], |r| {
             Ok([r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?])
         })
