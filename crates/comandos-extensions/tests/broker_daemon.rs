@@ -64,9 +64,17 @@ fn is_fake(pid: u32) -> bool {
         && fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|c| c.starts_with(FAKE.as_bytes()))
 }
 
+/// Pids que los fakes anotaron en `home/pids`; una línea ilegible hace fallar la prueba.
 fn pids(home: &Path) -> Vec<u32> {
     let text = fs::read_to_string(home.join("pids")).unwrap_or_default();
     text.lines().map(|l| l.parse().unwrap()).collect()
+}
+
+/// Como [`pids`], pero sin entrar en pánico: para los `Drop`, que también corren mientras una
+/// prueba ya está fallando, y un segundo pánico ahí aborta todo el binario de pruebas.
+fn pids_lenient(home: &Path) -> Vec<u32> {
+    let text = fs::read_to_string(home.join("pids")).unwrap_or_default();
+    text.lines().filter_map(|l| l.parse().ok()).collect()
 }
 
 fn command(home: &Path, args: &[&str]) -> Command {
@@ -88,7 +96,9 @@ fn serve_once(home: &Path, name: &str, input: &str) -> Output {
         .stderr(Stdio::piped()))
     .spawn()
     .unwrap();
-    writeln!(child.stdin.take().unwrap(), "{input}").unwrap();
+    // Un upstream que muere al arrancar (`muere`) puede cerrar la tubería antes de que
+    // escribamos: EPIPE no es un fallo; lo que cuenta es la salida y el código del proceso.
+    let _ = writeln!(child.stdin.take().unwrap(), "{input}");
     child.wait_with_output().unwrap()
 }
 
@@ -106,13 +116,21 @@ impl Daemon {
             .stderr(log)
             .spawn()
             .unwrap();
+        Self::ready(child, home)
+    }
+    /// Espera a que el daemon recién lanzado escuche. No basta con que exista el socket: el
+    /// de un daemon muerto sigue en disco, y un SIGTERM enviado antes de que el nuevo instale
+    /// su manejador lo mata por señal. La línea `escuchando` sale después de los manejadores
+    /// y del `bind` (el registro se trunca al lanzar, así que es del daemon nuevo).
+    fn ready(child: Child, home: &Path) -> Self {
         let d = Daemon {
             child,
             home: home.into(),
         };
         assert!(
-            until(|| d.socket().exists()),
-            "el daemon debe crear su socket"
+            until(|| d.socket().exists() && d.log().contains("broker: escuchando")),
+            "el daemon debe crear su socket: {}",
+            d.log()
         );
         d
     }
@@ -130,12 +148,16 @@ impl Daemon {
 }
 
 impl Drop for Daemon {
+    /// Nada aquí puede entrar en pánico: si la prueba ya falló, un pánico durante el
+    /// desenrollado aborta el binario entero ("panic in a destructor during cleanup").
     fn drop(&mut self) {
         if self.child.try_wait().ok().flatten().is_none() {
-            self.stop();
+            let pid = Pid::from_raw(self.child.id() as i32);
+            let _ = signal::kill(pid, signal::Signal::SIGTERM);
+            let _ = self.child.wait();
         }
         // Solo fakes vivos: un pid ya muerto puede pertenecer ahora a otro proceso.
-        for pid in pids(&self.home).into_iter().filter(|p| is_fake(*p)) {
+        for pid in pids_lenient(&self.home).into_iter().filter(|p| is_fake(*p)) {
             let _ = signal::kill(Pid::from_raw(pid as i32), signal::Signal::SIGKILL);
         }
         let _ = fs::remove_dir_all(&self.home);
@@ -466,16 +488,7 @@ fn start_clean_daemon(home: &Path) -> Daemon {
         .stdout(Stdio::null())
         .stderr(log);
     support::assert_isolated(&cmd);
-    let child = cmd.spawn().unwrap();
-    let d = Daemon {
-        child,
-        home: home.into(),
-    };
-    assert!(
-        until(|| d.socket().exists()),
-        "el daemon debe crear su socket"
-    );
-    d
+    Daemon::ready(cmd.spawn().unwrap(), home)
 }
 
 /// Catálogo con `eco` = `fake_mcp_stdio` sin `/`, cuyo binario vive en `bin_dir`.
@@ -527,6 +540,9 @@ fn read_one(stream: &std::os::unix::net::UnixStream) -> String {
     while line.last() != Some(&b'\n') {
         match std::io::Read::read(&mut &*stream, &mut byte) {
             Ok(1) => line.push(byte[0]),
+            // Con `SO_RCVTIMEO`, Linux no reinicia `recv` tras una parada y reanudación del
+            // proceso (SIGSTOP/SIGCONT, aun sin manejadores; ver signal(7)): se reintenta.
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
             other => panic!("conexión cerrada o error: {other:?}"),
         }
     }
@@ -714,11 +730,7 @@ fn daemon_raises_its_soft_fd_limit_to_the_hard_one() {
         .stdout(Stdio::null())
         .stderr(log);
     support::assert_isolated(&cmd);
-    let d = Daemon {
-        child: cmd.spawn().unwrap(),
-        home: home.clone(),
-    };
-    assert!(until(|| d.socket().exists()), "{}", d.log());
+    let d = Daemon::ready(cmd.spawn().unwrap(), &home);
     let (soft, hard) = nofile(d.child.id());
     assert_eq!(
         soft,
@@ -885,4 +897,62 @@ fn the_thin_client_reconnects_when_the_daemon_crashes() {
         old.child.wait().unwrap();
         Daemon::start(&old.home.clone(), "600")
     });
+}
+
+/// Regresión: dos fakes que arrancaban a la vez intercalaban sus escrituras en `pids`
+/// ("111222\n\n"); `pids` entraba en pánico y, desde el `Drop` de [`Daemon`] con la prueba ya
+/// fallando, abortaba el binario. El fake solo arranca y sale: no habla con ningún broker.
+#[test]
+fn concurrent_fakes_append_whole_pidfile_lines() {
+    let home = fake_home("pidlines");
+    const N: usize = 64;
+    let children: Vec<Child> = (0..N)
+        .map(|_| {
+            Command::new(FAKE)
+                .env("FAKE_MCP_PIDFILE", home.join("pids"))
+                .env("FAKE_MCP_DIE", "1")
+                .stdin(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap()
+        })
+        .collect();
+    for mut c in children {
+        c.wait().unwrap();
+    }
+    let text = fs::read_to_string(home.join("pids")).unwrap();
+    assert!(
+        text.lines().all(|l| l.parse::<u32>().is_ok()),
+        "cada línea es un pid entero: {text:?}"
+    );
+    assert_eq!(pids(&home).len(), N, "una línea por fake");
+    let _ = fs::remove_dir_all(&home);
+}
+
+/// Regresión determinista del aborto: el `Drop` de [`Daemon`] no entra en pánico aunque
+/// `pids` esté corrupto (antes, con la prueba ya fallando, abortaba todo el binario).
+#[test]
+fn dropping_a_daemon_tolerates_a_garbled_pidfile() {
+    let home = fake_home("garbled");
+    let daemon = Daemon::start(&home, "600");
+    fs::write(home.join("pids"), "111222\n\nbasura\n").unwrap();
+    drop(daemon);
+    assert!(!home.exists(), "el Drop limpió el HOME de prueba");
+}
+
+/// Regresión: con el socket de un daemon muerto en disco, `Daemon::start` volvía al instante
+/// y el SIGTERM de `stop` llegaba antes que el manejador del daemon nuevo (muerte por señal).
+#[test]
+fn start_waits_for_the_new_daemon_and_not_its_stale_socket() {
+    let home = fake_home("stale");
+    let mut old = Daemon::start(&home, "600");
+    old.child.kill().unwrap();
+    old.child.wait().unwrap();
+    assert!(old.socket().exists(), "queda el socket huérfano");
+    let mut new = Daemon::start(&home, "600");
+    assert!(
+        new.stop().success(),
+        "SIGTERM llega con el manejador ya puesto: {}",
+        new.log()
+    );
 }

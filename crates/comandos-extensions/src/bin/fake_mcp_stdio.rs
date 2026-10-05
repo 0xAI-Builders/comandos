@@ -23,8 +23,10 @@ fn main() {
             .create(true)
             .append(true)
             .open(path);
+        // Una sola escritura con `O_APPEND`: `writeln!` haría dos (cifras y `\n`) y dos fakes
+        // que arrancan a la vez las intercalarían ("111222\n\n").
         if let Ok(f) = file.as_mut() {
-            let _ = writeln!(f, "{pid}");
+            let _ = f.write_all(format!("{pid}\n").as_bytes());
         }
     }
     if let Some(path) = std::env::var_os("FAKE_MCP_DUMP_PATH") {
