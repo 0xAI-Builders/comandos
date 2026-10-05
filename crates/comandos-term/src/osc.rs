@@ -17,9 +17,13 @@
 //!   l. 603–606 y 615–619, también con UTF-8 cortado, l. 647–652), `anywhere`
 //!   (l. 444–447: CSI, DCS ignorado, SOS/PM/APC y el resto que delega en él),
 //!   DCS passthrough (l. 325–329), OSC (`advance_osc_string`, l. 419–423) y el
-//!   propio `Escape` (l. 387, ESC lo deja en `Escape`). Un carácter UTF-8
-//!   partido entre llamadas nunca se traga el ESC (`advance_partial_utf8`,
-//!   l. 704–714, devuelve 0 bytes consumidos si el ESC lo invalida).
+//!   propio `Escape` (l. 387, ESC lo deja en `Escape`). Excepción: un carácter
+//!   UTF-8 partido entre llamadas puede tragarse un ESC que llega tras su
+//!   continuación (`advance_partial_utf8`, l. 701, consume todos los bytes
+//!   válidos copiados, no solo el carácter completo; p. ej. `[d2]` y luego
+//!   `[98 1b …]`). El filtro sí cuenta ese ESC, así que el desajuste va en la
+//!   dirección segura: bajo el tope los bytes llegan a vte intactos, solo más
+//!   tarde; sobre el tope el filtro descarta texto que vte habría impreso.
 //! - **Se sigue** en `Escape` (`advance_esc`, l. 340–390) con los C0 que no son
 //!   CAN, SUB ni ESC (l. 342: se ejecutan sin salir), con DEL y con cualquier
 //!   byte 0x80–0xFF (l. 388, `_ => ()`), y con ESC (l. 387).
