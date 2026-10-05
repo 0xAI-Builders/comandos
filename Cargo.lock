@@ -364,6 +364,8 @@ dependencies = [
 name = "comandos-store"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "chrono-tz",
  "comandos-core",
  "rusqlite",
  "serde_json",

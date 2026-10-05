@@ -63,6 +63,28 @@ pub fn fake_tmux_true(fakebin: &Path) {
     }
 }
 
+/// Claves del entorno que cambian lo que calcula el Python de uso (D7 del plan 2e):
+/// el lado Rust las recibe por parámetro, así que el oráculo no debe heredarlas.
+pub const D7_KEYS: &[&str] = &[
+    "COMANDOS_DAILY_BUDGET_USD",
+    "COMANDOS_USAGE_DAILY_BUDGET_USD",
+    "COMANDOS_CODEX_DAILY_TOKEN_LIMIT",
+    "COMANDOS_CODEX_WEEKLY_TOKEN_LIMIT",
+    "COMANDOS_CLAUDE_DAILY_TOKEN_LIMIT",
+    "COMANDOS_CLAUDE_WEEKLY_TOKEN_LIMIT",
+    "CODEX_DAILY_TOKEN_LIMIT",
+    "CODEX_WEEKLY_TOKEN_LIMIT",
+    "CLAUDE_DAILY_TOKEN_LIMIT",
+    "CLAUDE_WEEKLY_TOKEN_LIMIT",
+    "COMANDOS_USAGE_LOCAL_DAYS",
+    "COMANDOS_USAGE_CLAUDE_MAX_FILES",
+    "COMANDOS_USAGE_CODEX_MAX_FILES",
+    "COMANDOS_CLAUDE_PROJECTS_DIR",
+    "COMANDOS_OPENCODE_DB",
+    "OPENAI_ADMIN_KEY",
+    "ANTHROPIC_ADMIN_KEY",
+];
+
 pub async fn oracle(home: &TestHome) -> Option<Oracle> {
     let python = Command::new("python3")
         .args(["-c", "import sys"])
@@ -126,7 +148,11 @@ pub async fn oracle(home: &TestHome) -> Option<Oracle> {
         std::env::var("PATH").unwrap_or_default()
     );
     let err = std::fs::File::create(home.root.join("oracle.err")).unwrap();
-    let mut child = Command::new("python3")
+    let mut command = Command::new("python3");
+    for key in D7_KEYS {
+        command.env_remove(key);
+    }
+    let mut child = command
         .arg(repo.join("bin/cc-dash"))
         .arg(port.to_string())
         .arg("--no-open")

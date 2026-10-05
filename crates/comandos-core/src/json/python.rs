@@ -49,6 +49,17 @@ pub fn response_dumps_unicode(value: &Value) -> Result<String, String> {
     encode(value, false, false, false, Policy::Workspace)
 }
 
+/// `str(float)`/`repr(float)` de Python, con `inf`, `-inf` y `nan` para los no finitos.
+pub fn float_repr(value: f64) -> String {
+    if value.is_nan() {
+        "nan".into()
+    } else if value.is_infinite() {
+        if value > 0.0 { "inf" } else { "-inf" }.into()
+    } else {
+        python_float(value, Policy::Workspace).unwrap_or_else(|_| value.to_string())
+    }
+}
+
 fn encode(
     value: &Value,
     ascii: bool,

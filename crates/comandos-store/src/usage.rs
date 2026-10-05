@@ -667,7 +667,7 @@ fn unix_secs() -> i64 {
     i64::try_from(now().as_secs()).unwrap_or(i64::MAX)
 }
 
-fn stable_id(parts: &[String]) -> String {
+pub(crate) fn stable_id(parts: &[String]) -> String {
     let digest = Sha256::digest(parts.join("\x1f").as_bytes());
     digest.iter().take(16).map(|b| format!("{b:02x}")).collect()
 }
@@ -765,7 +765,7 @@ fn py_float_repr(x: f64) -> String {
 /// Valor escalar tal como lo vería Python: conserva el tipo para enlazarlo en
 /// SQLite y para reproducir `str()` en las claves de deduplicación.
 #[derive(Clone, Debug, PartialEq)]
-enum Cell {
+pub(crate) enum Cell {
     Null,
     Bool(bool),
     Int(i64),
@@ -802,7 +802,7 @@ impl Cell {
     }
 }
 
-fn cell(v: ValueRef<'_>) -> Cell {
+pub(crate) fn cell(v: ValueRef<'_>) -> Cell {
     match v {
         ValueRef::Null => Cell::Null,
         ValueRef::Integer(n) => Cell::Int(n),
@@ -1080,7 +1080,7 @@ const SPAN_TABLES: &str = r#"
       primary key (limit_id, resets_at)
     );
 "#;
-const TURN_INSERT_SQL: &str = r#"
+pub(crate) const TURN_INSERT_SQL: &str = r#"
 insert into usage_turns (id, provider, agent, tmux_session, tmux_pane, pane_pwd, git_root, model, reasoning_effort, turn_started_at, turn_finished_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, total_tokens, cost_usd, source, confidence, raw, harness, motor, route_id, harness_account, motor_account, interaction_id, experiment_run_id, tool_profile, duration_ms, outcome, reasoning_tokens)
 values (:id, :provider, :agent, :tmux_session, :tmux_pane, :pane_pwd, :git_root, :model, :reasoning_effort, :turn_started_at, :turn_finished_at, :input_tokens, :output_tokens, :cache_read_tokens, :cache_write_tokens, :total_tokens, :cost_usd, :source, :confidence, :raw, :harness, :motor, :route_id, :harness_account, :motor_account, :interaction_id, :experiment_run_id, :tool_profile, :duration_ms, :outcome, :reasoning_tokens)
 on conflict(id) do update set

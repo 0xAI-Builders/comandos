@@ -10,6 +10,10 @@ comandos-core = { path = "../comandos-core" }
 serde_json.workspace = true
 rusqlite.workspace = true
 sha2.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+chrono-tz.workspace = true
 
 [lints]
 workspace = true

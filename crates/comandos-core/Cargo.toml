@@ -7,7 +7,7 @@ publish.workspace = true
 
 [dependencies]
 serde_json.workspace = true
-chrono.workspace = true
+chrono = { workspace = true, features = ["clock"] }
 chrono-tz.workspace = true
 serde = "1"
 subtle = { version = "=2.6.1", default-features = false }
