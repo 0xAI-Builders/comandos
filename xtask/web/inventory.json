@@ -97,6 +97,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -132,6 +134,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -180,6 +184,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "term-area",
         "tabbar"
@@ -224,6 +230,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [
         "/terminal/quick"
@@ -261,6 +269,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [
         "/chains",
@@ -301,6 +311,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [
         "/chains"
@@ -340,6 +352,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [
@@ -390,6 +404,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "settings"
       ],
@@ -452,6 +468,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "settings"
       ],
@@ -502,6 +520,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [
         "/webterm-token"
@@ -781,6 +801,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "limits-strip",
         "btn-usage",
@@ -1057,17 +1079,16 @@
       "parent_refs": [],
       "patches": [],
       "child_refs": [
-        "WheelEvent",
         "__comandosOwnsTouchGestures",
         "__comandosScrollWired",
-        "__comandosSwitchWired",
-        "addEventListener",
-        "document"
+        "__comandosSwitchWired"
       ],
       "child_writes": [
         "__comandosScrollWired",
         "__comandosSwitchWired"
       ],
+      "child_dom_access": true,
+      "fallbacks": [],
       "dom_ids": [
         "panes",
         "view-panel",
@@ -1146,6 +1167,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -1260,15 +1283,16 @@
         "webtermAccessToken"
       ],
       "mutates_globals": [
-        "quickTerminal",
         "tabsPollTs"
       ],
       "parent_refs": [],
-      "patches": [
-        "quickTerminal"
-      ],
+      "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [
+        "quickTerminal"
+      ],
       "dom_ids": [
         "command-sidebar",
         "servers-panel",
@@ -1344,6 +1368,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "n-waiting",
         "n-done",
@@ -1379,6 +1405,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -1427,6 +1455,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "notif-panel",
         "pomo-panel",
@@ -1487,6 +1517,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "toasts",
         "btn-notif"
@@ -1539,6 +1571,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [
         "/state"
@@ -1604,6 +1638,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "sw-ov",
         "sw-in",
@@ -1655,6 +1691,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -1723,6 +1761,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "btn-theme",
         "button-style-gallery",
@@ -1781,6 +1821,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [
         "/prefs"
@@ -1834,6 +1876,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "tabbar",
         "tab-rows",
@@ -1885,6 +1929,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -1924,6 +1970,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -1966,6 +2014,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "pf-font-family",
         "pf-font-size",
@@ -2048,6 +2098,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "remote-status",
         "btn-remote",
@@ -2136,6 +2188,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "srv-form",
         "srv-form-title",
@@ -2231,6 +2285,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "vol",
         "vol-top",
@@ -2282,6 +2338,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "btn-pomo",
         "btn-sov",
@@ -2360,6 +2418,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "btn-settings",
         "settings",
@@ -2440,6 +2500,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "dlg-snippets",
         "snip-items",
@@ -2514,6 +2576,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "poll",
         "sw-notif",
@@ -2585,6 +2649,8 @@
       ],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "an-root",
         "usage"
@@ -2632,6 +2698,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -2669,6 +2737,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -2704,6 +2774,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "template-name",
         "pane-extensions-frame",
@@ -2792,6 +2864,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "session-workspace-modal",
         "ns-cwd",
@@ -2848,6 +2922,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "tabbar"
       ],
@@ -2889,6 +2965,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -2938,6 +3016,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "btn-pomo",
         "pomo-panel"
@@ -2987,6 +3067,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "term-area",
         "panes",
@@ -2999,7 +3081,7 @@
         "cc_token"
       ],
       "post_messages": [
-        "?"
+        "webkit.centro:?"
       ],
       "message_types": [
         "caption",
@@ -3042,6 +3124,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "push-settings",
         "push-status",
@@ -3089,6 +3173,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "panes",
         "notice-settings"
@@ -3141,11 +3227,10 @@
       "mutates_globals": [],
       "parent_refs": [],
       "patches": [],
-      "child_refs": [
-        "document",
-        "location"
-      ],
+      "child_refs": [],
       "child_writes": [],
+      "child_dom_access": true,
+      "fallbacks": [],
       "dom_ids": [
         "panes",
         "notif-badge",
@@ -3194,6 +3279,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -3233,6 +3320,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "dbg",
         "err",
@@ -3321,6 +3410,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [
         "pane-chrome",
         "term"
@@ -3369,6 +3460,8 @@
       "patches": [],
       "child_refs": [],
       "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],

@@ -26,6 +26,9 @@ function wire(frame){
   const win = frame.contentWindow;
   if (win.__owns) return;
   win.__wired = true;
+  win.addEventListener('wheel', e => e);
+  const ev = new win.WheelEvent('wheel');
+  if (win.location.href) return ev;
   return frame.contentWindow?.__direct || frame.contentDocument;
 }
 </script>

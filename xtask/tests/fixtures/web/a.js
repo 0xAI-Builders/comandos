@@ -15,3 +15,5 @@ window.addEventListener('message', e => {
   if (e.data?.type !== 'ping') return;
   if ('pong' === e.data.type) {}
 });
+window.lazy = 1;
+window.lazy2 = 1;

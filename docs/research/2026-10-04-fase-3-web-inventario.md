@@ -44,7 +44,7 @@ El origen tenía cambios sin comitear en: `?? dash/prototypes/prototype-analytic
 | `region:helpers` | 1978 | 1078 | `LABEL`, `agoTxt`, `shortPath`, `mdEsc`, `attrEsc`, `mdInline` (+104) | `$`, `ComandosNotices`, `ICON`, `ONLY_PANEL`, `S`, `SessionConfig` (+15) | — | `/open-path`, `/model-tiers`, `/providers`, `/optimization/plans` (+20) | `cc-model-news`, `cc-notif-read`, `cc-nf-dismiss`, `cc-nf-snooze` (+1) | 120000, 1000, 450 | `nsOpen`, `notifRender`, `nsOpenForPane` |
 | `region:app-combinada` | 3056 | 1014 | `openTerms`, `activeTerm`, `activeTermTs`, `remotePaneFocus`, `rememberRemotePaneFocus`, `sidebarActiveTab` (+67) | `$`, `ACTIVE_TAB`, `ComandosQuickTerminal`, `S`, `TERM_BASE`, `TERM_FALLBACK_BASE` (+17) | `termFallbackNotified` | `${}/token`, `/remote-state`, `/tmux-mouse`, `/workspace/sort` (+6) | `cc-split-left`, `comandos.deviceId` | — | `openTerms` |
 | `region:identidad-de-fila` | 4070 | 3 | `rowKey` | — | — | — | — | — | — |
-| `region:barra-de-comandos` | 4073 | 299 | `isQuickTermSession`, `SBT`, `selectSidebarTerm`, `sidebarTermTarget`, `sbTermFrames`, `sbNativeMsg` (+23) | `$`, `ComandosChainBuilder`, `ComandosCommandSidebar`, `ComandosQuickTerminal`, `ONLY_PANEL`, `S` (+20) | `quickTerminal`, `tabsPollTs` | `/kill`, `/account/switch`, `/analytics/week`, `/commands/catalog` (+1) | `cc-sb-limits3`, `cc-sb-limits`, `cc-sb-limits2` | 60000 | `sidebarTermAction`, `sidebarTermFocused`, `commandSidebar` |
+| `region:barra-de-comandos` | 4073 | 299 | `isQuickTermSession`, `SBT`, `selectSidebarTerm`, `sidebarTermTarget`, `sbTermFrames`, `sbNativeMsg` (+23) | `$`, `ComandosChainBuilder`, `ComandosCommandSidebar`, `ComandosQuickTerminal`, `ONLY_PANEL`, `S` (+20) | `tabsPollTs` | `/kill`, `/account/switch`, `/analytics/week`, `/commands/catalog` (+1) | `cc-sb-limits3`, `cc-sb-limits`, `cc-sb-limits2` | 60000 | `sidebarTermAction`, `sidebarTermFocused`, `commandSidebar` |
 | `region:render` | 4372 | 58 | `render`, `notify`, `favColor`, `favicon` | `$`, `S`, `alertClear`, `inApp`, `notifBadge`, `refreshDesktopTabs` (+5) | — | — | — | — | — |
 | `region:toasts` | 4430 | 1 | — | — | — | — | — | — | — |
 | `region:registro-local-de-uso` | 4431 | 52 | `ULOG`, `ulog`, `ulogFlush`, `ulogNameOf`, `ulogScreenStart`, `ulogScreenEnd` | `activePaneTarget`, `inApp` | — | `/ui-log` | — | 5000 | — |
@@ -314,29 +314,29 @@ Manejadores `messageHandlers`:
 
 | Manejador | Registrado por | Lo usan |
 |---|---|---|
-| `centro` | `bin/cc-app`, `bin/cc-app-mac` | `region:app-nativa`, `region:barra-de-comandos`, `region:tema`, `region:servidores`, `region:modales-en-medio`, `region:ui-general`, `script:extensions.js`, `region:tail` |
+| `centro` | `bin/cc-app`, `bin/cc-app-mac` | `region:app-nativa`, `region:barra-de-comandos`, `region:tema`, `region:servidores`, `region:modales-en-medio`, `region:ui-general`, `script:extensions.js`, `script:news-reader.js` (+1) |
 | `extensions` | `bin/cc-app` | `script:extensions.js` |
 
-## Parches entre unidades (`window.X =` sobre un global ajeno)
+## Parches y respaldos entre unidades (`window.X =` sobre un global ajeno)
 
-| Global | Lo define | Lo parchea |
-|---|---|---|
-| `quickTerminal` | `region:app-combinada` | `region:barra-de-comandos` |
-| `setSplitLeft` | `region:app-combinada` | `region:analytics` |
+Un parche reemplaza el global de otra unidad; un respaldo solo lo crea si falta (`if(!window.X)`, `??=`, `||=`).
+
+| Global | Lo define | Unidad | Tipo |
+|---|---|---|---|
+| `quickTerminal` | `region:app-combinada` | `region:barra-de-comandos` | respaldo |
+| `setSplitLeft` | `region:app-combinada` | `region:analytics` | parche |
 
 ## Contrato padre → iframe
 
-Lo que el tablero lee o escribe en el `window` de un iframe (`frame.contentWindow.X`, `const win = frame.contentWindow; win.X`, `contentDocument` como `document`, `frames[…]`). El port del iframe (A9/A10) debe conservar estos nombres.
+Lo que el tablero lee o escribe en el `window` de un iframe (`frame.contentWindow.X`, `const win = frame.contentWindow; win.X`, `frames[…]`), sin las APIs estándar del navegador (`addEventListener`, `location`, constructores de eventos…). El port del iframe (A9/A10) debe conservar estos nombres.
+
+Tocan además el `document` del iframe (`contentDocument`, `win.document`): `region:app-combinada`, `region:tail`.
 
 | Propiedad | Lee | Escribe | Definida en el iframe por |
 |---|---|---|---|
-| `WheelEvent` | `region:app-combinada` | — | — |
 | `__comandosOwnsTouchGestures` | `region:app-combinada` | — | `term:main` |
 | `__comandosScrollWired` | `region:app-combinada` | `region:app-combinada` | — |
 | `__comandosSwitchWired` | `region:app-combinada` | `region:app-combinada` | — |
-| `addEventListener` | `region:app-combinada` | — | — |
-| `document` | `region:app-combinada`, `region:tail` | — | — |
-| `location` | `region:tail` | — | — |
 
 ## Iframes y mensajes
 
@@ -348,7 +348,6 @@ Llamadas directas `parent.X` desde un iframe (solo ven propiedades de `window`, 
 |---|---|---|
 | `*/comandos-extensions-close` | `script:extensions.js` | `script:extensions.js` |
 | `*/comandos:open-event` | `script:sw.js` | `script:push-settings.js` |
-| `?` | `script:news-reader.js` | — |
 | `comandos-term/interaction-request` | `term:main` | `region:app-combinada` |
 | `comandos-term/pane-selected` | `term:main` | `region:app-combinada` |
 | `comandos-term/ready` | `term:main` | `region:app-combinada` |
@@ -367,7 +366,7 @@ Llamadas directas `parent.X` desde un iframe (solo ven propiedades de `window`, 
 - `appLeftPanel` (—): nadie lo define: la llamada falla o depende de algo fuera del inventario
 - `favoriteReadAt` (`region:helpers`): mutado desde otra unidad y declarado con let/const: no es propiedad de window, el puente global_set no lo alcanza
 - `openTerms` (`region:app-combinada`): leído como propiedad (window.openTerms/parent.openTerms) pero declarado con let/const/class: por esa vía vale undefined, sin excepción; el lector sigue con su valor por defecto
-- `quickTerminal` (`region:app-combinada`): parcheado con window.quickTerminal = desde region:barra-de-comandos: portar el definidor sin seguir exportando quickTerminal por window rompe el parche, y portar el parche exige que el definidor ya lo haya creado; mutado desde otra unidad: debe seguir siendo propiedad de window mientras ambos lados vivan
+- `quickTerminal` (`region:app-combinada`): respaldo con guarda en region:barra-de-comandos: solo crea window.quickTerminal si falta; el port del definidor debe seguir publicándolo en window antes de que corra el respaldo, o habrá dos instancias
 - `setSplitLeft` (`region:app-combinada`): parcheado con window.setSplitLeft = desde region:analytics: portar el definidor sin seguir exportando setSplitLeft por window rompe el parche, y portar el parche exige que el definidor ya lo haya creado; mutado desde otra unidad: debe seguir siendo propiedad de window mientras ambos lados vivan
 - `tabRowsHold` (`region:app-combinada`): mutado desde otra unidad y declarado con let/const: no es propiedad de window, el puente global_set no lo alcanza
 - `tabsPollTs` (`region:app-combinada`): mutado desde otra unidad y declarado con let/const: no es propiedad de window, el puente global_set no lo alcanza
@@ -387,14 +386,15 @@ Nivel 0 = no toma globales de ninguna otra unidad. Un grupo con varias unidades 
 
 - No ejecuta JS: un tokenizador separa cadenas, plantillas, comentarios y expresiones regulares del código; `/` es regex o división según el token anterior, y un `}` seguido de `/regex/` en otra línea se leería como división.
 - Ámbitos aproximados: bloques `{}`; parámetros de funciones, métodos y `catch` se declaran en su cuerpo; los de una flecha sin llaves, solo en la expresión del cuerpo; la cabecera de un `for` y su cuerpo forman un ámbito. `var` se trata como `let` (no se eleva a la función). Un nombre declarado en un ámbito tapa el global en ese ámbito y sus hijos.
-- Globales: `function`, `class`, `const`/`let`/`var` fuera de todo paréntesis, corchete o llave, y `window.X =`, `globalThis.X =`, `self.X =` en cualquier sitio; `root.X =` solo si `root` es un parámetro (envoltura UMD), no un `root` local. Un `window.X =` sobre un global que otra unidad de la misma página ya define (con declaración propia o antes en el orden de carga) es un parche, no una definición. No ve `Object.assign(window, …)`, `window["X"] =` ni `defineProperty` (hoy no hay ninguno en `dash/`).
+- Globales: `function`, `class`, `const`/`let`/`var` fuera de todo paréntesis, corchete o llave, y `window.X =`, `globalThis.X =`, `self.X =` en cualquier sitio; `root.X =` solo si `root` es un parámetro (envoltura UMD), no un `root` local. Un `window.X =` sobre un global que otra unidad de la misma página ya define (con declaración propia o antes en el orden de carga) es un parche, no una definición; si va con guarda (`if (… !window.X …)`, `??=`, `||=`, `= window.X || …`) es un respaldo. No ve `Object.assign(window, …)`, `window["X"] =` ni `defineProperty` (hoy no hay ninguno en `dash/`).
 - Usos: identificadores libres (no tras `.`, no claves de objeto, no nombres de método) y `window.X`/`root.X`; se cruzan solo con unidades de la misma página. No ve llamadas `window["X"]()` ni manejadores en línea (`onclick="X()"` en el marcado o en plantillas): hoy no hay ninguno.
 - Páginas: solo `index.html` y `term.html`. `extensions.html` (que `cc-app` carga sola, `bin/cc-app:5583`, y que va también en un iframe) y `prototype-*.html` no se modelan; `extensions.js` figura solo en el ámbito de `index.html`.
 - Rutas: primer argumento literal (o `const` de la unidad) de `api(`, `fetch(`, `sendBeacon(` y `new EventSource(`, sin la consulta; los huecos de plantilla quedan como `${}`. Las rutas construidas en variables o pasadas por parámetro no se ven.
 - `localStorage`: `getItem/setItem/removeItem` con literal o `const`, `localStorage.clave` y `localStorage["clave"]`; las claves de `sessionStorage` llevan `session:`. Una clave guardada en una propiedad (`storage.getItem(this.key)`) no se resuelve.
 - Intervalos: segundo argumento de `setInterval` si es número, `const` numérica o producto/suma de ellos.
 - Mensajes: `postMessage` con objeto literal (`source/type`) o `JSON.stringify({…})`. Los tipos atendidos salen de `x.type`/`x?.type` comparados con `===`, `==`, `!==` o `!=` (en cualquier orden) y de los `case` de un `switch (x.type)`; también recogen tipos de eventos del DOM, y un manejador que compara el tipo guardado en otra variable no se ve.
-- Padre → iframe: `….contentWindow.X`, `win.X` cuando `win` se asignó desde `….contentWindow`, `contentDocument` y `frames[…]`. No sigue el `window` del iframe si pasa por una función o un objeto.
+- Padre → iframe: `….contentWindow.X`, `win.X` cuando `win` se asignó desde `….contentWindow`, y `frames[…]`, sin una lista fija de APIs estándar del navegador; `contentDocument`/`win.document` se marcan aparte (`@frame_dom_access`). No sigue el `window` del iframe si pasa por una función o un objeto.
+- Puente nativo: `messageHandlers.H.postMessage(…)` directo o a través de una variable asignada desde `….messageHandlers.H` en la misma unidad.
 - Host: tokenizador mínimo de Python. Los envoltorios se descubren cuando un `def` pasa su parámetro a `run_javascript`/`evaluateJavaScript` u otro envoltorio; un argumento variable se resuelve por su última asignación en el mismo `def`; código leído de archivo o de red queda como dinámico. Los huecos `{expr}` de las f-strings se sustituyen por `__py__`. No lee las 19 llamadas `ui_call(…)` de `lib/operator_catalog.py`: eran del chat de CommandOS, retirado (`bin/cc-dash` responde 410 en `/operator*`).
 - Regiones: marcadores `// ---------- … ----------` en columna 0 del primer script en línea; los marcadores sangrados son subsecciones y no cortan. El hash de una región es el del texto desde `marker_start` hasta `marker_end` (excluido), igual que el corte del compositor (B2). Un marcador repetido dentro del script se avisa en la tabla.
 - El DOM que construye el JS (plantillas, `innerHTML`) no se inventaría: para eso está `shots dom-dump` (B4).

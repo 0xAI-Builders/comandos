@@ -345,21 +345,34 @@ pub fn render(units: &[Unit], inv: &Value, ix: &Value) -> String {
 
     let _ = writeln!(
         d,
-        "\n## Parches entre unidades (`window.X =` sobre un global ajeno)\n"
+        "\n## Parches y respaldos entre unidades (`window.X =` sobre un global ajeno)\n"
     );
-    let patchers: Vec<&Unit> = units.iter().filter(|u| !u.patches.is_empty()).collect();
-    if patchers.is_empty() {
+    let _ = writeln!(
+        d,
+        "Un parche reemplaza el global de otra unidad; un respaldo solo lo crea si falta \
+         (`if(!window.X)`, `??=`, `||=`).\n"
+    );
+    let touching: Vec<&Unit> = units
+        .iter()
+        .filter(|u| !u.patches.is_empty() || !u.fallbacks.is_empty())
+        .collect();
+    if touching.is_empty() {
         let _ = writeln!(d, "Ninguno.");
     } else {
-        let _ = writeln!(d, "| Global | Lo define | Lo parchea |\n|---|---|---|");
-        for u in patchers {
-            for n in &u.patches {
-                let _ = writeln!(
-                    d,
-                    "| `{n}` | {} | `{}` |",
-                    list(&strs(&ix[n.as_str()]["defined_by"]), 3),
-                    u.id
-                );
+        let _ = writeln!(
+            d,
+            "| Global | Lo define | Unidad | Tipo |\n|---|---|---|---|"
+        );
+        for u in touching {
+            for (names, kind) in [(&u.patches, "parche"), (&u.fallbacks, "respaldo")] {
+                for n in names {
+                    let _ = writeln!(
+                        d,
+                        "| `{n}` | {} | `{}` | {kind} |",
+                        list(&strs(&ix[n.as_str()]["defined_by"]), 3),
+                        u.id
+                    );
+                }
             }
         }
     }
@@ -368,8 +381,17 @@ pub fn render(units: &[Unit], inv: &Value, ix: &Value) -> String {
     let _ = writeln!(
         d,
         "Lo que el tablero lee o escribe en el `window` de un iframe (`frame.contentWindow.X`, `const win = frame.contentWindow; win.X`, \
-         `contentDocument` como `document`, `frames[…]`). El port del iframe (A9/A10) debe conservar estos nombres.\n"
+         `frames[…]`), sin las APIs estándar del navegador (`addEventListener`, `location`, constructores de eventos…). \
+         El port del iframe (A9/A10) debe conservar estos nombres.\n"
     );
+    let dom = strs(&ix["@frame_dom_access"]);
+    if !dom.is_empty() {
+        let _ = writeln!(
+            d,
+            "Tocan además el `document` del iframe (`contentDocument`, `win.document`): {}.\n",
+            list(&dom, 8)
+        );
+    }
     match ix["@frame_contract"].as_object().filter(|m| !m.is_empty()) {
         None => {
             let _ = writeln!(d, "Ninguno.");
@@ -479,14 +501,15 @@ pub fn render(units: &[Unit], inv: &Value, ix: &Value) -> String {
 const LIMITS: &[&str] = &[
     "No ejecuta JS: un tokenizador separa cadenas, plantillas, comentarios y expresiones regulares del código; `/` es regex o división según el token anterior, y un `}` seguido de `/regex/` en otra línea se leería como división.",
     "Ámbitos aproximados: bloques `{}`; parámetros de funciones, métodos y `catch` se declaran en su cuerpo; los de una flecha sin llaves, solo en la expresión del cuerpo; la cabecera de un `for` y su cuerpo forman un ámbito. `var` se trata como `let` (no se eleva a la función). Un nombre declarado en un ámbito tapa el global en ese ámbito y sus hijos.",
-    "Globales: `function`, `class`, `const`/`let`/`var` fuera de todo paréntesis, corchete o llave, y `window.X =`, `globalThis.X =`, `self.X =` en cualquier sitio; `root.X =` solo si `root` es un parámetro (envoltura UMD), no un `root` local. Un `window.X =` sobre un global que otra unidad de la misma página ya define (con declaración propia o antes en el orden de carga) es un parche, no una definición. No ve `Object.assign(window, …)`, `window[\"X\"] =` ni `defineProperty` (hoy no hay ninguno en `dash/`).",
+    "Globales: `function`, `class`, `const`/`let`/`var` fuera de todo paréntesis, corchete o llave, y `window.X =`, `globalThis.X =`, `self.X =` en cualquier sitio; `root.X =` solo si `root` es un parámetro (envoltura UMD), no un `root` local. Un `window.X =` sobre un global que otra unidad de la misma página ya define (con declaración propia o antes en el orden de carga) es un parche, no una definición; si va con guarda (`if (… !window.X …)`, `??=`, `||=`, `= window.X || …`) es un respaldo. No ve `Object.assign(window, …)`, `window[\"X\"] =` ni `defineProperty` (hoy no hay ninguno en `dash/`).",
     "Usos: identificadores libres (no tras `.`, no claves de objeto, no nombres de método) y `window.X`/`root.X`; se cruzan solo con unidades de la misma página. No ve llamadas `window[\"X\"]()` ni manejadores en línea (`onclick=\"X()\"` en el marcado o en plantillas): hoy no hay ninguno.",
     "Páginas: solo `index.html` y `term.html`. `extensions.html` (que `cc-app` carga sola, `bin/cc-app:5583`, y que va también en un iframe) y `prototype-*.html` no se modelan; `extensions.js` figura solo en el ámbito de `index.html`.",
     "Rutas: primer argumento literal (o `const` de la unidad) de `api(`, `fetch(`, `sendBeacon(` y `new EventSource(`, sin la consulta; los huecos de plantilla quedan como `${}`. Las rutas construidas en variables o pasadas por parámetro no se ven.",
     "`localStorage`: `getItem/setItem/removeItem` con literal o `const`, `localStorage.clave` y `localStorage[\"clave\"]`; las claves de `sessionStorage` llevan `session:`. Una clave guardada en una propiedad (`storage.getItem(this.key)`) no se resuelve.",
     "Intervalos: segundo argumento de `setInterval` si es número, `const` numérica o producto/suma de ellos.",
     "Mensajes: `postMessage` con objeto literal (`source/type`) o `JSON.stringify({…})`. Los tipos atendidos salen de `x.type`/`x?.type` comparados con `===`, `==`, `!==` o `!=` (en cualquier orden) y de los `case` de un `switch (x.type)`; también recogen tipos de eventos del DOM, y un manejador que compara el tipo guardado en otra variable no se ve.",
-    "Padre → iframe: `….contentWindow.X`, `win.X` cuando `win` se asignó desde `….contentWindow`, `contentDocument` y `frames[…]`. No sigue el `window` del iframe si pasa por una función o un objeto.",
+    "Padre → iframe: `….contentWindow.X`, `win.X` cuando `win` se asignó desde `….contentWindow`, y `frames[…]`, sin una lista fija de APIs estándar del navegador; `contentDocument`/`win.document` se marcan aparte (`@frame_dom_access`). No sigue el `window` del iframe si pasa por una función o un objeto.",
+    "Puente nativo: `messageHandlers.H.postMessage(…)` directo o a través de una variable asignada desde `….messageHandlers.H` en la misma unidad.",
     "Host: tokenizador mínimo de Python. Los envoltorios se descubren cuando un `def` pasa su parámetro a `run_javascript`/`evaluateJavaScript` u otro envoltorio; un argumento variable se resuelve por su última asignación en el mismo `def`; código leído de archivo o de red queda como dinámico. Los huecos `{expr}` de las f-strings se sustituyen por `__py__`. No lee las 19 llamadas `ui_call(…)` de `lib/operator_catalog.py`: eran del chat de CommandOS, retirado (`bin/cc-dash` responde 410 en `/operator*`).",
     "Regiones: marcadores `// ---------- … ----------` en columna 0 del primer script en línea; los marcadores sangrados son subsecciones y no cortan. El hash de una región es el del texto desde `marker_start` hasta `marker_end` (excluido), igual que el corte del compositor (B2). Un marcador repetido dentro del script se avisa en la tabla.",
     "El DOM que construye el JS (plantillas, `innerHTML`) no se inventaría: para eso está `shots dom-dump` (B4).",

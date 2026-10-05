@@ -72,6 +72,11 @@ pub struct Unit {
     pub child_refs: Vec<String>,
     /// Propiedades que escribe en el `window` de un iframe.
     pub child_writes: Vec<String>,
+    /// `window.X =` con guarda (`if(!window.X)`, `??=`, `||=`) sobre un
+    /// global que otra unidad ya crea: respaldo, no parche.
+    pub fallbacks: Vec<String>,
+    /// Toca el `document` de un iframe (`contentDocument`, `win.document`).
+    pub child_dom_access: bool,
     pub dom_ids: Vec<String>,
     pub routes: Vec<String>,
     pub storage_keys: Vec<String>,
@@ -414,6 +419,8 @@ fn draft(
         patches: Vec::new(),
         child_refs: sorted(facts.child_refs.clone()),
         child_writes: sorted(facts.child_writes.clone()),
+        fallbacks: Vec::new(),
+        child_dom_access: facts.child_dom_access,
         dom_ids: facts.dom_ids.clone(),
         routes: facts.routes.clone(),
         storage_keys: facts.storage_keys.clone(),
@@ -591,7 +598,12 @@ fn resolve(drafts: &mut [Draft]) {
         for n in &patched {
             d.unit.define_kinds.remove(n);
         }
-        d.unit.patches = patched;
+        // Con guarda solo actúa si falta: respaldo, no parche.
+        let (fallbacks, patches): (Vec<String>, Vec<String>) = patched
+            .into_iter()
+            .partition(|n| d.facts.guarded.contains(n));
+        d.unit.fallbacks = fallbacks;
+        d.unit.patches = patches;
     }
     let units: Vec<Unit> = drafts.iter().map(|d| d.unit.clone()).collect();
     for i in 0..drafts.len() {
@@ -895,6 +907,7 @@ pub fn interop(units: &[Unit], repo: &Path) -> Value {
             m.insert("binding".into(), json!(kinds));
             for k in [
                 "patched_by",
+                "fallback_by",
                 "used_by",
                 "mutated_by",
                 "called_by",
@@ -908,10 +921,12 @@ pub fn interop(units: &[Unit], repo: &Path) -> Value {
     };
     // Parches y colisiones dentro de una página: siempre en el inventario.
     for u in units {
-        for n in &u.patches {
-            entry(&mut g, n);
-            if let Some(m) = g.get_mut(n) {
-                push_str(m, "patched_by", &u.id);
+        for (names, key) in [(&u.patches, "patched_by"), (&u.fallbacks, "fallback_by")] {
+            for n in names {
+                entry(&mut g, n);
+                if let Some(m) = g.get_mut(n) {
+                    push_str(m, key, &u.id);
+                }
             }
         }
     }
@@ -1155,6 +1170,22 @@ pub fn interop(units: &[Unit], repo: &Path) -> Value {
                 patchers.join(", ")
             ));
         }
+        let fallbacks: Vec<String> = m
+            .get("fallback_by")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !fallbacks.is_empty() {
+            risks.push(format!(
+                "respaldo con guarda en {}: solo crea window.{name} si falta; el port del definidor debe seguir publicándolo en window antes de que corra el respaldo, o habrá dos instancias",
+                fallbacks.join(", ")
+            ));
+        }
         if mutated {
             risks.push(if lexical {
                 "mutado desde otra unidad y declarado con let/const: no es propiedad de window, el puente global_set no lo alcanza".to_string()
@@ -1171,18 +1202,30 @@ pub fn interop(units: &[Unit], repo: &Path) -> Value {
     }
     let mut top = Map::new();
     for (name, m) in g {
-        let external = ["patched_by", "used_by", "mutated_by", "called_by"]
-            .iter()
-            .any(|k| {
-                m.get(*k)
-                    .and_then(Value::as_array)
-                    .is_some_and(|a| !a.is_empty())
-            });
+        let external = [
+            "patched_by",
+            "fallback_by",
+            "used_by",
+            "mutated_by",
+            "called_by",
+        ]
+        .iter()
+        .any(|k| {
+            m.get(*k)
+                .and_then(Value::as_array)
+                .is_some_and(|a| !a.is_empty())
+        });
         if external {
             top.insert(name, Value::Object(m));
         }
     }
     special.insert("@frame_contract".into(), section(frame));
+    let dom_access: Vec<&str> = units
+        .iter()
+        .filter(|u| u.child_dom_access)
+        .map(|u| u.id.as_str())
+        .collect();
+    special.insert("@frame_dom_access".into(), json!(dom_access));
     special.insert("@dom_ids".into(), section(dom));
     special.insert("@messages".into(), section(messages));
     special.insert("@host_handlers".into(), section(handlers));
@@ -1246,6 +1289,8 @@ pub fn unit_json(u: &Unit) -> Value {
         "patches": u.patches,
         "child_refs": u.child_refs,
         "child_writes": u.child_writes,
+        "child_dom_access": u.child_dom_access,
+        "fallbacks": u.fallbacks,
         "dom_ids": u.dom_ids,
         "routes": u.routes,
         "storage_keys": u.storage_keys,

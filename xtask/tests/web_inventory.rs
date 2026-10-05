@@ -159,7 +159,10 @@ fn parameters_and_iife_scope_are_not_globals() {
     );
     assert_eq!(b.intervals_ms, vec![60_000]);
     assert!(has(&b.uses_globals, "render"));
-    assert_eq!(b.post_messages, ["webkit.extensions:'close'"]);
+    assert_eq!(
+        b.post_messages,
+        ["webkit.extensions:'close'", "webkit.centro:?"]
+    );
     assert_eq!(b.dom_ids, ["b-panel"]);
 }
 
@@ -322,7 +325,12 @@ fn parent_to_iframe_access_is_an_explicit_contract() {
     // Review I3: `const win = frame.contentWindow; win.__comandosOwnsTouchGestures`, `win.X = true`.
     let units = scan(Path::new(FIX));
     let render = unit(&units, "region:render");
-    assert_eq!(render.child_refs, ["__direct", "__owns", "document"]);
+    assert_eq!(
+        render.child_refs,
+        ["__direct", "__owns"],
+        "sin APIs estándar de window"
+    );
+    assert!(render.child_dom_access, "contentDocument");
     assert_eq!(render.child_writes, ["__wired"]);
     let ix = interop(&units, Path::new(FIX));
     let c = &ix["@frame_contract"];
@@ -558,4 +566,46 @@ fn doc_lists_patches_in_risks_and_the_frame_contract() {
         "{contract}"
     );
     assert!(doc.contains("`switch (x.type)`"), "límites al día");
+}
+
+#[test]
+fn guarded_window_assignment_is_a_fallback_not_a_patch() {
+    // Re-revisión r1, punto 2: `if(!window.quickTerminal…) window.quickTerminal = …`.
+    let units = scan(Path::new(FIX));
+    let b = unit(&units, "script:b.js");
+    assert_eq!(b.fallbacks, ["lazy", "lazy2"]);
+    assert_eq!(b.patches, ["render"]);
+    assert!(!has(&b.defines, "lazy") && !has(&b.mutates_globals, "lazy"));
+    let ix = interop(&units, Path::new(FIX));
+    assert_eq!(ix["lazy"]["defined_by"], json!(["script:a.js"]));
+    assert_eq!(ix["lazy"]["fallback_by"], json!(["script:b.js"]));
+    assert_eq!(ix["lazy"]["patched_by"], json!([]));
+    assert!(
+        ix["lazy"]["risks"].to_string().contains("respaldo"),
+        "{}",
+        ix["lazy"]
+    );
+}
+
+#[test]
+fn frame_contract_skips_window_apis_and_flags_dom_access() {
+    // Re-revisión r1, punto 1.
+    let units = scan(Path::new(FIX));
+    let ix = interop(&units, Path::new(FIX));
+    let c = ix["@frame_contract"].as_object().unwrap();
+    let keys: Vec<&str> = c.keys().map(String::as_str).collect();
+    assert_eq!(keys, ["__direct", "__owns", "__wired"]);
+    assert_eq!(ix["@frame_dom_access"], json!(["region:render"]));
+}
+
+#[test]
+fn messages_through_an_aliased_native_bridge_go_to_host_handlers() {
+    // Re-revisión r1, punto 3: `const bridge = …messageHandlers.centro; bridge.postMessage(…)`.
+    let units = scan(Path::new(FIX));
+    let ix = interop(&units, Path::new(FIX));
+    assert_eq!(
+        ix["@host_handlers"]["centro"]["posted_by"],
+        json!(["script:b.js"])
+    );
+    assert!(ix["@messages"].get("?").is_none(), "{}", ix["@messages"]);
 }

@@ -54,6 +54,10 @@ pub struct Facts {
     pub parent_refs: Vec<String>,
     pub child_refs: Vec<String>,
     pub child_writes: Vec<String>,
+    /// Lee el `document` de un iframe.
+    pub child_dom_access: bool,
+    /// `window.X =` con guarda (`if(!window.X)`, `??=`, `||=`, `window.X || …`).
+    pub guarded: Vec<String>,
     pub dom_ids: Vec<String>,
     pub routes: Vec<String>,
     pub storage_keys: Vec<String>,
@@ -118,6 +122,56 @@ const NOT_PARAMS: &[&str] = &[
     "if", "while", "for", "switch", "with", "return", "typeof", "new", "await", "in", "of",
 ];
 
+/// APIs estándar del `window` de un iframe: no son contrato con el iframe.
+const WINDOW_APIS: &[&str] = &[
+    "addEventListener",
+    "removeEventListener",
+    "dispatchEvent",
+    "location",
+    "history",
+    "navigator",
+    "performance",
+    "console",
+    "focus",
+    "blur",
+    "scrollTo",
+    "scrollBy",
+    "getComputedStyle",
+    "getSelection",
+    "matchMedia",
+    "requestAnimationFrame",
+    "cancelAnimationFrame",
+    "setTimeout",
+    "clearTimeout",
+    "setInterval",
+    "clearInterval",
+    "innerWidth",
+    "innerHeight",
+    "devicePixelRatio",
+    "frameElement",
+    "parent",
+    "top",
+    "self",
+    "window",
+    "localStorage",
+    "sessionStorage",
+    "Event",
+    "CustomEvent",
+    "KeyboardEvent",
+    "MouseEvent",
+    "PointerEvent",
+    "TouchEvent",
+    "WheelEvent",
+    "InputEvent",
+    "FocusEvent",
+    "ClipboardEvent",
+    "Node",
+    "Element",
+    "HTMLElement",
+    "Range",
+    "Selection",
+];
+
 /// Bases que son `window`: `X` tras ellas es un global.
 const WINDOW_ALIASES: &[&str] = &["window", "self", "globalThis", "root", "top"];
 
@@ -151,6 +205,8 @@ struct Pass<'a> {
     naming: Vec<bool>,
     /// Variables que guardan el `window` de un iframe.
     child_windows_cache: BTreeSet<String>,
+    /// Variables que guardan un manejador `messageHandlers.H`.
+    handler_aliases_cache: HashMap<String, String>,
     facts: Facts,
 }
 
@@ -165,9 +221,11 @@ pub fn analyze(src: &str) -> Facts {
         }],
         naming: vec![false; tokens.len()],
         child_windows_cache: BTreeSet::new(),
+        handler_aliases_cache: HashMap::new(),
         facts: Facts::default(),
     };
     p.child_windows_cache = p.child_windows();
+    p.handler_aliases_cache = p.handler_aliases();
     p.declarations();
     p.references();
     p.literals();
@@ -686,6 +744,9 @@ impl Pass<'_> {
             .is_some_and(|n| n.kind == Kind::Punct && ASSIGN_OPS.contains(&n.text.as_str()));
         if assigns {
             push_unique(&mut self.facts.defines, (name.to_string(), Binding::Window));
+            if self.guarded_assignment(base_i, name) {
+                push_unique(&mut self.facts.guarded, name.to_string());
+            }
         } else {
             self.facts.uses.push(Use {
                 name: name.to_string(),
@@ -693,6 +754,70 @@ impl Pass<'_> {
                 member: true,
             });
         }
+    }
+
+    /// `true` si la asignación `base.X op …` (con `base` en `base_i`) solo
+    /// actúa cuando `X` falta: `??=`/`||=`, `= window.X || …`, o el cuerpo
+    /// de un `if (… !window.X …)`.
+    fn guarded_assignment(&self, base_i: usize, name: &str) -> bool {
+        let op = base_i + 3;
+        if self.punct_at(op, "??=") || self.punct_at(op, "||=") {
+            return true;
+        }
+        let self_default = self
+            .tok(op + 1)
+            .is_some_and(|b| WINDOW_ALIASES.contains(&b.text.as_str()))
+            && self.is_member_dot(op + 2)
+            && self.tok(op + 3).is_some_and(|x| x.is_ident(name))
+            && (self.punct_at(op + 4, "||") || self.punct_at(op + 4, "??"));
+        if self_default {
+            return true;
+        }
+        // `if (cond) window.X = …` o `if (cond) { window.X = … }`.
+        let mut k = base_i;
+        if k > 0 && self.punct_at(k - 1, "{") {
+            k -= 1;
+        }
+        let Some(close) = k.checked_sub(1).filter(|&c| self.punct_at(c, ")")) else {
+            return false;
+        };
+        // Apertura del grupo de la condición.
+        let mut depth = 0usize;
+        let mut open = None;
+        for j in (0..=close).rev() {
+            let Some(t) = self.tok(j) else { break };
+            if t.kind != Kind::Punct {
+                continue;
+            }
+            match t.text.as_str() {
+                ")" | "]" | "}" | "}$" => depth += 1,
+                "(" | "[" | "{" | "${" => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        open = Some(j);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let Some(open) = open else { return false };
+        if !open
+            .checked_sub(1)
+            .and_then(|p| self.tok(p))
+            .is_some_and(|p| p.is_ident("if"))
+        {
+            return false;
+        }
+        (open + 1..close).any(|j| {
+            self.punct_at(j, "!")
+                && (self.tok(j + 1).is_some_and(|x| x.is_ident(name))
+                    || (self
+                        .tok(j + 1)
+                        .is_some_and(|b| WINDOW_ALIASES.contains(&b.text.as_str()))
+                        && self.is_member_dot(j + 2)
+                        && self.tok(j + 3).is_some_and(|x| x.is_ident(name))))
+        })
     }
 
     /// Valores literales de `const X = "…"` / `const X = 123` en la unidad
@@ -783,14 +908,18 @@ impl Pass<'_> {
                 }
             }
             if let Some((prop, write)) = self.child_access(i) {
-                push_unique(
-                    if write {
-                        &mut f.child_writes
-                    } else {
-                        &mut f.child_refs
-                    },
-                    prop,
-                );
+                if prop == "document" {
+                    f.child_dom_access = true;
+                } else {
+                    push_unique(
+                        if write {
+                            &mut f.child_writes
+                        } else {
+                            &mut f.child_refs
+                        },
+                        prop,
+                    );
+                }
             }
             let name = t.text.as_str();
             let call = self.punct_at(i + 1, "(");
@@ -926,6 +1055,45 @@ impl Pass<'_> {
         out
     }
 
+    /// Nombres que guardan un manejador nativo: `const b = …messageHandlers.H`.
+    fn handler_aliases(&self) -> HashMap<String, String> {
+        let mut out = HashMap::new();
+        for k in 0..self.t.len() {
+            let is_mh = self.tok(k).is_some_and(|t| t.is_ident("messageHandlers"))
+                && self.is_member_dot(k + 1)
+                && !self.is_member_dot(k + 3)
+                && !self.punct_at(k + 3, "(");
+            let Some(h) = self.tok(k + 2).filter(|h| is_mh && h.kind == Kind::Ident) else {
+                continue;
+            };
+            // Hacia atrás hasta el `=` de la sentencia.
+            let mut depth = 0usize;
+            for j in (0..k).rev() {
+                let Some(t) = self.tok(j) else { break };
+                if t.kind != Kind::Punct {
+                    continue;
+                }
+                match t.text.as_str() {
+                    ")" | "]" => depth += 1,
+                    "(" | "[" if depth > 0 => depth -= 1,
+                    ";" | "{" | "}" | "(" | "[" => break,
+                    "=" if depth == 0 => {
+                        if let Some(n) = j
+                            .checked_sub(1)
+                            .and_then(|p| self.tok(p))
+                            .filter(|n| n.kind == Kind::Ident)
+                        {
+                            out.insert(n.text.clone(), h.text.clone());
+                        }
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        out
+    }
+
     /// Nombres que guardan el `window` de un iframe: `const w = f.contentWindow`.
     fn child_windows(&self) -> BTreeSet<String> {
         let mut out = BTreeSet::new();
@@ -969,8 +1137,8 @@ impl Pass<'_> {
                 return None;
             }
             let p = self.tok(k + 1).filter(|p| p.kind == Kind::Ident)?;
-            if p.text == "postMessage" {
-                return None; // ya está en los mensajes
+            if p.text == "postMessage" || WINDOW_APIS.contains(&p.text.as_str()) {
+                return None; // mensajes aparte; API estándar del navegador, no contrato
             }
             let write = self
                 .tok(k + 2)
@@ -1071,12 +1239,20 @@ impl Pass<'_> {
     /// Descripción de `….postMessage(arg)`.
     fn post_message(&self, i: usize, strs: &HashMap<String, String>) -> String {
         // `messageHandlers.H.postMessage(…)` → puente con la app nativa.
-        let handler = (i >= 4
+        let direct = (i >= 4
             && self
                 .tok(i - 4)
                 .is_some_and(|t| t.is_ident("messageHandlers")))
         .then(|| self.tok(i - 2).map(|t| t.text.clone()))
         .flatten();
+        // `bridge.postMessage(…)` con `bridge = …messageHandlers.H`.
+        let aliased = (i >= 2 && !self.after_dot(i - 2))
+            .then(|| {
+                self.tok(i - 2)
+                    .and_then(|b| self.handler_aliases_cache.get(&b.text).cloned())
+            })
+            .flatten();
+        let handler = direct.or(aliased);
         let arg = i + 2;
         let desc = self.message_arg(arg, strs);
         let desc = desc.unwrap_or_else(|| "?".to_string());
