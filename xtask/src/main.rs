@@ -1,6 +1,7 @@
 mod parity;
 mod poll;
 mod rss;
+mod web;
 
 use std::{io::Write, process::exit};
 
@@ -47,8 +48,12 @@ fn main() {
                 Err(e) => fail(e),
             }
         }
+        Some("shots") => exit(web::shots(&args[1..])),
+        Some("png-diff") => exit(web::png_diff(&args[1..])),
+        Some("dom-diff") => exit(web::dom_diff(&args[1..])),
+        Some("fixtures") => exit(web::fixtures(&args[1..])),
         _ => {
-            eprintln!("subcomandos: rss, parity, poll");
+            eprintln!("subcomandos: rss, parity, poll, shots, png-diff, dom-diff, fixtures");
             exit(2);
         }
     }
