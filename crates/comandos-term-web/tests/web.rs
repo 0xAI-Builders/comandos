@@ -95,6 +95,38 @@ fn pixel(canvas: &HtmlCanvasElement, x: f64, y: f64) -> [u8; 3] {
     ]
 }
 
+/// Las capas de `.xterm-screen` compuestas en orden del DOM (lo que se ve).
+fn composite(host: &HtmlElement) -> HtmlCanvasElement {
+    let main = canvas_of(host);
+    let doc = document();
+    let out: HtmlCanvasElement = doc
+        .create_element("canvas")
+        .ok()
+        .and_then(|e| e.dyn_into().ok())
+        .unwrap_or_else(|| panic!("sin canvas"));
+    out.set_width(main.width());
+    out.set_height(main.height());
+    let ctx: CanvasRenderingContext2d = out
+        .get_context("2d")
+        .ok()
+        .flatten()
+        .and_then(|c| c.dyn_into().ok())
+        .unwrap_or_else(|| panic!("sin contexto"));
+    let layers = host
+        .query_selector_all(".xterm-screen canvas")
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    for i in 0..layers.length() {
+        if let Some(layer) = layers
+            .get(i)
+            .and_then(|n| n.dyn_into::<HtmlCanvasElement>().ok())
+            && layer.width() == main.width()
+        {
+            let _ = ctx.draw_image_with_html_canvas_element(&layer, 0.0, 0.0);
+        }
+    }
+    out
+}
+
 #[wasm_bindgen_test]
 async fn mounts_with_xterm_dom_and_fits_like_fitaddon() {
     let h = host(800, 450);
@@ -162,15 +194,24 @@ async fn block_cursor_and_outline_when_blurred() {
         num(&dims, "deviceCellWidth"),
         num(&dims, "deviceCellHeight"),
     );
-    let canvas = canvas_of(&h);
-    // Bloque del color del cursor en la celda (0, 0).
-    assert_eq!(pixel(&canvas, cw * 0.5, ch * 0.5), [0xFF, 0xAE, 0x1A]);
+    // Bloque del color del cursor en la celda (0, 0), en su propia capa
+    // encima de la selección: el canvas del texto solo tiene el fondo.
+    assert_eq!(
+        pixel(&composite(&h), cw * 0.5, ch * 0.5),
+        [0xFF, 0xAE, 0x1A]
+    );
+    assert_eq!(
+        pixel(&canvas_of(&h), cw * 0.5, ch * 0.5),
+        [0x0A, 0x0D, 0x13]
+    );
     // Con foco y parpadeo hay un temporizador, pero ningún cuadro en vuelo.
     term.set_focus(false);
     next_frame().await;
     next_frame().await;
     // Sin foco: contorno; el centro de la celda vuelve al fondo.
-    assert_eq!(pixel(&canvas, cw * 0.5, ch * 0.5), [0x0A, 0x0D, 0x13]);
+    let seen = composite(&h);
+    assert_eq!(pixel(&seen, cw * 0.5, ch * 0.5), [0x0A, 0x0D, 0x13]);
+    assert_eq!(pixel(&seen, 0.0, ch * 0.5), [0xFF, 0xAE, 0x1A]);
     assert!(term.is_idle());
     h.remove();
 }

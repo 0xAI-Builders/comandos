@@ -505,3 +505,30 @@ async fn the_root_reports_clamped_and_ime_keys_scroll_to_the_bottom() {
     assert!(take(&sent).is_empty());
     h.remove();
 }
+
+/// Un cambio de tamaño no borra la selección: se queda sobre su texto (las
+/// mismas filas de búfer), como en xterm.js, aunque la historia crezca.
+#[wasm_bindgen_test]
+async fn a_resize_keeps_the_selection_on_its_text() {
+    let h = host(400, 300);
+    let (mut t, _sent) = term(&h);
+    for i in 0..40 {
+        t.write(format!("\r\nfila {i:02}").as_bytes());
+    }
+    next_frame().await;
+    let rows = num(&t.dimensions(), "rows");
+    let sc: EventTarget = screen(&t).into();
+    let doc: EventTarget = document().into();
+    let _ = mouse(&t, &sc, "mousedown", 1.0, rows - 2.0, 3);
+    let _ = mouse(&t, &doc, "mouseup", 1.0, rows - 2.0, 3);
+    assert_eq!(t.get_selection(), "fila 38");
+    let _ = h.style().set_property("height", "200px");
+    t.resize_to_fit();
+    next_frame().await;
+    assert!(num(&t.dimensions(), "rows") < rows);
+    assert_eq!(t.get_selection(), "fila 38");
+    let _ = h.style().set_property("height", "300px");
+    t.resize_to_fit();
+    assert_eq!(t.get_selection(), "fila 38");
+    h.remove();
+}

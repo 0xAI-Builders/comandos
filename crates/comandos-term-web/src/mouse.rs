@@ -335,14 +335,22 @@ impl SelectModel {
     /// como las coordenadas de búfer de xterm.js, y luego se recorta a
     /// `first_row` ([`SelectModel::trim`]).
     pub fn shift_up(&mut self, lines: u64, first_row: i32) {
+        let lines = i32::try_from(lines).unwrap_or(i32::MAX);
+        self.shift(lines.saturating_neg(), first_row);
+    }
+
+    /// Mueve la selección `rows` filas absolutas (negativo = arriba) y la
+    /// recorta a `first_row`. Al cambiar de tamaño, la historia que crece o
+    /// mengua mueve el texto respecto a la pantalla; la selección se queda
+    /// en sus filas de búfer, como en xterm.js.
+    pub fn shift(&mut self, rows: i32, first_row: i32) {
         if self.anchor.is_none() {
             return;
         }
-        let lines = i32::try_from(lines).unwrap_or(i32::MAX);
-        let up = |p: Point| (p.0.saturating_sub(lines), p.1);
-        self.anchor = self.anchor.map(up);
-        self.head = self.head.map(up);
-        self.span = self.span.map(|(a, b)| (up(a), up(b)));
+        let by = |p: Point| (p.0.saturating_add(rows), p.1);
+        self.anchor = self.anchor.map(by);
+        self.head = self.head.map(by);
+        self.span = self.span.map(|(a, b)| (by(a), by(b)));
         self.trim(first_row);
     }
 
@@ -1383,6 +1391,26 @@ mod tests {
         assert_eq!(
             s.selection(10).map(|x| (x.anchor, x.head)),
             Some(((0, 1), (2, 3)))
+        );
+    }
+
+    /// Cambio de tamaño: la historia creció 3 filas (pantalla más baja), el
+    /// texto subió 3 filas absolutas y la selección con él; si la historia
+    /// mengua, baja.
+    #[test]
+    fn a_resize_keeps_the_selection_on_its_buffer_rows() {
+        let mut s = SelectModel::default();
+        s.start(SelectMode::Simple, (5, 1));
+        s.extend((6, 4));
+        s.shift(-3, -10);
+        assert_eq!(
+            s.selection(10).map(|x| (x.anchor, x.head)),
+            Some(((2, 1), (3, 3)))
+        );
+        s.shift(2, -8);
+        assert_eq!(
+            s.selection(10).map(|x| (x.anchor, x.head)),
+            Some(((4, 1), (5, 3)))
         );
     }
 

@@ -15,8 +15,10 @@
 //!   ±1 px de suavizado en esas celdas (D10 del índice; la suite `term-liga`
 //!   usa `channel: 48`). El tamaño es el de la terminal; el addon usaba
 //!   siempre 14 px aunque las preferencias pusieran 11.
-//! - El cursor queda debajo de la selección (xterm.js lo pinta encima): el
-//!   cursor vive en el canvas del texto.
+//!
+//! El cursor tiene su propia capa encima de esta (la de
+//! [`crate::canvas::Canvas2d::cursor_element`], z-index 3), como el orden
+//! texto / selección / enlace / cursor de addon-canvas.
 use comandos_term::select::{Point, ligature_runs};
 
 /// Rectángulo en celdas de la vista.

@@ -1213,9 +1213,11 @@ impl Inner {
         self.liga_due = true;
         self.textarea_at = None;
         if changed {
-            // alacritty reajusta las filas al cambiar de tamaño: la
-            // selección no sobreviviría intacta.
-            self.select.clear();
+            // xterm.js no toca la selección al cambiar de tamaño: se queda en
+            // las mismas filas de búfer (índice desde lo más antiguo de la
+            // historia). Aquí las filas cuentan desde la pantalla, así que se
+            // corrigen con lo que cambió la historia.
+            let history_before = self.engine.history_len();
             self.drop_hover();
             let (cw, ch) = self
                 .metrics
@@ -1227,6 +1229,12 @@ impl Inner {
             );
             self.engine.resize(size, cell);
             self.scrolled_seen = self.engine.scrolled_up();
+            let history_after = self.engine.history_len();
+            if self.select.is_started() {
+                let to_i32 = |n: usize| i32::try_from(n).unwrap_or(i32::MAX);
+                let down = to_i32(history_before).saturating_sub(to_i32(history_after));
+                self.select.shift(down, -to_i32(history_after));
+            }
         }
         self.painter.resize(size.cols, size.rows, &self.metrics);
         self.scheduler.resize(size.rows);
@@ -1374,6 +1382,8 @@ impl WebTerm {
         dom.screen.append_child(painter.element())?;
         let overlay = overlay::Overlay::new(&document)?;
         dom.screen.append_child(overlay.element())?;
+        // Capas de addon-canvas: texto, selección (1), enlace, cursor (3).
+        dom.screen.append_child(painter.cursor_element())?;
         // Ligaduras solo sin táctil, como `term.html` (`IS_TOUCH`).
         let ligatures = if opts.ligatures.unwrap_or(!is_touch(&window)) {
             let liga = overlay::Ligatures::new(&document)?;

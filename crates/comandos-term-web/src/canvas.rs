@@ -1192,6 +1192,12 @@ pub struct Canvas2d {
     document: Document,
     canvas: HtmlCanvasElement,
     ctx: CanvasRenderingContext2d,
+    /// Capa del cursor encima de la selección y del enlace
+    /// (`CursorRenderLayer`, z-index 3 de addon-canvas); transparente.
+    cursor: HtmlCanvasElement,
+    cursor_ctx: CanvasRenderingContext2d,
+    /// Celdas donde quedó dibujado el cursor (columna, fila, celdas).
+    cursor_at: Option<(u16, usize, u16)>,
     /// Canvas transparente para el carácter del cursor de bloque.
     scratch: HtmlCanvasElement,
     scratch_ctx: CanvasRenderingContext2d,
@@ -1227,6 +1233,18 @@ impl Canvas2d {
     ) -> Result<Canvas2d, JsValue> {
         let canvas = new_canvas(document, 0, 0)?;
         let ctx = context(&canvas, false, false)?;
+        let cursor = new_canvas(document, 0, 0)?;
+        let cursor_ctx = context(&cursor, true, false)?;
+        let style = cursor.style();
+        for (name, value) in [
+            ("position", "absolute"),
+            ("left", "0"),
+            ("top", "0"),
+            ("pointer-events", "none"),
+            ("z-index", "3"),
+        ] {
+            style.set_property(name, value)?;
+        }
         let (scratch_w, scratch_h) = cursor_scratch_size(m.dev_w, m.dev_h);
         let scratch = new_canvas(document, scratch_w, scratch_h)?;
         let scratch_ctx = context(&scratch, true, false)?;
@@ -1236,6 +1254,9 @@ impl Canvas2d {
             document: document.clone(),
             canvas,
             ctx,
+            cursor,
+            cursor_ctx,
+            cursor_at: None,
             scratch,
             scratch_ctx,
             theme,
@@ -1257,6 +1278,43 @@ impl Canvas2d {
     /// El elemento `<canvas>`.
     pub fn element(&self) -> &HtmlCanvasElement {
         &self.canvas
+    }
+
+    /// La capa del cursor: va en el DOM encima de la selección.
+    pub fn cursor_element(&self) -> &HtmlCanvasElement {
+        &self.cursor
+    }
+
+    /// Mismo almacén y tamaño CSS que el canvas del texto (vacía la capa).
+    fn size_cursor_layer(&mut self, w: u32, h: u32) {
+        self.cursor.set_width(w);
+        self.cursor.set_height(h);
+        self.cursor_at = None;
+        let (main, style) = (self.canvas.style(), self.cursor.style());
+        for name in ["width", "height"] {
+            let value = main.get_property_value(name).unwrap_or_default();
+            let r = style.set_property(name, &value);
+            self.note(r);
+        }
+    }
+
+    /// `_clearCursor`: borra el cursor si está en la fila `line` (que se va
+    /// a repintar; si sigue ahí, el planificador lo vuelve a dibujar).
+    fn clear_cursor_on(&mut self, line: usize) {
+        let Some((col, at, cells)) = self.cursor_at else {
+            return;
+        };
+        if at != line {
+            return;
+        }
+        let (cw, ch) = (f64::from(self.m.dev_w), f64::from(self.m.dev_h));
+        self.cursor_ctx.clear_rect(
+            f64::from(col) * cw,
+            self.row_y(at),
+            f64::from(cells) * cw,
+            ch,
+        );
+        self.cursor_at = None;
     }
 
     /// Nuevo tema: los glifos rasterizados con los colores viejos sobran.
@@ -1302,6 +1360,7 @@ impl Canvas2d {
         }
         self.canvas.set_width(w);
         self.canvas.set_height(h);
+        self.size_cursor_layer(w, h);
         self.current_fill = None;
         self.fill(self.theme.bg);
         self.ctx.fill_rect(0.0, 0.0, f64::from(w), f64::from(h));
@@ -1331,10 +1390,7 @@ impl Canvas2d {
 
     /// `_clipRow`: recorta a la franja de la fila (dentro de un `save`).
     fn clip_row(&self, y: f64) {
-        let w = f64::from(self.cols) * f64::from(self.m.dev_w);
-        self.ctx.begin_path();
-        self.ctx.rect(0.0, y, w, f64::from(self.m.dev_h));
-        self.ctx.clip();
+        clip_row_on(&self.ctx, self.cols, &self.m, y);
     }
 
     fn row_y(&self, line: usize) -> f64 {
@@ -1455,39 +1511,45 @@ impl Canvas2d {
         Ok(())
     }
 
+    /// El cursor en su capa (encima de la selección, como addon-canvas):
+    /// primero se borra el anterior.
     fn try_paint_cursor(&mut self, c: &CursorView, under: Option<&Run>) -> Result<(), JsValue> {
+        if let Some((_, line, _)) = self.cursor_at {
+            self.clear_cursor_on(line);
+        }
         let m = self.m;
         let (cw, ch, dpr) = (f64::from(m.dev_w), f64::from(m.dev_h), m.dpr);
         let x = f64::from(c.col) * cw;
         let y = self.row_y(c.line);
         let cells = if c.wide { 2.0 } else { 1.0 };
         let cursor = self.colors.get(self.theme.cursor);
-        self.ctx.save();
-        self.current_fill = None;
+        let ctx = self.cursor_ctx.clone();
+        ctx.save();
         match c.shape {
             CursorShape::Beam => {
-                set_fill_js(&self.ctx, &cursor);
-                self.ctx.fill_rect(x, y, dpr, ch);
+                set_fill_js(&ctx, &cursor);
+                ctx.fill_rect(x, y, dpr, ch);
             }
             CursorShape::Underline => {
-                set_fill_js(&self.ctx, &cursor);
-                self.ctx.fill_rect(x, y + ch - dpr - 1.0, cw, dpr);
+                set_fill_js(&ctx, &cursor);
+                ctx.fill_rect(x, y + ch - dpr - 1.0, cw, dpr);
             }
             CursorShape::HollowBlock => {
-                set_stroke_js(&self.ctx, &cursor);
-                self.ctx.set_line_width(dpr);
-                self.ctx
-                    .stroke_rect(x + dpr / 2.0, y + dpr / 2.0, cells * cw - dpr, ch - dpr);
+                set_stroke_js(&ctx, &cursor);
+                ctx.set_line_width(dpr);
+                ctx.stroke_rect(x + dpr / 2.0, y + dpr / 2.0, cells * cw - dpr, ch - dpr);
             }
             CursorShape::Block => {
-                set_fill_js(&self.ctx, &cursor);
-                self.ctx.fill_rect(x, y, cells * cw, ch);
-                self.cursor_glyph(c, under, x, y)?;
+                set_fill_js(&ctx, &cursor);
+                ctx.fill_rect(x, y, cells * cw, ch);
+                self.cursor_glyph(&ctx, c, under, x, y)?;
             }
             CursorShape::Hidden => {}
         }
-        self.ctx.restore();
-        self.current_fill = None;
+        ctx.restore();
+        if c.shape != CursorShape::Hidden {
+            self.cursor_at = Some((c.col, c.line, if c.wide { 2 } else { 1 }));
+        }
         Ok(())
     }
 
@@ -1495,6 +1557,7 @@ impl Canvas2d {
     /// color de acento, con la fuente regular.
     fn cursor_glyph(
         &mut self,
+        ctx: &CanvasRenderingContext2d,
         c: &CursorView,
         under: Option<&Run>,
         x: f64,
@@ -1508,13 +1571,13 @@ impl Canvas2d {
         };
         let m = self.m;
         let accent = self.theme.cursor_accent;
-        self.clip_row(y);
+        clip_row_on(ctx, self.cols, &m, y);
         if let RunKind::Box(ch) = run.kind {
             let accent_js = self.colors.get(accent);
-            set_fill_js(&self.ctx, &accent_js);
+            set_fill_js(ctx, &accent_js);
             let ops = self.boxes.ops(ch, &m, self.font_size);
             apply_ops(
-                &self.ctx,
+                ctx,
                 &self.document,
                 ops,
                 (x, y),
@@ -1545,19 +1608,26 @@ impl Canvas2d {
             cw + f64::from(m.char_left),
             f64::from(m.char_top) + f64::from(m.dev_char_h),
         )?;
-        self.ctx
-            .draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
-                &self.scratch,
-                0.0,
-                0.0,
-                sw,
-                sh,
-                x - cw,
-                y,
-                sw,
-                sh,
-            )
+        ctx.draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
+            &self.scratch,
+            0.0,
+            0.0,
+            sw,
+            sh,
+            x - cw,
+            y,
+            sw,
+            sh,
+        )
     }
+}
+
+/// `_clipRow` sobre `ctx` (dentro de un `save`).
+fn clip_row_on(ctx: &CanvasRenderingContext2d, cols: u16, m: &CellMetrics, y: f64) {
+    let w = f64::from(cols) * f64::from(m.dev_w);
+    ctx.begin_path();
+    ctx.rect(0.0, y, w, f64::from(m.dev_h));
+    ctx.clip();
 }
 
 /// Código de `underlineStyle` de xterm.js.
@@ -1580,10 +1650,12 @@ impl Painter for Canvas2d {
         for &line in rows {
             let y = self.row_y(line);
             self.ctx.fill_rect(0.0, y, width, ch);
+            self.clear_cursor_on(line);
         }
     }
 
     fn paint_row(&mut self, row: &comandos_term::render::RowRender, _m: &CellMetrics) {
+        self.clear_cursor_on(row.line);
         let r = self.try_paint_row(row);
         self.note(r);
     }
@@ -1612,6 +1684,7 @@ impl Painter for Canvas2d {
             .set_property("width", &format!("{css_w}px"))
             .and_then(|()| style.set_property("height", &format!("{css_h}px")));
         self.note(r);
+        self.size_cursor_layer(w, h);
         self.current_fill = None;
         if metrics_changed {
             self.fonts = Fonts::new(&self.family, self.font_size, m.dpr);
