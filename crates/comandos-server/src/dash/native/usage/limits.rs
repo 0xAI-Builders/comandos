@@ -13,10 +13,10 @@ use comandos_store::usage_read;
 use futures_util::future::BoxFuture;
 use serde_json::{Map, Value};
 use std::{
-    net::SocketAddr,
+    borrow::Cow,
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex, MutexGuard,
+        Arc, Mutex, MutexGuard, OnceLock,
         atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
@@ -540,35 +540,72 @@ async fn collect(
 const OAUTH_BODY_CAP: usize = 1 << 20;
 const OAUTH_BODY_TOO_LARGE: &str = "respuesta OAuth de más de 1 MiB";
 
-/// El cliente de producción: `reqwest` con HTTP/1.1, plazos de 8 s y la
-/// resolución hecha antes por el frente para reproducir los errores de DNS.
-pub struct ReqwestOauth;
+/// El cliente de producción: `reqwest` con HTTP/1.1 y plazos de 8 s. Un solo
+/// cliente para todas las cuentas y vueltas (I2 de la revisión final): construir
+/// uno por llamada cargaba rustls y las raíces del sistema cada 60 s por cuenta.
+/// Sin conexiones ociosas en el pool: cada petición abre la suya, como el
+/// `urllib` del Python, y entre vueltas no queda ningún socket ni estado TLS.
+#[derive(Default)]
+pub struct ReqwestOauth {
+    client: OnceLock<(Duration, reqwest::Client)>,
+}
 
-impl OauthHttp for ReqwestOauth {
-    fn get_json(&self, url: &'static str, token: String, timeout: Duration) -> HttpFuture {
-        Box::pin(fetch_json(url, token, timeout))
+impl ReqwestOauth {
+    /// El cliente compartido para `timeout` (en producción siempre
+    /// `OAUTH_TIMEOUT`). Un plazo distinto del guardado da un cliente propio.
+    fn client(&self, timeout: Duration) -> Result<Cow<'_, reqwest::Client>, String> {
+        if let Some((saved, client)) = self.client.get() {
+            return Ok(if *saved == timeout {
+                Cow::Borrowed(client)
+            } else {
+                Cow::Owned(build_client(timeout)?)
+            });
+        }
+        let built = build_client(timeout)?;
+        let (saved, client) = self.client.get_or_init(|| (timeout, built));
+        Ok(if *saved == timeout {
+            Cow::Borrowed(client)
+        } else {
+            Cow::Owned(build_client(timeout)?)
+        })
     }
 }
 
-async fn fetch_json(url: &'static str, token: String, timeout: Duration) -> Result<Value, String> {
-    use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderValue};
-    let parsed = reqwest::Url::parse(url).map_err(|e| e.to_string())?;
-    let host = parsed.host_str().unwrap_or_default().to_owned();
-    let port = parsed.port_or_known_default().unwrap_or(443);
-    let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), port))
-        .await
-        .map_err(|e| dns_error(&e))?
-        .collect();
-    let client = reqwest::Client::builder()
+fn build_client(timeout: Duration) -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
         .http1_only()
         .no_proxy()
         .connect_timeout(timeout)
         .read_timeout(timeout)
-        .resolve_to_addrs(&host, &addrs)
+        .pool_max_idle_per_host(0)
         // La misma petición que veía el servidor con el Python.
         .user_agent("Python-urllib/3.10")
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())
+}
+
+impl OauthHttp for ReqwestOauth {
+    fn get_json(&self, url: &'static str, token: String, timeout: Duration) -> HttpFuture {
+        // `reqwest::Client` es un `Arc`: el clon es barato y comparte el pool.
+        let client = self.client(timeout).map(Cow::into_owned);
+        Box::pin(async move { fetch_json(client?, url, token).await })
+    }
+}
+
+async fn fetch_json(
+    client: reqwest::Client,
+    url: &'static str,
+    token: String,
+) -> Result<Value, String> {
+    use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderValue};
+    let parsed = reqwest::Url::parse(url).map_err(|e| e.to_string())?;
+    let host = parsed.host_str().unwrap_or_default().to_owned();
+    let port = parsed.port_or_known_default().unwrap_or(443);
+    // Resolución previa solo para el texto del error de DNS del `urllib`; la
+    // conexión la resuelve el cliente compartido.
+    let _resolved = tokio::net::lookup_host((host.as_str(), port))
+        .await
+        .map_err(|e| dns_error(&e))?;
     // Un token con caracteres que no caben en una cabecera: el Python incluiría el
     // token en el texto del error; aquí nunca.
     let mut auth = HeaderValue::from_str(&format!("Bearer {token}"))
@@ -703,6 +740,26 @@ mod tests {
             "<urlopen error [Errno 111] Connection refused>"
         );
         assert_eq!(strerror(101), "Network is unreachable");
+    }
+
+    /// I2 de la revisión final: un solo cliente `reqwest` (rustls y raíces del
+    /// sistema cargadas una vez) para todas las cuentas y todas las vueltas.
+    #[test]
+    fn oauth_client_is_built_once() {
+        let oauth = ReqwestOauth::default();
+        let shared = |oauth: &ReqwestOauth| match oauth.client(OAUTH_TIMEOUT) {
+            Ok(Cow::Borrowed(client)) => Some(client as *const reqwest::Client),
+            _ => None,
+        };
+        let first = shared(&oauth);
+        assert!(first.is_some(), "el cliente compartido");
+        assert_eq!(first, shared(&oauth), "el mismo cliente en cada llamada");
+        // Un plazo distinto (solo en pruebas) no pisa el compartido.
+        assert!(matches!(
+            oauth.client(Duration::from_secs(1)),
+            Ok(Cow::Owned(_))
+        ));
+        assert_eq!(first, shared(&oauth));
     }
 
     #[test]

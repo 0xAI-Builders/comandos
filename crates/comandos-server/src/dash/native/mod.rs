@@ -380,7 +380,7 @@ impl NativeOptions {
             ssh: tmux::Program::named("ssh"),
             scope: quick::find_scope(std::env::var_os("PATH").as_deref()),
             quick_base: quick::default_base(home),
-            oauth: Arc::new(usage::limits::ReqwestOauth),
+            oauth: Arc::new(usage::limits::ReqwestOauth::default()),
             notifyd: Arc::new(usage::pane_models::HyperNotify::default()),
             usage_effects: true,
             usage_env: Arc::new(usage_env_from_process()),
