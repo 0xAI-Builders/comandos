@@ -1,0 +1,1447 @@
+//! `Canvas2d`: pinta filas en un `<canvas>` con las mismas cuentas que el
+//! renderizador de `@xterm/addon-canvas` 0.7.0, para que los píxeles salgan
+//! iguales que con xterm.js.
+//!
+//! ## Cómo pinta addon-canvas (y por tanto este módulo)
+//!
+//! - Cada fila se recorta a su franja (`_clipRow`), se limpia con el fondo
+//!   del tema, se pintan los fondos de celda y después los glifos.
+//! - Un glifo no se pinta directamente: se rasteriza una vez en un canvas
+//!   auxiliar (`TextureAtlas._drawToCache`) sobre su fondo, con subrayado,
+//!   tachado y el ajuste del «_», se borran los píxeles del color de fondo
+//!   (`clearColor`, con la tolerancia de 1/12 de la distancia entre colores)
+//!   y se copia con `drawImage` a la celda. Este módulo hace lo mismo con su
+//!   propio atlas: el color y el alisado de los bordes salen idénticos, y en
+//!   régimen estable pintar una celda es un `drawImage` sin cadenas.
+//! - Los glifos de dibujo (cajas, bloques, tramas, powerline) salen de
+//!   [`comandos_term::glyphs::draw_ops`], cacheados por carácter.
+//! - El cursor (`CursorRenderLayer`) va en otra capa transparente en
+//!   xterm.js; aquí se pinta sobre la fila recién repintada, y el carácter
+//!   del cursor de bloque se rasteriza en un canvas transparente pequeño
+//!   para conservar el alisado en gris de aquella capa.
+//!
+//! Las cuentas puras (colores, `clearColor`, cajas, subrayados) se prueban
+//! en host; el resto necesita un navegador (pruebas de `tests/web.rs`).
+use crate::{metrics::CellMetrics, paint::Painter};
+use comandos_term::{
+    glyphs::{self, DrawOp},
+    render::{CursorShape, CursorView, Run, RunKind, Underline},
+};
+use std::collections::HashMap;
+use wasm_bindgen::{Clamped, JsCast, JsValue, prelude::wasm_bindgen};
+use web_sys::{
+    CanvasPattern, CanvasRenderingContext2d, Document, HtmlCanvasElement, ImageData, Path2d, Window,
+};
+
+// ---------------------------------------------------------------------------
+// Cuentas puras.
+// ---------------------------------------------------------------------------
+
+/// Margen del glifo en el canvas auxiliar del atlas (`E` de `_drawToCache`).
+pub const ATLAS_PAD: u32 = 4;
+
+/// `#rrggbb`.
+pub fn hex(c: [u8; 3]) -> String {
+    format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2])
+}
+
+/// `#rrggbbaa` (lo que da `color.multiplyOpacity` de xterm.js).
+pub fn hex_alpha(c: [u8; 3], alpha: u8) -> String {
+    format!("#{:02x}{:02x}{:02x}{alpha:02x}", c[0], c[1], c[2])
+}
+
+/// Opacidad de un texto atenuado: `round(255 · DIM_OPACITY)`.
+pub const DIM_ALPHA: u8 = 128;
+
+/// `clearColor` del atlas de addon-canvas: deja transparentes los píxeles
+/// del color de fondo y, con `fuzzy`, los que se le acercan a menos de
+/// `floor(Σ|fondo − texto| / 12)`. Devuelve `true` si no quedó ninguno.
+pub fn clear_color(data: &mut [u8], bg: [u8; 3], fg: [u8; 3], fuzzy: bool) -> bool {
+    let diff = |a: u8, b: u8| i32::from(a.abs_diff(b));
+    let threshold = (diff(bg[0], fg[0]) + diff(bg[1], fg[1]) + diff(bg[2], fg[2])) / 12;
+    let mut empty = true;
+    for px in data.chunks_exact_mut(4) {
+        let [r, g, b, a] = px else { continue };
+        let exact = [*r, *g, *b] == bg;
+        let near = fuzzy && diff(*r, bg[0]) + diff(*g, bg[1]) + diff(*b, bg[2]) < threshold;
+        if exact || near {
+            *a = 0;
+        } else {
+            empty = false;
+        }
+    }
+    empty
+}
+
+/// Caja `(izquierda, arriba, derecha, abajo)` inclusiva de los píxeles con
+/// alfa dentro de `region = (x0, y0, x1, y1)` (exclusiva) de una imagen de
+/// `width` píxeles de ancho.
+pub fn alpha_bbox(
+    data: &[u8],
+    width: u32,
+    region: (u32, u32, u32, u32),
+) -> Option<(u32, u32, u32, u32)> {
+    let (x0, y0, x1, y1) = region;
+    let mut found: Option<(u32, u32, u32, u32)> = None;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let index = (y as usize)
+                .saturating_mul(width as usize)
+                .saturating_add(x as usize)
+                .saturating_mul(4)
+                .saturating_add(3);
+            if data.get(index).copied().unwrap_or(0) == 0 {
+                continue;
+            }
+            found = Some(match found {
+                None => (x, y, x, y),
+                Some((l, t, r, b)) => (l.min(x), t.min(y), r.max(x), b.max(y)),
+            });
+        }
+    }
+    found
+}
+
+/// `isPowerlineGlyph` de xterm.js: U+E0A4–U+E0D6 (sin `clearColor` difuso).
+pub fn is_powerline(c: char) -> bool {
+    ('\u{E0A4}'..='\u{E0D6}').contains(&c)
+}
+
+/// `isRestrictedPowerlineGlyph`: U+E0B0–U+E0B7, recortados a la celda.
+pub fn is_restricted_powerline(c: char) -> bool {
+    ('\u{E0B0}'..='\u{E0B7}').contains(&c)
+}
+
+/// Geometría del subrayado de `_drawToCache`, en coordenadas del canvas
+/// auxiliar (el carácter empieza en `(pad, pad)`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct UnderlineGeom {
+    /// `lineWidth = max(1, floor(fontSize·dpr/15))`.
+    pub width: f64,
+    /// Ajuste a medio píxel (0,5 si el grosor es impar).
+    pub half: f64,
+    /// Primera línea (`s`), medio grosor más abajo (`r`) y segunda (`n`).
+    pub s: f64,
+    pub r: f64,
+    pub n: f64,
+}
+
+/// `s = ceil(pad + charH) − t − 2e` (con `restrictToCellHeight`), `r = s + e`,
+/// `n = s + 2e`.
+pub fn underline_geom(font_size: f64, dpr: f64, dev_char_h: u32, pad: u32) -> UnderlineGeom {
+    let e = (font_size * dpr / 15.0).floor().max(1.0);
+    let half = if e % 2.0 == 1.0 { 0.5 } else { 0.0 };
+    let s = (f64::from(pad) + f64::from(dev_char_h)).ceil() - half - 2.0 * e;
+    UnderlineGeom {
+        width: e,
+        half,
+        s,
+        r: s + e,
+        n: s + 2.0 * e,
+    }
+}
+
+/// `computeNextVariantOffset`: fase del punteado en la celda siguiente
+/// (`%` de JavaScript: el signo es el del dividendo, como el de Rust).
+pub fn next_variant_offset(cell_w: f64, e: f64, offset: f64) -> f64 {
+    let period = 2.0 * js_round(e);
+    (cell_w - (period - offset)) % period
+}
+
+/// Fase del punteado de una celda (`CellColorResolver`: `x·cellW % 2·round(e)`).
+pub fn dotted_phase(col: u16, cell_w: u32, e: f64) -> f64 {
+    (f64::from(col) * f64::from(cell_w)) % (2.0 * js_round(e))
+}
+
+fn js_round(v: f64) -> f64 {
+    crate::metrics::js_round(v)
+}
+
+/// Reparto de los glifos en páginas del atlas por estantes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Shelf {
+    size: u32,
+    x: u32,
+    y: u32,
+    row_h: u32,
+}
+
+impl Shelf {
+    pub fn new(size: u32) -> Shelf {
+        Shelf {
+            size,
+            x: 0,
+            y: 0,
+            row_h: 0,
+        }
+    }
+
+    /// Hueco para `w × h`, o `None` si la página está llena (o no cabe).
+    pub fn place(&mut self, w: u32, h: u32) -> Option<(u32, u32)> {
+        if w > self.size || h > self.size {
+            return None;
+        }
+        if self.x + w > self.size {
+            self.y += self.row_h;
+            self.x = 0;
+            self.row_h = 0;
+        }
+        if self.y + h > self.size {
+            return None;
+        }
+        let at = (self.x, self.y);
+        self.x += w;
+        self.row_h = self.row_h.max(h);
+        Some(at)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Enlaces con JavaScript que no dejan basura.
+// ---------------------------------------------------------------------------
+
+#[wasm_bindgen]
+extern "C" {
+    /// Vista de un `CanvasRenderingContext2D` con los definidores que
+    /// aceptan un valor ya creado (sin cadena nueva por llamada).
+    type Ctx2dSetters;
+    #[wasm_bindgen(method, setter = fillStyle)]
+    fn set_fill(this: &Ctx2dSetters, v: &JsValue);
+    #[wasm_bindgen(method, setter = strokeStyle)]
+    fn set_stroke(this: &Ctx2dSetters, v: &JsValue);
+    #[wasm_bindgen(method, setter = font)]
+    fn set_font(this: &Ctx2dSetters, v: &JsValue);
+}
+
+/// `ctx.fillStyle = v`.
+fn set_fill_js(ctx: &CanvasRenderingContext2d, v: &JsValue) {
+    ctx.unchecked_ref::<Ctx2dSetters>().set_fill(v);
+}
+
+/// `ctx.strokeStyle = v`.
+fn set_stroke_js(ctx: &CanvasRenderingContext2d, v: &JsValue) {
+    ctx.unchecked_ref::<Ctx2dSetters>().set_stroke(v);
+}
+
+/// `ctx.font = v`.
+fn set_font_js(ctx: &CanvasRenderingContext2d, v: &JsValue) {
+    ctx.unchecked_ref::<Ctx2dSetters>().set_font(v);
+}
+
+/// Cadenas de color ya convertidas a JavaScript (los colores de un tema
+/// son pocos; si crecen mucho se vacía).
+#[derive(Default)]
+struct ColorCache {
+    entries: Vec<([u8; 3], JsValue)>,
+}
+
+impl ColorCache {
+    const MAX: usize = 128;
+
+    fn get(&mut self, c: [u8; 3]) -> JsValue {
+        if let Some((_, v)) = self.entries.iter().find(|(k, _)| *k == c) {
+            return v.clone();
+        }
+        if self.entries.len() >= Self::MAX {
+            self.entries.clear();
+        }
+        let v = JsValue::from_str(&hex(c));
+        self.entries.push((c, v.clone()));
+        v
+    }
+}
+
+/// Opciones del contexto 2D (`{alpha, willReadFrequently}`).
+fn context(
+    canvas: &HtmlCanvasElement,
+    alpha: bool,
+    read: bool,
+) -> Result<CanvasRenderingContext2d, JsValue> {
+    let opts = js_sys::Object::new();
+    js_sys::Reflect::set(&opts, &"alpha".into(), &JsValue::from_bool(alpha))?;
+    if read {
+        js_sys::Reflect::set(&opts, &"willReadFrequently".into(), &JsValue::TRUE)?;
+    }
+    canvas
+        .get_context_with_context_options("2d", &opts)?
+        .ok_or_else(|| JsValue::from_str("canvas 2d no disponible"))?
+        .dyn_into()
+        .map_err(JsValue::from)
+}
+
+fn new_canvas(document: &Document, w: u32, h: u32) -> Result<HtmlCanvasElement, JsValue> {
+    let canvas: HtmlCanvasElement = document.create_element("canvas")?.dyn_into()?;
+    canvas.set_width(w);
+    canvas.set_height(h);
+    Ok(canvas)
+}
+
+// ---------------------------------------------------------------------------
+// Fuente y colores que pinta el canvas.
+// ---------------------------------------------------------------------------
+
+/// Colores del tema que usa quien pinta (el resto llega ya resuelto en las
+/// tiras de `render`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CanvasTheme {
+    pub bg: [u8; 3],
+    pub cursor: [u8; 3],
+    pub cursor_accent: [u8; 3],
+}
+
+/// Las cuatro fuentes de `BaseRenderLayer._getFont` en píxeles de
+/// dispositivo: `"<italic> <peso> <size·dpr>px <family>"`.
+struct Fonts {
+    /// Regular, negrita, cursiva, negrita cursiva.
+    js: [JsValue; 4],
+    text: [String; 4],
+}
+
+impl Fonts {
+    fn new(family: &str, size: f64, dpr: f64) -> Fonts {
+        let px = size * dpr;
+        let text = [
+            format!(" normal {px}px {family}"),
+            format!(" bold {px}px {family}"),
+            format!("italic normal {px}px {family}"),
+            format!("italic bold {px}px {family}"),
+        ];
+        let js = [
+            JsValue::from_str(&text[0]),
+            JsValue::from_str(&text[1]),
+            JsValue::from_str(&text[2]),
+            JsValue::from_str(&text[3]),
+        ];
+        Fonts { js, text }
+    }
+
+    fn index(bold: bool, italic: bool) -> usize {
+        usize::from(bold) + 2 * usize::from(italic)
+    }
+}
+
+/// `TEXT_BASELINE` de addon-canvas: `bottom` en Firefox, `ideographic` en
+/// el resto.
+pub fn text_baseline(user_agent: &str) -> &'static str {
+    if user_agent.contains("Firefox") || user_agent.contains("Edge") {
+        "bottom"
+    } else {
+        "ideographic"
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Atlas de glifos.
+// ---------------------------------------------------------------------------
+
+/// Todo lo que cambia cómo se rasteriza un glifo, salvo el texto.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct GlyphStyle {
+    fg: [u8; 3],
+    bg: [u8; 3],
+    /// Bits: 1 negrita, 2 cursiva, 4 atenuado, 8 tachado, 16 ancho,
+    /// 32 glifo de dibujo.
+    flags: u8,
+    underline: u8,
+    underline_color: Option<[u8; 3]>,
+    /// Fase del punteado (solo en `Dotted`), en píxeles de dispositivo.
+    phase: u16,
+}
+
+const BOLD: u8 = 1;
+const ITALIC: u8 = 2;
+const DIM: u8 = 4;
+const STRIKE: u8 = 8;
+const WIDE: u8 = 16;
+const CUSTOM: u8 = 32;
+
+/// Un glifo del atlas: dónde está y dónde va respecto a la celda.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Slot {
+    page: u16,
+    sx: u32,
+    sy: u32,
+    w: u32,
+    h: u32,
+    dx: i32,
+    dy: i32,
+}
+
+impl Slot {
+    const EMPTY: Slot = Slot {
+        page: 0,
+        sx: 0,
+        sy: 0,
+        w: 0,
+        h: 0,
+        dx: 0,
+        dy: 0,
+    };
+}
+
+struct Page {
+    canvas: HtmlCanvasElement,
+    ctx: CanvasRenderingContext2d,
+}
+
+/// Lado de una página del atlas.
+const PAGE_SIZE: u32 = 1024;
+/// Páginas como mucho; al llenarse se vacía el atlas entero.
+const MAX_PAGES: usize = 4;
+
+/// Relleno actual del canvas auxiliar (`fillStyle` puede quedar en trama).
+enum Fill {
+    Css(String),
+    Pattern(CanvasPattern),
+}
+
+struct Atlas {
+    tmp: HtmlCanvasElement,
+    tmp_ctx: CanvasRenderingContext2d,
+    pages: Vec<Page>,
+    shelf: Shelf,
+    single: HashMap<(char, GlyphStyle), Slot>,
+    multi: HashMap<String, HashMap<GlyphStyle, Slot>>,
+}
+
+/// Lo que el atlas necesita para rasterizar.
+struct RasterCtx<'a> {
+    document: &'a Document,
+    m: &'a CellMetrics,
+    font_size: f64,
+    fonts: &'a Fonts,
+    baseline: &'static str,
+    boxes: &'a mut BoxCache,
+    patterns: &'a mut PatternCache,
+}
+
+impl Atlas {
+    fn new(document: &Document, m: &CellMetrics) -> Result<Atlas, JsValue> {
+        let tmp = new_canvas(document, 4 * m.dev_w + 4, m.dev_h + 4)?;
+        let tmp_ctx = context(&tmp, false, true)?;
+        Ok(Atlas {
+            tmp,
+            tmp_ctx,
+            pages: Vec::new(),
+            shelf: Shelf::new(PAGE_SIZE),
+            single: HashMap::new(),
+            multi: HashMap::new(),
+        })
+    }
+
+    fn clear(&mut self) {
+        self.pages.clear();
+        self.shelf = Shelf::new(PAGE_SIZE);
+        self.single.clear();
+        self.multi.clear();
+    }
+
+    fn lookup(&self, text: &str, key: &GlyphStyle) -> Option<Slot> {
+        let mut chars = text.chars();
+        match (chars.next(), chars.next()) {
+            (Some(c), None) => self.single.get(&(c, *key)).copied(),
+            _ => self.multi.get(text).and_then(|m| m.get(key)).copied(),
+        }
+    }
+
+    fn store(&mut self, text: &str, key: GlyphStyle, slot: Slot) {
+        let mut chars = text.chars();
+        match (chars.next(), chars.next()) {
+            (Some(c), None) => {
+                self.single.insert((c, key), slot);
+            }
+            _ => {
+                self.multi
+                    .entry(text.to_string())
+                    .or_default()
+                    .insert(key, slot);
+            }
+        }
+    }
+
+    /// El glifo, rasterizado si hace falta.
+    fn glyph(
+        &mut self,
+        text: &str,
+        key: GlyphStyle,
+        rc: &mut RasterCtx<'_>,
+    ) -> Result<Slot, JsValue> {
+        if let Some(slot) = self.lookup(text, &key) {
+            return Ok(slot);
+        }
+        let slot = self.rasterize(text, &key, rc)?;
+        self.store(text, key, slot);
+        Ok(slot)
+    }
+
+    /// `_drawToCache` paso a paso.
+    fn rasterize(
+        &mut self,
+        text: &str,
+        key: &GlyphStyle,
+        rc: &mut RasterCtx<'_>,
+    ) -> Result<Slot, JsValue> {
+        let m = rc.m;
+        let (cell_w, cell_h) = (f64::from(m.dev_w), f64::from(m.dev_h));
+        let char_h = f64::from(m.dev_char_h);
+        let cells: u32 = if key.flags & WIDE != 0 { 2 } else { 1 };
+        // Tamaño del auxiliar: crece, nunca encoge (como xterm.js).
+        let utf16 = u32::try_from(text.encode_utf16().count()).unwrap_or(u32::MAX);
+        let need_w = m.dev_w.saturating_mul(utf16.max(2)).saturating_add(4);
+        if self.tmp.width() < need_w {
+            self.tmp.set_width(need_w);
+        }
+        if self.tmp.height() < m.dev_h + 8 {
+            self.tmp.set_height(m.dev_h + 8);
+        }
+        let (tw, th) = (self.tmp.width(), self.tmp.height());
+        let ctx = &self.tmp_ctx;
+        let single = {
+            let mut chars = text.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) => Some(c),
+                _ => None,
+            }
+        };
+        let powerline = single.is_some_and(is_powerline);
+        let restricted = single.is_some_and(is_restricted_powerline);
+        let custom = key.flags & CUSTOM != 0;
+        // Texto atenuado: el color sin mezclar con opacidad 0,5.
+        let (fg, dim) = (key.fg, key.flags & DIM != 0);
+        let bg_css = hex(key.bg);
+        let fg_css = if dim {
+            hex_alpha(fg, DIM_ALPHA)
+        } else {
+            hex(fg)
+        };
+
+        ctx.save();
+        ctx.set_global_composite_operation("copy")?;
+        ctx.set_fill_style_str(&bg_css);
+        ctx.fill_rect(0.0, 0.0, f64::from(tw), f64::from(th));
+        ctx.set_global_composite_operation("source-over")?;
+        let font = Fonts::index(key.flags & BOLD != 0, key.flags & ITALIC != 0);
+        if let Some(f) = rc.fonts.js.get(font) {
+            set_font_js(ctx, f);
+        }
+        ctx.set_text_baseline(rc.baseline);
+        ctx.set_fill_style_str(&fg_css);
+        let mut fill = Fill::Css(fg_css);
+        let pad = if restricted { 0 } else { ATLAS_PAD };
+        let e = f64::from(pad);
+        if custom && let Some(c) = single {
+            let ops = rc.boxes.ops(c, m, rc.font_size);
+            if let Some(p) = apply_ops(ctx, rc.document, ops, (e, e), m, &fill, fg, rc.patterns)? {
+                fill = Fill::Pattern(p);
+            }
+        }
+        let mut fuzzy = !powerline;
+        let ul = underline_geom(rc.font_size, m.dpr, m.dev_char_h, pad);
+        if key.underline != 0 {
+            ctx.save();
+            ctx.set_line_width(ul.width);
+            match key.underline_color {
+                None => set_stroke(ctx, &fill),
+                Some(c) => {
+                    fuzzy = false;
+                    ctx.set_stroke_style_str(&hex(c));
+                }
+            }
+            ctx.begin_path();
+            let mut phase = f64::from(key.phase);
+            for a in 0..cells {
+                ctx.save();
+                let h = e + f64::from(a) * cell_w;
+                let c = e + f64::from(a + 1) * cell_w;
+                let d = h + cell_w / 2.0;
+                let (s, r, n, w) = (ul.s, ul.r, ul.n, ul.width);
+                match key.underline {
+                    2 => {
+                        ctx.move_to(h, s);
+                        ctx.line_to(c, s);
+                        ctx.move_to(h, n);
+                        ctx.line_to(c, n);
+                    }
+                    3 => {
+                        let top = if w <= 1.0 {
+                            n
+                        } else {
+                            (e + char_h - w / 2.0).ceil() - ul.half
+                        };
+                        let low = if w <= 1.0 {
+                            s
+                        } else {
+                            (e + char_h + w / 2.0).ceil() - ul.half
+                        };
+                        // Recorte con `Path2D`: el trazo en curso sigue
+                        // acumulando las celdas anteriores, como en xterm.js.
+                        let clip = Path2d::new()?;
+                        clip.rect(h, s, cell_w, n - s);
+                        ctx.clip_with_path_2d(&clip);
+                        let half_cell = cell_w / 2.0;
+                        ctx.move_to(h - half_cell, r);
+                        ctx.bezier_curve_to(h - half_cell, low, h, low, h, r);
+                        ctx.bezier_curve_to(h, top, d, top, d, r);
+                        ctx.bezier_curve_to(d, low, c, low, c, r);
+                        ctx.bezier_curve_to(c, top, c + half_cell, top, c + half_cell, r);
+                    }
+                    4 => {
+                        let dash = js_round(w);
+                        let u = if phase == 0.0 {
+                            0.0
+                        } else if phase >= w {
+                            2.0 * w - phase
+                        } else {
+                            w - phase
+                        };
+                        set_dash(ctx, &[dash, dash])?;
+                        if phase >= w || u == 0.0 {
+                            ctx.move_to(h + u, s);
+                            ctx.line_to(c, s);
+                        } else {
+                            ctx.move_to(h, s);
+                            ctx.line_to(h + u, s);
+                            ctx.move_to(h + u + w, s);
+                            ctx.line_to(c, s);
+                        }
+                        phase = next_variant_offset(c - h, w, phase);
+                    }
+                    5 => {
+                        let v = c - h;
+                        let long = (0.6 * v).floor();
+                        let gap = (0.3 * v).floor();
+                        set_dash(ctx, &[long, gap, v - long - gap])?;
+                        ctx.move_to(h, s);
+                        ctx.line_to(c, s);
+                    }
+                    _ => {
+                        ctx.move_to(h, s);
+                        ctx.line_to(c, s);
+                    }
+                }
+                ctx.stroke();
+                ctx.restore();
+            }
+            ctx.restore();
+            // Los trazos bajo la línea de base se apartan del subrayado.
+            if !custom && rc.font_size >= 12.0 && text != " " {
+                ctx.save();
+                ctx.set_text_baseline("alphabetic");
+                let measured = ctx.measure_text(text)?;
+                ctx.restore();
+                if measured.actual_bounding_box_descent() > 0.0 {
+                    ctx.save();
+                    let lift = (ul.width / 2.0).ceil();
+                    ctx.begin_path();
+                    ctx.rect(
+                        e,
+                        ul.s - lift,
+                        cell_w * f64::from(cells),
+                        ul.n - ul.s + lift,
+                    );
+                    ctx.clip();
+                    ctx.set_line_width(3.0 * m.dpr);
+                    ctx.set_stroke_style_str(&bg_css);
+                    ctx.stroke_text(text, e, e + char_h)?;
+                    ctx.restore();
+                }
+            }
+        }
+        if !custom {
+            ctx.fill_text(text, e, e + char_h)?;
+        }
+        if text == "_" {
+            // El «_» puede caer bajo la celda: se sube hasta 5 px.
+            let probe = |ctx: &CanvasRenderingContext2d| -> Result<bool, JsValue> {
+                let data = ctx.get_image_data(e, e, cell_w, cell_h)?;
+                let mut bytes = data.data().0;
+                Ok(clear_color(&mut bytes, key.bg, fg, fuzzy))
+            };
+            let mut empty = probe(ctx)?;
+            let mut lift = 1.0;
+            while empty && lift <= 5.0 {
+                ctx.save();
+                ctx.set_fill_style_str(&bg_css);
+                ctx.fill_rect(0.0, 0.0, f64::from(tw), f64::from(th));
+                ctx.restore();
+                ctx.fill_text(text, e, e + char_h - lift)?;
+                empty = probe(ctx)?;
+                lift += 1.0;
+            }
+        }
+        if key.flags & STRIKE != 0 {
+            let w = (rc.font_size * m.dpr / 10.0).floor().max(1.0);
+            let half = if ctx.line_width() % 2.0 == 1.0 {
+                0.5
+            } else {
+                0.0
+            };
+            ctx.set_line_width(w);
+            set_stroke(ctx, &fill);
+            ctx.begin_path();
+            let y = e + (char_h / 2.0).floor() - half;
+            ctx.move_to(e, y);
+            ctx.line_to(e + f64::from(m.dev_char_w) * f64::from(cells), y);
+            ctx.stroke();
+        }
+        ctx.restore();
+
+        let image = ctx.get_image_data(0.0, 0.0, f64::from(tw), f64::from(th))?;
+        let mut bytes = image.data().0;
+        if clear_color(&mut bytes, key.bg, fg, fuzzy) {
+            return Ok(Slot::EMPTY);
+        }
+        let region = if restricted {
+            (0, 0, m.dev_w.min(tw), m.dev_h.min(th))
+        } else {
+            (0, 0, tw, th)
+        };
+        let Some((left, top, right, bottom)) = alpha_bbox(&bytes, tw, region) else {
+            return Ok(Slot::EMPTY);
+        };
+        let (w, h) = (right - left + 1, bottom - top + 1);
+        let (page, sx, sy) = self.place(rc.document, w, h)?;
+        let crop = crop(&bytes, tw, (left, top, w, h));
+        let data = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&crop), w, h)?;
+        if let Some(p) = self.pages.get(usize::from(page)) {
+            p.ctx.put_image_data(&data, f64::from(sx), f64::from(sy))?;
+        }
+        // Destino respecto a la esquina de la celda (`offset` de xterm.js).
+        let to_i32 = |v: u32| i32::try_from(v).unwrap_or(i32::MAX);
+        let (dx0, dy0) = if custom || restricted {
+            let center = (m.dev_w.saturating_sub(m.dev_char_w)) / 2;
+            (to_i32(m.char_left) - to_i32(center), 0)
+        } else {
+            (to_i32(m.char_left), to_i32(m.char_top))
+        };
+        Ok(Slot {
+            page,
+            sx,
+            sy,
+            w,
+            h,
+            dx: dx0 + to_i32(left) - to_i32(pad),
+            dy: dy0 + to_i32(top) - to_i32(pad),
+        })
+    }
+
+    /// Hueco en una página; si no hay sitio, página nueva o atlas vacío.
+    fn place(&mut self, document: &Document, w: u32, h: u32) -> Result<(u16, u32, u32), JsValue> {
+        for _ in 0..2 {
+            if !self.pages.is_empty()
+                && let Some((x, y)) = self.shelf.place(w, h)
+            {
+                let page = u16::try_from(self.pages.len() - 1).unwrap_or(0);
+                return Ok((page, x, y));
+            }
+            if self.pages.len() >= MAX_PAGES {
+                self.clear();
+            }
+            let canvas = new_canvas(document, PAGE_SIZE, PAGE_SIZE)?;
+            let ctx = context(&canvas, true, false)?;
+            self.pages.push(Page { canvas, ctx });
+            self.shelf = Shelf::new(PAGE_SIZE);
+        }
+        Err(JsValue::from_str("glifo mayor que una página del atlas"))
+    }
+}
+
+/// Copia el rectángulo `(x, y, w, h)` de una imagen RGBA de ancho `width`.
+fn crop(data: &[u8], width: u32, rect: (u32, u32, u32, u32)) -> Vec<u8> {
+    let (x, y, w, h) = rect;
+    let mut out = Vec::with_capacity((w as usize) * (h as usize) * 4);
+    for row in y..y + h {
+        let start = ((row as usize) * (width as usize) + x as usize) * 4;
+        let end = start + (w as usize) * 4;
+        if let Some(line) = data.get(start..end) {
+            out.extend_from_slice(line);
+        }
+    }
+    out
+}
+
+fn set_stroke(ctx: &CanvasRenderingContext2d, fill: &Fill) {
+    match fill {
+        Fill::Css(css) => ctx.set_stroke_style_str(css),
+        Fill::Pattern(p) => ctx.set_stroke_style_canvas_pattern(p),
+    }
+}
+
+fn set_dash(ctx: &CanvasRenderingContext2d, segments: &[f64]) -> Result<(), JsValue> {
+    let array = js_sys::Array::new();
+    for s in segments {
+        array.push(&JsValue::from_f64(*s));
+    }
+    ctx.set_line_dash(&array)
+}
+
+/// Órdenes de los glifos de dibujo por carácter (`draw_ops` analiza las
+/// definiciones en cada llamada).
+#[derive(Default)]
+struct BoxCache {
+    ops: HashMap<char, Vec<DrawOp>>,
+}
+
+impl BoxCache {
+    fn ops(&mut self, c: char, m: &CellMetrics, font_size: f64) -> &[DrawOp] {
+        self.ops.entry(c).or_insert_with(|| {
+            let mut out = Vec::new();
+            let metrics = glyphs::CellMetrics {
+                cell_w: f64::from(m.dev_w),
+                cell_h: f64::from(m.dev_h),
+                dpr: m.dpr,
+                font_size,
+            };
+            glyphs::draw_ops(c, &metrics, &mut out);
+            out
+        })
+    }
+}
+
+/// Tramas ░▒▓ por color (xterm.js las guarda por `fillStyle`).
+#[derive(Default)]
+struct PatternCache {
+    patterns: HashMap<(usize, [u8; 3]), CanvasPattern>,
+}
+
+impl PatternCache {
+    /// La trama de `mask` en `color`. Su alfa es `máscara · 255 · g`, con
+    /// `g` el alfa del `fillStyle`; con `#rrggbb80` satura a 255, así que
+    /// también una trama atenuada sale opaca, como en xterm.js.
+    fn get(
+        &mut self,
+        document: &Document,
+        ctx: &CanvasRenderingContext2d,
+        mask: &'static [&'static [u8]],
+        color: [u8; 3],
+    ) -> Result<CanvasPattern, JsValue> {
+        let key = (mask.as_ptr() as usize, color);
+        if let Some(p) = self.patterns.get(&key) {
+            return Ok(p.clone());
+        }
+        let rows = u32::try_from(mask.len()).unwrap_or(1).max(1);
+        let cols = u32::try_from(mask.first().map_or(1, |r| r.len()))
+            .unwrap_or(1)
+            .max(1);
+        let canvas = new_canvas(document, cols, rows)?;
+        let pctx: CanvasRenderingContext2d = canvas
+            .get_context("2d")?
+            .ok_or_else(|| JsValue::from_str("canvas 2d no disponible"))?
+            .dyn_into()?;
+        let mut bytes = Vec::with_capacity((rows * cols * 4) as usize);
+        for row in mask {
+            for &bit in *row {
+                bytes.extend_from_slice(&[color[0], color[1], color[2], bit.saturating_mul(255)]);
+            }
+        }
+        let data = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&bytes), cols, rows)?;
+        pctx.put_image_data(&data, 0.0, 0.0)?;
+        let pattern = ctx
+            .create_pattern_with_html_canvas_element(&canvas, "repeat")?
+            .ok_or_else(|| JsValue::from_str("trama no disponible"))?;
+        self.patterns.insert(key, pattern.clone());
+        Ok(pattern)
+    }
+}
+
+/// Repite las órdenes de un glifo de dibujo en `ctx` con la esquina de la
+/// celda en `origin`. Devuelve la trama si el relleno quedó en ella.
+#[allow(clippy::too_many_arguments)]
+fn apply_ops(
+    ctx: &CanvasRenderingContext2d,
+    document: &Document,
+    ops: &[DrawOp],
+    origin: (f64, f64),
+    m: &CellMetrics,
+    fill: &Fill,
+    color: [u8; 3],
+    patterns: &mut PatternCache,
+) -> Result<Option<CanvasPattern>, JsValue> {
+    let (ox, oy) = origin;
+    let (cell_w, cell_h) = (f64::from(m.dev_w), f64::from(m.dev_h));
+    let mut pattern = None;
+    for op in ops {
+        match *op {
+            DrawOp::FillRect { x, y, w, h } => ctx.fill_rect(ox + x, oy + y, w, h),
+            DrawOp::FillPattern { mask } => {
+                let p = patterns.get(document, ctx, mask, color)?;
+                ctx.set_fill_style_canvas_pattern(&p);
+                ctx.fill_rect(ox, oy, cell_w, cell_h);
+                pattern = Some(p);
+            }
+            DrawOp::ClipCell => {
+                ctx.begin_path();
+                ctx.rect(ox, oy, cell_w, cell_h);
+                ctx.clip();
+            }
+            DrawOp::BeginPath => ctx.begin_path(),
+            DrawOp::MoveTo { x, y } => ctx.move_to(ox + x, oy + y),
+            DrawOp::LineTo { x, y } => ctx.line_to(ox + x, oy + y),
+            DrawOp::CurveTo {
+                x1,
+                y1,
+                x2,
+                y2,
+                x,
+                y,
+            } => ctx.bezier_curve_to(ox + x1, oy + y1, ox + x2, oy + y2, ox + x, oy + y),
+            DrawOp::Stroke { line_width } => {
+                ctx.set_line_width(line_width);
+                set_stroke(ctx, fill);
+                ctx.stroke();
+                ctx.close_path();
+            }
+            DrawOp::Fill => {
+                ctx.fill();
+                ctx.close_path();
+            }
+        }
+    }
+    Ok(pattern)
+}
+
+// ---------------------------------------------------------------------------
+// El canvas de la terminal.
+// ---------------------------------------------------------------------------
+
+/// Un `<canvas>` por terminal, con el almacén en píxeles de dispositivo.
+pub struct Canvas2d {
+    document: Document,
+    canvas: HtmlCanvasElement,
+    ctx: CanvasRenderingContext2d,
+    /// Canvas transparente para el carácter del cursor de bloque.
+    scratch: HtmlCanvasElement,
+    scratch_ctx: CanvasRenderingContext2d,
+    theme: CanvasTheme,
+    family: String,
+    font_size: f64,
+    fonts: Fonts,
+    baseline: &'static str,
+    m: CellMetrics,
+    cols: u16,
+    colors: ColorCache,
+    /// Último color de relleno puesto en `ctx` (para no repetirlo).
+    current_fill: Option<[u8; 3]>,
+    atlas: Atlas,
+    boxes: BoxCache,
+    patterns: PatternCache,
+    /// Primer error de pintado (no se lanza por cuadro: se consulta).
+    error: Option<JsValue>,
+    /// Último `devicePixelContentBox` observado y el tamaño CSS al que
+    /// corresponde.
+    observed: Option<((f64, f64), (u32, u32))>,
+}
+
+impl Canvas2d {
+    /// Canvas nuevo (el llamador lo inserta en el DOM con [`Canvas2d::element`]).
+    pub fn new(
+        window: &Window,
+        document: &Document,
+        theme: CanvasTheme,
+        family: &str,
+        font_size: f64,
+        m: CellMetrics,
+    ) -> Result<Canvas2d, JsValue> {
+        let canvas = new_canvas(document, 0, 0)?;
+        let ctx = context(&canvas, false, false)?;
+        let scratch = new_canvas(document, 4 * m.dev_w.max(1), m.dev_h.max(1))?;
+        let scratch_ctx = context(&scratch, true, false)?;
+        let agent = window.navigator().user_agent().unwrap_or_default();
+        Ok(Canvas2d {
+            atlas: Atlas::new(document, &m)?,
+            document: document.clone(),
+            canvas,
+            ctx,
+            scratch,
+            scratch_ctx,
+            theme,
+            family: family.to_string(),
+            font_size,
+            fonts: Fonts::new(family, font_size, m.dpr),
+            baseline: text_baseline(&agent),
+            m,
+            cols: 0,
+            colors: ColorCache::default(),
+            current_fill: None,
+            boxes: BoxCache::default(),
+            patterns: PatternCache::default(),
+            error: None,
+            observed: None,
+        })
+    }
+
+    /// El elemento `<canvas>`.
+    pub fn element(&self) -> &HtmlCanvasElement {
+        &self.canvas
+    }
+
+    /// Nuevo tema: los glifos rasterizados con los colores viejos sobran.
+    pub fn set_theme(&mut self, theme: CanvasTheme) {
+        self.theme = theme;
+        self.atlas.clear();
+        self.patterns = PatternCache::default();
+    }
+
+    /// Nueva fuente o tamaño (las medidas llegan después con `resize`).
+    pub fn set_font(&mut self, family: &str, font_size: f64) {
+        self.family = family.to_string();
+        self.font_size = font_size;
+        self.fonts = Fonts::new(family, font_size, self.m.dpr);
+        self.atlas.clear();
+        self.boxes = BoxCache::default();
+    }
+
+    /// El navegador dice que el canvas ocupa `w × h` píxeles de dispositivo
+    /// (`ResizeObserver` con `device-pixel-content-box`, como
+    /// `observeDevicePixelDimensions` de xterm.js): con un `dpr` fraccionario
+    /// o un ancho CSS redondeado no siempre es `cols·cell`, y un almacén de
+    /// otro tamaño se vería escalado. `true` si cambió (hay que repintar).
+    pub fn set_device_size(&mut self, w: u32, h: u32) -> bool {
+        let style = self.canvas.style();
+        let css = |name: &str| {
+            style
+                .get_property_value(name)
+                .ok()
+                .and_then(|v| v.trim_end_matches("px").parse::<f64>().ok())
+                .unwrap_or(0.0)
+        };
+        self.observed = Some(((css("width"), css("height")), (w, h)));
+        if w == 0 || h == 0 || (self.canvas.width(), self.canvas.height()) == (w, h) {
+            return false;
+        }
+        self.canvas.set_width(w);
+        self.canvas.set_height(h);
+        self.current_fill = None;
+        self.fill(self.theme.bg);
+        self.ctx.fill_rect(0.0, 0.0, f64::from(w), f64::from(h));
+        true
+    }
+
+    /// Primer error de pintado desde la última consulta.
+    pub fn take_error(&mut self) -> Option<JsValue> {
+        self.error.take()
+    }
+
+    fn note(&mut self, r: Result<(), JsValue>) {
+        if let Err(e) = r
+            && self.error.is_none()
+        {
+            self.error = Some(e);
+        }
+    }
+
+    fn fill(&mut self, c: [u8; 3]) {
+        if self.current_fill != Some(c) {
+            let v = self.colors.get(c);
+            set_fill_js(&self.ctx, &v);
+            self.current_fill = Some(c);
+        }
+    }
+
+    /// `_clipRow`: recorta a la franja de la fila (dentro de un `save`).
+    fn clip_row(&self, y: f64) {
+        let w = f64::from(self.cols) * f64::from(self.m.dev_w);
+        self.ctx.begin_path();
+        self.ctx.rect(0.0, y, w, f64::from(self.m.dev_h));
+        self.ctx.clip();
+    }
+
+    fn row_y(&self, line: usize) -> f64 {
+        // Una fila cabe en f64 de sobra; u32 satura en filas absurdas.
+        f64::from(u32::try_from(line).unwrap_or(u32::MAX)) * f64::from(self.m.dev_h)
+    }
+
+    fn paint_glyphs(&mut self, run: &Run, y: f64) -> Result<(), JsValue> {
+        let style = &run.style;
+        if style.hidden {
+            return Ok(());
+        }
+        let mut flags = 0;
+        if style.bold {
+            flags |= BOLD;
+        }
+        if style.italic {
+            flags |= ITALIC;
+        }
+        // `fg` ya viene mezclado con el fondo; addon-canvas pinta el color
+        // original a opacidad 0,5 (`dim_fg`), y eso cambia los bordes.
+        let fg = match style.dim_fg {
+            Some(original) => {
+                flags |= DIM;
+                original
+            }
+            None => style.fg,
+        };
+        if style.strike {
+            flags |= STRIKE;
+        }
+        match run.kind {
+            RunKind::Wide => flags |= WIDE,
+            RunKind::Box(_) => flags |= CUSTOM,
+            RunKind::Text => {}
+        }
+        let underline = underline_code(style.underline);
+        let decorated = underline != 0 || style.strike;
+        let ul_w = underline_geom(self.font_size, self.m.dpr, self.m.dev_char_h, 0).width;
+        for (col, text) in run.cell_texts() {
+            if text == " " && !decorated {
+                continue;
+            }
+            let phase = if style.underline == Underline::Dotted {
+                dotted_phase(col, self.m.dev_w, ul_w)
+            } else {
+                0.0
+            };
+            let key = GlyphStyle {
+                fg,
+                bg: style.bg,
+                flags,
+                underline,
+                underline_color: style.underline_color,
+                phase: phase.clamp(0.0, f64::from(u16::MAX)) as u16,
+            };
+            let mut rc = RasterCtx {
+                document: &self.document,
+                m: &self.m,
+                font_size: self.font_size,
+                fonts: &self.fonts,
+                baseline: self.baseline,
+                boxes: &mut self.boxes,
+                patterns: &mut self.patterns,
+            };
+            let slot = self.atlas.glyph(text, key, &mut rc)?;
+            if slot.w == 0 || slot.h == 0 {
+                continue;
+            }
+            let Some(page) = self.atlas.pages.get(usize::from(slot.page)) else {
+                continue;
+            };
+            let x = f64::from(col) * f64::from(self.m.dev_w) + f64::from(slot.dx);
+            let (w, h) = (f64::from(slot.w), f64::from(slot.h));
+            self.ctx
+                .draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
+                    &page.canvas,
+                    f64::from(slot.sx),
+                    f64::from(slot.sy),
+                    w,
+                    h,
+                    x,
+                    y + f64::from(slot.dy),
+                    w,
+                    h,
+                )?;
+        }
+        Ok(())
+    }
+
+    fn try_paint_row(&mut self, row: &comandos_term::render::RowRender) -> Result<(), JsValue> {
+        let y = self.row_y(row.line);
+        let (cw, ch) = (f64::from(self.m.dev_w), f64::from(self.m.dev_h));
+        self.ctx.save();
+        self.clip_row(y);
+        self.fill(self.theme.bg);
+        self.ctx.fill_rect(0.0, y, f64::from(self.cols) * cw, ch);
+        for &(col, cells, color) in &row.bg_runs {
+            self.fill(color);
+            self.ctx
+                .fill_rect(f64::from(col) * cw, y, f64::from(cells) * cw, ch);
+        }
+        let mut result = Ok(());
+        for run in &row.runs {
+            result = self.paint_glyphs(run, y);
+            if result.is_err() {
+                break;
+            }
+        }
+        self.ctx.restore();
+        // `restore` devuelve el relleno de antes del `save`.
+        self.current_fill = None;
+        result
+    }
+
+    fn try_paint_cursor(&mut self, c: &CursorView, under: Option<&Run>) -> Result<(), JsValue> {
+        let m = self.m;
+        let (cw, ch, dpr) = (f64::from(m.dev_w), f64::from(m.dev_h), m.dpr);
+        let x = f64::from(c.col) * cw;
+        let y = self.row_y(c.line);
+        let cells = if c.wide { 2.0 } else { 1.0 };
+        let cursor = self.colors.get(self.theme.cursor);
+        self.ctx.save();
+        self.current_fill = None;
+        match c.shape {
+            CursorShape::Beam => {
+                set_fill_js(&self.ctx, &cursor);
+                self.ctx.fill_rect(x, y, dpr, ch);
+            }
+            CursorShape::Underline => {
+                set_fill_js(&self.ctx, &cursor);
+                self.ctx.fill_rect(x, y + ch - dpr - 1.0, cw, dpr);
+            }
+            CursorShape::HollowBlock => {
+                set_stroke_js(&self.ctx, &cursor);
+                self.ctx.set_line_width(dpr);
+                self.ctx
+                    .stroke_rect(x + dpr / 2.0, y + dpr / 2.0, cells * cw - dpr, ch - dpr);
+            }
+            CursorShape::Block => {
+                set_fill_js(&self.ctx, &cursor);
+                self.ctx.fill_rect(x, y, cells * cw, ch);
+                self.cursor_glyph(c, under, x, y)?;
+            }
+            CursorShape::Hidden => {}
+        }
+        self.ctx.restore();
+        self.current_fill = None;
+        Ok(())
+    }
+
+    /// `_fillCharTrueColor`: el carácter bajo el cursor de bloque, en el
+    /// color de acento, con la fuente regular.
+    fn cursor_glyph(
+        &mut self,
+        c: &CursorView,
+        under: Option<&Run>,
+        x: f64,
+        y: f64,
+    ) -> Result<(), JsValue> {
+        let Some(run) = under else {
+            return Ok(());
+        };
+        let Some((_, text)) = run.cell_texts().find(|(col, _)| *col == c.col) else {
+            return Ok(());
+        };
+        let m = self.m;
+        let accent = self.theme.cursor_accent;
+        self.clip_row(y);
+        if let RunKind::Box(ch) = run.kind {
+            let accent_css = hex(accent);
+            self.ctx.set_fill_style_str(&accent_css);
+            let ops = self.boxes.ops(ch, &m, self.font_size);
+            apply_ops(
+                &self.ctx,
+                &self.document,
+                ops,
+                (x, y),
+                &m,
+                &Fill::Css(accent_css),
+                accent,
+                &mut self.patterns,
+            )?;
+            return Ok(());
+        }
+        // En un canvas transparente, como la capa del cursor de xterm.js.
+        let cw = f64::from(m.dev_w);
+        let cells = if c.wide { 2.0 } else { 1.0 };
+        let (sw, sh) = (cw * (cells + 2.0), f64::from(m.dev_h));
+        let s = &self.scratch_ctx;
+        s.clear_rect(0.0, 0.0, sw, sh);
+        if let Some(f) = self.fonts.js.first() {
+            set_font_js(s, f);
+        }
+        s.set_text_baseline(self.baseline);
+        let accent_js = self.colors.get(accent);
+        set_fill_js(s, &accent_js);
+        s.fill_text(
+            text,
+            cw + f64::from(m.char_left),
+            f64::from(m.char_top) + f64::from(m.dev_char_h),
+        )?;
+        self.ctx
+            .draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
+                &self.scratch,
+                0.0,
+                0.0,
+                sw,
+                sh,
+                x - cw,
+                y,
+                sw,
+                sh,
+            )
+    }
+}
+
+/// Código de `underlineStyle` de xterm.js.
+fn underline_code(u: Underline) -> u8 {
+    match u {
+        Underline::None => 0,
+        Underline::Single => 1,
+        Underline::Double => 2,
+        Underline::Curly => 3,
+        Underline::Dotted => 4,
+        Underline::Dashed => 5,
+    }
+}
+
+impl Painter for Canvas2d {
+    fn clear_rows(&mut self, rows: &[usize]) {
+        let (cw, ch) = (f64::from(self.m.dev_w), f64::from(self.m.dev_h));
+        let width = f64::from(self.cols) * cw;
+        self.fill(self.theme.bg);
+        for &line in rows {
+            let y = self.row_y(line);
+            self.ctx.fill_rect(0.0, y, width, ch);
+        }
+    }
+
+    fn paint_row(&mut self, row: &comandos_term::render::RowRender, _m: &CellMetrics) {
+        let r = self.try_paint_row(row);
+        self.note(r);
+    }
+
+    fn paint_cursor(&mut self, c: &CursorView, under: Option<&Run>, _m: &CellMetrics) {
+        let r = self.try_paint_cursor(c, under);
+        self.note(r);
+    }
+
+    fn resize(&mut self, cols: u16, rows: u16, m: &CellMetrics) {
+        let metrics_changed = *m != self.m;
+        self.m = *m;
+        self.cols = cols;
+        let (css_w, css_h) = m.css_canvas(cols, rows);
+        // El almacén es `cols·cell × rows·cell`, salvo que el navegador ya
+        // haya dicho cuántos píxeles de dispositivo ocupa este tamaño CSS.
+        let (w, h) = match self.observed {
+            Some((css, dev)) if css == (css_w, css_h) => dev,
+            _ => m.device_canvas(cols, rows),
+        };
+        // Cambiar el tamaño vacía el canvas y reinicia el estado del contexto.
+        self.canvas.set_width(w);
+        self.canvas.set_height(h);
+        let style = self.canvas.style();
+        let r = style
+            .set_property("width", &format!("{css_w}px"))
+            .and_then(|()| style.set_property("height", &format!("{css_h}px")));
+        self.note(r);
+        self.current_fill = None;
+        if metrics_changed {
+            self.fonts = Fonts::new(&self.family, self.font_size, m.dpr);
+            // Atlas nuevo, como xterm.js al cambiar la celda: el auxiliar
+            // vuelve a su tamaño inicial.
+            match Atlas::new(&self.document, m) {
+                Ok(atlas) => self.atlas = atlas,
+                Err(e) => {
+                    self.atlas.clear();
+                    self.note(Err(e));
+                }
+            }
+            self.boxes = BoxCache::default();
+            self.scratch.set_width(4 * m.dev_w.max(1));
+            self.scratch.set_height(m.dev_h.max(1));
+        }
+        // `_clearAll` de una capa opaca.
+        self.fill(self.theme.bg);
+        self.ctx.fill_rect(0.0, 0.0, f64::from(w), f64::from(h));
+    }
+}
+
+/// Texto de diagnóstico de las fuentes (para pruebas y depuración).
+impl Canvas2d {
+    pub fn font_strings(&self) -> &[String; 4] {
+        &self.fonts.text
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn css_colors() {
+        assert_eq!(hex([0x0A, 0xD, 0xFF]), "#0a0dff");
+        assert_eq!(hex_alpha([1, 2, 3], DIM_ALPHA), "#01020380");
+    }
+
+    #[test]
+    fn clear_color_matches_xterm_tolerance() {
+        let bg = [0, 0, 0];
+        let fg = [120, 120, 120]; // umbral floor(360/12) = 30
+        let mut px = vec![
+            0, 0, 0, 255, // fondo exacto
+            10, 10, 9, 255, // a 29 del fondo: difuso
+            10, 10, 10, 255, // a 30: queda
+            120, 120, 120, 255,
+        ];
+        assert!(!clear_color(&mut px, bg, fg, true));
+        let alphas: Vec<u8> = px.chunks(4).map(|p| p[3]).collect();
+        assert_eq!(alphas, vec![0, 0, 255, 255]);
+        let mut strict = vec![10, 10, 9, 255, 0, 0, 0, 255];
+        assert!(!clear_color(&mut strict, bg, fg, false));
+        assert_eq!(strict[3], 255);
+        let mut only_bg = vec![0, 0, 0, 255, 5, 5, 5, 255];
+        assert!(clear_color(&mut only_bg, bg, fg, true));
+    }
+
+    #[test]
+    fn bbox_of_alpha_pixels() {
+        // Imagen 4×3 con dos píxeles visibles.
+        let mut data = vec![0_u8; 4 * 3 * 4];
+        let mut set = |x: usize, y: usize| {
+            if let Some(a) = data.get_mut((y * 4 + x) * 4 + 3) {
+                *a = 255;
+            }
+        };
+        set(1, 0);
+        set(2, 2);
+        assert_eq!(alpha_bbox(&data, 4, (0, 0, 4, 3)), Some((1, 0, 2, 2)));
+        assert_eq!(alpha_bbox(&data, 4, (0, 0, 2, 2)), Some((1, 0, 1, 0)));
+        assert_eq!(alpha_bbox(&data, 4, (3, 0, 4, 3)), None);
+        assert_eq!(crop(&data, 4, (1, 0, 2, 1)).len(), 8);
+    }
+
+    #[test]
+    fn underline_geometry_like_draw_to_cache() {
+        // 14 px a dpr 1: e = max(1, floor(14/15)) = 1 (impar → 0,5).
+        let g = underline_geom(14.0, 1.0, 17, ATLAS_PAD);
+        assert_eq!((g.width, g.half), (1.0, 0.5));
+        assert_eq!((g.s, g.r, g.n), (18.5, 19.5, 20.5));
+        // 14 px a dpr 2: e = floor(28/15) = 1; 30 px a dpr 1: e = 2 (par).
+        let g2 = underline_geom(30.0, 1.0, 36, ATLAS_PAD);
+        assert_eq!((g2.width, g2.half), (2.0, 0.0));
+        assert_eq!(g2.s, 36.0);
+    }
+
+    #[test]
+    fn dotted_phase_and_next_offset_follow_js_remainder() {
+        assert_eq!(dotted_phase(3, 7, 1.0), 1.0);
+        assert_eq!(dotted_phase(4, 7, 1.0), 0.0);
+        // (7 − (2 − 1)) % 2 = 0; (7 − (2 − 0)) % 2 = 1.
+        assert_eq!(next_variant_offset(7.0, 1.0, 1.0), 0.0);
+        assert_eq!(next_variant_offset(7.0, 1.0, 0.0), 1.0);
+        // El signo sigue al dividendo, como en JavaScript.
+        assert_eq!(next_variant_offset(1.0, 2.0, 0.0), -3.0);
+    }
+
+    #[test]
+    fn powerline_ranges() {
+        assert!(is_powerline('\u{E0B0}') && is_restricted_powerline('\u{E0B0}'));
+        assert!(is_powerline('\u{E0BC}') && !is_restricted_powerline('\u{E0BC}'));
+        assert!(!is_powerline('\u{2500}'));
+    }
+
+    #[test]
+    fn shelf_packs_rows_and_reports_full_pages() {
+        let mut s = Shelf::new(10);
+        assert_eq!(s.place(6, 3), Some((0, 0)));
+        assert_eq!(s.place(4, 2), Some((6, 0)));
+        assert_eq!(s.place(5, 4), Some((0, 3)));
+        assert_eq!(s.place(5, 4), Some((5, 3)));
+        assert_eq!(s.place(10, 4), None);
+        assert_eq!(s.place(11, 1), None);
+    }
+
+    #[test]
+    fn baseline_per_browser() {
+        assert_eq!(text_baseline("Mozilla/5.0 (X11) Firefox/131.0"), "bottom");
+        assert_eq!(
+            text_baseline("Mozilla/5.0 (Macintosh) Chrome/129.0 Safari/537.36"),
+            "ideographic"
+        );
+    }
+
+    #[test]
+    fn underline_codes_match_xterm() {
+        assert_eq!(underline_code(Underline::Single), 1);
+        assert_eq!(underline_code(Underline::Dashed), 5);
+    }
+}

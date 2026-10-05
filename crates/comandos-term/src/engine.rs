@@ -219,9 +219,9 @@ pub struct Modes {
 pub enum Damage {
     Full,
     /// Índices de línea tal como los da alacritty: línea de pantalla **más**
-    /// `display_offset`. Con la vista desplazada por la historia pueden pasar
-    /// de `screen_lines - 1`: quien pinta (A6) resta el desplazamiento y
-    /// recorta a la pantalla. Desplazar la vista llega como `Full`.
+    /// `display_offset`, es decir, la fila de la vista donde se ve esa línea
+    /// (alacritty ya quita las que caen debajo de la vista; quien pinta solo
+    /// recorta a la pantalla). Desplazar la vista llega como `Full`.
     Lines(Vec<usize>),
 }
 
@@ -337,12 +337,25 @@ pub struct Engine {
 impl Engine {
     /// Terminal vacía de `size` celdas con `scrollback` líneas de historia.
     pub fn new(size: GridSize, scrollback: usize, palette: Palette) -> Engine {
+        Engine::with_cursor_blink(size, scrollback, palette, false)
+    }
+
+    /// Como [`Engine::new`], con el parpadeo del cursor por omisión
+    /// (`cursorBlink` de la página). DECSCUSR y el modo 12 lo cambian; un
+    /// DECSCUSR 0 vuelve a este valor.
+    pub fn with_cursor_blink(
+        size: GridSize,
+        scrollback: usize,
+        palette: Palette,
+        blink: bool,
+    ) -> Engine {
         let size = size.clamped();
         let events = Collector::default();
-        let config = Config {
+        let mut config = Config {
             scrolling_history: scrollback,
             ..Config::default()
         };
+        config.default_cursor_style.blinking = blink;
         let term = Term::new(config, &size, events.clone());
         Engine {
             term,
@@ -392,6 +405,11 @@ impl Engine {
         self.size = size.clamped();
         self.cell_px = cell_px;
         self.term.resize(self.size);
+    }
+
+    /// Cambia la paleta del tema (la que contesta a OSC 4/10/11/12).
+    pub fn set_palette(&mut self, palette: Palette) {
+        self.palette = palette;
     }
 
     /// Recoge respuestas y eventos pendientes desde el último `drain`.

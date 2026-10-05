@@ -1,0 +1,44 @@
+[package]
+name = "comandos-term-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Terminal de ComandOS en el navegador: renderizador canvas 2D por daños sobre comandos-term (sustituye xterm.js + addon-canvas)."
+
+[lib]
+# `cdylib` para `web-build`; `rlib` para las pruebas en host.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+comandos-term = { path = "../comandos-term" }
+wasm-bindgen = "=0.2.129"
+js-sys = "=0.3.106"
+web-sys = { version = "=0.3.106", features = [
+    "CanvasPattern",
+    "CanvasRenderingContext2d",
+    "CssStyleDeclaration",
+    "Document",
+    "DomRect",
+    "Element",
+    "FontFace",
+    "FontFaceSet",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "ImageData",
+    "Navigator",
+    "Path2d",
+    "Performance",
+    "ResizeObserver",
+    "ResizeObserverBoxOptions",
+    "ResizeObserverOptions",
+    "TextMetrics",
+    "Window",
+] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.79"
+wasm-bindgen-futures = "=0.4.79"
+
+[lints]
+workspace = true

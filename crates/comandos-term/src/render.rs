@@ -14,7 +14,8 @@
 //! - Inverso: el texto toma el color del fondo (y la negrita lo aclara); el
 //!   fondo pintado toma el del texto, sin aclarar (`_drawBackground`).
 //! - Atenuado: el texto se pinta a opacidad 0,5 (`DIM_OPACITY`) sobre el
-//!   fondo de la celda: mezcla 128/255 hacia el fondo.
+//!   fondo de la celda: mezcla 128/255 hacia el fondo (`fg`); el color sin
+//!   mezclar va en `dim_fg` para quien pinta con la opacidad real.
 //! - `min_contrast` > 1 (`minimumContrastRatio`): el texto se aclara u
 //!   oscurece en pasos del 10 % hasta el contraste pedido (la mitad si está
 //!   atenuado, y entonces no se atenúa); los glifos de dibujo y de
@@ -78,6 +79,10 @@ pub struct Style {
     pub bold: bool,
     pub italic: bool,
     pub dim: bool,
+    /// Color del texto antes de atenuarlo (`Some` solo si se atenuó): quien
+    /// pinta lo usa con opacidad 0,5 como addon-canvas, porque la mezcla ya
+    /// hecha en `fg` no da los mismos bordes alisados.
+    pub dim_fg: Option<[u8; 3]>,
     pub underline: Underline,
     /// Color del subrayado (SGR 58); `None` = el del texto.
     pub underline_color: Option<[u8; 3]>,
@@ -552,7 +557,9 @@ impl<'a> Resolver<'a> {
                 adjusted = true;
             }
         }
+        let mut dim_fg = None;
         if dim && !adjusted {
+            dim_fg = Some(fg);
             fg = dim_toward(fg, bg);
         }
         // `_drawToCache`: un subrayado con color propio no se atenúa ni se
@@ -569,6 +576,7 @@ impl<'a> Resolver<'a> {
             bold,
             italic: flags.contains(Flags::ITALIC),
             dim,
+            dim_fg,
             underline,
             underline_color,
             strike: flags.contains(Flags::STRIKEOUT),
@@ -577,6 +585,7 @@ impl<'a> Resolver<'a> {
         if hidden {
             // xterm.js no dibuja nada de una celda oculta (`isInvisible`).
             style.fg = bg;
+            style.dim_fg = None;
             style.underline = Underline::None;
             style.underline_color = None;
             style.strike = false;

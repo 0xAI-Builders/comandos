@@ -139,6 +139,30 @@ fn dim_blends_half_way_toward_the_cell_background() {
     assert!(r.runs[0].style.dim);
     assert_eq!(r.runs[1].style.fg, dim_of(p.fg, p.ansi[1]));
     assert_eq!(r.runs[1].style.bg, p.ansi[1]);
+    // El color antes de mezclar: quien pinta lo usa con opacidad 0,5, como
+    // addon-canvas (la mezcla redondeada no basta para los bordes alisados).
+    assert_eq!(r.runs[0].style.dim_fg, Some(p.fg));
+    assert_eq!(r.runs[1].style.dim_fg, Some(p.fg));
+}
+
+#[test]
+fn dim_source_is_absent_without_dim_or_when_contrast_wins() {
+    let (mut e, p) = eng();
+    e.advance(b"x\x1b[2;8my", 0.0);
+    let r = render_row(&e, 0, &p, &O);
+    assert_eq!(r.runs[0].style.dim_fg, None);
+    // Oculto: no se dibuja nada, tampoco atenuado.
+    assert_eq!(r.runs.get(1).map(|run| run.style.dim_fg), Some(None));
+    // Con el contraste mínimo ajustado xterm.js no atenúa.
+    let mut e2 = eng().0;
+    e2.advance(b"\x1b[2;30mz", 0.0);
+    let opts = RenderOpts {
+        bold_is_bright: true,
+        min_contrast: 7.0,
+    };
+    let r2 = render_row(&e2, 0, &p, &opts);
+    assert!(r2.runs[0].style.dim);
+    assert_eq!(r2.runs[0].style.dim_fg, None);
 }
 
 #[test]

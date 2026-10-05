@@ -319,3 +319,28 @@ fn decrqm_reports_sync_update_as_supported() {
     e.advance(b"\x1b[?2026$p", 0.0);
     assert_eq!(e.drain().replies, b"\x1b[?2026;2$y");
 }
+
+#[test]
+fn default_cursor_blink_follows_the_page_option_until_decscusr() {
+    let p = Palette::xterm_default([255; 3], [0; 3], [255; 3], [0; 3], [9; 3]);
+    let mut e = Engine::with_cursor_blink(GridSize { cols: 10, rows: 2 }, 100, p, true);
+    assert!(e.term().cursor_style().blinking);
+    // DECSCUSR 2 = bloque fijo, como `setCursorStyle` de xterm.js.
+    e.advance(b"\x1b[2 q", 0.0);
+    assert!(!e.term().cursor_style().blinking);
+    e.advance(b"\x1b[5 q", 0.0);
+    assert!(e.term().cursor_style().blinking);
+    assert!(!engine(10, 2).term().cursor_style().blinking);
+}
+
+#[test]
+fn set_palette_changes_color_replies() {
+    let mut e = engine(10, 2);
+    let mut p = Palette::xterm_default([1, 2, 3], [4, 5, 6], [7, 8, 9], [0; 3], [0; 3]);
+    p.ansi[1] = [0xAB, 0xCD, 0xEF];
+    e.set_palette(p);
+    e.advance(b"\x1b]11;?\x07\x1b]4;1;?\x07", 0.0);
+    let replies = String::from_utf8(e.drain().replies).unwrap_or_default();
+    assert!(replies.contains("rgb:0404/0505/0606"), "{replies}");
+    assert!(replies.contains("rgb:abab/cdcd/efef"), "{replies}");
+}
