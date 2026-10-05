@@ -30,7 +30,8 @@ pub struct Lane<B: LaneBackend> {
     path: PathBuf,
     enabled: AtomicBool,
     refusals: AtomicUsize,
-    caller: OnceCell<Option<BackendCaller<B>>>,
+    transients: AtomicUsize,
+    caller: OnceCell<BackendCaller<B>>,
     worker: Mutex<Option<BackendWorker<B>>>,
 }
 
@@ -40,6 +41,7 @@ impl<B: LaneBackend> Lane<B> {
             path,
             enabled: AtomicBool::new(true),
             refusals: AtomicUsize::new(0),
+            transients: AtomicUsize::new(0),
             caller: OnceCell::new(),
             worker: Mutex::new(None),
         }
@@ -61,37 +63,68 @@ impl<B: LaneBackend> Lane<B> {
         }
     }
 
-    /// Abre la base una sola vez (en un hilo de bloqueo) y arranca el worker;
-    /// un carril apagado nunca se vuelve a abrir.
+    /// Abre la base (en un hilo de bloqueo) y arranca el worker. Una vez
+    /// abierta no se reabre nunca. Un esquema más nuevo o desconocido, o un
+    /// pánico al abrir, apagan el carril para siempre; cualquier otro fallo
+    /// (p. ej. `SQLITE_BUSY` con el Python escribiendo) declina solo esta
+    /// petición y la celda queda vacía para reintentar en la siguiente.
     async fn caller(&self) -> Option<&BackendCaller<B>> {
-        let caller = self
+        let opened = self
             .caller
-            .get_or_init(|| async {
+            .get_or_try_init(|| async {
                 let path = self.path.clone();
                 match tokio::task::spawn_blocking(move || B::open(&path)).await {
                     Ok(Ok(backend)) => match BackendWorker::start(WORKER_CAPACITY, backend) {
                         Ok(worker) => {
                             let caller = worker.caller();
                             *self.worker.lock().unwrap_or_else(|p| p.into_inner()) = Some(worker);
-                            Some(caller)
+                            Ok(caller)
                         }
+                        // Sin hilo para el worker: pasajero, se reintenta.
                         Err(error) => {
-                            self.disable(&Refusal::Unopened(error.to_string()));
-                            None
+                            self.transient(&error.to_string());
+                            Err(())
                         }
                     },
-                    Ok(Err(refusal)) => {
+                    Ok(Err(refusal @ (Refusal::Newer { .. } | Refusal::Incompatible(_)))) => {
                         self.disable(&refusal);
-                        None
+                        Err(())
                     }
+                    Ok(Err(Refusal::Unopened(error))) => {
+                        self.transient(&error);
+                        Err(())
+                    }
+                    Ok(Err(refusal @ Refusal::Retired)) => {
+                        self.disable(&refusal);
+                        Err(())
+                    }
+                    // `open` entró en pánico: no se vuelve a intentar.
                     Err(join) => {
                         self.disable(&Refusal::Unopened(join.to_string()));
-                        None
+                        Err(())
                     }
                 }
             })
             .await;
-        caller.as_ref().filter(|_| self.enabled())
+        opened.ok().filter(|_| self.enabled())
+    }
+
+    /// Un fallo pasajero al abrir: una línea en stderr la primera vez (sin
+    /// contar como apagado, porque el carril sigue) y esta petición se reenvía.
+    fn transient(&self, error: &str) {
+        if self.transients.fetch_add(1, Ordering::AcqRel) == 0 {
+            eprintln!(
+                "comandos dash: {}: apertura fallida ({error}); se reenvía esta petición \
+                 de {} y se reintenta en la siguiente",
+                self.path.display(),
+                B::ROUTES
+            );
+        }
+    }
+
+    /// Cuántos fallos pasajeros de apertura hubo (para las pruebas).
+    pub fn transients(&self) -> usize {
+        self.transients.load(Ordering::Acquire)
     }
 
     /// Un trabajo sobre la base del carril; `Err(Fault::Decline)` si el carril
@@ -173,6 +206,11 @@ impl LaneBackend for UsageBackend {
                     | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
             )
             .map_err(|e| Refusal::Unopened(e.to_string()))?;
+            // Como `sqlite3.connect(db_path, timeout=10)` (`bin/cc_usage.py:38`):
+            // un `SQLITE_BUSY` pasajero al primer abrir espera antes de fallar.
+            probe
+                .busy_timeout(std::time::Duration::from_secs(10))
+                .map_err(|e| Refusal::Unopened(e.to_string()))?;
             gate(&probe)?;
         }
         let conn = usage::open_usage_db_at(path).map_err(|e| Refusal::Unopened(e.to_string()))?;
@@ -325,5 +363,78 @@ mod tests {
         assert!(matches!(lane.with(|_| 4).await, Err(Fault::Decline)));
         assert_eq!(lane.refusals(), 1);
         lane.shutdown().await;
+    }
+
+    /// Doble de apertura: la primera falla como `SQLITE_BUSY`, las demás abren.
+    struct Flaky;
+
+    static FLAKY_OPENS: Counter = Counter::new(0);
+
+    impl LaneBackend for Flaky {
+        const ROUTES: &'static str = "GET /prueba";
+
+        fn open(_: &Path) -> Result<Self, Refusal> {
+            match FLAKY_OPENS.fetch_add(1, Ordering::AcqRel) {
+                0 => Err(Refusal::Unopened("database is locked".into())),
+                _ => Ok(Self),
+            }
+        }
+
+        fn admit(&self) -> Result<(), Refusal> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn transient_open_error_declines_once_and_retries() {
+        let lane = Lane::<Flaky>::new(PathBuf::from("/no-existe/flaky.sqlite"));
+        assert!(matches!(lane.with(|_| 1).await, Err(Fault::Decline)));
+        assert!(
+            lane.enabled(),
+            "un fallo pasajero al abrir no apaga el carril"
+        );
+        assert_eq!(lane.refusals(), 0);
+        assert_eq!(lane.transients(), 1);
+        assert!(matches!(lane.with(|_| 2).await, Ok(2)));
+        assert!(matches!(lane.with(|_| 3).await, Ok(3)));
+        assert_eq!(
+            FLAKY_OPENS.load(Ordering::Acquire),
+            2,
+            "abierta una sola vez"
+        );
+        lane.shutdown().await;
+    }
+
+    /// Doble de apertura: siempre una base más nueva.
+    struct Ahead;
+
+    static AHEAD_OPENS: Counter = Counter::new(0);
+
+    impl LaneBackend for Ahead {
+        const ROUTES: &'static str = "GET /prueba";
+
+        fn open(_: &Path) -> Result<Self, Refusal> {
+            AHEAD_OPENS.fetch_add(1, Ordering::AcqRel);
+            Err(Refusal::Newer {
+                found: 12,
+                known: 11,
+            })
+        }
+
+        fn admit(&self) -> Result<(), Refusal> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn newer_schema_at_open_disables_without_reopening() {
+        let lane = Lane::<Ahead>::new(PathBuf::from("/no-existe/future.sqlite"));
+        for n in 0..3 {
+            assert!(matches!(lane.with(move |_| n).await, Err(Fault::Decline)));
+        }
+        assert!(!lane.enabled());
+        assert_eq!(lane.refusals(), 1);
+        assert_eq!(lane.transients(), 0);
+        assert_eq!(AHEAD_OPENS.load(Ordering::Acquire), 1, "nunca se reabre");
     }
 }
