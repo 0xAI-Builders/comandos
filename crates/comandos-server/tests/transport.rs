@@ -66,6 +66,7 @@ impl Fixture {
         let (stop, shutdown) = watch::channel(false);
         let config = Config {
             token: b"fixture-token".to_vec(),
+            token_file: None,
             asset_exists: Arc::new(|p| p == "/workspace.css"),
             handler,
             limits,
@@ -722,6 +723,7 @@ async fn invalid_limits_and_empty_tokens_fail_before_accepting() {
             listener,
             Config {
                 token,
+                token_file: None,
                 asset_exists: Arc::new(|_| false),
                 handler: echo(),
                 limits: l,

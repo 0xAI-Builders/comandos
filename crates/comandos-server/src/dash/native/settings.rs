@@ -28,7 +28,10 @@ use super::{
     reply,
     usage::pane_models::ui_lang_es,
 };
-use crate::{HandlerError, Request};
+use crate::{
+    HandlerError, Request,
+    dash::token::{TOKEN_FILE, access_token_at},
+};
 use comandos_core::{
     json::{response_dumps, truthy},
     text::{NumError, shlex_quote, splitlines, strip},
@@ -39,10 +42,9 @@ use serde_json::{Map, Value, json};
 use std::{
     ffi::{OsStr, OsString},
     fs, io,
-    io::Write,
     os::unix::{
         ffi::{OsStrExt, OsStringExt},
-        fs::{DirBuilderExt, OpenOptionsExt},
+        fs::DirBuilderExt,
     },
     path::{Path, PathBuf},
     sync::Arc,
@@ -132,8 +134,6 @@ fn conf_default(key: &str) -> &'static str {
     }
 }
 
-/// `TOKEN_FILE` (163): `HOOKS/dash-token`.
-const TOKEN_FILE: &str = "dash-token";
 /// `CONF_PATH` (171).
 const CONF_FILE: &str = "cc-notify.conf";
 /// `int(str)` de CPython rechaza textos de más de 4300 dígitos (`ValueError`).
@@ -221,64 +221,12 @@ fn home_str(opts: &NativeOptions) -> Result<String, Fault> {
 // `/webterm-token`
 // ---------------------------------------------------------------------------
 
-/// `access_token()` (4730): el token de `HOOKS/dash-token` sin espacios a los
-/// lados; ausente o vacío → `secrets.token_urlsafe(32)` escrito con
-/// `O_WRONLY|O_CREAT|O_TRUNC` y 0600 (el modo solo cuenta al crearlo, como
-/// `os.open`). Bloquea: llamar dentro de `spawn_blocking`.
-///
-/// Errores: `InvalidData` si el archivo no es UTF-8 (lo que leería el Python
-/// depende de la codificación del proceso: quien llama declina); cualquier
-/// otro error de E/S es la excepción sin capturar del Python.
+/// `access_token()` (4730) sobre `HOOKS/dash-token`: el mismo lector que la
+/// puerta de acceso del transporte (`dash::token`). Bloquea: llamar dentro de
+/// `spawn_blocking`. `InvalidData` (no UTF-8): quien llama declina; otro error
+/// de E/S es la excepción sin capturar del Python.
 pub fn access_token(hooks: &Path) -> io::Result<String> {
-    let path = hooks.join(TOKEN_FILE);
-    match fs::read(&path) {
-        Ok(bytes) => {
-            let text = String::from_utf8(bytes)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-            let token = strip(&text);
-            if !token.is_empty() {
-                return Ok(token.to_owned());
-            }
-        }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e),
-    }
-    let mut random = [0u8; 32];
-    getrandom::fill(&mut random).map_err(|e| io::Error::other(e.to_string()))?;
-    let token = base64_urlsafe(&random);
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(&path)?;
-    file.write_all(token.as_bytes())?;
-    Ok(token)
-}
-
-/// `base64.urlsafe_b64encode(b).rstrip(b"=")` (`secrets.token_urlsafe`).
-fn base64_urlsafe(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    let symbol = |index: u32| {
-        char::from(
-            ALPHABET
-                .get((index & 0x3f) as usize)
-                .copied()
-                .unwrap_or(b'A'),
-        )
-    };
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let b = |i: usize| u32::from(chunk.get(i).copied().unwrap_or(0));
-        let n = (b(0) << 16) | (b(1) << 8) | b(2);
-        let symbols = chunk.len() + 1;
-        for (i, shift) in [18u32, 12, 6, 0].into_iter().enumerate() {
-            if i < symbols {
-                out.push(symbol(n >> shift));
-            }
-        }
-    }
-    out
+    access_token_at(&hooks.join(TOKEN_FILE))
 }
 
 async fn webterm_token(opts: &NativeOptions) -> Answer {
@@ -941,6 +889,7 @@ mod tests {
 
     #[test]
     fn base64_matches_python_token_urlsafe() {
+        use crate::dash::token::base64_urlsafe;
         // base64.urlsafe_b64encode(bytes(range(32))).rstrip(b"=")
         let bytes: Vec<u8> = (0u8..32).collect();
         assert_eq!(

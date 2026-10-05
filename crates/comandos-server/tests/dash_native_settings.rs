@@ -312,3 +312,96 @@ fn popup_payload_matches_json_dumps() {
                               "project": "c", "options": "", "full": "b"})
     );
 }
+
+/// Petición «remota» (por el proxy de tailscale: `X-Forwarded-For` no local y
+/// `Host` de la tailnet): la puerta exige el token.
+async fn remote_get(port: u16, target: &str, token: &str) -> support::Wire {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let wire = format!(
+        "GET {target} HTTP/1.1\r\nHost: maquina.tail1.ts.net\r\nX-Forwarded-For: 100.64.0.9\r\n\
+         X-Comandos-Token: {token}\r\nConnection: close\r\n\r\n"
+    );
+    let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
+        .await
+        .unwrap();
+    stream.write_all(wire.as_bytes()).await.unwrap();
+    let mut out = Vec::new();
+    tokio::time::timeout(support::WAIT, stream.read_to_end(&mut out))
+        .await
+        .unwrap()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out).into_owned();
+    let status = text.split(' ').nth(1).and_then(|s| s.parse().ok()).unwrap();
+    let body = text
+        .split_once("\r\n\r\n")
+        .map(|(_, b)| b.as_bytes().to_vec())
+        .unwrap_or_default();
+    support::Wire {
+        status,
+        headers: Vec::new(),
+        body,
+    }
+}
+
+/// C (revisión de la Tarea 1): el frente relee `dash-token` como el Python. Se
+/// rota el archivo con los dos sirviendo el MISMO HOME y sin reiniciar nada:
+/// el token viejo deja de valer, el nuevo vale y `/webterm-token` entrega el
+/// que la puerta acepta, en los dos lados.
+#[tokio::test]
+async fn token_rotation_takes_effect_without_restart() {
+    use comandos_server::dash::{serve_with, token_path};
+    let home = TestHome::new_short("token-rot");
+    seed_services(&home);
+    let Some(py) =
+        support::oracle::oracle_with(&home, support::oracle::OracleOpts::default()).await
+    else {
+        return;
+    };
+    let legacy = FakeLegacy::start().await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let mut cfg = support::config(&home, legacy.port);
+    cfg.token_file = Some(token_path(&home.root));
+    let (stop, shutdown) = tokio::sync::watch::channel(false);
+    let opts = home.options();
+    support::assert_private_tmux(&opts);
+    let task = tokio::spawn(serve_with(listener, cfg, Some(opts), shutdown));
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let both = |target: &'static str, token: String| {
+        let py = py.port;
+        async move {
+            (
+                remote_get(port, target, &token).await,
+                remote_get(py, target, &token).await,
+            )
+        }
+    };
+    let old = support::TOKEN.to_owned();
+    let (a, b) = both("/conf", old.clone()).await;
+    assert_eq!((a.status, b.status), (200, 200));
+    assert_eq!(a.text(), b.text());
+    // Rotación atómica (otro inodo), con espacios que `str.strip()` quita.
+    let file = token_path(&home.root);
+    let tmp = home.hooks().join("dash-token.tmp");
+    std::fs::write(&tmp, "\u{1f}token-nuevo-rotado\n").unwrap();
+    std::fs::rename(&tmp, &file).unwrap();
+    let (a, b) = both("/conf", old.clone()).await;
+    assert_eq!((a.status, b.status), (401, 401), "el viejo ya no vale");
+    assert_eq!(a.text(), b.text());
+    let new = "token-nuevo-rotado".to_owned();
+    let (a, b) = both("/conf", new.clone()).await;
+    assert_eq!((a.status, b.status), (200, 200), "el nuevo vale");
+    let (a, b) = both("/webterm-token", new.clone()).await;
+    assert_eq!((a.status, b.status), (200, 200));
+    assert_eq!(a.text(), r#"{"token": "token-nuevo-rotado"}"#);
+    assert_eq!(a.text(), b.text());
+    // Reescritura en el sitio (mismo inodo, otro tamaño).
+    std::fs::write(&file, "otro-token-mas-largo").unwrap();
+    let (a, b) = both("/conf", new).await;
+    assert_eq!((a.status, b.status), (401, 401));
+    let (a, b) = both("/conf", "otro-token-mas-largo".to_owned()).await;
+    assert_eq!((a.status, b.status), (200, 200));
+    let _ = stop.send(true);
+    let _ = task.await;
+}
