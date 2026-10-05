@@ -6586,25 +6586,31 @@ ANALYTICS_DEMO_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.realpa
 ANALYTICS_LOOKBACK_S = 17 * 86400   # 8 días de la semana anterior + 8 de esta + margen
 
 
-def analytics_week_payload(offset, now=None):
+def analytics_week_payload(offset, now=None, *, sidebar=False):
     """El modelo de Analytics (lib/analytics_week.py) con los datos locales."""
     now = time.time() if now is None else now
     since = now - ANALYTICS_LOOKBACK_S
     cc_usage.init_db(USAGE_DB)
     with cc_usage.connect(USAGE_DB) as con:
         turns = [{"provider": r[0], "account": r[1], "git_root": r[2], "pane_pwd": r[3],
-                  "started": r[4], "finished": r[5], "tokens": r[6]}
+                  "started": r[4], "finished": r[5], "tokens": r[6], "cost": r[7],
+                  "model": r[8], "session": r[9], "agent": r[10]}
                  for r in con.execute(
-                     "select provider, harness_account, git_root, pane_pwd, turn_started_at, turn_finished_at, total_tokens "
+                     "select provider, harness_account, git_root, pane_pwd, turn_started_at, turn_finished_at, total_tokens, "
+                     "cost_usd, model, tmux_session, agent "
                      "from usage_turns where turn_finished_at >= ?", (since,))]
         spans = [{"provider": r[0], "account": r[1], "git_root": r[2], "started": r[3], "finished": r[4]}
                  for r in con.execute(
                      "select provider, account, git_root, started_at, finished_at from usage_spans where finished_at >= ?",
                      (since,))]
     records = pomodoro.records(pomodoro_store().conn, int(since * 1000), None)
-    return analytics_week.build_week(
-        now=now, offset=offset, limits=usage_provider_limits()["limits"], turns=turns, spans=spans,
+    limits = usage_provider_limits()["limits"]
+    result = analytics_week.build_week(
+        now=now, offset=offset, limits=limits, turns=turns, spans=spans,
         snapshots=cc_usage.quota_snapshots(USAGE_DB, since=now - 40 * 86400), records=records)
+    if sidebar:
+        result["accounts"] = analytics_week.sidebar_accounts(result["accounts"], limits, turns, now)
+    return result
 
 
 def analytics_week_query(path):
@@ -6626,7 +6632,7 @@ def analytics_week_query(path):
                 return 200, json.load(fh)
         except OSError:
             return 404, {"error": "no hay datos de ejemplo con ese nombre"}
-    return 200, analytics_week_payload(offset)
+    return 200, analytics_week_payload(offset, sidebar=(query.get("sidebar") or [""])[0] == "1")
 
 
 def pomodoro_report_query(path):
@@ -8267,13 +8273,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # Botón «Cuenta» del pane (grill 2-oct): cuentas con login + su uso.
             harness = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("harness") or ["claude"])[0]
             try:
-                spec = (provider_public_state().get("harnesses") or {}).get(harness) or {}
+                registry = load_provider_registry()
+                spec = (registry.get("harnesses") or {}).get(harness) or {}
             except Exception as e:
                 return self._json(500, {"error": f"providers.json invalido: {e}"})
             if not (spec.get("capabilities") or {}).get("accounts"):
                 return self._json(404, {"error": "Ese CLI no maneja cuentas"})
-            return self._json(200, {"harness": harness, "accounts": account_registry.account_menu(
-                spec.get("accounts") or [], usage_provider_limits()["limits"], harness)})
+            discovered = account_registry.list_accounts(registry, harness)
+            no_usage = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("usage") == ["0"]
+            return self._json(200, {"harness": harness, "accounts": discovered if no_usage else
+                account_registry.account_menu(discovered, usage_provider_limits()["limits"], harness)})
         if self.path.startswith("/providers"):
             try:
                 return self._json(200, provider_public_state())
