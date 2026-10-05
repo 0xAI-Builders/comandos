@@ -85,6 +85,17 @@ impl Blink {
         }
     }
 
+    /// Activa o desactiva el parpadeo. Al pasar a activo el ciclo vuelve a
+    /// empezar en la fase visible; devuelve si se reinició.
+    pub fn set_enabled(&mut self, enabled: bool, now_ms: f64) -> bool {
+        let restarted = enabled && !self.enabled;
+        self.enabled = enabled;
+        if restarted {
+            self.restart(now_ms);
+        }
+        restarted
+    }
+
     /// Vuelve a la fase visible (`restartBlinkAnimation`).
     pub fn restart(&mut self, now_ms: f64) {
         self.epoch_ms = now_ms;
@@ -598,5 +609,18 @@ mod tests {
         let steady = Blink::new(false, 0.0);
         assert!(steady.visible(900.0));
         assert_eq!(steady.next_toggle(900.0), None);
+    }
+
+    #[test]
+    fn reenabled_blink_starts_visible() {
+        let mut b = Blink::new(true, 0.0);
+        assert!(!b.set_enabled(true, 700.0));
+        assert!(!b.visible(700.0));
+        // Fuera de la vista (historia desplazada) o sin foco: se apaga.
+        assert!(!b.set_enabled(false, 900.0));
+        // Al volver, el ciclo empieza en la fase visible.
+        assert!(b.set_enabled(true, 1900.0));
+        assert!(b.visible(1900.0));
+        assert_eq!(b.next_toggle(1900.0), Some(2500.0));
     }
 }

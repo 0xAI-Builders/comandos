@@ -141,6 +141,10 @@ pub fn fit(
     m: &CellMetrics,
     current: (u16, u16),
 ) -> Option<(u16, u16)> {
+    // `fit()` no hace nada si alguna cuenta da NaN (`parseInt("auto")`).
+    if parent_w.is_nan() || parent_h.is_nan() {
+        return None;
+    }
     let (cell_w, cell_h) = m.css_cell(current.0, current.1)?;
     let count = |avail: f64, cell: f64, min: u16| -> u16 {
         let n = (avail / cell).floor();
@@ -157,7 +161,8 @@ pub fn fit(
     ))
 }
 
-/// `parseInt` de una longitud CSS como `"783.5px"` (el que usa FitAddon).
+/// `parseInt` de una longitud CSS como `"783.5px"` (el que usa FitAddon);
+/// `NaN` si no empieza por un número (`"auto"`), como en JS.
 pub fn parse_css_int(value: &str) -> f64 {
     let trimmed = value.trim_start();
     let (sign, digits) = match trimmed.strip_prefix('-') {
@@ -169,7 +174,7 @@ pub fn parse_css_int(value: &str) -> f64 {
         .unwrap_or(digits.len());
     match digits.get(..end).and_then(|d| d.parse::<f64>().ok()) {
         Some(n) => sign * n,
-        None => 0.0,
+        None => f64::NAN,
     }
 }
 
@@ -253,6 +258,9 @@ mod tests {
         let m = from_measure(6.6, 13.0, 1.0, 1.2, 0.0);
         assert_eq!(fit(800.0, 450.0, 10.0, &m, (80, 24)), Some((131, 30)));
         assert_eq!(fit(5.0, 5.0, 0.0, &m, (80, 24)), Some((2, 1)));
+        // `parseInt("auto")` es NaN y FitAddon no propone nada.
+        assert_eq!(fit(f64::NAN, 450.0, 10.0, &m, (80, 24)), None);
+        assert_eq!(fit(800.0, f64::NAN, 10.0, &m, (80, 24)), None);
     }
 
     #[test]
@@ -311,7 +319,8 @@ mod tests {
         assert_eq!(parse_css_int("783.5px"), 783.0);
         assert_eq!(parse_css_int(" 12px"), 12.0);
         assert_eq!(parse_css_int("-4px"), -4.0);
-        assert_eq!(parse_css_int("auto"), 0.0);
-        assert_eq!(parse_css_int(""), 0.0);
+        assert!(parse_css_int("auto").is_nan());
+        assert!(parse_css_int("").is_nan());
+        assert!(parse_css_int("-px").is_nan());
     }
 }

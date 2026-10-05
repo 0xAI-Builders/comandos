@@ -73,33 +73,60 @@ pub fn clear_color(data: &mut [u8], bg: [u8; 3], fg: [u8; 3], fuzzy: bool) -> bo
     empty
 }
 
-/// Caja `(izquierda, arriba, derecha, abajo)` inclusiva de los píxeles con
-/// alfa dentro de `region = (x0, y0, x1, y1)` (exclusiva) de una imagen de
-/// `width` píxeles de ancho.
-pub fn alpha_bbox(
+/// `_findGlyphBoundingBox` de xterm.js sobre una imagen RGBA de `width`
+/// píxeles de ancho: `rows` filas (alto del auxiliar, o de la celda en los
+/// glifos powerline recortados), ancho permitido `allowed` (`l`, o el de la
+/// celda) y relleno `pad`. Arriba y abajo se buscan en las columnas
+/// `[0, allowed)`; la izquierda en `[0, pad + allowed)` y la derecha en
+/// `[pad, pad + allowed)`. Lo que no se encuentra toma el valor por defecto
+/// de xterm.js (0, `allowed`, 0, `rows`), recortado al canvas: lo que se
+/// añade así es transparente. A diferencia de xterm.js no se leen columnas
+/// fuera del canvas (allí el índice saltaría a la fila siguiente).
+/// `None` si no hay tinta en la región.
+pub fn glyph_bbox(
     data: &[u8],
     width: u32,
-    region: (u32, u32, u32, u32),
+    rows: u32,
+    allowed: u32,
+    pad: u32,
 ) -> Option<(u32, u32, u32, u32)> {
-    let (x0, y0, x1, y1) = region;
-    let mut found: Option<(u32, u32, u32, u32)> = None;
-    for y in y0..y1 {
-        for x in x0..x1 {
-            let index = (y as usize)
-                .saturating_mul(width as usize)
-                .saturating_add(x as usize)
-                .saturating_mul(4)
-                .saturating_add(3);
-            if data.get(index).copied().unwrap_or(0) == 0 {
-                continue;
-            }
-            found = Some(match found {
-                None => (x, y, x, y),
-                Some((l, t, r, b)) => (l.min(x), t.min(y), r.max(x), b.max(y)),
-            });
-        }
+    let height = u32::try_from(data.len() / 4 / (width.max(1) as usize)).unwrap_or(u32::MAX);
+    let rows = rows.min(height);
+    let inner = allowed.min(width);
+    let outer = pad.saturating_add(allowed).min(width);
+    let ink = |x: u32, y: u32| {
+        let index = (y as usize)
+            .saturating_mul(width as usize)
+            .saturating_add(x as usize)
+            .saturating_mul(4)
+            .saturating_add(3);
+        data.get(index).copied().unwrap_or(0) != 0
+    };
+    let row_has = |y: u32| (0..inner).any(|x| ink(x, y));
+    let col_has = |x: u32| (0..rows).any(|y| ink(x, y));
+    let top = (0..rows).find(|&y| row_has(y));
+    let left = (0..outer).find(|&x| col_has(x));
+    let right = (pad.min(outer)..outer).rev().find(|&x| col_has(x));
+    let bottom = (0..rows).rev().find(|&y| row_has(y));
+    if top.is_none() && left.is_none() {
+        return None;
     }
-    found
+    let last_x = width.saturating_sub(1);
+    let last_y = rows.saturating_sub(1);
+    let (l, t) = (left.unwrap_or(0), top.unwrap_or(0));
+    let r = right.unwrap_or(allowed).min(last_x);
+    let b = bottom.unwrap_or(rows).min(last_y);
+    (r >= l && b >= t).then_some((l, t, r, b))
+}
+
+/// Tamaño del canvas auxiliar del cursor de caja con texto: tres celdas (o
+/// cuatro con un carácter ancho) de ancho y una de alto, con el tope del
+/// auxiliar.
+pub fn cursor_scratch_size(dev_w: u32, dev_h: u32) -> (u32, u32) {
+    (
+        dev_w.saturating_mul(4).clamp(1, TMP_MAX),
+        dev_h.clamp(1, TMP_MAX),
+    )
 }
 
 /// `isPowerlineGlyph` de xterm.js: U+E0A4–U+E0D6 (sin `clearColor` difuso).
@@ -172,18 +199,23 @@ pub const TMP_MAX: u32 = 4096;
 /// se vuelve al tamaño de partida tras un glifo grande (un texto «zalgo» no
 /// deja el auxiliar enorme para siempre).
 pub fn tmp_size(dev_w: u32, dev_h: u32, utf16_len: usize) -> (u32, u32) {
-    let len = u32::try_from(utf16_len).unwrap_or(u32::MAX).max(2);
+    let need_w = tmp_size_wanted_w(dev_w, utf16_len);
     let base_w = dev_w.saturating_mul(4).saturating_add(4);
     let base_h = dev_h.saturating_add(4);
-    let need_w = dev_w
-        .saturating_mul(len)
-        .saturating_add(4)
-        .min(TEXTURE_SIZE);
     let need_h = dev_h.saturating_add(8).min(TEXTURE_SIZE);
     (
         base_w.max(need_w).clamp(1, TMP_MAX),
         base_h.max(need_h).clamp(1, TMP_MAX),
     )
+}
+
+/// `l` de `_drawToCache`: `min(cellW·max(len, 2) + 4, textureSize)`.
+pub fn tmp_size_wanted_w(dev_w: u32, utf16_len: usize) -> u32 {
+    let len = u32::try_from(utf16_len).unwrap_or(u32::MAX).max(2);
+    dev_w
+        .saturating_mul(len)
+        .saturating_add(4)
+        .min(TEXTURE_SIZE)
 }
 
 /// Un glifo mayor que esto no se guarda en el atlas: se rasteriza y se
@@ -447,6 +479,8 @@ const CUSTOM: u8 = 32;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Slot {
     page: u16,
+    /// Generación del índice del atlas en que se colocó.
+    generation: u32,
     sx: u32,
     sy: u32,
     w: u32,
@@ -461,6 +495,7 @@ impl Slot {
 
     const EMPTY: Slot = Slot {
         page: 0,
+        generation: 0,
         sx: 0,
         sy: 0,
         w: 0,
@@ -488,20 +523,156 @@ enum Fill {
     Pattern(CanvasPattern),
 }
 
+/// Entradas del atlas como mucho; al pasar se vacía entero (las vacías no
+/// llenan páginas y con colores de 24 bits crecerían sin tope).
+pub const MAX_ENTRIES: usize = 8192;
+
+/// Bytes de texto de las claves como mucho (los textos de varios puntos de
+/// código no tienen tope de longitud).
+pub const MAX_KEY_BYTES: usize = 256 * 1024;
+
+/// Índice texto + estilo → glifo del atlas, con sus topes. La generación
+/// cambia en cada vaciado: un glifo guardado siempre es de la generación
+/// actual (`cached_glyph` vacía antes de rasterizar, nunca después).
+pub struct GlyphIndex<K, S> {
+    single: HashMap<(char, K), S>,
+    multi: HashMap<String, HashMap<K, S>>,
+    /// Entradas guardadas (incluidas las vacías, que no ocupan página).
+    entries: usize,
+    key_bytes: usize,
+    generation: u32,
+}
+
+impl<K, S> Default for GlyphIndex<K, S> {
+    fn default() -> Self {
+        GlyphIndex {
+            single: HashMap::new(),
+            multi: HashMap::new(),
+            entries: 0,
+            key_bytes: 0,
+            generation: 0,
+        }
+    }
+}
+
+impl<K: Copy + Eq + std::hash::Hash, S: Copy> GlyphIndex<K, S> {
+    pub fn lookup(&self, text: &str, key: &K) -> Option<S> {
+        let mut chars = text.chars();
+        match (chars.next(), chars.next()) {
+            (Some(c), None) => self.single.get(&(c, *key)).copied(),
+            _ => self.multi.get(text).and_then(|m| m.get(key)).copied(),
+        }
+    }
+
+    /// Guardar `text` pasaría de algún tope.
+    pub fn needs_room(&self, text: &str) -> bool {
+        self.entries >= MAX_ENTRIES || self.key_bytes.saturating_add(text.len()) > MAX_KEY_BYTES
+    }
+
+    pub fn insert(&mut self, text: &str, key: K, slot: S) {
+        self.entries += 1;
+        self.key_bytes = self.key_bytes.saturating_add(text.len());
+        let mut chars = text.chars();
+        match (chars.next(), chars.next()) {
+            (Some(c), None) => {
+                self.single.insert((c, key), slot);
+            }
+            _ => {
+                self.multi
+                    .entry(text.to_string())
+                    .or_default()
+                    .insert(key, slot);
+            }
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.single.clear();
+        self.multi.clear();
+        self.entries = 0;
+        self.key_bytes = 0;
+        self.generation = self.generation.wrapping_add(1);
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries == 0
+    }
+
+    pub fn key_bytes(&self) -> usize {
+        self.key_bytes
+    }
+
+    pub fn generation(&self) -> u32 {
+        self.generation
+    }
+
+    /// Recorre las entradas guardadas.
+    pub fn for_each(&self, mut f: impl FnMut(&str, &K, &S)) {
+        let mut buf = [0u8; 4];
+        for ((c, k), slot) in &self.single {
+            f(c.encode_utf8(&mut buf), k, slot);
+        }
+        for (text, map) in &self.multi {
+            for (k, slot) in map {
+                f(text, k, slot);
+            }
+        }
+    }
+}
+
+/// Un atlas: su índice y cómo vaciarlo entero (páginas incluidas).
+pub trait GlyphStore {
+    type Key: Copy + Eq + std::hash::Hash;
+    type Slot: Copy;
+    fn index(&mut self) -> &mut GlyphIndex<Self::Key, Self::Slot>;
+    fn clear_all(&mut self);
+}
+
+/// El glifo de `text` con `key`, del índice o rasterizado con `raster`
+/// (que da el hueco y si se puede guardar). Si guardarlo pasaría de los
+/// topes, el atlas se vacía *antes* de rasterizar: así el hueco nuevo nunca
+/// apunta a una página que se vacía justo después.
+pub fn cached_glyph<A: GlyphStore, E>(
+    atlas: &mut A,
+    text: &str,
+    key: A::Key,
+    raster: impl FnOnce(&mut A) -> Result<(A::Slot, bool), E>,
+) -> Result<A::Slot, E> {
+    if let Some(slot) = atlas.index().lookup(text, &key) {
+        return Ok(slot);
+    }
+    if atlas.index().needs_room(text) {
+        atlas.clear_all();
+    }
+    let (slot, cacheable) = raster(atlas)?;
+    if cacheable {
+        atlas.index().insert(text, key, slot);
+    }
+    Ok(slot)
+}
+
 struct Atlas {
     tmp: HtmlCanvasElement,
     tmp_ctx: CanvasRenderingContext2d,
     pages: Vec<Page>,
     shelf: Shelf,
-    single: HashMap<(char, GlyphStyle), Slot>,
-    multi: HashMap<String, HashMap<GlyphStyle, Slot>>,
-    /// Entradas guardadas (incluidas las vacías, que no ocupan página).
-    entries: usize,
+    index: GlyphIndex<GlyphStyle, Slot>,
 }
 
-/// Entradas del atlas como mucho; al pasar se vacía entero (las vacías no
-/// llenan páginas y con colores de 24 bits crecerían sin tope).
-const MAX_ENTRIES: usize = 8192;
+impl GlyphStore for Atlas {
+    type Key = GlyphStyle;
+    type Slot = Slot;
+    fn index(&mut self) -> &mut GlyphIndex<GlyphStyle, Slot> {
+        &mut self.index
+    }
+    fn clear_all(&mut self) {
+        self.clear();
+    }
+}
 
 /// Lo que el atlas necesita para rasterizar.
 struct RasterCtx<'a> {
@@ -524,56 +695,25 @@ impl Atlas {
             tmp_ctx,
             pages: Vec::new(),
             shelf: Shelf::new(PAGE_SIZE),
-            single: HashMap::new(),
-            multi: HashMap::new(),
-            entries: 0,
+            index: GlyphIndex::default(),
         })
     }
 
     fn clear(&mut self) {
         self.pages.clear();
         self.shelf = Shelf::new(PAGE_SIZE);
-        self.single.clear();
-        self.multi.clear();
-        self.entries = 0;
+        self.index.clear();
     }
 
     /// Canvas del que se copia un glifo.
     fn source(&self, slot: &Slot) -> Option<&HtmlCanvasElement> {
         if slot.page == Slot::UNCACHED {
             Some(&self.tmp)
+        } else if slot.generation != self.index.generation() {
+            // Nunca debería pasar: un hueco de páginas ya vaciadas.
+            None
         } else {
             self.pages.get(usize::from(slot.page)).map(|p| &p.canvas)
-        }
-    }
-
-    fn lookup(&self, text: &str, key: &GlyphStyle) -> Option<Slot> {
-        let mut chars = text.chars();
-        match (chars.next(), chars.next()) {
-            (Some(c), None) => self.single.get(&(c, *key)).copied(),
-            _ => self.multi.get(text).and_then(|m| m.get(key)).copied(),
-        }
-    }
-
-    fn store(&mut self, text: &str, key: GlyphStyle, slot: Slot) {
-        if slot.page == Slot::UNCACHED {
-            return;
-        }
-        if self.entries >= MAX_ENTRIES {
-            self.clear();
-        }
-        self.entries += 1;
-        let mut chars = text.chars();
-        match (chars.next(), chars.next()) {
-            (Some(c), None) => {
-                self.single.insert((c, key), slot);
-            }
-            _ => {
-                self.multi
-                    .entry(text.to_string())
-                    .or_default()
-                    .insert(key, slot);
-            }
         }
     }
 
@@ -584,12 +724,10 @@ impl Atlas {
         key: GlyphStyle,
         rc: &mut RasterCtx<'_>,
     ) -> Result<Slot, JsValue> {
-        if let Some(slot) = self.lookup(text, &key) {
-            return Ok(slot);
-        }
-        let slot = self.rasterize(text, &key, rc)?;
-        self.store(text, key, slot);
-        Ok(slot)
+        cached_glyph(self, text, key, |atlas| {
+            let slot = atlas.rasterize(text, &key, rc)?;
+            Ok((slot, slot.page != Slot::UNCACHED))
+        })
     }
 
     /// `_drawToCache` paso a paso.
@@ -806,12 +944,13 @@ impl Atlas {
         if clear_color(&mut bytes, key.bg, fg, fuzzy) {
             return Ok(Slot::EMPTY);
         }
-        let region = if restricted {
-            (0, 0, m.dev_w.min(tw), m.dev_h.min(th))
+        // `_findGlyphBoundingBox(O, box, l, restricted, custom, pad)`.
+        let (rows, allowed) = if restricted {
+            (m.dev_h, m.dev_w)
         } else {
-            (0, 0, tw, th)
+            (th, tmp_size_wanted_w(m.dev_w, text.encode_utf16().count()))
         };
-        let Some((left, top, right, bottom)) = alpha_bbox(&bytes, tw, region) else {
+        let Some((left, top, right, bottom)) = glyph_bbox(&bytes, tw, rows, allowed, pad) else {
             return Ok(Slot::EMPTY);
         };
         let (w, h) = (right - left + 1, bottom - top + 1);
@@ -840,6 +979,8 @@ impl Atlas {
         };
         Ok(Slot {
             page,
+            // Tras `place`, que puede haber vaciado el atlas.
+            generation: self.index.generation(),
             sx,
             sy,
             w,
@@ -1079,11 +1220,8 @@ impl Canvas2d {
     ) -> Result<Canvas2d, JsValue> {
         let canvas = new_canvas(document, 0, 0)?;
         let ctx = context(&canvas, false, false)?;
-        let scratch = new_canvas(
-            document,
-            m.dev_w.max(1).saturating_mul(4).min(TMP_MAX),
-            m.dev_h.max(1),
-        )?;
+        let (scratch_w, scratch_h) = cursor_scratch_size(m.dev_w, m.dev_h);
+        let scratch = new_canvas(document, scratch_w, scratch_h)?;
         let scratch_ctx = context(&scratch, true, false)?;
         let agent = window.navigator().user_agent().unwrap_or_default();
         Ok(Canvas2d {
@@ -1383,7 +1521,10 @@ impl Canvas2d {
         // En un canvas transparente, como la capa del cursor de xterm.js.
         let cw = f64::from(m.dev_w);
         let cells = if c.wide { 2.0 } else { 1.0 };
-        let (sw, sh) = (cw * (cells + 2.0), f64::from(m.dev_h));
+        let (sw, sh) = (
+            (cw * (cells + 2.0)).min(f64::from(self.scratch.width())),
+            f64::from(m.dev_h).min(f64::from(self.scratch.height())),
+        );
         let s = &self.scratch_ctx;
         s.clear_rect(0.0, 0.0, sw, sh);
         if let Some(f) = self.fonts.js.first() {
@@ -1478,9 +1619,9 @@ impl Painter for Canvas2d {
             }
             self.patterns = PatternCache::default();
             self.boxes = BoxCache::default();
-            self.scratch
-                .set_width(m.dev_w.max(1).saturating_mul(4).min(TMP_MAX));
-            self.scratch.set_height(m.dev_h.max(1));
+            let (scratch_w, scratch_h) = cursor_scratch_size(m.dev_w, m.dev_h);
+            self.scratch.set_width(scratch_w);
+            self.scratch.set_height(scratch_h);
         }
         // `_clearAll` de una capa opaca.
         self.fill(self.theme.bg);
@@ -1498,6 +1639,150 @@ impl Canvas2d {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Atlas de mentira: cada página guarda el texto de sus glifos, con el
+    /// mismo tope de páginas que se vacía al llenarse.
+    struct FakeAtlas {
+        index: GlyphIndex<u8, (usize, usize, u32)>,
+        pages: Vec<Vec<String>>,
+        per_page: usize,
+        max_pages: usize,
+    }
+
+    impl GlyphStore for FakeAtlas {
+        type Key = u8;
+        type Slot = (usize, usize, u32);
+        fn index(&mut self) -> &mut GlyphIndex<u8, (usize, usize, u32)> {
+            &mut self.index
+        }
+        fn clear_all(&mut self) {
+            self.pages.clear();
+            self.index.clear();
+        }
+    }
+
+    impl FakeAtlas {
+        fn raster(&mut self, text: &str) -> Result<((usize, usize, u32), bool), ()> {
+            if self.pages.last().is_none_or(|p| p.len() >= self.per_page) {
+                if self.pages.len() >= self.max_pages {
+                    self.clear_all();
+                }
+                self.pages.push(Vec::new());
+            }
+            let page = self.pages.len() - 1;
+            let list = self.pages.get_mut(page).ok_or(())?;
+            list.push(text.to_string());
+            Ok(((page, list.len() - 1, self.index.generation()), true))
+        }
+    }
+
+    #[test]
+    fn every_cached_slot_resolves_to_its_own_glyph_past_the_caps() {
+        let mut atlas = FakeAtlas {
+            index: GlyphIndex::default(),
+            pages: Vec::new(),
+            per_page: 3000,
+            max_pages: 4,
+        };
+        let mut clears = 0;
+        let mut last_gen = atlas.index.generation();
+        for n in 0..40_000u32 {
+            // Glifos de uno y de muchos puntos de código (colores distintos).
+            let text = if n % 7 == 0 {
+                format!("e{}", "\u{301}".repeat((n % 50) as usize))
+            } else {
+                char::from_u32(0x4E00 + n % 20_000)
+                    .map(String::from)
+                    .unwrap_or_default()
+            };
+            let key = (n % 251) as u8;
+            let slot = cached_glyph(&mut atlas, &text, key, |a| a.raster(&text))
+                .unwrap_or_else(|()| panic!("raster"));
+            let (page, pos, generation) = slot;
+            assert_eq!(generation, atlas.index.generation());
+            assert_eq!(atlas.pages.get(page).and_then(|p| p.get(pos)), Some(&text));
+            if atlas.index.generation() != last_gen {
+                clears += 1;
+                last_gen = atlas.index.generation();
+            }
+        }
+        assert!(clears > 3, "los topes deben saltar: {clears}");
+        assert!(atlas.index.len() <= MAX_ENTRIES);
+        assert!(atlas.index.key_bytes() <= MAX_KEY_BYTES);
+        let current = atlas.index.generation();
+        let mut seen = 0;
+        atlas
+            .index
+            .for_each(|text, _key, &(page, pos, generation)| {
+                seen += 1;
+                assert_eq!(generation, current, "slot de una generación vaciada");
+                assert_eq!(
+                    atlas
+                        .pages
+                        .get(page)
+                        .and_then(|p| p.get(pos))
+                        .map(String::as_str),
+                    Some(text)
+                );
+            });
+        assert_eq!(seen, atlas.index.len());
+    }
+
+    #[test]
+    fn long_keys_count_against_the_byte_cap() {
+        let mut index: GlyphIndex<u8, u8> = GlyphIndex::default();
+        // 3 bytes por repetición: 60 % del tope.
+        let long = "a\u{301}".repeat(MAX_KEY_BYTES / 5);
+        assert!(!index.needs_room(&long));
+        index.insert(&long, 0, 1);
+        assert!(index.needs_room(&long));
+        assert!(!index.needs_room("b"));
+        let generation = index.generation();
+        index.clear();
+        assert_eq!((index.len(), index.key_bytes()), (0, 0));
+        assert_ne!(index.generation(), generation);
+    }
+
+    #[test]
+    fn glyph_bbox_scans_the_region_xterm_scans() {
+        // Imagen de 12×4; alfa en (1,1), en (9,2) y en (11,3).
+        let mut data = vec![0u8; 12 * 4 * 4];
+        for (x, y) in [(1usize, 1usize), (9, 2), (11, 3)] {
+            if let Some(a) = data.get_mut((y * 12 + x) * 4 + 3) {
+                *a = 255;
+            }
+        }
+        // `l = 6`, `pad = 2`: izquierda y derecha en columnas [0, 8),
+        // arriba y abajo en [0, 6). La tinta de (9,2) y (11,3) se recorta y
+        // la derecha, que solo se busca en [pad, pad + l), queda en `l`.
+        assert_eq!(glyph_bbox(&data, 12, 4, 6, 2), Some((1, 1, 6, 1)));
+        // Con más ancho permitido entra (9,2); la fila de abajo sigue
+        // buscándose solo en las primeras columnas.
+        assert_eq!(glyph_bbox(&data, 12, 4, 8, 2), Some((1, 1, 9, 1)));
+        // Tinta solo en el relleno derecho: arriba 0 y abajo `n` por
+        // defecto (aquí recortado a la última fila: lo que sobra es
+        // transparente).
+        let mut pad_only = vec![0u8; 12 * 4 * 4];
+        if let Some(a) = pad_only.get_mut((2 * 12 + 7) * 4 + 3) {
+            *a = 255;
+        }
+        assert_eq!(glyph_bbox(&pad_only, 12, 4, 6, 2), Some((7, 0, 7, 3)));
+        // Nada en la región: vacío.
+        let mut far = vec![0u8; 12 * 4 * 4];
+        if let Some(a) = far.get_mut((3 * 12 + 11) * 4 + 3) {
+            *a = 255;
+        }
+        assert_eq!(glyph_bbox(&far, 12, 4, 6, 2), None);
+        // Columnas fuera del canvas no se leen.
+        assert_eq!(glyph_bbox(&data, 12, 4, 100, 100), Some((1, 1, 11, 3)));
+    }
+
+    #[test]
+    fn cursor_scratch_is_bounded() {
+        assert_eq!(cursor_scratch_size(25, 61), (100, 61));
+        assert_eq!(cursor_scratch_size(0, 0), (1, 1));
+        assert_eq!(cursor_scratch_size(5000, 18_000), (TMP_MAX, TMP_MAX));
+    }
 
     #[test]
     fn css_colors() {
@@ -1536,9 +1821,8 @@ mod tests {
         };
         set(1, 0);
         set(2, 2);
-        assert_eq!(alpha_bbox(&data, 4, (0, 0, 4, 3)), Some((1, 0, 2, 2)));
-        assert_eq!(alpha_bbox(&data, 4, (0, 0, 2, 2)), Some((1, 0, 1, 0)));
-        assert_eq!(alpha_bbox(&data, 4, (3, 0, 4, 3)), None);
+        // Sin relleno y todo el ancho permitido: la caja de la tinta.
+        assert_eq!(glyph_bbox(&data, 4, 3, 4, 0), Some((1, 0, 2, 2)));
         assert_eq!(crop(&data, 4, (1, 0, 2, 1)).len(), 8);
     }
 

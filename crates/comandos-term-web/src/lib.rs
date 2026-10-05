@@ -291,7 +291,12 @@ impl Inner {
     /// temporizador (como el `setInterval` de xterm.js), no al pintar: un
     /// cuadro retrasado no se salta una fase.
     fn cursor_input(&mut self) -> CursorInput {
-        self.blink.enabled = paint::blink_enabled(&self.engine, self.focused);
+        let enabled = paint::blink_enabled(&self.engine, self.focused);
+        if self.blink.set_enabled(enabled, self.now()) {
+            // Vuelve a parpadear (cursor de nuevo en la vista, foco…): como
+            // `restartBlinkAnimation`, empieza visible.
+            self.blink_on = true;
+        }
         CursorInput {
             focused: self.focused,
             blink_on: !self.blink.enabled || self.blink_on,
@@ -796,9 +801,15 @@ impl WebTerm {
                     .as_ref()
                     .and_then(|s| s.get_property_value(name).ok())
                     .map(|v| metrics::parse_css_int(&v))
-                    .unwrap_or(0.0)
+                    .unwrap_or(f64::NAN)
             };
-            let width = prop("width").max(0.0);
+            // `Math.max(0, NaN)` es NaN: `f64::max` daría 0.
+            let width = prop("width");
+            let width = if width.is_nan() {
+                width
+            } else {
+                width.max(0.0)
+            };
             let height = prop("height");
             // El elemento `.xterm` no tiene relleno propio (xterm.css).
             let scrollbar = if i.opts.scrollback == 0 {
@@ -809,7 +820,8 @@ impl WebTerm {
             let current = (i.size.cols, i.size.rows);
             let Some((cols, rows)) = metrics::fit(width, height, scrollbar, &i.metrics, current)
             else {
-                // Sin celda medida FitAddon no toca la terminal.
+                // Sin celda medida o sin tamaño numérico FitAddon no toca
+                // la terminal.
                 return i.size;
             };
             let size = GridSize { cols, rows };
@@ -905,6 +917,9 @@ impl WebTerm {
     pub fn scroll_lines(&mut self, lines: i32) {
         self.with(|i| {
             i.engine.scroll_display(lines);
+            // `handleGridChanged` al repintar las filas.
+            let now = i.now();
+            i.restart_blink(now);
             i.touch();
         });
     }
