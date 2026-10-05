@@ -151,10 +151,20 @@ struct Registration {
 }
 impl Drop for Registration {
     fn drop(&mut self) {
-        if self.pending.lock().unwrap().remove(&self.id).is_some() {
+        // Un mutex envenenado no puede hacer entrar en pánico a un `Drop`: durante un
+        // desenrollado abortaría el proceso. El mapa sigue siendo válido; se recupera.
+        if lock_pending(&self.pending).remove(&self.id).is_some() {
             let _ = self.cancellations.try_send(self.id);
         }
     }
+}
+/// Toma `pending` aunque esté envenenado: lo usan los `Drop`, que no pueden entrar en pánico.
+fn lock_pending(
+    pending: &Pending,
+) -> std::sync::MutexGuard<'_, HashMap<u64, oneshot::Sender<Value>>> {
+    pending
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 struct ChildGroup(i32);
 impl Drop for ChildGroup {
@@ -351,7 +361,7 @@ impl Drop for Transport {
         for task in &self.tasks {
             task.abort();
         }
-        self.pending.lock().unwrap().clear();
+        lock_pending(&self.pending).clear();
     }
 }
 impl Transport {
@@ -709,4 +719,69 @@ fn insert_header(headers: &mut HeaderMap, key: &str, value: &str) -> Result<()> 
         HeaderValue::from_str(value).map_err(|_| "Invalid header")?,
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `pending` envenenado: un hilo entra en pánico con el candado tomado.
+    fn poisoned() -> Pending {
+        let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
+        let held = pending.clone();
+        let joined = std::thread::spawn(move || {
+            let _guard = held.lock().unwrap();
+            panic!("envenena el mutex");
+        })
+        .join();
+        assert!(joined.is_err());
+        assert!(pending.is_poisoned());
+        pending
+    }
+
+    fn transport(pending: Pending) -> Transport {
+        Transport {
+            http: None,
+            sender: None,
+            post_url: None,
+            pending,
+            next: AtomicU64::new(0),
+            cancellations: mpsc::channel(1).0,
+            closed: watch::channel(false).1,
+            tasks: Vec::new(),
+            child: None,
+            group: None,
+        }
+    }
+
+    #[test]
+    fn registration_drop_recovers_a_poisoned_pending_map() {
+        let pending = poisoned();
+        let (tx, _rx) = oneshot::channel();
+        lock_pending(&pending).insert(7, tx);
+        let (cancellations, mut cancelled) = mpsc::channel(1);
+        drop(Registration {
+            pending: pending.clone(),
+            id: 7,
+            cancellations,
+        });
+        assert!(lock_pending(&pending).is_empty(), "el Drop quitó su id");
+        assert_eq!(cancelled.try_recv().ok(), Some(7), "y avisó la cancelación");
+    }
+
+    /// Antes, este pánico de la prueba más el del `Drop` abortaban el binario entero
+    /// ("panic in a destructor during cleanup"); ahora el desenrollado termina normal.
+    #[test]
+    fn transport_drop_while_unwinding_with_a_poisoned_map_does_not_abort() {
+        let pending = poisoned();
+        let (tx, _rx) = oneshot::channel();
+        lock_pending(&pending).insert(1, tx);
+        let t = transport(pending.clone());
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            let _t = t;
+            panic!("fallo con el transporte vivo");
+        }));
+        assert!(unwound.is_err());
+        assert!(lock_pending(&pending).is_empty(), "el Drop vació el mapa");
+    }
 }
