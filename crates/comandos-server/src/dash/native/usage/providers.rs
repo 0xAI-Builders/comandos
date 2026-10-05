@@ -134,7 +134,7 @@ pub async fn public_state(native: &Native) -> Result<Value, Fault> {
 
 /// `capability_matrix()` con su registro: estado público recién calculado y
 /// hechos de ejecución.
-async fn registry_and_matrix(native: &Native) -> Result<(Value, Vec<Value>), Fault> {
+pub(crate) async fn registry_and_matrix(native: &Native) -> Result<(Value, Vec<Value>), Fault> {
     let (base, alive) = base(native, false).await?;
     let facts = providers::public_runtime_facts(
         &base.registry,

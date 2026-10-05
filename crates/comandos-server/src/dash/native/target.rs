@@ -15,7 +15,7 @@ use super::{
 use crate::HandlerError;
 use comandos_runtime::{
     agent_procs::{
-        self, AgentInfo, AgentProc, PANE_FORMAT, agent_pane_maps, agent_procs,
+        self, AgentInfo, AgentMaps, AgentProc, PANE_FORMAT, agent_pane_maps, agent_procs,
         parse_pane_inventory, process_owners,
     },
     model_catalog::catalog_paths,
@@ -418,10 +418,9 @@ pub async fn resolve_project_session(
         .map(|info| (info.session.clone(), info.pane.clone())))
 }
 
-/// `agent_info_for_pane(pane)` (1591) para un pane que ya casa `PANE_RE`:
-/// `agent_pane_maps(agent_procs())` (que siempre lee `list-panes -a`) y el
-/// primer agente de `by_cwd` en ese pane, o `None`. Solo lee.
-pub async fn agent_info_for_pane(native: &Native, pane: &str) -> Result<Option<AgentInfo>, Fault> {
+/// `agent_pane_maps(agent_procs())` (que siempre lee `list-panes -a`): los
+/// agentes vivos emparejados con sus panes. Solo lee.
+async fn live_agent_maps(native: &Native) -> Result<AgentMaps, Fault> {
     let opts = native.options();
     let ctx = Context::of(opts);
     let procs = blocking(move || {
@@ -440,10 +439,9 @@ pub async fn agent_info_for_pane(native: &Native, pane: &str) -> Result<Option<A
         Vec::new()
     };
     if procs.is_empty() {
-        return Ok(None);
+        return Ok(AgentMaps::default());
     }
     let proc_root = opts.proc_root.clone();
-    let pane = pane.to_owned();
     blocking(move || {
         let mut parents: HashMap<i64, i64> = HashMap::new();
         let mut parent = |pid: i64| {
@@ -453,14 +451,36 @@ pub async fn agent_info_for_pane(native: &Native, pane: &str) -> Result<Option<A
         };
         let owners = process_owners(&procs, &panes, &mut parent);
         let mut cmdline = |pid: i64| agent_procs::proc_cmdline(&proc_root, pid);
-        let maps = agent_pane_maps(&procs, &panes, &owners, &mut cmdline, &mut parent);
-        Ok(maps
-            .by_cwd
-            .into_iter()
-            .flat_map(|(_, infos)| infos)
-            .find(|info| info.pane == pane))
+        Ok(agent_pane_maps(
+            &procs,
+            &panes,
+            &owners,
+            &mut cmdline,
+            &mut parent,
+        ))
     })
     .await
+}
+
+/// `agent_info_for_pane(pane)` (1591) para un pane que ya casa `PANE_RE`:
+/// el primer agente de `by_cwd` en ese pane, o `None`. Solo lee.
+pub async fn agent_info_for_pane(native: &Native, pane: &str) -> Result<Option<AgentInfo>, Fault> {
+    Ok(live_agent_maps(native)
+        .await?
+        .by_cwd
+        .into_iter()
+        .flat_map(|(_, infos)| infos)
+        .find(|info| info.pane == pane))
+}
+
+/// `_cwd_has_live_agent(cwd)` (4130): ¿hay un agente vivo cuya carpeta es
+/// exactamente `cwd` (`bool(by_cwd.get(cwd))`)? Solo lee.
+pub(crate) async fn cwd_has_live_agent(native: &Native, cwd: &str) -> Result<bool, Fault> {
+    Ok(live_agent_maps(native)
+        .await?
+        .by_cwd
+        .iter()
+        .any(|(folder, infos)| folder == cwd && !infos.is_empty()))
 }
 
 /// Los campos de `_pane_identity`, en su orden.

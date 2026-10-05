@@ -462,7 +462,7 @@ fn path_split(p: &[u8]) -> (Vec<u8>, Vec<u8>) {
 }
 
 /// `posixpath.dirname`.
-fn dirname(p: &[u8]) -> Vec<u8> {
+pub fn dirname(p: &[u8]) -> Vec<u8> {
     path_split(p).0
 }
 
@@ -473,7 +473,7 @@ fn rstrip_slash(p: &[u8]) -> &[u8] {
 }
 
 /// `posixpath.normpath`.
-fn normpath(p: &[u8]) -> Vec<u8> {
+pub fn normpath(p: &[u8]) -> Vec<u8> {
     if p.is_empty() {
         return b".".to_vec();
     }

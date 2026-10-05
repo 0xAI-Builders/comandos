@@ -68,6 +68,12 @@ fn account_error(e: &AccountError) -> bool {
                 | "aliases de cuenta no pueden ser symlinks"
         )
 }
+/// ¿Es un `AccountError` de `lib/accounts.py` (con ese mensaje)? Los demás
+/// errores de este módulo son otras excepciones del Python (o lo que el port
+/// no reproduce): quien llama no puede responder con su texto.
+pub fn is_account_error(e: &AccountError) -> bool {
+    e.kind() == ErrorKind::Account && account_error(e)
+}
 fn object<'a>(value: &'a Value, what: &str) -> Result<&'a serde_json::Map<String, Value>> {
     value
         .as_object()

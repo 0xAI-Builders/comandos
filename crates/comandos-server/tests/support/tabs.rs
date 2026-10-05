@@ -120,3 +120,57 @@ pub fn hook_path(home: &TestHome, name: &str) -> PathBuf {
 pub fn exists(home: &TestHome, name: &str) -> bool {
     Path::new(&hook_path(home, name)).exists()
 }
+
+/// Cuentas FALSAS de `/session-new` y `/account/add` (2f-1/T4) en el HOME
+/// temporal: credenciales de mentira (`main` de Claude, Codex y Grok, y la
+/// cuenta Claude `relotto`), un `~/.claude/settings.json` con `hooks`, el
+/// `~/.claude.json` que ya acepta `~/codebase/p2f` y una sesión `base` (`cat`)
+/// para que el servidor tmux privado exista. Nunca un token real.
+pub fn seed_accounts(home: &TestHome) {
+    let put = |rel: &str, text: &str| {
+        let path = home.root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    let fake = r#"{"claudeAiOauth": {"accessToken": "falso-de-prueba"}}"#;
+    put(".claude/.credentials.json", fake);
+    put(".claude-accounts/relotto/.credentials.json", fake);
+    put(
+        ".codex/auth.json",
+        r#"{"tokens": {"access_token": "falso-de-prueba"}}"#,
+    );
+    put(
+        ".grok/auth.json",
+        r#"{"u": {"refresh_token": "falso-de-prueba"}}"#,
+    );
+    put(
+        ".claude/settings.json",
+        r#"{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "cc-hook ñ"}]}]}, "otro": 1}"#,
+    );
+    let p2f = home.root.join("codebase/p2f");
+    std::fs::create_dir_all(&p2f).unwrap();
+    put(
+        ".claude.json",
+        &format!(
+            r#"{{"projects": {{"{}": {{"hasTrustDialogAccepted": true}}}}}}"#,
+            p2f.display()
+        ),
+    );
+    super::run_tmux(home, &["new-session", "-d", "-s", "base", "cat"]);
+}
+
+/// El comando que cada `send-keys` tecleó (`send-keys -t =<s>: <comando>
+/// Enter`) en el registro de tmux de `home`, con la raíz del HOME como `~`.
+pub fn typed_commands(home: &TestHome) -> Vec<String> {
+    twin::tmux_log(home)
+        .into_iter()
+        .filter_map(|args| match args.as_slice() {
+            [verb, flag, _target, command, enter]
+                if verb == "send-keys" && flag == "-t" && enter == "Enter" =>
+            {
+                Some(normalize_home(home, command))
+            }
+            _ => None,
+        })
+        .collect()
+}

@@ -805,3 +805,297 @@ async fn unsure_registry_answers_500_before_effects() {
     assert_eq!(legacy.requests().len(), 2);
     assert!(fake_calls(&home.root).is_empty());
 }
+
+// ------------------------------------------------------------- T4
+
+/// Las filas de una tabla de la base de uso de `home` sin las columnas que
+/// dependen del reloj (`id`, `effective_at`, `created_at`), con la raíz del
+/// HOME como `~`.
+fn usage_rows(home: &TestHome, table: &str) -> Vec<Vec<String>> {
+    let Ok(conn) = rusqlite::Connection::open(home.usage_db()) else {
+        return Vec::new();
+    };
+    let Ok(mut stmt) = conn.prepare(&format!("select * from {table} order by rowid")) else {
+        return Vec::new();
+    };
+    let names: Vec<String> = stmt.column_names().iter().map(|n| n.to_string()).collect();
+    let mut rows = stmt.query([]).unwrap();
+    let mut out = Vec::new();
+    while let Some(row) = rows.next().unwrap() {
+        let mut cells = Vec::new();
+        for (i, name) in names.iter().enumerate() {
+            if matches!(name.as_str(), "id" | "effective_at" | "created_at") {
+                continue;
+            }
+            let cell: rusqlite::types::Value = row.get(i).unwrap();
+            cells.push(comparable(home, &format!("{name}={cell:?}")));
+        }
+        out.push(cells);
+    }
+    out
+}
+
+/// Archivo `~/<rel>` de `home` comparable (contenido con la raíz como `~` y
+/// modo), o `None`.
+fn home_file(home: &TestHome, rel: &str) -> Option<(String, u32)> {
+    use std::os::unix::fs::PermissionsExt;
+    let path = home.root.join(rel);
+    let mode = std::fs::metadata(&path).ok()?.permissions().mode() & 0o7777;
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    Some((comparable(home, &text), mode))
+}
+
+/// Los archivos de cuentas y de confianza que escriben estas rutas.
+const ACCOUNT_FILES: [&str; 9] = [
+    ".claude.json",
+    ".claude-accounts",
+    ".claude-accounts/relotto/.claude.json",
+    ".claude-accounts/nueva",
+    ".claude-accounts/nueva/settings.json",
+    ".claude/settings.json",
+    ".codex-accounts/cuenta-2/config.toml",
+    ".codex-accounts/dos/config.toml",
+    ".grok-accounts/g1",
+];
+
+/// `same` para una ruta que teclea 1,5 s después: espera 2 s y devuelve los
+/// `send-keys` (iguales en los dos lados, raíz como `~`).
+async fn same_typed(t: &Twin, path: &str, body: &str) -> (u16, Vec<Vec<String>>) {
+    let (status, created) = same_logged(t, path, body).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let (a, b) = take_mutations(t);
+    assert_eq!(a, b, "tecleo de {path} {body}");
+    for rel in ACCOUNT_FILES {
+        assert_eq!(
+            home_file(&t.a, rel),
+            home_file(&t.b, rel),
+            "{rel} tras {path} {body}"
+        );
+    }
+    let mut all = created;
+    all.extend(a);
+    (status, all)
+}
+
+/// El comando de cada `send-keys` de un registro comparable.
+fn typed(log: &[Vec<String>]) -> Vec<String> {
+    log.iter()
+        .filter(|args| args.first().is_some_and(|v| v == "send-keys"))
+        .filter_map(|args| args.get(3).cloned())
+        .collect()
+}
+
+#[tokio::test]
+async fn session_new_and_account_add_match_python() {
+    let Some(t) = Twin::start("snew", |h| {
+        seed_registry(h);
+        support::tabs::seed_accounts(h);
+    })
+    .await
+    else {
+        return;
+    };
+    assert_confined(&t);
+    let mut commands = Vec::new();
+    let mut run = async |path: &str, body: &str, want: u16| {
+        let (status, log) = same_typed(&t, path, body).await;
+        assert_eq!(status, want, "{path} {body}");
+        commands.extend(typed(&log));
+    };
+    // Sin efectos.
+    run("/session-new", r#"{"cwd":"relativa"}"#, 400).await;
+    run("/session-new", r#"{"cwd":5}"#, 400).await;
+    run("/session-new", r#"{"cwd":"~/codebase/nada"}"#, 409).await;
+    run(
+        "/session-new",
+        r#"{"cwd":"~/codebase/p2f","routeId":""}"#,
+        409,
+    )
+    .await;
+    run(
+        "/session-new",
+        r#"{"cwd":"~/codebase/p2f","routeId":"nadie:nada"}"#,
+        409,
+    )
+    .await;
+    run(
+        "/session-new",
+        r#"{"cwd":"~/codebase/p2f","routeId":"claude:claude","harnessAccount":"nadie"}"#,
+        409,
+    )
+    .await;
+    // Shell: sesión y pestaña, nada tecleado.
+    run(
+        "/session-new",
+        r#"{"cwd":"~/codebase/p2f","agent":"shell"}"#,
+        200,
+    )
+    .await;
+    // Claude en `main` (sin CLAUDE_CONFIG_DIR) y en `relotto` (con ella y la
+    // confianza heredada), Codex con ⚡ y Grok.
+    run(
+        "/session-new",
+        r#"{"cwd":"~/codebase/p2f","routeId":"claude:claude","harnessAccount":"main"}"#,
+        200,
+    )
+    .await;
+    run(
+        "/session-new",
+        r#"{"cwd":"~/codebase/p2f/","routeId":"claude:claude","harnessAccount":"relotto"}"#,
+        200,
+    )
+    .await;
+    run(
+        "/session-new",
+        r#"{"cwd":"~/codebase/p2f","agent":"codex","danger":true}"#,
+        200,
+    )
+    .await;
+    // Grok: el modelo por omisión del registro no está en el `models_cache.json`
+    // de la cuenta: el Python crea la sesión, la mata y responde 400.
+    run(
+        "/session-new",
+        r#"{"cwd":"~/codebase/p2f","routeId":"grok:grok"}"#,
+        400,
+    )
+    .await;
+    // Cuentas.
+    run(
+        "/account/add",
+        r#"{"provider":"claude","alias":"relotto"}"#,
+        409,
+    )
+    .await;
+    run(
+        "/account/add",
+        r#"{"provider":"claude","alias":"main"}"#,
+        409,
+    )
+    .await;
+    run(
+        "/account/add",
+        r#"{"provider":"claude","alias":" nueva "}"#,
+        200,
+    )
+    .await;
+    run("/account/add", r#"{"provider":"codex"}"#, 200).await;
+    run(
+        "/account/add",
+        r#"{"provider":"codex","alias":"dos","deviceAuth":true}"#,
+        200,
+    )
+    .await;
+    run(
+        "/account/add",
+        r#"{"provider":"grok","alias":"g1","cwd":"~"}"#,
+        200,
+    )
+    .await;
+    run("/account/add", r#"{"provider":"otro"}"#, 400).await;
+    run("/account/add", r#"{"provider":"claude","alias":"-x"}"#, 400).await;
+    // Lo tecleado (igual en los dos lados por `same_typed`).
+    let has = |needle: &str| commands.iter().any(|c| c.contains(needle));
+    assert!(
+        has("CLAUDE_CONFIG_DIR=~/.claude-accounts/relotto claude"),
+        "{commands:#?}"
+    );
+    let claude_main: Vec<&String> = commands
+        .iter()
+        .filter(|c| c.starts_with(" claude"))
+        .collect();
+    assert!(!claude_main.is_empty(), "{commands:#?}");
+    assert!(
+        claude_main.iter().all(|c| !c.contains("CLAUDE_CONFIG_DIR")),
+        "main nunca lleva CLAUDE_CONFIG_DIR: {claude_main:?}"
+    );
+    assert!(has(" codex"), "{commands:#?}");
+    assert!(
+        has("--dangerously-bypass-approvals-and-sandbox"),
+        "{commands:#?}"
+    );
+    assert!(has(
+        "CLAUDE_CONFIG_DIR=~/.claude-accounts/nueva claude auth login --claudeai"
+    ));
+    assert!(has("CODEX_HOME=~/.codex-accounts/cuenta-2 codex -c"));
+    assert!(has("login --device-auth"), "{commands:#?}");
+    assert!(
+        has("GROK_HOME=~/.grok-accounts/g1 grok login"),
+        "{commands:#?}"
+    );
+    // La configuración registrada y la confianza heredada, iguales.
+    for table in ["usage_session_configs", "usage_changes"] {
+        assert_eq!(usage_rows(&t.a, table), usage_rows(&t.b, table), "{table}");
+    }
+    assert_eq!(usage_rows(&t.a, "usage_session_configs").len(), 3);
+    assert_eq!(usage_rows(&t.a, "usage_changes").len(), 1);
+    let trust = home_file(&t.a, ".claude-accounts/relotto/.claude.json")
+        .unwrap()
+        .0;
+    assert!(trust.contains("~/codebase/p2f"), "{trust}");
+    let seeded = home_file(&t.a, ".claude-accounts/nueva/settings.json").unwrap();
+    assert!(seeded.0.contains("cc-hook ñ") && seeded.0.contains("notifications_disabled"));
+    assert_eq!(seeded.1, 0o600);
+    assert_eq!(
+        home_file(&t.a, ".codex-accounts/cuenta-2/config.toml")
+            .unwrap()
+            .1,
+        0o600
+    );
+    let (sa, sb) = (sessions_of(&t.a), sessions_of(&t.b));
+    assert_eq!(sa.len(), sb.len(), "{sa:?} {sb:?}");
+}
+
+#[tokio::test]
+async fn session_new_bad_route_creates_no_session() {
+    let Some(t) = Twin::start("snew-bad", |h| {
+        seed_registry(h);
+        support::tabs::seed_accounts(h);
+    })
+    .await
+    else {
+        return;
+    };
+    let run = t
+        .post(
+            "/session-new",
+            r#"{"cwd":"~/codebase/p2f","routeId":"nadie:nada"}"#,
+        )
+        .await;
+    run.assert_same();
+    assert_eq!(run.front.status, 409);
+    for side in [&t.a, &t.b] {
+        let live = run_tmux(side, &["list-sessions", "-F", "#{session_name}"]);
+        assert!(!live.contains("term-r"), "{live}");
+    }
+}
+
+#[tokio::test]
+async fn without_tmux_server_both_decline_before_effects() {
+    if !support::tmux_available() {
+        return;
+    }
+    let home = TestHome::new_short("snew-noserver");
+    seed_registry(&home);
+    let legacy = FakeLegacy::start().await;
+    let fr = front(&home, legacy.port, options_for(&home)).await;
+    for (path, body) in [
+        (
+            "/session-new",
+            r#"{"cwd":"~/codebase/p2f","agent":"shell"}"#,
+        ),
+        ("/account/add", r#"{"provider":"grok","alias":"g1"}"#),
+        (
+            "/session-new",
+            r#"{"cwd":"~/codebase/p2f","profileId":"p1"}"#,
+        ),
+    ] {
+        let wire = request_body(fr.port, "POST", path, "", body).await;
+        assert_eq!(wire.text(), r#"{"legacy": true}"#, "{path}");
+    }
+    fr.stop().await;
+    assert_eq!(legacy.requests().len(), 3);
+    let socket = comandos_server::dash::native::tmux::private_socket(&home.tmux_dir());
+    assert!(!socket.exists(), "nació un servidor tmux");
+    assert!(!home.root.join(".grok-accounts").exists(), "ninguna cuenta");
+    assert!(!support::tabs::exists(&home, "app-tab-open.json"));
+}

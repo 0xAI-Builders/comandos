@@ -667,6 +667,63 @@ fn unix_secs() -> i64 {
     i64::try_from(now().as_secs()).unwrap_or(i64::MAX)
 }
 
+/// `cc_usage.record_change(db, event)` (`bin/cc_usage.py:2774`): una fila de
+/// `usage_changes` con `on conflict(id) do nothing`. Los campos de texto de
+/// `event` son `str` o ausentes/`None` (`_text`); otro tipo es un error (el
+/// `str()` de Python de un contenedor no se reproduce). `now` es
+/// `int(time.time())` (sin `created_at` en el evento). Devuelve el `id`.
+pub fn record_change(conn: &Connection, event: &Map<String, Value>, now: i64) -> Result<String> {
+    let text = |key: &str, limit: usize| -> Result<String> {
+        match event.get(key) {
+            None | Some(Value::Null) => Ok(String::new()),
+            Some(Value::String(s)) => Ok(s.chars().take(limit).collect()),
+            Some(_) => Err(Error::Validation(format!("{key}: no es texto"))),
+        }
+    };
+    let or = |value: String, fallback: &str| {
+        if value.is_empty() {
+            fallback.to_owned()
+        } else {
+            value
+        }
+    };
+    if event.get("created_at").is_some_and(truthy) {
+        return Err(Error::Validation("created_at explícito no portado".into()));
+    }
+    let id = stable_id(&[
+        "change".to_owned(),
+        now.to_string(),
+        text("tmux_session", usize::MAX)?,
+        text("tmux_pane", usize::MAX)?,
+        text("after_model", usize::MAX)?,
+        text("after_route", usize::MAX)?,
+    ]);
+    conn.execute(
+        "insert into usage_changes
+          (id,created_at,origin,kind,tmux_session,tmux_pane,project,
+           before_model,before_effort,before_route,after_model,after_effort,after_route,status,note)
+          values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) on conflict(id) do nothing",
+        rusqlite::params![
+            id,
+            now,
+            or(text("origin", 40)?, "manual"),
+            or(text("kind", 24)?, "switch"),
+            text("tmux_session", 80)?,
+            text("tmux_pane", 32)?,
+            text("project", 120)?,
+            text("before_model", 120)?,
+            text("before_effort", 16)?,
+            text("before_route", 80)?,
+            text("after_model", 120)?,
+            text("after_effort", 16)?,
+            text("after_route", 80)?,
+            or(text("status", 24)?, "applied"),
+            text("note", 200)?,
+        ],
+    )?;
+    Ok(id)
+}
+
 pub(crate) fn stable_id(parts: &[String]) -> String {
     let digest = Sha256::digest(parts.join("\x1f").as_bytes());
     digest.iter().take(16).map(|b| format!("{b:02x}")).collect()

@@ -19,3 +19,7 @@
 {"name":"t-kill-interna","method":"POST","path":"/kill","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"hub"},"volatile":[],"expect":"same"}
 {"name":"t-export-formato","method":"POST","path":"/export","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"p2f-in","format":"doc"},"volatile":[],"expect":"same"}
 {"name":"t-terminal-panes-close-identidad","method":"POST","path":"/terminal-panes","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"pc2f","action":"close","pane":"%0","identity":"falsa"},"setup":[["new-session","-d","-s","pc2f","cat"],["split-window","-t","=pc2f:","cat"]],"volatile":[],"expect":"same"}
+{"name":"t-session-new-relativa","method":"POST","path":"/session-new","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"cwd":"relativa"},"volatile":[],"expect":"same"}
+{"name":"t-session-new-sin-carpeta","method":"POST","path":"/session-new","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"cwd":"~/codebase/no-existe-paridad-2f"},"volatile":["/cwd"],"expect":"same"}
+{"name":"t-session-new-ruta-vacia","method":"POST","path":"/session-new","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"cwd":"~","routeId":""},"volatile":[],"expect":"same"}
+{"name":"t-account-add-proveedor-malo","method":"POST","path":"/account/add","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"provider":"otro"},"volatile":[],"expect":"same"}

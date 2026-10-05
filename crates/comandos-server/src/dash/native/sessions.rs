@@ -69,6 +69,8 @@ use std::{
     time::Duration,
 };
 
+mod launch;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionsRoute {
     RecoverTab,
@@ -78,6 +80,8 @@ pub enum SessionsRoute {
     Up,
     SshConnect,
     SshNewTab,
+    SessionNew,
+    AccountAdd,
 }
 
 impl SessionsRoute {
@@ -91,6 +95,8 @@ impl SessionsRoute {
             SessionsRoute::Up => "/up",
             SessionsRoute::SshConnect => "/ssh-connect",
             SessionsRoute::SshNewTab => "/ssh-new-tab",
+            SessionsRoute::SessionNew => "/session-new",
+            SessionsRoute::AccountAdd => "/account/add",
         }
     }
 }
@@ -111,6 +117,8 @@ pub const ROUTES: &[Entry] = &[
     entry(SessionsRoute::Up),
     entry(SessionsRoute::SshConnect),
     entry(SessionsRoute::SshNewTab),
+    entry(SessionsRoute::SessionNew),
+    entry(SessionsRoute::AccountAdd),
 ];
 
 /// `AGENT_LAUNCH` (5935), literal.
@@ -194,8 +202,10 @@ async fn mutate(opts: &NativeOptions, args: &[&str]) -> Result<Output, Fault> {
 }
 
 pub async fn answer(native: &Arc<Native>, route: SessionsRoute, request: &Request) -> Answer {
-    // R2: sin scope de systemd ninguna de las cinco se atiende aquí.
-    if native.options().scope.is_none() {
+    // R2: sin scope de systemd ninguna de las que lo usan se atiende aquí
+    // (`/session-new` y `/account/add` no lo usan, como el Python).
+    let scoped = !matches!(route, SessionsRoute::SessionNew | SessionsRoute::AccountAdd);
+    if scoped && native.options().scope.is_none() {
         return Err(Fault::Decline);
     }
     let data = light::data(request)?.clone();
@@ -218,6 +228,9 @@ async fn run(native: &Native, route: SessionsRoute, data: Map<String, Value>) ->
         SessionsRoute::RecoverTab => return recover_tab(native, &data).await,
         SessionsRoute::SshConnect => return ssh_connect(native, &data).await,
         SessionsRoute::SshNewTab => return ssh_new_tab(native, &data).await,
+        // Antes de `resolve_project_session`, como en el `do_POST` (T4).
+        SessionsRoute::SessionNew => return launch::session_new(native, &data).await,
+        SessionsRoute::AccountAdd => return launch::account_add(native, &data).await,
         _ => {}
     }
     let value = Value::Object(data);
@@ -233,9 +246,11 @@ async fn run(native: &Native, route: SessionsRoute, data: Map<String, Value>) ->
         SessionsRoute::New => new(native, &pt, &data).await,
         SessionsRoute::Shell => shell(native, &pt, &data, raw_cwd(&data)?).await,
         SessionsRoute::Up => up(native, &pt, &data, raw_cwd(&data)?).await,
-        SessionsRoute::RecoverTab | SessionsRoute::SshConnect | SessionsRoute::SshNewTab => {
-            Err(failure())
-        }
+        SessionsRoute::RecoverTab
+        | SessionsRoute::SshConnect
+        | SessionsRoute::SshNewTab
+        | SessionsRoute::SessionNew
+        | SessionsRoute::AccountAdd => Err(failure()),
     }
 }
 
