@@ -45,7 +45,9 @@ fn client_messages_parse_from_text_or_binary_frames() {
     assert_eq!(parse_client(b"2").unwrap(), ClientMsg::Pause);
     assert_eq!(parse_client(b"3").unwrap(), ClientMsg::Resume);
     assert!(parse_client(b"9").is_err());
-    assert!(parse_client(&[b'0'; 70_000]).is_err());
+    // 70 000 bytes (antes por encima del tope de 64 KiB) ya pasan; el tope es 1 MiB.
+    assert!(parse_client(&[b'0'; 70_000]).is_ok());
+    assert!(parse_client(&vec![b'0'; MAX_CLIENT_FRAME + 1]).is_err());
 }
 
 #[test]
@@ -218,7 +220,10 @@ fn client_frames_are_bounded_and_strict() {
         ClientMsg::Input(b"\xff\x00\x1b[A".to_vec())
     );
     assert_eq!(parse_client(b"0").unwrap(), ClientMsg::Input(Vec::new()));
-    // Justo en el límite: 64 KiB de carga + el prefijo.
+    // Justo en el límite: 1 MiB de carga + el prefijo (un pegado grande en una
+    // sola trama, como lo manda term.html); un byte más es `TooLarge`.
+    assert_eq!(MAX_INPUT, 1024 * 1024);
+    assert_eq!(MAX_CLIENT_FRAME, MAX_INPUT + 1);
     let mut edge = vec![b'0'];
     edge.extend(std::iter::repeat_n(b'x', MAX_INPUT));
     assert_eq!(edge.len(), MAX_CLIENT_FRAME);
@@ -256,4 +261,19 @@ fn errors_render_in_spanish() {
     );
     let err: &dyn std::error::Error = &ProtoError::TooLarge;
     assert!(!err.to_string().is_empty());
+}
+
+#[test]
+fn a_one_mib_paste_passes_whole_and_one_byte_more_is_too_large() {
+    // Pegado de 1 MiB con saltos de línea y UTF-8, como lo manda `term.html`.
+    let paste: Vec<u8> = "línea de pegado\n"
+        .bytes()
+        .cycle()
+        .take(MAX_INPUT)
+        .collect();
+    let mut frame = vec![b'0'];
+    frame.extend_from_slice(&paste);
+    assert_eq!(parse_client(&frame), Ok(ClientMsg::Input(paste)));
+    frame.push(b'x');
+    assert_eq!(parse_client(&frame), Err(ProtoError::TooLarge));
 }

@@ -13,14 +13,24 @@
 //!
 //! El par del WebSocket no es de confianza: toda trama se acota antes de
 //! decodificarla y ningún tamaño sale del rango que acepta el motor.
+//!
+//! Una trama de cliente que pase de [`MAX_CLIENT_FRAME`] da
+//! [`ProtoError::TooLarge`]; el puente de A3 la descarta con un aviso en el
+//! registro y **no** cierra el socket (una sesión viva no se corta por un
+//! pegado desmedido).
 
 use serde_json::Value;
 
 /// Subprotocolos que acepta el servidor, en orden de preferencia.
 pub const PROTOCOLS: &[&str] = &["comandos.term.v1", "tty"];
 
-/// Carga máxima de una trama de entrada (`'0'`+bytes), sin el prefijo.
-pub const MAX_INPUT: usize = 64 * 1024;
+/// Carga máxima de una trama de entrada (`'0'`+bytes), sin el prefijo: 1 MiB.
+///
+/// ttyd 1.6.3 acepta cualquier tamaño y ni `dash/term.html` ni la UI de ttyd
+/// trocean un pegado, así que un pegado grande llega en una sola trama y no
+/// puede fallar. Una trama mayor la descarta el puente (A3) con un aviso en
+/// el registro, sin cerrar el socket (ver la documentación del módulo).
+pub const MAX_INPUT: usize = 1024 * 1024;
 
 /// Trama de cliente más larga que se acepta: el prefijo más `MAX_INPUT`.
 pub const MAX_CLIENT_FRAME: usize = MAX_INPUT + 1;
