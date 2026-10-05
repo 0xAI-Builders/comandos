@@ -716,8 +716,10 @@ en 4781; la 2d solo cambia el binario del frente. Ni el Python ni las unidades n
 La release se construye desde `main` **después** de fusionar la rama `migration/rust-fase2d`, así
 que también lleva lo que entró en `main` mientras tanto y la rama no tiene: el arreglo del broker
 de extensiones (`969c3a0`, `f95ac83`, `c87973f`), `/analytics/week?sidebar=1` y `/accounts` del
-Python confirmados (`cf193ba`) y las pruebas con tmux privado por `-S` (`accab21`). La paridad y la
-sombra del paso 1 se repiten con ese binario, no con el de la rama.
+Python confirmados (`cf193ba`), las pruebas con tmux privado por `-S` (`accab21`) y la sección
+«Ejecutado» del cutover de la 2c (`e032c64`, release `4200180ce8ab`). La fusión tiene su propio
+procedimiento (abajo, «Fusión en `main`»). La paridad y la sombra del paso 1 se repiten con ese
+binario, no con el de la rama.
 
 ### Qué cambia
 
@@ -751,14 +753,36 @@ Sin `systemd-run` en el `PATH` del frente se reenvía: un servidor tmux que naci
 - `guard` y `latency` de las sugerencias los da el heredado (GET `/usage/guard`, GET
   `/usage/analytics?days=7`) cada 60 s y solo cuando alguna tarjeta los necesita; `routes` lo
   calcula el frente. Los dos procesos refrescan su contexto en instantes distintos. Cada
-  subconsulta tiene 2 s de plazo; si el heredado no responde (o responde un 200 que el frente no
-  puede leer como el Python), el fallo se recuerda 5 s y durante ese tiempo `/state` se reenvía
-  entero sin tocar tmux. Medido en vivo contra 4781 (5 lecturas GET, 4 de octubre, 23:50):
-  `/usage/guard` 21–70 ms, `/usage/analytics?days=7` 143–310 ms, muy por debajo de los 2 s. Esta
-  dependencia desaparece en la 2e, que porta `token_guard_report` y `experiment_analytics`.
-- El Python sigue escribiendo `app-tab-models.json` cuando otra de sus rutas llama a
-  `read_states_cached` (cambio de modelo, ordenar con `by` reenviado): escritura atómica, gana la
-  última, las dos son proyección del mismo estado vivo.
+  subconsulta tiene 2 s de plazo. Solo las respuestas que el heredado da cuando la función lanza
+  equivalen al `except` del Python (`{}` o tabla vacía): el 500 `Error interno del tablero`, el 504
+  `Tiempo de espera agotado` y, en la analítica, el 400 de su `except ValueError`. Si el heredado
+  no responde, responde otro status (401, 404, 502…) o un 200 que el frente no puede leer como el
+  Python, el fallo se recuerda 5 s y durante ese tiempo `/state` se reenvía entero sin tocar tmux.
+  Presupuesto de un refresco: las rutas van antes y en serie (E/S de cuentas y el sondeo del proxy,
+  hasta 0,3 s) y luego las dos subconsultas en paralelo (hasta 2 s): **≈ 2,3 s** en el peor caso,
+  una vez por minuto, dentro del vuelo que esperan todos los sondeos de ese momento (cc-notifyd usa
+  `timeout=2`: ese sondeo puede perderse y lo repite). Medido en vivo contra 4781 (5 lecturas GET,
+  4 de octubre, 23:50): `/usage/guard` 21–70 ms, `/usage/analytics?days=7` 143–310 ms, muy por
+  debajo. Esta dependencia desaparece en la 2e, que porta `token_guard_report` y
+  `experiment_analytics`.
+- Un GET `/state` que declina (cualquier causa de D2) se recuerda 1,2 s, como un resultado: los
+  sondeos de esa ventana se reenvían sin repetir el cómputo, así una incertidumbre persistente no
+  multiplica las llamadas a tmux sobre el servidor de las sesiones vivas. Cada `Decline` deja en
+  el journal, como mucho una vez por minuto, la línea `comandos dash: GET /state declina y se
+  reenvía al heredado (fase: …; N más callados desde la línea anterior; …)`, con la fase del
+  cómputo y nunca datos de los panes. Un 500 o un 504 no se recuerdan (el Python tampoco).
+- `app-tab-models.json` tiene dos escritores hasta la 2e, y no es raro: cada GET `/usage/state`
+  (reenviado; `dash/index.html` lo pide cada 10 s por tablero abierto, `tickUsage`) llama a
+  `_pane_models_for_live_state` → `read_states_cached()` → `read_states` → `write_app_tab_models`
+  (`bin/cc-dash:286-296`, `7176`), y `ensure_observed_configs` (`:315`) lo hace cada 60 s. Tras el
+  cutover la caché del Python está fría casi siempre, así que cada una es un `read_states`
+  completo, con su tmux. Las escrituras son atómicas con temporales distintos (sin corrupción) y
+  gana la última. Cada proceso tiene su propio `StateTracker` y muestrea en instantes distintos:
+  con evidencia en conflicto (la pantalla dice un modelo, el transcript otro) «la evidencia que
+  cambió gana» puede resolver distinto en cada uno, y entonces `model`/`effort` de ese pane
+  alternarían en el archivo cada ~10 s, y con ellos la barra de modelo de cc-app que lo lee. El
+  paso 3 lo comprueba; si oscila, se revierte a la 2c y `/usage/state` (o la lectura de modelos)
+  se lleva a la 2e.
 - `motor-results.json` es el espejo en disco del `MOTOR_RESULT` del Python, que lo reescribe en
   cada cambio. Si una escritura suya falla (su `except: pass`), el frente ve el valor anterior
   hasta la siguiente.
@@ -766,7 +790,9 @@ Sin `systemd-run` en el `PATH` del frente se reenvía: un servidor tmux que naci
   sincroniza primero (puede confirmar una revisión `auto`) y relee `/state` en cada reintento. La
   sincronización es idempotente y la hace el siguiente GET `/workspace`. Una excepción de
   `read_states_cached` dentro de ese `try` (el 400 con `str(exc)`) se reenvía en vez de reproducir
-  su texto.
+  su texto. Si `/state` declina después de que el frente haya sincronizado (registro ilegible), la
+  sincronización ya pudo confirmar una revisión `auto`: es idempotente, el `sync` del Python que
+  responde el reenvío es un no-op y el resultado coincide.
 - Textos de error del Python que el frente no reproduce letra a letra:
   - `/terminal/quick`: una salida no UTF-8 de tmux tras reservar la carpeta responde
     `No se pudo abrir la terminal: UnicodeDecodeError` (el Python daría el texto del códec).
@@ -777,20 +803,58 @@ Sin `systemd-run` en el `PATH` del frente se reenvía: un servidor tmux que naci
   - Un `OSError` al arrancar tmux sin `errno` (no ocurre al lanzar un ejecutable) sale como
     `OSError`; con `errno` es el `[Errno N] …: 'tmux'` del Python.
 - `/terminal/quick` en la barra: tras reservar la carpeta ya no se reenvía nunca. Si el cliente se
-  desconecta a mitad, el lanzamiento y el cierre de la fila terminan igual (como el hilo del
-  Python); si el cierre falla, responde 500.
+  desconecta a mitad (también con el reclamo todavía en el worker), el reclamo, el lanzamiento y
+  el cierre de la fila terminan igual (como el hilo del Python): la fila nunca queda en
+  `launching` sin lanzador. Si el cierre falla, responde 500.
+
+### Fusión en `main`
+
+El checkout de `main` (`~/codebase/0xJesus/ComandOS`) tiene trabajo sin commit del usuario. La
+fusión no lo toca salvo en un archivo: `lib/pane_snapshot.py` está modificado sin commit en `main`
+con exactamente el contenido que trae la rama, y `git merge` aborta igual («Your local changes …
+would be overwritten by merge») aunque sea idéntico. **Nunca `git stash`**: la pila es compartida
+con los worktrees y otras sesiones. Solo si es idéntico se descarta la copia de trabajo y se
+fusiona en seguida:
+
+```sh
+cd ~/codebase/0xJesus/ComandOS && git rev-parse --abbrev-ref HEAD    # main
+cmp lib/pane_snapshot.py <(git show migration/rust-fase2d:lib/pane_snapshot.py) \
+  && echo IDENTICO || echo "DISTINTO: parar, no fusionar"
+```
+
+Con `IDENTICO`, y solo entonces:
+
+```sh
+git checkout -- lib/pane_snapshot.py && git merge --no-ff migration/rust-fase2d
+```
+
+Con `DISTINTO`, parar: el usuario cambió el módulo después y hay que decidir con él qué versión
+ejecuta el oráculo. Entre el `checkout` y la fusión el archivo es el de `HEAD`; el Python vivo ya
+tiene el módulo cargado y solo un reinicio del heredado en esa ventana lo notaría.
+
+La fusión tiene un conflicto esperado, solo en `docs/verification/cutover-dash.md` (comprobado con
+`git merge-tree` entre `main` en `accab21` y la rama): `main` añadió «Ejecutado (4 de octubre de
+2026, 19:08, release `4200180ce8ab`)» al final de la sección 2c y la rama añadió «## 2d» en el
+mismo sitio. Se resuelve conservando las dos, la de `main` primero (cierra la 2c) y la sección 2d
+detrás; ningún otro archivo choca. Tras resolverlo:
+
+```sh
+git add docs/verification/cutover-dash.md && git commit --no-edit
+git status --short -- lib/pane_snapshot.py                          # vacío
+```
 
 ### 0. Previos
 
 ```sh
 cd ~/codebase/0xJesus/ComandOS && git log -1 --oneline        # main con la Fase 2d fusionada
+readlink -f ~/.claude/hooks/dash/index.html                    # …/codebase/0xJesus/ComandOS/dash/index.html
 CARGO_TARGET_DIR=$PWD/.build/target nice -n 10 cargo build --release -p comandos-cli -j 6
 CARGO_TARGET_DIR=$PWD/.build/target nice -n 10 cargo build -p xtask -j 6
 NEW=$HOME/codebase/0xJesus/ComandOS/.build/target/release/comandos
 XT=$HOME/codebase/0xJesus/ComandOS/.build/target/debug/xtask
 grep -qa 'GET /pomodoro, GET /sovereignty y GET /state' "$NEW" || echo "BINARIO SIN 2d: no seguir"
 systemctl --user is-active cc-dash.service cc-dash-legacy.service    # active active
-~/.local/share/comandos/bin/comandos install --releases              # anotar la actual ('*')
+~/.local/share/comandos/bin/comandos install --releases              # anotar la actual ('*': 4200180ce8ab, la 2c)
 for u in cc-dash.service cc-dash-legacy.service; do
   echo "== $u"
   systemctl --user show -p WorkingDirectory "$u"
@@ -798,8 +862,27 @@ for u in cc-dash.service cc-dash-legacy.service; do
     | grep -E '^(Environment=)?(PATH|COMANDOS_QUICK_TERMINAL_BASE|CODEX_HOME|GROK_HOME)='
 done
 ss -ltn 'sport = :4782'                                               # libre
-git status --short -- lib/pane_snapshot.py lib/tui_state.py lib/providers.py lib/quick_terminal.py bin/cc-dash
+git status --short | head -40                                         # ver la nota de abajo
+git status --short -- lib/pane_snapshot.py lib/tui_state.py lib/providers.py lib/quick_terminal.py   # vacío
+git diff -U0 -- dash bin/cc-app bin/cc-app-mac bin/cc-notifyd lib/operator_dispatch.py \
+  | grep -E '^[+-].*(/state|/terminal/quick|/workspace/sort|quick-terminal|"place")'       # vacío
+git diff -U0 -- bin/cc-dash \
+  | grep -E 'def (read_states|read_states_cached|write_app_tab_models|workspace_sort|quick_terminal_request|_annotate_suggestion|_suggestion_context|observe_pane|reconcile_card_config)\b'   # vacío
 ```
+
+`readlink` tiene que dar el `dash/index.html` del mismo checkout: de él sale la raíz del frente
+(`config/model-tiers.json`, `lib/`), y sin raíz GET `/state` declina siempre (la sombra y el
+cutover no probarían nada).
+
+El `git status --short` completo **no** sale vacío y es lo esperado: `main` tiene trabajo sin
+commit del usuario (a 5 de octubre, `M bin/cc-dash`, `M bin/cc-app`, `dash/*`, varios `lib/*` y
+`tests/*`, y archivos sin seguimiento) que el Python vivo y los estáticos ya ejecutan. No se toca.
+`M bin/cc-dash` es `/account/add` y la confianza de Codex: no cambia el camino de `/state`, de
+`/workspace/sort` ni de `/terminal/quick`, y por eso el último `grep` sale vacío. El de los cuatro
+módulos del oráculo sí tiene que salir vacío tras la fusión. Los dos `grep` buscan llamadores sin
+commit de las tres rutas en `dash/` y en los clientes (`bin/cc-app`, `cc-app-mac`, `cc-notifyd`,
+`operator_dispatch.py`) y funciones del Python que cambiarían lo que compara la paridad. Si alguno
+muestra una línea, revisar esa ruta o esa función antes de seguir.
 
 Las dos unidades deben tener el mismo `WorkingDirectory` y el mismo `PATH` (o ninguno de los dos
 lo fija), y `COMANDOS_QUICK_TERMINAL_BASE`, `CODEX_HOME`, `GROK_HOME` iguales o ausentes. El
@@ -816,10 +899,9 @@ D=$(systemctl --user show -p WorkingDirectory --value cc-dash.service)
 
 Sin ella, `/terminal/quick` de la barra se reenvía siempre (correcto, pero sin la 2d).
 
-El `git status` de los archivos del oráculo debe salir vacío tras la fusión: `lib/pane_snapshot.py`
-estaba sin confirmar en `main` y la rama trae la misma versión que ejecuta `cc-dash-legacy`
-(`codex --yolo` como `--dangerously-bypass-approvals-and-sandbox`). Si sigue modificado, comparar
-con `git diff` antes de seguir: un cambio ahí cambia las tarjetas de los panes de Codex.
+`lib/pane_snapshot.py` es la versión que ejecuta `cc-dash-legacy` (`codex --yolo` como
+`--dangerously-bypass-approvals-and-sandbox`); un cambio ahí cambia las tarjetas de los panes de
+Codex, por eso tiene que estar confirmado y sin diferencias.
 
 ### 1. Sombra en 4782 con nativo, contra el heredado 4781
 
@@ -861,7 +943,20 @@ done
 
 `norm` es una línea de inspección en la terminal del controlador, no código del repositorio. Las
 primeras lecturas pueden diferir en `observedConfig` (el rastreador de la sombra empieza vacío,
-ver «Diferencias»); a partir de la segunda vuelta tienen que coincidir.
+ver «Diferencias»). A partir de la segunda vuelta tienen que coincidir salvo en un caso aceptado:
+los panes ociosos cuya pantalla y transcript discrepan (cada proceso tiene su propio rastreador,
+ver `app-tab-models.json` en «Diferencias»). Un `DISTINTO` se acepta solo si, repitiendo la
+lectura, las diferencias se limitan a `model`, `effort`, `modelSource` y `observedConfig` de
+panes así; se ven con
+
+```sh
+diff <(curl -s -H "X-Comandos-Token: $T" 127.0.0.1:4782/state | norm | python3 -m json.tool) \
+     <(curl -s -H "X-Comandos-Token: $T" 127.0.0.1:4781/state | norm | python3 -m json.tool)
+```
+
+y en el pane de cada línea distinta se mira si la pantalla muestra otro modelo que el último del
+transcript. Cualquier otra diferencia (estado, cuenta, sugerencia, orden, un pane de más o de
+menos) que se repite en dos lecturas seguidas es un fallo: no seguir.
 
 Navegación manual en `http://127.0.0.1:4782` con `chrome-bg` (vía `cc-browser-expose start 4782`):
 el tablero muestra las mismas tarjetas que en 4777 (modelos, cuentas, sugerencias, estado
@@ -936,10 +1031,65 @@ grep Pss /proc/$P/smaps_rollup; ls /proc/$P/task | wc -l; grep Pss /proc/$L/smap
 - Una pestaña nueva, un turno que pasa a «esperando» y un cambio de modelo se reflejan en el
   tablero y en cc-app en ≤ 3 s; las popups de cc-notifyd siguen llegando. Una terminal rápida de
   la barra se abre una vez y aparece en el tablero.
+- Sin oscilación de modelos entre los dos escritores de `app-tab-models.json`: con el tablero
+  abierto (que pide `/usage/state` cada 10 s), leer el archivo cada segundo durante 2 minutos y
+  contar los valores distintos de `model`/`effort` de cada pane (`panes` de cada pestaña). Ningún
+  pane puede alternar (A, B, A…); un único cambio coincidente con un cambio de modelo hecho a
+  propósito es normal. Comprobación abajo.
+- Si GET `/state` aparece en la traza en más de 1 de cada 100 sondeos, la causa está en el
+  journal, con la fase del cómputo y como mucho una línea por minuto (comando abajo). Si no es
+  pasajera (un registro que se está escribiendo), la salida es volver a la release de la 2c
+  (paso 4, `install --rollback-release`), no `COMANDOS_DASH_NATIVE=0`, que apagaría también todo
+  lo nativo de la 2b y la 2c.
+
+```sh
+journalctl --user -u cc-dash.service --since -15min --no-pager | grep 'GET /state declina'
+```
+
+Comprobación de oscilación de `app-tab-models.json` (2 min):
+
+```sh
+python3 -c 'import json,os,time
+path=os.path.expanduser("~/.claude/hooks/app-tab-models.json")
+seen={}
+for _ in range(120):
+    try: v=json.load(open(path))
+    except (OSError,ValueError): v={}
+    for session,info in (v.items() if isinstance(v,dict) else []):
+        for p in (info.get("panes") or []) if isinstance(info,dict) else []:
+            key=session+"|"+str(p.get("pane"))
+            cur=(p.get("model"),p.get("effort"))
+            h=seen.setdefault(key,[])
+            if not h or h[-1]!=cur: h.append(cur)
+    time.sleep(1)
+for key,h in sorted(seen.items()):
+    print(("OSCILA " if len(h)>2 else "ok ")+key,h)'
+```
+
+Es inspección en la terminal del controlador, no código del repositorio. Una línea `OSCILA`
+(más de un cambio en 2 min sin tocar el modelo) es motivo para revertir a la 2c (paso 4).
 
 ### 4. Reversión
 
-Igual que en la 2c. A/B sin cambiar binario:
+La salida preferida es volver a la release de la 2c (`4200180ce8ab`, la que instaló el cutover de
+la 2c el 4 de octubre a las 19:08 y la que el paso 0 anota como actual): conserva todo lo nativo
+de la 2b y la 2c y solo quita lo de la 2d. `install --rollback-release` intercambia el enlace
+`bin/comandos` (→ `releases/<id>/comandos`) con la release que nombra `releases/previous`, que el
+`--stage` del paso 2 dejó apuntando a la que había. Comprobarlo antes:
+
+```sh
+cat ~/.local/share/comandos/releases/previous                       # 4200180ce8ab
+~/.local/share/comandos/bin/comandos install --rollback-release
+systemctl --user restart cc-dash.service
+readlink -f ~/.local/share/comandos/bin/comandos                    # …/releases/4200180ce8ab/comandos
+grep -qa 'GET /pomodoro, GET /sovereignty y GET /state' "$(readlink -f ~/.local/share/comandos/bin/comandos)" && echo "SIGUE LA 2d"
+```
+
+Si `previous` no es `4200180ce8ab` (otro `--stage` entre medias), no usar `--rollback-release`:
+apagar lo nativo con el A/B de abajo y decidir la release con el usuario.
+
+`COMANDOS_DASH_NATIVE=0` apaga **todo** lo nativo (2b, 2c y 2d); es para un A/B rápido sin cambiar
+binario o si la release anterior tampoco sirve:
 
 ```sh
 systemctl --user set-environment COMANDOS_DASH_NATIVE=0 && systemctl --user restart cc-dash.service
@@ -964,15 +1114,6 @@ Deshacer el drop-in:
 ```sh
 rm ~/.config/systemd/user/cc-dash.service.d/no-native.conf
 systemctl --user daemon-reload && systemctl --user restart cc-dash.service
-```
-
-Volver a la release anterior (la 2c):
-
-```sh
-~/.local/share/comandos/bin/comandos install --releases
-~/.local/share/comandos/bin/comandos install --rollback-release
-systemctl --user restart cc-dash.service
-grep -qa 'GET /pomodoro, GET /sovereignty y GET /state' "$(readlink -f ~/.local/share/comandos/bin/comandos)" && echo "SIGUE LA 2d"
 ```
 
 `app-tab-models.json`, las filas de `quick_terminal_requests` y el orden del workspace tienen el
@@ -1012,3 +1153,9 @@ consulta el socket de control (preflight R8). Las pruebas de la suite nunca llam
   (207 ≤ 276 ms), y p99 nativo ≤ 1000 ms, sí (253 ms).
 - Contexto de sugerencias en vivo (heredado de 4781, 5 lecturas GET): `/usage/guard` 21–70 ms y
   `/usage/analytics?days=7` 143–310 ms, contra el plazo de 2 s por subconsulta.
+- Tras los arreglos de la revisión final de la rama (`6c52d79`: el `Decline` recordado 1,2 s con
+  su línea en el journal, la terminal rápida segura ante cancelación en el reclamo, solo la
+  excepción del heredado como `except` del contexto): suite del workspace 828 pruebas, 0 fallos,
+  1 ignorada; `fmt` y `clippy -D warnings` limpios; `xtask parity` con nativo 139 OK, 0 DIFF,
+  0 SKIP de 139, con las mismas 8 rutas reenviadas una vez cada una. La sombra y el `poll
+  --shadow` se repiten en el paso 1 con el binario de `main` fusionado.
