@@ -323,8 +323,10 @@ fn argv_tmux(home: &TestHome) -> (Tmux, PathBuf) {
 
 /// Revisión de T7b: si la recolección de la 2d declina, `live_panes` va vacía
 /// sin serlo y esa vuelta NO toca los bordes (con la lista vacía los quitaría
-/// de todos los panes). Control: sin el declinar, el borde viejo de `%5` (que
-/// no es un panel vivo) se quita con `set-option -u`.
+/// de todos los panes). Las tarjetas de `/state` ya están en caché antes de
+/// romper la recolección: lo único que falta es la recolección de la vuelta.
+/// Control: sin el declinar, el borde viejo de `%5` (que no es un panel vivo)
+/// se quita con `set-option -u`.
 #[tokio::test]
 async fn gather_decline_applies_no_borders() {
     for declined in [false, true] {
@@ -334,15 +336,18 @@ async fn gather_decline_applies_no_borders() {
             "import-borders"
         });
         seed_usage(&home, "");
-        if declined {
-            // `app-tabs.json` que no es UTF-8: la recolección de la 2d declina.
-            std::fs::write(home.hooks().join("app-tabs.json"), b"{\"\xff\": 1}").unwrap();
-        }
         let (tmux, fake) = argv_tmux(&home);
         let mut opts = home.options();
         opts.tmux = tmux;
         let native = Arc::new(Native::new(opts));
-        // La señal que la ruta mira (las tarjetas de `/state` también faltan aquí).
+        // Las tarjetas de `/state` en caché (el reloj fijo las mantiene frescas).
+        assert!(native.states_cached().await.is_ok(), "tarjetas de /state");
+        if declined {
+            // `app-tabs.json` que no es UTF-8: la recolección de la 2d declina.
+            std::fs::write(home.hooks().join("app-tabs.json"), b"{\"\xff\": 1}").unwrap();
+        }
+        assert!(native.states_cached().await.is_ok(), "siguen en caché");
+        // La señal que la ruta mira.
         let Ok(reply) = state::compute(&native).await else {
             panic!("compute declinó");
         };
