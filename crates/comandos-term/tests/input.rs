@@ -3,16 +3,84 @@ use comandos_term::{
     input::*,
 };
 
+/// keyCode de Chrome en una distribución US para las teclas que usan las pruebas.
+fn kcode(key: &str) -> u32 {
+    match key {
+        "Backspace" => 8,
+        "Tab" => 9,
+        "Enter" => 13,
+        "Escape" => 27,
+        "PageUp" => 33,
+        "PageDown" => 34,
+        "End" => 35,
+        "Home" => 36,
+        "ArrowLeft" => 37,
+        "ArrowUp" => 38,
+        "ArrowRight" => 39,
+        "ArrowDown" => 40,
+        "Insert" => 45,
+        "Delete" => 46,
+        "F1" => 112,
+        "F2" => 113,
+        "F3" => 114,
+        "F4" => 115,
+        "F5" => 116,
+        "F6" => 117,
+        "F7" => 118,
+        "F8" => 119,
+        "F9" => 120,
+        "F10" => 121,
+        "F11" => 122,
+        "F12" => 123,
+        _ => {
+            let mut it = key.chars();
+            match (it.next(), it.next()) {
+                (Some(c), None) if c.is_ascii_alphabetic() => c.to_ascii_uppercase() as u32,
+                (Some(c), None) if c.is_ascii_digit() => 48 + (c as u32 - '0' as u32),
+                (Some(' '), None) => 32,
+                (Some(c), None) => match c {
+                    ')' => 48,
+                    '!' => 49,
+                    '@' => 50,
+                    '#' => 51,
+                    '$' => 52,
+                    '%' => 53,
+                    '^' => 54,
+                    '&' => 55,
+                    '*' => 56,
+                    '(' => 57,
+                    ';' | ':' => 186,
+                    '=' | '+' => 187,
+                    ',' | '<' => 188,
+                    '-' | '_' => 189,
+                    '.' | '>' => 190,
+                    '/' | '?' => 191,
+                    '`' | '~' => 192,
+                    '[' | '{' => 219,
+                    '\\' | '|' => 220,
+                    ']' | '}' => 221,
+                    '\'' | '"' => 222,
+                    _ => 0,
+                },
+                _ => 0,
+            }
+        }
+    }
+}
+
 fn k(key: &str) -> KeyInput<'_> {
     KeyInput {
         key,
         code: "",
+        key_code: kcode(key),
         ctrl: false,
         alt: false,
         shift: false,
         meta: false,
     }
 }
+const NOMODS: (bool, bool, bool) = (false, false, false);
+
 fn send(a: KeyAction) -> Vec<u8> {
     match a {
         KeyAction::Send(v) => v,
@@ -209,15 +277,17 @@ fn wheel_policy_follows_the_spike() {
         sgr_mouse: true,
         ..Modes::default()
     };
-    assert!(matches!(wheel(-1, 0, 0, &tmux_mouse), WheelAction::Mouse(v) if v == b"\x1b[<64;1;1M"));
+    assert!(
+        matches!(wheel(-1, 0, 0, NOMODS, &tmux_mouse), WheelAction::Mouse(v) if v == b"\x1b[<64;1;1M")
+    );
     let alt = Modes {
         alt_screen: true,
         alternate_scroll: true,
         ..Modes::default()
     };
-    assert!(matches!(wheel(2, 0, 0, &alt), WheelAction::Arrows(v) if v == b"\x1b[B\x1b[B"));
+    assert!(matches!(wheel(2, 0, 0, NOMODS, &alt), WheelAction::Arrows(v) if v == b"\x1b[B\x1b[B"));
     assert!(matches!(
-        wheel(3, 0, 0, &Modes::default()),
+        wheel(3, 0, 0, NOMODS, &Modes::default()),
         WheelAction::Scroll(3)
     ));
 }
@@ -405,7 +475,11 @@ fn ctrl_combinations_follow_xterm_js() {
     assert_eq!(encode_key(&ctrl("-", "Minus"), &n), KeyAction::None);
     assert_eq!(encode_key(&ctrl("2", "Digit2"), &n), KeyAction::None);
     // Distribución no latina: la letra sale de `code`.
-    assert_eq!(send(encode_key(&ctrl("с", "KeyC"), &n)), b"\x03");
+    let cyr = KeyInput {
+        key_code: 67,
+        ..ctrl("с", "KeyC")
+    };
+    assert_eq!(send(encode_key(&cyr, &n)), b"\x03");
     // Ctrl+Shift con `_` y `@` (únicos casos con Shift).
     let cs = |key| {
         key_with(key, "", |x| {
@@ -460,8 +534,14 @@ fn alt_characters_and_text() {
         )),
         b"\x1b\x01"
     );
-    // Tecla muerta con Alt: ESC + letra de la tecla física.
-    assert_eq!(send(encode_key(&alt("Dead", "KeyN"), &n)), b"\x1bn");
+    // Tecla muerta con Alt: xterm.js no manda nada.
+    assert_eq!(encode_key(&alt("Dead", "KeyN"), &n), KeyAction::None);
+    // Alt+ñ en teclado español: keyCode 192 → ESC `.
+    let alt_n = KeyInput {
+        key_code: 192,
+        ..alt("ñ", "Semicolon")
+    };
+    assert_eq!(send(encode_key(&alt_n, &n)), b"\x1b`");
     assert_eq!(
         encode_key(&key_with("Dead", "KeyN", |_| {}), &n),
         KeyAction::None
@@ -526,8 +606,6 @@ fn paste_edge_cases() {
         b"\x1b[200~z\x1b[201\x1b[201~"
     );
 }
-
-const NOMODS: (bool, bool, bool) = (false, false, false);
 
 #[test]
 fn mouse_levels_and_buttons() {
@@ -663,31 +741,49 @@ fn wheel_details() {
         ..Modes::default()
     };
     // Un informe por rueda, sea cual sea la cantidad; con ratón no hay flechas.
-    assert!(matches!(wheel(-3, 0, 0, &tmux), WheelAction::Mouse(v) if v == b"\x1b[<64;1;1M"));
-    assert!(matches!(wheel(5, 1, 1, &tmux), WheelAction::Mouse(v) if v == b"\x1b[<65;2;2M"));
+    assert!(
+        matches!(wheel(-3, 0, 0, NOMODS, &tmux), WheelAction::Mouse(v) if v == b"\x1b[<64;1;1M")
+    );
+    assert!(
+        matches!(wheel(5, 1, 1, NOMODS, &tmux), WheelAction::Mouse(v) if v == b"\x1b[<65;2;2M")
+    );
     let app_alt = Modes {
         alt_screen: true,
         alternate_scroll: true,
         app_cursor: true,
         ..Modes::default()
     };
-    assert!(matches!(wheel(-2, 0, 0, &app_alt), WheelAction::Arrows(v) if v == b"\x1bOA\x1bOA"));
-    // DECSET 1007 apagado: se desplaza la vista.
-    let no_alt_scroll = Modes {
+    assert!(
+        matches!(wheel(-2, 0, 0, NOMODS, &app_alt), WheelAction::Arrows(v) if v == b"\x1bOA\x1bOA")
+    );
+    // xterm.js ignora DECSET 1007: en pantalla alternativa siempre flechas.
+    let alt_no_1007 = Modes {
         alt_screen: true,
+        alternate_scroll: false,
         ..Modes::default()
     };
     assert!(matches!(
-        wheel(-4, 0, 0, &no_alt_scroll),
+        wheel(-1, 0, 0, NOMODS, &alt_no_1007),
+        WheelAction::Arrows(v) if v == b"\x1b[A"
+    ));
+    // Con historia (pantalla normal) se desplaza la vista.
+    assert!(matches!(
+        wheel(-4, 0, 0, NOMODS, &Modes::default()),
         WheelAction::Scroll(-4)
     ));
-    assert!(matches!(wheel(0, 0, 0, &tmux), WheelAction::Scroll(0)));
+    assert!(matches!(
+        wheel(0, 0, 0, NOMODS, &tmux),
+        WheelAction::Scroll(0)
+    ));
     // X10 fuera de rango: ningún informe posible.
     let x10 = Modes {
         mouse: MouseMode::Click,
         ..Modes::default()
     };
-    assert!(matches!(wheel(1, 300, 0, &x10), WheelAction::Scroll(0)));
+    assert!(matches!(
+        wheel(1, 300, 0, NOMODS, &x10),
+        WheelAction::Scroll(0)
+    ));
 }
 
 #[test]
@@ -747,4 +843,153 @@ fn ime_state_machine() {
     ime.end("z");
     ime.forget_commit();
     assert_eq!(ime.input("insertText", Some("z"), false).unwrap(), b"z");
+}
+
+fn numpad<'a>(key: &'a str, code: &'a str, kc: u32, f: impl Fn(&mut KeyInput<'a>)) -> KeyInput<'a> {
+    let mut v = KeyInput {
+        key_code: kc,
+        code,
+        ..k(key)
+    };
+    f(&mut v);
+    v
+}
+
+#[test]
+fn numpad_follows_key_code_96_to_111() {
+    let n = Modes::default();
+    // (key, code, keyCode de Chrome)
+    let keys: &[(&str, &str, u32)] = &[
+        ("0", "Numpad0", 96),
+        ("3", "Numpad3", 99),
+        ("7", "Numpad7", 103),
+        ("8", "Numpad8", 104),
+        ("9", "Numpad9", 105),
+        ("*", "NumpadMultiply", 106),
+        ("+", "NumpadAdd", 107),
+        ("-", "NumpadSubtract", 109),
+        (".", "NumpadDecimal", 110),
+        ("/", "NumpadDivide", 111),
+    ];
+    for &(key, code, kc) in keys {
+        // Texto plano: el carácter.
+        assert_eq!(
+            send(encode_key(&numpad(key, code, kc, |_| {}), &n)),
+            key.as_bytes(),
+            "{code}"
+        );
+        // Ctrl y Alt: nada, a diferencia de la fila principal.
+        assert_eq!(
+            encode_key(&numpad(key, code, kc, |x| x.ctrl = true), &n),
+            KeyAction::None,
+            "ctrl {code}"
+        );
+        assert_eq!(
+            encode_key(&numpad(key, code, kc, |x| x.alt = true), &n),
+            KeyAction::None,
+            "alt {code}"
+        );
+        assert_eq!(
+            encode_key(
+                &numpad(key, code, kc, |x| {
+                    x.alt = true;
+                    x.shift = true;
+                }),
+                &n
+            ),
+            KeyAction::None,
+            "alt+shift {code}"
+        );
+    }
+    // La misma tecla en la fila principal sí produce bytes (control).
+    let row = KeyInput {
+        code: "Digit7",
+        ctrl: true,
+        ..k("7")
+    };
+    assert_eq!(send(encode_key(&row, &n)), b"\x1f");
+}
+
+#[test]
+fn key_code_drives_named_keys() {
+    let n = Modes::default();
+    // Sin keyCode (0) una tecla con nombre no se reconoce.
+    let no_code = KeyInput {
+        key_code: 0,
+        ..k("ArrowUp")
+    };
+    assert_eq!(encode_key(&no_code, &n), KeyAction::None);
+    // Con keyCode 38 sí, aunque `key` sea otra cosa.
+    let by_code = KeyInput {
+        key_code: 38,
+        ..k("Unidentified")
+    };
+    assert_eq!(send(encode_key(&by_code, &n)), b"\x1b[A");
+    // Letras de otra distribución: manda el keyCode.
+    let cyr = KeyInput {
+        key_code: 65,
+        ctrl: true,
+        ..k("ф")
+    };
+    assert_eq!(send(encode_key(&cyr, &n)), b"\x01");
+}
+
+#[test]
+fn wheel_mouse_report_carries_modifiers() {
+    let sgr = Modes {
+        mouse: MouseMode::Click,
+        sgr_mouse: true,
+        ..Modes::default()
+    };
+    // ctrl 16, alt 8, shift 4 sobre 64 (arriba) / 65 (abajo).
+    assert!(matches!(
+        wheel(-1, 0, 0, (true, false, true), &sgr),
+        WheelAction::Mouse(v) if v == b"\x1b[<84;1;1M"
+    ));
+    assert!(matches!(
+        wheel(1, 0, 0, (false, true, false), &sgr),
+        WheelAction::Mouse(v) if v == b"\x1b[<73;1;1M"
+    ));
+    // En X10 los modificadores también van en el primer byte.
+    let x10 = Modes {
+        mouse: MouseMode::Click,
+        ..Modes::default()
+    };
+    assert!(matches!(
+        wheel(-1, 0, 0, (false, false, true), &x10),
+        WheelAction::Mouse(v) if v == [0x1b, b'[', b'M', 32 + 68, b'!', b'!']
+    ));
+    // Las flechas no llevan modificadores.
+    let alt = Modes {
+        alt_screen: true,
+        ..Modes::default()
+    };
+    assert!(matches!(
+        wheel(1, 0, 0, (true, true, true), &alt),
+        WheelAction::Arrows(v) if v == b"\x1b[B"
+    ));
+}
+
+#[test]
+fn wheel_arrows_are_capped() {
+    let alt = Modes {
+        alt_screen: true,
+        ..Modes::default()
+    };
+    for lines in [i32::MAX, i32::MIN, 1_000_000] {
+        match wheel(lines, 0, 0, NOMODS, &alt) {
+            WheelAction::Arrows(v) => assert_eq!(v.len(), MAX_WHEEL_ARROWS * 3, "{lines}"),
+            other => panic!("{other:?}"),
+        }
+    }
+    // Por debajo del tope, la cantidad exacta.
+    assert!(matches!(
+        wheel(3, 0, 0, NOMODS, &alt),
+        WheelAction::Arrows(v) if v.len() == 9
+    ));
+    // El desplazamiento local no reserva nada, no se acota.
+    assert!(matches!(
+        wheel(i32::MAX, 0, 0, NOMODS, &Modes::default()),
+        WheelAction::Scroll(i32::MAX)
+    ));
 }

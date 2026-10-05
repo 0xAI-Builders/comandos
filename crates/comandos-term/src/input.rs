@@ -4,9 +4,9 @@
 //!
 //! La referencia es `Keyboard.evaluateKeyboardEvent` de xterm.js 5.5.0 en
 //! Linux con `macOptionIsMeta = false`, más `CoreMouseService`, `paste` y el
-//! manejador de rueda de `Terminal`. xterm.js decide por `keyCode`, que
-//! `KeyInput` no trae: se reconstruye en [`key_code`] a partir de `key` y
-//! `code` (letras y símbolos por el carácter, dígitos por la posición física).
+//! manejador de rueda de `Terminal`. xterm.js decide por `keyCode`, que la
+//! capa web pasa tal cual en [`KeyInput::key_code`] (paridad exacta en
+//! cualquier distribución de teclado, teclado numérico incluido).
 //!
 //! ## Contrato con quien llama
 //!
@@ -15,30 +15,36 @@
 //!   no se duplica por `beforeinput`). Con `None` el evento no se toca.
 //!   Los caracteres imprimibles (incluidos espacio y mayúsculas, que xterm.js
 //!   manda por `keypress`) salen aquí con los mismos bytes.
+//! * Alt+tecla muerta no envía nada, como xterm.js; este además marca la tecla
+//!   muerta como pendiente y se traga la siguiente que produzca bytes: esa
+//!   parte (`_unprocessedDeadKey`) es de la capa web.
 //! * El ratón en modo X10 clásico (sin `sgr_mouse`) emite bytes crudos, que
 //!   pueden pasar de 0x7f: no son UTF-8 y hay que transportarlos como binario.
 //! * xterm.js descarta un `Move` idéntico al anterior (misma celda, botón y
 //!   modificadores). Aquí no hay estado: esa deduplicación es de quien llama.
+//! * [`wheel`] debe llamarse una vez por evento `wheel` del DOM, no por línea.
 //!
-//! ## Diferencias deliberadas con xterm.js
+//! ## Diferencia deliberada con xterm.js
 //!
-//! * El pegado quita cualquier `ESC[201~` del texto cuando va entre
-//!   corchetes; xterm.js 5.5.0 no lo hace y un portapapeles hostil podría
-//!   cerrar el pegado y ejecutar el resto.
-//! * La rueda en pantalla alternativa solo manda flechas si la aplicación no
-//!   desactivó `alternate_scroll` (DECSET 1007); xterm.js ignora ese modo.
-//!   Con el valor por defecto del motor (activo) coinciden.
-//! * La rueda no reenvía modificadores al ratón (la firma no los lleva).
+//! El pegado entre corchetes quita todo `ESC[201~` del texto. xterm.js 5.5.0
+//! no lo hace, y sin ello un portapapeles hostil cierra el pegado y ejecuta el
+//! resto como si lo hubiera escrito el usuario (inyección de bracketed
+//! paste). Excepción de seguridad aprobada: es la única diferencia de bytes.
 
 use crate::engine::{Modes, MouseMode};
 
 const ESC: u8 = 0x1b;
 
-/// Tecla pulsada, tal como la da `KeyboardEvent` (`key`, `code`, modificadores).
+/// Tecla pulsada, tal como la da `KeyboardEvent`.
 #[derive(Debug, Clone, Copy)]
 pub struct KeyInput<'a> {
     pub key: &'a str,
     pub code: &'a str,
+    /// `KeyboardEvent.keyCode`: xterm.js decide por él (Backspace 8, flechas
+    /// 37–40, F1–F12 112–123, letras 65–90, teclado numérico 96–111…). 0 si
+    /// el navegador no lo da; solo se reconocen entonces las teclas
+    /// `UIKeyInput*` de iOS y el texto.
+    pub key_code: u32,
     pub ctrl: bool,
     pub alt: bool,
     pub shift: bool,
@@ -133,101 +139,6 @@ fn alt_char(kc: u32, shift: bool) -> Option<u8> {
         .map(|&(_, plain, shifted)| if shift { shifted } else { plain })
 }
 
-/// keyCode de una tecla de símbolo a partir del carácter que produce
-/// (distribución US, como las que usa Chrome en Linux).
-fn symbol_key_code(c: char) -> Option<u32> {
-    match c {
-        ';' | ':' => Some(186),
-        '=' | '+' => Some(187),
-        ',' | '<' => Some(188),
-        '-' | '_' => Some(189),
-        '.' | '>' => Some(190),
-        '/' | '?' => Some(191),
-        '`' | '~' => Some(192),
-        '[' | '{' => Some(219),
-        '\\' | '|' => Some(220),
-        ']' | '}' => Some(221),
-        '\'' | '"' => Some(222),
-        ')' => Some(48),
-        '!' => Some(49),
-        '@' => Some(50),
-        '#' => Some(51),
-        '$' => Some(52),
-        '%' => Some(53),
-        '^' => Some(54),
-        '&' => Some(55),
-        '*' => Some(56),
-        '(' => Some(57),
-        _ => None,
-    }
-}
-
-/// Reconstruye el `keyCode` de DOM que xterm.js usa en su `default`:
-/// dígitos por la posición física (`Digit1` → 49 aun en AZERTY), letras por el
-/// carácter (o por `code` en distribuciones no latinas), símbolos por el
-/// carácter. 0 si no se reconoce.
-fn key_code(key: &str, code: &str) -> u32 {
-    if let Some(d) = code.strip_prefix("Digit").and_then(single_char)
-        && d.is_ascii_digit()
-    {
-        return 48 + (d as u32 - '0' as u32);
-    }
-    if let Some(c) = single_char(key) {
-        if c.is_ascii_alphabetic() {
-            return c.to_ascii_uppercase() as u32;
-        }
-        if c == ' ' {
-            return 32;
-        }
-        if c.is_ascii_digit() {
-            return 48 + (c as u32 - '0' as u32);
-        }
-        if let Some(kc) = symbol_key_code(c) {
-            return kc;
-        }
-    }
-    if let Some(c) = code.strip_prefix("Key").and_then(single_char)
-        && c.is_ascii_uppercase()
-    {
-        return c as u32;
-    }
-    match code {
-        "Space" => 32,
-        "Semicolon" => 186,
-        "Equal" => 187,
-        "Comma" => 188,
-        "Minus" => 189,
-        "Period" => 190,
-        "Slash" => 191,
-        "Backquote" => 192,
-        "BracketLeft" => 219,
-        "Backslash" => 220,
-        "BracketRight" => 221,
-        "Quote" => 222,
-        _ => 0,
-    }
-}
-
-/// Teclas de función: (número del CSI `~`, letra SS3). F1–F4 llevan número 0
-/// y salen como `ESC O <letra>`; F5–F12 como `ESC [ <n> ~`.
-fn function_key(key: &str) -> Option<(u8, u8)> {
-    match key {
-        "F1" => Some((0, b'P')),
-        "F2" => Some((0, b'Q')),
-        "F3" => Some((0, b'R')),
-        "F4" => Some((0, b'S')),
-        "F5" => Some((15, 0)),
-        "F6" => Some((17, 0)),
-        "F7" => Some((18, 0)),
-        "F8" => Some((19, 0)),
-        "F9" => Some((20, 0)),
-        "F10" => Some((21, 0)),
-        "F11" => Some((23, 0)),
-        "F12" => Some((24, 0)),
-        _ => None,
-    }
-}
-
 /// El único carácter de `s`, si tiene exactamente uno.
 fn single_char(s: &str) -> Option<char> {
     let mut it = s.chars();
@@ -237,18 +148,13 @@ fn single_char(s: &str) -> Option<char> {
     }
 }
 
-/// Letra final de las flechas.
-fn cursor_final(key: &str) -> Option<u8> {
-    match key {
-        "ArrowUp" => Some(b'A'),
-        "ArrowDown" => Some(b'B'),
-        "ArrowRight" => Some(b'C'),
-        "ArrowLeft" => Some(b'D'),
-        _ => None,
-    }
+/// `ESC [ A` o `ESC O A` según el modo de cursor de aplicación.
+fn cursor_seq(m: &Modes, fin: u8) -> Vec<u8> {
+    esc2(if m.app_cursor { b'O' } else { b'[' }, fin)
 }
 
-/// Codifica una pulsación como lo haría `Keyboard.evaluateKeyboardEvent`.
+/// Codifica una pulsación como lo haría `Keyboard.evaluateKeyboardEvent`
+/// (que decide por `keyCode`; ver [`KeyInput::key_code`]).
 pub fn encode_key(k: &KeyInput, m: &Modes) -> KeyAction {
     // Parámetro de modificadores de xterm: shift 1, alt 2, ctrl 4, meta 8.
     let a: u8 = u8::from(k.shift)
@@ -258,67 +164,68 @@ pub fn encode_key(k: &KeyInput, m: &Modes) -> KeyAction {
     let p = a + 1;
     let send = KeyAction::Send;
 
-    if let Some(fin) = cursor_final(k.key) {
-        // Con Meta xterm.js no manda nada (Cmd+flecha es del navegador).
-        if k.meta {
-            return KeyAction::None;
-        }
-        if a == 0 {
-            return send(esc2(if m.app_cursor { b'O' } else { b'[' }, fin));
-        }
-        // En Linux xterm.js convierte Alt+flecha en Ctrl+flecha (ESC[1;5X):
-        // el 1;3 solo se conserva en macOS, donde sirve para ESC b / ESC f.
-        let p = if p == 3 { 5 } else { p };
-        return send(csi_mod_final(p, fin));
-    }
-    if let Some((n, ss3)) = function_key(k.key) {
-        return send(match (n, a) {
-            (0, 0) => esc2(b'O', ss3),
-            (0, _) => csi_mod_final(p, ss3),
-            (n, 0) => csi_tilde(n),
-            (n, _) => csi_tilde_mod(n, p),
-        });
-    }
-    match k.key {
-        // Teclado de iOS: xterm.js lo reconoce con keyCode 0.
-        "UIKeyInputUpArrow" => send(esc2(if m.app_cursor { b'O' } else { b'[' }, b'A')),
-        "UIKeyInputDownArrow" => send(esc2(if m.app_cursor { b'O' } else { b'[' }, b'B')),
-        "UIKeyInputRightArrow" => send(esc2(if m.app_cursor { b'O' } else { b'[' }, b'C')),
-        "UIKeyInputLeftArrow" => send(esc2(if m.app_cursor { b'O' } else { b'[' }, b'D')),
-        "Backspace" => {
+    match k.key_code {
+        // Teclado de iOS: xterm.js lo reconoce con keyCode 0 y por `key`.
+        0 => match k.key {
+            "UIKeyInputUpArrow" => send(cursor_seq(m, b'A')),
+            "UIKeyInputDownArrow" => send(cursor_seq(m, b'B')),
+            "UIKeyInputRightArrow" => send(cursor_seq(m, b'C')),
+            "UIKeyInputLeftArrow" => send(cursor_seq(m, b'D')),
+            _ => encode_other(k),
+        },
+        8 => {
             let b = if k.ctrl { 0x08 } else { 0x7f };
             send(if k.alt { vec![ESC, b] } else { vec![b] })
         }
-        "Tab" => send(if k.shift {
+        9 => send(if k.shift {
             vec![ESC, b'[', b'Z']
         } else {
             vec![b'\t']
         }),
-        "Enter" => send(if k.alt { vec![ESC, b'\r'] } else { vec![b'\r'] }),
-        "Escape" => send(if k.alt { vec![ESC, ESC] } else { vec![ESC] }),
+        13 => send(if k.alt { vec![ESC, b'\r'] } else { vec![b'\r'] }),
+        27 => send(if k.alt { vec![ESC, ESC] } else { vec![ESC] }),
+        // Flechas: 37 ←, 38 ↑, 39 →, 40 ↓. Con Meta xterm.js no manda nada
+        // (Cmd+flecha es del navegador).
+        37..=40 => {
+            if k.meta {
+                return KeyAction::None;
+            }
+            let fin = match k.key_code {
+                37 => b'D',
+                38 => b'A',
+                39 => b'C',
+                _ => b'B',
+            };
+            if a == 0 {
+                return send(cursor_seq(m, fin));
+            }
+            // En Linux xterm.js convierte Alt+flecha en Ctrl+flecha
+            // (ESC[1;5X): el 1;3 solo se conserva en macOS (ESC b / ESC f).
+            send(csi_mod_final(if p == 3 { 5 } else { p }, fin))
+        }
         // Shift+Insert y Ctrl+Insert son pegar y copiar del navegador.
-        "Insert" => {
+        45 => {
             if k.shift || k.ctrl {
                 KeyAction::None
             } else {
                 send(csi_tilde(2))
             }
         }
-        "Delete" => send(if a == 0 {
+        46 => send(if a == 0 {
             csi_tilde(3)
         } else {
             csi_tilde_mod(3, p)
         }),
-        "Home" | "End" => {
-            let fin = if k.key == "Home" { b'H' } else { b'F' };
+        36 | 35 => {
+            let fin = if k.key_code == 36 { b'H' } else { b'F' };
             send(if a != 0 {
                 csi_mod_final(p, fin)
             } else {
-                esc2(if m.app_cursor { b'O' } else { b'[' }, fin)
+                cursor_seq(m, fin)
             })
         }
-        "PageUp" | "PageDown" => {
-            let up = k.key == "PageUp";
+        33 | 34 => {
+            let up = k.key_code == 33;
             if k.shift {
                 KeyAction::ScrollPage(if up { -1 } else { 1 })
             } else if k.ctrl {
@@ -327,13 +234,35 @@ pub fn encode_key(k: &KeyInput, m: &Modes) -> KeyAction {
                 send(csi_tilde(if up { 5 } else { 6 }))
             }
         }
+        // F1–F4: 112–115, SS3 P..S.
+        112..=115 => {
+            let fin = b'P' + (k.key_code - 112) as u8;
+            send(if a == 0 {
+                esc2(b'O', fin)
+            } else {
+                csi_mod_final(p, fin)
+            })
+        }
+        // F5–F12: 116–123, números de CSI `~` con el hueco de xterm.
+        116..=123 => {
+            const F_TILDE: [u8; 8] = [15, 17, 18, 19, 20, 21, 23, 24];
+            let n = F_TILDE
+                .get((k.key_code - 116) as usize)
+                .copied()
+                .unwrap_or(15);
+            send(if a == 0 {
+                csi_tilde(n)
+            } else {
+                csi_tilde_mod(n, p)
+            })
+        }
         _ => encode_other(k),
     }
 }
 
 /// Rama `default` de xterm.js: caracteres, Ctrl+letra y Alt+carácter.
 fn encode_other(k: &KeyInput) -> KeyAction {
-    let kc = key_code(k.key, k.code);
+    let kc = k.key_code;
     let ctrl_only = k.ctrl && !k.shift && !k.alt && !k.meta;
 
     if ctrl_only {
@@ -346,7 +275,7 @@ fn encode_other(k: &KeyInput) -> KeyAction {
             219 => Some(0x1b),
             220 => Some(0x1c),
             221 => Some(0x1d),
-            // Ctrl+/ y Ctrl+- no producen nada en xterm.js.
+            // Ctrl+/, Ctrl+- y Ctrl+teclado numérico (96–111): nada en xterm.js.
             _ => None,
         };
         return byte.map_or(KeyAction::None, |b| KeyAction::Send(vec![b]));
@@ -373,7 +302,8 @@ fn encode_other(k: &KeyInput) -> KeyAction {
         return KeyAction::None;
     }
 
-    // Alt sin Meta (en Linux Alt nunca se trata como Meta de Mac).
+    // Alt sin Meta (en Linux Alt nunca se trata como Meta de Mac). Las teclas
+    // del teclado numérico (96–111) no están en la tabla: no mandan nada.
     if let Some(ch) = alt_char(kc, k.shift) {
         return KeyAction::Send(vec![ESC, ch]);
     }
@@ -390,22 +320,16 @@ fn encode_other(k: &KeyInput) -> KeyAction {
     if kc == 32 {
         return KeyAction::Send(vec![ESC, if k.ctrl { 0x00 } else { b' ' }]);
     }
-    if k.key == "Dead"
-        && let Some(c) = k.code.strip_prefix("Key").and_then(single_char)
-        && c.is_ascii_alphabetic()
-    {
-        let c = if k.shift {
-            c.to_ascii_uppercase()
-        } else {
-            c.to_ascii_lowercase()
-        };
-        return KeyAction::Send(vec![ESC, c as u8]);
-    }
+    // Alt+tecla muerta: xterm.js no manda nada (`_unprocessedDeadKey`).
     KeyAction::None
 }
 
 /// Texto pegado → bytes: `\r?\n` pasa a `\r`; con `bracketed_paste` va entre
 /// `ESC[200~` y `ESC[201~` y se le quita cualquier `ESC[201~` interno.
+///
+/// **Se aparta de xterm.js 5.5 a propósito**: xterm.js no filtra el cierre y
+/// un texto con `ESC[201~` saldría del pegado e inyectaría órdenes. Es una
+/// excepción de seguridad; el resto de los bytes coincide con xterm.js.
 pub fn encode_paste(text: &str, m: &Modes) -> Vec<u8> {
     const OPEN: &[u8] = b"\x1b[200~";
     const CLOSE: &[u8] = b"\x1b[201~";
@@ -586,11 +510,19 @@ pub enum WheelAction {
     Scroll(i32),
 }
 
-/// Rueda: `lines < 0` es hacia arriba. Con ratón activo sale **un** informe
-/// por llamada, como xterm.js (el sentido manda, no la cantidad: tmux ya
-/// desplaza varias líneas por cada rueda); sin ratón y en pantalla
-/// alternativa, `|lines|` flechas; si no, desplazamiento local.
-pub fn wheel(lines: i32, col: u16, row: u16, m: &Modes) -> WheelAction {
+/// Tope de flechas por paso de rueda en pantalla alternativa. xterm.js no lo
+/// tiene; acota la reserva ante un `lines` desmesurado (delta de página o
+/// evento sintético). 200 supera con holgura cualquier pantalla real.
+pub const MAX_WHEEL_ARROWS: usize = 200;
+
+/// Rueda: `lines < 0` es hacia arriba; `mods` es `(ctrl, alt, shift)`.
+///
+/// Con ratón activo sale **un** informe por llamada con los modificadores
+/// (como xterm.js: el sentido manda, no la cantidad; tmux ya desplaza varias
+/// líneas por cada rueda). Sin ratón y en pantalla alternativa (sin historia,
+/// la regla `!hasScrollback` de xterm.js) salen `|lines|` flechas, hasta
+/// [`MAX_WHEEL_ARROWS`]; si no, desplazamiento local.
+pub fn wheel(lines: i32, col: u16, row: u16, mods: (bool, bool, bool), m: &Modes) -> WheelAction {
     if lines == 0 {
         return WheelAction::Scroll(0);
     }
@@ -602,16 +534,16 @@ pub fn wheel(lines: i32, col: u16, row: u16, m: &Modes) -> WheelAction {
             Button::WheelDown
         };
         // Fuera de rango en X10 no hay informe posible: no se hace nada.
-        return encode_mouse(b, MouseKind::Press, col, row, (false, false, false), m)
+        return encode_mouse(b, MouseKind::Press, col, row, mods, m)
             .map_or(WheelAction::Scroll(0), WheelAction::Mouse);
     }
-    if m.alt_screen && m.alternate_scroll {
-        let mid = if m.app_cursor { b'O' } else { b'[' };
+    if m.alt_screen {
         let fin = if up { b'A' } else { b'B' };
-        let n = lines.unsigned_abs() as usize;
-        let mut v = Vec::with_capacity(n.saturating_mul(3));
+        let n = (lines.unsigned_abs() as usize).min(MAX_WHEEL_ARROWS);
+        let one = [ESC, if m.app_cursor { b'O' } else { b'[' }, fin];
+        let mut v = Vec::with_capacity(n * one.len());
         for _ in 0..n {
-            v.extend_from_slice(&[ESC, mid, fin]);
+            v.extend_from_slice(&one);
         }
         return WheelAction::Arrows(v);
     }
