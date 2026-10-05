@@ -361,3 +361,205 @@ async fn suggestion_context_unreadable_200_declines() {
             .is_err()
     );
 }
+
+/// Heredado cuyas respuestas a `/usage/*` cambian durante la prueba; el resto
+/// (el `/state` reenviado) responde `{"legacy": true}`. Anota cada línea.
+struct SwitchLegacy {
+    port: u16,
+    usage: Arc<Mutex<String>>,
+    seen: Arc<Mutex<Vec<String>>>,
+}
+
+impl SwitchLegacy {
+    async fn start(usage: &str) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let usage = Arc::new(Mutex::new(usage.to_owned()));
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let (body_of, log) = (usage.clone(), seen.clone());
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let (body_of, log) = (body_of.clone(), log.clone());
+                tokio::spawn(async move {
+                    let mut head = Vec::new();
+                    let mut byte = [0u8; 1];
+                    while !head.ends_with(b"\r\n\r\n") {
+                        match stream.read(&mut byte).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(_) => head.push(byte[0]),
+                        }
+                    }
+                    let line = String::from_utf8_lossy(&head)
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .to_owned();
+                    let body = if line.starts_with("GET /usage/") {
+                        body_of.lock().unwrap().clone()
+                    } else {
+                        r#"{"legacy": true}"#.to_owned()
+                    };
+                    log.lock().unwrap().push(line);
+                    let reply = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = stream.write_all(reply.as_bytes()).await;
+                });
+            }
+        });
+        Self { port, usage, seen }
+    }
+    fn set_usage(&self, body: &str) {
+        *self.usage.lock().unwrap() = body.to_owned();
+    }
+    fn requests(&self) -> Vec<String> {
+        self.seen.lock().unwrap().clone()
+    }
+    fn usage_requests(&self) -> usize {
+        self.requests()
+            .iter()
+            .filter(|l| l.starts_with("GET /usage/"))
+            .count()
+    }
+}
+
+/// `seed` con el registro del pane vivo en `working`: la tarjeta pide el
+/// contexto de sugerencias. Devuelve el envoltorio de tmux que anota cada
+/// llamada (y sigue al tmux privado con su `-S`, que va en los argumentos).
+fn seed_needing_context(home: &TestHome) -> Option<std::path::PathBuf> {
+    seed(home)?;
+    home.write(
+        "state/a.json",
+        &json!({"session":"proj","agent":"claude","status":"working","detail":"x","ts":1})
+            .to_string(),
+    );
+    let log = home.root.join("tmux-calls.log");
+    let wrapper = home.root.join("bin/tmux-anota");
+    fs::write(
+        &wrapper,
+        format!(
+            "#!/bin/sh\necho \"$*\" >> '{}'\nexec tmux \"$@\"\n",
+            log.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(
+        &wrapper,
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .unwrap();
+    Some(wrapper)
+}
+
+fn tmux_calls(home: &TestHome) -> usize {
+    fs::read_to_string(home.root.join("tmux-calls.log"))
+        .map(|t| t.lines().count())
+        .unwrap_or(0)
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn state_context_failure_memory_declines_before_tmux() {
+    // Revisión de la Tarea 5: con un fallo del contexto recordado, GET /state
+    // se reenvía antes de llamar a tmux o leer `/proc`.
+    let home = TestHome::new("state-ctx-memory");
+    let Some(wrapper) = seed_needing_context(&home) else {
+        return;
+    };
+    let legacy = SwitchLegacy::start(r#"{"x": "\ud800"}"#).await;
+    let mut opts = home.options();
+    opts.tmux.program.path = wrapper;
+    let front = front(&home, legacy.port, opts).await;
+    // 1: calcula, el contexto no se puede leer → declina y recuerda el fallo.
+    assert_eq!(
+        get(front.port, "/state").await.text(),
+        r#"{"legacy": true}"#
+    );
+    let calls = tmux_calls(&home);
+    assert!(calls > 0, "el primer cómputo no llamó a tmux");
+    assert_eq!(legacy.usage_requests(), 2, "{:?}", legacy.requests());
+    // 2: dentro de los 5 s del fallo, se reenvía sin tmux ni subconsultas.
+    assert_eq!(
+        get(front.port, "/state").await.text(),
+        r#"{"legacy": true}"#
+    );
+    assert_eq!(tmux_calls(&home), calls);
+    assert_eq!(legacy.usage_requests(), 2, "{:?}", legacy.requests());
+    assert_eq!(
+        legacy
+            .requests()
+            .iter()
+            .filter(|l| l.starts_with("GET /state"))
+            .count(),
+        2
+    );
+    assert!(!home.hooks().join("app-tab-models.json").exists());
+    front.stop().await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn state_tracker_commits_only_emitted_results() {
+    // Revisión de la Tarea 5: un cómputo que observó panes y luego declinó no
+    // deja su observación en el rastreador. El siguiente cómputo que emite ve
+    // la conversación por primera vez: `evidenceAt` es su instante, no el del
+    // cómputo declinado.
+    let home = TestHome::new("state-tracker-commit");
+    let Some(wrapper) = seed_needing_context(&home) else {
+        return;
+    };
+    let legacy = SwitchLegacy::start(r#"{"x": "\ud800"}"#).await;
+    let clock = Arc::new(AtomicI64::new(NOW_MS));
+    let mut opts = home.options();
+    opts.tmux.program.path = wrapper;
+    let shared = clock.clone();
+    opts.clock = Arc::new(move || shared.load(Ordering::SeqCst));
+    let front = front(&home, legacy.port, opts).await;
+    assert_eq!(
+        get(front.port, "/state").await.text(),
+        r#"{"legacy": true}"#
+    );
+    assert!(tmux_calls(&home) > 0);
+    // Pasada la memoria del fallo, el contexto ya se puede leer.
+    legacy.set_usage("{}");
+    clock.fetch_add(6_000, Ordering::SeqCst);
+    let got = get(front.port, "/state").await;
+    assert_eq!(got.status, 200, "{}", got.text());
+    let cards: Value = serde_json::from_slice(&got.body).unwrap();
+    let observed: Vec<&Value> = cards
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|c| c.get("observedConfig"))
+        .collect();
+    assert!(!observed.is_empty(), "{}", got.text());
+    let fresh = json!((NOW_MS + 6_000) as f64 / 1000.0);
+    for obs in observed {
+        assert_eq!(obs.get("evidenceAt"), Some(&fresh), "{obs}");
+    }
+    front.stop().await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn suggestion_context_routes_failure_skips_legacy_and_is_remembered() {
+    use comandos_server::dash::native::states::context::Context;
+    // Revisión de la Tarea 5: las rutas se calculan antes de preguntar al
+    // heredado; si fallan no hay subconsultas y el fallo se recuerda 5 s.
+    let home = TestHome::new("state-ctx-routes");
+    let legacy = FixedLegacy::start(200, "{}").await;
+    let mut opts = home.options();
+    opts.legacy = std::net::SocketAddr::from(([127, 0, 0, 1], legacy.port));
+    let repo = opts.repo_root.take();
+    let ctx = Context::default();
+    let registry = json!({});
+    assert!(!ctx.failing(NOW_MS));
+    assert!(ctx.get(&opts, &registry, NOW_MS).await.is_err());
+    assert!(legacy.requests().is_empty());
+    assert!(ctx.failing(NOW_MS + 4_999));
+    opts.repo_root = repo;
+    assert!(ctx.get(&opts, &registry, NOW_MS + 4_999).await.is_err());
+    assert!(legacy.requests().is_empty());
+    assert!(!ctx.failing(NOW_MS + 5_000));
+    assert!(ctx.get(&opts, &registry, NOW_MS + 5_000).await.is_ok());
+    assert_eq!(legacy.requests().len(), 2);
+    assert!(!ctx.failing(NOW_MS + 5_001));
+}

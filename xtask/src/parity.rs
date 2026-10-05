@@ -600,24 +600,32 @@ fn make_fakebin(dir: &Path) -> Result<(), String> {
     // `tmux` en el PATH) llaman a tmux con `-S` al socket de SU `TMUX_TMPDIR`:
     // tmux 3.2a ignora un `TMUX_TMPDIR` que no existe y caería en el servidor
     // real del usuario. Sin `TMUX_TMPDIR` el envoltorio se niega a correr.
-    if let Some(real) = ["/usr/bin/tmux", "/bin/tmux", "/usr/local/bin/tmux"]
-        .into_iter()
-        .find(|p| Path::new(p).is_file())
-    {
-        let uid = nix::unistd::getuid().as_raw();
-        let p = dir.join("tmux");
-        fs::write(
-            &p,
-            format!(
-                "#!/bin/sh\n[ -n \"$TMUX_TMPDIR\" ] || exit 1\n\
-                 exec {real} -S \"$TMUX_TMPDIR/tmux-{uid}/default\" \"$@\"\n"
-            ),
-        )
+    // El envoltorio se escribe siempre: sin tmux real falla (`exit 1`) en vez
+    // de dejar que el PATH encuentre otro `tmux` sin `-S` (falla cerrado).
+    let script = tmux_wrapper(
+        ["/usr/bin/tmux", "/bin/tmux", "/usr/local/bin/tmux"]
+            .into_iter()
+            .find(|p| Path::new(p).is_file()),
+        nix::unistd::getuid().as_raw(),
+    );
+    let p = dir.join("tmux");
+    fs::write(&p, script).map_err(|e| e.to_string())?;
+    fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755))
         .map_err(|e| e.to_string())?;
-        fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755))
-            .map_err(|e| e.to_string())?;
-    }
     Ok(())
+}
+
+/// El guion del `tmux` del fakebin: `-S` al socket de `TMUX_TMPDIR`, o
+/// `exit 1` si falta `TMUX_TMPDIR` o no hay tmux real.
+fn tmux_wrapper(real: Option<&str>, uid: u32) -> String {
+    match real {
+        Some(real) => format!(
+            "#!/bin/sh\n[ -n \"$TMUX_TMPDIR\" ] || exit 1\n\
+             exec {real} -S \"$TMUX_TMPDIR/tmux-{uid}/default\" \"$@\"\n"
+        ),
+        None => "#!/bin/sh\necho 'xtask: sin tmux real; el envoltorio no corre' >&2\nexit 1\n"
+            .to_owned(),
+    }
 }
 
 /// Opciones de la pila aislada: las de la 2a (hooks, binario, `--keep`) más las de la 2b.
@@ -1279,4 +1287,19 @@ pub fn run(args: &[String]) -> Result<i32, String> {
         println!("pares que difieren en {}", results.display());
     }
     Ok(i32::from(diff > 0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tmux_wrapper;
+
+    #[test]
+    fn tmux_wrapper_fails_closed_without_real_tmux() {
+        let none = tmux_wrapper(None, 1000);
+        assert!(none.contains("exit 1"));
+        assert!(!none.contains("exec"));
+        let some = tmux_wrapper(Some("/usr/bin/tmux"), 1000);
+        assert!(some.contains("[ -n \"$TMUX_TMPDIR\" ] || exit 1"));
+        assert!(some.contains("exec /usr/bin/tmux -S \"$TMUX_TMPDIR/tmux-1000/default\" \"$@\""));
+    }
 }

@@ -182,6 +182,9 @@ async fn front(tag: &str, legacy_port: u16) -> Front {
     let mut cfg: DashConfig = parse_args(&[], &h, Some(&legacy_port.to_string())).unwrap();
     cfg.dash_dir = h.join("dash");
     cfg.token = TOKEN.as_bytes().to_vec();
+    // Pruebas del transporte: sin rutas nativas, así ninguna petición puede
+    // llegar a `Tmux::system()` ni al ssh reales del desarrollador.
+    cfg.native = false;
     let mut config = transport_config(cfg);
     config.limits.handler_timeout = Duration::from_secs(1);
     config.limits.write_timeout = Duration::from_secs(1);

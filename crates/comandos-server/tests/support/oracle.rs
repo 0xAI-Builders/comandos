@@ -68,6 +68,12 @@ pub async fn oracle(home: &TestHome) -> Option<Oracle> {
             std::os::unix::fs::symlink("/bin/true", &link).unwrap();
         }
     }
+    // `ssh -O check` del Python nunca alcanza el ssh real ni sus sockets de
+    // control: falla siempre, como el `/no-existe/ssh` de `TestHome::options`.
+    let ssh = fakebin.join("ssh");
+    if !ssh.exists() {
+        std::os::unix::fs::symlink("/bin/false", &ssh).unwrap();
+    }
     // El `tmux` del oráculo va siempre con `-S` al socket privado de la
     // prueba: solo `TMUX_TMPDIR` no basta (tmux 3.2a cae en el servidor real
     // del usuario si ese directorio desaparece).
@@ -184,6 +190,12 @@ pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> 
         if !link.exists() {
             std::os::unix::fs::symlink("/bin/true", &link).unwrap();
         }
+    }
+    // `ssh -O check` del Python nunca alcanza el ssh real ni sus sockets de
+    // control: falla siempre, como el `/no-existe/ssh` de `TestHome::options`.
+    let ssh = fakebin.join("ssh");
+    if !ssh.exists() {
+        std::os::unix::fs::symlink("/bin/false", &ssh).unwrap();
     }
     let path = format!(
         "{}:{}",

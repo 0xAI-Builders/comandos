@@ -5,6 +5,7 @@ use comandos_server::dash::{
     native::{
         Fault, Native, NativeOptions,
         state::{Refusal, StateBackend},
+        tmux::Program,
     },
     parse_args,
     router::{classify, classify_with},
@@ -102,6 +103,10 @@ fn state_backend_migrates_then_refuses_newer_schema() {
 fn options(base: &std::path::Path) -> NativeOptions {
     let mut opts = NativeOptions::for_home(base, base.join("state/app-state.sqlite3"));
     opts.clock = Arc::new(|| 1_791_115_200_000);
+    // Nunca el tmux ni el ssh reales (`for_home` los busca en el PATH): una
+    // ruta que los necesitara falla en vez de tocar las sesiones del usuario.
+    opts.tmux.program = Program::named("/no-existe/tmux");
+    opts.ssh = Program::named("/no-existe/ssh");
     opts
 }
 

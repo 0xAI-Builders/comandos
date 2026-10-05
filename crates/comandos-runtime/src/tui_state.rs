@@ -433,6 +433,7 @@ pub fn screen_state(harness: &str, screen: &str) -> Result<Obs, Unsure> {
 }
 
 /// `OrderedDict` del Python: `get`, `move_to_end`, asignación y `popitem(last=False)`.
+#[derive(Clone)]
 struct Lru<K, V> {
     max: usize,
     items: Vec<(K, V)>,
@@ -998,6 +999,7 @@ fn same(a: &Fingerprint, b: &Fingerprint) -> bool {
     })
 }
 
+#[derive(Clone)]
 struct Entry {
     value: Obs,
     conversation: Option<Fingerprint>,
@@ -1007,6 +1009,8 @@ struct Entry {
 
 /// `StateTracker` (151): la evidencia que cambió gana; un pie viejo sin cambios
 /// no deshace un turno nuevo. Una entrada por identidad (proceso + conversación).
+/// `Clone`: GET `/state` trabaja sobre una copia y la confirma solo si emite.
+#[derive(Clone)]
 pub struct StateTracker {
     entries: Lru<String, Entry>,
 }

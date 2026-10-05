@@ -208,6 +208,12 @@ pub async fn compute(native: &Native) -> Result<States, StateFault> {
     if !native.usage.enabled() || opts.repo_root.is_none() {
         return Err(StateFault::Decline);
     }
+    // Con un fallo del contexto recordado (R3) el cómputo acabaría declinando
+    // si alguna tarjeta lo necesita: se reenvía antes del trabajo de tmux y
+    // `/proc`, para que un heredado lento o caído no lo repita en cada sondeo.
+    if native.states.context.failing((opts.clock)()) {
+        return Err(StateFault::Decline);
+    }
     let now = (opts.clock)() as f64 / 1000.0;
     // 1. `tmux_pane_inventory()`.
     let listed = opts
@@ -229,10 +235,14 @@ pub async fn compute(native: &Native) -> Result<States, StateFault> {
     let labels = session_labels(scanned.tabs, &live, &scanned.history);
     // 4. Tarjetas con los efectos reales.
     let registry = Arc::new(scanned.registry);
+    // El rastreador trabaja sobre una copia que solo se confirma si el
+    // cómputo emite (paso 8): un cómputo que declina o falla no deja rastro,
+    // así lo que ve el siguiente es lo mismo que vio el Python que respondió.
     let effects = RealEffects {
         native,
         inspector: Arc::new(scanned.inspector),
         registry: registry.clone(),
+        tracker: Mutex::new(lock(&native.states.tracker).clone()),
     };
     let inputs = Inputs {
         now,
@@ -262,6 +272,12 @@ pub async fn compute(native: &Native) -> Result<States, StateFault> {
     let items = Value::Array(items);
     let body = response_dumps(&items).map_err(|_| StateFault::Decline)?;
     response_dumps(&models).map_err(|_| StateFault::Decline)?;
+    // Ya no se declina: el rastreador de este cómputo pasa a ser el del frente.
+    // El vuelo único (`StatesCache`) garantiza un solo cómputo a la vez.
+    *lock(&native.states.tracker) = effects
+        .tracker
+        .into_inner()
+        .unwrap_or_else(|p| p.into_inner());
     // 8. `write_app_tab_models`: un fallo se ignora, como su `except`.
     let path = opts.hooks.join("app-tab-models.json");
     let _ = tokio::task::spawn_blocking(move || files::write_json_atomic(&path, &models)).await;
@@ -279,6 +295,8 @@ struct RealEffects<'a> {
     native: &'a Native,
     inspector: Arc<PaneInspector>,
     registry: Arc<Value>,
+    /// Copia del rastreador del frente para este cómputo.
+    tracker: Mutex<StateTracker>,
 }
 
 impl RealEffects<'_> {
@@ -778,7 +796,7 @@ impl RealEffects<'_> {
         }
         // (d) El rastreador del motor, sin `await` mientras se tiene.
         let now = (opts.clock)() as f64 / 1000.0;
-        let mut tracker = lock(&self.native.states.tracker);
+        let mut tracker = lock(&self.tracker);
         let seen = observe::observe(&evidence, &mut tracker, &self.registry, now)?;
         Ok(Observed::Seen(seen))
     }
