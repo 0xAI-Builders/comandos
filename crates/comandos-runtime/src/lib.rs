@@ -15,6 +15,7 @@ pub mod command_chains;
 pub mod dialogs;
 pub mod events_cli;
 pub mod extension_launch;
+pub mod extension_observations;
 pub mod hooks;
 pub mod launch_command;
 pub mod legacy;
