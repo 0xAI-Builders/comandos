@@ -126,7 +126,7 @@ enum Work {
 /// `_default_acp_open` con lo que el frente tomó al arrancar: el registro del
 /// checkout del heredado, `XDG_STATE_HOME/comandos/news-acp`, el `PATH` de
 /// `which` y el entorno de los hijos.
-fn opener(opts: &NativeOptions, repo: &Path) -> Opener {
+pub(super) fn opener(opts: &NativeOptions, repo: &Path) -> Opener {
     let state = opts
         .xdg_state_home
         .clone()

@@ -638,6 +638,7 @@ fn env_path(name: &str) -> Option<PathBuf> {
 pub struct Native {
     opts: NativeOptions,
     enabled: AtomicBool,
+    pub(crate) news_scheduler_started: AtomicBool,
     refusals: AtomicUsize,
     state: OnceCell<Option<BackendCaller<StateBackend>>>,
     worker: Mutex<Option<BackendWorker<StateBackend>>>,
@@ -700,6 +701,7 @@ impl Native {
             journal: lanes::Lane::new(opts.journal_db.clone()),
             opts,
             enabled: AtomicBool::new(true),
+            news_scheduler_started: AtomicBool::new(false),
             refusals: AtomicUsize::new(0),
             state: OnceCell::new(),
             worker: Mutex::new(None),
