@@ -1182,3 +1182,85 @@ consulta el socket de control (preflight R8). Las pruebas de la suite nunca llam
   1 ignorada; `fmt` y `clippy -D warnings` limpios; `xtask parity` con nativo 139 OK, 0 DIFF,
   0 SKIP de 139, con las mismas 8 rutas reenviadas una vez cada una. La sombra y el `poll
   --shadow` se repiten en el paso 1 con el binario de `main` fusionado.
+
+## Ligereza tras la 2d
+
+### Lo que se vio en vivo (release `9f6fa07f26f0`, solo lectura de `/proc`)
+
+Tras el cutover de la 2d el frente pasó de ~23 MiB y 3–7 hilos (release `4200180ce8ab`) a 44,7 MiB
+de Pss al minuto 1 y 197,7 MiB al minuto 10, plano después (Pss_Anon ~193 MiB), con 24 hilos y
+≈ 14 ticks/s de CPU. Una segunda vida del mismo binario repitió el patrón: 7 hilos y 60–72 MiB
+durante 4 min, y en un mismo instante (284,5 s tras el arranque) nacieron 17 hilos
+`tokio-rt-worker` de golpe; en los 90 s siguientes el Pss subió 72 → 110 → 153 → 183 → 216 MiB y
+los hilos quedaron en 24 (a los 41 min: 26 hilos, 22 del pool de bloqueo, 256 MiB).
+
+### Causa
+
+- El runtime es `new_current_thread()` con el pool de bloqueo por defecto de tokio (512 hilos,
+  10 s de ocio). Una ola de peticiones simultáneas que ocupa un hilo de bloqueo cada una crea
+  ~17 hilos. La ola real: `cc-app` vuelve al frente y `visibilitychange` despierta todos los
+  iframes de `term.html`, cada uno con POST `/terminal-panes` (que espera a tmux en su hilo de
+  bloqueo) y GET `/tab-models`.
+- Antes de la 2d esos hilos se retiraban tras 10 s ociosos. Desde la 2d, GET `/state` da cientos
+  de saltos de bloqueo por cómputo (escaneo y, por pane con agente, cuenta, Grok y evidencia de
+  `/proc`), varias veces por segundo. El pool despierta a sus hilos ociosos por turno, así que
+  ninguno llega a 10 s de ocio y la recolección se reparte entre todos.
+- Cada hilo tiene su arena de glibc y la recolección la engorda: el Pss crece con el número de
+  hilos, no con el tiempo. Prueba: con el binario de la 2d y `MALLOC_ARENA_MAX=2`, la misma carga
+  deja 22 hilos pero 38 MiB (contra 79–81 MiB sin la variable).
+- El vuelo único de `/state` (1,2 s) funciona: la concurrencia no viene de `/state`.
+
+### Arreglo (rama `migration/rust-ligero`)
+
+- `dash::runtime()`: `max_blocking_threads(4)` y `thread_keep_alive(2 s)`. Ningún trabajo de
+  bloqueo espera a otro trabajo de bloqueo (solo a procesos de tmux que mueve el hilo del
+  runtime), así que el tope no puede interbloquear; lo que no cabe espera en la cola del pool.
+- `states::serial`: los saltos de bloqueo de `/state` van a un hilo propio (un `BackendWorker<()>`
+  que se reemplaza si un trabajo entra en pánico) y el pool queda para el trabajo esporádico. La
+  escritura de `app-tab-models.json` sigue en el pool para completarse aunque el cliente se vaya.
+- `MALLOC_ARENA_MAX=2` en un drop-in de `cc-dash.service` también contiene la memoria (no los
+  hilos) sin tocar código. Queda documentado como opción operativa; no se aplica.
+
+### Carga para medirlo
+
+`xtask poll --shadow` acepta `--agents N` (agentes falsos alternando Claude y Codex),
+`--extra-panes N` (ventanas `cat` repartidas), `--pollers N` (GET `/state` extra a 1 Hz),
+`--burst N` (cada 60 s, N iframes de terminal que refrescan a la vez) y los criterios
+`--max-threads` y `--max-pss-mib` (la orden falla si alguna muestra los supera):
+
+```sh
+"$XT" poll --shadow --minutes 10 --hooks ~/.claude/hooks \
+  --state-db ~/.local/state/comandos/app-state.sqlite3 \
+  --usage-db ~/.claude/hooks/comandos-usage.sqlite --comandos "$NEW" \
+  --agents 48 --extra-panes 190 --pollers 3 --burst 17 --max-threads 8 --max-pss-mib 48
+```
+
+### Antes y después (`poll --shadow`, 10 min, 5 de octubre de 2026)
+
+Carga realista: `--agents 48 --extra-panes 190 --pollers 3 --burst 17` (≈ 244 panes, 48 agentes
+observados, `/state` del tablero, de `cc-app` y tres sondeadores a 1 Hz, y cada 60 s una ola de
+17 iframes de terminal). «Antes» es el binario de `80d718a` (la release `9f6fa07f26f0`); latencias
+en ms (p50/p95/p99; el p50 de GET `/state` baja a 1–2 ms cuando la mayoría sale de la caché).
+
+| Binario (carga realista) | Pss min 1 → 10 (KiB) | Hilos | GET `/state` | `/state` 1 Hz | `/terminal-panes` (ola) |
+|---|---|---|---|---|---|
+| Antes | 61 504 → 79 284 | 21 | 573/726/845 | 2/650/780 | 119/206/229 |
+| Antes, `MALLOC_ARENA_MAX=2` | 36 916 → 38 500 | 21–22 | — | — | — |
+| Solo tope 4 | 44 904 → 45 757 | 7 | 2/701/761 | 2/640/777 | 125/218/244 |
+| Tope 4 + hilo de `/state` | 37 701 → 38 477 | 5 | 510/628/780 | 2/599/749 | 131/210/228 |
+| Antes (máquina cargada, carga 13) | 70 729 → 80 973 | 21–22 | 1/883/1245 | 1/917/1465 | 131/480/755 |
+| Después (misma máquina cargada) | 37 921 → 35 893 | 5–6 | 1/901/1295 | 1/978/1540 | 126/364/426 |
+
+Sin la ola (`--burst 0`) el binario de antes se queda en 5 hilos y 33–36 MiB: la ola dispara los
+hilos y la recolección de `/state` los mantiene vivos. Con tope 2 y 3 (sin el hilo de `/state`):
+40 652 KiB y 5 hilos, 42 848 KiB y 6 hilos. El par en máquina cargada (durante un reinicio del
+controlador) tuvo 167 y 172 no-2xx en los dos binarios por igual; las demás corridas, 0.
+
+Carga estándar de la 2d (sin opciones nuevas): antes 32 177 → 34 657 KiB, 5 hilos, GET `/state`
+127/281/545; después 32 381 → 32 745 KiB, 5–6 hilos, 127/289/724 (p99 con carga de máquina 13).
+
+- Suite del workspace: 841 pruebas, 0 fallos, 1 ignorada; `fmt` y `clippy -D warnings` limpios.
+- `xtask parity` con nativo: 139 OK, 0 DIFF, 0 SKIP de 139, las mismas 8 rutas reenviadas.
+- Criterio para el cutover de este arreglo: `poll --shadow` con la carga realista y
+  `--max-threads 8 --max-pss-mib 48` sale 0, y en vivo, tras una vuelta de `cc-app` al frente,
+  el frente sigue en ≤ 8 hilos.
