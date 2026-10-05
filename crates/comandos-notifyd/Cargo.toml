@@ -1,0 +1,36 @@
+[package]
+name = "comandos-notifyd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "comandos-notifyd"
+path = "src/main.rs"
+
+[dependencies]
+# Semántica de Python compartida: `json.loads(bytes)` y `str()`/`repr()` de valores JSON.
+comandos-core = { path = "../comandos-core" }
+serde_json.workspace = true
+# GTK3 (gtk3-rs 0.18, la última serie para GTK3): ventanas de los popups.
+#
+# Excepción documentada a los avisos de RustSec (revisión final 2f-5, I3):
+# - RUSTSEC-2024-0411 a -0420: gtk3-rs sin mantenimiento (`gtk`, `gdk`, `atk`,
+#   `gtk-sys`, `gdk-sys`, `atk-sys`, `gtk3-macros`…). No es una vulnerabilidad:
+#   el proyecto se archivó a favor de gtk4-rs.
+# - RUSTSEC-2024-0429 (`glib 0.18.5`, `VariantStrIter`): no alcanzable, este
+#   crate no usa `glib::Variant` y el workspace prohíbe `unsafe`.
+# - RUSTSEC-2024-0370 (`proc-macro-error 1.0.4`, sin mantenimiento): solo en
+#   compilación, vía `gtk3-macros`; no llega al binario.
+# Alternativa descartada: GTK4 (gtk4-rs) no tiene `move`/`keep_above`/
+# `TypeHint::Notification` (los popups apilados y encima de todo dependen de
+# ellos) y la máquina no tiene sus cabeceras. Decisión final pendiente de Jesús;
+# detalle en `docs/verification/cutover-notifyd.md`.
+gtk = { version = "=0.18.2", default-features = false }
+
+[dev-dependencies]
+tokio = { version = "=1.53.1", default-features = false, features = ["rt", "macros", "net", "io-util", "time"] }
+
+[lints]
+workspace = true

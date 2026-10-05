@@ -14,6 +14,16 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime};
 
+/// Escribe la entrada del hijo y cierra su stdin. Un hijo que sale sin leerla
+/// da `EPIPE`: no es un fallo de la prueba (lo que cuenta es su salida).
+fn feed_stdin(child: &mut std::process::Child, input: &[u8]) {
+    let mut stdin = child.stdin.take().unwrap();
+    match stdin.write_all(input) {
+        Err(err) if err.kind() != std::io::ErrorKind::BrokenPipe => panic!("stdin: {err}"),
+        _ => {}
+    }
+}
+
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
@@ -71,7 +81,7 @@ fn run(
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    child.stdin.take().unwrap().write_all(stdin).unwrap();
+    feed_stdin(&mut child, stdin);
     let out = child.wait_with_output().unwrap();
     (out.status.code(), out.stdout)
 }
@@ -94,12 +104,7 @@ fn seed_usage(dir: &Path) -> PathBuf {
         .stdout(Stdio::null())
         .spawn()
         .unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(payload.to_string().as_bytes())
-        .unwrap();
+    feed_stdin(&mut child, payload.to_string().as_bytes());
     assert!(child.wait().unwrap().success());
     seed.join(".claude/hooks/comandos-usage.sqlite")
 }

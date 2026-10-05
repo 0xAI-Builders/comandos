@@ -23,4 +23,5 @@ pub mod work_marks;
 
 pub mod dashboard_access;
 
+pub mod repo;
 pub mod text;

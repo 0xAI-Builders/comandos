@@ -32,7 +32,7 @@ pub const DASH_DIR_ENV: &str = "COMANDOS_DASH_DIR";
 pub const NATIVE_ENV: &str = "COMANDOS_DASH_NATIVE";
 pub const TRACE_ENV: &str = "COMANDOS_DASH_TRACE_FORWARD";
 /// Raíz del checkout del Python heredado (`REPO_ROOT`, `bin/cc-dash:1370`).
-pub const REPO_ENV: &str = "COMANDOS_DASH_REPO";
+pub const REPO_ENV: &str = comandos_core::repo::REPO_ENV;
 
 #[derive(Clone)]
 pub struct DashConfig {
@@ -165,14 +165,12 @@ pub fn dash_dir(home: &Path, override_dir: Option<&str>) -> Result<PathBuf, Stri
 }
 
 /// `COMANDOS_DASH_REPO` si está; si no, el destino canónico de
-/// `<dash_dir>/index.html` dos niveles arriba (`install.sh` y el arnés
-/// enlazan `dash/*` al checkout desde el que corre el Python).
+/// `<dash_dir>/index.html` dos niveles arriba. La regla es la de
+/// `comandos-core` (compartida con `comandos-notifyd`); aquí se resuelve el
+/// enlace, que es I/O.
 pub fn repo_root(dash_dir: &Path, override_dir: Option<&str>) -> Option<PathBuf> {
-    if let Some(raw) = override_dir.filter(|v| !v.is_empty()) {
-        return Some(PathBuf::from(raw));
-    }
-    let index = std::fs::canonicalize(dash_dir.join("index.html")).ok()?;
-    index.parent()?.parent().map(Path::to_path_buf)
+    let index = std::fs::canonicalize(dash_dir.join("index.html")).ok();
+    comandos_core::repo::repo_root_from(index.as_deref(), override_dir)
 }
 
 /// `os.path.normpath` léxico: quita `.` y resuelve `..` sin tocar el disco.

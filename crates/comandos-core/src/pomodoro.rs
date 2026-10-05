@@ -91,7 +91,8 @@ pub fn text(value: &Value) -> String {
         .take(160)
         .collect()
 }
-fn python_str(value: &Value) -> String {
+/// `str(valor)` de Python para un valor JSON (contenedores con su `repr`).
+pub fn python_str(value: &Value) -> String {
     match value {
         Value::Null => "None".into(),
         Value::Bool(true) => "True".into(),
@@ -123,7 +124,8 @@ fn python_str(value: &Value) -> String {
         ),
     }
 }
-fn python_repr(value: &Value) -> String {
+/// `repr(valor)` de Python para un valor JSON (cadenas con la printabilidad de Unicode 13).
+pub fn python_repr(value: &Value) -> String {
     if let Some(s) = value.as_str() {
         let quote = if s.contains('\'') && !s.contains('"') {
             '"'
