@@ -174,22 +174,34 @@ async fn refresh_never_creates_the_usage_db() {
     native.shutdown().await;
 }
 
-/// Arrancar el frente no toca la red (hasta la Tarea 8): cero llamadas OAuth
-/// aunque haya credenciales y la caché esté vacía.
+/// Arrancar el frente lee los límites una vez (D3, `STARTUP_LIMITS_REFRESH`
+/// desde la Tarea 8: la barra lateral no pierde los % de cuota tras un
+/// reinicio); sin efectos de uso (sombra), ninguna llamada.
 #[tokio::test]
-async fn boot_makes_no_oauth_calls() {
-    let home = TestHome::new("limits-boot");
-    creds(&home, ".claude/.credentials.json", "tok-main");
-    let oauth = Arc::new(FakeOauth::default());
-    oauth.set("tok-main", FakeAnswer::Json(payload(41.0)));
-    let mut opts = home.options();
-    opts.oauth = oauth.clone();
-    let front = support::front(&home, support::dead_port(), opts).await;
-    // Una ruta nativa cualquiera: el frente ya atendió y abrió la base.
-    let _ = support::get(front.port, "/prefs").await;
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    assert_eq!(oauth.calls(), 0, "el arranque no llama a la red");
-    front.stop().await;
+async fn boot_refreshes_limits_once_only_with_usage_effects() {
+    for effects in [true, false] {
+        let home = TestHome::new(if effects {
+            "limits-boot"
+        } else {
+            "limits-boot-shadow"
+        });
+        creds(&home, ".claude/.credentials.json", "tok-main");
+        let oauth = Arc::new(FakeOauth::default());
+        oauth.set("tok-main", FakeAnswer::Json(payload(41.0)));
+        let mut opts = home.options();
+        opts.oauth = oauth.clone();
+        opts.usage_effects = effects;
+        let front = support::front(&home, support::dead_port(), opts).await;
+        // Una ruta nativa cualquiera: el frente ya atendió y abrió la base.
+        let _ = support::get(front.port, "/prefs").await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(
+            oauth.calls(),
+            usize::from(effects),
+            "efectos de uso: {effects}"
+        );
+        front.stop().await;
+    }
 }
 
 /// Una respuesta OAuth que el port no interpreta con certeza no aborta el

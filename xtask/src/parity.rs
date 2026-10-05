@@ -995,6 +995,9 @@ impl Stack {
         }
         // `spawn` no la quita: el resumen de reenvíos sale de esta traza.
         front.env("COMANDOS_DASH_TRACE_FORWARD", "1");
+        // El Python importa en su primera petición de GET /usage/state; el frente
+        // también, para que las dos copias de la base de uso sigan iguales.
+        front.env("COMANDOS_DASH_USAGE_IMPORT_GRACE_MS", "0");
         let e1 = SpawnEnv {
             home: &home1,
             tmux: &tmux1,

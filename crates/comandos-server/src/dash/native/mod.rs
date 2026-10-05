@@ -50,10 +50,16 @@ use tokio::sync::OnceCell;
 /// Trabajos en cola del worker de la base (sin contar el que corre).
 pub const WORKER_CAPACITY: usize = 64;
 
-/// Refresco de límites al arrancar el frente (D3). Falso hasta la Tarea 8:
-/// sin `/usage/state` nativo nadie necesita la caché caliente al arrancar, y
-/// así un reinicio del frente nunca llama a `api.anthropic.com` por su cuenta.
-pub const STARTUP_LIMITS_REFRESH: bool = false;
+/// Refresco de límites al arrancar el frente (D3): con GET `/usage/state`
+/// nativo (Tarea 8) la barra lateral no pierde los % de cuota hasta 60 s tras
+/// cada reinicio. Sin efectos de uso (sombra) `LimitsCache::get` no refresca.
+pub const STARTUP_LIMITS_REFRESH: bool = true;
+
+/// Gracia de la primera importación de uso del frente tras arrancar (D1 c): un
+/// hilo de importación del Python que estuviera en curso termina antes.
+pub const USAGE_IMPORT_GRACE_MS: i64 = 75_000;
+/// `COMANDOS_DASH_USAGE_IMPORT_GRACE_MS`: otra gracia (entero ≥ 0, en ms).
+pub const USAGE_IMPORT_GRACE_ENV: &str = "COMANDOS_DASH_USAGE_IMPORT_GRACE_MS";
 
 /// Cada dominio añade su variante en su tarea.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -284,6 +290,17 @@ pub struct NativeOptions {
     pub usage_env: Arc<BTreeMap<String, String>>,
     /// Zona de `datetime.fromtimestamp` (la del proceso: `TZ` o `/etc/localtime`).
     pub zone: Arc<dyn LocalZone + Send + Sync>,
+    /// Milisegundos desde el arranque antes de la primera importación de uso.
+    pub usage_import_grace_ms: i64,
+}
+
+/// `USAGE_IMPORT_GRACE_ENV` si es un entero ≥ 0; si no, la de omisión.
+pub fn usage_import_grace_from_env() -> i64 {
+    std::env::var(USAGE_IMPORT_GRACE_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .filter(|ms| *ms >= 0)
+        .unwrap_or(USAGE_IMPORT_GRACE_MS)
 }
 
 /// D7: lo que `usage_runtime_env` toma de `os.environ`.
@@ -362,6 +379,7 @@ impl NativeOptions {
             usage_effects: true,
             usage_env: Arc::new(usage_env_from_process()),
             zone: Arc::new(chrono::Local),
+            usage_import_grace_ms: usage_import_grace_from_env(),
         }
     }
 }
@@ -407,14 +425,21 @@ pub struct Native {
     pub(crate) typing: Arc<typing::TypingState>,
     /// GET `/state`: caché de 1,2 s, vuelo único y cachés de los lectores.
     pub(crate) states: states::Engine,
-    /// Memo de GET `/usage/state` (`cached_usage_state`) y su generación.
-    pub usage_engine: usage::state::UsageEngine,
+    /// Memo de GET `/usage/state` (`cached_usage_state`) y su generación; `Arc`
+    /// para que la importación suba la generación al terminar (D13).
+    pub usage_engine: Arc<usage::state::UsageEngine>,
+    /// Segundo carril sobre la base de uso: la importación y `record_pane` (D2, R3).
+    pub(crate) import_lane: Arc<lanes::Lane<lanes::UsageImportBackend>>,
+    /// Dueño de la importación de uso (D1): intervalo, gracia, candado entre frentes.
+    pub(crate) import: Arc<usage::import::ImportOwner>,
 }
 
 impl Native {
     pub fn new(opts: NativeOptions) -> Self {
         Self {
             usage: Arc::new(lanes::Lane::new(opts.usage_db.clone())),
+            import_lane: Arc::new(lanes::Lane::new(opts.usage_db.clone())),
+            import: Arc::new(usage::import::ImportOwner::new((opts.clock)())),
             limits: Arc::default(),
             registry: Arc::default(),
             pane_models: Arc::default(),
@@ -431,7 +456,7 @@ impl Native {
             notice_feed: notices::RevisionFeed::default(),
             typing: Arc::default(),
             states: states::Engine::default(),
-            usage_engine: usage::state::UsageEngine::default(),
+            usage_engine: Arc::default(),
         }
     }
 
@@ -483,14 +508,30 @@ impl Native {
     }
 
     /// El refresco de arranque de D3 (el `_limits_snapshot_loop` del Python lee
-    /// los límites al arrancar). Apagado hasta que la Tarea 8 active
-    /// `/usage/state` (`STARTUP_LIMITS_REFRESH`): mientras tanto el frente no
-    /// toca la red al arrancar y las rutas refrescan a demanda con el TTL. No
-    /// repite cada 300 s: el heredado conserva su bucle. Sin efectos de uso
-    /// (sombra) no hace nada.
+    /// los límites al arrancar; `STARTUP_LIMITS_REFRESH`). No repite cada 300 s:
+    /// el heredado conserva su bucle. Sin efectos de uso (sombra) no hace nada.
     pub fn start_background(&self) {
         if STARTUP_LIMITS_REFRESH && self.enabled() {
             let _ = self.limits.get(&self.refresh_deps());
+        }
+    }
+
+    /// El dueño de la importación de uso (estado, para las pruebas).
+    pub fn import_owner(&self) -> &Arc<usage::import::ImportOwner> {
+        &self.import
+    }
+
+    /// El carril de la importación de uso (estado, para las pruebas).
+    pub fn import_lane(&self) -> &lanes::Lane<lanes::UsageImportBackend> {
+        &self.import_lane
+    }
+
+    /// Lo que la tarea de importación necesita, sin `&Native` (D13).
+    pub fn import_deps(&self) -> usage::import::ImportDeps {
+        usage::import::ImportDeps {
+            opts: self.opts.clone(),
+            import_lane: self.import_lane.clone(),
+            engine: self.usage_engine.clone(),
         }
     }
 
@@ -679,6 +720,7 @@ impl Native {
             let _ = worker.shutdown().await;
         }
         self.usage.shutdown().await;
+        self.import_lane.shutdown().await;
         self.journal.shutdown().await;
         self.states.serial.shutdown().await;
     }

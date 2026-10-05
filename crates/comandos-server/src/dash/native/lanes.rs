@@ -218,7 +218,7 @@ pub struct UsageBackend {
 }
 
 impl LaneBackend for UsageBackend {
-    const ROUTES: &'static str = "GET /pomodoro, GET /sovereignty, GET /state, GET /analytics/week, GET /accounts y GET /extension-usage";
+    const ROUTES: &'static str = "GET /pomodoro, GET /sovereignty, GET /state, GET /analytics/week, GET /accounts, GET /extension-usage y GET /usage/state";
 
     fn open(path: &Path) -> Result<Self, Refusal> {
         // Sondeo sin PRAGMAs: `open_usage_db_at` pide `journal_mode=wal`, y una
@@ -242,6 +242,34 @@ impl LaneBackend for UsageBackend {
         backend.admit()?;
         usage::ensure_schema(&backend.conn).map_err(|e| Refusal::Unopened(e.to_string()))?;
         Ok(backend)
+    }
+
+    fn admit(&self) -> Result<(), Refusal> {
+        gate(&self.conn)
+    }
+}
+
+/// La misma base en un segundo carril para la importación de uso de GET
+/// `/usage/state` (D2): escribe durante segundos y en el carril de uso pararía
+/// las rutas que leen. Misma puerta y misma apertura que `UsageBackend`; la base
+/// está en WAL y las lecturas del otro carril no esperan.
+pub struct UsageImportBackend {
+    pub conn: Connection,
+}
+
+impl UsageImportBackend {
+    /// La puerta de esquema, para comprobarla antes de cada lote de escritura
+    /// dentro de una importación larga.
+    pub fn admits(conn: &Connection) -> bool {
+        gate(conn).is_ok()
+    }
+}
+
+impl LaneBackend for UsageImportBackend {
+    const ROUTES: &'static str = "la importación de uso de GET /usage/state";
+
+    fn open(path: &Path) -> Result<Self, Refusal> {
+        UsageBackend::open(path).map(|b| Self { conn: b.conn })
     }
 
     fn admit(&self) -> Result<(), Refusal> {

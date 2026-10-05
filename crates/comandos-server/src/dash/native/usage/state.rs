@@ -1,15 +1,13 @@
-//! Motor de GET `/usage/state` (bin/cc-dash:8441-8462), latente: el cálculo
-//! completo de la respuesta con `record_pane` y el memo de
-//! `cached_usage_state` (269), sin la tabla nativa (Tarea 8), los bordes de
-//! pane (Tarea 7) ni la importación (Tarea 8). En producción la ruta sigue
-//! reenviada y el Python es dueño de sus efectos.
+//! Motor de GET `/usage/state` (bin/cc-dash:8441-8462): el cálculo completo de
+//! la respuesta con `record_pane` y el memo de `cached_usage_state` (269). La
+//! ruta (`usage::answer`) añade la importación y los bordes de pane (Tarea 8).
 //!
 //! Orden: el primer trabajo del carril de uso (`usage_settings`) es el único
 //! punto de declinar (D1); desde ahí un trabajo del carril que declina se
 //! reintenta una vez (la puerta pudo dar `SQLITE_BUSY`) y, si vuelve a
 //! declinar, es un 500 (el carril se apagó a mitad y el Python habría leído).
-//! `record_pane` va en un trabajo propio del carril que la respuesta no espera
-//! (R3; la Tarea 8 lo pasa al carril de importación). Saltos de
+//! `record_pane` va en un trabajo del carril de importación que la respuesta
+//! no espera (R3). Saltos de
 //! bloqueo por cómputo: uno (lecturas de `/proc`, registro, pestañas y
 //! archivos de entorno) y otro más solo cuando el memo no sirve (el ensamblado
 //! de `build_usage_state`); el resto son procesos async (`tmux`, `git`) y
@@ -72,11 +70,14 @@ fn no_decline(fault: Fault) -> Fault {
 /// La respuesta calculada: el cuerpo serializado, el estado del memo (lo que
 /// usa el escritor de bordes de la Tarea 7), los paneles vivos con agente y
 /// todos los panes vivos de tmux (`None` si `list-panes` falló), con los que
-/// se acota la memoria de avisos de nivel.
+/// se acota la memoria de avisos de nivel. `live_declined`: la recolección de
+/// la 2d declinó y `live_panes` va vacía sin serlo: esa vuelta no escribe
+/// bordes (D1; con la lista vacía los quitaría de todos los panes).
 pub struct UsageStateReply {
     pub body: bytes::Bytes,
     pub state: Arc<Value>,
     pub live_panes: Vec<Row>,
+    pub live_declined: bool,
     pub tmux_panes: Option<BTreeSet<String>>,
 }
 
@@ -199,14 +200,14 @@ impl UsageEngine {
 /// Un archivo de configuración leído una vez: `cc-notify.conf` lo usan el
 /// entorno (`_parse_env_file`, que ignora cualquier `OSError`) y `ui_lang`
 /// (`read_conf`, que solo ignora `FileNotFoundError`).
-enum ConfFile {
+pub(crate) enum ConfFile {
     Missing,
     Unreadable,
     Bytes(Vec<u8>),
 }
 
 impl ConfFile {
-    fn read(path: &Path) -> Self {
+    pub(crate) fn read(path: &Path) -> Self {
         match std::fs::read(path) {
             Ok(bytes) => Self::Bytes(bytes),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Self::Missing,
@@ -414,7 +415,7 @@ async fn live_panes(native: &Native, now: i64) -> Result<Live, Fault> {
 
 /// `usage_runtime_env()` (cc-dash:179): `cc-notify.conf`, `usage.env`, el
 /// entorno capturado al arrancar (D7) y `read_usage_settings`, en ese orden.
-fn runtime_env(
+pub(crate) fn runtime_env(
     conf: &ConfFile,
     usage_file: &ConfFile,
     process: &BTreeMap<String, String>,
@@ -461,16 +462,15 @@ pub async fn compute(native: &Native) -> Result<UsageStateReply, Fault> {
     // 5. Límites (efecto: puede lanzar el refresco).
     let limits = native.limits.get(&native.refresh_deps());
     // 8. `record_pane` de cada panel vivo (errores ignorados, el `except
-    // Exception: pass` de 7253): todos en una transacción, en un trabajo
-    // propio del carril que la respuesta no espera (R3). El Python registra
-    // antes del memo, pero el memo no lee `usage_panes` cuando hay vivos: el
-    // orden no cambia la respuesta, y un cómputo posterior sin vivos encola
-    // sus lecturas detrás (el carril es FIFO).
+    // Exception: pass` de 7253): todos en una transacción, en un trabajo del
+    // carril de escritura (el de importación) que la respuesta no espera (R3).
+    // El Python registra antes del memo, pero el memo no lee `usage_panes`
+    // cuando hay vivos: el orden no cambia la respuesta.
     if record && opts.usage_effects && !live.is_empty() {
-        let usage = native.usage.clone();
+        let lane = native.import_lane.clone();
         let to_record = live.clone();
         tokio::spawn(async move {
-            let _ = usage
+            let _ = lane
                 .with(move |u| usage_read::record_panes(&u.conn, &to_record))
                 .await;
         });
@@ -526,6 +526,7 @@ pub async fn compute(native: &Native) -> Result<UsageStateReply, Fault> {
         body: bytes::Bytes::from(body),
         state: memo,
         live_panes: live,
+        live_declined: !record,
         tmux_panes,
     })
 }
