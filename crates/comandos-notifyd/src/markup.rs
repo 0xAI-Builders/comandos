@@ -332,13 +332,52 @@ pub fn md_to_pango(text: &str) -> String {
 }
 
 /// Bloque del texto completo (`build_full_widget`): párrafos con ajuste o
-/// tablas sin ajuste (con su propio desplazamiento horizontal).
+/// tablas sin ajuste (con su propio desplazamiento horizontal). Cada bloque
+/// guarda también el texto crudo del `except` del Python (`set_text(chunk)`
+/// y `set_text("\n".join(rows))`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Block {
-    /// Markup de un trozo de prosa (`add_text`).
-    Text(String),
-    /// Markup de una tabla (`add_table`): sus líneas `<tt>` unidas por `\n`.
-    Table(String),
+    /// Un trozo de prosa (`add_text`): su markup y el trozo tal cual.
+    Text { markup: String, raw: String },
+    /// Una tabla (`add_table`): sus líneas `<tt>` unidas por `\n` y las filas tal cual.
+    Table { markup: String, raw: String },
+}
+
+/// Lo que se pone en la etiqueta: markup válido o, si no, el texto crudo.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LabelText<'a> {
+    Markup(&'a str),
+    Plain(&'a str),
+}
+
+/// ¿Lo acepta Pango? (`gtk_label_set_markup` usa este mismo análisis, sin
+/// acelerador). No necesita pantalla.
+pub fn valid_markup(markup: &str) -> bool {
+    gtk::pango::parse_markup(markup, '\0').is_ok()
+}
+
+impl Block {
+    pub fn markup(&self) -> &str {
+        match self {
+            Block::Text { markup, .. } | Block::Table { markup, .. } => markup,
+        }
+    }
+
+    /// Ruling del controlador (el usuario quiere ver SIEMPRE el texto
+    /// completo): con markup que Pango rechaza (p. ej. `**` y `` ` `` cruzados),
+    /// el Python deja la etiqueta en blanco porque `set_markup` no lanza; aquí
+    /// se pone el texto crudo, como pretendía su `except`. Diferencia aceptada.
+    pub fn label_text(&self) -> LabelText<'_> {
+        match self {
+            Block::Text { markup, raw } | Block::Table { markup, raw } => {
+                if valid_markup(markup) {
+                    LabelText::Markup(markup)
+                } else {
+                    LabelText::Plain(raw)
+                }
+            }
+        }
+    }
 }
 
 /// El troceo de `build_full_widget(full)`, con los mismos descartes: trozos
@@ -348,13 +387,19 @@ pub fn blocks(full: &str) -> Vec<Block> {
     let add_text = |out: &mut Vec<Block>, lines: &[&str]| {
         let chunk = lines.join("\n");
         if !py_strip(&chunk).is_empty() {
-            out.push(Block::Text(md_to_pango(&chunk)));
+            out.push(Block::Text {
+                markup: md_to_pango(&chunk),
+                raw: chunk,
+            });
         }
     };
     let add_table = |out: &mut Vec<Block>, rows: &[&str]| {
         let lines = fmt_table(rows);
         if !lines.is_empty() {
-            out.push(Block::Table(lines.join("\n")));
+            out.push(Block::Table {
+                markup: lines.join("\n"),
+                raw: rows.join("\n"),
+            });
         }
     };
     let mut buf: Vec<&str> = Vec::new();

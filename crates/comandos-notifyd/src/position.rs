@@ -200,3 +200,34 @@ pub fn save_anchor(path: &Path, anchor: (i64, i64)) -> io::Result<()> {
     )?;
     std::fs::rename(&tmp, path)
 }
+
+/// Un solo hilo escribe `notifyd-pos.json`: nunca dos `.tmp` a la vez. Si
+/// llegan varias posiciones seguidas (un arrastre), se guarda la última.
+pub struct AnchorWriter {
+    tx: std::sync::mpsc::Sender<(i64, i64)>,
+}
+
+impl AnchorWriter {
+    /// Arranca el hilo escritor; `None` si no se pudo crear.
+    pub fn spawn(path: std::path::PathBuf) -> Option<AnchorWriter> {
+        let (tx, rx) = std::sync::mpsc::channel::<(i64, i64)>();
+        std::thread::Builder::new()
+            .name("notifyd-anchor".into())
+            .spawn(move || {
+                while let Ok(mut anchor) = rx.recv() {
+                    for later in rx.try_iter() {
+                        anchor = later;
+                    }
+                    // Como el `except: pass` del Python: si no se puede guardar, sigue en memoria.
+                    let _ = save_anchor(&path, anchor);
+                }
+            })
+            .ok()?;
+        Some(AnchorWriter { tx })
+    }
+
+    /// Encola la posición (no bloquea).
+    pub fn store(&self, anchor: (i64, i64)) {
+        let _ = self.tx.send(anchor);
+    }
+}

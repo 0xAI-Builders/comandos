@@ -152,8 +152,8 @@ fn block_json(blocks: &[Block]) -> Value {
         blocks
             .iter()
             .map(|b| match b {
-                Block::Text(m) => json!(["text", m]),
-                Block::Table(m) => json!(["table", m]),
+                Block::Text { markup, .. } => json!(["text", markup]),
+                Block::Table { markup, .. } => json!(["table", markup]),
             })
             .collect(),
     )
@@ -891,4 +891,100 @@ fn gtk_mode_without_display_exits_with_error() {
     assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("GTK no pudo arrancar"));
     assert!(out.stdout.is_empty(), "no anuncia el puerto sin popups");
+}
+
+/// Ruling: si Pango rechaza el markup, la etiqueta lleva el texto crudo
+/// (el Python la dejaba en blanco). `parse_markup` no necesita pantalla.
+#[test]
+fn invalid_markup_falls_back_to_raw_text() {
+    use comandos_notifyd::markup::{LabelText, valid_markup};
+    let crossed = "mezcla **negrita `code** fin`";
+    let got = blocks(crossed);
+    assert_eq!(got.len(), 1);
+    assert!(!valid_markup(got[0].markup()), "{}", got[0].markup());
+    assert_eq!(got[0].label_text(), LabelText::Plain(crossed));
+    let fine = blocks("**hola** y `x`");
+    assert_eq!(
+        fine[0].label_text(),
+        LabelText::Markup("<b>hola</b> y <tt>x</tt>")
+    );
+    let table = blocks("| a | b |\n|---|---|\n| 1 | 2 |");
+    assert!(matches!(table[0], Block::Table { .. }));
+    assert!(matches!(table[0].label_text(), LabelText::Markup(_)));
+    if let Block::Table { raw, .. } = &table[0] {
+        assert_eq!(raw, "| a | b |\n|---|---|\n| 1 | 2 |");
+    }
+}
+
+/// El checkout: `--repo-root`, luego la regla de `comandos dash`
+/// (`COMANDOS_DASH_REPO` o `<hooks>/dash/index.html` resuelto) y el
+/// ejecutable solo al final. Todo en directorios temporales.
+#[test]
+fn repo_root_follows_dash_rule() {
+    use comandos_notifyd::dash::resolve_repo_root;
+    let tmp = tempdir();
+    let repo = tmp.path().join("checkout");
+    std::fs::create_dir_all(repo.join("dash")).unwrap();
+    std::fs::create_dir_all(repo.join("config")).unwrap();
+    std::fs::write(repo.join("dash/index.html"), "<html>").unwrap();
+    std::fs::write(repo.join("config/themes.json"), "{}").unwrap();
+    let hooks = tmp.path().join("home/.claude/hooks");
+    std::fs::create_dir_all(hooks.join("dash")).unwrap();
+    std::os::unix::fs::symlink(repo.join("dash/index.html"), hooks.join("dash/index.html"))
+        .unwrap();
+    let release = tmp.path().join("share/comandos/bin");
+    std::fs::create_dir_all(&release).unwrap();
+    let exe = release.join("comandos-notifyd");
+    std::fs::write(&exe, "").unwrap();
+    let canon = std::fs::canonicalize(&repo).unwrap();
+
+    let flag = tmp.path().join("flag");
+    assert_eq!(
+        resolve_repo_root(Some(&flag), Some("/env"), &hooks, Some(&exe)),
+        Some(flag)
+    );
+    assert_eq!(
+        resolve_repo_root(None, Some("/env"), &hooks, Some(&exe)),
+        Some(PathBuf::from("/env"))
+    );
+    assert_eq!(
+        resolve_repo_root(None, Some(""), &hooks, Some(&exe)),
+        Some(canon.clone())
+    );
+    assert_eq!(
+        resolve_repo_root(None, None, &hooks, Some(&exe)),
+        Some(canon)
+    );
+    // Sin enlace del tablero: el ejecutable, como último recurso.
+    let bare = tmp.path().join("bare/hooks");
+    std::fs::create_dir_all(&bare).unwrap();
+    assert_eq!(
+        resolve_repo_root(None, None, &bare, Some(&exe)),
+        Some(std::fs::canonicalize(tmp.path().join("share/comandos")).unwrap())
+    );
+    assert_eq!(resolve_repo_root(None, None, &bare, None), None);
+}
+
+/// Un solo escritor de `notifyd-pos.json`: gana la última posición.
+#[test]
+fn anchor_writer_keeps_last() {
+    use comandos_notifyd::position::AnchorWriter;
+    let tmp = tempdir();
+    let file = tmp.path().join("notifyd-pos.json");
+    let writer = AnchorWriter::spawn(file.clone()).unwrap();
+    for i in 0..200 {
+        writer.store((i, -i));
+    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let want = r#"{"x": 199, "y": -199}"#;
+    while std::fs::read_to_string(&file).ok().as_deref() != Some(want) {
+        assert!(
+            Instant::now() < deadline,
+            "{:?}",
+            std::fs::read_to_string(&file)
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(load_anchor(&file), Some((199, -199)));
+    assert!(!tmp.path().join("notifyd-pos.json.tmp").exists());
 }

@@ -222,3 +222,25 @@ impl PrefsSource {
         c.notif_pos != before
     }
 }
+
+/// Checkout del que salen `config/themes.json` y `dash/icons`: `--repo-root`
+/// si se pasó; si no, la regla de `comandos dash` (`COMANDOS_DASH_REPO`, o
+/// `<hooks>/dash/index.html` resuelto y dos niveles arriba); el ejecutable
+/// (`<exe>/../..`, el `REPO_ROOT` del Python) solo como último recurso, porque
+/// instalado en `~/.local/share/comandos` o en `.build/target/release` no
+/// apunta al checkout.
+pub fn resolve_repo_root(
+    flag: Option<&Path>,
+    env_repo: Option<&str>,
+    hooks: &Path,
+    exe: Option<&Path>,
+) -> Option<PathBuf> {
+    if let Some(flag) = flag {
+        return Some(flag.to_path_buf());
+    }
+    if let Some(root) = comandos_core::repo::repo_root(&hooks.join("dash"), env_repo) {
+        return Some(root);
+    }
+    let exe = std::fs::canonicalize(exe?).ok()?;
+    Some(exe.parent()?.parent()?.to_path_buf())
+}

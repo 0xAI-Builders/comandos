@@ -1,6 +1,6 @@
 //! Binario `comandos-notifyd`: `POST 127.0.0.1:<puerto>/notify` y los popups.
 use comandos_notifyd::actions::{self, Effects, Target, TmuxRunner};
-use comandos_notifyd::dash::{DashClient, PrefsCache, PrefsSource};
+use comandos_notifyd::dash::{DashClient, PrefsCache, PrefsSource, resolve_repo_root};
 use comandos_notifyd::http::serve;
 use comandos_notifyd::notice::{Lang, Notice, ui_lang};
 use comandos_notifyd::popup::{self, Context};
@@ -71,10 +71,27 @@ fn parse_options() -> Result<Options, String> {
     Ok(options)
 }
 
-/// `REPO_ROOT` del Python: `dirname(dirname(realpath(ejecutable)))`.
-fn default_repo_root() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
-    Some(exe.parent()?.parent()?.to_path_buf())
+/// El checkout (`resolve_repo_root`); avisa si no tiene `config/themes.json`
+/// (los popups saldrían con el tema base y la viñeta `•` de icono).
+fn repo_root(options: &Options) -> PathBuf {
+    let env_repo = std::env::var(comandos_core::repo::REPO_ENV).ok();
+    let exe = std::env::current_exe().ok();
+    let repo = resolve_repo_root(
+        options.repo_root.as_deref(),
+        env_repo.as_deref(),
+        &options.hooks,
+        exe.as_deref(),
+    )
+    .unwrap_or_default();
+    let themes = repo.join("config/themes.json");
+    if !themes.is_file() {
+        eprintln!(
+            "comandos-notifyd: aviso: no existe {} (tema base e iconos «•»); usa --repo-root o {}",
+            themes.display(),
+            comandos_core::repo::REPO_ENV
+        );
+    }
+    repo
 }
 
 /// «Abrir» (`open_session`): tablero y, si no responde, tmux + `wmctrl`, en
@@ -171,11 +188,7 @@ fn run_gtk(options: Options, lang: Lang, listener: TcpListener, port: u16) -> Ex
         eprintln!("comandos-notifyd: GTK no pudo arrancar (¿sin pantalla?): {err}");
         return ExitCode::FAILURE;
     }
-    let repo = options
-        .repo_root
-        .clone()
-        .or_else(default_repo_root)
-        .unwrap_or_default();
+    let repo = repo_root(&options);
     let cache = Arc::new(Mutex::new(PrefsCache::default()));
     let source = PrefsSource {
         dash: options.dash.clone(),

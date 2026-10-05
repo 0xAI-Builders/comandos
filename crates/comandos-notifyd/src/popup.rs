@@ -9,14 +9,14 @@
 //! se cierra con `hide()` + `close()` (el `delete-event` por omisión lo
 //! destruye en la siguiente vuelta del bucle; se ve igual: desaparece al acto).
 use crate::dash::{POST_TIMEOUT, PrefsCache, PrefsSource};
-use crate::markup::Block;
+use crate::markup::{Block, LabelText};
 use crate::model::{
     ARROW_CLOSED, ARROW_OPEN, CLOSE_GLYPH, ICON_FALLBACK, ICON_SIZE, PopupModel, Text,
     close_all_label, icon_svg, popup_model, tr,
 };
 use crate::notice::{Lang, Notice};
 use crate::position::{
-    Configure, Geometry, anchor_from, clear_all_position, layout, on_configure, save_anchor,
+    AnchorWriter, Configure, Geometry, anchor_from, clear_all_position, layout, on_configure,
 };
 use crate::stack::{
     AUTO_CLOSE_SECS, CLEAR_ALL_MIN, PopupMeta, STACK_MAX, WIDTH, evict_candidate, popup_key,
@@ -87,6 +87,8 @@ pub struct Stack {
     clear_all: Option<(gtk::Window, gtk::Button)>,
     css: Option<gtk::CssProvider>,
     anchor: Option<(i64, i64)>,
+    /// El único escritor de `notifyd-pos.json`.
+    anchor_writer: Option<AnchorWriter>,
     refreshing: Arc<AtomicBool>,
 }
 
@@ -98,7 +100,9 @@ thread_local! {
 
 /// Instala la pila en el hilo de GTK (una vez, tras `gtk::init`).
 pub fn install(ctx: Context, anchor: Option<(i64, i64)>) {
+    let anchor_writer = AnchorWriter::spawn(ctx.pos_file.clone());
     let shared = Rc::new(RefCell::new(Stack {
+        anchor_writer,
         ctx,
         popups: Vec::new(),
         next_id: 0,
@@ -331,9 +335,23 @@ pub fn close_popup(shared: &Shared, id: u64) {
     if let Some(popup) = removed {
         popup.window.hide();
         popup.window.close();
+        // Si un grab se tragó el cierre, se reintenta una vez: la ventana
+        // sigue viva y realizada solo en ese caso.
+        let weak = popup.window.downgrade();
+        later(CLOSE_RETRY_MS, move || {
+            if let Some(window) = weak.upgrade()
+                && window.is_realized()
+            {
+                window.hide();
+                window.close();
+            }
+        });
     }
     reposition(shared);
 }
+
+/// Reintento de un cierre que no llegó a destruir la ventana.
+const CLOSE_RETRY_MS: u64 = 500;
 
 /// Ventana sin decoración, encima, sin foco al mapear y con fondo RGBA.
 fn notice_window() -> gtk::Window {
@@ -362,15 +380,17 @@ fn blocks_widget(blocks: &[Block]) -> gtk::Box {
         label.style_context().add_class("body");
         label.set_selectable(true);
         label.set_can_focus(false);
+        match block.label_text() {
+            LabelText::Markup(markup) => label.set_markup(markup),
+            LabelText::Plain(raw) => label.set_text(raw),
+        }
         match block {
-            Block::Text(markup) => {
-                label.set_markup(markup);
+            Block::Text { .. } => {
                 label.set_line_wrap(true);
                 label.set_max_width_chars(54);
                 column.pack_start(&label, false, false, 0);
             }
-            Block::Table(markup) => {
-                label.set_markup(markup);
+            Block::Table { .. } => {
                 let scroll =
                     gtk::ScrolledWindow::new(None::<&gtk::Adjustment>, None::<&gtk::Adjustment>);
                 scroll.set_policy(gtk::PolicyType::Automatic, gtk::PolicyType::Never);
@@ -440,20 +460,17 @@ fn store_anchor(shared: &Shared, anchor: (i64, i64)) {
         return;
     };
     stack.anchor = Some(anchor);
-    let path = stack.ctx.pos_file.clone();
-    let _ = std::thread::Builder::new()
-        .name("notifyd-anchor".into())
-        .spawn(move || {
-            // Como el `except: pass` del Python: si no se puede guardar, sigue en memoria.
-            let _ = save_anchor(&path, anchor);
-        });
+    if let Some(writer) = &stack.anchor_writer {
+        writer.store(anchor);
+    }
 }
 
 /// `make_popup(title, body, session, kind, project, options, full, expanded, pane)`.
 pub fn make_popup(shared: &Shared, notice: &Notice, expanded: bool) {
     apply_theme_css(shared);
-    // Tope anti spam: entra el nuevo y sale el más viejo (nunca se pierde el aviso).
-    loop {
+    // Tope anti spam: entra el nuevo y sale el más viejo (nunca se pierde el
+    // aviso). Acotado: aunque un cierre fallara, el bucle termina.
+    for _ in 0..STACK_MAX {
         let victim = match shared.try_borrow() {
             Ok(stack) if stack.popups.len() >= STACK_MAX => {
                 let metas: Vec<PopupMeta> = stack.popups.iter().map(|p| p.meta.clone()).collect();
