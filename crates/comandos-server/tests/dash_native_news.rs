@@ -1,21 +1,26 @@
-//! Lector de noticias nativo (plan 2f-4, Tarea 1) contra el `cc-dash` Python
-//! con el gemelo: las ocho rutas GET, con estado, cabeceras y cuerpo.
+//! Lector de noticias nativo (plan 2f-4, Tareas 1 y 2) contra el `cc-dash`
+//! Python con el gemelo: las ocho rutas GET y las escrituras sin agente
+//! (POST `/news/saved`, `/news/notes`, `/news/chat/note`), con estado,
+//! cabeceras, cuerpo y filas de app-state resultantes.
 //!
 //! Confinamiento: sin tmux ni procesos propios de estas rutas. app-state,
 //! `news-media` (`XDG_STATE_HOME` = HOME temporal en los dos lados) y
 //! `~/.claude/hooks/news-*.json` viven en el HOME de cada lado. El oráculo
 //! corre sin red y sin bucles de fondo (sin planificador de ediciones).
-//! Efectos en vivo: ninguno (lecturas).
+//! Efectos en vivo: las lecturas, ninguno; las escrituras, las mismas filas de
+//! `news_saved` y `news_notes` del app-state que el Python (cada lado en su
+//! HOME; el reloj de los dos es `NOW_MS`).
 mod support;
 
 use std::os::unix::fs::symlink;
 use support::{
-    FakeLegacy, TestHome, front, get,
+    FakeLegacy, NOW_MS, TestHome, front, get,
     news::{
         EMPTY_IMAGE, LARGE_IMAGE, MISSING_IMAGE, SMALL_IMAGE, large_image, media_dir, migrated,
         seed_editions,
     },
-    twin::Twin,
+    request_body,
+    twin::{Twin, TwinOpts},
 };
 
 /// La misma petición GET a los dos lados: estado, `Content-Type`,
@@ -229,5 +234,171 @@ async fn editions_config_fifo_does_not_stall_state() {
         .expect("/news/saved esperó al FIFO");
     assert_eq!(saved.status, 200);
     assert!(legacy.requests().is_empty(), "{:?}", legacy.requests());
+    f.stop().await;
+}
+
+/// Las filas de las tablas que tocan las escrituras, como texto comparable.
+fn news_rows(home: &TestHome) -> Vec<String> {
+    let conn = rusqlite::Connection::open(home.state_db()).unwrap();
+    let mut out = Vec::new();
+    for table in ["news_notes", "news_saved", "news_chat"] {
+        let mut stmt = conn
+            .prepare(&format!("SELECT * FROM {table} ORDER BY rowid"))
+            .unwrap();
+        let width = stmt.column_count();
+        let mut rows = stmt.query([]).unwrap();
+        while let Some(row) = rows.next().unwrap() {
+            let cells: Vec<String> = (0..width)
+                .map(|i| format!("{:?}", row.get_ref(i).unwrap()))
+                .collect();
+            out.push(format!("{table}: {}", cells.join(" | ")));
+        }
+    }
+    out
+}
+
+/// POST a los dos lados: estado, cabeceras y bytes iguales.
+async fn same_post(t: &Twin, path: &str, body: &str) -> u16 {
+    let run = t.post(path, body).await;
+    let (f, o) = (&run.front, &run.oracle);
+    assert_eq!(
+        f.status,
+        o.status,
+        "{path} {body}: {} / {}",
+        f.text(),
+        o.text()
+    );
+    for header in ["content-type", "content-length", "cache-control"] {
+        assert_eq!(
+            f.header(header),
+            o.header(header),
+            "{path} {body}: {header}"
+        );
+    }
+    assert!(
+        f.body == o.body,
+        "{path} {body}: {} / {}",
+        f.text(),
+        o.text()
+    );
+    f.status
+}
+
+/// Tarea 2: guardar/quitar, notas (`add` vacía, `update` inexistente,
+/// `delete`, acción desconocida) y notas de chat, contra el Python con el
+/// mismo reloj; al final, las mismas filas en los dos app-state.
+#[tokio::test]
+async fn news_writes_match_python() {
+    let opts = TwinOpts {
+        // `news_reading._now` del oráculo = el reloj del frente.
+        python_prelude: format!("import news_reading\nnews_reading._now = lambda: {NOW_MS}"),
+        ..TwinOpts::default()
+    };
+    let Some(t) = Twin::start_with("news-w", seed_editions, opts).await else {
+        return;
+    };
+    for (path, body, status) in [
+        ("/news/saved", r#"{"storyId": 11, "saved": true}"#, 200),
+        ("/news/saved", r#"{"storyId": 11, "saved": true}"#, 200),
+        ("/news/saved", r#"{"storyId": "10", "saved": 0}"#, 200),
+        ("/news/saved", r#"{"storyId": " 12 ", "saved": []}"#, 200),
+        ("/news/saved", r#"{"storyId": 12, "saved": "sí"}"#, 200),
+        ("/news/saved", r#"{"storyId": 999, "saved": true}"#, 404),
+        ("/news/saved", r#"{"storyId": 11.0, "saved": true}"#, 404),
+        ("/news/saved", r#"{"storyId": true, "saved": true}"#, 404),
+        ("/news/saved", r#"{"storyId": [11]}"#, 404),
+        ("/news/saved", r#"{"storyId": 0}"#, 404),
+        ("/news/saved", r#"{"storyId": 9007199254740992}"#, 404),
+        ("/news/saved", "{}", 404),
+        (
+            "/news/notes",
+            r#"{"action": "add", "storyId": 10, "text": "  hola  "}"#,
+            200,
+        ),
+        (
+            "/news/notes",
+            r#"{"action": "add", "storyId": 10, "text": ""}"#,
+            400,
+        ),
+        ("/news/notes", r#"{"action": "add", "storyId": 10}"#, 400),
+        (
+            "/news/notes",
+            r#"{"action": "add", "storyId": 10, "text": 7}"#,
+            200,
+        ),
+        (
+            "/news/notes",
+            r#"{"action": "add", "storyId": 999, "text": "x"}"#,
+            404,
+        ),
+        ("/news/notes", r#"{"action": "add", "text": "x"}"#, 404),
+        (
+            "/news/notes",
+            r#"{"action": "update", "noteId": 1, "text": "otra"}"#,
+            200,
+        ),
+        ("/news/notes", r#"{"action": "update", "noteId": 1}"#, 200),
+        (
+            "/news/notes",
+            r#"{"action": "update", "noteId": 999, "text": "x"}"#,
+            404,
+        ),
+        ("/news/notes", r#"{"action": "update", "text": "x"}"#, 404),
+        ("/news/notes", r#"{"action": "delete", "noteId": 3}"#, 200),
+        ("/news/notes", r#"{"action": "delete", "noteId": 3}"#, 200),
+        ("/news/notes", r#"{"action": "delete"}"#, 200),
+        ("/news/notes", r#"{"action": "x"}"#, 400),
+        ("/news/notes", r#"{"action": ["add"]}"#, 400),
+        ("/news/notes", "{}", 400),
+        ("/news/chat/note", r#"{"chatId": 2}"#, 200),
+        ("/news/chat/note", r#"{"chatId": 2}"#, 200),
+        ("/news/chat/note", r#"{"chatId": 1}"#, 200),
+        ("/news/chat/note", r#"{"chatId": "3"}"#, 200),
+        ("/news/chat/note", r#"{"chatId": 99}"#, 404),
+        ("/news/chat/note", "{}", 404),
+    ] {
+        assert_eq!(same_post(&t, path, body).await, status, "{path} {body}");
+    }
+    assert_eq!(news_rows(&t.a), news_rows(&t.b), "filas");
+    // Las lecturas ven lo escrito igual en los dos lados.
+    for path in ["/news/notes", "/news/saved", "/news/chat?story=10"] {
+        let run = t.get(path).await;
+        assert!(run.front.body == run.oracle.body, "{path}");
+    }
+}
+
+/// Lo que no se puede reproducir con certeza (`str()` de un `float` como
+/// texto de nota) declina ANTES de escribir: se reenvía y no hay filas nuevas.
+/// Con la consulta en la ruta (`self.path in (...)` es exacto) tampoco es del
+/// frente.
+#[tokio::test]
+async fn news_writes_decline_before_effects() {
+    let home = TestHome::new("news-decline");
+    seed_editions(&home);
+    let before = news_rows(&home);
+    let legacy = FakeLegacy::start().await;
+    let f = front(&home, legacy.port, home.options()).await;
+    for (path, body) in [
+        (
+            "/news/notes",
+            r#"{"action": "add", "storyId": 10, "text": 1.5}"#,
+        ),
+        (
+            "/news/notes",
+            r#"{"action": "update", "noteId": 1, "text": [1]}"#,
+        ),
+        (
+            "/news/notes",
+            r#"{"action": "add", "storyId": 10, "text": {"a": 1}}"#,
+        ),
+        ("/news/notes?x=1", r#"{"action": "x"}"#),
+        ("/news/saved?x=1", r#"{"storyId": 11, "saved": true}"#),
+        ("/news/chat/note/", r#"{"chatId": 2}"#),
+    ] {
+        let wire = request_body(f.port, "POST", path, "", body).await;
+        assert_eq!(wire.status, 200, "{path} {body}: {}", wire.text());
+    }
+    assert_eq!(legacy.requests().len(), 6, "{:?}", legacy.requests());
+    assert_eq!(news_rows(&home), before);
     f.stop().await;
 }

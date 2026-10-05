@@ -1,6 +1,7 @@
-//! Lecturas de los Resúmenes de noticias sobre app-state, portadas de
-//! `lib/news_editions.py` y `lib/news_reading.py` con las mismas sentencias
-//! SQL y el mismo orden de filas (plan 2f-4, Tarea 1).
+//! Lecturas y escrituras sin agente de los Resúmenes de noticias sobre
+//! app-state, portadas de `lib/news_editions.py` y `lib/news_reading.py` con
+//! las mismas sentencias SQL, el mismo orden de filas y las mismas
+//! transacciones (plan 2f-4, Tareas 1 y 2).
 //!
 //! Cada valor de SQLite se convierte como lo haría `sqlite3` del Python y
 //! después `json.dumps`. Lo que el Python haría con certeza y termina en una
@@ -9,7 +10,10 @@
 //! parser portado no clasifica igual) es `Fault::Unsure` y la ruta declina.
 use comandos_core::json::{MAX_WORKSPACE_JSON_DEPTH, truthy, workspace_loads};
 use comandos_core::text::strip;
-use rusqlite::{Connection, OptionalExtension, Row, params, params_from_iter, types::ValueRef};
+use rusqlite::{
+    Connection, OptionalExtension, Row, Transaction, TransactionBehavior, params, params_from_iter,
+    types::{Value as SqlValue, ValueRef},
+};
 use serde_json::{Map, Number, Value, json};
 use std::{collections::HashMap, path::Path};
 
@@ -717,6 +721,369 @@ pub fn translation(conn: &Connection, source_id: i64, lang: &str) -> Result<Opti
         "state": col(row, 0)?, "title": col(row, 1)?, "blocks": loads_or(row.get_ref(2)?, "[]")?,
         "model": col(row, 3)?, "error": col(row, 4)?, "updatedAt": col(row, 5)?,
     })))
+}
+
+// ---------------------------------------------------------------- escrituras (Tarea 2)
+
+/// `MAX_NOTE` de `news_reading`.
+pub const MAX_NOTE: usize = 8000;
+/// Tope de `cite` en `add_note`.
+const MAX_CITE: usize = 200;
+
+/// Las excepciones que `news_post` captura y lo que no termina en una de ellas.
+#[derive(Debug)]
+pub enum NewsError {
+    /// `LookupError(texto)` → 404 con `str(exc).strip("'")`.
+    Lookup(String),
+    /// `ValueError(texto)` → 400.
+    Value(String),
+    /// `RuntimeError(texto)` → 409.
+    Runtime(String),
+    /// Antes de la transacción de escritura: `Raise` es el 500 del tablero;
+    /// `Unsure` y `Sql` dejan declinar (no se escribió nada).
+    Fault(Fault),
+    /// Con la transacción de escritura ya abierta o confirmada: ya no se
+    /// declina. Es el 500 de la excepción sin capturar del Python.
+    AfterWrite(Fault),
+}
+
+impl From<Fault> for NewsError {
+    fn from(fault: Fault) -> Self {
+        NewsError::Fault(fault)
+    }
+}
+
+impl From<rusqlite::Error> for NewsError {
+    fn from(error: rusqlite::Error) -> Self {
+        NewsError::Fault(Fault::Sql(error))
+    }
+}
+
+impl std::fmt::Display for NewsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NewsError::Lookup(s) => write!(f, "LookupError: {s}"),
+            NewsError::Value(s) => write!(f, "ValueError: {s}"),
+            NewsError::Runtime(s) => write!(f, "RuntimeError: {s}"),
+            NewsError::Fault(fault) => fault.fmt(f),
+            NewsError::AfterWrite(fault) => write!(f, "tras escribir: {fault}"),
+        }
+    }
+}
+
+pub type WriteResult<T> = std::result::Result<T, NewsError>;
+
+/// `ne._tx(conn)`: `BEGIN IMMEDIATE` … `COMMIT` (o `ROLLBACK` si falla). Un
+/// fallo al abrirla no escribió nada; uno dentro o al confirmar es el 500.
+fn in_write_tx<T>(
+    conn: &Connection,
+    body: impl FnOnce(&Connection) -> Result<T>,
+) -> WriteResult<T> {
+    let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    let value = body(&tx).map_err(NewsError::AfterWrite)?;
+    tx.commit()
+        .map_err(|e| NewsError::AfterWrite(Fault::Sql(e)))?;
+    Ok(value)
+}
+
+/// `_clip(text, limit)` sobre `str(text or "")` ya calculado: `strip()` y,
+/// si pasa de `limit` puntos de código, los primeros `limit - 1` y `…`.
+fn clip(text: &str, limit: usize) -> String {
+    let text = strip(text);
+    if text.chars().count() <= limit {
+        return text.to_owned();
+    }
+    let mut out: String = text.chars().take(limit.saturating_sub(1)).collect();
+    out.push('…');
+    out
+}
+
+/// Un `int` del Python escrito en JSON (sin fracción ni exponente).
+fn is_int_text(raw: &str) -> bool {
+    let digits = raw.strip_prefix('-').unwrap_or(raw);
+    !digits.is_empty() && digits.len() <= 4300 && digits.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// `str(value or "")` de un valor del cuerpo JSON. El `repr` de un `float`,
+/// una lista o un objeto no se reproduce con certeza: `Unsure`.
+fn json_str_or_empty(value: &Value) -> Result<String> {
+    if !truthy(value) {
+        return Ok(String::new());
+    }
+    match value {
+        Value::String(s) => Ok(s.clone()),
+        Value::Bool(_) => Ok("True".into()),
+        Value::Number(n) if is_int_text(n.as_str()) => Ok(n.as_str().to_owned()),
+        _ => unsure("str() de un valor que no es texto ni entero"),
+    }
+}
+
+/// `str(value or "")` de lo que entrega `sqlite3` (`None`, `int`, `float`,
+/// `str`, `bytes`). `float` y `bytes` no se reproducen con certeza.
+fn sql_str_or_empty(value: ValueRef<'_>) -> Result<String> {
+    if !sql_truthy(value) {
+        return Ok(String::new());
+    }
+    match value {
+        ValueRef::Integer(n) => Ok(n.to_string()),
+        ValueRef::Text(_) => Ok(sql_text(value)?.unwrap_or_default().to_owned()),
+        _ => unsure("str() de un REAL o BLOB"),
+    }
+}
+
+/// `x or None` de un texto ya recortado.
+fn non_empty(text: String) -> Option<String> {
+    (!text.is_empty()).then_some(text)
+}
+
+/// Lo que de `story_row` necesita una escritura. Como `fetchone()` decodifica
+/// cada TEXT de la fila, un texto que no es UTF-8 es `Unsure` (antes de
+/// escribir); `edition_id` y `title` se guardan tal cual para insertarlos.
+struct StoryRef {
+    edition_id: SqlValue,
+    title: SqlValue,
+}
+
+fn story_ref(conn: &Connection, story_id: &SqlValue) -> Result<Option<StoryRef>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, edition_id, title, summary_md, body_md FROM news_stories WHERE id = ?",
+    )?;
+    let mut rows = stmt.query([story_id])?;
+    let Some(row) = rows.next()? else {
+        return Ok(None);
+    };
+    for index in 0..5 {
+        sql_text(row.get_ref(index)?)?;
+    }
+    Ok(Some(StoryRef {
+        edition_id: row.get::<_, SqlValue>(1)?,
+        title: row.get::<_, SqlValue>(2)?,
+    }))
+}
+
+/// `_note(conn.execute(... WHERE id = ?).fetchone())`; sin fila, el
+/// `TypeError` de `_note(None)`.
+fn read_note(conn: &Connection, note_id: i64) -> Result<Value> {
+    let mut stmt = conn.prepare(&format!("SELECT {NOTE_COLS} FROM news_notes WHERE id = ?"))?;
+    let mut rows = stmt.query([note_id])?;
+    match rows.next()? {
+        Some(row) => note(row),
+        None => Err(Fault::Raise("TypeError".into())),
+    }
+}
+
+/// `set_saved(conn, story_id, on, now)`: `None` si la noticia no existe.
+/// `now` es el `now or _now()` del Python.
+pub fn set_saved(
+    conn: &Connection,
+    story_id: i64,
+    on: bool,
+    now: i64,
+) -> WriteResult<Option<bool>> {
+    let Some(story) = story_ref(conn, &SqlValue::Integer(story_id))? else {
+        return Ok(None);
+    };
+    in_write_tx(conn, |c| {
+        if on {
+            c.execute(
+                "INSERT OR IGNORE INTO news_saved (story_id, edition_id, saved_at_ms) VALUES (?, ?, ?)",
+                params![story_id, story.edition_id, now],
+            )?;
+        } else {
+            c.execute("DELETE FROM news_saved WHERE story_id = ?", [story_id])?;
+        }
+        Ok(())
+    })?;
+    Ok(Some(on))
+}
+
+/// Los argumentos de `add_note` salvo `story_id` y `now`, en la forma en que
+/// llegan: el texto del cuerpo JSON o la cita y la fuente de una burbuja.
+enum NoteText<'a> {
+    /// `add_note(conn, story, data.get("text"))`: nota libre.
+    Body(&'a Value),
+    /// `add_note(conn, msg[1], "", kind="chat", chat_id=…, quote=msg[4], cite=msg[5])`.
+    Chat {
+        chat_id: Option<i64>,
+        quote: SqlValue,
+        cite: SqlValue,
+    },
+}
+
+/// `add_note(conn, story_id, text, kind=…, chat_id=…, quote=…, cite=…, now=…)`.
+fn insert_note(
+    conn: &Connection,
+    story_id: SqlValue,
+    input: NoteText<'_>,
+    now: i64,
+) -> WriteResult<Value> {
+    let Some(story) = story_ref(conn, &story_id)? else {
+        return Err(NewsError::Lookup("noticia no encontrada".into()));
+    };
+    let (text, kind, chat_id, quote_truthy, quote, cite) = match input {
+        NoteText::Body(text) => (
+            clip(&json_str_or_empty(text)?, MAX_NOTE),
+            "libre",
+            None,
+            false,
+            String::new(),
+            String::new(),
+        ),
+        NoteText::Chat {
+            chat_id,
+            quote,
+            cite,
+        } => {
+            let quote_ref = ValueRef::from(&quote);
+            (
+                String::new(),
+                "chat",
+                chat_id,
+                sql_truthy(quote_ref),
+                sql_str_or_empty(quote_ref)?,
+                sql_str_or_empty(ValueRef::from(&cite))?,
+            )
+        }
+    };
+    if text.is_empty() && !quote_truthy {
+        return Err(NewsError::Value("la nota está vacía".into()));
+    }
+    let (quote, cite) = (
+        non_empty(clip(&quote, MAX_NOTE)),
+        non_empty(clip(&cite, MAX_CITE)),
+    );
+    let id = in_write_tx(conn, |c| {
+        c.execute(
+            "INSERT INTO news_notes (story_id, edition_id, story_title, kind, chat_id, quote, cite, \
+             text, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params![story_id, story.edition_id, story.title, kind, chat_id, quote, cite, text, now, now],
+        )?;
+        Ok(c.last_insert_rowid())
+    })?;
+    read_note(conn, id).map_err(NewsError::AfterWrite)
+}
+
+/// `add_note(conn, story_id, text, now=now)` de POST `/news/notes` `add`.
+pub fn add_note(
+    conn: &Connection,
+    story_id: Option<i64>,
+    text: &Value,
+    now: i64,
+) -> WriteResult<Value> {
+    let story_id = story_id.map_or(SqlValue::Null, SqlValue::Integer);
+    insert_note(conn, story_id, NoteText::Body(text), now)
+}
+
+/// `update_note(conn, note_id, text, now)`: el texto puede quedar vacío.
+pub fn update_note(
+    conn: &Connection,
+    note_id: Option<i64>,
+    text: &Value,
+    now: i64,
+) -> WriteResult<Value> {
+    let text = clip(&json_str_or_empty(text)?, MAX_NOTE);
+    let changed = in_write_tx(conn, |c| {
+        Ok(c.execute(
+            "UPDATE news_notes SET text = ?, updated_at_ms = ? WHERE id = ?",
+            params![text, now, note_id],
+        )?)
+    })?;
+    let Some(note_id) = note_id.filter(|_| changed > 0) else {
+        return Err(NewsError::Lookup("nota no encontrada".into()));
+    };
+    read_note(conn, note_id).map_err(NewsError::AfterWrite)
+}
+
+/// `delete_note(conn, note_id)`: si borró algo.
+pub fn delete_note(conn: &Connection, note_id: Option<i64>) -> WriteResult<bool> {
+    in_write_tx(conn, |c| {
+        Ok(c.execute("DELETE FROM news_notes WHERE id = ?", [note_id])? > 0)
+    })
+}
+
+/// La burbuja de `toggle_chat_note`.
+struct ChatRow {
+    story_id: SqlValue,
+    from_user: bool,
+    done: bool,
+    text: SqlValue,
+    cite: SqlValue,
+}
+
+fn chat_row(conn: &Connection, chat_id: Option<i64>) -> Result<Option<ChatRow>> {
+    let mut stmt =
+        conn.prepare("SELECT id, story_id, role, state, text, cite FROM news_chat WHERE id = ?")?;
+    let mut rows = stmt.query([chat_id])?;
+    let Some(row) = rows.next()? else {
+        return Ok(None);
+    };
+    for index in 0..6 {
+        sql_text(row.get_ref(index)?)?;
+    }
+    // `msg[2] == "user"`, `msg[3] != "done"`: solo un TEXT igual compara igual.
+    let is = |index: usize, word: &str| -> Result<bool> {
+        Ok(matches!(row.get_ref(index)?, ValueRef::Text(t) if t == word.as_bytes()))
+    };
+    Ok(Some(ChatRow {
+        story_id: row.get::<_, SqlValue>(1)?,
+        from_user: is(2, "user")?,
+        done: is(3, "done")?,
+        text: row.get::<_, SqlValue>(4)?,
+        cite: row.get::<_, SqlValue>(5)?,
+    }))
+}
+
+/// `toggle_chat_note(conn, chat_id, now)`: ☆ en una burbuja. La guarda como
+/// nota con su cita o, si ya estaba, la quita.
+pub fn toggle_chat_note(conn: &Connection, chat_id: Option<i64>, now: i64) -> WriteResult<Value> {
+    let Some(msg) = chat_row(conn, chat_id)?.filter(|m| m.done) else {
+        return Err(NewsError::Lookup("mensaje no encontrado".into()));
+    };
+    // `fetchone()[0]`: el id (INTEGER PRIMARY KEY) de la primera nota.
+    let existing = conn
+        .query_row(
+            "SELECT id FROM news_notes WHERE chat_id = ?",
+            [chat_id],
+            |r| {
+                Ok(match r.get_ref(0)? {
+                    ValueRef::Integer(n) => Some(n),
+                    _ => None,
+                })
+            },
+        )
+        .optional()?;
+    if let Some(found) = existing {
+        let Some(id) = found else {
+            return Err(NewsError::Fault(Fault::Unsure(
+                "id de nota que no es entero".into(),
+            )));
+        };
+        delete_note(conn, Some(id))?;
+        return Ok(json!({"noted": false, "noteId": id}));
+    }
+    let who = if msg.from_user {
+        "Mi pregunta"
+    } else {
+        "Respuesta de la IA"
+    };
+    let input = NoteText::Chat {
+        chat_id,
+        quote: msg.text,
+        cite: msg.cite,
+    };
+    let mut note = insert_note(conn, msg.story_id, input, now)?;
+    let label = format!("{who}, guardada desde el chat.");
+    let id = note.get("id").and_then(Value::as_i64);
+    // Fuera de la transacción, en modo autocommit, como el Python.
+    conn.execute(
+        "UPDATE news_notes SET text = ? WHERE id = ?",
+        params![label, id],
+    )
+    .map_err(|e| NewsError::AfterWrite(Fault::Sql(e)))?;
+    if let Some(obj) = note.as_object_mut() {
+        obj.insert("text".into(), Value::String(label));
+    }
+    Ok(json!({"noted": true, "note": note}))
 }
 
 // ---------------------------------------------------------------- configuración

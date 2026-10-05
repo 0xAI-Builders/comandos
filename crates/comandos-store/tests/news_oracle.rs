@@ -384,3 +384,168 @@ print(json.dumps(out))
         expected.trim_end()
     );
 }
+
+// ---------------------------------------------------------------- escrituras (Tarea 2)
+
+/// Filas extra para `toggle_chat_note`: un chat de una noticia que no existe,
+/// uno vacío, uno de solo blancos, uno con cita larga y uno con texto numérico.
+const WRITE_EXTRA: &str = r#"
+INSERT INTO news_chat (id, story_id, edition_id, role, state, text, cite, model, created_at_ms) VALUES
+ (6,77,'2026-10-03@09:00','assistant','done','huérfano',NULL,NULL,1791040000300),
+ (7,10,'2026-10-03@09:00','assistant','done','',NULL,NULL,1791040000400),
+ (8,10,'2026-10-03@09:00','assistant','done','   ',NULL,NULL,1791040000500),
+ (9,11,'2026-10-03@09:00','assistant','done','  respuesta  ','  cita larga cita larga cita larga cita larga cita larga cita larga cita larga cita larga cita larga cita larga cita larga cita larga cita larga cita larga cita larga cita larga cita larga cita larga cita larga cita larga  ',NULL,1791040000600),
+ (10,12,'2026-10-03@15:00','user','done',42,NULL,NULL,1791040000700);
+"#;
+
+/// Cada operación: `[función, id, argumento]` con los tipos del Python.
+fn write_ops() -> Value {
+    let long = "x".repeat(9000);
+    json!([
+        ["saved", 11, true],
+        ["saved", 11, true],
+        ["saved", 10, false],
+        ["saved", 10, false],
+        ["saved", 99, true],
+        ["add", 10, "  Una nota nueva  "],
+        ["add", 10, ""],
+        ["add", 10, "   "],
+        ["add", 10, null],
+        ["add", 10, 0],
+        ["add", 10, false],
+        ["add", 99, "x"],
+        ["add", null, "x"],
+        ["add", 12, 5],
+        ["add", 12, true],
+        ["add", 12, -7],
+        ["add", 11, long],
+        ["add", 11, "\u{a0}\tñandú\u{2003}\n"],
+        ["update", 1, "editada"],
+        ["update", 1, "editada"],
+        ["update", 999, "x"],
+        ["update", null, "x"],
+        ["update", 3, ""],
+        ["update", 3, null],
+        ["update", 4, 12],
+        ["delete", 4],
+        ["delete", 4],
+        ["delete", null],
+        ["toggle", 2],
+        ["toggle", 2],
+        ["toggle", 1],
+        ["toggle", 4],
+        ["toggle", 99],
+        ["toggle", null],
+        ["toggle", 6],
+        ["toggle", 7],
+        ["toggle", 8],
+        ["toggle", 9],
+        ["toggle", 10],
+        ["toggle", 9],
+    ])
+}
+
+const WRITE_ORACLE: &str = r#"
+import json, sys
+sys.path.insert(0, sys.argv[1] + "/lib")
+import app_state, news_reading as nr
+conn = app_state.connect(sys.argv[2])
+now = int(sys.argv[3])
+
+def run(op):
+    kind, ident, arg = (op + [None])[:3]
+    try:
+        if kind == "saved":
+            return nr.set_saved(conn, ident, arg, now=now)
+        if kind == "add":
+            return nr.add_note(conn, ident, arg, now=now)
+        if kind == "update":
+            return nr.update_note(conn, ident, arg, now=now)
+        if kind == "delete":
+            return nr.delete_note(conn, ident)
+        return nr.toggle_chat_note(conn, ident, now=now)
+    except LookupError as exc:
+        return {"E": ["lookup", str(exc).strip("'")]}
+    except ValueError as exc:
+        return {"E": ["value", str(exc)]}
+    except RuntimeError as exc:
+        return {"E": ["runtime", str(exc)]}
+
+print(json.dumps([run(op) for op in json.loads(sys.argv[4])]))
+"#;
+
+/// Las filas de las tablas que tocan las escrituras, volcadas por el Python.
+const DUMP_ORACLE: &str = r#"
+import json, sqlite3, sys
+conn = sqlite3.connect(sys.argv[2])
+print(json.dumps({t: [list(r) for r in conn.execute(f"SELECT * FROM {t} ORDER BY rowid")]
+                  for t in ("news_notes", "news_saved", "news_chat")}))
+"#;
+
+fn write_out<T: Into<Value>>(got: std::result::Result<T, news::NewsError>) -> Value {
+    match got {
+        Ok(v) => v.into(),
+        Err(news::NewsError::Lookup(m)) => json!({"E": ["lookup", m.trim_matches('\'')]}),
+        Err(news::NewsError::Value(m)) => json!({"E": ["value", m]}),
+        Err(news::NewsError::Runtime(m)) => json!({"E": ["runtime", m]}),
+        Err(other) => panic!("inesperado: {other:?}"),
+    }
+}
+
+fn rust_write(conn: &Connection, op: &Value) -> Value {
+    let kind = op[0].as_str().unwrap();
+    let ident = op[1].as_i64();
+    let arg = &op[2];
+    match kind {
+        "saved" => write_out(
+            news::set_saved(conn, ident.unwrap(), arg.as_bool().unwrap(), NOW_MS)
+                .map(|v| v.map_or(Value::Null, Value::Bool)),
+        ),
+        "add" => write_out(news::add_note(conn, ident, arg, NOW_MS)),
+        "update" => write_out(news::update_note(conn, ident, arg, NOW_MS)),
+        "delete" => write_out(news::delete_note(conn, ident)),
+        _ => write_out(news::toggle_chat_note(conn, ident, NOW_MS)),
+    }
+}
+
+#[test]
+fn writes_match_python() {
+    let scratch = Scratch::new("writes");
+    let (py_db, rs_db) = (scratch.0.join("py.sqlite3"), scratch.0.join("rs.sqlite3"));
+    drop(seeded(&py_db, WRITE_EXTRA));
+    let conn = seeded(&rs_db, WRITE_EXTRA);
+    let ops = write_ops();
+    let home = scratch.0.join("home");
+    let now = OsStr::new(&NOW_MS.to_string()).to_owned();
+    let ops_arg = ops.to_string();
+    let Some(expected) = run_python(
+        WRITE_ORACLE,
+        &[py_db.as_os_str(), &now, OsStr::new(&ops_arg)],
+        &home,
+    ) else {
+        return;
+    };
+    let got: Vec<Value> = ops
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|op| rust_write(&conn, op))
+        .collect();
+    let want: Vec<Value> = serde_json::from_str(expected.trim_end()).unwrap();
+    for (i, (g, w)) in got.iter().zip(&want).enumerate() {
+        assert_eq!(
+            response_dumps(g).unwrap(),
+            response_dumps(w).unwrap(),
+            "operación {i}: {}",
+            ops[i].to_string().chars().take(80).collect::<String>()
+        );
+    }
+    assert_eq!(
+        response_dumps(&Value::Array(got)).unwrap(),
+        expected.trim_end()
+    );
+    drop(conn);
+    // Las mismas filas en las dos bases.
+    let dump = |db: &Path| run_python(DUMP_ORACLE, &[db.as_os_str()], &home).unwrap();
+    assert_eq!(dump(&rs_db), dump(&py_db), "filas");
+}

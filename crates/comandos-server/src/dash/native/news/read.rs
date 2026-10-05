@@ -62,6 +62,10 @@ pub async fn answer(native: &Arc<Native>, route: NewsRoute, request: &Request) -
         NewsRoute::Source | NewsRoute::Chat | NewsRoute::Notes | NewsRoute::Saved => {
             news_get(native, route, request).await
         }
+        // Las escrituras van por `write`.
+        NewsRoute::SavedPost | NewsRoute::NotesPost | NewsRoute::ChatNotePost => {
+            Err(Fault::Decline)
+        }
     }
 }
 
