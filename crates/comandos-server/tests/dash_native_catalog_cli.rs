@@ -520,6 +520,67 @@ async fn opencode_models_unsure_declines_without_relaunching() {
     server.stop().await;
 }
 
+/// I2: una ayuda que el port no interpreta con certeza (U+001C, que `\s` de
+/// Python cuenta como espacio) declina, y se recuerda por la llave del
+/// ejecutable: la segunda petición declina sin volver a correr `--help`. Si
+/// el ejecutable cambia, se vuelve a pedir.
+#[tokio::test]
+async fn catalog_unsure_help_is_remembered() {
+    let home = TestHome::new("cat-help-unsure");
+    seed_snapshot(&home);
+    let clock = Clock::at(T0);
+    let help = "Usage: claude [options]\n\nOptions:\n  -x, --rara  marca\u{1c}rara\n";
+    let (legacy, server) = lone_front(
+        &home,
+        &[("claude", fake_cli("2.1.286", help, ""))],
+        &clock,
+        None,
+    )
+    .await;
+    for _ in 0..3 {
+        assert_eq!(get(server.port, "/commands/catalog").await.text(), LEGACY);
+    }
+    assert_eq!(calls(&home, "claude --help").await, 1);
+    // Otro ejecutable (otra llave): se vuelve a sondear una vez.
+    let exe = home.root.join("bin/claude");
+    let text = std::fs::read_to_string(&exe).unwrap();
+    std::fs::write(&exe, format!("{text}# cambio\n")).unwrap();
+    for _ in 0..2 {
+        assert_eq!(get(server.port, "/commands/catalog").await.text(), LEGACY);
+    }
+    assert_eq!(calls(&home, "claude --help").await, 2);
+    assert_eq!(legacy.requests().len(), 5);
+    server.stop().await;
+}
+
+/// I2: sin snapshot, una salida de `--version` incierta declina y se recuerda
+/// los 600 s del sondeo de respaldo del Python; después se sondea otra vez.
+#[tokio::test]
+async fn catalog_unsure_version_is_remembered() {
+    let home = TestHome::new("cat-version-unsure");
+    let clock = Clock::at(T0);
+    let (legacy, server) = lone_front(
+        &home,
+        &[("claude", fake_cli("'2.1.0\x1c'", CLAUDE_HELP, ""))],
+        &clock,
+        None,
+    )
+    .await;
+    for _ in 0..3 {
+        assert_eq!(get(server.port, "/commands/catalog").await.text(), LEGACY);
+    }
+    assert_eq!(calls(&home, "claude --version").await, 1);
+    clock.set(T0 + 601.0);
+    for _ in 0..2 {
+        assert_eq!(get(server.port, "/commands/catalog").await.text(), LEGACY);
+    }
+    assert_eq!(calls(&home, "claude --version").await, 2);
+    // Nunca se llegó a pedir la ayuda: se declinó antes.
+    assert_eq!(calls(&home, "claude --help").await, 0);
+    assert_eq!(legacy.requests().len(), 5);
+    server.stop().await;
+}
+
 #[test]
 fn routes_follow_python_matching() {
     use comandos_server::dash::native::{NativeRoute, catalog_cli::CliRoute, route};

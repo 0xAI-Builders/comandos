@@ -142,9 +142,13 @@ struct Derived {
 struct CatalogCache {
     catalog: Option<Arc<Value>>,
     derived: Option<Derived>,
-    fallback: Option<(Map<String, Value>, f64)>,
+    /// El sondeo de versiones y su hora; `None` si leyó algo que el port no
+    /// reproduce: la ruta declina sin sondear hasta que venza (`FALLBACK_TTL`).
+    fallback: Option<(Option<Map<String, Value>>, f64)>,
     detect: HashMap<String, (FileKey, HashSet<String>)>,
-    help: HashMap<PathBuf, (FileKey, Map<String, Value>)>,
+    /// `_HELP_CACHE`; `None` es una ayuda que el port no interpreta con
+    /// certeza: con la misma llave se declina sin volver a correr `--help`.
+    help: HashMap<PathBuf, (FileKey, Option<Map<String, Value>>)>,
 }
 
 #[derive(Default)]
@@ -365,12 +369,13 @@ fn cli_ids(catalog: &Value) -> Result<Vec<(String, String)>, Fault> {
         .collect()
 }
 
-/// `installed_versions(catalog)`: `--version` de cada CLI encontrado.
+/// `installed_versions(catalog)`: `--version` de cada CLI encontrado;
+/// `Ok(None)` en cuanto una salida no se reproduce con certeza.
 async fn installed_versions(
     native: &Native,
     clis: &[(String, String)],
     exes: &[Option<PathBuf>],
-) -> Result<Map<String, Value>, Fault> {
+) -> Result<Option<Map<String, Value>>, Fault> {
     let mut out = Map::new();
     for ((id, _), exe) in clis.iter().zip(exes) {
         let Some(exe) = exe else {
@@ -385,16 +390,17 @@ async fn installed_versions(
         )
         .await
         {
-            Ok(output) => {
-                version_of(&format!("{}{}", output.stdout, output.stderr)).map_err(unsure)?
-            }
+            Ok(output) => match version_of(&format!("{}{}", output.stdout, output.stderr)) {
+                Ok(version) => version,
+                Err(Unsure) => return Ok(None),
+            },
             Err(RunError::Timeout | RunError::Spawn(_)) => "?".to_owned(),
             // `UnicodeDecodeError` no lo captura `installed_versions`.
             Err(RunError::Decode) => return Err(failure()),
         };
         out.insert(id.clone(), Value::from(version));
     }
-    Ok(out)
+    Ok(Some(out))
 }
 
 /// `float(snap.get("checkedAt") or 0.0)`.
@@ -475,6 +481,8 @@ async fn payload(native: &Arc<Native>) -> Result<(Value, f64), Fault> {
                         fb
                     }
                 };
+                // Un sondeo incierto (de ahora o recordado): sin efectos.
+                let versions = versions.ok_or(Fault::Decline)?;
                 at = t;
                 versions
             }
@@ -651,7 +659,8 @@ async fn help_for(
     if let Some((cached, parsed)) = cache.help.get(exe)
         && *cached == key
     {
-        return Ok(Some(parsed.clone()));
+        // Una ayuda incierta recordada declina sin volver a pedirla.
+        return parsed.clone().map(Some).ok_or(Fault::Decline);
     }
     let mut program = native.options().program(exe);
     for (name, value) in [("NO_COLOR", "1"), ("TERM", "dumb"), ("COLUMNS", "100")] {
@@ -667,10 +676,13 @@ async fn help_for(
         return Ok(None);
     };
     let name = binary.to_owned();
-    let mut parsed = blocking(move || parse_help(&text, &name).map_err(unsure)).await?;
-    parsed.insert("command".into(), Value::from(format!("{binary} --help")));
+    let parsed = blocking(move || Ok(parse_help(&text, &name).ok())).await?;
+    let parsed = parsed.map(|mut parsed| {
+        parsed.insert("command".into(), Value::from(format!("{binary} --help")));
+        parsed
+    });
     cache.help.insert(exe.to_path_buf(), (key, parsed.clone()));
-    Ok(Some(parsed))
+    parsed.map(Some).ok_or(Fault::Decline)
 }
 
 // ---------------------------------------------------------------------------
