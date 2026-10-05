@@ -244,14 +244,16 @@ fn play_end_sound(opts: &NativeOptions, volume: &Value) -> Result<bool, String> 
 }
 
 /// Arranca el planificador como tarea registrada. Guarda un `Weak`: el frente
-/// apagado (o soltado) termina el bucle en su próxima vuelta.
-pub(crate) fn spawn(native: &Arc<Native>, stop: Arc<Stop>) -> bool {
+/// apagado (o soltado) termina el bucle en su próxima vuelta. `owner`: el
+/// frente es el dueño (`front`) y hace la migración de arranque; con `legacy`
+/// la hace el Python y el frente solo cierra bloques vencidos.
+pub(crate) fn spawn(native: &Arc<Native>, stop: Arc<Stop>, owner: bool) -> bool {
     let weak = Arc::downgrade(native);
-    native.tasks().spawn(scheduler(weak, stop)).is_ok()
+    native.tasks().spawn(scheduler(weak, stop, owner)).is_ok()
 }
 
-async fn scheduler(weak: Weak<Native>, stop: Arc<Stop>) {
-    if let Some(native) = weak.upgrade() {
+async fn scheduler(weak: Weak<Native>, stop: Arc<Stop>, owner: bool) {
+    if owner && let Some(native) = weak.upgrade() {
         adopt_legacy(&native).await;
         import_history(&native).await;
     }

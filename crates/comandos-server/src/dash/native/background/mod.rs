@@ -6,11 +6,12 @@
 //! `Native::enabled()` en cada vuelta: con el frente apagado o soltado termina
 //! solo, sin que nadie lo espere.
 //!
-//! Dueño (regla del controlador para la 2f): ningún bucle corre por omisión ni
-//! en las pruebas que no lo pidan. El planificador de Pomodoro solo arranca con
-//! `Background::front()`; con `legacy` el del Python sigue siendo el único.
-//! `_notices_push_loop` (1038) no se arranca nunca: con
-//! `web_push.available() == False` no hace nada (D10).
+//! Dueño (D6): el planificador de Pomodoro corre con `legacy` y con `front`
+//! (sus `settle_due` son transacciones: con el del Python vivo, cada bloque se
+//! cierra una vez). La migración de arranque (`pomodoro_adopt_legacy` e
+//! `import_legacy_history`) solo la hace el dueño: con `legacy`, el Python;
+//! con `front`, el frente. `_notices_push_loop` (1038) no se arranca nunca:
+//! con `web_push.available() == False` no hace nada (D10).
 pub mod pomodoro;
 
 use super::{Background, Native};
@@ -68,7 +69,9 @@ impl BackgroundRunner {
     }
 }
 
-/// ¿Es el frente el dueño de los bucles de fondo? Solo con `front`.
+/// ¿Es el frente el dueño único de lo de fondo (2g)? Solo con `front`: decide
+/// la migración de arranque del planificador y los bucles que no son
+/// idempotentes con el Python.
 pub fn front_owns(background: &Background) -> bool {
     *background == Background::front()
 }
@@ -77,9 +80,8 @@ pub fn front_owns(background: &Background) -> bool {
 pub fn start(native: &Arc<Native>) -> BackgroundRunner {
     let stop = Arc::new(Stop::default());
     let background = native.options().background;
-    let pomodoro = front_owns(&background)
-        && background.pomodoro
+    let pomodoro = background.pomodoro
         && native.enabled()
-        && pomodoro::spawn(native, Arc::clone(&stop));
+        && pomodoro::spawn(native, Arc::clone(&stop), front_owns(&background));
     BackgroundRunner { stop, pomodoro }
 }

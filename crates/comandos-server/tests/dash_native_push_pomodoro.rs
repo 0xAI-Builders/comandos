@@ -82,6 +82,17 @@ fn block_status(home: &TestHome) -> Option<String> {
     .ok()
 }
 
+fn vencido(home: &TestHome) -> Option<String> {
+    let conn = rusqlite::Connection::open(home.state_db()).unwrap();
+    conn.busy_timeout(Duration::from_secs(5)).unwrap();
+    conn.query_row(
+        "select status from pomodoro_blocks where block_id='vencido'",
+        [],
+        |r| r.get(0),
+    )
+    .ok()
+}
+
 /// Los ids aleatorios (`uuid4().hex`, `token_hex(16)`) difieren entre lados.
 fn ids(text: &str) -> String {
     let re = Regex::new("[0-9a-f]{32}").unwrap();
@@ -221,31 +232,79 @@ fn moving_clock(base: &Arc<AtomicI64>) -> Arc<dyn Fn() -> i64 + Send + Sync> {
     Arc::new(move || base.load(Ordering::SeqCst) + i64::try_from(t0.elapsed().as_millis()).unwrap())
 }
 
-#[tokio::test]
-async fn scheduler_runs_only_when_the_front_owns_it() {
-    let home = TestHome::new_short("pomo-owner");
-    let native = Arc::new(Native::new(home.options()));
-    assert!(native.ready().await);
-    // `legacy` (lo de por omisión): el planificador del Python es el único.
-    let runner = background::start(&native);
-    assert!(!runner.pomodoro());
-    assert_eq!(native.tasks().len(), 0);
-    native.shutdown().await;
+/// Lo que adopta el dueño al arrancar: `focus.json` (la autoridad anterior a
+/// 1.0, con `until` en segundos) y dos bloques del historial de la base de uso.
+fn seed_legacy(home: &TestHome, until_seconds: i64) {
+    let started = until_seconds - 1500;
+    home.write(
+        "focus.json",
+        &format!(
+            r#"{{"until": {until_seconds}, "startedAt": {started}, "mins": 25, "mode": "focus", "project": "p"}}"#
+        ),
+    );
+    let conn = comandos_store::usage::open_usage_db_at(&home.usage_db()).unwrap();
+    comandos_store::usage::ensure_schema(&conn).unwrap();
+    conn.execute_batch(
+        "insert into focus_blocks(id,mode,project,planned_minutes,started_at_ms,ended_at_ms,status)
+           values('h1','focus','p',25,1700000000000,1700001500000,'completed'),
+                 ('h2','focus','p',50,1700003000000,1700006000000,'completed')",
+    )
+    .unwrap();
+}
 
-    let mut opts = home.options();
-    opts.background = Background::front();
-    let native = Arc::new(Native::new(opts));
-    assert!(native.ready().await);
-    let runner = background::start(&native);
-    assert!(runner.pomodoro());
-    assert_eq!(native.tasks().len(), 1);
-    runner.stop();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while !native.tasks().is_empty() {
-        assert!(Instant::now() < deadline, "el planificador no paró");
-        tokio::time::sleep(Duration::from_millis(20)).await;
+fn migrated(home: &TestHome) -> usize {
+    std::fs::read_dir(home.hooks())
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with("focus.json.migrated-")
+        })
+        .count()
+}
+
+/// D6: el planificador corre con `legacy` y con `front`, pero la migración de
+/// arranque (`focus.json` y el historial) solo la hace el dueño (`front`).
+#[tokio::test]
+async fn scheduler_runs_in_both_modes_but_only_the_owner_migrates() {
+    for (background, owner) in [(Background::legacy(), false), (Background::front(), true)] {
+        let home = TestHome::new_short(if owner { "pomo-own-f" } else { "pomo-own-l" });
+        seed_legacy(&home, NOW_MS / 1000 + 600);
+        let mut opts = home.options();
+        opts.background = background;
+        let native = Arc::new(Native::new(opts));
+        assert!(native.ready().await);
+        let runner = background::start(&native);
+        assert!(runner.pomodoro());
+        assert_eq!(native.tasks().len(), 1);
+        let legacy_records =
+            "select count(*) from pomodoro_records where provenance='legacy-planned'";
+        if owner {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while count(&home, legacy_records) < 2 {
+                assert!(Instant::now() < deadline, "el dueño no migró");
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            assert!(!home.hooks().join("focus.json").exists());
+            assert_eq!(migrated(&home), 1);
+            assert_eq!(block_status(&home).as_deref(), Some("running"));
+        } else {
+            // Su primera vuelta (cerrar vencidos) ya pasó; nada que adoptar.
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            assert!(home.hooks().join("focus.json").exists());
+            assert_eq!(migrated(&home), 0);
+            assert_eq!(count(&home, "select count(*) from pomodoro_records"), 0);
+            assert_eq!(block_status(&home), None);
+        }
+        runner.stop();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !native.tasks().is_empty() {
+            assert!(Instant::now() < deadline, "el planificador no paró");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        native.shutdown().await;
     }
-    native.shutdown().await;
 }
 
 #[tokio::test]
@@ -269,22 +328,24 @@ async fn pomodoro_post_wakes_scheduler() {
     // delante, así que duerme sus 30 s máximos.
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(block_status(&home).as_deref(), Some("running"));
-    // Faltan 1 s de reloj del temporizador. Una orden que falla (revisión
-    // vieja → 409) también despierta al planificador (el `finally`).
-    base.fetch_add(deadline - 1_000 - clock(), Ordering::SeqCst);
+    // Faltan 2 s de reloj del temporizador. Una orden que falla (revisión
+    // vieja → 409) también despierta al planificador (el `finally`). Sin el
+    // despertar dormiría aún ~29,7 s: el margen de 10 s no se confunde con eso
+    // y aguanta una máquina cargada.
+    base.fetch_add(deadline - 2_000 - clock(), Ordering::SeqCst);
     let woke = Instant::now();
     let pause = json!({"requestId": "w2", "expectedRevision": 0, "action": "pause"});
     let (status, body) = pomodoro(&native, pause).await;
     assert_eq!(status, 409, "{body}");
     while block_status(&home).as_deref() != Some("completed") {
         assert!(
-            woke.elapsed() < Duration::from_millis(1500),
+            woke.elapsed() < Duration::from_secs(10),
             "el bloque no se cerró a tiempo: el POST no despertó al planificador"
         );
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     assert!(
-        woke.elapsed() >= Duration::from_millis(900),
+        woke.elapsed() >= Duration::from_millis(1900),
         "cerró antes de vencer"
     );
     assert_eq!(count(&home, "select count(*) from pomodoro_records"), 1);
@@ -303,8 +364,11 @@ async fn pomodoro_post_wakes_scheduler() {
 async fn two_schedulers_settle_once() {
     let home = TestHome::new_short("pomo-two");
     // Un bloque de foco de 1 min que venció hace 9 min, con la política de
-    // foco activa desde antes (el cierre paga un premio).
+    // foco activa desde antes (el cierre paga un premio). Además, lo que migra
+    // el dueño (el Python, con `legacy`): un `focus.json` ya vencido (no se
+    // adopta, pero se renombra) y dos bloques del historial.
     let now = wall_clock_ms();
+    seed_legacy(&home, now / 1000 - 60);
     std::fs::create_dir_all(home.state_db().parent().unwrap()).unwrap();
     {
         let conn = comandos_store::state::connect(&home.state_db()).unwrap();
@@ -325,10 +389,11 @@ async fn two_schedulers_settle_once() {
             )
             .unwrap();
     }
-    assert_eq!(block_status(&home).as_deref(), Some("running"));
+    assert_eq!(vencido(&home).as_deref(), Some("running"));
     let mut opts = home.options();
     opts.clock = Arc::new(wall_clock_ms);
-    opts.background = Background::front();
+    // Con el Python vivo (lo de por omisión en la 2f).
+    opts.background = Background::legacy();
     let native = Arc::new(Native::new(opts));
     assert!(native.ready().await);
     // Los dos planificadores sobre la MISMA base (P51): el del frente y el
@@ -344,7 +409,7 @@ async fn two_schedulers_settle_once() {
         return;
     };
     let deadline = Instant::now() + Duration::from_secs(10);
-    while block_status(&home).as_deref() != Some("completed") {
+    while vencido(&home).as_deref() != Some("completed") || migrated(&home) == 0 {
         assert!(Instant::now() < deadline, "nadie cerró el bloque");
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
@@ -352,8 +417,23 @@ async fn two_schedulers_settle_once() {
     // reclamo del sonido (1 s después del evento).
     tokio::time::sleep(Duration::from_millis(2500)).await;
     let event = "pomodoro:vencido:completed";
-    assert_eq!(count(&home, "select count(*) from pomodoro_records"), 1);
+    assert_eq!(
+        count(
+            &home,
+            "select count(*) from pomodoro_records where provenance='measured'"
+        ),
+        1
+    );
+    assert_eq!(
+        count(
+            &home,
+            "select count(*) from pomodoro_records where provenance='legacy-planned'"
+        ),
+        2
+    );
     assert_eq!(count(&home, "select count(*) from focus_rewards"), 1);
+    assert!(!home.hooks().join("focus.json").exists());
+    assert_eq!(migrated(&home), 1);
     assert_eq!(
         count(
             &home,
