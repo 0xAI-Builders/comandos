@@ -146,7 +146,7 @@ impl ImportPlan<'_> {
 }
 
 /// `seen` acotado (rul. 6): por fuente, solo las rutas del corte de esta vuelta.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ImportSeen {
     sources: BTreeMap<String, BTreeMap<PathBuf, f64>>,
     reads: usize,

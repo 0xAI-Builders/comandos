@@ -142,6 +142,9 @@ async fn run(
         zone: deps.opts.zone.clone(),
         lane: deps.import_lane.clone(),
     };
+    // Si el frente rehúsa la vuelta (carril apagado o esquema que no admite),
+    // lo leído no se escribió: vuelve el `seen` de antes para releerlo.
+    let before = seen.clone();
     let outcome = deps
         .import_lane
         .with(move |b| {
@@ -151,18 +154,34 @@ async fn run(
         })
         .await;
     drop(lock);
-    // `Err`: el carril declinó o se apagó y la vuelta no corrió.
-    if let Ok((seen, result)) = outcome {
-        // Como el `_IMPORT_SEEN` del Python, que se actualiza antes de leer:
-        // también tras un fallo a mitad.
-        owner.lock().seen = Some(seen);
-        match result {
-            // `_usage_state_generation += 1`, solo si todo terminó.
-            Ok(()) => deps.engine.bump(),
-            Err(ImportError::Refused) => {}
-            // El hilo del Python moría con su traza en stderr.
-            Err(error) => eprintln!("comandos dash: importación de uso: {error}"),
-        }
+    let (seen, settled) = settle(before, outcome);
+    match settled {
+        // `_usage_state_generation += 1`, solo si todo terminó.
+        Settled::Done => deps.engine.bump(),
+        Settled::Refused => {}
+        // El hilo del Python moría con su traza en stderr.
+        Settled::Failed(error) => eprintln!("comandos dash: importación de uso: {error}"),
+    }
+    owner.lock().seen = Some(seen);
+}
+
+/// Cómo terminó una vuelta.
+#[derive(Debug)]
+enum Settled {
+    Done,
+    Refused,
+    Failed(ImportError),
+}
+
+/// El `seen` que queda tras una vuelta. Como el `_IMPORT_SEEN` del Python, que
+/// se actualiza antes de leer, el nuevo se queda también tras un fallo a mitad;
+/// pero si el frente rehusó (carril apagado, esquema que no admite o una vuelta
+/// que no corrió) lo leído no se escribió y vuelve el de antes.
+fn settle<S, E>(before: S, outcome: Result<(S, Result<(), ImportError>), E>) -> (S, Settled) {
+    match outcome {
+        Ok((seen, Ok(()))) => (seen, Settled::Done),
+        Ok((_, Err(ImportError::Refused))) | Err(_) => (before, Settled::Refused),
+        Ok((seen, Err(error))) => (seen, Settled::Failed(error)),
     }
 }
 
@@ -288,5 +307,27 @@ impl Cycle {
         }
         usage_import::record_local_opencode_db(conn, &plan, &roots)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ImportError, Settled, settle};
+
+    #[test]
+    fn refused_cycles_keep_the_previous_seen() {
+        assert!(matches!(
+            settle::<_, ()>(1, Ok((2, Ok(())))),
+            (2, Settled::Done)
+        ));
+        assert!(matches!(
+            settle::<_, ()>(1, Ok((2, Err(ImportError::Refused)))),
+            (1, Settled::Refused)
+        ));
+        assert!(matches!(settle(1, Err(())), (1, Settled::Refused)));
+        assert!(matches!(
+            settle::<_, ()>(1, Ok((2, Err(ImportError::Raises)))),
+            (2, Settled::Failed(ImportError::Raises))
+        ));
     }
 }
