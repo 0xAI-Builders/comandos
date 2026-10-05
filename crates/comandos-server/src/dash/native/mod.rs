@@ -272,6 +272,9 @@ pub struct NativeOptions {
     pub quick_base: PathBuf,
     /// Cliente de `api.anthropic.com/api/oauth/usage`; las pruebas ponen uno falso.
     pub oauth: Arc<dyn usage::limits::OauthHttp>,
+    /// cc-notifyd (`127.0.0.1:4778`) de los avisos de nivel; las pruebas ponen
+    /// uno falso que solo guarda los cuerpos.
+    pub notifyd: Arc<dyn usage::pane_models::NotifyPost>,
     /// Falso en la sombra (`--no-usage-effects`): sin refresco de límites (ni red
     /// ni escrituras) ni el resto de efectos de uso de la fase.
     pub usage_effects: bool,
@@ -354,6 +357,7 @@ impl NativeOptions {
             scope: quick::find_scope(std::env::var_os("PATH").as_deref()),
             quick_base: quick::default_base(home),
             oauth: Arc::new(usage::limits::ReqwestOauth),
+            notifyd: Arc::new(usage::pane_models::HyperNotify::default()),
             usage_effects: true,
             usage_env: Arc::new(usage_env_from_process()),
             zone: Arc::new(chrono::Local),
@@ -386,6 +390,10 @@ pub struct Native {
     pub(crate) usage: Arc<lanes::Lane<lanes::UsageBackend>>,
     /// Caché de límites de proveedor (`_limits_cache`).
     pub(crate) limits: Arc<usage::limits::LimitsCache>,
+    /// Escritor de bordes de pane y `pane-models.txt` (latente hasta la Tarea 8).
+    pub(crate) pane_models: Arc<usage::pane_models::PaneModelWriter>,
+    /// `_TIER_LAST`/`_TIER_ALERTED` de los avisos de nivel (latente).
+    pub(crate) tier_alerts: Mutex<usage::pane_models::TierAlerts>,
     /// Carril del journal de operaciones (`GET /model/status`).
     pub(crate) journal: lanes::Lane<lanes::JournalBackend>,
     /// Caché por `requestId` y candados de `POST /pane/type`.
@@ -399,6 +407,8 @@ impl Native {
         Self {
             usage: Arc::new(lanes::Lane::new(opts.usage_db.clone())),
             limits: Arc::default(),
+            pane_models: Arc::default(),
+            tier_alerts: Mutex::default(),
             journal: lanes::Lane::new(opts.journal_db.clone()),
             opts,
             enabled: AtomicBool::new(true),
@@ -434,6 +444,16 @@ impl Native {
     /// La caché de límites de proveedor.
     pub fn limits(&self) -> &Arc<usage::limits::LimitsCache> {
         &self.limits
+    }
+
+    /// El escritor de bordes de pane.
+    pub fn pane_models(&self) -> &Arc<usage::pane_models::PaneModelWriter> {
+        &self.pane_models
+    }
+
+    /// Los avisos de nivel recordados (`_TIER_LAST`/`_TIER_ALERTED`).
+    pub fn tier_alerts(&self) -> std::sync::MutexGuard<'_, usage::pane_models::TierAlerts> {
+        self.tier_alerts.lock().unwrap_or_else(|p| p.into_inner())
     }
 
     /// Lo que la tarea de refresco de límites necesita (sin `&Native`, D13).

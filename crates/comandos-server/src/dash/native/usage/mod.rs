@@ -2,6 +2,7 @@
 //! rutas de este dominio. Todas declinan con el carril de uso apagado (D10).
 pub mod extensions;
 pub mod limits;
+pub mod pane_models;
 pub mod week;
 
 use super::{Answer, Entry, Key, Native, NativeRoute, Verb};
