@@ -10,7 +10,18 @@
 //! - el tecleo, el candado y la caché viven en el hilo de bloqueo: si la
 //!   petición se suelta a medias, el tecleo termina y su respuesta se guarda;
 //! - un `requestId` que el frente tecleó se responde de su caché aunque el
-//!   conjunto nativo se apague después (`retry_reply`).
+//!   conjunto nativo se apague después (`retry_reply`);
+//! - la respuesta entra en la caché ANTES de soltar el candado, y quien toma
+//!   el candado vuelve a mirar caché y marcas: dos peticiones con el mismo
+//!   `requestId` nunca teclean las dos.
+//!
+//! Límites conocidos:
+//! - un reinicio del frente pierde la caché y las marcas: el reintento de un
+//!   `requestId` que tecleó el Python lo teclearía Rust si el estado de hooks
+//!   ya no nombra esa sesión (raro; el único llamador, la barra de comandos,
+//!   no reintenta);
+//! - los candados por pane de Rust y del Python son independientes: una
+//!   petición declinada y otra nativa al mismo pane no se esperan entre sí.
 use super::{
     Answer, Entry, Fault, Key, Native, NativeRoute, Verb,
     light::{data, error, load, tmux_sessions},
@@ -23,7 +34,7 @@ use comandos_runtime::pane_typing::{self, PaneTypingLocks, TmuxResult, TypingOpt
 use http::StatusCode;
 use serde_json::{Map, Value, json};
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -52,7 +63,14 @@ pub struct TypingState {
     /// requestId → (status, cuerpo), en orden de llegada.
     results: Mutex<VecDeque<(String, u16, Value)>>,
     /// requestId que atendió el Python.
-    declined: Mutex<VecDeque<String>>,
+    declined: Mutex<Marks>,
+}
+
+/// Conjunto con desalojo FIFO: búsqueda en el `HashSet`, orden en la cola.
+#[derive(Default)]
+struct Marks {
+    set: HashSet<String>,
+    order: VecDeque<String>,
 }
 
 impl TypingState {
@@ -81,18 +99,20 @@ impl TypingState {
 
     fn was_declined(&self, rid: &str) -> bool {
         let declined = self.declined.lock().unwrap_or_else(|p| p.into_inner());
-        declined.iter().any(|key| key == rid)
+        declined.set.contains(rid)
     }
 
     /// Declina y, si hay `requestId`, lo marca para siempre.
     fn decline(&self, rid: &str) -> Fault {
         if !rid.is_empty() {
             let mut declined = self.declined.lock().unwrap_or_else(|p| p.into_inner());
-            if !declined.iter().any(|key| key == rid) {
-                declined.push_back(rid.to_owned());
+            if declined.set.insert(rid.to_owned()) {
+                declined.order.push_back(rid.to_owned());
             }
-            while declined.len() > DECLINED {
-                declined.pop_front();
+            while declined.order.len() > DECLINED {
+                if let Some(old) = declined.order.pop_front() {
+                    declined.set.remove(&old);
+                }
             }
         }
         Fault::Decline
@@ -297,6 +317,19 @@ pub async fn answer(native: &Native, request: &Request) -> Answer {
         state: state.clone(),
         pane,
     };
+    // Otra petición con el mismo `requestId` pudo terminar (o declinar)
+    // mientras esta resolvía la sesión: con el candado ya tomado, su respuesta
+    // está en la caché o su marca puesta. Se usa esa y no se teclea.
+    if !rid.is_empty() {
+        if state.was_declined(&rid) {
+            drop(guard);
+            return Err(Fault::Decline);
+        }
+        if let Some((status, body)) = state.cached(&rid) {
+            drop(guard);
+            return replay(status, &body);
+        }
+    }
     let job = Job {
         tmux: tmux.clone(),
         handle: Handle::current(),
@@ -348,10 +381,8 @@ impl Job {
             TypingOptions::default(),
         );
         let elapsed = started.elapsed().as_millis();
-        // `finally: _PANE_TYPING_LOCKS.release(pane)` antes de guardar.
-        let state = guard.state.clone();
-        drop(guard);
         if let Some(error) = uncaught {
+            // `finally`: el candado se suelta (al soltar `guard`) sin guardar.
             return Err(error);
         }
         let (status, body) = match result {
@@ -369,9 +400,12 @@ impl Job {
                 json!({"error": e.message, "code": e.code, "typed": e.typed, "requestId": self.rid}),
             ),
         };
+        // Primero la caché y después el candado (el Python lo hace al revés):
+        // quien tome el pane ya encuentra la respuesta guardada.
         if !self.rid.is_empty() {
-            state.remember(&self.rid, status, &body);
+            guard.state.remember(&self.rid, status, &body);
         }
+        drop(guard);
         Ok((status, body))
     }
 }

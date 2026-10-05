@@ -6,9 +6,12 @@ mod support;
 
 use comandos_server::{
     ReplyBody, Request,
-    dash::native::{Native, NativeRoute, Outcome},
+    dash::native::{
+        Native, NativeRoute, Outcome,
+        tmux::{Program, Tmux},
+    },
 };
-use std::time::Duration;
+use std::{ffi::OsString, time::Duration};
 use support::{
     FakeLegacy, TestHome, Wire, dead_port, front, get, oracle::oracle, request_body, tmux_available,
 };
@@ -466,5 +469,86 @@ async fn typed_request_id_survives_native_shutdown() {
         r#"{"legacy": true}"#
     );
     assert_eq!(typed_text(&home).await, "uno");
+    front.stop().await;
+}
+
+/// El mismo `requestId` mientras el primero aún teclea: el pane está tomado y
+/// la respuesta es el 409 del Python (en ambos); el reintento de después sale
+/// de la caché y el texto se tecleó una sola vez.
+#[tokio::test]
+async fn same_request_id_while_typing_matches_python_oracle() {
+    if !tmux_available() {
+        return;
+    }
+    let home = TestHome::new("type-same-rid");
+    cat_session(&home);
+    let Some(py) = oracle(&home).await else {
+        return;
+    };
+    let front = front(&home, dead_port(), home.options()).await;
+    let mut seen_busy = Vec::new();
+    for (port, pane) in [(py.port, "%0"), (front.port, "%1")] {
+        let body = format!(
+            r#"{{"session": "s1", "pane": "{pane}", "text": "{}", "requestId": "doble"}}"#,
+            "k".repeat(300)
+        );
+        let again = body.clone();
+        let first =
+            tokio::spawn(async move { request_body(port, "POST", "/pane/type", "", &again).await });
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        seen_busy.push(seen(
+            &request_body(port, "POST", "/pane/type", "", &body).await,
+        ));
+        let first = first.await.unwrap();
+        assert_eq!(first.status, 200, "{}", first.text());
+        let retry = request_body(port, "POST", "/pane/type", "", &body).await;
+        assert_eq!(seen(&first), seen(&retry), "{pane}: la respuesta guardada");
+        assert_eq!(
+            typed_in(&home, pane).await.matches('k').count(),
+            300,
+            "{pane}"
+        );
+    }
+    assert_eq!(seen_busy[0], seen_busy[1]);
+    assert_eq!(seen_busy[1].0, 409);
+    front.stop().await;
+}
+
+/// La carrera de la revisión: B no encuentra la caché, se queda en
+/// `has-session` (un tmux lento) mientras A teclea y termina, y luego toma el
+/// pane libre. Con el candado tomado vuelve a mirar la caché: responde lo de A
+/// y no teclea otra vez.
+#[tokio::test]
+async fn same_request_id_finishing_during_resolution_types_once() {
+    if !tmux_available() {
+        return;
+    }
+    let home = TestHome::new("type-race");
+    cat_session(&home);
+    let mut opts = home.options();
+    let mut program = Program::named("sh");
+    program.prefix = vec![
+        OsString::from("-c"),
+        OsString::from(r#"[ "$1" = has-session ] && sleep 1; exec tmux -f /dev/null "$@""#),
+        OsString::from("sh"),
+    ];
+    program
+        .env
+        .push(("TMUX_TMPDIR".into(), home.tmux_dir().into_os_string()));
+    program.env_remove.push("TMUX".into());
+    opts.tmux = Tmux {
+        program,
+        timeout: Duration::from_secs(5),
+    };
+    let front = front(&home, dead_port(), opts).await;
+    let port = front.port;
+    let body = r#"{"session": "s1", "pane": "%0", "text": "ab", "requestId": "carrera"}"#;
+    let a = tokio::spawn(async move { request_body(port, "POST", "/pane/type", "", body).await });
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let b = request_body(port, "POST", "/pane/type", "", body).await;
+    let a = a.await.unwrap();
+    assert_eq!(a.status, 200, "{}", a.text());
+    assert_eq!(seen(&a), seen(&b), "B recibe la respuesta de A");
+    assert_eq!(typed_text(&home).await, "ab", "una sola vez");
     front.stop().await;
 }
