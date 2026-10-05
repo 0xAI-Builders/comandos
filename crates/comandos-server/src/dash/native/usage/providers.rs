@@ -70,8 +70,10 @@ struct Base {
 }
 
 /// Registro, estado público, cuentas, binarios y modelos de Grok (todo
-/// bloqueante) y, ya en el runtime, el sondeo async del proxy.
-async fn base(native: &Native) -> Result<(Base, bool), Fault> {
+/// bloqueante) y, ya en el runtime, el sondeo async del proxy. Los modelos de
+/// Grok (`models_cache.json`) solo los lee `provider_public_state`
+/// (`with_grok`); `capability_matrix` no los toca.
+async fn base(native: &Native, with_grok: bool) -> Result<(Base, bool), Fault> {
     let opts = native.options().clone();
     let cache = native.registry.clone();
     let base = tokio::task::spawn_blocking(move || -> Result<Base, Fault> {
@@ -86,10 +88,11 @@ async fn base(native: &Native) -> Result<(Base, bool), Fault> {
             accounts::public_accounts(&registry, &accounts::Paths::new(home, &opts.cwd))
                 .map_err(|_| Fault::Decline)?;
         let installed = providers::which_path("cc-model-proxy", search).is_some();
-        let has_grok = public
-            .get("harnesses")
-            .and_then(|h| h.get("grok"))
-            .is_some_and(|g| !g.is_null());
+        let has_grok = with_grok
+            && public
+                .get("harnesses")
+                .and_then(|h| h.get("grok"))
+                .is_some_and(|g| !g.is_null());
         // `GROK_HOME` del proceso o `~/.grok`; relativo al directorio de trabajo.
         let grok = has_grok.then(|| {
             let dir = opts.grok_home.clone().unwrap_or_else(|| home.join(".grok"));
@@ -122,7 +125,7 @@ async fn proxy_alive(port: u16) -> bool {
 
 /// `provider_public_state()`.
 pub async fn public_state(native: &Native) -> Result<Value, Fault> {
-    let (base, alive) = base(native).await?;
+    let (base, alive) = base(native, true).await?;
     let grok = base.grok;
     let models = move || match &grok {
         Some(Ok(models)) => Ok(models.clone()),
@@ -142,7 +145,7 @@ pub async fn public_state(native: &Native) -> Result<Value, Fault> {
 /// `capability_matrix()` con su registro: estado público recién calculado y
 /// hechos de ejecución.
 async fn registry_and_matrix(native: &Native) -> Result<(Value, Vec<Value>), Fault> {
-    let (base, alive) = base(native).await?;
+    let (base, alive) = base(native, false).await?;
     let facts = providers::public_runtime_facts(
         &base.registry,
         &base.public,

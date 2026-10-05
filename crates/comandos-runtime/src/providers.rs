@@ -1906,14 +1906,22 @@ pub fn validate_selection(
         return Ok(Err("model_unavailable".into()));
     };
     let effort = str_or_empty(get(selection, "effort"))?;
-    if !effort.is_empty()
-        && !py_iter(spec.get("efforts").unwrap_or(&Value::Null))?
-            .iter()
-            .any(|e| e.as_str() == Some(effort.as_str()))
-    {
+    if !effort.is_empty() && !efforts_contain(spec.get("efforts"), &effort)? {
         return Ok(Err("effort_unavailable".into()));
     }
     Ok(Ok(cell.map_or(Value::Null, |c| Value::Object(c.clone()))))
+}
+
+/// `effort in (spec.get("efforts") or [])`: solo una lista se compara por
+/// elementos; un texto haría `in` de subcadena y un objeto de claves, que el
+/// frente no reproduce: lo que no es lista (y es verdadero) declina.
+fn efforts_contain(efforts: Option<&Value>, effort: &str) -> Result<bool, Unsure> {
+    let efforts = efforts.unwrap_or(&Value::Null);
+    if !truthy(efforts) {
+        return Ok(false);
+    }
+    let items = efforts.as_array().ok_or(Unsure)?;
+    Ok(items.iter().any(|e| e.as_str() == Some(effort)))
 }
 
 // ---------------------------------------------------------------------------
@@ -2193,6 +2201,23 @@ mod tests {
         assert_eq!(py_search(&re, "x-sonnet"), Ok(true));
         assert!(py_regex(r"(?:a)(?!b)", false).is_err());
         assert!(py_regex(r"a(?!b(?=c))", false).is_err());
+    }
+
+    #[test]
+    fn efforts_other_than_list_decline() {
+        assert_eq!(efforts_contain(None, "high"), Ok(false));
+        assert_eq!(efforts_contain(Some(&json!([])), "high"), Ok(false));
+        assert_eq!(
+            efforts_contain(Some(&json!(["low", "high"])), "high"),
+            Ok(true)
+        );
+        assert_eq!(efforts_contain(Some(&json!(["low"])), "high"), Ok(false));
+        // `"h" in "high"` sería subcadena en el Python.
+        assert_eq!(efforts_contain(Some(&json!("high")), "h"), Err(Unsure));
+        assert_eq!(
+            efforts_contain(Some(&json!({"high": 1})), "high"),
+            Err(Unsure)
+        );
     }
 
     #[test]
