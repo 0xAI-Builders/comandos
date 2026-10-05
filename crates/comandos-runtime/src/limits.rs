@@ -568,8 +568,11 @@ pub fn read_codex_rate_limits(
 /// Marca de las líneas de cobro en el log de Grok.
 const GROK_BILLING_MARK: &str = "fetched credits config";
 
-/// Bloque de lectura de la cola del log de Grok (1 MiB).
-const GROK_BLOCK: usize = 1 << 20;
+/// Bloque de lectura de la cola del log de Grok (64 KiB). Un búfer de 1 MiB
+/// lo servía glibc con `mmap` y, al soltarlo en cada refresco de límites,
+/// subía su umbral de `mmap` a 1 MiB y el de recorte a 2 MiB: desde entonces
+/// las arenas de los hilos no se recortaban (visto con `gdb` en el sondeo).
+const GROK_BLOCK: usize = 64 << 10;
 
 /// Tope de la línea en curso (entre dos `\n`) mientras se lee por bloques:
 /// 4 MiB. Una línea más larga se descarta entera; la de cobro mide < 1 KiB
@@ -578,7 +581,7 @@ const GROK_LINE_CAP: usize = 4 << 20;
 
 /// `_grok_billing_lines` (cc_usage.py:1825): cola de `tail` bytes que crece ×8
 /// mientras no haya líneas de cobro, hasta cubrir el archivo o pasar `max`.
-/// La ventana se recorre hacia delante en bloques de 1 MiB (memoria acotada
+/// La ventana se recorre hacia delante en bloques de 64 KiB (memoria acotada
 /// aunque la ventana llegue a 256 MiB) con el mismo resultado que decodificar
 /// la ventana entera y partirla con `splitlines`.
 fn grok_billing_lines(path: &Path, tail: u64, max: u64) -> io::Result<Vec<String>> {
