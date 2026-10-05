@@ -17,6 +17,7 @@ pub mod pane_typing;
 pub mod providers;
 pub mod quick_terminal;
 pub mod session_operations;
+pub mod ssh_config;
 pub mod terminal_history;
 pub mod terminal_panes;
 pub mod tmux_snapshot;
