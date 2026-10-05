@@ -100,8 +100,12 @@ pub struct Tmux {
 
 #[derive(Debug)]
 pub enum TmuxError {
-    Timeout { args: Vec<String>, after: Duration },
-    Spawn(io::ErrorKind),
+    Timeout {
+        args: Vec<String>,
+        after: Duration,
+    },
+    /// No arrancó (o falló su E/S): la clase y el `errno`, si lo hay.
+    Spawn(io::ErrorKind, Option<i32>),
     Decode,
 }
 
@@ -155,7 +159,7 @@ impl Tmux {
                     args: args.iter().map(|a| (*a).to_owned()).collect(),
                     after: self.timeout,
                 },
-                RunError::Spawn(e) => TmuxError::Spawn(e.kind()),
+                RunError::Spawn(e) => TmuxError::Spawn(e.kind(), e.raw_os_error()),
                 RunError::Decode => TmuxError::Decode,
             })
     }
@@ -196,10 +200,10 @@ impl TmuxError {
                     seconds(*after)
                 ))
             }
-            TmuxError::Spawn(io::ErrorKind::NotFound) => {
+            TmuxError::Spawn(io::ErrorKind::NotFound, _) => {
                 Some("[Errno 2] No such file or directory: 'tmux'".into())
             }
-            TmuxError::Spawn(_) | TmuxError::Decode => None,
+            TmuxError::Spawn(..) | TmuxError::Decode => None,
         }
     }
 

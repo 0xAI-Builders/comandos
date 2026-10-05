@@ -499,7 +499,7 @@ async fn journal_unknown_columns_disable_only_journal_lane() {
     assert_eq!(get(front.port, "/snippets").await.text(), "[]");
     assert_eq!(legacy.requests().len(), 2);
     front.stop().await;
-    let native = Native::new(home.options());
+    let native = std::sync::Arc::new(Native::new(home.options()));
     for _ in 0..2 {
         let outcome = native
             .dispatch(

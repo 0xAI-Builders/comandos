@@ -475,7 +475,7 @@ impl Native {
     }
 
     pub async fn dispatch(
-        &self,
+        self: &Arc<Self>,
         route: NativeRoute,
         request: &Request,
     ) -> Result<Outcome, HandlerError> {
@@ -494,7 +494,7 @@ impl Native {
         }
     }
 
-    async fn answer(&self, route: NativeRoute, request: &Request) -> Answer {
+    async fn answer(self: &Arc<Self>, route: NativeRoute, request: &Request) -> Answer {
         match route {
             NativeRoute::Light(route) => light::answer(self, route, request).await,
             NativeRoute::Events => events::answer(self, request).await,

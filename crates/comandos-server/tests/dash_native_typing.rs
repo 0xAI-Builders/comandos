@@ -383,7 +383,7 @@ async fn abandoned_request_still_caches_and_releases_the_pane() {
     }
     let home = TestHome::new("type-abandon");
     cat_session(&home);
-    let native = Native::new(home.options());
+    let native = std::sync::Arc::new(Native::new(home.options()));
     let body = format!(
         r#"{{"session": "s1", "pane": "%0", "text": "{}", "requestId": "suelta"}}"#,
         "q".repeat(200)

@@ -36,6 +36,7 @@ use std::{
     ffi::OsStr,
     io,
     path::{Path, PathBuf},
+    sync::Arc,
     time::Duration,
 };
 
@@ -68,7 +69,7 @@ pub fn find_scope(search_path: Option<&OsStr>) -> Option<Program> {
     which_path("systemd-run", search_path).map(scope_program)
 }
 
-pub async fn answer(native: &Native, request: &Request) -> Answer {
+pub async fn answer(native: &Arc<Native>, request: &Request) -> Answer {
     let data = data(request)?;
     if !matches!(data.get("place"), Some(Value::String(place)) if place == "sidebar") {
         return Err(Fault::Decline);
@@ -113,20 +114,37 @@ pub async fn answer(native: &Native, request: &Request) -> Answer {
             Err(_) => return Err(failure()),
         }
     };
+    // Lanzamiento y cierre en su propia tarea: si el cliente se va a mitad,
+    // soltar la petición no mata el `tmux` del scope ni deja la fila en
+    // `launching` (el hilo del Python terminaría igual).
+    let job = tokio::spawn({
+        let native = native.clone();
+        async move { launch_and_finish(&native, id, terminal, scope).await }
+    });
+    job.await.map_err(|_| failure())?
+}
+
+/// `launch` + `_finish` + la respuesta, tras un reclamo propio. Aquí ya no se
+/// declina (excepción 3b): un worker que rechaza el cierre es la excepción sin
+/// capturar de `_finish` (500), nunca un reenvío.
+async fn launch_and_finish(
+    native: &Native,
+    id: String,
+    terminal: Terminal,
+    scope: Program,
+) -> Answer {
     let outcome = launch(native, &terminal, &scope).await;
     let stored = outcome
         .as_ref()
         .err()
         .map(|message| message.chars().take(500).collect::<String>());
     let state = if outcome.is_ok() { "ready" } else { "failed" };
-    let (finish_id, cwd) = (id.clone(), terminal.cwd.clone());
+    let seconds = native.options().clock_seconds.clone();
+    let cwd = terminal.cwd.clone();
     native
-        .with_state(move |b| {
-            finish(&b.conn, &finish_id, state, stored.as_deref(), &cwd, &|| {
-                seconds()
-            })
-        })
-        .await?
+        .with_state(move |b| finish(&b.conn, &id, state, stored.as_deref(), &cwd, &|| seconds()))
+        .await
+        .map_err(|_| failure())?
         .map_err(|_| failure())?;
     match outcome {
         Ok(()) => reply(StatusCode::OK, &terminal.result(true)),
@@ -259,8 +277,9 @@ fn tmux_text(error: &TmuxError) -> String {
         return text;
     }
     match error {
-        TmuxError::Spawn(io::ErrorKind::PermissionDenied) => {
-            "[Errno 13] Permission denied: 'tmux'".into()
+        // `[Errno N] <strerror>: 'tmux'`, el `OSError` de `subprocess.run`.
+        TmuxError::Spawn(_, Some(code)) => {
+            os_error_text(&io::Error::from_raw_os_error(*code), "tmux")
         }
         TmuxError::Decode => "UnicodeDecodeError".into(),
         _ => "OSError".into(),
@@ -345,6 +364,15 @@ mod tests {
         assert_eq!(
             os_error_text(&missing, "systemd-run"),
             "[Errno 2] No such file or directory: 'systemd-run'"
+        );
+        // Cualquier `OSError` al arrancar tmux conserva su `errno`, como el Python.
+        assert_eq!(
+            tmux_text(&TmuxError::Spawn(io::ErrorKind::PermissionDenied, Some(13))),
+            "[Errno 13] Permission denied: 'tmux'"
+        );
+        assert_eq!(
+            tmux_text(&TmuxError::Spawn(io::ErrorKind::Other, Some(8))),
+            "[Errno 8] Exec format error: 'tmux'"
         );
         assert_eq!(py_repr("año"), "'año'");
         assert_eq!(py_repr("it's"), "\"it's\"");

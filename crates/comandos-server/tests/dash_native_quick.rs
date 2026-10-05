@@ -473,3 +473,140 @@ async fn quick_terminal_launch_argv_matches_python() {
     assert_eq!(launched, expected_launch);
     assert_eq!(format!("tmux {rust_set}"), python[1].join(" "));
 }
+
+/// tmux que tarda 1 s en `new-session` (conserva el `-f /dev/null -S
+/// <socket>` privado que antepone `Tmux::private`).
+fn slow_tmux(home: &TestHome) -> std::path::PathBuf {
+    let wrapper = home.root.join("bin/tmux-lento");
+    fs::write(
+        &wrapper,
+        "#!/bin/sh\ncase \"$*\" in *new-session*) sleep 1;; esac\nexec tmux \"$@\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(
+        &wrapper,
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .unwrap();
+    wrapper
+}
+
+fn pane_key(home: &TestHome, tab: &str) -> String {
+    let out = home
+        .tmux_command()
+        .args([
+            "display-message",
+            "-p",
+            "-t",
+            &format!("={tab}:"),
+            "#{@comandos-pane-key}",
+        ])
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout).trim().to_owned()
+}
+
+/// Revisión de la Tarea 6: si el worker rechaza el cierre después de lanzar,
+/// es la excepción de `_finish` (500), nunca un reenvío al Python (que daría
+/// 409 tras 15 s con la fila en `launching`). Una sola shell.
+#[tokio::test(flavor = "current_thread")]
+async fn quick_terminal_finish_refused_is_500_not_forwarded() {
+    if !tmux_available() {
+        eprintln!("tmux no está instalado: se salta");
+        return;
+    }
+    let home = TestHome::new("quick-finish-refused");
+    let legacy = FakeLegacy::start().await;
+    let mut o = opts(&home);
+    o.tmux.program.path = slow_tmux(&home);
+    let front = front(&home, legacy.port, o).await;
+    // El primer GET abre (y migra) la base.
+    assert_eq!(get(front.port, "/workspace").await.status, 200);
+    let port = front.port;
+    let pending =
+        tokio::spawn(
+            async move { quick(port, r#"{"requestId":"req-fin","place":"sidebar"}"#).await },
+        );
+    // Reclamo hecho y tmux dentro de su segundo de `new-session`: la puerta
+    // del worker falla en el cierre (tabla de versiones apartada un momento).
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    let conn = rusqlite::Connection::open(home.state_db()).unwrap();
+    conn.execute_batch("ALTER TABLE schema_migrations RENAME TO schema_migrations_aside")
+        .unwrap();
+    let got = pending.await.unwrap();
+    conn.execute_batch("ALTER TABLE schema_migrations_aside RENAME TO schema_migrations")
+        .unwrap();
+    assert_eq!(
+        (got.status, got.text().as_str()),
+        (500, r#"{"error": "Error interno del tablero"}"#)
+    );
+    assert!(legacy.requests().is_empty(), "{:?}", legacy.requests());
+    assert_eq!(fake_scope_calls(&home).len(), 1, "una sola shell");
+    front.stop().await;
+}
+
+/// Revisión de la Tarea 6: un cliente que se va a mitad del lanzamiento no
+/// cancela el trabajo. La shell se abre una vez, la llave queda en el pane, la
+/// fila pasa a `ready` y el reintento la encuentra lista.
+#[tokio::test(flavor = "current_thread")]
+async fn quick_terminal_abandoned_request_still_finishes() {
+    use comandos_server::{
+        Request,
+        dash::native::{Native, NativeRoute, Outcome},
+    };
+    if !tmux_available() {
+        eprintln!("tmux no está instalado: se salta");
+        return;
+    }
+    let home = TestHome::new("quick-abandon");
+    let mut o = opts(&home);
+    o.tmux.program.path = slow_tmux(&home);
+    let native = Arc::new(Native::new(o));
+    let body = r#"{"requestId":"req-suelta","place":"sidebar"}"#;
+    let request = Request {
+        method: http::Method::POST,
+        target: "/terminal/quick".into(),
+        peer: "127.0.0.1:12345".parse().unwrap(),
+        headers: vec![],
+        data: Some(serde_json::from_str(body).unwrap()),
+        body: bytes::Bytes::copy_from_slice(body.as_bytes()),
+        internal_producer: false,
+    };
+    let cut = timeout(
+        Duration::from_millis(400),
+        native.dispatch(NativeRoute::QuickTerminal, &request),
+    )
+    .await;
+    assert!(cut.is_err(), "la petición se soltó a mitad del lanzamiento");
+    let mut ready = false;
+    for _ in 0..100 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        if rows(&home)
+            .iter()
+            .any(|(id, state, _)| id == "req-suelta" && state == "ready")
+        {
+            ready = true;
+            break;
+        }
+    }
+    assert!(ready, "la fila quedó en {:?}", rows(&home));
+    assert_eq!(fake_scope_calls(&home).len(), 1, "una sola shell");
+    let replay = match native
+        .dispatch(NativeRoute::QuickTerminal, &request)
+        .await
+        .unwrap()
+    {
+        Outcome::Reply(reply) => reply,
+        Outcome::Decline => panic!("el reintento declinó"),
+    };
+    assert_eq!(replay.status, http::StatusCode::OK);
+    let v: Value = match &replay.body {
+        comandos_server::ReplyBody::Bytes(bytes) => serde_json::from_slice(bytes).unwrap(),
+        _ => panic!("cuerpo inesperado"),
+    };
+    assert_eq!(v["created"], Value::Bool(false));
+    let tab = v["tabId"].as_str().unwrap();
+    assert_eq!(pane_key(&home, tab), v["paneKey"].as_str().unwrap());
+    assert_eq!(fake_scope_calls(&home).len(), 1);
+    native.shutdown().await;
+}

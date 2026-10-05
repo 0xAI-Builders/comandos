@@ -107,6 +107,8 @@ fn options(base: &std::path::Path) -> NativeOptions {
     // ruta que los necesitara falla en vez de tocar las sesiones del usuario.
     opts.tmux.program = Program::named("/no-existe/tmux");
     opts.ssh = Program::named("/no-existe/ssh");
+    // Nunca el `systemd-run` real: sin scope, POST /terminal/quick declina.
+    opts.scope = None;
     opts
 }
 

@@ -180,7 +180,7 @@ async fn usage_newer_schema_disables_only_usage_lane() {
     front.stop().await;
     // El mismo caso sobre `Native`: una sola línea de apagado del carril, y
     // el conjunto nativo sigue activo.
-    let native = Native::new(home.options());
+    let native = std::sync::Arc::new(Native::new(home.options()));
     for _ in 0..2 {
         let outcome = native
             .dispatch(NativeRoute::Pomodoro, &get_request("/pomodoro"))

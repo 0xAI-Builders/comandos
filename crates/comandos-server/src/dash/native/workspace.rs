@@ -450,15 +450,17 @@ fn sort_info(
         };
         let cur = info
             .entry(sess.clone())
-            .or_insert_with(|| json!({"activeAt": 0, "need": false}));
-        let previous = cur["activeAt"].as_f64().unwrap_or(0.0);
+            .or_insert_with(|| json!({"activeAt": 0, "need": false}))
+            .as_object_mut()
+            .ok_or(Fault::Decline)?;
+        let previous = cur.get("activeAt").and_then(Value::as_f64).unwrap_or(0.0);
         // `max(cur, ts)`: solo cambia si `ts > cur` (NaN nunca).
         if ts > previous {
             let number = serde_json::Number::from_f64(ts).ok_or(Fault::Decline)?;
-            cur["activeAt"] = Value::Number(number);
+            cur.insert("activeAt".into(), Value::Number(number));
         }
         if waiting {
-            cur["need"] = json!(true);
+            cur.insert("need".into(), json!(true));
         }
     }
     match document.get("tabs") {
@@ -467,9 +469,11 @@ fn sort_info(
             for tab in tabs.keys() {
                 let cur = info
                     .entry(tab.clone())
-                    .or_insert_with(|| json!({"activeAt": 0, "need": false}));
-                cur["label"] = json!(labels.get(tab).unwrap_or(tab));
-                cur["fav"] = json!(favorites.contains(tab));
+                    .or_insert_with(|| json!({"activeAt": 0, "need": false}))
+                    .as_object_mut()
+                    .ok_or(Fault::Decline)?;
+                cur.insert("label".into(), json!(labels.get(tab).unwrap_or(tab)));
+                cur.insert("fav".into(), json!(favorites.contains(tab)));
             }
         }
         // Iterar otra cosa: TypeError o claves de Python; no ocurre con un
@@ -676,6 +680,8 @@ pub async fn answer(native: &Native, route: WorkspaceRoute, request: &Request) -
                     Err(_) => return Err(Fault::Decline),
                 };
                 let items: Arc<Vec<Value>> = states.items.clone();
+                // El instante tras `/state`, que puede tardar segundos.
+                let now_seconds = (native.options().clock)() as f64 / 1000.0;
                 return run(native, move |b| {
                     sort_by(b, &hooks, now_seconds, &by, &items)
                 })
