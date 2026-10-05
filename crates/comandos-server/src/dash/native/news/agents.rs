@@ -30,7 +30,7 @@
 //!   declinan antes de escribir.
 use super::{
     NewsRoute,
-    read::{news_int, read_config, trace_decline},
+    read::{TRACED, news_int, read_config, trace_decline},
 };
 use crate::{
     HandlerError, Request,
@@ -170,7 +170,9 @@ async fn post(native: &Arc<Native>, route: NewsRoute, d: &Map<String, Value>) ->
             return error(StatusCode::SERVICE_UNAVAILABLE, &message);
         }
         Err(AskerError::Unsure(what)) => {
-            eprintln!("comandos dash news: se reenvía al heredado ({what})");
+            if TRACED.first(2) {
+                eprintln!("comandos dash news: se reenvía al heredado ({what}); no se repite");
+            }
             return Err(Fault::Decline);
         }
     };

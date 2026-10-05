@@ -42,7 +42,10 @@ use std::{
     io::{self, Read},
     os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tokio::sync::mpsc;
 
@@ -98,11 +101,39 @@ fn respond(done: Payload) -> Answer {
     }
 }
 
-/// Una línea en stderr por cada lectura que se reenvía por duda o por un
-/// fallo de SQLite: un worker roto no pasa en silencio. Solo el tipo de
-/// fallo (el texto de SQLite o la duda), nunca datos de la petición.
+/// Qué clases de declinación ya se anotaron en stderr (una vez por clase en
+/// la vida del proceso, no una por petición).
+pub(super) struct TraceOnce([AtomicBool; 3]);
+
+impl TraceOnce {
+    pub(super) const fn new() -> TraceOnce {
+        TraceOnce([
+            AtomicBool::new(false),
+            AtomicBool::new(false),
+            AtomicBool::new(false),
+        ])
+    }
+
+    /// `true` solo la primera vez que llega esta clase (`0` duda, `1` SQLite,
+    /// `2` cadena de agentes dudosa).
+    pub(super) fn first(&self, kind: usize) -> bool {
+        self.0
+            .get(kind)
+            .is_some_and(|flag| !flag.swap(true, Ordering::AcqRel))
+    }
+}
+
+pub(super) static TRACED: TraceOnce = TraceOnce::new();
+
+/// Una línea en stderr la primera vez que se reenvía una lectura por duda o
+/// por un fallo de SQLite: un worker roto no pasa en silencio, y una petición
+/// repetida no llena el registro. Solo el tipo de fallo (el texto de SQLite o
+/// la duda), nunca datos de la petición.
 pub(super) fn trace_decline(fault: &news::Fault) {
-    eprintln!("comandos dash news: se reenvía al heredado ({fault})");
+    let kind = usize::from(matches!(fault, news::Fault::Sql(_)));
+    if TRACED.first(kind) {
+        eprintln!("comandos dash news: se reenvía al heredado ({fault}); no se repite");
+    }
 }
 
 fn not_found(message: &str) -> Payload {
@@ -221,10 +252,15 @@ fn step_label(step: &Map<String, Value>) -> Result<String, news::Fault> {
     Ok(format!("{}:{}", text(who)?, text(&model)?))
 }
 
+/// Tope de `news-editions.json` (1 MiB): más grande es «sin configurar» (el
+/// Python lo leería entero).
+const MAX_CONFIG: u64 = 1024 * 1024;
+
 /// `load_config(HOOKS/news-editions.json)` sin bloquear: se abre con
-/// `O_NONBLOCK` y solo un archivo regular se lee. Un FIFO, un dispositivo o
-/// un directorio cuentan como `OSError` (`None`); el Python se quedaría
-/// colgado en el FIFO (desviación aceptada: el frente no se cuelga).
+/// `O_NONBLOCK` y solo un archivo regular de hasta 1 MiB se lee. Un FIFO, un
+/// dispositivo, un directorio o un archivo mayor cuentan como `OSError`
+/// (`None`); el Python se quedaría colgado en el FIFO (desviación aceptada:
+/// el frente no se cuelga).
 pub(super) fn read_config(path: &Path) -> news::Result<Option<Map<String, Value>>> {
     let Ok(file) = OpenOptions::new()
         .read(true)
@@ -233,11 +269,20 @@ pub(super) fn read_config(path: &Path) -> news::Result<Option<Map<String, Value>
     else {
         return Ok(None);
     };
-    if !file.metadata().is_ok_and(|m| m.is_file()) {
+    if !file
+        .metadata()
+        .is_ok_and(|m| m.is_file() && m.len() <= MAX_CONFIG)
+    {
         return Ok(None);
     }
     let mut bytes = Vec::new();
-    if (&file).read_to_end(&mut bytes).is_err() {
+    // Crece mientras se lee: tampoco se pasa del tope.
+    if (&file)
+        .take(MAX_CONFIG + 1)
+        .read_to_end(&mut bytes)
+        .is_err()
+        || bytes.len() as u64 > MAX_CONFIG
+    {
         return Ok(None);
     }
     news::config_from_bytes(&bytes)
@@ -613,6 +658,18 @@ mod tests {
         assert!(!edition_id_matches("2026-10-3@09:00").unwrap());
         assert!(!edition_id_matches("x").unwrap());
         assert!(edition_id_matches("2026-10-0\u{663}@09:00").is_err());
+    }
+
+    #[test]
+    fn trace_once_per_kind() {
+        let traced = TraceOnce::new();
+        assert!(traced.first(0));
+        assert!(!traced.first(0));
+        assert!(traced.first(1));
+        assert!(!traced.first(1));
+        assert!(traced.first(2));
+        assert!(!traced.first(2));
+        assert!(!traced.first(3));
     }
 
     #[test]

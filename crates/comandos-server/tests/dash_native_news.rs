@@ -807,3 +807,113 @@ async fn flooding_agent_fails_and_frees_its_slot() {
     assert!(legacy.requests().is_empty(), "{:?}", legacy.requests());
     f.stop().await;
 }
+
+/// Revisión de la Tarea 2: TEXT que no es UTF-8 en la noticia o en la
+/// burbuja de chat declina ANTES de escribir (se reenvía, sin filas nuevas).
+/// Un texto de nota con un sustituto suelto (`"\ud800"`, que el `json` del
+/// Python sí admite) no llega a las rutas de noticias: la puerta del
+/// transporte (2b, común a todo POST) responde 400 «JSON invalido» con
+/// cierre; nunca 500 y nada se escribe.
+#[tokio::test]
+async fn bad_text_declines_before_effects() {
+    let home = TestHome::new("news-badtext");
+    seed_editions(&home);
+    let fake = FakeAcp::install(&home, &[("FAKEACP_CHUNK", "\"x\"")]);
+    home.write("news-editions.json", FAKE_CHAIN);
+    migrated(&home)
+        .execute_batch(
+            "INSERT INTO news_stories (id, edition_id, position, story_key, category, title, summary_md, body_md) \
+             VALUES (14, '2026-10-03@15:00', 2, 'k5', 'ia', CAST(X'C3' AS TEXT), 'r', 'c'); \
+             INSERT INTO news_chat (id, story_id, edition_id, role, state, text, created_at_ms) \
+             VALUES (60, 10, '2026-10-03@09:00', 'user', 'done', CAST(X'FF' AS TEXT), 1);",
+        )
+        .unwrap();
+    let before = news_rows(&home);
+    let legacy = FakeLegacy::start().await;
+    let mut opts = home.options();
+    opts.repo_root = Some(fake.repo.clone());
+    let f = front(&home, legacy.port, opts).await;
+    let cases = [
+        ("/news/saved", r#"{"storyId": 14, "saved": true}"#),
+        (
+            "/news/notes",
+            r#"{"action": "add", "storyId": 14, "text": "hola"}"#,
+        ),
+        ("/news/chat/note", r#"{"chatId": 60}"#),
+        ("/news/chat", r#"{"storyId": 14, "message": "hola"}"#),
+    ];
+    for (path, body) in cases {
+        let wire = request_body(f.port, "POST", path, "", body).await;
+        assert_eq!(wire.status, 200, "{path} {body}: {}", wire.text());
+    }
+    assert_eq!(
+        legacy.requests().len(),
+        cases.len(),
+        "{:?}",
+        legacy.requests()
+    );
+    for body in [
+        r#"{"action": "add", "storyId": 10, "text": "\ud800"}"#,
+        r#"{"action": "update", "noteId": 1, "text": "a\udc00b"}"#,
+    ] {
+        let wire = request_body(f.port, "POST", "/news/notes", "", body).await;
+        assert_eq!(wire.status, 400, "{body}: {}", wire.text());
+        assert_eq!(wire.text(), r#"{"error": "JSON invalido"}"#);
+    }
+    assert_eq!(
+        legacy.requests().len(),
+        cases.len(),
+        "{:?}",
+        legacy.requests()
+    );
+    assert_eq!(news_rows(&home), before);
+    assert!(fake.pids().is_empty());
+    f.stop().await;
+}
+
+/// Revisión de la Tarea 2: `news-editions.json` de más de 1 MiB es «sin
+/// configurar» (no se lee entero) y sin cadena para el chat.
+#[tokio::test]
+async fn oversized_config_is_not_configured() {
+    let home = TestHome::new("news-bigconf");
+    seed_editions(&home);
+    let fake = FakeAcp::install(&home, &[("FAKEACP_CHUNK", "\"x\"")]);
+    let mut big = String::from(FAKE_CHAIN);
+    big.push_str(&" ".repeat(1024 * 1024));
+    home.write("news-editions.json", &big);
+    let legacy = FakeLegacy::start().await;
+    let mut opts = home.options();
+    opts.repo_root = Some(fake.repo.clone());
+    let f = front(&home, legacy.port, opts).await;
+    let wire = get(f.port, "/news/editions").await;
+    assert_eq!(wire.status, 200);
+    assert!(
+        wire.text()
+            .starts_with(r#"{"configured": false, "reason": "sin configurar", "latest": "#),
+        "{}",
+        wire.text()
+    );
+    let wire = request_body(
+        f.port,
+        "POST",
+        "/news/chat",
+        "",
+        r#"{"storyId": 10, "message": "hola"}"#,
+    )
+    .await;
+    assert_eq!(wire.status, 503, "{}", wire.text());
+    // Justo 1 MiB sí se lee.
+    let mut fits = String::from(FAKE_CHAIN);
+    fits.push_str(&" ".repeat(1024 * 1024 - FAKE_CHAIN.len()));
+    home.write("news-editions.json", &fits);
+    let wire = get(f.port, "/news/editions").await;
+    assert!(
+        wire.text()
+            .starts_with(r#"{"configured": false, "reason": "falta el modelo", "latest": "#),
+        "{}",
+        wire.text()
+    );
+    assert!(legacy.requests().is_empty(), "{:?}", legacy.requests());
+    assert!(fake.pids().is_empty());
+    f.stop().await;
+}
