@@ -74,65 +74,7 @@ const item = (session,pane,agent='codex') => ({session,pane,project:session==='l
       }
     }
     if(version==='fixed') {
-      const button=page.locator('#centro .motor-pill');
-      check(await button.isVisible(),'AI configuration is visible');
-      check(await button.isEnabled(),'native AI change works without proxy');
-      await button.click();
-      await page.waitForFunction(()=>MPOP&&!MPOP.statusLoading&&!MPOP.historyLoading);
-      check(await page.locator('#motor-pop [data-word=toHarness]').isVisible(),'agent control visible');
-      check(await page.locator('#motor-pop [data-word=harnessAccount]').isVisible(),'account control visible');
-      await page.locator('#motor-pop .sc-route summary').click();
-      check(await page.locator('#motor-pop [data-word=motor]').isVisible(),'provider control visible');
-      const choose=async(field,value)=>{
-        if(field==='motor')await page.locator('#motor-pop .sc-route').evaluate(el=>{el.open=true;});
-        await page.locator(`#motor-pop [data-word="${field}"]`).click();
-        await page.locator(`#motor-pop [data-choice="${field}"][data-value="${value}"]`).click();
-      };
-      for(const [index,route] of registry.matrix.entries()){
-        if(index){
-          operationStatus=null;
-          await page.evaluate(()=>{motorPopClose();MOTOR_PENDING.clear();SWITCH_SEEN.clear();openMotorFor('local','%0');});
-          await page.waitForFunction(()=>MPOP&&!MPOP.statusLoading&&!MPOP.historyLoading);
-        }
-        const before=posts.filter(x=>x.path==='/session/configure').length;
-        if(route.id==='codex:codex'){
-          await choose('effort','low');
-          await page.waitForFunction(()=>MOTOR_PENDING.has('local|%0'));
-          check(await page.locator('#motor-pop [data-confirm]').count()===0,'valid effort change applies directly');
-        }else{
-          await choose('toHarness',route.harness);
-          await choose('motor',route.motor);
-          await choose('effort','low');
-          await choose(route.harness==='acp'?'motorAccount':'harnessAccount','work');
-          check(posts.filter(x=>x.path==='/session/configure').length===before,'route '+route.id+' waits for confirmation');
-          check(await page.locator('#motor-pop [data-confirm]').isEnabled(),'valid route '+route.id+' can confirm');
-          await page.locator('#motor-pop [data-confirm]').click();
-          await page.waitForFunction(()=>MOTOR_PENDING.has('local|%0'));
-        }
-        const config=posts.filter(x=>x.path==='/session/configure');
-        check(config.length===before+1,'one request for '+route.id);
-        const request=config.at(-1)?.body;
-        check(request?.toHarness===route.harness&&request?.motor===route.motor,'coherent route '+route.id);
-        check(request?.session==='local'&&request?.pane==='%0','request targets exact selected pane');
-        check(request?.expectedIdentity==='identity-%0'&&request?.expectedConversationId==='thread-%0','request pins process and conversation');
-        check(await page.locator('#motor-pop').isVisible(),'configuration stays open while pending');
-        check(await page.locator('#motor-pop [data-word=model]').isDisabled(),'pending operation locks model changes');
-      }
-      await page.evaluate(()=>renderCentro(S.list));
-      check(await page.evaluate(()=>MOTOR_PENDING.has('local|%0')),'same observed model cannot clear queued account or effort change');
-      await page.locator('#motor-pop .mp-close').click();
-      await page.locator('#centro .motor-pill').click();
-      await page.waitForSelector('#motor-pop [data-recover]');
-      check(await page.locator('#motor-pop [data-copy-handoff]').isVisible(),'pending startup offers continuation prompt');
-      check(await page.locator('#motor-pop [data-word=toHarness]').isDisabled(),'pending startup cannot queue conflicting configuration');
-      await page.locator('#motor-pop [data-copy-handoff]').click();
-      check((await page.evaluate(()=>navigator.clipboard.readText())).includes('/tmp/fixture-continuation.md'),'continuation prompt is copied without sending terminal input');
-      await page.locator('#motor-pop .mp-close').click();
-      operationStatus=null;
-      await page.evaluate(()=>{MOTOR_PENDING.clear();showView('panel');S.sel='local|%1';S.selTs=Date.now()+10;render(S.list);});
-      check(await page.locator('#centro .motor-pill').isEnabled(),'Claude native switch works when gateway down');
-      await page.locator('#centro .motor-pill').click();
-      await page.locator('#motor-pop .mp-close').click();
+      check(await page.locator('#motor-pop').count()===0,'removed AI picker stays absent');
       await page.evaluate(()=>{S.sel='local|%0';S.selTs=Date.now()+20;render(S.list);});
       await page.locator('#centro .cx-more').click();
       await page.locator('#centro .cx-tabs [data-pane=mcps]').click();

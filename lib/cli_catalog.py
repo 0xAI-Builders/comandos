@@ -73,15 +73,28 @@ _DETECT_CACHE = {}          # cli_id -> ((path, mtime_ns, size), frozenset)
 _NATIVE_GLOB = "../../{name}-*/vendor/*/bin/{name}"
 
 
-def native_binary(exe):
+def native_binary(exe, _seen=None):
     """Ruta del ejecutable real: resuelve enlaces y los envoltorios de node
     (`@openai/codex/bin/codex.js` -> `@openai/codex-linux-x64/vendor/.../bin/codex`)."""
     if not exe:
         return None
+    seen = set(_seen or ())
     try:
         real = os.path.realpath(exe)
+        if real in seen:
+            return None
+        seen.add(real)
         with open(real, "rb") as fh:
             head = fh.read(4)
+            if head != b"\x7fELF":
+                fh.seek(0)
+                for line in fh.read(8192).splitlines():
+                    if line.startswith(b"# COMANDOS_CODEX_ORIGINAL="):
+                        try:
+                            original = json.loads(line.split(b"=", 1)[1])
+                        except (ValueError, UnicodeDecodeError):
+                            return None
+                        return native_binary(original, seen) if isinstance(original, str) else None
     except OSError:
         return None
     if head == b"\x7fELF":
@@ -165,8 +178,20 @@ def _start_view(cli, help_, accounts):
     sections = [{"title": sec["title"],
                  "items": [pick(it) for it in sec["items"] if not it.get("yolo") and it["text"].strip() != b]}
                 for sec in help_["sections"]]
+    shortcuts = []
+    if cli["id"] == "codex":
+        items = {it["text"].strip(): it for sec in help_["sections"] for it in sec["items"]}
+        sandbox = items.get(f"{b} --sandbox", {}).get("args", [])
+        approvals = items.get(f"{b} --ask-for-approval", {}).get("args", [])
+        if "danger-full-access" in sandbox and "on-request" in approvals:
+            flags = "--sandbox danger-full-access --ask-for-approval on-request"
+            shortcuts.append({"text": f"{b} {flags}", "description": "Acceso completo: escritura y red. Permite aprobar solicitudes de herramientas.", "args": []})
+            if f"{b} resume" in items:
+                shortcuts.append({"text": f"{b} resume {flags}", "description": "Retomar una sesión con escritura y red completas. Abre el selector de sesiones.", "args": []})
+        if f"{b} resume" in items and f"{b} --dangerously-bypass-approvals-and-sandbox" in items:
+            shortcuts.append({"text": f"{b} resume --dangerously-bypass-approvals-and-sandbox", "description": "Retomar con todos los permisos: escritura, red y ejecución sin sandbox ni aprobaciones.", "args": []})
     return {"command": help_.get("command") or f"{b} --help", "rows": rows, "yolo": yolo,
-            "sections": [x for x in sections if x["items"]]}
+            "sections": [x for x in sections if x["items"]], "shortcuts": shortcuts}
 
 
 def _command_view(cli_id, cmd, models, new_models):

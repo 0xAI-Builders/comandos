@@ -621,15 +621,6 @@ def test_harness_handoff_switch_exists_and_is_guarded():
     assert "grok" in mod._harness_launch_cmd("grok", "grok-4.6", "high", "main")
 
 
-def test_harness_switch_ui_section_present():
-    html = Path("dash/index.html").read_text()
-    assert "data-harness=" in html
-    assert 'api("/harness/switch"' in html
-    assert "MPOP.harnessArm" in html   # confirmación de dos toques
-    assert "Interfaz (CLI)" in html or "1. CLI" in html or "Cambiar de CLI" in html
-    assert "mp-cli-go" in html
-
-
 def test_returning_to_claude_resumes_saved_sid():
     """Al salir de Claude se guarda el sessionId; al VOLVER se lanza con --resume
     para no perder el transcript. Motor/effort en el MISMO CLI no tocan el sid."""
@@ -647,15 +638,6 @@ def test_handoff_mentions_what_is_kept_and_points_at_transcript():
     src = SRC.split("def capture_handoff", 1)[1][:2500]
     assert "transcript" in src.lower() or "_transcript_path" in src
     assert "memoria interna" in src or "NO tienes su memoria" in src
-
-
-def test_accounts_panel_groups_by_provider_with_logo_and_identity():
-    html = Path("dash/index.html").read_text()
-    assert "function accountsByProvider" in html
-    assert "mp-acct-group" in html
-    assert "providerMark(prov" in html or "providerMark(p" in html
-    # no una sola fila plana sin agrupar
-    assert "mp-acct-prov" in html
 
 
 def test_harness_switch_from_plain_shell_pane_is_allowed(monkeypatch):
