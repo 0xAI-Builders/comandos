@@ -48,7 +48,8 @@ pub enum RunError {
     Decode,
 }
 
-fn universal(bytes: Vec<u8>) -> Result<String, RunError> {
+/// `text=True`: UTF-8 estricto con saltos universales.
+pub(crate) fn universal(bytes: Vec<u8>) -> Result<String, RunError> {
     let text = String::from_utf8(bytes).map_err(|_| RunError::Decode)?;
     Ok(text.replace("\r\n", "\n").replace('\r', "\n"))
 }

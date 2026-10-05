@@ -8,6 +8,7 @@
 pub mod background;
 pub mod catalog_cli;
 pub mod catalogs;
+pub mod census;
 pub mod events;
 pub mod files;
 pub mod input;
@@ -18,6 +19,7 @@ pub mod notices;
 pub mod operations;
 pub mod ops;
 pub mod pomodoro;
+pub mod procs;
 pub mod push;
 pub mod py;
 pub mod query;
@@ -47,9 +49,10 @@ use crate::{
 };
 use comandos_core::usage_state::LocalZone;
 use http::Method;
+use serde_json::{Map, Value};
 use state::{Refusal, StateBackend};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     ffi::OsString,
     net::{Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
@@ -140,7 +143,75 @@ impl NativeRoute {
             | NativeRoute::Push(_) => Cut::Services,
             NativeRoute::News(_) => Cut::News,
             NativeRoute::Residue(_) => Cut::Residue,
-            _ => Cut::Base,
+            // Sin `_`: una variante nueva tiene que decidir su corte aquí.
+            NativeRoute::Light(_)
+            | NativeRoute::Events
+            | NativeRoute::Notices(_)
+            | NativeRoute::Workspace(_)
+            | NativeRoute::Snippets(_)
+            | NativeRoute::UiLog
+            | NativeRoute::Pomodoro
+            | NativeRoute::Catalog(_)
+            | NativeRoute::Terminal(_)
+            | NativeRoute::PaneType
+            | NativeRoute::ModelStatus
+            | NativeRoute::State
+            | NativeRoute::QuickTerminal
+            | NativeRoute::Usage(_)
+            | NativeRoute::Retired => Cut::Base,
+        }
+    }
+}
+
+/// D3: ¿declina el despachador esta ruta sin evaluar nada? `Cut::Base` nunca,
+/// aunque alguien lo meta en la lista.
+pub fn cut_is_off(cuts_off: &BTreeSet<Cut>, cut: Cut) -> bool {
+    cut != Cut::Base && cuts_off.contains(&cut)
+}
+
+/// Qué hilos de fondo arranca el frente (D6 del plan 2f).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Background {
+    pub pomodoro: bool,
+    pub model_watch: bool,
+    pub news: bool,
+    pub limits_snapshot: bool,
+    pub notices_push: bool,
+    pub webterm_restore: bool,
+}
+
+impl Background {
+    /// El Python sigue vivo: solo lo idempotente con él (el planificador de
+    /// Pomodoro). Valor por omisión en toda la 2f.
+    pub const fn legacy() -> Self {
+        Self {
+            pomodoro: true,
+            model_watch: false,
+            news: false,
+            limits_snapshot: false,
+            notices_push: false,
+            webterm_restore: false,
+        }
+    }
+
+    /// 2g: el frente es el único dueño.
+    pub const fn front() -> Self {
+        Self {
+            pomodoro: true,
+            model_watch: true,
+            news: true,
+            limits_snapshot: true,
+            notices_push: true,
+            webterm_restore: true,
+        }
+    }
+
+    /// `legacy` o `front` (bandera `--background`, `COMANDOS_DASH_BACKGROUND`).
+    pub fn parse(name: &str) -> Option<Background> {
+        match name.trim() {
+            "legacy" => Some(Background::legacy()),
+            "front" => Some(Background::front()),
+            _ => None,
         }
     }
 }
@@ -268,6 +339,19 @@ pub fn reply(status: http::StatusCode, value: &serde_json::Value) -> Answer {
     Reply::json(status, value).map_err(Fault::from)
 }
 
+/// El cuerpo de un `DELETE` ya admitido. La puerta de `do_DELETE` (tope de
+/// 64 000 → 413 con cierre, JSON roto → 400 con cierre, no-objeto → 400) la
+/// aplica el transporte antes del manejador (`dashboard_access`), igual que
+/// la de `do_POST`: aquí solo queda el objeto. Sin él (no debería pasar) es un
+/// fallo interno, como el `data.get` del Python sobre algo que no es `dict`.
+pub fn delete_body(request: &Request) -> Result<&Map<String, Value>, Fault> {
+    request
+        .data
+        .as_ref()
+        .and_then(Value::as_object)
+        .ok_or(Fault::Error(HandlerError::Failure))
+}
+
 /// Milisegundos Unix; las pruebas lo sustituyen.
 pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
 
@@ -378,6 +462,19 @@ pub struct NativeOptions {
     pub usage_env: Arc<BTreeMap<String, String>>,
     /// Zona de `datetime.fromtimestamp` (la del proceso: `TZ` o `/etc/localtime`).
     pub zone: Arc<dyn LocalZone + Send + Sync>,
+    /// Qué hilos de fondo arranca el frente (D6); `legacy` en toda la 2f.
+    pub background: Background,
+    /// Cortes desactivados (D3): sus rutas declinan sin evaluar nada.
+    pub cuts_off: BTreeSet<Cut>,
+    /// Archivo del censo de declinaciones (D7). `None`: no se escribe (las
+    /// pruebas; `build` lo fija desde `DashConfig`).
+    pub census_path: Option<PathBuf>,
+    /// `XDG_STATE_HOME` del frente al arrancar (`media_dir` de noticias): las
+    /// pruebas lo fijan al HOME temporal sin tocar el entorno del proceso.
+    pub xdg_state_home: Option<PathBuf>,
+    /// Puertos de salud de la terminal web (`4779`, `4780` en el Python): las
+    /// pruebas los cambian para no tocar nunca la terminal web real.
+    pub webterm_health_ports: [u16; 2],
 }
 
 /// D7: lo que `usage_runtime_env` toma de `os.environ`.
@@ -456,6 +553,11 @@ impl NativeOptions {
             usage_effects: true,
             usage_env: Arc::new(usage_env_from_process()),
             zone: Arc::new(chrono::Local),
+            background: Background::legacy(),
+            cuts_off: BTreeSet::new(),
+            census_path: None,
+            xdg_state_home: env_path("XDG_STATE_HOME"),
+            webterm_health_ports: [4779, 4780],
         }
     }
 }
@@ -495,6 +597,10 @@ pub struct Native {
     pub(crate) typing: Arc<typing::TypingState>,
     /// GET `/state`: caché de 1,2 s, vuelo único y cachés de los lectores.
     pub(crate) states: states::Engine,
+    /// Censo de declinaciones (D7).
+    pub(crate) census: Arc<census::DeclineCensus>,
+    /// Tareas largas del frente (D12).
+    pub(crate) tasks: Arc<procs::TaskTracker>,
 }
 
 impl Native {
@@ -515,11 +621,23 @@ impl Native {
             notice_feed: notices::RevisionFeed::default(),
             typing: Arc::default(),
             states: states::Engine::default(),
+            census: Arc::default(),
+            tasks: Arc::default(),
         }
     }
 
     pub fn options(&self) -> &NativeOptions {
         &self.opts
+    }
+
+    /// El censo de declinaciones (D7).
+    pub fn census(&self) -> &Arc<census::DeclineCensus> {
+        &self.census
+    }
+
+    /// Las tareas largas del frente (D12).
+    pub fn tasks(&self) -> &Arc<procs::TaskTracker> {
+        &self.tasks
     }
 
     pub fn enabled(&self) -> bool {
@@ -695,19 +813,29 @@ impl Native {
         route: NativeRoute,
         request: &Request,
     ) -> Result<Outcome, HandlerError> {
+        // D3: un corte apagado declina sin evaluar nada (ni abrir la base).
+        if cut_is_off(&self.opts.cuts_off, route.cut()) {
+            return Ok(self.decline(request));
+        }
         if !self.ready().await {
             if route == NativeRoute::PaneType
                 && let Some(reply) = typing::retry_reply(&self.typing, request)
             {
                 return Ok(Outcome::Reply(reply));
             }
-            return Ok(Outcome::Decline);
+            return Ok(self.decline(request));
         }
         match self.answer(route, request).await {
             Ok(reply) => Ok(Outcome::Reply(reply)),
-            Err(Fault::Decline) => Ok(Outcome::Decline),
+            Err(Fault::Decline) => Ok(self.decline(request)),
             Err(Fault::Error(error)) => Err(error),
         }
+    }
+
+    /// Cuenta la declinación en el censo (D7) y la devuelve.
+    pub fn decline(&self, request: &Request) -> Outcome {
+        self.census.note(&request.method, &request.target);
+        Outcome::Decline
     }
 
     async fn answer(self: &Arc<Self>, route: NativeRoute, request: &Request) -> Answer {
@@ -809,6 +937,31 @@ mod scaffold_tests {
                 .flat_map(|table| table.iter())
                 .all(|entry| entry.route.cut() == Cut::Base)
         );
+    }
+
+    #[test]
+    fn base_is_never_cut() {
+        let all = BTreeSet::from([
+            Cut::Base,
+            Cut::Tabs,
+            Cut::Ops,
+            Cut::Services,
+            Cut::News,
+            Cut::Residue,
+        ]);
+        assert!(!cut_is_off(&all, Cut::Base));
+        assert!(cut_is_off(&all, Cut::Tabs));
+        assert!(cut_is_off(&all, Cut::Residue));
+        assert!(!cut_is_off(&BTreeSet::new(), Cut::Tabs));
+        assert!(!cut_is_off(&BTreeSet::from([Cut::Ops]), Cut::Tabs));
+    }
+
+    #[test]
+    fn background_names_parse() {
+        assert_eq!(Background::parse(" front"), Some(Background::front()));
+        assert_eq!(Background::parse("legacy"), Some(Background::legacy()));
+        assert_eq!(Background::parse("Front"), None);
+        assert_eq!(Background::parse(""), None);
     }
 
     #[test]

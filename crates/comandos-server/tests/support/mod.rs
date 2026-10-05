@@ -216,6 +216,12 @@ impl TestHome {
         // de la terminal rápida fijan un `systemd-run` falso (`fake_scope`).
         opts.scope = None;
         opts.quick_base = self.root.join("Terminal");
+        // Nunca el `~/.local/state` real ni la terminal web real (4779/4780):
+        // el puerto 1 no escucha. El censo no se escribe salvo que la prueba
+        // fije su archivo dentro del HOME temporal.
+        opts.xdg_state_home = Some(self.root.join(".local/state"));
+        opts.webterm_health_ports = [1, 1];
+        opts.census_path = None;
         opts
     }
 }

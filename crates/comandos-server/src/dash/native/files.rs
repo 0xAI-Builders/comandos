@@ -112,32 +112,47 @@ pub fn write_text_atomic(path: &Path, text: &str) -> io::Result<()> {
 }
 
 /// `file_lock` (5168): `flock` exclusivo sobre `<ruta>.lock` (creado 0600),
-/// el mismo que toman el Python y cc-app. Se pide sin esperar: `Ok(None)` si
-/// otro lo tiene; quien llama declina antes de leer o escribir nada. Se suelta
-/// al soltar el valor (cerrar el descriptor suelta el `flock`).
+/// el mismo que toman el Python y cc-app. `try_acquire` lo pide sin esperar
+/// (`Ok(None)` si otro lo tiene; quien llama declina antes de leer o escribir
+/// nada); `acquire` espera como el Python. Se suelta al soltar el valor
+/// (cerrar el descriptor suelta el `flock`).
 pub struct FileLock {
     _file: fs::File,
 }
 
 impl FileLock {
     pub fn try_acquire(path: &Path) -> io::Result<Option<FileLock>> {
-        let mut name = path.as_os_str().to_owned();
-        name.push(".lock");
-        let lock = std::path::PathBuf::from(name);
-        if let Some(dir) = lock.parent().filter(|d| !d.as_os_str().is_empty()) {
-            fs::create_dir_all(dir)?;
-        }
-        let file = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(0o600)
-            .open(&lock)?;
+        let file = lock_file_for(path)?;
         match file.try_lock() {
             Ok(()) => Ok(Some(FileLock { _file: file })),
             Err(fs::TryLockError::WouldBlock) => Ok(None),
             Err(fs::TryLockError::Error(e)) => Err(e),
         }
     }
+
+    /// `fcntl.flock(fd, LOCK_EX)` con espera: el `file_lock` del Python tal
+    /// cual. Bloquea hasta que el otro dueño (Python, cc-app) lo suelte: solo
+    /// desde `spawn_blocking`, nunca en el hilo del runtime.
+    pub fn acquire(path: &Path) -> io::Result<FileLock> {
+        let file = lock_file_for(path)?;
+        file.lock()?;
+        Ok(FileLock { _file: file })
+    }
+}
+
+/// `open(path + ".lock", "a+")` con 0600 si es nuevo (y su directorio).
+fn lock_file_for(path: &Path) -> io::Result<fs::File> {
+    let mut name = path.as_os_str().to_owned();
+    name.push(".lock");
+    let lock = std::path::PathBuf::from(name);
+    if let Some(dir) = lock.parent().filter(|d| !d.as_os_str().is_empty()) {
+        fs::create_dir_all(dir)?;
+    }
+    fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(&lock)
 }

@@ -32,6 +32,10 @@ fn base(home: &PathBuf) -> Command {
         .env("XDG_STATE_HOME", home.join(".local/state"))
         .env_remove("COMANDOS_DASH_DIR")
         .env("COMANDOS_DASH_LEGACY_PORT", "1")
+        // El censo de declinaciones (D7) va a `$XDG_RUNTIME_DIR`: nunca el real.
+        .env("XDG_RUNTIME_DIR", home.join("run"))
+        .env_remove("COMANDOS_DASH_BACKGROUND")
+        .env_remove("COMANDOS_DASH_CUTS_OFF")
         .stdin(Stdio::null());
     command
 }
@@ -102,6 +106,11 @@ fn dash_prints_the_python_banner_answers_502_without_legacy_and_stops_on_sigterm
         std::thread::sleep(Duration::from_millis(20));
     };
     assert_eq!(status.code(), Some(0));
+    // El apagado ordenado deja el censo (vacío: nada declinó) en el
+    // `XDG_RUNTIME_DIR` del proceso, con el puerto en el nombre.
+    let census = fs::read_to_string(home.join(format!("run/comandos-dash-declines-{port}.json")))
+        .expect("censo escrito al apagar");
+    assert!(census.contains(r#""counts":{}"#), "{census}");
 }
 
 #[test]
