@@ -2,7 +2,11 @@
 //! petición tal cual y lee la respuesta entera (`Connection: close`), así las
 //! cabeceras que se comprueban son las que viajan, también en HEAD y 304.
 #![allow(dead_code)]
+pub mod news;
+pub mod ops;
 pub mod oracle;
+pub mod services;
+pub mod tabs;
 use comandos_server::dash::{
     DashConfig,
     native::{

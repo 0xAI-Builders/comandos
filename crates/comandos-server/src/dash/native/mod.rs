@@ -5,22 +5,34 @@
 //! `fc-list`, por `tokio::process`. Si una entrada no se puede reproducir con
 //! certeza, el manejador devuelve `Fault::Decline` ANTES de cualquier efecto
 //! y el frente reenvía la petición original al heredado.
+pub mod background;
+pub mod catalog_cli;
 pub mod catalogs;
 pub mod events;
 pub mod files;
+pub mod input;
 pub mod lanes;
 pub mod light;
+pub mod news;
 pub mod notices;
 pub mod operations;
+pub mod ops;
 pub mod pomodoro;
+pub mod push;
 pub mod py;
 pub mod query;
 pub mod quick;
+pub mod remote;
+pub mod residue;
 pub mod retired;
+pub mod sessions;
+pub mod settings;
 pub mod snippets;
+pub mod ssh;
 pub mod state;
 pub mod states;
 pub mod subrequest;
+pub mod tabs;
 pub mod terminal;
 pub mod tmux;
 pub mod typing;
@@ -74,12 +86,74 @@ pub enum NativeRoute {
     QuickTerminal,
     Usage(usage::UsageRoute),
     Retired,
+    // Cortes de la 2f (D2): cada variante pertenece a un `Cut` (ver `cut`).
+    Tabs(tabs::TabsRoute),
+    Sessions(sessions::SessionsRoute),
+    Input(input::InputRoute),
+    Ops(ops::OpsRoute),
+    Remote(remote::RemoteRoute),
+    Ssh(ssh::SshRoute),
+    Settings(settings::SettingsRoute),
+    Cli(catalog_cli::CliRoute),
+    Push(push::PushRoute),
+    News(news::NewsRoute),
+    Residue(residue::ResidueRoute),
+}
+
+/// Grupo de rutas que comparte un estado con un solo dueño (D2 del plan 2f):
+/// se activa y se revierte entero con `COMANDOS_DASH_CUTS_OFF`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Cut {
+    /// Rutas de 2b–2e: solo `COMANDOS_DASH_NATIVE=0` las apaga.
+    Base,
+    Tabs,
+    Ops,
+    Services,
+    News,
+    Residue,
+}
+
+impl Cut {
+    /// Un nombre de la lista de `COMANDOS_DASH_CUTS_OFF` (separada por comas).
+    /// `base` no se puede apagar por corte: no tiene nombre.
+    pub fn parse(name: &str) -> Option<Cut> {
+        match name.trim() {
+            "tabs" => Some(Cut::Tabs),
+            "ops" => Some(Cut::Ops),
+            "services" => Some(Cut::Services),
+            "news" => Some(Cut::News),
+            "residue" => Some(Cut::Residue),
+            _ => None,
+        }
+    }
+}
+
+impl NativeRoute {
+    pub fn cut(self) -> Cut {
+        match self {
+            NativeRoute::Tabs(_) | NativeRoute::Sessions(_) | NativeRoute::Input(_) => Cut::Tabs,
+            NativeRoute::Ops(_) => Cut::Ops,
+            NativeRoute::Remote(_)
+            | NativeRoute::Ssh(_)
+            | NativeRoute::Settings(_)
+            | NativeRoute::Cli(_)
+            | NativeRoute::Push(_) => Cut::Services,
+            NativeRoute::News(_) => Cut::News,
+            NativeRoute::Residue(_) => Cut::Residue,
+            _ => Cut::Base,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verb {
     Get,
     Post,
+    /// `do_DELETE` del Python (2f).
+    Delete,
+    /// `do_HEAD`: ninguna tabla de 2b–2e lo usa; el residuo (2f-3/T7) lo
+    /// reclamará con `Key::Prefix("/")` (R2 del preflight).
+    Head,
 }
 
 /// Cómo compara el Python la ruta (sin decodificar `%XX`).
@@ -92,6 +166,9 @@ pub enum Key {
     ExactOrQuery(&'static str),
     /// `self.path == p`: sin consulta.
     Raw(&'static str),
+    /// `self.path.startswith(p)` del Python sobre la ruta cruda (con consulta):
+    /// el residuo del despachador (2f-3/T7) reclama así `/stateX`, `/prefs/…`.
+    Prefix(&'static str),
 }
 
 impl Key {
@@ -105,6 +182,7 @@ impl Key {
                         .is_some_and(|rest| rest.starts_with('?'))
             }
             Key::Raw(p) => target == p,
+            Key::Prefix(p) => target.starts_with(p),
         }
     }
 }
@@ -115,7 +193,7 @@ pub struct Entry {
     pub route: NativeRoute,
 }
 
-/// Una tabla por dominio; las tareas 3–7 añaden la suya.
+/// Una tabla por dominio; cada tarea añade la suya.
 const TABLES: &[&[Entry]] = &[
     light::ROUTES,
     events::ROUTES,
@@ -132,6 +210,19 @@ const TABLES: &[&[Entry]] = &[
     quick::ROUTES,
     usage::ROUTES,
     retired::ROUTES,
+    // Cortes de la 2f. `residue` va la última: sus prefijos no deben tapar
+    // ninguna entrada exacta.
+    tabs::ROUTES,
+    sessions::ROUTES,
+    input::ROUTES,
+    ops::ROUTES,
+    remote::ROUTES,
+    ssh::ROUTES,
+    settings::ROUTES,
+    catalog_cli::ROUTES,
+    push::ROUTES,
+    news::ROUTES,
+    residue::ROUTES,
 ];
 
 pub fn route(method: &Method, target: &str) -> Option<NativeRoute> {
@@ -139,6 +230,10 @@ pub fn route(method: &Method, target: &str) -> Option<NativeRoute> {
         Verb::Get
     } else if *method == Method::POST {
         Verb::Post
+    } else if *method == Method::DELETE {
+        Verb::Delete
+    } else if *method == Method::HEAD {
+        Verb::Head
     } else {
         return None;
     };
@@ -638,6 +733,17 @@ impl Native {
                     .map_or(request.target.as_str(), |(path, _)| path);
                 retired::answer(&request.method, path)
             }
+            NativeRoute::Tabs(route) => tabs::answer(self, route, request).await,
+            NativeRoute::Sessions(route) => sessions::answer(self, route, request).await,
+            NativeRoute::Input(route) => input::answer(self, route, request).await,
+            NativeRoute::Ops(route) => ops::answer(self, route, request).await,
+            NativeRoute::Remote(route) => remote::answer(self, route, request).await,
+            NativeRoute::Ssh(route) => ssh::answer(self, route, request).await,
+            NativeRoute::Settings(route) => settings::answer(self, route, request).await,
+            NativeRoute::Cli(route) => catalog_cli::answer(self, route, request).await,
+            NativeRoute::Push(route) => push::answer(self, route, request).await,
+            NativeRoute::News(route) => news::answer(self, route, request).await,
+            NativeRoute::Residue(route) => residue::answer(self, route, request).await,
         }
     }
 
@@ -662,5 +768,58 @@ impl Native {
         }
         self.usage.shutdown().await;
         self.journal.shutdown().await;
+    }
+}
+
+#[cfg(test)]
+mod scaffold_tests {
+    use super::*;
+
+    #[test]
+    fn delete_and_prefix_keys_match_like_python() {
+        assert!(Key::Prefix("/state").matches("/state"));
+        assert!(Key::Prefix("/state").matches("/stateful?x=1"));
+        assert!(!Key::Prefix("/state").matches("/stat"));
+        assert_eq!(route(&Method::DELETE, "/no-existe"), None);
+    }
+
+    #[test]
+    fn head_maps_to_its_verb_but_no_table_claims_it_yet() {
+        // R2 del preflight: el verbo existe para el residuo (2f-3/T7), pero
+        // hasta entonces HEAD sigue cayendo en estático o reenvío.
+        assert_eq!(route(&Method::HEAD, "/state"), None);
+        assert_eq!(route(&Method::HEAD, "/"), None);
+        assert_eq!(route(&Method::PUT, "/state"), None);
+        assert!(
+            TABLES
+                .iter()
+                .flat_map(|table| table.iter())
+                .all(|entry| entry.verb != Verb::Head && entry.verb != Verb::Delete)
+        );
+    }
+
+    #[test]
+    fn every_route_has_a_cut() {
+        assert_eq!(NativeRoute::Retired.cut(), Cut::Base);
+        assert_eq!(NativeRoute::PaneType.cut(), Cut::Base);
+        // Toda entrada de 2b–2e pertenece a la base: ningún corte la apaga.
+        assert!(
+            TABLES
+                .iter()
+                .flat_map(|table| table.iter())
+                .all(|entry| entry.route.cut() == Cut::Base)
+        );
+    }
+
+    #[test]
+    fn cut_names_parse_like_the_env_list() {
+        assert_eq!(Cut::parse("tabs"), Some(Cut::Tabs));
+        assert_eq!(Cut::parse(" ops "), Some(Cut::Ops));
+        assert_eq!(Cut::parse("services"), Some(Cut::Services));
+        assert_eq!(Cut::parse("news"), Some(Cut::News));
+        assert_eq!(Cut::parse("residue"), Some(Cut::Residue));
+        assert_eq!(Cut::parse("base"), None);
+        assert_eq!(Cut::parse("Tabs"), None);
+        assert_eq!(Cut::parse(""), None);
     }
 }
