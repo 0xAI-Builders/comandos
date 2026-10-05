@@ -423,6 +423,7 @@ fn rust_cycle(home: &Path, db: &Path, seen: &mut usage_import::ImportSeen, roots
         opencode_db: home.join("opencode.db"),
         zone: &zone,
         admit: &admit,
+        cancelled: &|| false,
     };
     usage_import::reconcile_orphan_interactions(&conn, NOW, 14).unwrap();
     usage_import::prune_old_turns(&conn, NOW, 21).unwrap();
@@ -612,6 +613,7 @@ fn cuts_and_uncaught_errors_match_python() {
         opencode_db: PathBuf::from("/no-existe"),
         zone: &zone,
         admit: &admit,
+        cancelled: &|| false,
     };
     let roots = MapRoots(HashMap::new());
     let show = |r: usage_import::Result<usize>| match r {

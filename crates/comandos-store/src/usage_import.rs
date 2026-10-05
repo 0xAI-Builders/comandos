@@ -119,9 +119,20 @@ pub struct ImportPlan<'a> {
     pub zone: &'a dyn LocalZone,
     /// La puerta de esquema del carril antes de cada escritura.
     pub admit: &'a dyn Fn(&Connection) -> bool,
+    /// Verdadero si hay que dejar de importar (el carril se apaga): se mira
+    /// antes de cada archivo y de cada lote, y la vuelta termina en `Refused`.
+    pub cancelled: &'a dyn Fn() -> bool,
 }
 
 impl ImportPlan<'_> {
+    fn check(&self) -> Result<()> {
+        if (self.cancelled)() {
+            Err(ImportError::Refused)
+        } else {
+            Ok(())
+        }
+    }
+
     /// `ts - int(max_age_days) * 24 * 3600`.
     fn cutoff(&self) -> Result<i64> {
         self.max_age_days
@@ -615,6 +626,7 @@ const SPAN_SQL: &str = "insert into usage_spans (id, provider, account, session_
 /// Lo que un importador va a escribir, por lotes y en el orden del Python.
 struct Sink<'p> {
     admit: &'p dyn Fn(&Connection) -> bool,
+    cancelled: &'p dyn Fn() -> bool,
     turns: Vec<[Sql; 31]>,
     spans: Vec<Span>,
     count: usize,
@@ -624,6 +636,7 @@ impl<'p> Sink<'p> {
     fn new(plan: &ImportPlan<'p>) -> Self {
         Self {
             admit: plan.admit,
+            cancelled: plan.cancelled,
             turns: Vec::new(),
             spans: Vec::new(),
             count: 0,
@@ -631,7 +644,7 @@ impl<'p> Sink<'p> {
     }
 
     fn begin<'c>(&self, conn: &'c Connection) -> Result<Transaction<'c>> {
-        if !(self.admit)(conn) {
+        if (self.cancelled)() || !(self.admit)(conn) {
             return Err(ImportError::Refused);
         }
         Ok(Transaction::new_unchecked(
@@ -779,6 +792,7 @@ pub fn record_local_codex_rollouts(
         });
         let files = sort_and_cut(files, plan.codex_max_files);
         for (_mtime, path) in seen.changed(&format!("codex:{account}"), &files) {
+            plan.check()?;
             let Some(path_str) = path_text(&path) else {
                 continue;
             };
@@ -998,6 +1012,7 @@ pub fn record_local_claude_jsonl(
     let files = sort_and_cut(files, plan.claude_max_files);
     let mut sink = Sink::new(plan);
     for (file_mtime, path) in seen.changed(&format!("claude:{account}"), &files) {
+        plan.check()?;
         let Some(path_str) = path_text(&path) else {
             continue;
         };
@@ -1253,6 +1268,7 @@ pub fn record_local_grok_updates(
     let files = sort_and_cut(files, Some(GROK_MAX_FILES));
     let mut sink = Sink::new(plan);
     for (_mtime, path) in files {
+        plan.check()?;
         let Some(path_str) = path_text(&path) else {
             continue;
         };
@@ -1506,6 +1522,7 @@ pub fn record_local_opencode_db(
     let Some(path) = path_text(&plan.opencode_db) else {
         return Ok(0);
     };
+    plan.check()?;
     let uri = format!("file:{path}?mode=ro");
     let Ok(Some(turns)) = opencode_turns(&uri, cutoff_ms, roots) else {
         return Ok(0);

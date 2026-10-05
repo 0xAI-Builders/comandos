@@ -70,6 +70,7 @@ fn claude_import_peak_stays_small_with_big_lines() {
         opencode_db: home.join("opencode.db"),
         zone: &zone,
         admit: &admit,
+        cancelled: &|| false,
     };
     let mut seen = usage_import::ImportSeen::default();
 
