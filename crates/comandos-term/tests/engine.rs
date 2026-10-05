@@ -311,3 +311,11 @@ fn non_finite_clock_is_ignored() {
     assert_eq!(cell(&e, 0, 0).c, 'X');
     assert_eq!(cell(&e, 0, 1).c, 'Y');
 }
+
+#[test]
+fn decrqm_reports_sync_update_as_supported() {
+    // Superconjunto deliberado de xterm.js 5.5.0, que contesta `;0$y` (desconocido).
+    let mut e = engine(20, 3);
+    e.advance(b"\x1b[?2026$p", 0.0);
+    assert_eq!(e.drain().replies, b"\x1b[?2026;2$y");
+}

@@ -1,6 +1,10 @@
 //! Motor VT: `alacritty_terminal` con el reloj inyectado de `clock`, las
 //! respuestas DA de xterm.js 5.5.0 y una vista estable de modos, daños y
 //! eventos para el puente y el renderizador. No abre PTY ni toca tmux.
+//!
+//! Superconjunto deliberado de xterm.js 5.5.0: el modo 2026 (actualización
+//! sincronizada) existe y DECRQM `?2026` contesta `;2$y`; ver la
+//! documentación del crate.
 use crate::{
     clock::{ClockSync, set_now},
     osc::OscLimiter,
