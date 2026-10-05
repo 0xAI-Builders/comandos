@@ -433,19 +433,12 @@ impl CardEffects for RealEffects<'_> {
         let program = self.opts().ssh.clone();
         let host = host.to_owned();
         async move {
-            let mut cmd = tokio::process::Command::new(&program.path);
-            cmd.args(&program.prefix)
-                .args(["-O", "check", host.as_str()])
+            let mut cmd = program.command();
+            cmd.args(["-O", "check", host.as_str()])
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .kill_on_drop(true);
-            for name in &program.env_remove {
-                cmd.env_remove(name);
-            }
-            for (name, value) in &program.env {
-                cmd.env(name, value);
-            }
             // `subprocess.run(..., timeout=3)` dentro de `try/except Exception`.
             let Ok(mut child) = cmd.spawn() else {
                 return false;

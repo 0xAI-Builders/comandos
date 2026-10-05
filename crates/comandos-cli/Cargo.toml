@@ -19,5 +19,8 @@ comandos-runtime = { path = "../comandos-runtime" }
 comandos-server = { path = "../comandos-server" }
 sha2.workspace = true
 
+[dev-dependencies]
+comandos-core = { path = "../comandos-core" }
+
 [lints]
 workspace = true

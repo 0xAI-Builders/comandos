@@ -23,6 +23,7 @@ pub mod work_marks;
 
 pub mod dashboard_access;
 
+pub mod malloc_tuning;
 pub mod repo;
 pub mod text;
 pub mod usage_state;
