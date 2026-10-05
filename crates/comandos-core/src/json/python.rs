@@ -42,30 +42,49 @@ pub fn response_dumps(value: &Value) -> Result<String, String> {
     encode(value, true, false, false, Policy::Workspace)
 }
 
+/// Una entrada `"clave": valor` de un objeto de respuesta, como la escribe
+/// `response_dumps` dentro de un objeto (el valor está un nivel por dentro).
+pub fn response_dumps_entry(key: &str, value: &Value) -> Result<String, String> {
+    validate_workspace_depth(value, 1)?;
+    let mut out = encode(
+        &Value::String(key.to_owned()),
+        true,
+        false,
+        false,
+        Policy::Workspace,
+    )?;
+    out.push_str(": ");
+    out.push_str(&encode(value, true, false, false, Policy::Workspace)?);
+    Ok(out)
+}
+
+/// Une entradas ya escritas con `response_dumps_entry` en un objeto: los mismos
+/// bytes que `response_dumps` del objeto entero.
+pub fn join_response_entries<'a>(entries: impl IntoIterator<Item = &'a str> + Clone) -> String {
+    let len: usize = entries.clone().into_iter().map(|e| e.len() + 2).sum();
+    let mut out = String::with_capacity(len + 2);
+    out.push('{');
+    for (index, entry) in entries.into_iter().enumerate() {
+        if index > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(entry);
+    }
+    out.push('}');
+    out
+}
+
 /// `response_dumps` de un objeto dado por sus entradas prestadas, en orden:
 /// igual que `response_dumps(&Value::Object(..))` sin construir el mapa (una
 /// copia superficial de un `dict` grande del Python sale gratis; en Rust no).
 pub fn response_dumps_entries<'a>(
     entries: impl IntoIterator<Item = (&'a str, &'a Value)>,
 ) -> Result<String, String> {
-    let mut out = String::from("{");
-    for (index, (key, value)) in entries.into_iter().enumerate() {
-        if index > 0 {
-            out.push_str(", ");
-        }
-        validate_workspace_depth(value, 1)?;
-        out.push_str(&encode(
-            &Value::String(key.to_owned()),
-            true,
-            false,
-            false,
-            Policy::Workspace,
-        )?);
-        out.push_str(": ");
-        out.push_str(&encode(value, true, false, false, Policy::Workspace)?);
-    }
-    out.push('}');
-    Ok(out)
+    let parts = entries
+        .into_iter()
+        .map(|(key, value)| response_dumps_entry(key, value))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(join_response_entries(parts.iter().map(String::as_str)))
 }
 
 /// `json.dumps(value, ensure_ascii=False)` del Python: orden de inserción,

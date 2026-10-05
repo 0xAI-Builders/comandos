@@ -102,9 +102,9 @@ async fn usage_state(native: &Arc<Native>) -> Answer {
     );
     if native.options().usage_effects
         && !reply.live_declined
-        && let Some(rows) = pane_models::live_rows(
+        && let Some(rows) = pane_models::live_rows_from(
             &reply.live_panes,
-            &reply.state,
+            Some(&reply.state.panes),
             cards.as_ref().map(|c| c.items.as_slice()),
         )
     {

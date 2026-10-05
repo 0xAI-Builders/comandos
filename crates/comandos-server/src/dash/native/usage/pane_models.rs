@@ -419,6 +419,15 @@ const PANE_MODEL_COLORS: &[(&str, &str)] = &[
 /// tarjetas de `Native::states_cached`; `None` (declinó) → `None`: esa vuelta
 /// no escribe bordes (D1; el Python usaría la memoria de su propio `/state`).
 pub fn live_rows(live_panes: &[Row], state: &Value, cards: Option<&[Value]>) -> Option<Vec<Row>> {
+    live_rows_from(live_panes, state.get("panes"), cards)
+}
+
+/// `live_rows` con el `panes` del memo ya separado (`UsageMemo::panes`).
+pub fn live_rows_from(
+    live_panes: &[Row],
+    memo_panes: Option<&Value>,
+    cards: Option<&[Value]>,
+) -> Option<Vec<Row>> {
     let cards = cards?;
     let live: BTreeSet<&str> = live_panes
         .iter()
@@ -426,7 +435,7 @@ pub fn live_rows(live_panes: &[Row], state: &Value, cards: Option<&[Value]>) -> 
         .filter(|id| id.starts_with('%'))
         .collect();
     let reconciled = reconciled_cards(cards);
-    let memo: &[Value] = match state.get("panes") {
+    let memo: &[Value] = match memo_panes {
         Some(Value::Array(panes)) => panes,
         _ => &[],
     };

@@ -20,7 +20,7 @@ use super::super::{
 use crate::HandlerError;
 use comandos_core::{
     allocation,
-    json::response_dumps_entries,
+    json::{join_response_entries, response_dumps_entry},
     text,
     usage_state::{self, UsageError},
 };
@@ -75,7 +75,7 @@ fn no_decline(fault: Fault) -> Fault {
 /// bordes (D1; con la lista vacía los quitaría de todos los panes).
 pub struct UsageStateReply {
     pub body: bytes::Bytes,
-    pub state: Arc<Value>,
+    pub state: Arc<UsageMemo>,
     pub live_panes: Vec<Row>,
     pub live_declined: bool,
     pub tmux_panes: Option<BTreeSet<String>>,
@@ -95,7 +95,73 @@ struct Live {
 #[derive(Default)]
 pub struct UsageEngine {
     generation: AtomicU64,
-    memo: tokio::sync::Mutex<Option<(MemoKey, Arc<Value>)>>,
+    memo: tokio::sync::Mutex<Option<(MemoKey, Arc<UsageMemo>)>>,
+}
+
+/// El estado de `build_usage_state` ya escrito: cada clave de nivel superior
+/// como su entrada `"clave": valor` de `response_dumps`, en su orden. Como
+/// árbol `Value` ocupaba ≈ 11 MiB (≈ 1 MB de JSON) y cada petición lo volvía a
+/// escribir entero; ahora la respuesta solo escribe las claves que pone encima.
+/// `panes` (las filas de los bordes) y `windows` (las cuentas de tokens de los
+/// límites) se guardan también como valores: son las únicas que se leen.
+pub struct UsageMemo {
+    entries: Vec<(String, String)>,
+    pub panes: Value,
+    windows: Value,
+}
+
+impl UsageMemo {
+    /// Escribe el estado. Lo que `response_dumps` no puede escribir (no es un
+    /// objeto o pasa la profundidad) es el error que el Python daría al
+    /// responder.
+    fn encode(state: Value) -> Result<Self, String> {
+        let Value::Object(map) = state else {
+            return Err("el estado no es un objeto".into());
+        };
+        let mut entries = Vec::with_capacity(map.len());
+        let (mut panes, mut windows) = (Value::Null, Value::Null);
+        for (key, value) in map {
+            entries.push((key.clone(), response_dumps_entry(&key, &value)?));
+            match key.as_str() {
+                "panes" => panes = value,
+                "windows" => windows = value,
+                _ => {}
+            }
+        }
+        Ok(Self {
+            entries,
+            panes,
+            windows,
+        })
+    }
+
+    /// El cuerpo de `dict(memo)` con `over` asignadas encima: las claves del
+    /// memo en su sitio y las nuevas al final, en el orden en que se pusieron.
+    fn body(&self, over: &[(&str, Value)]) -> Result<String, String> {
+        let mut fresh: Vec<Option<String>> = Vec::with_capacity(over.len());
+        for (key, value) in over {
+            fresh.push(Some(response_dumps_entry(key, value)?));
+        }
+        let pick = |key: &str| over.iter().position(|(k, _)| *k == key);
+        let mut parts: Vec<&str> = Vec::with_capacity(self.entries.len() + over.len());
+        for (key, entry) in &self.entries {
+            match pick(key)
+                .and_then(|i| fresh.get(i))
+                .and_then(Option::as_deref)
+            {
+                Some(new) => parts.push(new),
+                None => parts.push(entry),
+            }
+        }
+        for ((key, _), new) in over.iter().zip(&fresh) {
+            if !self.entries.iter().any(|(k, _)| k == key)
+                && let Some(new) = new
+            {
+                parts.push(new);
+            }
+        }
+        Ok(join_response_entries(parts.iter().copied()))
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -148,7 +214,7 @@ impl UsageEngine {
         native: &Native,
         live: &[Row],
         settings: Row,
-    ) -> Result<Arc<Value>, Fault> {
+    ) -> Result<Arc<UsageMemo>, Fault> {
         let mut memo = self.memo.lock().await;
         // La generación se lee con el candado tomado: una importación que
         // termina mientras otro calcula invalida lo que este guarde después.
@@ -160,37 +226,34 @@ impl UsageEngine {
         }
         // `int(time.time())` de `build_usage_state`.
         let now = (native.options().clock)().div_euclid(1000);
-        let want_panes = live.is_empty();
-        let rows = native
+        let live = live.to_vec();
+        // Lectura, ensamblado y escritura en el hilo del carril de uso: el pico
+        // (≈ 20 MiB con la base real) se queda en una sola arena de glibc, que
+        // cada reconstrucción (una por importación, cada 60 s) reutiliza.
+        let built = native
             .usage
-            .with_retry(move |u| -> Result<_, ReadError> {
-                let rows = usage_read::state_rows(&u.conn, now - STATE_WINDOW_S)?;
-                let panes = if want_panes {
-                    usage_read::list_panes(&u.conn)?
+            .with_retry(move |u| -> Result<UsageMemo, ()> {
+                let rows = usage_read::state_rows(&u.conn, now - STATE_WINDOW_S).map_err(|_| ())?;
+                let panes = if live.is_empty() {
+                    usage_read::list_panes(&u.conn).map_err(|_| ())?
                 } else {
-                    Vec::new()
+                    live
                 };
-                Ok((rows, panes))
+                let state = usage_state::build_state(
+                    now,
+                    panes,
+                    &rows.turns,
+                    &rows.provider_usage,
+                    &rows.provider_costs,
+                    &settings,
+                )
+                .map_err(|_| ())?;
+                drop(rows);
+                UsageMemo::encode(state).map_err(|_| ())
             })
             .await
             .map_err(no_decline)?
             .map_err(|_| failure())?;
-        let live = live.to_vec();
-        let built = tokio::task::spawn_blocking(move || {
-            let (rows, stored) = rows;
-            let panes = if live.is_empty() { stored } else { live };
-            usage_state::build_state(
-                now,
-                panes,
-                &rows.turns,
-                &rows.provider_usage,
-                &rows.provider_costs,
-                &settings,
-            )
-        })
-        .await
-        .map_err(|_| failure())?
-        .map_err(|_| failure())?;
         let state = Arc::new(built);
         *memo = Some((key, state.clone()));
         Ok(state)
@@ -491,8 +554,7 @@ pub async fn compute(native: &Native) -> Result<UsageStateReply, Fault> {
         .state(native, &live, env.clone())
         .await?;
     // 7. La respuesta parte de una copia superficial del memo: en Rust se
-    // escribe el memo prestado con estas claves encima, sin clonarlo entero.
-    let base = memo.as_object().ok_or_else(failure)?;
+    // escriben las entradas del memo con estas claves encima.
     let mut over: Vec<(&str, Value)> = Vec::new();
     let mut put = |key: &'static str, value: Value| match over.iter_mut().find(|(k, _)| *k == key) {
         Some(slot) => slot.1 = value,
@@ -514,10 +576,9 @@ pub async fn compute(native: &Native) -> Result<UsageStateReply, Fault> {
     );
     // D5: `attach_token_counts` sobre las filas cacheadas, y `enrich_limits`.
     // `windows` sale del memo: ninguna clave de encima la toca.
-    let windows = base.get("windows").unwrap_or(&Value::Null);
     let attached: Vec<Value> = native
         .limits
-        .attach_tokens(windows)
+        .attach_tokens(&memo.windows)
         .into_iter()
         .map(Value::Object)
         .collect();
@@ -527,23 +588,8 @@ pub async fn compute(native: &Native) -> Result<UsageStateReply, Fault> {
     put("limits", Value::Array(enriched));
     let last = recent.into_iter().next().map_or(Value::Null, Value::Object);
     put("lastInteraction", last);
-    // 9. Cuerpo: el orden de un `dict` del Python (las claves del memo en su
-    // sitio, las nuevas al final en el orden en que se pusieron).
-    let entries = base
-        .iter()
-        .map(|(key, value)| {
-            let value = over
-                .iter()
-                .find(|(k, _)| *k == key.as_str())
-                .map_or(value, |(_, v)| v);
-            (key.as_str(), value)
-        })
-        .chain(
-            over.iter()
-                .filter(|(k, _)| !base.contains_key(*k))
-                .map(|(k, v)| (*k, v)),
-        );
-    let body = response_dumps_entries(entries).map_err(|_| failure())?;
+    // 9. Cuerpo.
+    let body = memo.body(&over).map_err(|_| failure())?;
     Ok(UsageStateReply {
         body: bytes::Bytes::from(body),
         state: memo,
