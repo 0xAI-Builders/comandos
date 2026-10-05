@@ -185,6 +185,7 @@ fn load_options_parse_and_agents_require_shadow() {
         &["--agents", "48"][..],
         &["--extra-panes", "190"][..],
         &["--slow-tmux-ms", "1500"][..],
+        &["--glibc-tunables", ""][..],
     ] {
         let mut v = args(&base);
         v.extend(args(extra));
@@ -194,6 +195,29 @@ fn load_options_parse_and_agents_require_shadow() {
     let mut bad = args(&base);
     bad.extend(args(&["--pollers", "x"]));
     assert!(poll::parse(&bad).is_err());
+}
+
+#[test]
+fn shadow_front_gets_the_production_malloc_tuning_unless_told_otherwise() {
+    let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let shadow = ["--shadow", "--hooks", "/tmp/h", "--minutes", "1"];
+    let tuned = |extra: &[&str]| {
+        let mut v = args(&shadow);
+        v.extend(args(extra));
+        poll::parse(&v)
+            .unwrap()
+            .front_glibc_tunables()
+            .map(str::to_owned)
+    };
+    assert_eq!(
+        tuned(&[]).as_deref(),
+        Some(comandos_core::malloc_tuning::PRODUCTION_GLIBC_TUNABLES)
+    );
+    assert_eq!(tuned(&["--glibc-tunables", ""]), None);
+    assert_eq!(
+        tuned(&["--glibc-tunables", "glibc.malloc.arena_max=1"]).as_deref(),
+        Some("glibc.malloc.arena_max=1")
+    );
 }
 
 #[test]

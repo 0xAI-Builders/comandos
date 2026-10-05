@@ -588,8 +588,15 @@ print(cc_usage.record_quota_snapshots(db, snaps, now=now))
         return;
     };
     let conn = usage::open_usage_db_at(&ours).unwrap();
-    usage_read::record_pane(&conn, pane.as_object().unwrap()).unwrap();
-    usage_read::record_pane(&conn, pane2.as_object().unwrap()).unwrap();
+    // `record_panes` (una transacción) con un pane que el Python no podría
+    // registrar (`raw` lista: `InterfaceError`, ignorado por su `except`): los
+    // otros dos quedan igual que con dos `record_pane` del Python.
+    let bad = json!({"tmux_session": "s9", "tmux_pane": "%9", "raw": [1]});
+    let panes: Vec<_> = [&pane, &bad, &pane2]
+        .iter()
+        .map(|p| p.as_object().unwrap().clone())
+        .collect();
+    assert_eq!(usage_read::record_panes(&conn, &panes).unwrap(), 2);
     let n = usage_read::record_quota_snapshots(&conn, snaps.as_array().unwrap(), NOW).unwrap();
     assert_eq!(n.to_string(), count.trim_end());
     let dump = |db: &Path| {
@@ -657,6 +664,32 @@ fn undecodable_cells_are_errors() {
     );
     assert!(matches!(
         usage_read::list_alerts(&conn, 12),
+        Err(usage_read::ReadError::Undecodable)
+    ));
+}
+
+/// `experiment_analytics` agrega las filas según las lee, pero como el Python
+/// (que lee todas antes): una fila no decodificable gana a un error anterior
+/// de la agregación.
+#[test]
+fn experiment_analytics_read_errors_win_over_earlier_aggregation_errors() {
+    let scratch = Scratch::new("analytics-order");
+    let conn = usage::open_usage_db_at(&scratch.0.join("u.sqlite")).unwrap();
+    usage::ensure_schema(&conn).unwrap();
+    let insert = "insert into usage_interactions(id,tmux_session,tmux_pane,finished_at_ms,duration_ms,\
+                  error_class,source,confidence,created_at) values(?,'s','%1',?,?,?,'t','exact',1)";
+    exec(
+        &conn,
+        insert,
+        params!["a", NOW_MS - 1000, "no es un entero", ""],
+    );
+    assert!(matches!(
+        usage_read::experiment_analytics(&conn, 7, "", NOW as f64),
+        Err(usage_read::ReadError::Raises)
+    ));
+    exec(&conn, insert, params!["b", NOW_MS - 500, 10, vec![0xffu8]]);
+    assert!(matches!(
+        usage_read::experiment_analytics(&conn, 7, "", NOW as f64),
         Err(usage_read::ReadError::Undecodable)
     ));
 }

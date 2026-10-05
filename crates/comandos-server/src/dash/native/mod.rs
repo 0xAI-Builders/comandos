@@ -33,7 +33,6 @@ pub mod snippets;
 pub mod ssh;
 pub mod state;
 pub mod states;
-pub mod subrequest;
 pub mod tabs;
 pub mod target;
 pub mod terminal;
@@ -67,10 +66,19 @@ use tokio::sync::OnceCell;
 /// Trabajos en cola del worker de la base (sin contar el que corre).
 pub const WORKER_CAPACITY: usize = 64;
 
-/// Refresco de límites al arrancar el frente (D3). Falso hasta la Tarea 8:
-/// sin `/usage/state` nativo nadie necesita la caché caliente al arrancar, y
-/// así un reinicio del frente nunca llama a `api.anthropic.com` por su cuenta.
-pub const STARTUP_LIMITS_REFRESH: bool = false;
+/// GET `/usage/state` nativo con todos sus efectos (Tarea 8, D1) y el refresco
+/// de límites al arrancar que va con ella. La puerta de ligereza (`xtask poll
+/// --shadow` realista, `--max-pss-mib 56`) se mide con el `GLIBC_TUNABLES` de
+/// producción (`comandos_core::malloc_tuning`, en el drop-in de `cc-dash`): sin
+/// él la ruta funciona igual, pero el memo que se reconstruye tras cada
+/// importación deja ≈ 61 MiB retenidos en las arenas de glibc.
+pub const USAGE_STATE_NATIVE: bool = true;
+
+/// Gracia de la primera importación de uso del frente tras arrancar (D1 c): un
+/// hilo de importación del Python que estuviera en curso termina antes.
+pub const USAGE_IMPORT_GRACE_MS: i64 = 75_000;
+/// `COMANDOS_DASH_USAGE_IMPORT_GRACE_MS`: otra gracia (entero ≥ 0, en ms).
+pub const USAGE_IMPORT_GRACE_ENV: &str = "COMANDOS_DASH_USAGE_IMPORT_GRACE_MS";
 
 /// Cada dominio añade su variante en su tarea.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -437,7 +445,9 @@ pub struct NativeOptions {
     pub home: PathBuf,
     /// Raíz de `/proc` (las pruebas de capa usan una falsa; el frente, la real).
     pub proc_root: PathBuf,
-    /// Heredado para el contexto de sugerencias (D1, D11). `build` lo fija.
+    /// Heredado y token del tablero (`build` los fija). Desde la Tarea 5a de la
+    /// 2e ningún cómputo nativo los lee: el contexto de sugerencias de GET
+    /// `/state` ya no pide nada al heredado.
     pub legacy: SocketAddr,
     pub legacy_token: Vec<u8>,
     /// `PATH` del frente al arrancar, para `providers::which` (D9).
@@ -493,6 +503,20 @@ pub struct NativeOptions {
     /// `DISPLAY` que ve `procs::gui_env_for`: `None` (producción) = el del
     /// proceso; `Some(None)` = ausente; `Some(Some(v))` = `v`.
     pub display: Option<Option<OsString>>,
+    /// Milisegundos desde el arranque antes de la primera importación de uso.
+    pub usage_import_grace_ms: i64,
+    /// `USAGE_STATE_NATIVE` en producción. Apagado, GET `/usage/state` declina
+    /// antes de cualquier efecto y no hay refresco de límites al arrancar.
+    pub usage_state_native: bool,
+}
+
+/// `USAGE_IMPORT_GRACE_ENV` si es un entero ≥ 0; si no, la de omisión.
+pub fn usage_import_grace_from_env() -> i64 {
+    std::env::var(USAGE_IMPORT_GRACE_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .filter(|ms| *ms >= 0)
+        .unwrap_or(USAGE_IMPORT_GRACE_MS)
 }
 
 /// D7: lo que `usage_runtime_env` toma de `os.environ`.
@@ -570,7 +594,7 @@ impl NativeOptions {
             ssh: tmux::Program::named("ssh"),
             scope: quick::find_scope(std::env::var_os("PATH").as_deref()),
             quick_base: quick::default_base(home),
-            oauth: Arc::new(usage::limits::ReqwestOauth),
+            oauth: Arc::new(usage::limits::ReqwestOauth::default()),
             notifyd: Arc::new(usage::pane_models::HyperNotify::default()),
             usage_effects: true,
             usage_env: Arc::new(usage_env_from_process()),
@@ -582,6 +606,8 @@ impl NativeOptions {
             webterm_health_ports: [4779, 4780],
             child_env: None,
             display: None,
+            usage_import_grace_ms: usage_import_grace_from_env(),
+            usage_state_native: USAGE_STATE_NATIVE,
         }
     }
 
@@ -618,15 +644,21 @@ pub struct Native {
     /// La revisión de avisos que comparten las esperas de `/notices/watch`.
     pub(crate) notice_feed: notices::RevisionFeed,
     /// Carril de la base de uso (`GET /pomodoro`, `GET /sovereignty`,
-    /// `GET /analytics/week`, `GET /extension-usage`); `Arc`
+    /// `GET /analytics/week`, `GET /accounts`, `GET /extension-usage`); `Arc`
     /// para las tareas de fondo (D13).
     pub(crate) usage: Arc<lanes::Lane<lanes::UsageBackend>>,
     /// Caché de límites de proveedor (`_limits_cache`).
     pub(crate) limits: Arc<usage::limits::LimitsCache>,
+    /// `_provider_registry_cache` de GET `/providers`, `/optimization/plans` y
+    /// `/accounts` (se usa en hilos de bloqueo).
+    pub(crate) registry: Arc<Mutex<comandos_runtime::providers::RegistryCache>>,
     /// Escritor de bordes de pane y `pane-models.txt` (latente hasta la Tarea 8).
     pub(crate) pane_models: Arc<usage::pane_models::PaneModelWriter>,
     /// `_TIER_LAST`/`_TIER_ALERTED` de los avisos de nivel (latente).
     pub(crate) tier_alerts: Mutex<usage::pane_models::TierAlerts>,
+    /// `_ACCOUNT_PID_CACHE` de los valores de borde: caché propia, nunca la
+    /// del escaneo de GET `/state` (su candado cubre todo el escaneo).
+    pub(crate) pane_accounts: Arc<Mutex<comandos_runtime::agent_procs::AccountCache>>,
     /// Carril del journal de operaciones (`GET /model/status`).
     pub(crate) journal: lanes::Lane<lanes::JournalBackend>,
     /// Caché por `requestId` y candados de `POST /pane/type`.
@@ -641,15 +673,26 @@ pub struct Native {
     pub(crate) remote: remote::RemoteCache,
     /// Cachés del catálogo de CLIs y de los modelos de OpenCode (2f-3/T4).
     pub(crate) cli: catalog_cli::CliState,
+    /// Memo de GET `/usage/state` (`cached_usage_state`) y su generación; `Arc`
+    /// para que la importación suba la generación al terminar (D13).
+    pub usage_engine: Arc<usage::state::UsageEngine>,
+    /// Segundo carril sobre la base de uso: la importación y `record_pane` (D2, R3).
+    pub(crate) import_lane: Arc<lanes::Lane<lanes::UsageImportBackend>>,
+    /// Dueño de la importación de uso (D1): intervalo, gracia, candado entre frentes.
+    pub(crate) import: Arc<usage::import::ImportOwner>,
 }
 
 impl Native {
     pub fn new(opts: NativeOptions) -> Self {
         Self {
             usage: Arc::new(lanes::Lane::new(opts.usage_db.clone())),
+            import_lane: Arc::new(lanes::Lane::new(opts.usage_db.clone())),
+            import: Arc::new(usage::import::ImportOwner::new((opts.clock)())),
             limits: Arc::default(),
+            registry: Arc::default(),
             pane_models: Arc::default(),
             tier_alerts: Mutex::default(),
+            pane_accounts: Arc::default(),
             journal: lanes::Lane::new(opts.journal_db.clone()),
             opts,
             enabled: AtomicBool::new(true),
@@ -665,6 +708,7 @@ impl Native {
             tasks: Arc::default(),
             remote: remote::RemoteCache::default(),
             cli: catalog_cli::CliState::default(),
+            usage_engine: Arc::default(),
         }
     }
 
@@ -696,6 +740,12 @@ impl Native {
         &self.usage
     }
 
+    /// Las cachés que el escaneo de GET `/state` sostiene durante todo su salto
+    /// (para las pruebas de que ninguna otra ruta las espera).
+    pub fn state_caches(&self) -> &Arc<Mutex<states::gather::Blocking>> {
+        &self.states.shared
+    }
+
     /// La caché de límites de proveedor.
     pub fn limits(&self) -> &Arc<usage::limits::LimitsCache> {
         &self.limits
@@ -716,18 +766,38 @@ impl Native {
         usage::limits::RefreshDeps {
             opts: self.opts.clone(),
             usage: self.usage.clone(),
+            import_lane: self.import_lane.clone(),
         }
     }
 
     /// El refresco de arranque de D3 (el `_limits_snapshot_loop` del Python lee
-    /// los límites al arrancar). Apagado hasta que la Tarea 8 active
-    /// `/usage/state` (`STARTUP_LIMITS_REFRESH`): mientras tanto el frente no
-    /// toca la red al arrancar y las rutas refrescan a demanda con el TTL. No
-    /// repite cada 300 s: el heredado conserva su bucle. Sin efectos de uso
-    /// (sombra) no hace nada.
+    /// los límites al arrancar): va con GET `/usage/state` nativo, para que la
+    /// barra lateral no pierda los % de cuota hasta 60 s tras cada reinicio;
+    /// mientras el Python atiende la ruta, el dueño es su bucle. No repite cada
+    /// 300 s: el heredado conserva su bucle. Sin efectos de uso (sombra) no
+    /// hace nada.
     pub fn start_background(&self) {
-        if STARTUP_LIMITS_REFRESH && self.enabled() {
+        if self.opts.usage_state_native && self.enabled() {
             let _ = self.limits.get(&self.refresh_deps());
+        }
+    }
+
+    /// El dueño de la importación de uso (estado, para las pruebas).
+    pub fn import_owner(&self) -> &Arc<usage::import::ImportOwner> {
+        &self.import
+    }
+
+    /// El carril de la importación de uso (estado, para las pruebas).
+    pub fn import_lane(&self) -> &lanes::Lane<lanes::UsageImportBackend> {
+        &self.import_lane
+    }
+
+    /// Lo que la tarea de importación necesita, sin `&Native` (D13).
+    pub fn import_deps(&self) -> usage::import::ImportDeps {
+        usage::import::ImportDeps {
+            opts: self.opts.clone(),
+            import_lane: self.import_lane.clone(),
+            engine: self.usage_engine.clone(),
         }
     }
 
@@ -937,6 +1007,7 @@ impl Native {
             let _ = worker.shutdown().await;
         }
         self.usage.shutdown().await;
+        self.import_lane.shutdown().await;
         self.journal.shutdown().await;
         self.states.serial.shutdown().await;
     }

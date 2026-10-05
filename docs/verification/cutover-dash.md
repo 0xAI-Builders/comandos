@@ -1338,3 +1338,496 @@ serialización del `RLock` del Python, igual en los tres.
   hilos, planos**, `NRestarts=0`, 0 líneas de pánico/error/«GET /state declina». `/state` 200 en
   ≈ 10 ms (231 panes) con la caché caliente.
 - Reversión: `install --rollback-release` (→ `9f6fa07f26f0`) + reinicio de la unidad.
+
+## 2e: uso y analítica nativos
+
+Procedimiento para el controlador, como el de la 2d. El frente está en 4777 y el Python heredado
+en 4781; la 2e cambia el binario del frente y añade un drop-in de entorno a `cc-dash.service`.
+Ni el Python, ni su unidad, ni el `ExecStart` del frente, ni tmux se tocan.
+
+### Qué cambia
+
+| Ruta | Nativa | Sigue en el Python |
+|---|---|---|
+| GET `/usage/state` | sí, con sus efectos | solo con la base de uso apagada para el frente (más nueva, ilegible) |
+| GET `/analytics/week` | sí | `?sidebar` si el Python commiteado no lo soporta |
+| GET `/accounts`, `/providers`, `/optimization/plans` | sí | registro de proveedores que no valida con certeza |
+| GET `/extension-usage` | sí | — |
+| GET y POST `/session-profiles`, POST `/session-profile-apply`, GET `/opencode/models` | no | todo |
+
+`/state` ya no pide `/usage/guard` ni `/usage/analytics` al heredado: la guardia y la latencia de
+las sugerencias las calcula el frente.
+
+**Dueño único.** Desde el cutover, el frente hace lo que el `/usage/state` del Python hacía como
+efecto: importar transcripts de Claude, Codex, Grok y OpenCode cada ≥ 60 s (la primera vez 75 s
+después de arrancar), escribir los bordes `@ccmodel` de tmux y `~/.claude/hooks/pane-models.txt`,
+avisar al pasar un pane a un modelo de nivel alto y registrar los paneles vivos en la base. El
+Python deja de hacerlo porque ya no recibe `/usage/state`. Si el frente apaga su carril de uso
+(una base más nueva) o se le retira el de importación (un fallo interno: una línea
+`… GET /usage/state y su importación de uso se reenvían al heredado` en el journal), reenvía
+`/usage/state` y el Python vuelve a hacerlo todo. Dos frentes sobre
+el mismo HOME no importan a la vez (`~/.claude/hooks/comandos-usage-import.lock`).
+
+**Límites al arrancar.** Con `/usage/state` nativo, el frente lee los límites de proveedor una vez
+al arrancar (una petición OAuth por cuenta de Claude), para que la barra lateral y la guardia de
+`/state` tengan los % de cuota sin esperar al primer `/usage/state`. Después refresca con su
+caché (60 s; 180 s tras un error de la cuenta `main`) cuando alguien pide límites.
+
+**Memoria del frente.** La ruta nativa reconstruye el memo de `/usage/state` tras cada importación.
+Con glibc por defecto, cada liberación de un bloque grande sube el umbral dinámico de `mmap` y las
+arenas de los hilos dejan de devolver memoria: bajo la carga realista el frente se queda en
+≈ 61 MiB. Con `GLIBC_TUNABLES=glibc.malloc.mmap_threshold=131072:glibc.malloc.arena_max=2` (umbral
+fijo de 128 KiB, dos arenas) baja a ≈ 45 MiB. Va en un drop-in de `cc-dash.service`: es
+configuración reversible, sin dependencia nueva. Sin el drop-in todo funciona igual, con más
+memoria. El valor vive en `comandos_core::malloc_tuning::PRODUCTION_GLIBC_TUNABLES`; `xtask poll
+--shadow` y `xtask parity` se lo dan al frente que miden (`--glibc-tunables ''` para medir sin él).
+Ningún hijo del frente lo hereda: tmux, `systemd-run --scope … tmux new-session` de la terminal
+rápida, `ssh`, `git` y `fc-list` salen todos de `Program::command`, que lo quita
+(`CHILD_ENV_REMOVE`; prueba gemela en `crates/comandos-cli/tests/dash_boot.rs`).
+
+### Diferencias y comportamientos aceptados (2e)
+
+- Límites de proveedor: el frente tiene su propia caché (60 s; 180 s tras un error de la cuenta
+  `main`) y el Python conserva su bucle de 5 min hasta la 2g. Antes compartían una caché de 60 s;
+  ahora son dos: ≈ +20 % de llamadas a `api.anthropic.com` en régimen (60 s del frente + 300 s del
+  Python) y hasta ≈ 2× en arranques y tras errores, cuando los dos piden a la vez. Se vigila como
+  ≈ 2×. Las fotos de cuota convergen (solo gana la más nueva). El ritmo del frente es el del
+  Python antes del cutover: `usage_provider_limits()` refresca con el mismo TTL de 60 s (180 s
+  tras un error de `main`) cada vez que una ruta pide límites, y el tablero los pide en cada
+  sondeo de `/usage/state`; los 300 s son solo el bucle de fondo, que sigue en el Python. Mismas
+  cuentas (`~/.claude` y cada `~/.claude-accounts/<alias>` con `.credentials.json`).
+- `credential_health.*.error` de un fallo de TLS o de un cuerpo que no es JSON tiene el texto del
+  frente, no el de `urllib`.
+- GET `/accounts` no espera la primera lectura de límites: tras un reinicio cuya primera petición
+  OAuth da 429, el menú de cuentas sale sin límites hasta 180 s (el TTL de error), y luego con
+  ellos.
+- La guardia de `/state` sí espera la primera lectura (≤ 2 s por vuelta). Si esa lectura no puede
+  hacerse nunca porque falla antes de la red (credenciales ilegibles, `AbortRefresh`), el contexto
+  declina siempre y GET `/state` se reenvía al heredado: falla cerrado, se ve en la traza del
+  paso 3.
+- La sombra del paso 1 corre con `--no-usage-effects`: nunca carga límites, así que su contexto
+  de sugerencias declina siempre y su GET `/state` se reenvía. La guardia nativa solo se comprueba
+  con efectos encendidos, en el paso 3.
+- La latencia medida de las sugerencias (`experiment_analytics(USAGE_DB, 7)`) incluye
+  `_paired_experiment_analytics`, que lee todos los experimentos sin ventana de tiempo, como el
+  Python.
+- Si `/state` es incierto en el momento de un `/usage/state`, esa vuelta no escribe bordes (la
+  siguiente, ≤ 10 s después, sí) y la importación de ese ciclo no registra configuraciones
+  observadas (el ciclo siguiente sí).
+- Tras reiniciar el frente, la deduplicación de avisos de nivel empieza de cero (como tras
+  reiniciar el Python).
+- Una línea `reenvío GET /usage/state` en la traza es un ciclo en que el Python fue dueño: el
+  frente declinó (carril de uso caído, base más nueva) y el Python importó, escribió bordes y
+  pudo avisar. Una línea aislada es aceptable; repetidas son motivo para revertir (paso 4). En ese
+  ciclo puede llegar un aviso de nivel duplicado: el `_TIER_LAST` del Python conserva el nivel que
+  vio antes del cutover y no sabe de los avisos del frente. También los bordes pueden quedar mal
+  unos 10 s: el `_pane_model_state` del Python (`applied` y el texto de `pane-models.txt`) es el
+  de antes del cutover, así que puede saltarse un `set-option` que cree ya aplicado o reescribir
+  el archivo con su versión vieja. La vuelta siguiente del frente (≤ 10 s) vuelve a leer las
+  opciones de tmux y reescribe el archivo.
+- Un archivo de transcript que sale del corte de 21 días y vuelve sin cambiar se relee (el
+  Python lo recordaba); la base queda igual.
+- `/proc/<pid>/environ` del frente muestra `GLIBC_TUNABLES` partido en dos líneas: glibc 2.35
+  convierte cada `:` de la cadena en NUL al leerla. Las dos opciones se aplican; el valor completo
+  está en `systemctl --user show -p Environment cc-dash.service`.
+
+### 0. Previos
+
+```sh
+cd ~/codebase/0xJesus/ComandOS && git log -1 --oneline        # main con la Fase 2e fusionada
+CARGO_TARGET_DIR=$PWD/.build/target nice -n 10 cargo build --release -p comandos-cli -j 6
+CARGO_TARGET_DIR=$PWD/.build/target nice -n 10 cargo build -p xtask -j 6
+NEW=$HOME/codebase/0xJesus/ComandOS/.build/target/release/comandos
+XT=$HOME/codebase/0xJesus/ComandOS/.build/target/debug/xtask
+TUN='glibc.malloc.mmap_threshold=131072:glibc.malloc.arena_max=2'
+grep -qa 'GET /extension-usage y GET /usage/state' "$NEW" || echo "BINARIO SIN 2e: no seguir"
+grep -qa 'GLIBC_TUNABLES' "$NEW" || echo "BINARIO QUE NO QUITA GLIBC_TUNABLES A SUS HIJOS: no seguir"
+ldd --version | head -1                                              # glibc ≥ 2.26 (aquí 2.35)
+systemctl --user is-active cc-dash.service cc-dash-legacy.service    # active active
+~/.local/share/comandos/bin/comandos install --releases              # la actual ('*') es 790e58866107
+systemctl --user cat cc-dash.service | grep ExecStart                # %h/.local/bin/cc-dash 4777 --no-open
+readlink -f ~/.local/bin/cc-dash                                     # …/releases/790e58866107/comandos
+ls ~/.config/systemd/user/cc-dash.service.d/ 2>/dev/null             # sin no-native.conf ni malloc.conf
+for u in cc-dash.service cc-dash-legacy.service; do
+  systemctl --user show -p Environment -p WorkingDirectory "$u"; done # mismo PATH, WorkingDirectory y TZ;
+                                                                      # COMANDOS_*USAGE*, *_TOKEN_LIMIT,
+                                                                      # COMANDOS_CLAUDE_PROJECTS_DIR,
+                                                                      # COMANDOS_OPENCODE_DB, LANG iguales o ausentes;
+                                                                      # ninguna con GLIBC_TUNABLES ni MALLOC_*
+ss -ltn 'sport = :4782'                                               # libre
+```
+
+La release actual tiene que ser `790e58866107` (la 2d con la ligereza, 42 MiB y 5 hilos en vivo):
+es la que la reversión del paso 4 restaura. Hoy `releases/previous` apunta a `9f6fa07f26f0`, la
+2d anterior a la ligereza (270 MiB en vivo); el `--stage` del paso 2 lo sobrescribe con
+`790e58866107`. Si la actual no es `790e58866107`, parar y decidir con el usuario.
+
+### 1. Sombra en 4782 con nativo, contra el heredado 4781
+
+La sombra arranca **sin efectos de uso**: no importa, no escribe bordes ni avisa (el dueño sigue
+siendo el Python, que recibe el `/usage/state` de producción). Lleva el ajuste de malloc, como
+producción.
+
+```sh
+GLIBC_TUNABLES="${TUN:?}" COMANDOS_DASH_TRACE_FORWARD=1 \
+  "$NEW" dash 4782 --legacy-port 4781 --no-usage-effects 2> /tmp/sombra-2e.log
+```
+
+Desde otra terminal, en `~/codebase/0xJesus/ComandOS`:
+
+```sh
+"$XT" parity --fixture xtask/parity/frente.jsonl --hooks ~/.claude/hooks \
+  --state-db ~/.local/state/comandos/app-state.sqlite3 \
+  --usage-db ~/.claude/hooks/comandos-usage.sqlite --comandos "$NEW"        # 0 DIFF
+T=$(cat ~/.claude/hooks/dash-token)
+for r in /providers /optimization/plans '/accounts?harness=claude' '/analytics/week?offset=-1'; do
+  A=$(curl -s -H "X-Comandos-Token: $T" "127.0.0.1:4782$r"); B=$(curl -s -H "X-Comandos-Token: $T" "127.0.0.1:4781$r")
+  [ "$A" = "$B" ] && echo "igual $r" || echo "DISTINTO $r (límites: repetir tras 60 s)"
+done
+for r in /usage/state /analytics/week; do
+  curl -s -o /dev/null -w "$r %{time_total}s\n" -H "X-Comandos-Token: $T" "127.0.0.1:4782$r"
+done
+```
+
+`/usage/state` y `/analytics/week` de esta semana no se comparan a mano: dependen de cuándo cada
+proceso refrescó límites e importó; los compara el arnés con sus campos de tiempo enmascarados.
+Navegación manual en `http://127.0.0.1:4782` con `chrome-bg` (vía `cc-browser-expose start 4782`):
+tarjetas de uso por proveedor, Analytics (Cuentas, Comparar, Pomodoro), la columna de límites de
+la barra lateral, el botón «Cuenta» de un pane y el selector de motor (proveedores y planes).
+Luego:
+
+```sh
+grep -c 'se reenvían al heredado\|rutas nativas desactivadas' /tmp/sombra-2e.log   # 0
+grep 'reenvío' /tmp/sombra-2e.log | sed 's/.*reenvío //' | sort | uniq -c | sort -rn
+```
+
+Ni `GET /usage/state`, ni `GET /analytics/week`, ni `GET /accounts` deben aparecer. `GET /state`
+sí puede aparecer: la sombra no carga límites (ver «Diferencias»). Ctrl+C.
+
+### 2. Cutover
+
+Antes de reiniciar, nada en vuelo: ni un cambio de cuenta o de modelo, ni un tecleo de la barra
+de comandos, ni una terminal rápida abriéndose. Las dos bases se miran en solo lectura; una fila
+reciente en un estado no final es algo en curso (las `awaiting_confirmation` y
+`recovery_required` antiguas son residuo y no cuentan):
+
+```sh
+sqlite3 "file:$HOME/.claude/hooks/session-operations.sqlite3?mode=ro" \
+  "SELECT id, state, datetime(updated, 'unixepoch', 'localtime') FROM session_operations
+   WHERE state NOT IN ('confirmed', 'failed', 'rolled_back')
+     AND updated > strftime('%s', 'now') - 900"                       # vacío
+sqlite3 "file:$HOME/.local/state/comandos/app-state.sqlite3?mode=ro" \
+  "SELECT request_id, datetime(updated_at, 'unixepoch', 'localtime') FROM quick_terminal_requests
+   WHERE state = 'launching' AND lease_until > strftime('%s', 'now')"  # vacío
+```
+
+Línea base antes del reinicio (el paso 3 la compara):
+
+```sh
+sqlite3 "file:$HOME/.claude/hooks/comandos-usage.sqlite?mode=ro" \
+  'select max(turn_finished_at), count(*) from usage_turns' | tee /tmp/base-2e-turnos.txt
+L=$(systemctl --user show -p MainPID --value cc-dash-legacy.service)
+awk '/^Pss:/{print $2}' /proc/$L/smaps_rollup | tee /tmp/base-2e-heredado.txt   # Pss del heredado (KiB)
+```
+
+Primero la release. `--stage` deja `releases/previous` en la release que había (`790e58866107`):
+
+```sh
+"$NEW" install --stage
+grep -qa 'GET /extension-usage y GET /usage/state' "$(readlink -f ~/.local/share/comandos/bin/comandos)" || echo "STAGE MALO: ~/.local/share/comandos/bin/comandos install --rollback-release"
+cat ~/.local/share/comandos/releases/previous                       # 790e58866107
+~/.local/share/comandos/bin/comandos hook claude-status >/dev/null && echo "hooks OK con la release nueva"
+```
+
+Después el drop-in del ajuste de malloc, el `daemon-reload` y el reinicio. El drop-in no cambia el
+`ExecStart`, que sigue ejecutando la release activa por los enlaces `~/.local/bin/cc-dash` →
+`~/.local/share/comandos/bin/comandos` → `releases/<sha12>/comandos`:
+
+```sh
+mkdir -p ~/.config/systemd/user/cc-dash.service.d
+cat > ~/.config/systemd/user/cc-dash.service.d/malloc.conf <<'EOF'
+# Fase 2e: ajuste de glibc malloc del frente (docs/verification/cutover-dash.md, «2e»).
+# Solo el frente: sus hijos (tmux, systemd-run, ssh, git, fc-list) no lo heredan.
+[Service]
+Environment=GLIBC_TUNABLES=glibc.malloc.mmap_threshold=131072:glibc.malloc.arena_max=2
+EOF
+systemctl --user daemon-reload
+systemctl --user show -p Environment cc-dash.service \
+  | grep -o 'GLIBC_TUNABLES=glibc.malloc.mmap_threshold=131072:glibc.malloc.arena_max=2'   # una línea
+systemctl --user show -p Environment cc-dash-legacy.service | grep -c GLIBC_TUNABLES        # 0
+systemctl --user set-environment COMANDOS_DASH_TRACE_FORWARD=1   # traza del paso 3 desde este arranque
+systemctl --user restart cc-dash.service
+date '+%F %T' | tee /tmp/arranque-2e.txt                               # hora del reinicio
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4777/        # 200
+journalctl --user -u cc-dash.service --since -2min --no-pager | grep -c 'se reenvían al heredado\|rutas nativas desactivadas'   # 0
+P=$(systemctl --user show -p MainPID --value cc-dash.service)
+tr '\0' '\n' < /proc/$P/environ | grep -A1 '^GLIBC_TUNABLES='         # dos líneas (glibc parte en ':')
+grep -lz '^GLIBC_TUNABLES=' /proc/[0-9]*/environ 2>/dev/null | cut -d/ -f3   # solo $P
+```
+
+El último comando lista los procesos con la variable: solo el frente. Si aparece otro, ver su
+padre (`ps -o pid,ppid,cmd -p <pid>`): un hijo del frente que la hereda es un fallo (revertir el
+drop-in, paso 4).
+
+### 3. Verificación
+
+Con efectos encendidos el frente es dueño de los límites: la guardia de `/state` usa la lectura
+del arranque. El frente arrancó en el paso 2 ya con `COMANDOS_DASH_TRACE_FORWARD=1`, así que la
+traza y la vigilancia corren sobre ese mismo proceso, sin un segundo reinicio (que repetiría el
+refresco OAuth del arranque y la gracia de 75 s de la importación). Una muestra por minuto desde
+el reinicio (minuto, Pss del frente en KiB, hilos, Pss del heredado):
+
+```sh
+P=$(systemctl --user show -p MainPID --value cc-dash.service)
+L=$(systemctl --user show -p MainPID --value cc-dash-legacy.service)
+for i in $(seq 10); do
+  sleep 60
+  echo "$i $(awk '/^Pss:/{print $2}' /proc/$P/smaps_rollup) $(ls /proc/$P/task | wc -l) $(awk '/^Pss:/{print $2}' /proc/$L/smaps_rollup)"
+done | tee /tmp/vigilancia-2e.txt
+awk '$2 > 57344 || $3 > 12 {print "REVERTIR: minuto " $1 ": " $2 " KiB, " $3 " hilos"}
+     $1 == 5 {m5 = $2} $1 == 10 && $2 - m5 > 3072 {print "REVERTIR: +" $2 - m5 " KiB del minuto 5 al 10"}' \
+  /tmp/vigilancia-2e.txt                                              # nada
+journalctl --user -u cc-dash.service --since "$(cat /tmp/arranque-2e.txt)" --no-pager \
+  | grep -c 'GET /state declina'                                     # 0
+journalctl --user -u cc-dash.service --since "$(cat /tmp/arranque-2e.txt)" --no-pager | grep 'reenvío' \
+  | sed 's/.*reenvío //' | sort | uniq -c | sort -rn
+systemctl --user unset-environment COMANDOS_DASH_TRACE_FORWARD     # sin reiniciar: el mismo proceso sigue
+sqlite3 "file:$HOME/.claude/hooks/comandos-usage.sqlite?mode=ro" \
+  'select max(turn_finished_at), count(*) from usage_turns'; cat /tmp/base-2e-turnos.txt   # avanza respecto a la base
+diff <(tmux list-panes -a -F '#{pane_id} #{@ccmodel}' | sed -E 's/#\[[^]]*\]//g; s/ ▸ / /' \
+         | awk 'NF > 1' | LC_ALL=C sort) \
+     <(LC_ALL=C sort ~/.claude/hooks/pane-models.txt)               # vacío
+```
+
+La última orden lee los bordes del tmux real (socket por omisión, solo lectura), les quita los
+estilos y los compara con `pane-models.txt`: vacío. Una diferencia en un pane que cambia de modelo
+en ese segundo se repite a los 10 s.
+
+La primera importación del frente empieza unos 75 s después del reinicio (la gracia) y, con el
+`seen` vacío, relee todos los transcripts de los últimos 21 días: unos 30–35 s con los datos de
+hoy (ver «Medido antes del cutover»). Cae en las muestras de los minutos 1 y 2. Con el descarte
+en flujo de las líneas largas que no usa, la sonda midió un pico de +5–6 MiB sobre la base con el
+ajuste de malloc (antes, +11 MiB): sobre los ≈ 45 MiB de régimen quedan unos 5 MiB de margen
+hasta la puerta de 56 MiB. El criterio no cambia: una muestra por encima es motivo para
+revertir. Ese mismo minuto el frente hace sus
+primeras llamadas OAuth con el cliente compartido: la ruta TLS real se mide aquí por primera vez
+(la pila de `poll --shadow` no tiene DNS).
+
+Seguimiento a los 30 y a los 60 minutos del reinicio, sobre el mismo proceso:
+
+```sh
+P=$(systemctl --user show -p MainPID --value cc-dash.service)
+awk '/^Pss:/{print $2}' /proc/$P/smaps_rollup; ls /proc/$P/task | wc -l   # minuto 30: anotar
+awk '/^Pss:/{print $2}' /proc/$P/smaps_rollup; ls /proc/$P/task | wc -l   # minuto 60: anotar
+```
+
+Vigilancia larga, sobre el mismo proceso: una muestra entre las 4 y las 6 horas del reinicio y otra
+al día siguiente (la pendiente medida en sombra, ≈ 10 MiB/h en 10 min con cinco puntos que oscilan,
+no descarta una fuga lenta que cruce la puerta en unas horas). Antes de cada una, comprobar que
+el proceso es el mismo (`NRestarts=0` y el mismo `MainPID`); si no, la muestra no vale y se
+anota el reinicio:
+
+```sh
+P=$(systemctl --user show -p MainPID --value cc-dash.service)
+systemctl --user show -p NRestarts -p ActiveEnterTimestamp cc-dash.service
+echo "$(date '+%F %T') $(awk '/^Pss:/{print $2}' /proc/$P/smaps_rollup) $(ls /proc/$P/task | wc -l)" \
+  | tee -a /tmp/vigilancia-2e-larga.txt                             # 4–6 h; mañana, otra línea
+awk '$3 > 57344 || $4 > 12 {print "REVERTIR: " $1 " " $2 ": " $3 " KiB, " $4 " hilos"}' \
+  /tmp/vigilancia-2e-larga.txt                                       # nada
+```
+
+Revertir (paso 4, release `790e58866107`) si cualquier muestra pasa de 56 MiB (57 344 KiB) o de
+12 hilos, si del minuto 5 al 10 crece más de 3 MiB, o si del minuto 30 al 60 crece más de 2 MiB.
+Las mismas dos cotas (56 MiB, 12 hilos) valen para las muestras de las 4–6 h y del día siguiente.
+
+Dónde se anota: como en la 2d, en una subsección «Ejecutado — <fecha> (release `<sha12>`, main
+`<commit>`)» al final de esta sección 2e, con las diez muestras de `/tmp/vigilancia-2e.txt`, las de
+los minutos 30 y 60, las dos de `/tmp/vigilancia-2e-larga.txt`, el recuento de reenvíos y si se
+revirtió. La del día siguiente se añade a esa misma subsección cuando se toma.
+
+- Ninguna ruta de uso en la traza; `GET /usage/guard` y `GET /usage/analytics` tampoco (la 2d ya
+  no los pide). Una línea `GET /usage/state` aislada es un ciclo del Python (ver «Diferencias»);
+  repetidas, revertir. `GET /state` no aparece (o menos de 1 de cada 100 sondeos): si aparece en
+  cada sondeo, la guardia no tiene límites (credenciales ilegibles: falla cerrado, ver
+  «Diferencias»).
+- La barra lateral muestra los % de cuota desde el primer minuto tras el reinicio (refresco del
+  arranque). El menú «Cuenta» de un pane puede salir sin límites hasta 180 s si la primera
+  petición OAuth dio 429.
+- Tras un turno de Claude o Codex, la tarjeta de uso lo refleja en ≤ 2 min; el borde del pane
+  cambia al cambiar de modelo en ≤ 10 s; el `diff` de bordes y `pane-models.txt` sale vacío.
+- Memoria: las diez muestras ≤ 56 MiB y ≤ 12 hilos; del minuto 5 al 10, ≤ 3 MiB; del 30 al 60,
+  ≤ 2 MiB; a las 4–6 h y al día siguiente, ≤ 56 MiB y ≤ 12 hilos. El heredado (última columna) apenas crece frente a `/tmp/base-2e-heredado.txt`: ya no
+  importa ni reconstruye el estado de uso.
+- Llamadas OAuth: el frente refresca como mucho cada 60 s y el Python cada 300 s. Si
+  `api.anthropic.com` empieza a dar 429 con frecuencia, anotarlo: la caché de error del frente
+  (180 s) lo absorbe, pero es la señal para adelantar la 2g (un solo dueño de límites).
+
+### 4. Reversión
+
+A/B sin cambiar binario (el Python vuelve a ser dueño de importación y bordes en su primer
+`/usage/state`; su primera respuesta puede traer el estado de antes del cutover durante un ciclo).
+Si la reversión llega dentro de la ventana del paso 3, quitar antes la traza del entorno del
+gestor (`systemctl --user unset-environment COMANDOS_DASH_TRACE_FORWARD`):
+
+```sh
+systemctl --user set-environment COMANDOS_DASH_NATIVE=0 && systemctl --user restart cc-dash.service
+# persistente: drop-in ~/.config/systemd/user/cc-dash.service.d/no-native.conf con
+# [Service]\nEnvironment=COMANDOS_DASH_NATIVE=0, daemon-reload y restart (deshacer: rm + daemon-reload + restart)
+```
+
+Quitar solo el ajuste de malloc (la 2e sigue, con ≈ 61 MiB en vez de ≈ 45):
+
+```sh
+rm ~/.config/systemd/user/cc-dash.service.d/malloc.conf
+systemctl --user daemon-reload && systemctl --user restart cc-dash.service
+systemctl --user show -p Environment cc-dash.service | grep -c GLIBC_TUNABLES   # 0
+```
+
+Volver a la release de la 2d con la ligereza, `790e58866107` (la actual del paso 0), nunca a
+`9f6fa07f26f0` (la 2d de antes de la ligereza, 270 MiB en vivo). `install --rollback-release`
+vuelve a la que nombra `releases/previous`, que el `--stage` del paso 2 dejó en `790e58866107`.
+Comprobarlo antes, y quitar también el drop-in: el binario de la 2d no quita la variable a sus
+hijos (un `tmux` que arrancara el servidor se la pasaría a los panes):
+
+```sh
+cat ~/.local/share/comandos/releases/previous                       # 790e58866107
+~/.local/share/comandos/bin/comandos install --rollback-release
+readlink -f ~/.local/share/comandos/bin/comandos                    # …/releases/790e58866107/comandos
+rm -f ~/.config/systemd/user/cc-dash.service.d/malloc.conf && systemctl --user daemon-reload
+systemctl --user restart cc-dash.service
+grep -qa 'GET /extension-usage y GET /usage/state' "$(readlink -f ~/.local/share/comandos/bin/comandos)" && echo "SIGUE LA 2e"
+grep -qa 'GET /pomodoro, GET /sovereignty y GET /state' "$(readlink -f ~/.local/share/comandos/bin/comandos)" || echo "NO ES LA 2d"
+systemctl --user show -p Environment cc-dash.service | grep -c GLIBC_TUNABLES   # 0
+```
+
+Si `previous` no es `790e58866107` (otro `--stage` entre medias), no usar `--rollback-release`:
+apagar lo nativo con el A/B de arriba (`COMANDOS_DASH_NATIVE=0`), quitar el drop-in y decidir la
+release con el usuario.
+
+El centinela de la 2d (`'GET /pomodoro, GET /sovereignty y GET /state'`) solo lo lleva el binario
+de la 2d. Desde el rebase de la 2e sobre main, `UsageBackend::ROUTES` dice `"GET /pomodoro, GET
+/sovereignty, GET /state, GET /analytics/week y GET /extension-usage"`; tras la Tarea 8, `"…, GET
+/analytics/week, GET /accounts, GET /extension-usage y GET /usage/state"`. El centinela de la 2e
+(`'GET /extension-usage y GET /usage/state'`) exige ese orden.
+
+Las filas que escribe el frente (turnos, tramos, configuraciones, paneles, fotos de cuota) tienen
+el formato y las claves del Python: revertir no necesita limpiar nada. `comandos-usage-import.lock`
+puede quedarse en `~/.claude/hooks`.
+
+### Medido antes del cutover (rama `migration/rust-fase2e`)
+
+Rama de la 2e, binario release, arnés en namespace de red privado, copias de `~/.claude/hooks`,
+`app-state.sqlite3` y `comandos-usage.sqlite`. El frente de la pila lleva el `GLIBC_TUNABLES` de
+producción (lo pone `xtask`); los dos Python, no. Los sondeos usaron el binario de `47bb705`; la
+suite y la paridad, el de `7f060d6`, que solo añade el contador de escrituras de fotos de cuota
+en vuelo que las pruebas esperan (sin cambio en lo que sirve el frente).
+
+```sh
+D="--hooks $HOME/.claude/hooks --state-db $HOME/.local/state/comandos/app-state.sqlite3 \
+   --usage-db $HOME/.claude/hooks/comandos-usage.sqlite --comandos $NEW"
+"$XT" poll --shadow --minutes 5 $D --agents 48 --extra-panes 190 --pollers 3 --burst 17 \
+  --max-threads 12 --max-pss-mib 56 --max-static-p95-ms 100     # puerta: sale 0
+"$XT" poll --shadow --minutes 10 $D
+"$XT" poll --shadow --minutes 10 $D --no-native
+# sin el ajuste de malloc (para comparar): añadir --glibc-tunables ''
+```
+
+`poll` anuncia en su primera línea el `GLIBC_TUNABLES` con que arranca el frente.
+
+- Suite del workspace: 1012 pruebas, 0 fallos, 1 ignorada (herramienta manual de RSS);
+  `fmt` y `clippy -D warnings` limpios.
+- `xtask parity`: 165 OK, 0 DIFF, 0 SKIP de 165. Reenviadas, 13 rutas distintas, una vez cada
+  una y todas por diseño: GET `/states`, `/operator`, `/no-existe.css`, `/vendor/`,
+  `/model/status`, `/pomodoro` (con consulta), `/analytics/weekly`, los prefijos `/accountsX`,
+  `/providersX`, `/extension-usageX` y `/usage/stateX`, y POST `/workspace/close-group`,
+  `/terminal-panes` (`close`). GET `/usage/state`, `/analytics/week` y `/accounts` ya no aparecen.
+  Una corrida dio 164 OK y 1 DIFF en `f-sovereignty`: `usage_tool_calls` con 118 555 filas en el
+  oráculo y 118 556 en el frente. El arnés copia la base viva dos veces (una por HOME) y un hook
+  insertó una fila entre las dos copias; la corrida siguiente dio 165 OK.
+- Puerta de ligereza (5 min, carga realista `--agents 48 --extra-panes 190 --pollers 3 --burst 17
+  --max-threads 12 --max-pss-mib 56 --max-static-p95-ms 100`, con el ajuste de malloc): pasa.
+  Pss del frente 21 609 → 47 369 → 46 773 → 45 477 → 44 341 → 45 069 KiB (minutos 0 a 5), 6–7
+  hilos, 2815 peticiones, 0 errores, 0 no-2xx, ninguna ruta reenviada. GET `/usage/state`
+  124/916/3175 ms, GET `/state` 1/800/905, estáticos en la ola 0/23/36 (la máquina compilaba a
+  la vez en los minutos 1–4: las latencias de esta corrida sirven para comparar, no como
+  referencia). Sin el ajuste, la misma carga quedó en 58–61 MiB (ronda 3 de la memoria).
+- `xtask poll --shadow --minutes 10` con nativo (carga estándar): 3390 peticiones, 0 errores,
+  0 no-2xx, ninguna ruta reenviada. Pss del frente 21 569 KiB al minuto 0, 40 457 al minuto 1 y
+  42 077 al minuto 10; desde el minuto 5, 41 301–42 713 KiB (1412 KiB de banda) y pendiente de
+  10 121 KiB/h (cinco puntos que oscilan: 42 713 al minuto 8, 42 077 al 10). Hilos: 6–7. Heredado
+  de la pila: 45 722 KiB al minuto 1 y 47 131 al minuto 10 (+1409 KiB). GET `/usage/state`
+  p50 77 ms, p95 414, p99 434 (60); GET `/analytics/week` 305/393/393 (10); GET `/state`
+  114/159/220.
+- Lo mismo con `--no-native` (todo reenviado): 3390 peticiones, 0 errores, 0 no-2xx; heredado
+  187 544 KiB al minuto 1 y 306 276 al minuto 10 (+118 732 KiB). GET `/usage/state`
+  144/733/805 ms; GET `/analytics/week` 450/531/531; GET `/state` 174/236/446.
+- Criterios: frente plano, **no en sentido estricto**: +1620 KiB del minuto 1 al 10 y banda de
+  1412 KiB desde el minuto 5, sin tendencia clara y por debajo de la puerta de 56 MiB; se vuelve a
+  mirar en vivo (paso 3). Heredado ≤ 50 % del crecimiento sin nativo, sí (1409 / 118 732 = 1,2 %).
+  p95 nativo de `/usage/state` ≤ p95 sin nativo, sí (414 ≤ 733 ms), y p99 ≤ 1000 ms, sí (434 ms).
+
+Lo que **no** cubre la pila de `poll --shadow`: corre con un HOME que solo tiene copias de los
+hooks y de las dos bases (transcripts sintéticos de una línea, sin `~/.codex/sessions`, sin Grok
+ni OpenCode) y sin DNS, así que nunca hace la primera importación en frío real ni la ruta TLS de
+los límites. Esas dos cosas se miden aparte o en vivo:
+
+- **Importación en frío, medida con datos reales** (5 de octubre de 2026, 10:40–10:50). Sonda
+  `crates/comandos-server/tests/import_cold_probe.rs` (`#[ignore]`, pide
+  `COMANDOS_COLD_IMPORT_PROBE=1`), binario de pruebas en release: corre los `record_local_*` en el
+  orden de la vuelta del frente (Codex → Grok → Claude por cuenta → OpenCode), con el `seen`
+  vacío, contra `~/.codex/sessions`, `~/.grok/sessions`, `~/.claude/projects`,
+  `~/.claude-accounts/*/projects` y una copia de `opencode.db`, hacia una base de uso nueva en un
+  directorio temporal. Solo lectura sobre el HOME; sin red ni credenciales. Ventana de 21 días:
+  2274–2277 archivos leídos (≈ 5,4 GB de Claude y ≈ 3,3 GB de Codex), 120 342 turnos escritos
+  (`claude_jsonl` 71 891, `codex_rollout` 47 473, `grok_updates` 769, `opencode_db` 209).
+
+  | Malloc | Caché de páginas | Pared | VmRSS antes | VmHWM | Pico sobre la base | VmRSS después |
+  |---|---|---|---|---|---|---|
+  | por omisión | fría (7,8 GiB leídos de disco) | 33,3 s | 5 656 KiB | 22 348 KiB | +16 692 KiB | 19 556 KiB |
+  | por omisión | caliente | 32,8 s | 5 652 KiB | 20 984 KiB | +15 332 KiB | 18 684 KiB |
+  | `GLIBC_TUNABLES` de producción | caliente | 28,6 s | 5 640 KiB | 16 652 KiB | +11 012 KiB | 9 128 KiB |
+  | `GLIBC_TUNABLES` de producción | caliente | 35,2 s | 5 640 KiB | 16 564 KiB | +10 924 KiB | 9 008 KiB |
+
+  Ese pico era de la fase de Codex (+10,6 MiB con el ajuste, +14,9 MiB sin él): hay rollouts de
+  hoy con líneas de hasta 6,5 MB (`response_item` con salidas de herramientas, `compacted`,
+  `event_msg` de tipo `item_completed`), que se guardaban enteras en el búfer de línea y se
+  analizaban; Grok subía 7 MiB por sus trozos de mensaje. **Arreglado** (`8a8c6ae`): una línea
+  de más de 128 KiB deja de guardarse y se lee en flujo (`comandos-store/src/line_scan.rs`)
+  anotando solo `type` y `payload.type` (Codex), `type` (Claude) o
+  `params.update.sessionUpdate` (Grok), con la última clave repetida ganando como en
+  `json.loads`; si es de un tipo que el Python ignora se salta, y si no se puede probar (escapes
+  en una clave o en el valor) se relee entera. El oráculo `big_lines_skip_matches_python_and_full_read`
+  da las mismas filas con el descarte, sin él y en el Python. La misma sonda tras el arreglo
+  (`COMANDOS_PROBE_BIG_LINES=read` la corre sin él, para comparar en el mismo estado de caché):
+
+  | Malloc | Líneas largas | Caché | Pared | VmRSS antes | VmHWM | Pico sobre la base | VmRSS después |
+  |---|---|---|---|---|---|---|---|
+  | por omisión | descartadas | fría (8,1 GiB de disco) | 29,7 s | 5 632 KiB | 9 452 KiB | +3 820 KiB | 9 452 KiB |
+  | `GLIBC_TUNABLES` de producción | descartadas | caliente | 27,2 s | 5 700 KiB | 11 368 KiB | +5 668 KiB | 9 104 KiB |
+  | `GLIBC_TUNABLES` de producción | enteras (comparación) | caliente | 35,3 s | 5 680 KiB | 17 084 KiB | +11 404 KiB | 9 164 KiB |
+  | `GLIBC_TUNABLES` de producción | descartadas | caliente | 27,7 s | 5 656 KiB | 10 864 KiB | +5 208 KiB | 9 156 KiB |
+
+  Con el ajuste, la fase de Codex sube ahora 2,8–4,0 MiB, Grok ≤ 1 MiB y cada cuenta de Claude
+  1,8–2,5 MiB; unos 3,5 MiB del pico se quedan como caché de SQLite y `seen` (9,1 MiB después),
+  así que lo transitorio es ≈ 2 MiB. Mismas filas (120 803 turnos, 2278 archivos). En el frente
+  (≈ 45 MiB con el ajuste) la primera importación queda hacia los 50–51 MiB, con ≈ 5 MiB de
+  margen a la puerta.
+- **Ruta OAuth/TLS.** Desde la ronda de arreglo el frente comparte un solo cliente `reqwest` entre
+  cuentas y vueltas (antes, uno por cuenta cada 60 s), sin conexiones ociosas en el pool. Su
+  memoria y sus errores reales se miden por primera vez en vivo, en el paso 3: el refresco del
+  arranque sale en el primer segundo y la primera importación unos 75 s después del reinicio,
+  ambos dentro de la ventana de vigilancia.
+- **Tras el descarte de líneas largas** (`8a8c6ae`, binario release de ese commit): suite del
+  workspace 1021 pruebas, 0 fallos, 2 ignoradas; `fmt` y `clippy -D warnings` limpios; `xtask
+  parity` 165 OK, 0 DIFF, 0 SKIP. Puerta de ligereza de 5 min con la carga realista: sale 0; Pss
+  21 945 → 42 349 → 43 113 → 44 549 → 43 393 → 43 773 KiB (minutos 0 a 5), 6 hilos, 2815
+  peticiones, 0 errores, 0 no-2xx, ninguna ruta reenviada; GET `/usage/state` 92/438/500 ms, GET
+  `/state` 575/699/734, estáticos en la ola 0/23/32.
+- **Tras la ronda de arreglo** (fusión de `main` `3f0a01a`, I1, I2, M1, M3; binario release de
+  `7d75841`): suite del workspace 1017 pruebas, 0 fallos, 2 ignoradas (la herramienta manual de
+  RSS y la sonda de importación); `fmt` y `clippy -D warnings` limpios. `xtask parity` 165 OK,
+  0 DIFF, 0 SKIP (una corrida previa dio 164 OK y 1 DIFF en `f-sovereignty`: `events.jsonl`
+  cambió entre las dos copias del arnés, como la vez anterior). Puerta de ligereza de 5 min con
+  la carga realista: sale 0; Pss 21 905 → 44 141 → 47 677 → 47 569 → 47 553 → 47 469 KiB
+  (minutos 0 a 5), 6–7 hilos, 2815 peticiones, 0 errores, 0 no-2xx, ninguna ruta reenviada; GET
+  `/usage/state` 104/903/2473 ms, GET `/state` 548/750/909, estáticos en la ola 0/21/22.

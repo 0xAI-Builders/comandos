@@ -882,6 +882,9 @@ impl Session {
             command.env_clear();
             command.envs(base.iter().map(|(k, v)| (k, v)));
         }
+        // El ajuste de malloc del frente no pasa a los agentes (como
+        // `tmux::CHILD_ENV_REMOVE` en los hijos del tablero).
+        command.env_remove(comandos_core::malloc_tuning::GLIBC_TUNABLES_ENV);
         command.envs(env.iter().map(|(k, v)| (k, v)));
         let mut child = spawn_retrying(&mut command).map_err(|e| os_error(&e, &program))?;
         let group = Pid::from_raw(i32::try_from(child.id()).unwrap_or(0));

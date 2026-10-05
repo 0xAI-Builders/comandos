@@ -31,6 +31,12 @@ fn base(home: &PathBuf) -> Command {
         .env_remove("COMANDOS_DASH_NATIVE")
         .env("XDG_STATE_HOME", home.join(".local/state"))
         .env_remove("COMANDOS_DASH_DIR")
+        // Ni cuentas ni tmux del usuario: el refresco de límites del arranque
+        // lee el HOME temporal.
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("CODEX_HOME")
+        .env_remove("GROK_HOME")
+        .env_remove("TMUX")
         .env("COMANDOS_DASH_LEGACY_PORT", "1")
         // El censo de declinaciones (D7) va a `$XDG_RUNTIME_DIR`: nunca el real.
         .env("XDG_RUNTIME_DIR", home.join("run"))
@@ -202,5 +208,101 @@ fn dash_native_off_never_opens_the_state_db_and_traces_forwards() {
             .exists(),
         "con COMANDOS_DASH_NATIVE=0 la base no se abre"
     );
+    let _ = fs::remove_dir_all(&home);
+}
+
+/// El `GLIBC_TUNABLES` del drop-in de `cc-dash` es del frente: un hijo (aquí
+/// un `fc-list` falso, el mismo camino que `tmux`, `systemd-run` y `ssh`) no
+/// lo hereda.
+#[test]
+fn dash_children_do_not_inherit_the_front_malloc_tuning() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = temp_home("tunables");
+    let fakebin = home.join("fakebin");
+    fs::create_dir_all(&fakebin).unwrap();
+    let seen = home.join("fc-list-env");
+    let script = fakebin.join("fc-list");
+    fs::write(
+        &script,
+        format!("#!/bin/sh\nenv > '{}'\necho 'Hack'\n", seen.display()),
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    let path = format!(
+        "{}:{}",
+        fakebin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let port = free_port();
+    let tunables = comandos_core::malloc_tuning::PRODUCTION_GLIBC_TUNABLES;
+    // Un fallo a mitad no deja el frente vivo: se mata al soltarlo.
+    struct Front(std::process::Child);
+    impl Drop for Front {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let mut front = Front(
+        base(&home)
+            .env("GLIBC_TUNABLES", tunables)
+            .env("PATH", path)
+            .args(["dash", &port.to_string(), "--no-open"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    let child = &mut front.0;
+    let stdout = child.stdout.take().unwrap();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        let _ = BufReader::new(stdout).read_line(&mut line);
+        let _ = tx.send(line);
+    });
+    rx.recv_timeout(Duration::from_secs(10))
+        .expect("banner de arranque");
+    // El frente sí lo tiene. glibc 2.35 parte la cadena en su sitio (cada
+    // `:` pasa a NUL), así que solo se mira el prefijo.
+    let environ = fs::read(format!("/proc/{}/environ", child.id())).unwrap();
+    let front_has = environ
+        .split(|b| *b == 0)
+        .any(|kv| kv.starts_with(b"GLIBC_TUNABLES="));
+    assert!(front_has, "el frente arranca con el ajuste");
+
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    write!(
+        stream,
+        "GET /prefs HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    let mut wire = String::new();
+    stream.read_to_string(&mut wire).unwrap();
+    assert!(wire.starts_with("HTTP/1.1 200"), "{wire}");
+    assert!(
+        wire.contains(r#""family": "Hack""#),
+        "el fc-list falso corrió: {wire}"
+    );
+
+    let env = fs::read_to_string(&seen).expect("el fc-list falso guardó su entorno");
+    assert!(
+        env.lines().any(|l| l.starts_with("HOME=")),
+        "entorno heredado: {env}"
+    );
+    assert!(
+        !env.lines().any(|l| l.starts_with("GLIBC_TUNABLES=")),
+        "el hijo no hereda GLIBC_TUNABLES: {env}"
+    );
+
+    let killed = Command::new("kill")
+        .args(["-TERM", &child.id().to_string()])
+        .status()
+        .unwrap();
+    assert!(killed.success());
+    assert_eq!(child.wait().unwrap().code(), Some(0));
     let _ = fs::remove_dir_all(&home);
 }

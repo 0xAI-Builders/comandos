@@ -240,6 +240,8 @@ impl From<std::io::Error> for Error {
 pub mod workspace;
 
 pub mod focus;
+mod line_scan;
 pub mod pomodoro;
 pub mod usage;
+pub mod usage_import;
 pub mod usage_read;

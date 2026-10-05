@@ -1,7 +1,7 @@
 //! Portable account-separated eight-day analytics; supplied rows and time only.
 use crate::{
     allocation::{
-        Result, add_integers, default, divide_number, divide_positive, error, integer,
+        Error, Result, add_integers, default, divide_number, divide_positive, error, integer,
         integer_float, integer_value, number, numeric, numeric_add, numeric_cmp, numeric_sub,
         object, pyfloat, pymax, pymin, required, round_digits, round_int, round_value, string,
     },
@@ -13,7 +13,7 @@ use chrono::{
 use serde_json::{Value, json};
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
 };
 pub const TZ: &str = "America/Mexico_City";
 pub const WINDOW_DAYS: i64 = 8;
@@ -30,8 +30,8 @@ pub struct WeekInput<'a> {
     pub now: f64,
     pub offset: i64,
     pub limits: &'a [Value],
-    pub turns: &'a [Value],
-    pub spans: &'a [Value],
+    /// Turnos y tramos de la ventana ya reducidos (`WeekRows`).
+    pub rows: &'a WeekRows,
     pub snapshots: &'a [Value],
     pub records: &'a [Value],
     pub tz_name: &'a str,
@@ -279,65 +279,193 @@ fn provider(row: &Value, required_key: bool) -> Result<Option<&str>> {
 struct Interval {
     start: f64,
     end: f64,
-    tokens: String,
+    tokens: Tokens,
 }
-type IntervalGroup = ((String, String), Vec<Interval>);
-struct MergedInterval {
-    start: f64,
-    end: f64,
-    tokens: Vec<(f64, String)>,
+/// Los tokens de un intervalo (`int(...)` del Python, sin tope). Casi siempre
+/// caben en un `i64`: así no hace falta un texto en el montón por cada turno.
+#[derive(Clone)]
+enum Tokens {
+    Small(i64),
+    Big(Box<str>),
 }
-fn intervals(turns: &[Value], spans: &[Value]) -> Result<Vec<IntervalGroup>> {
-    let mut groups: Vec<IntervalGroup> = vec![];
-    for (rows, is_span) in [(turns, false), (spans, true)] {
-        for row in rows {
-            let Some(p) = provider(row, true)? else {
-                continue;
-            };
-            let project = if is_span {
-                project_of(&row["git_root"])?
-            } else {
-                project_of(default(&row["git_root"], &row["pane_pwd"]))?
-            };
-            let key = (account_id(p, &row["account"])?, project);
-            let end = pyfloat(required(row, "finished")?)?;
-            let start = pymin(
-                end,
-                pyfloat(if is_span {
-                    required(row, "started")?
-                } else {
-                    default(&row["started"], &row["finished"])
-                })?,
-            );
-            let tokens = if is_span {
-                "0".into()
-            } else {
-                integer(default(&row["tokens"], &json!(0)))?
-            };
-            let item = Interval { start, end, tokens };
-            if let Some((_, items)) = groups.iter_mut().find(|(k, _)| k == &key) {
-                items.push(item)
-            } else {
-                groups.push((key, vec![item]))
+impl Tokens {
+    /// Desde la grafía canónica de `integer` (sin ceros a la izquierda ni `-0`),
+    /// que es la de `i64::to_string` cuando cabe.
+    fn from_integer(raw: String) -> Self {
+        raw.parse()
+            .map_or_else(|_| Self::Big(raw.into_boxed_str()), Self::Small)
+    }
+    fn text(&self) -> std::borrow::Cow<'_, str> {
+        match self {
+            Self::Small(n) => n.to_string().into(),
+            Self::Big(raw) => (&**raw).into(),
+        }
+    }
+    fn compare(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Self::Small(a), Self::Small(b)) => a.cmp(b),
+            _ => {
+                crate::json::number_cmp(&integer_value(&self.text()), &integer_value(&other.text()))
             }
         }
     }
-    Ok(groups)
+}
+type GroupKey = (String, String);
+struct MergedInterval {
+    start: f64,
+    end: f64,
+    tokens: Vec<(f64, Tokens)>,
+}
+/// Los intervalos de una clase de filas (turnos o tramos) por `(cuenta, proyecto)`,
+/// en el orden en que aparece cada grupo, y el primer error de esa clase.
+#[derive(Default)]
+struct IntervalGroups {
+    groups: Vec<(GroupKey, Vec<Interval>)>,
+    index: HashMap<GroupKey, usize>,
+    error: Option<Error>,
+}
+impl IntervalGroups {
+    /// Una fila del bucle de `_intervals`: tras el primer error el Python ya no
+    /// sigue, así que las filas siguientes se ignoran.
+    fn push(&mut self, row: &Value, is_span: bool) {
+        if self.error.is_some() {
+            return;
+        }
+        match interval(row, is_span) {
+            Ok(Some((key, item))) => match self.index.get(&key) {
+                Some(&i) => {
+                    if let Some((_, items)) = self.groups.get_mut(i) {
+                        items.push(item)
+                    }
+                }
+                None => {
+                    self.index.insert(key.clone(), self.groups.len());
+                    self.groups.push((key, vec![item]));
+                }
+            },
+            Ok(None) => {}
+            Err(e) => self.error = Some(e),
+        }
+    }
+    fn items(&self, key: &GroupKey) -> &[Interval] {
+        self.index
+            .get(key)
+            .and_then(|&i| self.groups.get(i))
+            .map_or(&[], |(_, items)| items.as_slice())
+    }
+}
+fn interval(row: &Value, is_span: bool) -> Result<Option<(GroupKey, Interval)>> {
+    let Some(p) = provider(row, true)? else {
+        return Ok(None);
+    };
+    let project = if is_span {
+        project_of(&row["git_root"])?
+    } else {
+        project_of(default(&row["git_root"], &row["pane_pwd"]))?
+    };
+    let key = (account_id(p, &row["account"])?, project);
+    let end = pyfloat(required(row, "finished")?)?;
+    let start = pymin(
+        end,
+        pyfloat(if is_span {
+            required(row, "started")?
+        } else {
+            default(&row["started"], &row["finished"])
+        })?,
+    );
+    let tokens = if is_span {
+        Tokens::Small(0)
+    } else {
+        Tokens::from_integer(integer(default(&row["tokens"], &json!(0)))?)
+    };
+    Ok(Some((key, Interval { start, end, tokens })))
+}
+/// Turnos y tramos de la semana reducidos fila a fila a lo que `build_week` y
+/// `sidebar_accounts` leen de ellos: los intervalos por grupo y, de los turnos
+/// de los últimos 7 días, el consumo por cuenta. Así no hace falta tener cada
+/// turno de la ventana (decenas de miles) como objeto JSON a la vez.
+///
+/// El resultado no depende del orden en que se mezclen turnos y tramos: el Python
+/// recorre todos los turnos y después todos los tramos, y eso se reconstruye al
+/// leer. `now` es el de `sidebar_accounts` (la ventana de 7 días).
+pub struct WeekRows {
+    intervals: Intervals,
+    sidebar: SidebarTurns,
+}
+/// Los intervalos de turnos y de tramos por separado (ver `intervals`).
+#[derive(Default)]
+struct Intervals {
+    turns: IntervalGroups,
+    spans: IntervalGroups,
+}
+impl WeekRows {
+    pub fn new(now: f64) -> Self {
+        Self {
+            intervals: Intervals::default(),
+            sidebar: SidebarTurns::new(now),
+        }
+    }
+    /// Todas las filas a la vez (la forma de las pruebas y de los datos de ejemplo).
+    pub fn from_rows(turns: &[Value], spans: &[Value], now: f64) -> Self {
+        let mut rows = Self::new(now);
+        for row in turns {
+            rows.push_turn(row);
+        }
+        for row in spans {
+            rows.push_span(row);
+        }
+        rows
+    }
+    pub fn push_turn(&mut self, row: &Value) {
+        self.intervals.turns.push(row, false);
+        self.sidebar.push(row);
+    }
+    pub fn push_span(&mut self, row: &Value) {
+        self.intervals.spans.push(row, true);
+    }
+}
+impl Intervals {
+    /// `_intervals(turns, spans)`: los grupos de los turnos en su orden y después
+    /// los que solo tienen tramos; en cada grupo, los turnos antes que los tramos.
+    /// Cada grupo se copia al pedirlo (lo ordena quien lo recibe), no todos a la vez.
+    fn intervals(&self) -> Result<impl Iterator<Item = (&GroupKey, Vec<Interval>)> + '_> {
+        if let Some(e) = self.turns.error.as_ref().or(self.spans.error.as_ref()) {
+            return Err(e.clone());
+        }
+        let turns = self.turns.groups.iter().map(|(key, items)| {
+            let mut all = Vec::with_capacity(items.len() + self.spans.items(key).len());
+            all.extend_from_slice(items);
+            all.extend_from_slice(self.spans.items(key));
+            (key, all)
+        });
+        let spans = self
+            .spans
+            .groups
+            .iter()
+            .filter(|(key, _)| !self.turns.index.contains_key(key))
+            .map(|(key, items)| (key, items.clone()));
+        Ok(turns.chain(spans))
+    }
 }
 pub fn sessions(turns: &[Value], spans: &[Value], tz: &str) -> Result<Vec<Value>> {
-    sessions_in(turns, spans, zone(tz)?)
+    let mut rows = Intervals::default();
+    for row in turns {
+        rows.turns.push(row, false);
+    }
+    for row in spans {
+        rows.spans.push(row, true);
+    }
+    sessions_in(&rows, zone(tz)?)
 }
-fn sessions_in(turns: &[Value], spans: &[Value], tz: chrono_tz::Tz) -> Result<Vec<Value>> {
+fn sessions_in(rows: &Intervals, tz: chrono_tz::Tz) -> Result<Vec<Value>> {
     let mut out = vec![];
-    for ((acc, proj), mut items) in intervals(turns, spans)? {
+    for ((acc, proj), mut items) in rows.intervals()? {
         items.sort_by(|a, b| {
             a.start
                 .partial_cmp(&b.start)
                 .unwrap_or(Ordering::Equal)
                 .then_with(|| a.end.partial_cmp(&b.end).unwrap_or(Ordering::Equal))
-                .then_with(|| {
-                    crate::json::number_cmp(&integer_value(&a.tokens), &integer_value(&b.tokens))
-                })
+                .then_with(|| a.tokens.compare(&b.tokens))
         });
         let mut merged: Vec<MergedInterval> = vec![];
         for item in items {
@@ -375,7 +503,7 @@ fn sessions_in(turns: &[Value], spans: &[Value], tz: chrono_tz::Tz) -> Result<Ve
                 let mut total = "0".to_string();
                 for (at, tok) in &tokens {
                     if a <= *at && *at <= b && (*at < b || piece_end.civil == stop.civil) {
-                        total = add_integers(&total, tok);
+                        total = add_integers(&total, &tok.text());
                     }
                 }
                 let st = cur.civil.hour() as f64
@@ -681,7 +809,7 @@ fn build_accounts_in(input: &AccountsInput<'_>, tz: chrono_tz::Tz) -> Result<Vec
     }
     Ok(out)
 }
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Measured {
     sessions: Vec<Value>,
     tokens: String,
@@ -706,12 +834,151 @@ fn insert_scalar(values: &mut Vec<Value>, value: &Value) -> Result<()> {
     }
     Ok(())
 }
+/// Lo medido de una cuenta en el orden de sus turnos y el primer error (con el
+/// número de turno: el Python para en el primero de todos los que le afectan).
+#[derive(Clone)]
+struct Tally {
+    measured: Measured,
+    error: Option<(usize, Error)>,
+}
+impl Tally {
+    fn new() -> Self {
+        Self {
+            measured: Measured {
+                tokens: "0".into(),
+                ..Measured::default()
+            },
+            error: None,
+        }
+    }
+    fn add(&mut self, seq: usize, row: &Value) {
+        if self.error.is_none()
+            && let Err(e) = measure(&mut self.measured, row)
+        {
+            self.error = Some((seq, e))
+        }
+    }
+}
+/// El cuerpo del bucle de `sidebar_accounts` para un turno ya contado.
+fn measure(group: &mut Measured, row: &Value) -> Result<()> {
+    if truthy(&row["session"]) {
+        insert_scalar(&mut group.sessions, &row["session"])?
+    }
+    let tok = integer(default(&row["tokens"], &json!(0)))?;
+    if !tok.starts_with('-') {
+        group.tokens = add_integers(&group.tokens, &tok);
+    }
+    group.cost += pymax(0., pyfloat(default(&row["cost"], &json!(0)))?);
+    if truthy(&row["model"]) {
+        insert_scalar(&mut group.models, &row["model"])?
+    }
+    Ok(())
+}
+/// Una cuenta de la ventana. Si ya está en la columna cuenta todos sus turnos
+/// (`all`); si no, solo desde su primer turno de OpenCode, que la añade (`opencode`).
+struct AccountTurns {
+    all: Tally,
+    opencode: Option<OpencodeTurns>,
+}
+struct OpencodeTurns {
+    /// Turno que añade la cuenta: fija el orden de inserción en la columna.
+    seq: usize,
+    alias: String,
+    tally: Tally,
+}
+/// Los turnos de `sidebar_accounts` reducidos por cuenta, sin saber aún qué
+/// cuentas tiene la columna: se lleva lo de las dos posibilidades.
+struct SidebarTurns {
+    now: f64,
+    seen: usize,
+    /// Primer error que no depende de la columna (`float(finished)`, cuenta).
+    error: Option<(usize, Error)>,
+    accounts: BTreeMap<String, AccountTurns>,
+}
+impl SidebarTurns {
+    fn new(now: f64) -> Self {
+        Self {
+            now,
+            seen: 0,
+            error: None,
+            accounts: BTreeMap::new(),
+        }
+    }
+    fn push(&mut self, row: &Value) {
+        let seq = self.seen;
+        self.seen += 1;
+        // Tras ese error el Python ya no lee más turnos.
+        if self.error.is_some() {
+            return;
+        }
+        if let Err(e) = self.account_turn(seq, row) {
+            self.error = Some((seq, e))
+        }
+    }
+    fn account_turn(&mut self, seq: usize, row: &Value) -> Result<()> {
+        let finished = pyfloat(default(&row["finished"], &json!(0)))?;
+        if !(self.now - 604800. <= finished && finished <= self.now) {
+            return Ok(());
+        }
+        let p = if row["agent"] == "opencode" {
+            "opencode".into()
+        } else {
+            row["provider"].as_str().map_or_else(
+                || {
+                    if row["provider"].is_null() {
+                        "None".into()
+                    } else {
+                        row["provider"].to_string()
+                    }
+                },
+                str::to_string,
+            )
+        };
+        let acc = account_id(&p, &row["account"])?;
+        let opencode = if p == "opencode" {
+            Some(account_of(&row["account"])?)
+        } else {
+            None
+        };
+        let entry = self.accounts.entry(acc).or_insert_with(|| AccountTurns {
+            all: Tally::new(),
+            opencode: None,
+        });
+        entry.all.add(seq, row);
+        if let (None, Some(alias)) = (&entry.opencode, opencode) {
+            entry.opencode = Some(OpencodeTurns {
+                seq,
+                alias,
+                tally: Tally::new(),
+            });
+        }
+        if let Some(o) = &mut entry.opencode {
+            o.tally.add(seq, row)
+        }
+        Ok(())
+    }
+}
 pub fn sidebar_accounts(
     accounts: &[Value],
     limits: &[Value],
     turns: &[Value],
     now: f64,
 ) -> Result<Vec<Value>> {
+    let mut sidebar = SidebarTurns::new(now);
+    for row in turns {
+        sidebar.push(row);
+    }
+    sidebar_in(accounts, limits, &sidebar)
+}
+/// `sidebar_accounts` con los turnos ya reducidos (`WeekRows::push_turn`).
+pub fn sidebar_accounts_from(
+    accounts: &[Value],
+    limits: &[Value],
+    rows: &WeekRows,
+) -> Result<Vec<Value>> {
+    sidebar_in(accounts, limits, &rows.sidebar)
+}
+fn sidebar_in(accounts: &[Value], limits: &[Value], turns: &SidebarTurns) -> Result<Vec<Value>> {
     let mut out = accounts.to_vec();
     let mut by_id = BTreeMap::new();
     for (i, a) in out.iter().enumerate() {
@@ -731,57 +998,43 @@ pub fn sidebar_accounts(
         );
         let id = account_id(&p, &row["account"])?;
         let plan = default(&row["plan_type"], &row["plan"]);
-        if let Some(i) = by_id.get(&id)
-            && truthy(plan)
+        if truthy(plan)
+            && let Some(account) = by_id
+                .get(&id)
+                .and_then(|&i| out.get_mut(i))
+                .and_then(Value::as_object_mut)
         {
-            out[*i]["plan"] = plan.clone();
+            account.insert("plan".into(), plan.clone());
         }
     }
-    let mut groups: BTreeMap<String, Measured> = BTreeMap::new();
-    for row in turns {
-        let finished = pyfloat(default(&row["finished"], &json!(0)))?;
-        if !(now - 604800. <= finished && finished <= now) {
-            continue;
-        }
-        let p = if row["agent"] == "opencode" {
-            "opencode".into()
-        } else {
-            row["provider"].as_str().map_or_else(
-                || {
-                    if row["provider"].is_null() {
-                        "None".into()
-                    } else {
-                        row["provider"].to_string()
-                    }
-                },
-                str::to_string,
-            )
-        };
-        let acc = account_id(&p, &row["account"])?;
-        if !by_id.contains_key(&acc) {
-            if p != "opencode" {
-                continue;
-            }
-            by_id.insert(acc.clone(), out.len());
-            out.push(json!({"id":acc,"provider":p,"cli":"OpenCode","alias":account_of(&row["account"])? ,"color":"#2fd3c0","week":null,"model":null,"h5":null}));
-        }
-        let group = groups.entry(acc).or_insert_with(|| Measured {
-            tokens: "0".into(),
-            ..Measured::default()
-        });
-        if truthy(&row["session"]) {
-            insert_scalar(&mut group.sessions, &row["session"])?
-        }
-        let tok = integer(default(&row["tokens"], &json!(0)))?;
-        if !tok.starts_with('-') {
-            group.tokens = add_integers(&group.tokens, &tok);
-        }
-        group.cost += pymax(0., pyfloat(default(&row["cost"], &json!(0)))?);
-        if truthy(&row["model"]) {
-            insert_scalar(&mut group.models, &row["model"])?
+    // Las cuentas que cuentan: las de la columna con todos sus turnos y las de
+    // OpenCode nuevas desde el turno que las añade, en ese orden de inserción.
+    let mut fresh: Vec<(&String, &OpencodeTurns)> = vec![];
+    let mut groups: BTreeMap<&String, &Tally> = BTreeMap::new();
+    for (acc, entry) in &turns.accounts {
+        if by_id.contains_key(acc) {
+            groups.insert(acc, &entry.all);
+        } else if let Some(o) = &entry.opencode {
+            fresh.push((acc, o));
+            groups.insert(acc, &o.tally);
         }
     }
-    for (acc, mut group) in groups {
+    // El Python para en el primer turno que lanza de todos los que recorre.
+    let first_error = groups
+        .values()
+        .filter_map(|t| t.error.as_ref())
+        .chain(turns.error.as_ref())
+        .min_by_key(|(seq, _)| *seq);
+    if let Some((_, e)) = first_error {
+        return Err(e.clone());
+    }
+    fresh.sort_by_key(|(_, o)| o.seq);
+    for (acc, o) in fresh {
+        by_id.insert(acc.clone(), out.len());
+        out.push(json!({"id":acc,"provider":"opencode","cli":"OpenCode","alias":o.alias,"color":"#2fd3c0","week":null,"model":null,"h5":null}));
+    }
+    for (acc, tally) in groups {
+        let mut group = tally.measured.clone();
         let mut sort_error = None;
         group.models.sort_by(|a, b| match (a, b) {
             (Value::String(a), Value::String(b)) => a.cmp(b),
@@ -800,7 +1053,14 @@ pub fn sidebar_accounts(
         measured["tokens"] = integer_value(&group.tokens);
         measured["costUsd"] = number(round_digits(group.cost, 6));
         measured["models"] = Value::Array(group.models);
-        out[*by_id.get(&acc).expect("group account")]["measured"] = measured;
+        // Toda cuenta medida está en la columna (`by_id`) y es un objeto (tiene `id`).
+        if let Some(account) = by_id
+            .get(acc)
+            .and_then(|&i| out.get_mut(i))
+            .and_then(Value::as_object_mut)
+        {
+            account.insert("measured".into(), measured);
+        }
     }
     Ok(out)
 }
@@ -873,7 +1133,7 @@ pub fn build_week(input: &WeekInput<'_>) -> Result<Value> {
         .iter()
         .map(ToString::to_string)
         .collect::<BTreeSet<_>>();
-    let all = sessions_in(input.turns, input.spans, tz)?;
+    let all = sessions_in(&input.rows.intervals, tz)?;
     let mut sess = vec![];
     let mut last: BTreeMap<String, f64> = BTreeMap::new();
     for s in all {

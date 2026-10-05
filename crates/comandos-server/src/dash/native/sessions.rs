@@ -1131,20 +1131,10 @@ async fn ssh_probe(opts: &NativeOptions, host: &str) -> (bool, String) {
 /// el estado (la salida son bytes; no se decodifica).
 async fn ssh_control_alive(opts: &NativeOptions, host: &str) -> bool {
     let program = &opts.ssh;
-    let mut cmd = tokio::process::Command::new(&program.path);
-    cmd.args(&program.prefix)
-        .args(["-O", "check", host])
+    let mut cmd = program.command();
+    cmd.args(["-O", "check", host])
         .stdin(std::process::Stdio::null())
         .kill_on_drop(true);
-    if program.env_clear {
-        cmd.env_clear();
-    }
-    for name in &program.env_remove {
-        cmd.env_remove(name);
-    }
-    for (name, value) in &program.env {
-        cmd.env(name, value);
-    }
     matches!(
         tokio::time::timeout(Duration::from_secs(SSH_CHECK_SECONDS), cmd.output()).await,
         Ok(Ok(out)) if out.status.success()

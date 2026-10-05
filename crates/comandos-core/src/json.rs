@@ -11,10 +11,11 @@ pub(crate) use comparison::number_cmp;
 pub use comparison::python_eq;
 
 mod parser;
-pub use parser::{parse_slice, parse_unique_value, parse_value};
+pub use parser::{object_fields, parse_slice, parse_unique_value, parse_value};
 mod python;
 pub use python::{
-    dumps, float_repr, response_dumps, response_dumps_unicode, workspace_dumps,
+    dumps, float_repr, join_response_entries, response_dumps, response_dumps_entries,
+    response_dumps_entry, response_dumps_entry_chunks, response_dumps_unicode, workspace_dumps,
     workspace_dumps_with_options,
 };
 

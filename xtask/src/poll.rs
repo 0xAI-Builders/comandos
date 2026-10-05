@@ -16,6 +16,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use comandos_core::malloc_tuning::PRODUCTION_GLIBC_TUNABLES;
+
 /// Cliente que genera la carga: el tablero (navegador) o la app de escritorio (`cc-app`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Client {
@@ -585,6 +587,9 @@ pub struct Opts {
     usage_db: Option<PathBuf>,
     /// Con `--shadow`: el frente arranca con `--no-native` (A/B contra la 2a).
     no_native: bool,
+    /// Con `--shadow`: `GLIBC_TUNABLES` del frente; por omisión el de
+    /// producción (drop-in de `cc-dash`), `--glibc-tunables ''` lo quita.
+    glibc_tunables: String,
     /// Con `--shadow`: agentes falsos (por defecto los dos de `SHADOW_AGENTS`).
     agents: usize,
     /// Con `--shadow`: ventanas `cat` extra repartidas entre los agentes.
@@ -603,6 +608,13 @@ pub struct Opts {
     max_static_p95_ms: Option<u32>,
 }
 
+impl Opts {
+    /// `GLIBC_TUNABLES` del frente de la pila (`None`: sin la variable).
+    pub fn front_glibc_tunables(&self) -> Option<&str> {
+        Some(self.glibc_tunables.as_str()).filter(|v| !v.is_empty())
+    }
+}
+
 /// Opciones de `poll`; un error aquí es de uso (salida 2).
 pub fn parse(args: &[String]) -> Result<Opts, String> {
     let (mut base, mut token, mut minutes, mut pid, mut out) = (None, None, None, None, None);
@@ -611,6 +623,7 @@ pub fn parse(args: &[String]) -> Result<Opts, String> {
     let (mut agents, mut extra_panes, mut pollers, mut burst) = (None, None, 0, 0);
     let (mut max_threads, mut max_pss_mib) = (None, None);
     let (mut slow_tmux_ms, mut max_static_p95_ms) = (None, None);
+    let mut glibc_tunables = None;
     let count = |a: &str, v: &str| {
         v.parse::<usize>()
             .map_err(|_| format!("{a}: {v:?} no es un entero"))
@@ -643,6 +656,7 @@ pub fn parse(args: &[String]) -> Result<Opts, String> {
             "--max-threads" => max_threads = Some(count(a, v)?),
             "--max-pss-mib" => max_pss_mib = Some(count(a, v)? as u64),
             "--slow-tmux-ms" => slow_tmux_ms = Some(count(a, v)? as u64),
+            "--glibc-tunables" => glibc_tunables = Some(v.clone()),
             "--max-static-p95-ms" => {
                 max_static_p95_ms = Some(u32::try_from(count(a, v)?).unwrap_or(u32::MAX))
             }
@@ -656,11 +670,12 @@ pub fn parse(args: &[String]) -> Result<Opts, String> {
             || no_native
             || agents.is_some()
             || extra_panes.is_some()
-            || slow_tmux_ms.is_some())
+            || slow_tmux_ms.is_some()
+            || glibc_tunables.is_some())
     {
         return Err(
-            "--state-db, --usage-db, --no-native, --agents, --extra-panes y --slow-tmux-ms \
-             requieren --shadow"
+            "--state-db, --usage-db, --no-native, --agents, --extra-panes, --slow-tmux-ms \
+             y --glibc-tunables requieren --shadow"
                 .into(),
         );
     }
@@ -687,6 +702,7 @@ pub fn parse(args: &[String]) -> Result<Opts, String> {
         state_db,
         usage_db,
         no_native,
+        glibc_tunables: glibc_tunables.unwrap_or_else(|| PRODUCTION_GLIBC_TUNABLES.to_owned()),
         agents: agents.unwrap_or(SHADOW_AGENTS.len()),
         extra_panes: extra_panes.unwrap_or(0),
         pollers,
@@ -805,6 +821,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     state_db: o.state_db.as_deref(),
                     usage_db: o.usage_db.as_deref(),
                     no_native: o.no_native,
+                    glibc_tunables: o.front_glibc_tunables(),
                 },
             )?)
         }
@@ -829,6 +846,12 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let out = o.out.clone().unwrap_or_else(|| {
         std::env::temp_dir().join(format!("xtask-poll-{}.jsonl", std::process::id()))
     });
+    if o.shadow.is_some() {
+        match o.front_glibc_tunables() {
+            None => println!("poll: frente sin GLIBC_TUNABLES"),
+            Some(value) => println!("poll: frente con GLIBC_TUNABLES={value}"),
+        }
+    }
     println!(
         "poll: tablero {} + app {} peticiones periódicas en {} min contra {addr}; salida {}",
         schedule(o.minutes, Client::Dashboard).len(),

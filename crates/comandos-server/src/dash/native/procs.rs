@@ -26,17 +26,8 @@ use std::{
 use tokio::io::AsyncWriteExt;
 
 fn command(program: &Program, args: &[OsString]) -> tokio::process::Command {
-    let mut cmd = tokio::process::Command::new(&program.path);
-    cmd.args(&program.prefix).args(args);
-    if program.env_clear {
-        cmd.env_clear();
-    }
-    for key in &program.env_remove {
-        cmd.env_remove(key);
-    }
-    for (key, value) in &program.env {
-        cmd.env(key, value);
-    }
+    let mut cmd = program.command();
+    cmd.args(args);
     cmd
 }
 

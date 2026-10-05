@@ -3,16 +3,22 @@
 //! (4567), `_pane_model_snapshot` (4540), `_pane_model_live_ids` (4556),
 //! `_maybe_tier_alert` (4440), `usage_alert_send` (455) y `notice_emit` (422).
 //!
-//! Latente (Tarea 7a): ninguna ruta lo llama todavía. Los valores de borde y
-//! las alertas (`live_rows`, `pane_values`) llegan en la 7b y la Tarea 8 lo
-//! engancha a `/usage/state`. Todo lo que toca tmux, el disco o cc-notifyd
-//! corre en tareas o en `spawn_blocking`; nada bloquea el runtime.
+//! También `_pane_models_for_live_state` (286) y `_pane_model_values` (4481):
+//! `live_rows` y `pane_values`.
+//!
+//! Latente (Tareas 7a y 7b): ninguna ruta lo llama todavía; la Tarea 8 lo
+//! engancha a `/usage/state`. Todo lo que toca tmux, el disco, `/proc` o
+//! cc-notifyd corre en tareas o en `spawn_blocking`; nada bloquea el runtime.
 use super::super::{
-    Fault, Native, files,
+    Fault, Native, catalogs, files,
+    states::{PyFloat, gather, py_float, py_str},
     tmux::{Tmux, run_program},
 };
 use comandos_core::json::{response_dumps, truthy};
-use comandos_runtime::{Unsure, providers::read_conf};
+use comandos_runtime::{
+    Unsure,
+    providers::{model_tier, read_conf},
+};
 use futures_util::future::BoxFuture;
 use serde_json::{Map, Value, json};
 use std::{
@@ -171,15 +177,35 @@ impl TierAlerts {
     }
 }
 
+/// Lo que una expresión del Python hace cuando no da un valor: lanza una
+/// excepción que nadie captura (500 de `/usage/state`) o no se sabe con
+/// certeza (esa vuelta no escribe nada).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PyFault {
+    Raises,
+    Unsure,
+}
+
+impl From<Unsure> for PyFault {
+    fn from(_: Unsure) -> Self {
+        Self::Unsure
+    }
+}
+
+/// `str(x)` de un escalar; el `repr` de un contenedor no se reproduce.
+fn text_of(value: &Value) -> Result<String, PyFault> {
+    py_str(value).map_err(|_| PyFault::Unsure)
+}
+
 /// `tier_style(tier)` (cc-dash:3743) sobre el `model-tiers.json` ya leído (un
 /// no objeto es el `{}` de `load_model_tiers`). `tiers` verdadero que no es
-/// objeto: el `.get` del Python lanza → `Unsure`.
-pub fn tier_style(tiers: &Value, tier: &str) -> Result<Map<String, Value>, Unsure> {
+/// objeto: ningún tipo de JSON tiene `.get`, el Python lanza → `Raises`.
+pub fn tier_style(tiers: &Value, tier: &str) -> Result<Map<String, Value>, PyFault> {
     let all = match tiers.get("tiers") {
         None => return Ok(Map::new()),
         Some(v) if !truthy(v) => return Ok(Map::new()),
         Some(Value::Object(all)) => all,
-        Some(_) => return Err(Unsure),
+        Some(_) => return Err(PyFault::Raises),
     };
     Ok(all
         .get(tier)
@@ -203,8 +229,9 @@ pub struct TierAlert {
 }
 
 impl TierAlert {
-    /// Un símbolo o etiqueta verdaderos que no son texto (el `str()` del
-    /// f-string) → `Unsure`: quien llama no avisa.
+    /// Un símbolo o etiqueta verdaderos que no son texto pasan por el `str()`
+    /// del f-string (`1` → `"1"`, `true` → `"True"`); un contenedor (su
+    /// `repr`) o un `tiers` que no es objeto → `Unsure`: quien llama no avisa.
     pub fn styled(
         session: &str,
         agent: &str,
@@ -212,9 +239,9 @@ impl TierAlert {
         tier: &str,
         tiers: &Value,
     ) -> Result<Self, Unsure> {
-        let style = tier_style(tiers, tier)?;
+        let style = tier_style(tiers, tier).map_err(|_| Unsure)?;
         let pick = |name: &str, default: &str| match style.get(name) {
-            Some(v) if truthy(v) => v.as_str().map(str::to_owned).ok_or(Unsure),
+            Some(v) if truthy(v) => text_of(v).map_err(|_| Unsure),
             _ => Ok(default.to_owned()),
         };
         Ok(Self {
@@ -371,6 +398,456 @@ async fn notice_emit(native: &Native, title: &str, excerpt: &str, project: &str)
 }
 
 // ---------------------------------------------------------------------------
+// Valores de borde
+// ---------------------------------------------------------------------------
+
+type Row = Map<String, Value>;
+
+/// `PANE_MODEL_COLORS` (cc-dash:1360): color del borde por agente.
+const PANE_MODEL_COLORS: &[(&str, &str)] = &[
+    ("claude", "141"),
+    ("codex", "43"),
+    ("grok", "208"),
+    ("opencode", "215"),
+    ("gemini", "111"),
+    ("agy", "183"),
+];
+
+/// `_pane_models_for_live_state` (cc-dash:286): las filas del memo cuyo pane
+/// sigue vivo, con el modelo, el agente y el esfuerzo de la tarjeta de
+/// `/state` del mismo pane si la tarjeta tiene modelo. `cards` son las
+/// tarjetas de `Native::states_cached`; `None` (declinó) → `None`: esa vuelta
+/// no escribe bordes (D1; el Python usaría la memoria de su propio `/state`).
+pub fn live_rows(live_panes: &[Row], state: &Value, cards: Option<&[Value]>) -> Option<Vec<Row>> {
+    live_rows_from(live_panes, state.get("panes"), cards)
+}
+
+/// `live_rows` con el `panes` del memo ya separado (`UsageMemo::panes`).
+pub fn live_rows_from(
+    live_panes: &[Row],
+    memo_panes: Option<&Value>,
+    cards: Option<&[Value]>,
+) -> Option<Vec<Row>> {
+    let cards = cards?;
+    let live: BTreeSet<&str> = live_panes
+        .iter()
+        .filter_map(|p| p.get("tmux_pane").and_then(Value::as_str))
+        .filter(|id| id.starts_with('%'))
+        .collect();
+    let reconciled = reconciled_cards(cards);
+    let memo: &[Value] = match memo_panes {
+        Some(Value::Array(panes)) => panes,
+        _ => &[],
+    };
+    let mut out = Vec::new();
+    for pane in memo {
+        // El memo sale de `build_usage_state`: filas objeto con `tmux_pane`
+        // de texto. Otra cosa no puede estar entre los vivos.
+        let Some(row) = pane.as_object() else {
+            continue;
+        };
+        let Some(id) = row.get("tmux_pane").and_then(Value::as_str) else {
+            continue;
+        };
+        if !live.contains(id) {
+            continue;
+        }
+        let mut row = row.clone();
+        if let Some(card) = reconciled.get(id)
+            && let Some(model) = card.get("model").filter(|v| truthy(v))
+        {
+            row.insert("model".into(), model.clone());
+            let agent = card
+                .get("agent")
+                .filter(|v| truthy(v))
+                .or_else(|| row.get("agent"))
+                .cloned()
+                .unwrap_or(Value::Null);
+            row.insert("agent".into(), agent.clone());
+            row.insert("provider".into(), agent);
+            if let Some(effort) = card.get("effort").filter(|v| truthy(v)) {
+                row.insert("reasoning_effort".into(), effort.clone());
+            }
+        }
+        out.push(row);
+    }
+    Some(out)
+}
+
+/// `{i.get("pane"): i for i in read_states_cached() if i.get("pane")}` dentro
+/// del `try/except Exception: reconciled = {}`: una tarjeta que no es objeto o
+/// un `pane` verdadero que no se puede usar de clave (lista, objeto) lanzan y
+/// el mapa queda vacío. Las claves que no son texto nunca coinciden con un
+/// `tmux_pane` de texto; la última tarjeta de cada pane gana.
+fn reconciled_cards(cards: &[Value]) -> HashMap<&str, &Map<String, Value>> {
+    let mut out = HashMap::new();
+    for card in cards {
+        let Some(card) = card.as_object() else {
+            return HashMap::new();
+        };
+        match card.get("pane").filter(|v| truthy(v)) {
+            None => {}
+            Some(Value::String(pane)) => {
+                out.insert(pane.as_str(), card);
+            }
+            Some(Value::Array(_) | Value::Object(_)) => return HashMap::new(),
+            Some(_) => {}
+        }
+    }
+    out
+}
+
+/// Valores de borde de una vuelta: `values` por pane (`None` = quitar la
+/// opción), el texto de `pane-models.txt` y los avisos de nivel decididos.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PaneValues {
+    pub values: BTreeMap<String, Option<String>>,
+    pub file_text: String,
+    pub alerts: Vec<TierAlert>,
+}
+
+/// Lo que `pane_values` deja hacer a quien llama.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PaneOutcome {
+    /// Escribir los bordes y enviar los avisos.
+    Ready(PaneValues),
+    /// Incierto (un archivo de entrada dudoso, un `repr` que no se reproduce):
+    /// esta vuelta no escribe nada ni anota avisos; la siguiente, sí.
+    Skip,
+    /// `_pane_model_values` lanzaría: `/usage/state` es un 500 sin bordes.
+    /// Los avisos de los panes anteriores a la excepción ya salieron en sus
+    /// hilos en el Python: aquí se devuelven para enviarlos igual.
+    Raises(Vec<TierAlert>),
+}
+
+/// Un `_maybe_tier_alert` pendiente de aplicar a `TierAlerts`.
+#[derive(Debug)]
+struct Observation {
+    key: TierKey,
+    tier: String,
+    alert_tier: String,
+    /// El aviso con su estilo; `Err` si el `str()` de algún campo no se
+    /// reproduce (se anota igual, como el Python, pero no se avisa).
+    alert: Result<TierAlert, Unsure>,
+}
+
+/// El cálculo sin efectos: valores, texto y observaciones en el orden de los
+/// panes, y dónde se paró si se paró.
+#[derive(Debug, Default)]
+struct Computed {
+    values: BTreeMap<String, Option<String>>,
+    plain: BTreeMap<String, String>,
+    observations: Vec<Observation>,
+    halt: Option<PyFault>,
+}
+
+impl Computed {
+    /// `"\n".join(plain[id] for id in sorted(plain)) + "\n"` si hay alguna
+    /// (el orden de `str` del Python es el de los bytes UTF-8).
+    fn file_text(&self) -> String {
+        let mut text = String::new();
+        for line in self.plain.values() {
+            text.push_str(line);
+            text.push('\n');
+        }
+        text
+    }
+}
+
+/// `x or y or ""` sobre claves de la fila: el primer valor verdadero.
+fn first_truthy<'a>(row: &'a Row, keys: &[&str]) -> Option<&'a Value> {
+    keys.iter().find_map(|k| row.get(*k).filter(|v| truthy(v)))
+}
+
+/// `(model or "").replace("claude-", "")` y el último segmento tras `/`.
+fn short_model(model: &str) -> String {
+    let model = model.replace("claude-", "");
+    match model.rsplit_once('/') {
+        Some((_, last)) => last.to_owned(),
+        None => model,
+    }
+}
+
+/// `account_for_pid(agent_pid or pid or 0, agent).get("account") or ""`.
+fn account_of(
+    row: &Row,
+    agent: Option<&Value>,
+    account: &mut dyn FnMut(i64, &str) -> Result<String, Unsure>,
+) -> Result<String, PyFault> {
+    // `AGENT_ACCOUNT_ENV.get(agent or '')`: una clave que no se puede hashear
+    // lanza `TypeError`; otro tipo no está en el mapa.
+    let agent = match agent {
+        Some(Value::Array(_) | Value::Object(_)) => return Err(PyFault::Raises),
+        Some(Value::String(agent)) if matches!(agent.as_str(), "claude" | "codex" | "grok") => {
+            agent.as_str()
+        }
+        _ => return Ok(String::new()),
+    };
+    let pid = match first_truthy(row, &["agent_pid", "pid"]) {
+        None => return Ok(String::new()),
+        // `int(pid)` de un `int`; otro tipo (texto con dígitos, `float`,
+        // `True`) no se reproduce.
+        Some(Value::Number(n)) => n.as_i64().ok_or(PyFault::Unsure)?,
+        Some(_) => return Err(PyFault::Unsure),
+    };
+    Ok(account(pid, agent)?)
+}
+
+/// `_pane_model_values` (cc-dash:4481) para un pane, con los `try` que no
+/// tiene: lo que lanzaría (antes o después de anotar el aviso) para la vuelta.
+fn one_pane(
+    row: &Row,
+    tiers: &Value,
+    motor: &Map<String, Value>,
+    now: f64,
+    account: &mut dyn FnMut(i64, &str) -> Result<String, Unsure>,
+    out: &mut Computed,
+) -> Result<(), PyFault> {
+    let pane_id = match row.get("tmux_pane").filter(|v| truthy(v)) {
+        None => return Ok(()),
+        Some(Value::String(id)) => id.as_str(),
+        // `.startswith` de algo que no es texto.
+        Some(_) => return Err(PyFault::Raises),
+    };
+    if !pane_id.starts_with('%') {
+        return Ok(());
+    }
+    let agent = first_truthy(row, &["agent", "provider"]);
+    let model = match row.get("model").filter(|v| truthy(v)) {
+        None => String::new(),
+        Some(Value::String(model)) => short_model(model),
+        // `.replace` de algo que no es texto.
+        Some(_) => return Err(PyFault::Raises),
+    };
+    let acct = account_of(row, agent, account)?;
+    // `str(agent)`: un contenedor ya lanzó en `account_of`.
+    let agent_text = agent.map_or(Ok(String::new()), text_of)?;
+    let (head, head_truthy) = if !acct.is_empty() && acct != "main" {
+        (format!("{acct} · {agent_text}"), true)
+    } else {
+        (agent_text.clone(), agent.is_some())
+    };
+    let session = first_truthy(row, &["tmux_session", "session"]);
+    let session_text = session.map_or(Ok(String::new()), text_of)?;
+    let pending = match motor.get(&format!("{session_text}|{pane_id}")) {
+        Some(Value::Object(pending)) => Some(pending),
+        _ => None,
+    };
+    let switching = match pending {
+        Some(p) if p.contains_key("stage") && !p.contains_key("ok") => {
+            let ts = match p.get("ts").filter(|v| truthy(v)) {
+                None => 0.0,
+                Some(ts) => match py_float(ts) {
+                    PyFloat::Value(ts) => ts,
+                    PyFloat::Raises => return Err(PyFault::Raises),
+                    PyFloat::Unsure => return Err(PyFault::Unsure),
+                },
+            };
+            now - ts < 300.0
+        }
+        _ => false,
+    };
+    let tier = model_tier(tiers, &model)?;
+    let style = tier_style(tiers, &tier)?;
+    if !model.is_empty() {
+        observe_pane(session, &agent_text, &model, &tier, pane_id, tiers, out)?;
+    }
+    let color = match agent {
+        Some(Value::String(agent)) => PANE_MODEL_COLORS
+            .iter()
+            .find(|(name, _)| name == agent)
+            .map_or("244", |(_, color)| color),
+        _ => "244",
+    };
+    let sym = match style.get("symbol").filter(|v| truthy(v)) {
+        Some(sym) => text_of(sym)?,
+        None => String::new(),
+    };
+    let suffix = if sym.is_empty() {
+        String::new()
+    } else {
+        format!(" {sym}")
+    };
+    let id = pane_id.to_owned();
+    if switching {
+        let requested = match pending.and_then(|p| p.get("model")).filter(|v| truthy(v)) {
+            Some(model) => text_of(model)?,
+            None => String::new(),
+        };
+        let target = short_model(&requested);
+        let target = if target.is_empty() { "…" } else { &target };
+        out.values.insert(
+            id.clone(),
+            Some(format!(
+                "#[fg=colour{color},bold]▸ {head}#[default]\
+                 #[fg=colour214,bold] · cambiando → {target}#[default]"
+            )),
+        );
+        out.plain
+            .insert(id, format!("{pane_id} {head} · cambiando → {target}"));
+    } else if !model.is_empty() {
+        let mcolor = match style.get("tmux").filter(|v| truthy(v)) {
+            Some(tmux) => text_of(tmux)?,
+            None => color.to_owned(),
+        };
+        out.values.insert(
+            id.clone(),
+            Some(format!(
+                "#[fg=colour{color},bold]▸ {head}#[default]\
+                 #[fg=colour{mcolor},bold] · {model}{suffix}#[default]"
+            )),
+        );
+        out.plain
+            .insert(id, format!("{pane_id} {head} · {model}{suffix}"));
+    } else if agent
+        .and_then(Value::as_str)
+        .is_some_and(|a| matches!(a, "claude" | "codex" | "grok"))
+    {
+        out.values.insert(
+            id.clone(),
+            Some(format!(
+                "#[fg=colour{color},bold]▸ {head}#[default]\
+                 #[fg=colour244] · detectando…#[default]"
+            )),
+        );
+        out.plain
+            .insert(id, format!("{pane_id} {head} · detectando…"));
+    } else if head_truthy {
+        out.values.insert(
+            id.clone(),
+            Some(format!("#[fg=colour{color},bold]▸ {head}#[default]")),
+        );
+        out.plain.insert(id, format!("{pane_id} {head}"));
+    } else {
+        // Sin `plain`: una línea anterior del mismo pane se queda, como en
+        // el Python.
+        out.values.insert(id, None);
+    }
+    Ok(())
+}
+
+/// La parte de `_maybe_tier_alert` (cc-dash:4440) que se decide al calcular:
+/// sin sesión o sin nivel no se anota nada; si no, una observación con el
+/// `alertTier` vigente y el aviso ya estilado.
+fn observe_pane(
+    session: Option<&Value>,
+    agent: &str,
+    model: &str,
+    tier: &str,
+    pane_id: &str,
+    tiers: &Value,
+    out: &mut Computed,
+) -> Result<(), PyFault> {
+    let Some(session) = session else {
+        return Ok(());
+    };
+    if tier.is_empty() {
+        return Ok(());
+    }
+    // Clave de `dict`: una sesión que no es texto no se reproduce.
+    let session = session.as_str().ok_or(PyFault::Unsure)?;
+    // `cfg.get("alertTier") or "high"`; un valor que no es texto nunca es
+    // igual al nivel (texto no vacío): `""` hace lo mismo en `observe`.
+    let alert_tier = match tiers.get("alertTier").filter(|v| truthy(v)) {
+        None => "high".to_owned(),
+        Some(Value::String(alert)) => alert.clone(),
+        Some(_) => String::new(),
+    };
+    out.observations.push(Observation {
+        key: (session.to_owned(), pane_id.to_owned()),
+        tier: tier.to_owned(),
+        alert_tier,
+        alert: TierAlert::styled(session, agent, model, tier, tiers),
+    });
+    Ok(())
+}
+
+/// `_pane_model_values` sin efectos: se para en el primer pane que lanzaría
+/// o es incierto.
+fn compute_values(
+    rows: &[Row],
+    tiers: &Value,
+    motor: &Map<String, Value>,
+    now: f64,
+    account: &mut dyn FnMut(i64, &str) -> Result<String, Unsure>,
+) -> Computed {
+    let mut out = Computed::default();
+    for row in rows {
+        if let Err(fault) = one_pane(row, tiers, motor, now, account, &mut out) {
+            out.halt = Some(fault);
+            break;
+        }
+    }
+    out
+}
+
+/// `_pane_model_values(panes)` (cc-dash:4481) sobre las filas de `live_rows`:
+/// cuenta por `account_for_pid` (caché propia del escritor, B9: nunca la del
+/// escaneo de `/state`), `switching` con `H/motor-results.json` (D1: archivo
+/// incierto → `Skip`), nivel y estilo con `config/model-tiers.json` (ausente o
+/// incierto → `Skip`) y `_maybe_tier_alert` en el orden de los panes. Todo lo
+/// que lee el disco o `/proc` va en un salto de bloqueo; las observaciones se
+/// aplican después bajo el candado de `TierAlerts`, sin `await` en medio.
+/// `tmux_panes` son TODOS los panes vivos de tmux de la vuelta (`None` si no
+/// se pudieron listar): con ellos se acota `TierAlerts` (regla 6).
+pub async fn pane_values(
+    native: &Native,
+    rows: &[Row],
+    tmux_panes: Option<&BTreeSet<String>>,
+) -> PaneOutcome {
+    let opts = native.options().clone();
+    // `time.time()` del Python, en segundos con fracción.
+    let now = (opts.clock)() as f64 / 1000.0;
+    let rows = rows.to_vec();
+    let accounts = native.pane_accounts.clone();
+    let computed = tokio::task::spawn_blocking(move || {
+        let motor = gather::motor_results(&opts.hooks).ok()?;
+        let tiers = catalogs::read_model_tiers(&opts).ok()?;
+        let mut cache = accounts.lock().unwrap_or_else(|p| p.into_inner());
+        let mut account = |pid: i64, agent: &str| -> Result<String, Unsure> {
+            let obs = cache.account_for_pid(&opts.home, &opts.proc_root, pid, agent)?;
+            Ok(match obs.get("account") {
+                Some(Value::String(alias)) => alias.clone(),
+                _ => String::new(),
+            })
+        };
+        Some(compute_values(&rows, &tiers, &motor, now, &mut account))
+    })
+    .await;
+    let Ok(Some(computed)) = computed else {
+        return PaneOutcome::Skip;
+    };
+    if computed.halt == Some(PyFault::Unsure) {
+        return PaneOutcome::Skip;
+    }
+    let file_text = computed.file_text();
+    let mut alerts = Vec::new();
+    {
+        let mut memory = native.tier_alerts();
+        for obs in computed.observations {
+            if memory.observe(&obs.key, &obs.tier, &obs.alert_tier, now)
+                && let Ok(alert) = obs.alert
+            {
+                alerts.push(alert);
+            }
+        }
+        if computed.halt.is_none()
+            && let Some(live) = tmux_panes
+        {
+            memory.prune(live, now);
+        }
+    }
+    if computed.halt == Some(PyFault::Raises) {
+        return PaneOutcome::Raises(alerts);
+    }
+    PaneOutcome::Ready(PaneValues {
+        values: computed.values,
+        file_text,
+        alerts,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Escritor de bordes
 // ---------------------------------------------------------------------------
 
@@ -436,17 +913,23 @@ impl PaneModelWriter {
 
     /// R1 (b) del preflight: si el heredado pudo escribir bordes (un declinar de
     /// `/usage/state` con el carril encendido), la próxima reconciliación vuelve
-    /// a leer las opciones físicas en vez de fiarse de `applied`.
+    /// a leer las opciones físicas en vez de fiarse de `applied`. El Python pudo
+    /// reescribir también `pane-models.txt` con su estado viejo: se olvida el
+    /// texto recordado y la próxima vuelta lo vuelve a escribir (M1).
     pub fn forget_discovery(&self) {
         let mut st = self.lock();
         st.discovered = false;
         st.retry_after = None;
+        st.file_text = None;
     }
 
     /// `write_pane_models` (cc-dash:4641) con los valores ya calculados: el
     /// archivo si cambió (si la escritura falla, no se recuerda y se reintenta
     /// en la siguiente llamada) y, si hace falta, una reconciliación en una
-    /// tarea. Nunca espera a tmux.
+    /// tarea. Nunca espera a tmux. El candado del archivo se sostiene hasta
+    /// haber anotado `desired` (el `_pane_model_lock` único del Python): dos
+    /// llamadas a la vez no pueden dejar el archivo de una y los valores de
+    /// la otra.
     pub async fn apply(
         self: &Arc<Self>,
         values: BTreeMap<String, Option<String>>,
@@ -454,18 +937,15 @@ impl PaneModelWriter {
         tmux: Tmux,
         hooks: PathBuf,
     ) {
-        {
-            let _file = self.file.lock().await;
-            let changed = self.lock().file_text.as_deref() != Some(file_text.as_str());
-            if changed {
-                let path = hooks.join("pane-models.txt");
-                let text = file_text.clone();
-                let written =
-                    tokio::task::spawn_blocking(move || files::write_text_atomic(&path, &text))
-                        .await;
-                if matches!(written, Ok(Ok(()))) {
-                    self.lock().file_text = Some(file_text);
-                }
+        let file_guard = self.file.lock().await;
+        let changed = self.lock().file_text.as_deref() != Some(file_text.as_str());
+        if changed {
+            let path = hooks.join("pane-models.txt");
+            let text = file_text.clone();
+            let written =
+                tokio::task::spawn_blocking(move || files::write_text_atomic(&path, &text)).await;
+            if matches!(written, Ok(Ok(()))) {
+                self.lock().file_text = Some(file_text);
             }
         }
         let start = {
@@ -483,6 +963,7 @@ impl PaneModelWriter {
             }
             start
         };
+        drop(file_guard);
         if start {
             tokio::spawn(reconcile(self.clone(), tmux));
         }

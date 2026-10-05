@@ -42,6 +42,51 @@ pub fn response_dumps(value: &Value) -> Result<String, String> {
     encode(value, true, false, false, Policy::Workspace)
 }
 
+/// Una entrada `"clave": valor` de un objeto de respuesta, como la escribe
+/// `response_dumps` dentro de un objeto (el valor está un nivel por dentro).
+pub fn response_dumps_entry(key: &str, value: &Value) -> Result<String, String> {
+    validate_workspace_depth(value, 1)?;
+    let mut out = encode(
+        &Value::String(key.to_owned()),
+        true,
+        false,
+        false,
+        Policy::Workspace,
+    )?;
+    out.push_str(": ");
+    out.push_str(&encode(value, true, false, false, Policy::Workspace)?);
+    Ok(out)
+}
+
+/// Une entradas ya escritas con `response_dumps_entry` en un objeto: los mismos
+/// bytes que `response_dumps` del objeto entero.
+pub fn join_response_entries<'a>(entries: impl IntoIterator<Item = &'a str> + Clone) -> String {
+    let len: usize = entries.clone().into_iter().map(|e| e.len() + 2).sum();
+    let mut out = String::with_capacity(len + 2);
+    out.push('{');
+    for (index, entry) in entries.into_iter().enumerate() {
+        if index > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(entry);
+    }
+    out.push('}');
+    out
+}
+
+/// `response_dumps` de un objeto dado por sus entradas prestadas, en orden:
+/// igual que `response_dumps(&Value::Object(..))` sin construir el mapa (una
+/// copia superficial de un `dict` grande del Python sale gratis; en Rust no).
+pub fn response_dumps_entries<'a>(
+    entries: impl IntoIterator<Item = (&'a str, &'a Value)>,
+) -> Result<String, String> {
+    let parts = entries
+        .into_iter()
+        .map(|(key, value)| response_dumps_entry(key, value))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(join_response_entries(parts.iter().map(String::as_str)))
+}
+
 /// `json.dumps(value, ensure_ascii=False)` del Python: orden de inserción,
 /// separadores `", "`/`": "` y UTF-8 sin escapar (líneas de registros JSONL).
 pub fn response_dumps_unicode(value: &Value) -> Result<String, String> {
@@ -60,6 +105,82 @@ pub fn float_repr(value: f64) -> String {
     }
 }
 
+/// Donde escribe el codificador: un `String` o trozos acotados.
+trait Out {
+    fn push_str(&mut self, s: &str);
+    fn push(&mut self, ch: char) {
+        self.push_str(ch.encode_utf8(&mut [0; 4]));
+    }
+}
+
+impl Out for String {
+    fn push_str(&mut self, s: &str) {
+        String::push_str(self, s);
+    }
+    fn push(&mut self, ch: char) {
+        String::push(self, ch);
+    }
+}
+
+/// Trozos de como mucho `cap` bytes (más el último pedazo, que es corto: el
+/// codificador escribe de a poco). Ninguno crece al doble ni pasa el umbral
+/// de `mmap` de glibc: soltarlos no lo sube.
+struct Chunks {
+    cap: usize,
+    done: Vec<String>,
+    cur: String,
+}
+
+impl Chunks {
+    /// Cierra el trozo en curso con su tamaño justo: un `Bytes` hecho de él
+    /// conserva la capacidad entera del `String`.
+    fn close(&mut self) {
+        let mut full = std::mem::take(&mut self.cur);
+        full.shrink_to_fit();
+        self.done.push(full);
+    }
+}
+
+impl Out for Chunks {
+    fn push_str(&mut self, s: &str) {
+        if !self.cur.is_empty() && self.cur.len() + s.len() > self.cap {
+            self.close();
+        }
+        self.cur.push_str(s);
+    }
+}
+
+/// `response_dumps_entry` escrita en trozos de como mucho `cap` bytes (los
+/// trozos unidos son la entrada).
+pub fn response_dumps_entry_chunks(
+    key: &str,
+    value: &Value,
+    cap: usize,
+) -> Result<Vec<String>, String> {
+    validate_workspace_depth(value, 1)?;
+    let cap = cap.max(1);
+    // `cur` crece desde vacío: una entrada pequeña no reserva `cap` entero.
+    let mut out = Chunks {
+        cap,
+        done: Vec::new(),
+        cur: String::new(),
+    };
+    encode_into(
+        &Value::String(key.to_owned()),
+        true,
+        false,
+        false,
+        Policy::Workspace,
+        &mut out,
+    )?;
+    out.push_str(": ");
+    encode_into(value, true, false, false, Policy::Workspace, &mut out)?;
+    if !out.cur.is_empty() {
+        out.close();
+    }
+    Ok(out.done)
+}
+
 fn encode(
     value: &Value,
     ascii: bool,
@@ -67,6 +188,19 @@ fn encode(
     sorted: bool,
     policy: Policy,
 ) -> Result<String, String> {
+    let mut out = String::new();
+    encode_into(value, ascii, compact, sorted, policy, &mut out)?;
+    Ok(out)
+}
+
+fn encode_into<O: Out>(
+    value: &Value,
+    ascii: bool,
+    compact: bool,
+    sorted: bool,
+    policy: Policy,
+    out: &mut O,
+) -> Result<(), String> {
     enum Frame<'a> {
         Value(&'a Value, usize),
         Array(std::iter::Enumerate<std::slice::Iter<'a, Value>>, usize),
@@ -77,7 +211,6 @@ fn encode(
     }
     let comma = if compact { "," } else { ", " };
     let colon = if compact { ":" } else { ": " };
-    let mut out = String::new();
     let mut frames = vec![Frame::Value(value, 0)];
     while let Some(frame) = frames.pop() {
         match frame {
@@ -88,7 +221,7 @@ fn encode(
                 match value {
                     Value::Null => out.push_str("null"),
                     Value::Bool(value) => out.push_str(if *value { "true" } else { "false" }),
-                    Value::String(value) => quoted(value, ascii, &mut out),
+                    Value::String(value) => quoted(value, ascii, out),
                     Value::Number(number) => {
                         let raw = number.as_str();
                         if matches!(raw, "NaN" | "Infinity" | "-Infinity") {
@@ -130,7 +263,7 @@ fn encode(
                     if index != 0 {
                         out.push_str(comma);
                     }
-                    quoted(key, ascii, &mut out);
+                    quoted(key, ascii, out);
                     out.push_str(colon);
                     frames.push(Frame::Object(entries, depth));
                     frames.push(Frame::Value(value, depth));
@@ -140,10 +273,10 @@ fn encode(
             }
         }
     }
-    Ok(out)
+    Ok(())
 }
 
-fn quoted(value: &str, ascii: bool, out: &mut String) {
+fn quoted<O: Out>(value: &str, ascii: bool, out: &mut O) {
     out.push('"');
     for ch in value.chars() {
         match ch {
@@ -156,7 +289,20 @@ fn quoted(value: &str, ascii: bool, out: &mut String) {
             '\t' => out.push_str("\\t"),
             ch if ch < '\u{20}' || (ascii && ch >= '\u{7f}') => {
                 for unit in ch.encode_utf16(&mut [0; 2]) {
-                    let _ = write!(out, "\\u{unit:04x}");
+                    // `\uXXXX` en minúsculas, en la pila y de una vez (un
+                    // escape nunca se parte entre dos trozos).
+                    let hex = |shift: u16| -> u8 {
+                        let digit = ((*unit >> shift) & 0xf) as u8;
+                        if digit < 10 {
+                            b'0' + digit
+                        } else {
+                            b'a' + digit - 10
+                        }
+                    };
+                    let escape = [b'\\', b'u', hex(12), hex(8), hex(4), hex(0)];
+                    if let Ok(escape) = std::str::from_utf8(&escape) {
+                        out.push_str(escape);
+                    }
                 }
             }
             ch => out.push(ch),
@@ -238,8 +384,48 @@ fn python_float(value: f64, policy: Policy) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::dumps;
+    use super::{
+        dumps, response_dumps, response_dumps_entries, response_dumps_entry,
+        response_dumps_entry_chunks,
+    };
     use serde_json::{Value, json};
+
+    #[test]
+    fn borrowed_entries_encode_like_the_whole_object() {
+        let value = json!({"b": {"x": [1.5, "é"]}, "a": null, "c": [], "d": {}});
+        let Value::Object(map) = &value else {
+            panic!("objeto");
+        };
+        assert_eq!(
+            response_dumps_entries(map.iter().map(|(k, v)| (k.as_str(), v))).unwrap(),
+            response_dumps(&value).unwrap()
+        );
+        assert_eq!(response_dumps_entries([]).unwrap(), "{}");
+        let big = json!({"filas": (0..2000).map(|i| json!({"n": i, "t": "é\u{1f600}", "x": 0.1 * f64::from(i)})).collect::<Vec<_>>()});
+        for cap in [1, 7, 4096] {
+            let chunks = response_dumps_entry_chunks("clave", &big, cap).unwrap();
+            // Un trozo pasa del tope solo por un pedazo indivisible (un número).
+            assert!(chunks.iter().all(|c| c.len() <= cap.max(32)), "{cap}");
+            assert_eq!(
+                chunks.concat(),
+                response_dumps_entry("clave", &big).unwrap()
+            );
+        }
+
+        let mut deep = Value::Null;
+        for _ in 0..999 {
+            deep = Value::Array(vec![deep]);
+        }
+        let whole = json!({"k": deep.clone()});
+        assert_eq!(
+            response_dumps_entries([("k", &deep)]).is_err(),
+            response_dumps(&whole).is_err()
+        );
+        assert_eq!(
+            response_dumps_entry_chunks("k", &deep, 64).is_err(),
+            response_dumps(&whole).is_err()
+        );
+    }
 
     #[test]
     fn persisted_float_spelling_preserves_integer_precision() {

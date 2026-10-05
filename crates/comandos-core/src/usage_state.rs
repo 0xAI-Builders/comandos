@@ -718,8 +718,255 @@ fn or_str(value: &Value, default: &str) -> Value {
     }
 }
 
+/// Columnas de texto de los turnos de `build_usage_state` que se guardan internadas.
+const TURN_TEXT: [&str; 8] = [
+    "tmux_session",
+    "tmux_pane",
+    "pane_pwd",
+    "git_root",
+    "agent",
+    "provider",
+    "model",
+    "confidence",
+];
+/// Clave ausente en la fila (distinta de `null`: `turn.get(k, "")`).
+const ABSENT: u32 = u32::MAX;
+
+/// Un turno compacto (64 B): las columnas de texto como índices de una tabla de
+/// valores distintos y las tres numéricas ya convertidas como las convierte cada
+/// uso (`_as_int(…, 0)`, `_as_float(…, 0.0)`); su error, si lo hay, va aparte en
+/// `faults` (finalizado, tokens, coste).
+struct Turn {
+    text: [u32; 8],
+    finished: i64,
+    tokens: i64,
+    cost: f64,
+    faults: [Option<UsageError>; 3],
+}
+
+impl Turn {
+    fn new(text: [u32; 8], finished: Result<i64>, tokens: Result<i64>, cost: Result<f64>) -> Self {
+        Self {
+            text,
+            finished: *finished.as_ref().unwrap_or(&0),
+            tokens: *tokens.as_ref().unwrap_or(&0),
+            cost: *cost.as_ref().unwrap_or(&0.0),
+            faults: [finished.err(), tokens.err(), cost.err()],
+        }
+    }
+}
+
+/// Una columna de texto de un turno tal como sale de SQLite: un texto prestado
+/// (se interna sin copiarlo si ya está) o cualquier otro valor.
+pub enum TurnCell<'a> {
+    Text(&'a str),
+    Value(Value),
+}
+
+/// Los turnos de 14 días de `build_usage_state` sin guardar cada fila como objeto
+/// JSON (decenas de miles con la base real): las columnas de texto se repiten mucho
+/// (sesión, pane, carpeta, agente, modelo) y se internan; cada turno ocupa 64 B.
+/// El orden de los turnos es el de lectura.
+#[derive(Default)]
+pub struct StateTurns {
+    values: Vec<Value>,
+    strings: HashMap<String, u32>,
+    /// Una sola casilla para `null` y otra por número o booleano distinto (por su
+    /// texto): una columna casi vacía no repite el valor en cada turno.
+    null: Option<u32>,
+    scalars: HashMap<String, u32>,
+    /// En trozos de `TURN_CHUNK` (64 KiB): un solo vector de 5 MiB lo sirve
+    /// glibc con `mmap` y, al soltarlo, sube su umbral de `mmap` y el de
+    /// recorte a ese tamaño; desde entonces las arenas no se recortan.
+    turns: Vec<Vec<Turn>>,
+    len: usize,
+}
+
+/// Turnos por trozo: 1024 × 64 B = 64 KiB, bajo el umbral de `mmap` de glibc.
+const TURN_CHUNK: usize = 1024;
+
+impl StateTurns {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn from_rows(rows: &[Row]) -> Self {
+        let mut turns = Self::new();
+        for row in rows {
+            turns.push(row);
+        }
+        turns
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Un turno leído columna a columna, sin el objeto de la fila: las ocho de
+    /// texto en el orden de `TURN_TEXT` y las tres numéricas. Lo mismo que
+    /// `push` de la fila con esas once claves.
+    pub fn push_cells(
+        &mut self,
+        text: [TurnCell<'_>; 8],
+        finished: &Value,
+        tokens: &Value,
+        cost: &Value,
+    ) {
+        let mut ids = [ABSENT; 8];
+        for (slot, cell) in ids.iter_mut().zip(text) {
+            *slot = match cell {
+                TurnCell::Text(s) => self.intern_str(s),
+                TurnCell::Value(value) => self.intern(&value),
+            };
+        }
+        self.push_turn(Turn::new(
+            ids,
+            as_int(finished, 0),
+            as_int(tokens, 0),
+            as_float(cost, 0.0),
+        ));
+    }
+
+    /// Fin de la lectura: suelta los índices de internado y el sitio sobrante.
+    pub fn finish(&mut self) {
+        self.strings = HashMap::new();
+        self.scalars = HashMap::new();
+        self.values.shrink_to_fit();
+        self.turns.shrink_to_fit();
+        if let Some(last) = self.turns.last_mut() {
+            last.shrink_to_fit();
+        }
+    }
+
+    fn push_turn(&mut self, turn: Turn) {
+        match self.turns.last_mut() {
+            Some(chunk) if chunk.len() < TURN_CHUNK => chunk.push(turn),
+            _ => {
+                let mut chunk = Vec::with_capacity(TURN_CHUNK);
+                chunk.push(turn);
+                self.turns.push(chunk);
+            }
+        }
+        self.len += 1;
+    }
+
+    fn intern_str(&mut self, s: &str) -> u32 {
+        if let Some(&i) = self.strings.get(s) {
+            return i;
+        }
+        self.intern(&Value::String(s.to_owned()))
+    }
+
+    /// Un turno leído (`dict(sqlite3.Row)`); solo se quedan las columnas que usa
+    /// `build_usage_state`.
+    pub fn push(&mut self, row: &Row) {
+        let mut text = [ABSENT; 8];
+        for (slot, key) in text.iter_mut().zip(TURN_TEXT) {
+            if let Some(value) = row.get(key) {
+                *slot = self.intern(value);
+            }
+        }
+        self.push_turn(Turn::new(
+            text,
+            as_int(get(row, "turn_finished_at"), 0),
+            as_int(get(row, "total_tokens"), 0),
+            as_float(get(row, "cost_usd"), 0.0),
+        ));
+    }
+
+    fn intern(&mut self, value: &Value) -> u32 {
+        // Más de 2³² - 1 valores distintos no caben en memoria antes que en `u32`.
+        let next = u32::try_from(self.values.len()).unwrap_or(ABSENT);
+        match value {
+            Value::String(s) => {
+                if let Some(&i) = self.strings.get(s) {
+                    return i;
+                }
+                self.strings.insert(s.clone(), next);
+            }
+            Value::Null => {
+                if let Some(i) = self.null {
+                    return i;
+                }
+                self.null = Some(next);
+            }
+            // El texto JSON identifica el valor (mismo texto, mismo `Value`).
+            Value::Bool(_) | Value::Number(_) => {
+                let key = value.to_string();
+                if let Some(&i) = self.scalars.get(&key) {
+                    return i;
+                }
+                self.scalars.insert(key, next);
+            }
+            // Una columna de SQLite nunca da un contenedor: no se comparte.
+            Value::Array(_) | Value::Object(_) => {}
+        }
+        self.values.push(value.clone());
+        next
+    }
+
+    fn iter(&self) -> impl Iterator<Item = TurnRef<'_>> {
+        self.turns
+            .iter()
+            .flatten()
+            .map(move |turn| TurnRef { store: self, turn })
+    }
+}
+
+#[derive(Clone, Copy)]
+struct TurnRef<'a> {
+    store: &'a StateTurns,
+    turn: &'a Turn,
+}
+
+impl<'a> TurnRef<'a> {
+    fn slot(&self, key: &str) -> Option<&'a Value> {
+        let i = TURN_TEXT.iter().position(|k| *k == key)?;
+        let id = *self.turn.text.get(i)?;
+        self.store.values.get(usize::try_from(id).ok()?)
+    }
+    /// `turn.get(key)` (`None` si falta).
+    fn get(&self, key: &str) -> &'a Value {
+        self.slot(key).unwrap_or(&NULL)
+    }
+    /// `turn.get(key, "")`.
+    fn field(&self, key: &str) -> Value {
+        self.slot(key)
+            .cloned()
+            .unwrap_or_else(|| Value::String(String::new()))
+    }
+    /// `_as_int(turn.get("turn_finished_at"), 0)`.
+    fn finished(&self) -> Result<i64> {
+        let [f, _, _] = self.turn.faults;
+        f.map_or(Ok(self.turn.finished), Err)
+    }
+    /// `_as_int(turn.get("total_tokens"), 0)`.
+    fn tokens(&self) -> Result<i64> {
+        let [_, f, _] = self.turn.faults;
+        f.map_or(Ok(self.turn.tokens), Err)
+    }
+    /// `_as_float(turn.get("cost_usd"), 0.0)`.
+    fn cost(&self) -> Result<f64> {
+        let [_, _, f] = self.turn.faults;
+        f.map_or(Ok(self.turn.cost), Err)
+    }
+    /// `turn.get("provider") or turn.get("agent") or default`.
+    fn provider_or(&self, default: &str) -> Value {
+        let v = or(self.get("provider"), self.get("agent"));
+        if truthy(v) {
+            v.clone()
+        } else {
+            Value::String(default.into())
+        }
+    }
+}
+
 /// `_attach_pane_turn_usage` (cc_usage.py:823).
-fn attach_pane_turn_usage(turns: &[Row], panes: &mut [Row], now: i64) -> Result<()> {
+fn attach_pane_turn_usage(turns: &StateTurns, panes: &mut [Row], now: i64) -> Result<()> {
     let day_start = now - 24 * 3600;
     let mut groups: PyDict<(Value, Value), Vec<usize>> = PyDict::new();
     for (i, pane) in panes.iter().enumerate() {
@@ -729,20 +976,20 @@ fn attach_pane_turn_usage(turns: &[Row], panes: &mut [Row], now: i64) -> Result<
     let mut sums: PyDict<(Value, Value), (i64, f64)> = PyDict::new();
     let mut latest_model: PyDict<(Value, Value), String> = PyDict::new();
     let mut day_model_tokens: PyDict<(Value, Value), Vec<(String, i64)>> = PyDict::new();
-    for turn in turns {
-        let key = (provider_of(turn, ""), or_str(get(turn, "pane_pwd"), ""));
+    for turn in turns.iter() {
+        let key = (turn.provider_or(""), or_str(turn.get("pane_pwd"), ""));
         if !groups.contains(&key) {
             continue;
         }
-        let turn_model = real_model(get(turn, "model"))?;
+        let turn_model = real_model(turn.get("model"))?;
         if !turn_model.is_empty() && !latest_model.contains(&key) {
             latest_model.set(&key, turn_model.clone());
         }
-        if as_int(get(turn, "turn_finished_at"), 0)? < day_start {
+        if turn.finished()? < day_start {
             continue;
         }
         if !turn_model.is_empty() {
-            let weight = as_int(get(turn, "total_tokens"), 0)?.max(1);
+            let weight = turn.tokens()?.max(1);
             day_model_tokens.with_entry(&key, Vec::new, |mt| {
                 match mt.iter_mut().find(|(m, _)| *m == turn_model) {
                     Some((_, n)) => *n = checked_add(*n, weight)?,
@@ -751,8 +998,8 @@ fn attach_pane_turn_usage(turns: &[Row], panes: &mut [Row], now: i64) -> Result<
                 Ok::<(), UsageError>(())
             })?;
         }
-        let tokens = as_int(get(turn, "total_tokens"), 0)?;
-        let cost = as_float(get(turn, "cost_usd"), 0.0)?;
+        let tokens = turn.tokens()?;
+        let cost = turn.cost()?;
         sums.with_entry(
             &key,
             || (0, 0.0),
@@ -813,7 +1060,7 @@ struct Project {
 /// `_project_rollups` (cc_usage.py:682). Los panes viven en un arena porque el Python
 /// los comparte entre el índice y la lista de su proyecto (un turno de otra carpeta
 /// actualiza el pane de la carpeta original).
-fn project_rollups(turns: &[Row], panes: &[Row]) -> Result<Vec<Value>> {
+fn project_rollups(turns: &StateTurns, panes: &[Row]) -> Result<Vec<Value>> {
     let mut arena: Vec<Row> = Vec::new();
     let mut projects: PyDict<Value, Project> = PyDict::new();
     let detected = Value::String("detected".into());
@@ -849,9 +1096,9 @@ fn project_rollups(turns: &[Row], panes: &[Row]) -> Result<Vec<Value>> {
             }
         }
     }
-    for turn in turns {
-        let root = or_str(or(get(turn, "git_root"), get(turn, "pane_pwd")), "");
-        let turn_confidence = get(turn, "confidence");
+    for turn in turns.iter() {
+        let root = or_str(or(turn.get("git_root"), turn.get("pane_pwd")), "");
+        let turn_confidence = turn.get("confidence");
         if !projects.contains(&root) {
             let project = Project {
                 root: root.clone(),
@@ -863,13 +1110,13 @@ fn project_rollups(turns: &[Row], panes: &[Row]) -> Result<Vec<Value>> {
             projects.set(&root, project);
         }
         let key = (
-            get(turn, "tmux_session").clone(),
-            get(turn, "tmux_pane").clone(),
+            turn.get("tmux_session").clone(),
+            turn.get("tmux_pane").clone(),
         );
         let created = match pane_index.get(&key) {
             Some(&i) => (i, false),
             None => {
-                let field = |k: &str| turn.get(k).cloned().unwrap_or_else(|| "".into());
+                let field = |k: &str| turn.field(k);
                 let mut pane = Row::new();
                 pane.insert("tmux_session".into(), field("tmux_session"));
                 pane.insert("tmux_pane".into(), field("tmux_pane"));
@@ -888,8 +1135,8 @@ fn project_rollups(turns: &[Row], panes: &[Row]) -> Result<Vec<Value>> {
             }
         };
         let (index, is_new) = created;
-        let cost = as_float(get(turn, "cost_usd"), 0.0)?;
-        let tokens = as_int(get(turn, "total_tokens"), 0)?;
+        let cost = turn.cost()?;
+        let tokens = turn.tokens()?;
         if let Some(pane) = arena.get_mut(index) {
             let pane_cost = as_float(get(pane, "cost_usd"), 0.0)?;
             let pane_tokens = as_int(get(pane, "total_tokens"), 0)?;
@@ -942,7 +1189,7 @@ fn setting<'a>(settings: &'a Row, keys: &[&str]) -> Option<&'a Value> {
 
 /// `_token_window` (cc_usage.py:759).
 fn token_window(
-    turns: &[Row],
+    turns: &StateTurns,
     provider: &str,
     label: &str,
     window: &str,
@@ -955,11 +1202,11 @@ fn token_window(
         other => &[other],
     };
     let mut used = 0i64;
-    for t in turns {
-        let who = or(get(t, "provider"), get(t, "agent"));
+    for t in turns.iter() {
+        let who = or(t.get("provider"), t.get("agent"));
         let member = who.as_str().is_some_and(|w| aliases.contains(&w));
-        if member && as_int(get(t, "turn_finished_at"), 0)? >= start {
-            used = checked_add(used, as_int(get(t, "total_tokens"), 0)?)?;
+        if member && t.finished()? >= start {
+            used = checked_add(used, t.tokens()?)?;
         }
     }
     let mut item = Row::new();
@@ -993,7 +1240,7 @@ fn token_window(
 }
 
 /// `_usage_windows` (cc_usage.py:795).
-fn usage_windows(turns: &[Row], settings: &Row, now: i64) -> Result<Value> {
+fn usage_windows(turns: &StateTurns, settings: &Row, now: i64) -> Result<Value> {
     let day = now - 24 * 3600;
     let week = now - 7 * 24 * 3600;
     let budget = match setting(
@@ -1092,11 +1339,11 @@ fn get_or(row: &Row, key: &str, default: Value) -> Value {
 }
 
 /// `build_usage_state` (cc_usage.py:871-961) sin la E/S: el llamador ya eligió `panes`
-/// (vivos o `list_panes`) y leyó las filas de `state_rows`.
+/// (vivos o `list_panes`) y leyó los turnos de `state_rows` (`StateTurns`).
 pub fn build_state(
     now: i64,
     mut panes: Vec<Row>,
-    turns: &[Row],
+    turns: &StateTurns,
     provider_usage: &[Row],
     provider_costs: &[Row],
     settings: &Row,
@@ -1104,16 +1351,16 @@ pub fn build_state(
     attach_pane_turn_usage(turns, &mut panes, now)?;
     let projects = project_rollups(turns, &panes)?;
     let mut turn_cost = FloatSum(None);
-    for t in turns {
-        turn_cost.add(as_float(get(t, "cost_usd"), 0.0)?);
+    for t in turns.iter() {
+        turn_cost.add(t.cost()?);
     }
     let mut provider_cost = FloatSum(None);
     for c in provider_costs {
         provider_cost.add(as_float(get(c, "cost_usd"), 0.0)?);
     }
     let mut turn_tokens = 0i64;
-    for t in turns {
-        turn_tokens = checked_add(turn_tokens, as_int(get(t, "total_tokens"), 0)?)?;
+    for t in turns.iter() {
+        turn_tokens = checked_add(turn_tokens, t.tokens()?)?;
     }
     let mut provider_tokens = 0i64;
     for u in provider_usage {
@@ -1163,9 +1410,9 @@ pub fn build_state(
         add_tokens(&mut providers, &name, tokens)?;
     }
     if provider_usage.is_empty() {
-        for turn in turns {
-            let name = provider_of(turn, "unknown");
-            let tokens = as_int(get(turn, "total_tokens"), 0)?;
+        for turn in turns.iter() {
+            let name = turn.provider_or("unknown");
+            let tokens = turn.tokens()?;
             add_tokens(&mut providers, &name, tokens)?;
         }
     }
@@ -1372,6 +1619,97 @@ pub fn wilson_interval(successes: i64, total: i64) -> (f64, f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn state_turns_share_null_and_scalar_slots() {
+        // `git_root` casi siempre vacío y `tmux_pane` numérico: una casilla por valor.
+        let rows: Vec<Row> = (0..5000)
+            .map(|i| {
+                let mut row = Row::new();
+                row.insert("tmux_session".into(), "s".into());
+                row.insert(
+                    "git_root".into(),
+                    if i % 100 == 0 {
+                        "/r".into()
+                    } else {
+                        Value::Null
+                    },
+                );
+                row.insert("tmux_pane".into(), Value::from(i % 3));
+                row.insert("model".into(), Value::Bool(i % 2 == 0));
+                row.insert("total_tokens".into(), Value::from(i));
+                row
+            })
+            .collect();
+        let turns = StateTurns::from_rows(&rows);
+        // s, /r, null, 0, 1, 2, true, false.
+        assert_eq!(turns.values.len(), 8);
+        for (row, turn) in rows.iter().zip(turns.iter()) {
+            for key in ["tmux_session", "git_root", "tmux_pane", "model", "agent"] {
+                assert_eq!(row.get(key), turn.slot(key), "{key}");
+            }
+        }
+    }
+
+    #[test]
+    fn push_cells_matches_push_of_the_row() {
+        use serde_json::json;
+        assert_eq!(std::mem::size_of::<Turn>(), 64);
+        assert!(std::mem::size_of::<Turn>() * TURN_CHUNK <= 64 * 1024);
+        let texts = [
+            json!("s"),
+            json!("%1"),
+            Value::Null,
+            json!(3),
+            json!("/r"),
+            json!(true),
+            json!("m"),
+            json!(""),
+        ];
+        let nums = [
+            (json!(1_791_000_000), json!(12), json!(0.5)),
+            (json!("x"), Value::Null, json!("1e400")),
+            (json!(1.5e300), json!(7.9), json!(true)),
+        ];
+        let mut by_row = StateTurns::new();
+        let mut by_cell = StateTurns::new();
+        for (finished, tokens, cost) in &nums {
+            let mut row = Row::new();
+            for (key, value) in TURN_TEXT.iter().zip(&texts) {
+                row.insert((*key).into(), value.clone());
+            }
+            row.insert("turn_finished_at".into(), finished.clone());
+            row.insert("total_tokens".into(), tokens.clone());
+            row.insert("cost_usd".into(), cost.clone());
+            by_row.push(&row);
+            let cells = texts.clone().map(|v| match v {
+                Value::String(s) => TurnCell::Value(Value::String(s)),
+                other => TurnCell::Value(other),
+            });
+            by_cell.push_cells(cells, finished, tokens, cost);
+        }
+        by_cell.push_cells(
+            texts.clone().map(|v| match v {
+                Value::String(s) if s == "m" => TurnCell::Text("m"),
+                other => TurnCell::Value(other),
+            }),
+            &nums[0].0,
+            &nums[0].1,
+            &nums[0].2,
+        );
+        by_cell.finish();
+        assert!(by_cell.strings.is_empty());
+        for (a, b) in by_row.iter().zip(by_cell.iter()) {
+            for key in TURN_TEXT {
+                assert_eq!(a.slot(key), b.slot(key), "{key}");
+            }
+            assert_eq!(a.finished(), b.finished());
+            assert_eq!(a.tokens(), b.tokens());
+            assert_eq!(a.cost().map(f64::to_bits), b.cost().map(f64::to_bits));
+        }
+        assert_eq!(by_cell.len(), 4);
+        assert_eq!(by_cell.values.len(), by_row.values.len());
+    }
 
     #[test]
     fn float_sum_starts_at_integer_zero() {

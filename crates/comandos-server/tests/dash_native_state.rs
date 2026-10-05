@@ -1,6 +1,6 @@
 //! GET /state respondido por Rust: oráculo cc-dash real sobre el mismo HOME
 //! y el mismo tmux privado, vuelo único, declinar sin escribir, 504 con el
-//! runtime libre y el contexto de sugerencias contra el heredado.
+//! runtime libre y el contexto de sugerencias nativo (Tarea 5a de la 2e).
 mod support;
 use serde_json::{Value, json};
 use std::{
@@ -94,7 +94,7 @@ fn seed(home: &TestHome) -> Option<()> {
 }
 
 /// Relevo hacia el oráculo que anota la línea de cada petición: prueba que
-/// el frente NO reenvió `/state` y que sí pidió el contexto.
+/// el frente NO reenvió `/state` ni pidió nada de `/usage/*`.
 struct Relay {
     port: u16,
     seen: Arc<Mutex<Vec<String>>>,
@@ -188,16 +188,82 @@ async fn state_matches_python_oracle_and_writes_same_models() {
         !seen.iter().any(|l| l.starts_with("GET /state")),
         "/state se reenvió: {seen:?}"
     );
-    // La tarjeta claude viva necesita el contexto: el heredado lo dio.
-    assert!(seen.iter().any(|l| l.starts_with("GET /usage/guard ")));
+    // La tarjeta claude viva necesita el contexto: lo calculó el frente, sin
+    // pedirle nada al heredado (Tarea 5a de la 2e).
     assert!(
-        seen.iter()
-            .any(|l| l.starts_with("GET /usage/analytics?days=7 "))
+        !seen.iter().any(|l| l.starts_with("GET /usage/")),
+        "subconsulta al heredado: {seen:?}"
     );
     // Una consulta también es nativa y sale de la caché.
     let again = get(front.port, "/state?x=1").await;
     assert_eq!(again.body, got.body);
     front.stop().await;
+}
+
+/// GET /state con una tarjeta `working` de 17 min (`round` estable): sin
+/// llamadas recientes en la base de uso la sugerencia es «parece colgado»;
+/// con un turno reciente del proyecto, la guardia del frente la quita. Las dos
+/// contra el cc-dash real sobre el mismo HOME (Tarea 5a de la 2e).
+async fn state_guard_suggestion_matches_python(tag: &str, recent_turn: bool) {
+    let home = TestHome::new(tag);
+    if seed(&home).is_none() {
+        return;
+    }
+    let now = comandos_server::dash::native::wall_clock_ms();
+    let ts = now as f64 / 1000.0 - 17.25 * 60.0;
+    home.write(
+        "state/a.json",
+        &json!({"session":"proj","agent":"claude","status":"working","detail":"x","ts":ts})
+            .to_string(),
+    );
+    let sql = if recent_turn {
+        turn_sql(RECENT_TURN, now)
+    } else {
+        String::new()
+    };
+    support::seed_usage(&home, &sql);
+    let Some(py) = oracle(&home).await else {
+        return;
+    };
+    let expected = get(py.port, "/state").await;
+    assert_eq!(expected.status, 200);
+    let relay = Relay::start(py.port).await;
+    let mut opts = home.options();
+    opts.clock = Arc::new(comandos_server::dash::native::wall_clock_ms);
+    let front = front(&home, relay.port, opts).await;
+    let got = get(front.port, "/state").await;
+    assert_eq!(got.status, 200, "{}", got.text());
+    assert_eq!(masked(&got.body), masked(&expected.body));
+    let cards: Value = serde_json::from_slice(&got.body).unwrap();
+    let claude = cards
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["session"] == "proj")
+        .unwrap();
+    assert_eq!(claude["status"], "working");
+    let hung = claude["suggestion"]["text"]
+        .as_str()
+        .is_some_and(|t| t.contains("parece colgado"));
+    assert_eq!(hung, !recent_turn, "{claude}");
+    let seen = relay.requests();
+    assert!(
+        !seen
+            .iter()
+            .any(|l| l.starts_with("GET /state") || l.starts_with("GET /usage/")),
+        "{seen:?}"
+    );
+    front.stop().await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn state_hung_suggestion_matches_python_without_recent_calls() {
+    state_guard_suggestion_matches_python("state-guard-hung", false).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn state_native_guard_suppresses_hung_like_python() {
+    state_guard_suggestion_matches_python("state-guard-calls", true).await;
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -234,7 +300,7 @@ async fn state_flight_survives_leader_cancel() {
     let mut opts = home.options();
     let shared = clock.clone();
     opts.clock = Arc::new(move || shared.load(Ordering::SeqCst));
-    // Contexto: `guard` y analítica vacíos; nada se reenvía a este heredado.
+    // El contexto es nativo; nada se reenvía a este heredado.
     let legacy = FixedLegacy::start(200, "{}").await;
     let front = front(&home, legacy.port, opts).await;
     // Líder que se desconecta enseguida y dos seguidores.
@@ -317,75 +383,145 @@ async fn state_hung_tmux_answers_504_runtime_free() {
     front.stop().await;
 }
 
+/// Un turno de Claude reciente del proyecto `Proyecto` (la etiqueta de la
+/// pestaña de `seed`): la guardia lo cuenta en `calls10m`.
+const RECENT_TURN: &str = "insert into usage_turns (id, provider, agent, tmux_session, tmux_pane, \
+     pane_pwd, git_root, model, turn_started_at, turn_finished_at, total_tokens, source, confidence) \
+     values ('t1', 'claude', 'claude', 'proj', '%1', '/w/Proyecto', '/w/Proyecto', 'claude-opus-5', \
+     {start}, {end}, 1000, 'claude_jsonl', 'exact');";
+
+/// Un turno con `model` BLOB: el frente no sabe qué haría el Python → declina.
+const BLOB_TURN: &str = "insert into usage_turns (id, provider, agent, tmux_session, tmux_pane, \
+     pane_pwd, git_root, model, turn_started_at, turn_finished_at, source, confidence) values \
+     ('blob', 'claude', 'claude', 'proj', '%1', '/w', '/w', X'636c617564652d6f707573', {start}, {end}, \
+     'claude_jsonl', 'exact');";
+
+fn turn_sql(template: &str, now_ms: i64) -> String {
+    let end = now_ms / 1000 - 60;
+    template
+        .replace("{start}", &(end - 30).to_string())
+        .replace("{end}", &end.to_string())
+}
+
 #[tokio::test(flavor = "current_thread")]
-async fn suggestion_context_legacy_500_is_empty_and_down_declines() {
-    use comandos_server::dash::native::states::{context::Context, serial::Serial};
-    // Heredado caído → Decline (y el fallo se recuerda 5 s); heredado que
-    // responde 500 → guard {} y latencia vacía, cacheado 60 s.
-    let home = TestHome::new("state-ctx");
+async fn suggestion_context_is_native() {
+    use comandos_server::dash::native::{Native, states::context::Context, usage::guard};
+    // La guardia y la latencia salen de la base de uso del frente, se cachean
+    // 60 s y no se pide nada al heredado (que ni existe: puerto muerto).
+    let home = TestHome::new("state-ctx-native");
+    support::seed_usage(&home, &turn_sql(RECENT_TURN, NOW_MS));
     let mut opts = home.options();
     opts.legacy = std::net::SocketAddr::from(([127, 0, 0, 1], dead_port()));
+    let native = Native::new(opts);
     let ctx = Context::default();
     let registry = json!({});
-    assert!(
-        ctx.get(&opts, &Serial::default(), &registry, NOW_MS)
+    let got = ctx.get(&native, &registry, NOW_MS).await.unwrap();
+    assert_eq!(got.guard["projects"][0]["project"], json!("Proyecto"));
+    assert_eq!(got.guard["projects"][0]["calls10m"], json!(1));
+    assert_eq!(got.guard["forecastLevel"], json!("normal"));
+    assert_eq!(
+        Some(&got.guard),
+        guard::token_guard_with_forecast(&native)
             .await
-            .is_err()
+            .ok()
+            .flatten()
+            .as_ref()
     );
-    let failing = FixedLegacy::start(500, r#"{"error": "Error interno del tablero"}"#).await;
-    opts.legacy = std::net::SocketAddr::from(([127, 0, 0, 1], failing.port));
-    // Dentro de la memoria del fallo: declina sin preguntar.
-    assert!(
-        ctx.get(&opts, &Serial::default(), &registry, NOW_MS + 4_999)
-            .await
-            .is_err()
-    );
-    assert!(failing.requests().is_empty());
-    let t0 = NOW_MS + 5_000;
-    let got = ctx
-        .get(&opts, &Serial::default(), &registry, t0)
-        .await
-        .unwrap();
-    assert_eq!(got.guard, json!({}));
     assert!(got.latency.is_empty());
     assert!(got.routes.is_empty());
-    assert_eq!(failing.requests().len(), 2);
-    drop(failing);
-    // 60 s después sigue siendo el mismo (el heredado ya no existe).
-    assert!(
-        ctx.get(&opts, &Serial::default(), &registry, t0 + 60_000)
-            .await
-            .is_ok()
-    );
-    assert!(
-        ctx.get(&opts, &Serial::default(), &registry, t0 + 60_001)
-            .await
-            .is_err()
-    );
+    // Dentro de 60 s, el mismo contexto aunque la base cambie; después, nuevo.
+    support::seed_usage(&home, "delete from usage_turns;");
+    let cached = ctx.get(&native, &registry, NOW_MS + 60_000).await.unwrap();
+    assert!(Arc::ptr_eq(&got, &cached));
+    let fresh = ctx.get(&native, &registry, NOW_MS + 60_001).await.unwrap();
+    assert_eq!(fresh.guard["projects"], json!([]));
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn suggestion_context_unreadable_200_declines() {
-    use comandos_server::dash::native::states::{context::Context, serial::Serial};
-    // C11: un 200 que el frente no puede leer como el Python (un sustituto
-    // suelto, que `json` sí acepta) declina; `NaN` sí se lee (`workspace_loads`).
-    let home = TestHome::new("state-ctx-unreadable");
-    let legacy = FixedLegacy::start(200, r#"{"x": "\ud800"}"#).await;
-    let mut opts = home.options();
-    opts.legacy = std::net::SocketAddr::from(([127, 0, 0, 1], legacy.port));
+async fn suggestion_context_slow_lane_declines_within_two_seconds() {
+    use comandos_server::dash::native::{
+        Native,
+        states::context::{Context, QUERY_TIMEOUT},
+    };
+    // El carril de uso ocupado por otro trabajo largo: las consultas del
+    // contexto tienen el plazo de la subconsulta de la 2d (2 s) y, al vencer,
+    // declinan y el fallo se recuerda. El runtime sigue libre.
+    let home = TestHome::new("state-ctx-slow");
+    support::seed_usage(&home, &turn_sql(RECENT_TURN, NOW_MS));
+    let native = Native::new(home.options());
+    let lane = native.usage_lane();
+    // El carril ya abierto: el trabajo lento entra primero.
+    assert!(lane.with(|_| ()).await.is_ok());
+    let ctx = Context::default();
+    let registry = json!({});
+    let slow = async {
+        assert!(
+            lane.with(|_| std::thread::sleep(Duration::from_secs(4)))
+                .await
+                .is_ok()
+        );
+    };
+    let timed = async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let started = std::time::Instant::now();
+        let got = ctx.get(&native, &registry, NOW_MS).await;
+        (got.is_err(), started.elapsed())
+    };
+    let ((), (declined, waited)) = tokio::join!(slow, timed);
+    assert!(declined);
     assert!(
-        Context::default()
-            .get(&opts, &Serial::default(), &json!({}), NOW_MS)
-            .await
-            .is_err()
+        waited >= QUERY_TIMEOUT && waited < QUERY_TIMEOUT + Duration::from_millis(700),
+        "{waited:?}"
     );
+    assert!(ctx.failing(NOW_MS));
+    // Libre el carril y pasado el recuerdo del fallo, se calcula.
+    let got = ctx.get(&native, &registry, NOW_MS + 5_000).await.unwrap();
+    assert_eq!(got.guard["projects"][0]["project"], json!("Proyecto"));
 }
 
-/// Heredado cuyas respuestas a `/usage/*` cambian durante la prueba; el resto
-/// (el `/state` reenviado) responde `{"legacy": true}`. Anota cada línea.
+#[tokio::test(flavor = "current_thread")]
+async fn suggestion_context_uncertain_declines_and_is_remembered() {
+    use comandos_server::dash::native::{Native, states::context::Context};
+    // Un valor no decodificable en la base declina y el fallo se recuerda
+    // 5 s; pasado ese plazo, con la base limpia, el contexto se calcula.
+    let home = TestHome::new("state-ctx-blob");
+    support::seed_usage(&home, &turn_sql(BLOB_TURN, NOW_MS));
+    let native = Native::new(home.options());
+    let ctx = Context::default();
+    let registry = json!({});
+    assert!(ctx.get(&native, &registry, NOW_MS).await.is_err());
+    assert!(ctx.failing(NOW_MS + 4_999));
+    support::seed_usage(&home, "delete from usage_turns;");
+    assert!(ctx.get(&native, &registry, NOW_MS + 4_999).await.is_err());
+    assert!(!ctx.failing(NOW_MS + 5_000));
+    let got = ctx.get(&native, &registry, NOW_MS + 5_000).await.unwrap();
+    assert_eq!(got.guard["projects"], json!([]));
+    assert!(!ctx.failing(NOW_MS + 5_001));
+
+    // Carril de uso apagado (una base más nueva): declina.
+    let home = TestHome::new("state-ctx-lane-down");
+    support::seed_usage(&home, "pragma user_version = 12;");
+    let native = Native::new(home.options());
+    let ctx = Context::default();
+    assert!(ctx.get(&native, &registry, NOW_MS).await.is_err());
+    assert!(ctx.failing(NOW_MS));
+
+    // Sin efectos de uso (la sombra) la caché de límites nunca se llena: el
+    // frente no sabe qué pronóstico ve el Python → declina.
+    let home = TestHome::new("state-ctx-no-limits");
+    let mut opts = home.options();
+    opts.usage_effects = false;
+    let native = Native::new(opts);
+    let ctx = Context::default();
+    assert!(ctx.get(&native, &registry, NOW_MS).await.is_err());
+    assert!(ctx.failing(NOW_MS + 4_999));
+}
+
+/// Heredado que responde `usage` a `/usage/*` (el frente ya no las pide: la
+/// prueba lo comprueba) y `{"legacy": true}` al resto (el `/state` reenviado).
+/// Anota cada línea.
 struct SwitchLegacy {
     port: u16,
-    usage: Arc<Mutex<String>>,
     seen: Arc<Mutex<Vec<String>>>,
 }
 
@@ -427,10 +563,7 @@ impl SwitchLegacy {
                 });
             }
         });
-        Self { port, usage, seen }
-    }
-    fn set_usage(&self, body: &str) {
-        *self.usage.lock().unwrap() = body.to_owned();
+        Self { port, seen }
     }
     fn requests(&self) -> Vec<String> {
         self.seen.lock().unwrap().clone()
@@ -485,25 +618,25 @@ async fn state_context_failure_memory_declines_before_tmux() {
     let Some(wrapper) = seed_needing_context(&home) else {
         return;
     };
-    let legacy = SwitchLegacy::start(r#"{"x": "\ud800"}"#).await;
+    support::seed_usage(&home, &turn_sql(BLOB_TURN, NOW_MS));
+    let legacy = SwitchLegacy::start("{}").await;
     let mut opts = home.options();
     opts.tmux.program.path = wrapper;
     let front = front(&home, legacy.port, opts).await;
-    // 1: calcula, el contexto no se puede leer → declina y recuerda el fallo.
+    // 1: calcula, la guardia no se puede reproducir → declina y recuerda el fallo.
     assert_eq!(
         get(front.port, "/state").await.text(),
         r#"{"legacy": true}"#
     );
     let calls = tmux_calls(&home);
     assert!(calls > 0, "el primer cómputo no llamó a tmux");
-    assert_eq!(legacy.usage_requests(), 2, "{:?}", legacy.requests());
-    // 2: dentro de los 5 s del fallo, se reenvía sin tmux ni subconsultas.
+    // 2: dentro de los 5 s del fallo, se reenvía sin tmux.
     assert_eq!(
         get(front.port, "/state").await.text(),
         r#"{"legacy": true}"#
     );
     assert_eq!(tmux_calls(&home), calls);
-    assert_eq!(legacy.usage_requests(), 2, "{:?}", legacy.requests());
+    assert_eq!(legacy.usage_requests(), 0, "{:?}", legacy.requests());
     assert_eq!(
         legacy
             .requests()
@@ -526,7 +659,8 @@ async fn state_tracker_commits_only_emitted_results() {
     let Some(wrapper) = seed_needing_context(&home) else {
         return;
     };
-    let legacy = SwitchLegacy::start(r#"{"x": "\ud800"}"#).await;
+    support::seed_usage(&home, &turn_sql(BLOB_TURN, NOW_MS));
+    let legacy = SwitchLegacy::start("{}").await;
     let clock = Arc::new(AtomicI64::new(NOW_MS));
     let mut opts = home.options();
     opts.tmux.program.path = wrapper;
@@ -538,8 +672,8 @@ async fn state_tracker_commits_only_emitted_results() {
         r#"{"legacy": true}"#
     );
     assert!(tmux_calls(&home) > 0);
-    // Pasada la memoria del fallo, el contexto ya se puede leer.
-    legacy.set_usage("{}");
+    // Pasada la memoria del fallo, el contexto ya se puede calcular.
+    support::seed_usage(&home, "delete from usage_turns;");
     clock.fetch_add(6_000, Ordering::SeqCst);
     let got = get(front.port, "/state").await;
     assert_eq!(got.status, 200, "{}", got.text());
@@ -559,39 +693,30 @@ async fn state_tracker_commits_only_emitted_results() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn suggestion_context_routes_failure_skips_legacy_and_is_remembered() {
-    use comandos_server::dash::native::states::{context::Context, serial::Serial};
-    // Revisión de la Tarea 5: las rutas se calculan antes de preguntar al
-    // heredado; si fallan no hay subconsultas y el fallo se recuerda 5 s.
+async fn suggestion_context_routes_failure_skips_usage_and_is_remembered() {
+    use comandos_server::dash::native::{Native, states::context::Context};
+    // Revisión de la Tarea 5: las rutas se calculan antes de la guardia; si
+    // fallan no se abre la base de uso ni se piden los límites, y el fallo se
+    // recuerda 5 s.
     let home = TestHome::new("state-ctx-routes");
-    let legacy = FixedLegacy::start(200, "{}").await;
     let mut opts = home.options();
-    opts.legacy = std::net::SocketAddr::from(([127, 0, 0, 1], legacy.port));
     let repo = opts.repo_root.take();
+    let native = Native::new(opts.clone());
     let ctx = Context::default();
     let registry = json!({});
     assert!(!ctx.failing(NOW_MS));
-    assert!(
-        ctx.get(&opts, &Serial::default(), &registry, NOW_MS)
-            .await
-            .is_err()
-    );
-    assert!(legacy.requests().is_empty());
+    assert!(ctx.get(&native, &registry, NOW_MS).await.is_err());
+    assert!(!home.usage_db().exists(), "la guardia abrió la base");
+    assert!(!native.limits().refreshing());
+    assert!(!native.limits().current().loaded);
     assert!(ctx.failing(NOW_MS + 4_999));
     opts.repo_root = repo;
-    assert!(
-        ctx.get(&opts, &Serial::default(), &registry, NOW_MS + 4_999)
-            .await
-            .is_err()
-    );
-    assert!(legacy.requests().is_empty());
+    let native = Native::new(opts);
+    assert!(ctx.get(&native, &registry, NOW_MS + 4_999).await.is_err());
+    assert!(!home.usage_db().exists());
     assert!(!ctx.failing(NOW_MS + 5_000));
-    assert!(
-        ctx.get(&opts, &Serial::default(), &registry, NOW_MS + 5_000)
-            .await
-            .is_ok()
-    );
-    assert_eq!(legacy.requests().len(), 2);
+    assert!(ctx.get(&native, &registry, NOW_MS + 5_000).await.is_ok());
+    assert!(home.usage_db().exists());
     assert!(!ctx.failing(NOW_MS + 5_001));
 }
 
@@ -641,24 +766,4 @@ async fn state_persistent_decline_is_cached_for_the_ttl() {
     assert_eq!(forwarded, 3);
     assert!(!home.hooks().join("app-tab-models.json").exists());
     front.stop().await;
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn suggestion_context_other_status_declines_and_is_remembered() {
-    use comandos_server::dash::native::states::{context::Context, serial::Serial};
-    // Revisión final, M2: solo el 500 de la excepción de la función es el
-    // `except` del Python; un 404 (o 401, 502…) del heredado declina y se
-    // recuerda como un fallo, sin dar sugerencias distintas en silencio.
-    let home = TestHome::new("state-ctx-404");
-    let legacy = FixedLegacy::start(404, r#"{"error": "No encontrado"}"#).await;
-    let mut opts = home.options();
-    opts.legacy = std::net::SocketAddr::from(([127, 0, 0, 1], legacy.port));
-    let ctx = Context::default();
-    assert!(
-        ctx.get(&opts, &Serial::default(), &json!({}), NOW_MS)
-            .await
-            .is_err()
-    );
-    assert!(ctx.failing(NOW_MS + 4_999));
-    assert_eq!(legacy.requests().len(), 2);
 }

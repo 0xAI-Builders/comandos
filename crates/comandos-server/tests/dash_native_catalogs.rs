@@ -310,7 +310,10 @@ async fn sovereignty_declines_on_empty_usage_db_without_creating_tables() {
     let home = TestHome::new("sovereignty-empty-db");
     fs::write(home.usage_db(), "").unwrap();
     let legacy = FakeLegacy::start().await;
-    let front = front(&home, legacy.port, home.options()).await;
+    // Sin efectos de uso: el refresco de límites del arranque no abre la base.
+    let mut opts = home.options();
+    opts.usage_effects = false;
+    let front = front(&home, legacy.port, opts).await;
     assert_eq!(
         get(front.port, "/sovereignty").await.text(),
         r#"{"legacy": true}"#
@@ -352,7 +355,12 @@ async fn sovereignty_declines_before_migrating_older_usage_db() {
             .unwrap();
         drop(conn);
         let legacy = FakeLegacy::start().await;
-        let front = front(&home, legacy.port, home.options()).await;
+        // Sin efectos de uso: el refresco de límites del arranque (Tarea 8 de la
+        // 2e) abre la base para el consumo medido de Grok y Groq y la migra, como
+        // el `_limits_snapshot_loop` del Python; aquí solo cuenta `/sovereignty`.
+        let mut opts = home.options();
+        opts.usage_effects = false;
+        let front = front(&home, legacy.port, opts).await;
         assert_eq!(
             get(front.port, "/sovereignty").await.text(),
             r#"{"legacy": true}"#,

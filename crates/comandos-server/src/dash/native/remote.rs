@@ -315,17 +315,8 @@ async fn run_quiet_input(
         return Quiet::failed(os_error_message(2, argv0));
     };
     let program = opts.program(path);
-    let mut cmd = tokio::process::Command::new(&program.path);
-    cmd.args(&program.prefix).args(args);
-    if program.env_clear {
-        cmd.env_clear();
-    }
-    for key in &program.env_remove {
-        cmd.env_remove(key);
-    }
-    for (key, value) in &program.env {
-        cmd.env(key, value);
-    }
+    let mut cmd = program.command();
+    cmd.args(args);
     cmd.stdin(if input.is_some() {
         Stdio::piped()
     } else {

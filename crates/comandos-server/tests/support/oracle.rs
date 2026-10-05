@@ -303,12 +303,20 @@ pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> 
         fakebin.display(),
         std::env::var("PATH").unwrap_or_default()
     );
-    let out = Command::new("python3")
+    let mut command = Command::new("python3");
+    // B1: sin las claves de D7 del shell del desarrollador y con un `LANG` fijo.
+    for key in D7_KEYS {
+        command.env_remove(key);
+    }
+    let out = command
         .arg("-c")
         .arg(script)
         .arg(&repo)
         .args(args)
         .current_dir(&repo)
+        .env("LANG", "C.UTF-8")
+        .env_remove("LC_ALL")
+        .env_remove("LC_CTYPE")
         .env("HOME", home)
         .env("PATH", &path)
         .env("XDG_RUNTIME_DIR", &runtime)

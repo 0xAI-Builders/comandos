@@ -5,7 +5,7 @@
 //! no hay refresco: ni red ni escrituras (R4).
 use super::super::{
     NativeOptions,
-    lanes::{Lane, UsageBackend},
+    lanes::{Lane, UsageBackend, UsageImportBackend},
 };
 use comandos_core::json::{truthy, workspace_loads};
 use comandos_runtime::limits::{self as lim, AbortRefresh, Raised};
@@ -13,9 +13,12 @@ use comandos_store::usage_read;
 use futures_util::future::BoxFuture;
 use serde_json::{Map, Value};
 use std::{
-    net::SocketAddr,
+    borrow::Cow,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{
+        Arc, Mutex, MutexGuard, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::Duration,
 };
 
@@ -41,6 +44,12 @@ pub trait OauthHttp: Send + Sync + 'static {
 pub struct Limits {
     pub rows: Vec<Map<String, Value>>,
     pub health: Map<String, Value>,
+    /// Hubo al menos un refresco completo (`at > 0`) y en alguno la cuenta
+    /// `main` no falló: las filas de `main` son las de una lectura real, no la
+    /// caché vacía del arranque. Si `main` falla (p. ej. 429) desde el primer
+    /// refresco, el frente no tiene «último dato bueno» y el Python, vivo desde
+    /// antes, sí: el pronóstico saldría distinto (I1 de la revisión de la 5a).
+    pub loaded: bool,
 }
 
 #[derive(Default)]
@@ -50,6 +59,10 @@ struct LimitsState {
     rows: Vec<Map<String, Value>>,
     health: Map<String, Value>,
     refreshing: bool,
+    /// Algún refresco terminó sin error de la cuenta `main` (incluido «no
+    /// configurada» o sin credenciales): desde entonces sus filas, frescas o
+    /// las últimas buenas, son las mismas que vería el Python.
+    main_read: bool,
 }
 
 /// Una entrada: la última lectura completa (cota explícita, regla 6).
@@ -57,6 +70,27 @@ struct LimitsState {
 pub struct LimitsCache {
     state: Mutex<LimitsState>,
     emails: Mutex<lim::EmailCache>,
+    /// Aviso de fin de refresco (se publicó la caché o terminó la tarea).
+    done: tokio::sync::Notify,
+    /// Escrituras de fotos de cuota en vuelo: el refresco ya terminó y no las
+    /// espera (las pruebas sí, `writing_snapshots`).
+    writes: AtomicUsize,
+}
+
+/// Una escritura de fotos de cuota en vuelo mientras vive.
+struct Writing(Arc<LimitsCache>);
+
+impl Writing {
+    fn start(cache: &Arc<LimitsCache>) -> Self {
+        cache.writes.fetch_add(1, Ordering::AcqRel);
+        Self(cache.clone())
+    }
+}
+
+impl Drop for Writing {
+    fn drop(&mut self) {
+        self.0.writes.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 /// Lo que la tarea de refresco necesita, sin `&Native` (D13).
@@ -64,6 +98,8 @@ pub struct LimitsCache {
 pub struct RefreshDeps {
     pub opts: NativeOptions,
     pub usage: Arc<Lane<UsageBackend>>,
+    /// El carril de escritura: las fotos de cuota no esperan a las lecturas (R3).
+    pub import_lane: Arc<Lane<UsageImportBackend>>,
 }
 
 impl LimitsCache {
@@ -85,6 +121,19 @@ impl LimitsCache {
 
     pub fn refreshing(&self) -> bool {
         self.lock().refreshing
+    }
+
+    /// Hay fotos de cuota de un refresco ya terminado escribiéndose.
+    pub fn writing_snapshots(&self) -> bool {
+        self.writes.load(Ordering::Acquire) > 0
+    }
+
+    fn copy(st: &LimitsState) -> Limits {
+        Limits {
+            rows: st.rows.clone(),
+            health: st.health.clone(),
+            loaded: st.at > 0 && st.main_read,
+        }
     }
 
     /// `usage_provider_limits(force=False)`: si venció y no hay refresco en
@@ -120,22 +169,48 @@ impl LimitsCache {
                 Err(_) => self.lock().refreshing = false,
             }
         }
-        let st = self.lock();
-        Limits {
-            rows: st.rows.clone(),
-            health: st.health.clone(),
-        }
+        Self::copy(&self.lock())
     }
 
     /// La copia actual, sin lanzar refresco: una ruta calcula con ella y llama a
     /// `get` (el efecto) solo cuando ya no puede declinar. Son las mismas filas
     /// que `get` devolvería: el refresco que lanza corre en otra tarea.
     pub fn current(&self) -> Limits {
-        let st = self.lock();
-        Limits {
-            rows: st.rows.clone(),
-            health: st.health.clone(),
+        Self::copy(&self.lock())
+    }
+
+    /// `get` y, si la caché aún no está cargada (`Limits::loaded`; arranque
+    /// del frente), espera como mucho `wait` al refresco en vuelo. `None`: sigue
+    /// sin cargar (sin efectos de uso no hay refresco; red colgada; el lector
+    /// abortó sin red; la cuenta `main` solo ha fallado desde el arranque) y
+    /// quien llama no sabe qué filas ve el Python, que ya tiene su caché llena
+    /// o sus últimas filas buenas. La espera es async: el runtime sigue libre.
+    pub async fn get_loaded(
+        self: &Arc<Self>,
+        deps: &RefreshDeps,
+        wait: Duration,
+    ) -> Option<Limits> {
+        let limits = self.get(deps);
+        if limits.loaded {
+            return Some(limits);
         }
+        let notified = self.done.notified();
+        tokio::pin!(notified);
+        // Registrado antes de mirar el estado: un aviso intermedio no se pierde.
+        notified.as_mut().enable();
+        {
+            let st = self.lock();
+            let limits = Self::copy(&st);
+            if limits.loaded {
+                return Some(limits);
+            }
+            if !st.refreshing {
+                return None;
+            }
+        }
+        let _ = tokio::time::timeout(wait, notified).await;
+        let limits = Self::copy(&self.lock());
+        limits.loaded.then_some(limits)
     }
 
     /// D5: `attach_token_counts` sobre las filas cacheadas, como el Python (que
@@ -153,6 +228,7 @@ struct Reset(Arc<LimitsCache>);
 impl Drop for Reset {
     fn drop(&mut self) {
         self.0.lock().refreshing = false;
+        self.0.done.notify_waiters();
     }
 }
 
@@ -181,7 +257,7 @@ struct Collected {
 }
 
 async fn refresh(cache: Arc<LimitsCache>, deps: RefreshDeps) {
-    let _reset = Reset(cache.clone());
+    let reset = Reset(cache.clone());
     let mut networked = false;
     // `AbortRefresh`: el hilo del Python moría y la caché no cambiaba. Si ya
     // hubo red, se fija `at` igualmente (las filas y la salud no cambian): sin
@@ -199,16 +275,34 @@ async fn refresh(cache: Arc<LimitsCache>, deps: RefreshDeps) {
     let at = secs(&deps.opts);
     {
         let mut st = cache.lock();
+        // `main` sin error en esta lectura: a partir de aquí sus filas son
+        // reales (o, tras un fallo posterior, las últimas buenas con `stale`).
+        let main_failed = done
+            .health
+            .get("claude_oauth")
+            .and_then(|h| h.get("status"))
+            .and_then(Value::as_str)
+            == Some("error");
+        st.main_read |= !main_failed;
         st.at = at;
         st.rows = done.rows;
         st.health = done.health;
     }
+    // El refresco termina aquí: quien espera la primera lectura (`get_loaded`)
+    // no espera la escritura de las fotos de cuota, y un `get` posterior puede
+    // lanzar el siguiente mientras se escriben. La escritura cuenta como en
+    // vuelo desde antes de soltar `reset`: sin hueco entre los dos estados.
+    let writing = (!done.snapshot.is_empty()).then(|| Writing::start(&cache));
+    drop(reset);
     // `try: record_quota_snapshots(...) except: pass`. Va después de publicar la
-    // caché (R3: nadie espera la escritura) y nunca crea la base (A3).
-    if !done.snapshot.is_empty() && db_exists(&deps.opts.usage_db).await {
+    // caché, por el carril de escritura (R3: nadie espera la escritura ni la
+    // escritura espera a las lecturas del carril de uso), y nunca crea la base (A3).
+    if let Some(_writing) = writing
+        && db_exists(&deps.opts.usage_db).await
+    {
         let snapshot = done.snapshot;
         let _ = deps
-            .usage
+            .import_lane
             .with(move |u| usage_read::record_quota_snapshots(&u.conn, &snapshot, at))
             .await;
     }
@@ -446,35 +540,72 @@ async fn collect(
 const OAUTH_BODY_CAP: usize = 1 << 20;
 const OAUTH_BODY_TOO_LARGE: &str = "respuesta OAuth de más de 1 MiB";
 
-/// El cliente de producción: `reqwest` con HTTP/1.1, plazos de 8 s y la
-/// resolución hecha antes por el frente para reproducir los errores de DNS.
-pub struct ReqwestOauth;
+/// El cliente de producción: `reqwest` con HTTP/1.1 y plazos de 8 s. Un solo
+/// cliente para todas las cuentas y vueltas (I2 de la revisión final): construir
+/// uno por llamada cargaba rustls y las raíces del sistema cada 60 s por cuenta.
+/// Sin conexiones ociosas en el pool: cada petición abre la suya, como el
+/// `urllib` del Python, y entre vueltas no queda ningún socket ni estado TLS.
+#[derive(Default)]
+pub struct ReqwestOauth {
+    client: OnceLock<(Duration, reqwest::Client)>,
+}
 
-impl OauthHttp for ReqwestOauth {
-    fn get_json(&self, url: &'static str, token: String, timeout: Duration) -> HttpFuture {
-        Box::pin(fetch_json(url, token, timeout))
+impl ReqwestOauth {
+    /// El cliente compartido para `timeout` (en producción siempre
+    /// `OAUTH_TIMEOUT`). Un plazo distinto del guardado da un cliente propio.
+    fn client(&self, timeout: Duration) -> Result<Cow<'_, reqwest::Client>, String> {
+        if let Some((saved, client)) = self.client.get() {
+            return Ok(if *saved == timeout {
+                Cow::Borrowed(client)
+            } else {
+                Cow::Owned(build_client(timeout)?)
+            });
+        }
+        let built = build_client(timeout)?;
+        let (saved, client) = self.client.get_or_init(|| (timeout, built));
+        Ok(if *saved == timeout {
+            Cow::Borrowed(client)
+        } else {
+            Cow::Owned(build_client(timeout)?)
+        })
     }
 }
 
-async fn fetch_json(url: &'static str, token: String, timeout: Duration) -> Result<Value, String> {
-    use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderValue};
-    let parsed = reqwest::Url::parse(url).map_err(|e| e.to_string())?;
-    let host = parsed.host_str().unwrap_or_default().to_owned();
-    let port = parsed.port_or_known_default().unwrap_or(443);
-    let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), port))
-        .await
-        .map_err(|e| dns_error(&e))?
-        .collect();
-    let client = reqwest::Client::builder()
+fn build_client(timeout: Duration) -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
         .http1_only()
         .no_proxy()
         .connect_timeout(timeout)
         .read_timeout(timeout)
-        .resolve_to_addrs(&host, &addrs)
+        .pool_max_idle_per_host(0)
         // La misma petición que veía el servidor con el Python.
         .user_agent("Python-urllib/3.10")
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())
+}
+
+impl OauthHttp for ReqwestOauth {
+    fn get_json(&self, url: &'static str, token: String, timeout: Duration) -> HttpFuture {
+        // `reqwest::Client` es un `Arc`: el clon es barato y comparte el pool.
+        let client = self.client(timeout).map(Cow::into_owned);
+        Box::pin(async move { fetch_json(client?, url, token).await })
+    }
+}
+
+async fn fetch_json(
+    client: reqwest::Client,
+    url: &'static str,
+    token: String,
+) -> Result<Value, String> {
+    use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderValue};
+    let parsed = reqwest::Url::parse(url).map_err(|e| e.to_string())?;
+    let host = parsed.host_str().unwrap_or_default().to_owned();
+    let port = parsed.port_or_known_default().unwrap_or(443);
+    // Resolución previa solo para el texto del error de DNS del `urllib`; la
+    // conexión la resuelve el cliente compartido.
+    let _resolved = tokio::net::lookup_host((host.as_str(), port))
+        .await
+        .map_err(|e| dns_error(&e))?;
     // Un token con caracteres que no caben en una cabecera: el Python incluiría el
     // token en el texto del error; aquí nunca.
     let mut auth = HeaderValue::from_str(&format!("Bearer {token}"))
@@ -609,6 +740,26 @@ mod tests {
             "<urlopen error [Errno 111] Connection refused>"
         );
         assert_eq!(strerror(101), "Network is unreachable");
+    }
+
+    /// I2 de la revisión final: un solo cliente `reqwest` (rustls y raíces del
+    /// sistema cargadas una vez) para todas las cuentas y todas las vueltas.
+    #[test]
+    fn oauth_client_is_built_once() {
+        let oauth = ReqwestOauth::default();
+        let shared = |oauth: &ReqwestOauth| match oauth.client(OAUTH_TIMEOUT) {
+            Ok(Cow::Borrowed(client)) => Some(client as *const reqwest::Client),
+            _ => None,
+        };
+        let first = shared(&oauth);
+        assert!(first.is_some(), "el cliente compartido");
+        assert_eq!(first, shared(&oauth), "el mismo cliente en cada llamada");
+        // Un plazo distinto (solo en pruebas) no pisa el compartido.
+        assert!(matches!(
+            oauth.client(Duration::from_secs(1)),
+            Ok(Cow::Owned(_))
+        ));
+        assert_eq!(first, shared(&oauth));
     }
 
     #[test]

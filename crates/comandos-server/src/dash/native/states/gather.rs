@@ -49,13 +49,15 @@ const SSH_TIMEOUT: Duration = Duration::from_secs(3);
 const IDENTITY_FORMAT: &str = "#{socket_path}\t#{pid}\t#{session_id}\t#{session_name}\t#{pane_id}\t#{pane_pid}\t#{pane_current_command}\t#{pane_current_path}";
 
 /// Lo que el trabajo bloqueante conserva entre cómputos (D1, D5): las cachés
-/// del Python que el frente tiene propias. Se toma sin `await` dentro.
+/// del Python que el frente tiene propias. Se toma sin `await` dentro. El
+/// registro de proveedores no vive aquí: es `Native::registry`, la caché
+/// única (B9) que comparten `/state`, `/usage/state` y `/providers`, con su
+/// propio candado corto (este se sostiene todo el escaneo de `/proc`).
 pub struct Blocking {
     records: RecordCache,
     transcripts: TranscriptCache,
     grok: GrokMetadataCache,
     accounts: AccountCache,
-    registry: RegistryCache,
 }
 
 impl Default for Blocking {
@@ -66,7 +68,6 @@ impl Default for Blocking {
             transcripts: TranscriptCache::new(128, 2_097_152),
             grok: GrokMetadataCache::new(128),
             accounts: AccountCache::default(),
-            registry: RegistryCache::default(),
         }
     }
 }
@@ -96,7 +97,7 @@ struct Scan {
 /// `MOTOR_RESULT` desde su espejo `H/motor-results.json` (D1): ausente → `{}`;
 /// ilegible, incierto, no objeto o con un valor que no es objeto → declinar
 /// (la memoria del Python es desconocida).
-fn motor_results(hooks: &Path) -> Result<Map<String, Value>, StateFault> {
+pub(crate) fn motor_results(hooks: &Path) -> Result<Map<String, Value>, StateFault> {
     match files::read_json_strict(&hooks.join("motor-results.json")) {
         Strict::Missing => Ok(Map::new()),
         Strict::Value(Value::Object(map)) if map.values().all(Value::is_object) => Ok(map),
@@ -104,13 +105,14 @@ fn motor_results(hooks: &Path) -> Result<Map<String, Value>, StateFault> {
     }
 }
 
-/// Paso 2: registro, agentes, `/proc`, inspector, registros de estado,
-/// resultados del motor, tiers y pestañas.
-fn scan(
+/// `load_provider_registry()` con la caché única del frente (`Native::registry`,
+/// B9 de la 2e). Su candado solo cubre la carga (lectura, validación e
+/// hidratación): nadie lo sostiene mientras escanea `/proc`, así que un
+/// `/usage/state` o un `/providers` no esperan al escaneo de `/state`.
+pub(crate) fn load_registry(
     opts: &NativeOptions,
-    panes: Vec<PaneRow>,
-    shared: &Mutex<Blocking>,
-) -> Result<Scan, StateFault> {
+    cache: &Mutex<RegistryCache>,
+) -> Result<Value, StateFault> {
     let repo = opts.repo_root.as_ref().ok_or(StateFault::Decline)?;
     let catalog = catalog_paths(
         &opts.home,
@@ -118,21 +120,27 @@ fn scan(
         opts.codex_home.as_deref(),
         opts.grok_home.as_deref(),
     );
-    let mut cache = lock(shared);
-    let registry = cache
-        .registry
+    lock(cache)
         .load(&repo.join("config/providers.json"), &catalog)
-        .map_err(unsure)?;
+        .map_err(unsure)
+}
+
+/// Agentes de `/proc` emparejados con los panes: `agent_pane_maps(procs,
+/// panes, ownership)` (6103) tras `agent_procs()` (5992), y los agentes
+/// externos de `read_states`. Lee `AGENTS` de `cc-notify.conf`.
+pub(crate) fn agent_maps(
+    opts: &NativeOptions,
+    registry: &Value,
+    panes: &[PaneRow],
+) -> Result<(AgentMaps, HashSet<(String, String)>), StateFault> {
     let conf = providers::read_conf(&opts.hooks.join("cc-notify.conf")).map_err(unsure)?;
     let conf_agents = conf
         .iter()
         .find(|(k, _)| k == "AGENTS")
         .map(|(_, v)| v.as_str());
-    let agents = providers::agent_set(conf_agents, &registry);
-    let aliases = providers::process_aliases(&agents, &registry);
+    let agents = providers::agent_set(conf_agents, registry);
+    let aliases = providers::process_aliases(&agents, registry);
     let proc_root = opts.proc_root.as_path();
-    // `PaneInspector()` se crea al empezar `read_states`.
-    let inspector = PaneInspector::new(&opts.home, proc_root).map_err(unsure)?;
     let procs = agent_procs(proc_root, &aliases).map_err(unsure)?;
     // Padres y `cmdline` de `/proc` con cachés locales de este cómputo.
     let mut parents: HashMap<i64, i64> = HashMap::new();
@@ -141,10 +149,27 @@ fn scan(
             .entry(pid)
             .or_insert_with(|| agent_procs::parent_pid(proc_root, pid))
     };
-    let owners = process_owners(&procs, &panes, &mut parent);
+    let owners = process_owners(&procs, panes, &mut parent);
     let mut cmdline = |pid: i64| agent_procs::proc_cmdline(proc_root, pid);
-    let maps = agent_pane_maps(&procs, &panes, &owners, &mut cmdline, &mut parent);
+    let maps = agent_pane_maps(&procs, panes, &owners, &mut cmdline, &mut parent);
     let external = external_agents(&procs, &owners, &mut parent);
+    Ok((maps, external))
+}
+
+/// Paso 2: registro, agentes, `/proc`, inspector, registros de estado,
+/// resultados del motor, tiers y pestañas.
+fn scan(
+    opts: &NativeOptions,
+    panes: Vec<PaneRow>,
+    shared: &Mutex<Blocking>,
+    registry: &Mutex<RegistryCache>,
+) -> Result<Scan, StateFault> {
+    // El registro primero, con su candado corto y antes del de las cachés.
+    let registry = load_registry(opts, registry)?;
+    let mut cache = lock(shared);
+    // `PaneInspector()` se crea al empezar `read_states`.
+    let inspector = PaneInspector::new(&opts.home, opts.proc_root.as_path()).map_err(unsure)?;
+    let (maps, external) = agent_maps(opts, &registry, &panes)?;
     let tabs = light::tab_labels(&opts.hooks)?;
     let history = light::read_tab_history(&opts.hooks)?;
     let records = cache.records.scan(&opts.hooks.join("state"))?;
@@ -216,7 +241,8 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
     }
     // Con un fallo del contexto recordado (R3) el cómputo acabaría declinando
     // si alguna tarjeta lo necesita: se reenvía antes del trabajo de tmux y
-    // `/proc`, para que un heredado lento o caído no lo repita en cada sondeo.
+    // `/proc`, para que una guardia que el frente no reproduce (o la primera
+    // lectura de límites aún pendiente) no lo repita en cada sondeo.
     *phase = "fallo del contexto de sugerencias recordado";
     if native.states.context.failing((opts.clock)()) {
         return Err(StateFault::Decline);
@@ -237,11 +263,12 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
     // 2. Escaneo bloqueante.
     *phase = "escaneo (registro, /proc, registros de estado, motor-results, tiers, pestañas)";
     let shared = native.states.shared.clone();
+    let registry_cache = native.registry.clone();
     let scan_opts = opts.clone();
     let scanned = native
         .states
         .serial
-        .run(move || scan(&scan_opts, panes, &shared))
+        .run(move || scan(&scan_opts, panes, &shared, &registry_cache))
         .await?;
     // 3. `session_labels()`: `tmux_sessions()` sin capturar sus excepciones.
     *phase = "sesiones de tmux";
@@ -275,7 +302,7 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
         native
             .states
             .context
-            .get(opts, &native.states.serial, &registry, (opts.clock)())
+            .get(native, &registry, (opts.clock)())
             .await?
     } else {
         Arc::new(SuggestContext::default())
@@ -406,19 +433,12 @@ impl CardEffects for RealEffects<'_> {
         let program = self.opts().ssh.clone();
         let host = host.to_owned();
         async move {
-            let mut cmd = tokio::process::Command::new(&program.path);
-            cmd.args(&program.prefix)
-                .args(["-O", "check", host.as_str()])
+            let mut cmd = program.command();
+            cmd.args(["-O", "check", host.as_str()])
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .kill_on_drop(true);
-            for name in &program.env_remove {
-                cmd.env_remove(name);
-            }
-            for (name, value) in &program.env {
-                cmd.env(name, value);
-            }
             // `subprocess.run(..., timeout=3)` dentro de `try/except Exception`.
             let Ok(mut child) = cmd.spawn() else {
                 return false;

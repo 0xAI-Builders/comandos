@@ -58,7 +58,8 @@ pub type Result<T> = std::result::Result<T, ReadError>;
 
 /// Filas de `build_usage_state` (cc_usage.py:876-886).
 pub struct StateRows {
-    pub turns: Vec<Object>,
+    /// Los turnos de la ventana, compactos (`StateTurns`): no se guarda cada fila.
+    pub turns: usage_state::StateTurns,
     pub provider_usage: Vec<Object>,
     pub provider_costs: Vec<Object>,
 }
@@ -237,16 +238,46 @@ pub fn usage_settings(conn: &Connection) -> Result<Vec<(String, Value)>> {
     Ok(out)
 }
 
-/// Los tres `select` de `build_usage_state` (cc_usage.py:876-886).
+/// Los tres `select` de `build_usage_state` (cc_usage.py:876-886). Los turnos de
+/// 14 días (decenas de miles con la base real) se compactan según se leen: como
+/// objetos JSON ocupaban cientos de MiB que la arena del carril ya no devolvía.
 pub fn state_rows(conn: &Connection, since: i64) -> Result<StateRows> {
-    Ok(StateRows {
-        turns: rows(
-            conn,
+    let mut turns = usage_state::StateTurns::new();
+    {
+        // Las once columnas, en el orden de `TURN_TEXT` y luego las numéricas:
+        // cada fila se lee por índice, sin el objeto de `dict(sqlite3.Row)`.
+        let mut stmt = conn.prepare(
             "select tmux_session, tmux_pane, pane_pwd, git_root, agent, provider,\
              \x20model, confidence, cost_usd, total_tokens, turn_finished_at\
              \x20from usage_turns where turn_finished_at >= ? order by turn_finished_at desc",
-            &[&since],
-        )?,
+        )?;
+        let mut cursor = stmt.query(params![since])?;
+        while let Some(row) = cursor.next()? {
+            let text_cell = |i: usize| -> Result<usage_state::TurnCell<'_>> {
+                Ok(match row.get_ref(i)? {
+                    ValueRef::Text(t) => usage_state::TurnCell::Text(
+                        std::str::from_utf8(t).map_err(|_| ReadError::Undecodable)?,
+                    ),
+                    other => usage_state::TurnCell::Value(cell(other)?),
+                })
+            };
+            let text = [
+                text_cell(0)?,
+                text_cell(1)?,
+                text_cell(2)?,
+                text_cell(3)?,
+                text_cell(4)?,
+                text_cell(5)?,
+                text_cell(6)?,
+                text_cell(7)?,
+            ];
+            let (cost, tokens, finished) = (column(row, 8)?, column(row, 9)?, column(row, 10)?);
+            turns.push_cells(text, &finished, &tokens, &cost);
+        }
+    }
+    turns.finish();
+    Ok(StateRows {
+        turns,
         provider_usage: rows(
             conn,
             "select * from provider_usage_buckets order by end_time desc",
@@ -301,6 +332,32 @@ pub fn recent_interactions(conn: &Connection, limit: i64) -> Result<Vec<Object>>
 /// Turnos y tramos de `analytics_week_payload` (`bin/cc-dash:6593-6603`). `wide` añade
 /// `cost`, `model`, `session` y `agent` (la consulta viva de `sidebar`, D9).
 pub fn week_rows(conn: &Connection, since: f64, wide: bool) -> Result<(Vec<Value>, Vec<Value>)> {
+    let (mut turns, mut spans) = (Vec::new(), Vec::new());
+    each_week_row(conn, since, wide, |kind, row| match kind {
+        WeekRow::Turn => turns.push(row.clone()),
+        WeekRow::Span => spans.push(row.clone()),
+    })?;
+    Ok((turns, spans))
+}
+
+/// De qué consulta de `week_rows` viene una fila.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WeekRow {
+    Turn,
+    Span,
+}
+
+/// Las filas de `week_rows` (todos los turnos y después todos los tramos) una a
+/// una, sin guardarlas: con la base real son decenas de miles de turnos en 17
+/// días, y tenerlos todos como objetos JSON a la vez ocupaba cientos de MiB que
+/// la arena del hilo del carril ya no devolvía. El objeto se reutiliza entre
+/// filas; una fila no decodificable corta la lectura con el error.
+pub fn each_week_row(
+    conn: &Connection,
+    since: f64,
+    wide: bool,
+    mut each: impl FnMut(WeekRow, &Value),
+) -> Result<()> {
     let sql = if wide {
         "select provider, harness_account, git_root, pane_pwd, turn_started_at, turn_finished_at, total_tokens, \
          cost_usd, model, tmux_session, agent \
@@ -319,29 +376,43 @@ pub fn week_rows(conn: &Connection, since: f64, wide: bool) -> Result<(Vec<Value
             "provider", "account", "git_root", "pane_pwd", "started", "finished", "tokens",
         ]
     };
-    let turns = keyed(conn, sql, since, keys)?;
-    let spans = keyed(
+    keyed_each(conn, sql, since, keys, |row| each(WeekRow::Turn, row))?;
+    keyed_each(
         conn,
         "select provider, account, git_root, started_at, finished_at from usage_spans where finished_at >= ?",
         since,
         &["provider", "account", "git_root", "started", "finished"],
-    )?;
-    Ok((turns, spans))
+        |row| each(WeekRow::Span, row),
+    )
 }
 
-/// Filas leídas por posición y renombradas (`{"provider": r[0], …}`).
-fn keyed(conn: &Connection, sql: &str, since: f64, keys: &[&str]) -> Result<Vec<Value>> {
+/// Filas leídas por posición y renombradas (`{"provider": r[0], …}`), entregadas
+/// de una en una en el mismo objeto (las claves se crean una vez).
+fn keyed_each(
+    conn: &Connection,
+    sql: &str,
+    since: f64,
+    keys: &[&str],
+    mut each: impl FnMut(&Value),
+) -> Result<()> {
     let mut stmt = conn.prepare(sql)?;
     let mut cursor = stmt.query(params![since])?;
-    let mut out = Vec::new();
+    let mut item = Value::Object(Object::new());
     while let Some(row) = cursor.next()? {
-        let mut item = Object::new();
-        for (i, key) in keys.iter().enumerate() {
-            item.insert((*key).to_owned(), column(row, i)?);
+        if let Value::Object(map) = &mut item {
+            for (i, key) in keys.iter().enumerate() {
+                let value = column(row, i)?;
+                match map.get_mut(*key) {
+                    Some(slot) => *slot = value,
+                    None => {
+                        map.insert((*key).to_owned(), value);
+                    }
+                }
+            }
         }
-        out.push(Value::Object(item));
+        each(&item);
     }
-    Ok(out)
+    Ok(())
 }
 
 /// `quota_snapshots` (cc_usage.py:2036).
@@ -849,6 +920,111 @@ struct Group {
     days: HashSet<String>,
 }
 
+/// El cuerpo del bucle de `experiment_analytics` para una interacción.
+fn add_attempt(groups: &mut Vec<(String, Group)>, d: &Object) -> Result<()> {
+    let key = format!(
+        "{}|{}|{}|{}|{}",
+        str_or(get(d, "route_id"), "unknown")?,
+        str_or(get(d, "model"), "")?,
+        str_or(get(d, "effort"), "")?,
+        str_or(get(d, "harness_account"), "unknown")?,
+        str_or(get(d, "motor_account"), "unknown")?
+    );
+    let index = match groups.iter().position(|(k, _)| *k == key) {
+        Some(i) => i,
+        None => {
+            let value_or = |column: &str, default: &str| match get(d, column) {
+                v if truthy(v) => v.clone(),
+                _ => Value::String(default.into()),
+            };
+            let mut fields = Object::new();
+            fields.insert("configKey".into(), key.clone().into());
+            fields.insert("harness".into(), value_or("harness", "unknown"));
+            fields.insert("motor".into(), value_or("motor", "unknown"));
+            fields.insert("model".into(), value_or("model", ""));
+            fields.insert("effort".into(), value_or("effort", ""));
+            fields.insert(
+                "harnessAccount".into(),
+                value_or("harness_account", "unknown"),
+            );
+            fields.insert("motorAccount".into(), value_or("motor_account", "unknown"));
+            groups.push((
+                key,
+                Group {
+                    fields,
+                    attempts: 0,
+                    labeled: 0,
+                    solved: 0,
+                    failed: 0,
+                    partial: 0,
+                    ratings: Vec::new(),
+                    durations: Vec::new(),
+                    tokens: Vec::new(),
+                    cache_read: 0,
+                    reasoning: 0,
+                    tool_calls: 0,
+                    tool_errors: 0,
+                    task_ids: HashSet::new(),
+                    days: HashSet::new(),
+                },
+            ));
+            groups.len() - 1
+        }
+    };
+    let Some((_, g)) = groups.get_mut(index) else {
+        return Ok(());
+    };
+    g.attempts += 1;
+    if truthy(get(d, "task_id")) {
+        g.task_ids.insert(set_key(get(d, "task_id"))?);
+    }
+    if truthy(get(d, "finished_at_ms")) {
+        g.days.insert(utc_date(get(d, "finished_at_ms"))?);
+    }
+    let outcome = match get(d, "outcome") {
+        v if truthy(v) => v.clone(),
+        _ => Value::String("unknown".into()),
+    };
+    match outcome.as_str() {
+        Some("solved") => {
+            g.labeled += 1;
+            g.solved += 1;
+        }
+        Some("failed") => {
+            g.labeled += 1;
+            g.failed += 1;
+        }
+        Some("partial") => {
+            g.labeled += 1;
+            g.partial += 1;
+        }
+        _ => {}
+    }
+    if !get(d, "rating").is_null() {
+        g.ratings.push(py_int(get(d, "rating"))?);
+    }
+    if !get(d, "duration_ms").is_null() {
+        g.durations.push(py_int(get(d, "duration_ms"))?);
+    }
+    if !get(d, "interaction_tokens").is_null() {
+        g.tokens.push(py_int(get(d, "interaction_tokens"))?);
+    }
+    g.cache_read = checked_add(
+        g.cache_read,
+        usage_state::as_int(get(d, "cache_read_tokens"), 0)?,
+    )?;
+    g.reasoning = checked_add(
+        g.reasoning,
+        usage_state::as_int(get(d, "reasoning_tokens"), 0)?,
+    )?;
+    g.tool_calls = checked_add(g.tool_calls, usage_state::as_int(get(d, "tool_calls"), 0)?)?;
+    g.tool_errors = checked_add(
+        g.tool_errors,
+        usage_state::as_int(get(d, "tool_errors"), 0)?,
+    )?;
+    Ok(())
+}
+
 /// `experiment_analytics` (cc_usage.py:2975). Un `task_type` fuera de `TASK_TYPES` es
 /// el `ValueError("invalid task type")` interior.
 pub fn experiment_analytics(
@@ -886,118 +1062,28 @@ pub fn experiment_analytics(
           left join usage_session_configs c on c.id=i.config_id
           {sql_where}"
     );
-    let found = {
+    // Las filas se agregan según se leen (no se guardan: con la base real son
+    // miles de objetos de ~30 columnas, ~20 MiB que la arena no devolvía). El
+    // Python lee todas antes de agregar: un error de lectura de cualquier fila
+    // y los de `paired_experiment_analytics` ganan al primero de la agregación,
+    // que se guarda hasta el final.
+    let mut groups: Vec<(String, Group)> = Vec::new();
+    let mut failed: Option<ReadError> = None;
+    {
         let mut stmt = conn.prepare(&sql)?;
         let mut cursor = stmt.query(params_from_iter(args.iter()))?;
-        let mut out = Vec::new();
         while let Some(row) = cursor.next()? {
-            out.push(row_object(row)?);
+            let d = row_object(row)?;
+            if failed.is_none()
+                && let Err(e) = add_attempt(&mut groups, &d)
+            {
+                failed = Some(e);
+            }
         }
-        out
-    };
+    }
     let paired = paired_experiment_analytics(conn)?;
-    let mut groups: Vec<(String, Group)> = Vec::new();
-    for d in &found {
-        let key = format!(
-            "{}|{}|{}|{}|{}",
-            str_or(get(d, "route_id"), "unknown")?,
-            str_or(get(d, "model"), "")?,
-            str_or(get(d, "effort"), "")?,
-            str_or(get(d, "harness_account"), "unknown")?,
-            str_or(get(d, "motor_account"), "unknown")?
-        );
-        let index = match groups.iter().position(|(k, _)| *k == key) {
-            Some(i) => i,
-            None => {
-                let value_or = |column: &str, default: &str| match get(d, column) {
-                    v if truthy(v) => v.clone(),
-                    _ => Value::String(default.into()),
-                };
-                let mut fields = Object::new();
-                fields.insert("configKey".into(), key.clone().into());
-                fields.insert("harness".into(), value_or("harness", "unknown"));
-                fields.insert("motor".into(), value_or("motor", "unknown"));
-                fields.insert("model".into(), value_or("model", ""));
-                fields.insert("effort".into(), value_or("effort", ""));
-                fields.insert(
-                    "harnessAccount".into(),
-                    value_or("harness_account", "unknown"),
-                );
-                fields.insert("motorAccount".into(), value_or("motor_account", "unknown"));
-                groups.push((
-                    key,
-                    Group {
-                        fields,
-                        attempts: 0,
-                        labeled: 0,
-                        solved: 0,
-                        failed: 0,
-                        partial: 0,
-                        ratings: Vec::new(),
-                        durations: Vec::new(),
-                        tokens: Vec::new(),
-                        cache_read: 0,
-                        reasoning: 0,
-                        tool_calls: 0,
-                        tool_errors: 0,
-                        task_ids: HashSet::new(),
-                        days: HashSet::new(),
-                    },
-                ));
-                groups.len() - 1
-            }
-        };
-        let Some((_, g)) = groups.get_mut(index) else {
-            continue;
-        };
-        g.attempts += 1;
-        if truthy(get(d, "task_id")) {
-            g.task_ids.insert(set_key(get(d, "task_id"))?);
-        }
-        if truthy(get(d, "finished_at_ms")) {
-            g.days.insert(utc_date(get(d, "finished_at_ms"))?);
-        }
-        let outcome = match get(d, "outcome") {
-            v if truthy(v) => v.clone(),
-            _ => Value::String("unknown".into()),
-        };
-        match outcome.as_str() {
-            Some("solved") => {
-                g.labeled += 1;
-                g.solved += 1;
-            }
-            Some("failed") => {
-                g.labeled += 1;
-                g.failed += 1;
-            }
-            Some("partial") => {
-                g.labeled += 1;
-                g.partial += 1;
-            }
-            _ => {}
-        }
-        if !get(d, "rating").is_null() {
-            g.ratings.push(py_int(get(d, "rating"))?);
-        }
-        if !get(d, "duration_ms").is_null() {
-            g.durations.push(py_int(get(d, "duration_ms"))?);
-        }
-        if !get(d, "interaction_tokens").is_null() {
-            g.tokens.push(py_int(get(d, "interaction_tokens"))?);
-        }
-        g.cache_read = checked_add(
-            g.cache_read,
-            usage_state::as_int(get(d, "cache_read_tokens"), 0)?,
-        )?;
-        g.reasoning = checked_add(
-            g.reasoning,
-            usage_state::as_int(get(d, "reasoning_tokens"), 0)?,
-        )?;
-        g.tool_calls = checked_add(g.tool_calls, usage_state::as_int(get(d, "tool_calls"), 0)?)?;
-        g.tool_errors = checked_add(
-            g.tool_errors,
-            usage_state::as_int(get(d, "tool_errors"), 0)?,
-        )?;
+    if let Some(e) = failed {
+        return Err(e);
     }
     let mut out: Vec<(bool, f64, i64, Value)> = Vec::new();
     for (_, g) in groups {
@@ -1448,6 +1534,23 @@ pub fn record_pane(conn: &Connection, pane: &Object) -> Result<()> {
         params_from_iter(values),
     )?;
     Ok(())
+}
+
+/// `record_pane` de cada pane de `usage_live_panes` (cc-dash:7253), en una
+/// sola transacción: el error de un pane se ignora (su `except Exception:
+/// pass`) y los demás se registran. Devuelve cuántos se registraron; un fallo
+/// al abrir o confirmar la transacción es `Err` (que el que llama ignora).
+pub fn record_panes(conn: &Connection, panes: &[Object]) -> Result<usize> {
+    if panes.is_empty() {
+        return Ok(0);
+    }
+    let tx = conn.unchecked_transaction()?;
+    let recorded = panes
+        .iter()
+        .filter(|pane| record_pane(&tx, pane).is_ok())
+        .count();
+    tx.commit()?;
+    Ok(recorded)
 }
 
 /// `round(x)` de Python para `float`: entero, mitad al par.
