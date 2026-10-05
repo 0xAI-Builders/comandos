@@ -67,3 +67,10 @@ reserializan con `comandos_core::json::response_dumps` (orden de inserción) ant
 en ese modo `content-length` no se compara (los valores volátiles cambian la longitud), y el formato de floats y de
 escapes **no** queda cubierto (lo canoniza el volcado). Las peticiones van con keep-alive para
 que el `Connection: close` de los rechazos sea observable.
+
+**Crear sesiones (`/new`, `/ensure`, `/shell`, `/up`, `/recover-tab`).** El `systemd-run` del
+`fakebin` del arnés no ejecuta nada (sale con 0): ni el oráculo ni el frente crean la sesión del
+scope, así que estas líneas comparan respuesta y registro sin sesión nueva (y sin `files` cuando
+el registro llevaría la ruta del HOME de cada copia, que el arnés no normaliza). La creación real
+(órdenes de tmux, `systemd-run` y agentes falsos) la verifica el gemelo de
+`crates/comandos-server/tests/dash_native_sessions.rs`.
