@@ -775,8 +775,15 @@ pub struct StateTurns {
     /// texto): una columna casi vacía no repite el valor en cada turno.
     null: Option<u32>,
     scalars: HashMap<String, u32>,
-    turns: Vec<Turn>,
+    /// En trozos de `TURN_CHUNK` (64 KiB): un solo vector de 5 MiB lo sirve
+    /// glibc con `mmap` y, al soltarlo, sube su umbral de `mmap` y el de
+    /// recorte a ese tamaño; desde entonces las arenas no se recortan.
+    turns: Vec<Vec<Turn>>,
+    len: usize,
 }
+
+/// Turnos por trozo: 1024 × 64 B = 64 KiB, bajo el umbral de `mmap` de glibc.
+const TURN_CHUNK: usize = 1024;
 
 impl StateTurns {
     pub fn new() -> Self {
@@ -792,16 +799,11 @@ impl StateTurns {
     }
 
     pub fn len(&self) -> usize {
-        self.turns.len()
+        self.len
     }
 
     pub fn is_empty(&self) -> bool {
-        self.turns.is_empty()
-    }
-
-    /// Reserva sitio para `n` turnos más (sin el crecimiento al doble del `Vec`).
-    pub fn reserve(&mut self, n: usize) {
-        self.turns.reserve_exact(n);
+        self.len == 0
     }
 
     /// Un turno leído columna a columna, sin el objeto de la fila: las ocho de
@@ -821,7 +823,7 @@ impl StateTurns {
                 TurnCell::Value(value) => self.intern(&value),
             };
         }
-        self.turns.push(Turn::new(
+        self.push_turn(Turn::new(
             ids,
             as_int(finished, 0),
             as_int(tokens, 0),
@@ -835,6 +837,21 @@ impl StateTurns {
         self.scalars = HashMap::new();
         self.values.shrink_to_fit();
         self.turns.shrink_to_fit();
+        if let Some(last) = self.turns.last_mut() {
+            last.shrink_to_fit();
+        }
+    }
+
+    fn push_turn(&mut self, turn: Turn) {
+        match self.turns.last_mut() {
+            Some(chunk) if chunk.len() < TURN_CHUNK => chunk.push(turn),
+            _ => {
+                let mut chunk = Vec::with_capacity(TURN_CHUNK);
+                chunk.push(turn);
+                self.turns.push(chunk);
+            }
+        }
+        self.len += 1;
     }
 
     fn intern_str(&mut self, s: &str) -> u32 {
@@ -853,7 +870,7 @@ impl StateTurns {
                 *slot = self.intern(value);
             }
         }
-        self.turns.push(Turn::new(
+        self.push_turn(Turn::new(
             text,
             as_int(get(row, "turn_finished_at"), 0),
             as_int(get(row, "total_tokens"), 0),
@@ -895,6 +912,7 @@ impl StateTurns {
     fn iter(&self) -> impl Iterator<Item = TurnRef<'_>> {
         self.turns
             .iter()
+            .flatten()
             .map(move |turn| TurnRef { store: self, turn })
     }
 }
@@ -1637,6 +1655,7 @@ mod tests {
     fn push_cells_matches_push_of_the_row() {
         use serde_json::json;
         assert_eq!(std::mem::size_of::<Turn>(), 64);
+        assert!(std::mem::size_of::<Turn>() * TURN_CHUNK <= 64 * 1024);
         let texts = [
             json!("s"),
             json!("%1"),
@@ -1654,7 +1673,6 @@ mod tests {
         ];
         let mut by_row = StateTurns::new();
         let mut by_cell = StateTurns::new();
-        by_cell.reserve(nums.len());
         for (finished, tokens, cost) in &nums {
             let mut row = Row::new();
             for (key, value) in TURN_TEXT.iter().zip(&texts) {

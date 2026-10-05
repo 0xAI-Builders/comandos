@@ -244,14 +244,6 @@ pub fn usage_settings(conn: &Connection) -> Result<Vec<(String, Value)>> {
 pub fn state_rows(conn: &Connection, since: i64) -> Result<StateRows> {
     let mut turns = usage_state::StateTurns::new();
     {
-        // Solo una pista de tamaño: si una importación escribe entre las dos
-        // lecturas, el vector crece como siempre.
-        let count: i64 = conn.query_row(
-            "select count(*) from usage_turns where turn_finished_at >= ?",
-            params![since],
-            |r| r.get(0),
-        )?;
-        turns.reserve(usize::try_from(count).unwrap_or(0));
         // Las once columnas, en el orden de `TURN_TEXT` y luego las numéricas:
         // cada fila se lee por índice, sin el objeto de `dict(sqlite3.Row)`.
         let mut stmt = conn.prepare(
