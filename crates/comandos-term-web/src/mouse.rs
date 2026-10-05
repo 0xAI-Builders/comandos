@@ -15,10 +15,33 @@ fn js_round(v: f64) -> f64 {
     crate::metrics::js_round(v)
 }
 
-/// Celda de un informe de ratón: `getCoords(…, isSelection = false)` de
-/// xterm.js (`ceil(x / ancho)` acotado a `[1, cols]`, en base 0). `x` e `y`
-/// son píxeles CSS relativos a `.xterm-screen`; `None` sin celda medida.
-pub fn report_cell(x: f64, y: f64, cell: (f64, f64), cols: u16, rows: u16) -> Option<(u16, u16)> {
+/// Celda de un informe de ratón y de la rueda: `getMouseReportCoords` de
+/// xterm.js 5.5 (`x` acotado a `[0, ancho del canvas − 1]` y
+/// `floor(x / ancho de celda)`, lo mismo con `y`). `x` e `y` son píxeles CSS
+/// relativos a `.xterm-screen` (fuera de ella se acota a la última celda);
+/// `canvas` es el tamaño CSS del canvas. `None` sin celda medida.
+pub fn report_cell(
+    x: f64,
+    y: f64,
+    cell: (f64, f64),
+    canvas: (f64, f64),
+    cols: u16,
+    rows: u16,
+) -> Option<(u16, u16)> {
+    let (w, h) = cell;
+    if !(w > 0.0 && h > 0.0 && x.is_finite() && y.is_finite()) || cols == 0 || rows == 0 {
+        return None;
+    }
+    let x = x.min(canvas.0 - 1.0).max(0.0);
+    let y = y.min(canvas.1 - 1.0).max(0.0);
+    let col = (x / w).floor().min(f64::from(cols - 1));
+    let row = (y / h).floor().min(f64::from(rows - 1));
+    Some((col as u16, row as u16))
+}
+
+/// Celda de `getCoords(…, isSelection = false)` (`ceil(x / ancho)` acotado a
+/// `[1, cols]`, en base 0): la de `Linkifier` y la del Alt+clic.
+pub fn coords_cell(x: f64, y: f64, cell: (f64, f64), cols: u16, rows: u16) -> Option<(u16, u16)> {
     let (w, h) = cell;
     if !(w > 0.0 && h > 0.0 && x.is_finite() && y.is_finite()) || cols == 0 || rows == 0 {
         return None;
@@ -246,16 +269,19 @@ pub fn drag_scroll_amount(y: f64, height: f64) -> i32 {
 
 /// Selección hecha con el ratón (el modelo de `SelectionService`).
 ///
-/// En modo [`SelectMode::Simple`] los puntos son **bordes** de celda
-/// (columna de 0 a `cols`, el final excluido, como xterm.js); en
-/// [`SelectMode::Word`] y [`SelectMode::Line`] son celdas y la expansión la
-/// hace [`comandos_term::select::selection_bounds`]. Las filas son absolutas
-/// (historia negativa).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// En los modos [`SelectMode::Simple`] y [`SelectMode::Block`] los puntos
+/// son **bordes** de celda (columna de 0 a `cols`, el final excluido, como
+/// xterm.js); en [`SelectMode::Word`] y [`SelectMode::Line`] son celdas y la
+/// expansión la hace [`comandos_term::select::selection_bounds`]. Las filas
+/// son absolutas (historia negativa).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SelectModel {
     anchor: Option<Point>,
     head: Option<Point>,
     mode: Option<SelectMode>,
+    /// Doble clic sobre un enlace: su primera y su última celda
+    /// (`_selectWordAtCursor` con `currentLink`).
+    span: Option<(Point, Point)>,
 }
 
 impl SelectModel {
@@ -264,10 +290,20 @@ impl SelectModel {
     pub fn start(&mut self, mode: SelectMode, p: Point) {
         self.mode = Some(mode);
         self.anchor = Some(p);
+        self.span = None;
         self.head = match mode {
-            SelectMode::Simple => None,
+            SelectMode::Simple | SelectMode::Block => None,
             SelectMode::Word | SelectMode::Line => Some(p),
         };
+    }
+
+    /// Doble clic sobre un enlace: el enlace entero, aunque cruce filas; un
+    /// arrastre posterior sigue por palabras desde él.
+    pub fn start_span(&mut self, first: Point, last: Point) {
+        self.mode = Some(SelectMode::Word);
+        self.anchor = Some(first);
+        self.head = Some(first);
+        self.span = Some((first, last));
     }
 
     /// Mueve el extremo (arrastre o Shift+clic).
@@ -286,24 +322,47 @@ impl SelectModel {
         self.mode
     }
 
+    pub fn head(&self) -> Option<Point> {
+        self.head
+    }
+
     pub fn clear(&mut self) {
         *self = SelectModel::default();
     }
 
     /// El texto subió `lines` filas absolutas (salida nueva que empuja la
-    /// historia): la selección lo sigue, como las coordenadas de búfer de
-    /// xterm.js. Se borra si sale por arriba de `first_row`.
+    /// historia, o la rejilla alternativa que rota): la selección lo sigue,
+    /// como las coordenadas de búfer de xterm.js, y luego se recorta a
+    /// `first_row` ([`SelectModel::trim`]).
     pub fn shift_up(&mut self, lines: u64, first_row: i32) {
-        if lines == 0 || self.anchor.is_none() {
+        if self.anchor.is_none() {
             return;
         }
         let lines = i32::try_from(lines).unwrap_or(i32::MAX);
         let up = |p: Point| (p.0.saturating_sub(lines), p.1);
         self.anchor = self.anchor.map(up);
         self.head = self.head.map(up);
-        let gone = |p: Option<Point>| p.is_some_and(|(row, _)| row < first_row);
-        if gone(self.anchor) || gone(self.head) {
+        self.span = self.span.map(|(a, b)| (up(a), up(b)));
+        self.trim(first_row);
+    }
+
+    /// `SelectionModel.handleTrim`: si el extremo final (la cabeza) quedó
+    /// por encima de `first_row` la selección se borra; si solo el ancla,
+    /// se acota a esa fila conservando la columna. También tras borrar la
+    /// historia (ED 3).
+    pub fn trim(&mut self, first_row: i32) {
+        let out = |p: &Point| p.0 < first_row;
+        if self.head.as_ref().is_some_and(out) {
             self.clear();
+            return;
+        }
+        let clamp = |p: &mut Point| p.0 = p.0.max(first_row);
+        if let Some(anchor) = self.anchor.as_mut() {
+            clamp(anchor);
+        }
+        if let Some((first, last)) = self.span.as_mut() {
+            clamp(first);
+            clamp(last);
         }
     }
 
@@ -311,8 +370,35 @@ impl SelectModel {
     /// `None` si no hay nada seleccionado (un clic sin arrastre).
     pub fn selection(&self, cols: u16) -> Option<Selection> {
         let (anchor, head, mode) = (self.anchor?, self.head?, self.mode?);
-        if mode != SelectMode::Simple {
-            return Some(Selection { anchor, head, mode });
+        match mode {
+            SelectMode::Simple => {}
+            SelectMode::Block => return block_selection(anchor, head, cols),
+            SelectMode::Word | SelectMode::Line => {
+                let Some((first, last)) = self.span else {
+                    return Some(Selection { anchor, head, mode });
+                };
+                // El enlace del doble clic, y por palabras desde él si el
+                // arrastre sale de sus celdas.
+                return Some(if head > last {
+                    Selection {
+                        anchor: first,
+                        head,
+                        mode,
+                    }
+                } else if head < first {
+                    Selection {
+                        anchor: head,
+                        head: last,
+                        mode,
+                    }
+                } else {
+                    Selection {
+                        anchor: first,
+                        head: last,
+                        mode: SelectMode::Simple,
+                    }
+                });
+            }
         }
         let (lo, hi) = if anchor <= head {
             (anchor, head)
@@ -342,6 +428,21 @@ impl SelectModel {
     }
 }
 
+/// Rectángulo de Alt+arrastre: los bordes de columna de las dos esquinas
+/// (el mayor excluido) en todas las filas entre ellas; sin columnas no hay
+/// selección (xterm.js copia `""`).
+fn block_selection(anchor: Point, head: Point, cols: u16) -> Option<Selection> {
+    let (left, right) = (anchor.1.min(head.1), anchor.1.max(head.1).min(cols));
+    if right <= left || cols == 0 {
+        return None;
+    }
+    Some(Selection {
+        anchor: (anchor.0.min(head.0), left),
+        head: (anchor.0.max(head.0), right - 1),
+        mode: SelectMode::Block,
+    })
+}
+
 /// Lo que hace un `mousedown` del botón izquierdo según los modos y Shift
 /// (`bindMouse` + `SelectionService.handleMouseDown`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -354,9 +455,15 @@ pub enum Press {
     Extend,
 }
 
-/// Decide qué hace una pulsación. `button` es `MouseEvent.button` y
-/// `detail` el número de clics.
-pub fn classify_press(button: i16, detail: i32, shift: bool, m: &Modes) -> Option<Press> {
+/// Decide qué hace una pulsación. `button` es `MouseEvent.button`,
+/// `detail` el número de clics y `alt` hace la selección en columna
+/// (`shouldColumnSelect`).
+pub fn classify_press(
+    button: i16,
+    detail: i32,
+    (shift, alt): (bool, bool),
+    m: &Modes,
+) -> Option<Press> {
     let mouse_on = m.mouse != MouseMode::Off;
     if mouse_on && !shift {
         return pressed_button(button).map(|_| Press::Report);
@@ -373,6 +480,7 @@ pub fn classify_press(button: i16, detail: i32, shift: bool, m: &Modes) -> Optio
         3 => Some(Press::Select(SelectMode::Line)),
         // Más de tres clics no hacen nada en xterm.js.
         d if d > 3 => None,
+        _ if alt => Some(Press::Select(SelectMode::Block)),
         _ => Some(Press::Select(SelectMode::Simple)),
     }
 }
@@ -381,17 +489,20 @@ pub fn classify_press(button: i16, detail: i32, shift: bool, m: &Modes) -> Optio
 
 mod web {
     use super::{
-        Press, Report, Wheel, WheelInput, classify_press, drag_scroll_amount, moving_button,
-        pressed_button, report_cell, scrollbar_ydisp, selection_point,
+        Press, Report, Wheel, WheelInput, classify_press, coords_cell, drag_scroll_amount,
+        moving_button, pressed_button, report_cell, scrollbar_ydisp, selection_point,
     };
     use crate::{Drag, DragKind, Focus, Inner, links, listen, set_styles};
     use comandos_term::{
         engine::MouseMode,
         input::{Button, MouseKind, WheelAction, wheel},
-        select::{Point, SelectMode},
+        select::{Point, SelectMode, is_wide_char_tail, move_to_cell},
     };
     use wasm_bindgen::{JsCast, closure::Closure};
-    use web_sys::{Event, EventTarget, MouseEvent, TouchEvent, WheelEvent};
+    use web_sys::{Event, EventTarget, MouseEvent, Node, TouchEvent, WheelEvent};
+
+    /// Ventana del Alt+clic de `_handleMouseUp` (ms entre pulsar y soltar).
+    const ALT_CLICK_MS: f64 = 500.0;
 
     /// `cancel(e, true)` de xterm.js.
     fn cancel(e: &Event) {
@@ -426,19 +537,41 @@ mod web {
             (i32::from(row) - offset, col)
         }
 
+        /// Celda de los informes de ratón y de la rueda (`floor`).
         fn cell_at(&self, x: f64, y: f64) -> Option<(u16, u16)> {
-            report_cell(x, y, self.css_cell_size(), self.size.cols, self.size.rows)
+            let (cols, rows) = (self.size.cols, self.size.rows);
+            let canvas = self.metrics.css_canvas(cols, rows);
+            report_cell(x, y, self.css_cell_size(), canvas, cols, rows)
         }
 
-        /// Punto de selección según el modo: borde de celda en `Simple`,
-        /// celda en `Word` y `Line`.
+        /// Celda de `getCoords` sin selección (`ceil`): enlaces y Alt+clic.
+        fn coords_at(&self, x: f64, y: f64) -> Option<(u16, u16)> {
+            coords_cell(x, y, self.css_cell_size(), self.size.cols, self.size.rows)
+        }
+
+        /// `_getMouseBufferCoords`: el borde de celda más cercano en todos los
+        /// modos (en `Word` y `Line` hace de celda, como en xterm.js). En
+        /// `Simple` y `Block`, un borde en medio de un carácter ancho pasa
+        /// detrás de él (`hasWidth === 0`).
         fn select_point(&self, mode: SelectMode, x: f64, y: f64) -> Option<Point> {
-            let cell = self.css_cell_size();
-            let p = match mode {
-                SelectMode::Simple => selection_point(x, y, cell, self.size.cols, self.size.rows),
-                SelectMode::Word | SelectMode::Line => self.cell_at(x, y),
-            }?;
-            Some(self.absolute(p))
+            let (cols, rows) = (self.size.cols, self.size.rows);
+            let p = selection_point(x, y, self.css_cell_size(), cols, rows)?;
+            let mut p = self.absolute(p);
+            if matches!(mode, SelectMode::Simple | SelectMode::Block)
+                && p.1 < cols
+                && is_wide_char_tail(&self.engine, p)
+            {
+                p.1 += 1;
+            }
+            Some(p)
+        }
+
+        /// El evento ocurrió dentro de `.xterm-screen` (la selección y los
+        /// enlaces solo escuchan ahí; los informes, en toda la raíz).
+        fn in_screen(&self, e: &Event) -> bool {
+            e.target()
+                .and_then(|t| t.dyn_into::<Node>().ok())
+                .is_some_and(|node| self.dom.screen.contains(Some(&node)))
         }
 
         fn report(&mut self, r: Report) {
@@ -450,8 +583,12 @@ mod web {
         }
 
         /// Enlace bajo `(x, y)`, calculado una vez por fila y generación.
-        fn link_under(&mut self, x: f64, y: f64) -> Option<comandos_term::select::UrlSpan> {
-            let p = self.absolute(self.cell_at(x, y)?);
+        pub(crate) fn link_under(
+            &mut self,
+            x: f64,
+            y: f64,
+        ) -> Option<comandos_term::select::UrlSpan> {
+            let p = self.absolute(self.coords_at(x, y)?);
             let engine = &self.engine;
             self.links
                 .link_at(self.link_gen, p, |row| {
@@ -460,7 +597,8 @@ mod web {
                 .cloned()
         }
 
-        fn update_hover(&mut self, x: f64, y: f64) {
+        pub(crate) fn update_hover(&mut self, x: f64, y: f64) {
+            self.hover_xy = Some((x, y));
             let found = self.link_under(x, y);
             if found != self.hover {
                 self.set_pointer(found.is_some());
@@ -509,6 +647,9 @@ mod web {
             });
         }
 
+        /// `mousedown` en la raíz `.xterm` (`bindMouse`): foco e informe en
+        /// toda ella, acotado a la última celda en la franja que deja `fit`;
+        /// la selección y el enlace solo dentro de `.xterm-screen`.
         pub(crate) fn on_mouse_down(&mut self, e: &Event) {
             let Some(me) = e.dyn_ref::<MouseEvent>() else {
                 return;
@@ -518,15 +659,21 @@ mod web {
             self.outbox.focus = Some(Focus::Plain);
             let (x, y) = self.screen_xy(me);
             let button = me.button();
-            if button == 0 && links::activates(me.ctrl_key(), me.meta_key()) {
+            let in_screen = self.in_screen(e);
+            // `Linkifier._handleMouseDown`: el enlace bajo el ratón; se abre si
+            // se suelta sobre él. La pulsación sigue su camino (tmux o
+            // selección), como en xterm.js.
+            self.link_down = None;
+            if in_screen {
                 self.update_hover(x, y);
-                if let Some(span) = self.hover.clone() {
-                    self.link_down = Some(span);
-                    return;
+                if button == 0 {
+                    self.link_down = self.hover.clone();
                 }
             }
+            self.down_ts = me.time_stamp();
             let m = self.engine.modes();
-            match classify_press(button, me.detail(), me.shift_key(), &m) {
+            let press = classify_press(button, me.detail(), (me.shift_key(), me.alt_key()), &m);
+            match press {
                 None => {}
                 Some(Press::Report) => {
                     if let (Some(b), Some((col, row))) =
@@ -542,12 +689,18 @@ mod web {
                     }
                     self.begin_drag(DragKind::Report);
                 }
+                Some(_) if !in_screen => {}
                 Some(Press::Select(mode)) => {
                     if m.mouse != MouseMode::Off {
                         // Shift fuerza la selección: tmux no lo ve.
                         e.stop_propagation();
                     }
-                    if let Some(p) = self.select_point(mode, x, y) {
+                    let link = self.hover.clone().filter(|_| mode == SelectMode::Word);
+                    if let Some(span) = link {
+                        // `_selectWordAtCursor`: el enlace entero.
+                        self.select.start_span(span.start, span.end);
+                        self.overlay.dirty = true;
+                    } else if let Some(p) = self.select_point(mode, x, y) {
                         self.select.start(mode, p);
                         self.overlay.dirty = true;
                     }
@@ -566,6 +719,8 @@ mod web {
             self.request_frame();
         }
 
+        /// `mousemove` en la raíz: el enlace solo dentro de `.xterm-screen`;
+        /// el movimiento sin botón se informa en toda la raíz.
         pub(crate) fn on_mouse_move(&mut self, e: &Event) {
             let Some(me) = e.dyn_ref::<MouseEvent>() else {
                 return;
@@ -574,7 +729,9 @@ mod web {
                 return;
             }
             let (x, y) = self.screen_xy(me);
-            self.update_hover(x, y);
+            if self.in_screen(e) {
+                self.update_hover(x, y);
+            }
             // Movimiento sin botón: solo con `MouseMode::Motion` (1003).
             if me.buttons() == 0
                 && self.engine.modes().mouse == MouseMode::Motion
@@ -590,7 +747,8 @@ mod web {
             }
         }
 
-        /// Ctrl+clic: el enlace se abre al soltar sobre el mismo enlace.
+        /// `Linkifier._handleMouseUp`: el enlace se abre al soltar sobre el
+        /// mismo enlace que se pulsó (si no se repintó mientras tanto).
         pub(crate) fn on_mouse_up(&mut self, e: &Event) {
             let Some(me) = e.dyn_ref::<MouseEvent>() else {
                 return;
@@ -609,6 +767,7 @@ mod web {
 
         pub(crate) fn on_mouse_leave(&mut self, _e: &Event) {
             if self.drag.is_none() {
+                self.hover_xy = None;
                 self.drop_hover();
                 self.request_frame();
             }
@@ -647,25 +806,20 @@ mod web {
                         return;
                     };
                     if let Some(mut p) = self.select_point(mode, x, y) {
-                        // Fuera de la terminal la selección llega al borde.
-                        if amount > 0 {
-                            p.1 = self.end_col(mode);
-                        } else if amount < 0 {
-                            p.1 = 0;
+                        // Fuera de la terminal la selección llega al borde
+                        // (en columna no).
+                        if mode != SelectMode::Block {
+                            if amount > 0 {
+                                p.1 = self.size.cols;
+                            } else if amount < 0 {
+                                p.1 = 0;
+                            }
                         }
                         self.select.extend(p);
                         self.overlay.dirty = true;
                         self.request_frame();
                     }
                 }
-            }
-        }
-
-        /// Última columna según el modo (borde en `Simple`, celda si no).
-        fn end_col(&self, mode: SelectMode) -> u16 {
-            match mode {
-                SelectMode::Simple => self.size.cols,
-                SelectMode::Word | SelectMode::Line => self.size.cols.saturating_sub(1),
             }
         }
 
@@ -696,6 +850,7 @@ mod web {
                 }
                 DragKind::Select => {
                     self.drag = None;
+                    self.alt_click(me);
                     // Selección primaria de Linux: xterm.js deja el texto
                     // seleccionado en el `<textarea>`.
                     if self.is_linux && self.has_selection() {
@@ -704,6 +859,27 @@ mod web {
                     }
                 }
             }
+        }
+
+        /// `_handleMouseUp` con `altClickMovesCursor`: un Alt+clic rápido sin
+        /// selección (como mucho un carácter), con la vista abajo, manda las
+        /// flechas que llevan el cursor a la celda (`moveToCellSequence`).
+        fn alt_click(&mut self, me: &MouseEvent) {
+            if !me.alt_key()
+                || me.time_stamp() - self.down_ts >= ALT_CLICK_MS
+                || self.engine.display_offset() != 0
+                || self.selection_text().encode_utf16().count() > 1
+            {
+                return;
+            }
+            let (x, y) = self.screen_xy(me);
+            let Some(target) = self.coords_at(x, y) else {
+                return;
+            };
+            let m = self.engine.modes();
+            let has_scrollback = !m.alt_screen && self.opts.scrollback > 0;
+            let bytes = move_to_cell(&self.engine, target, m.app_cursor, has_scrollback);
+            self.send(bytes, true);
         }
 
         /// `_dragScroll`: cada 50 ms con el ratón fuera de la terminal.
@@ -720,10 +896,18 @@ mod web {
             self.scroll_lines(amount.saturating_neg());
             let offset = i32::try_from(self.engine.display_offset()).unwrap_or(i32::MAX);
             let rows = i32::from(self.size.rows);
+            let keep = self.select.head().map_or(0, |p| p.1);
+            let col = |edge: u16| {
+                if mode == SelectMode::Block {
+                    keep
+                } else {
+                    edge
+                }
+            };
             let p = if amount > 0 {
-                ((rows - offset).min(rows - 1), self.end_col(mode))
+                ((rows - offset).min(rows - 1), col(self.size.cols))
             } else {
-                (-offset, 0)
+                (-offset, col(0))
             };
             self.select.extend(p);
             self.overlay.dirty = true;
@@ -899,23 +1083,39 @@ mod tests {
 
     const CELL: (f64, f64) = (8.4, 16.8);
 
+    const CANVAS: (f64, f64) = (8.4 * 80.0, 16.8 * 24.0);
+
     #[test]
-    fn report_cell_uses_ceil_like_get_coords() {
-        assert_eq!(report_cell(0.0, 0.0, CELL, 80, 24), Some((0, 0)));
+    fn report_cell_uses_floor_like_get_mouse_report_coords() {
+        let at = |x, y| report_cell(x, y, CELL, CANVAS, 80, 24);
+        assert_eq!(at(0.0, 0.0), Some((0, 0)));
         assert_eq!(
-            report_cell(8.4, 16.8, CELL, 80, 24),
+            at(8.4, 16.8),
+            Some((1, 1)),
+            "borde exacto = celda siguiente"
+        );
+        assert_eq!(at(8.3, 16.7), Some((0, 0)));
+        assert_eq!(at(-5.0, 9999.0), Some((0, 23)), "acotado");
+        assert_eq!(at(9999.0, 1.0), Some((79, 0)), "franja que deja fit");
+        // Con celdas enteras, el píxel 8 ya es la segunda columna.
+        assert_eq!(
+            report_cell(8.0, 0.0, (8.0, 16.0), (640.0, 384.0), 80, 24),
+            Some((1, 0))
+        );
+        assert_eq!(report_cell(1.0, 1.0, (0.0, 16.8), CANVAS, 80, 24), None);
+        assert_eq!(report_cell(f64::NAN, 1.0, CELL, CANVAS, 80, 24), None);
+    }
+
+    #[test]
+    fn coords_cell_uses_ceil_like_get_coords() {
+        assert_eq!(coords_cell(0.0, 0.0, CELL, 80, 24), Some((0, 0)));
+        assert_eq!(
+            coords_cell(8.4, 16.8, CELL, 80, 24),
             Some((0, 0)),
             "borde exacto = celda anterior"
         );
-        assert_eq!(report_cell(8.5, 17.0, CELL, 80, 24), Some((1, 1)));
-        assert_eq!(
-            report_cell(-5.0, 9999.0, CELL, 80, 24),
-            Some((0, 23)),
-            "acotado"
-        );
-        assert_eq!(report_cell(9999.0, 1.0, CELL, 80, 24), Some((79, 0)));
-        assert_eq!(report_cell(1.0, 1.0, (0.0, 16.8), 80, 24), None);
-        assert_eq!(report_cell(f64::NAN, 1.0, CELL, 80, 24), None);
+        assert_eq!(coords_cell(8.5, 17.0, CELL, 80, 24), Some((1, 1)));
+        assert_eq!(coords_cell(9999.0, 1.0, CELL, 80, 24), Some((79, 0)));
     }
 
     #[test]
@@ -1141,7 +1341,112 @@ mod tests {
             Some(((-3, 0), (-2, 3)))
         );
         s.shift_up(98, -100);
+        assert!(s.is_started(), "la cabeza sigue en la historia");
+        s.shift_up(1, -100);
         assert!(!s.is_started(), "salió de la historia");
+    }
+
+    /// `handleTrim`: el ancla se acota a la primera fila (con su columna) y
+    /// solo se borra si sale la cabeza; en la pantalla alternativa la
+    /// primera fila es la 0.
+    #[test]
+    fn a_partly_trimmed_selection_pins_its_anchor() {
+        let mut s = SelectModel::default();
+        s.start(SelectMode::Simple, (1, 4));
+        s.extend((3, 2));
+        s.shift_up(2, 0);
+        assert_eq!(
+            s.selection(10).map(|x| (x.anchor, x.head)),
+            Some(((0, 4), (1, 1)))
+        );
+        s.shift_up(1, 0);
+        assert_eq!(
+            s.selection(10).map(|x| (x.anchor, x.head)),
+            Some(((0, 2), (0, 3))),
+            "ancla y cabeza en la fila 0"
+        );
+        s.shift_up(1, 0);
+        assert!(!s.is_started(), "salió la cabeza");
+        // Cabeza encima del ancla: sale la cabeza primero y se borra.
+        s.start(SelectMode::Simple, (3, 0));
+        s.extend((1, 5));
+        s.shift_up(2, 0);
+        assert!(!s.is_started());
+        // ED 3: la historia se borra y la selección que estaba en ella se va.
+        s.start(SelectMode::Word, (-4, 1));
+        s.extend((-2, 3));
+        s.trim(0);
+        assert!(!s.is_started());
+        s.start(SelectMode::Word, (-4, 1));
+        s.extend((2, 3));
+        s.trim(0);
+        assert_eq!(
+            s.selection(10).map(|x| (x.anchor, x.head)),
+            Some(((0, 1), (2, 3)))
+        );
+    }
+
+    #[test]
+    fn block_selections_are_rectangles_between_borders() {
+        let mut s = SelectModel::default();
+        s.start(SelectMode::Block, (4, 6));
+        assert_eq!(s.selection(10), None, "clic sin arrastre");
+        s.extend((1, 6));
+        assert_eq!(s.selection(10), None, "sin columnas");
+        s.extend((1, 2));
+        assert_eq!(
+            s.selection(10),
+            Some(Selection {
+                anchor: (1, 2),
+                head: (4, 5),
+                mode: SelectMode::Block
+            })
+        );
+        s.extend((5, 10));
+        assert_eq!(
+            s.selection(10),
+            Some(Selection {
+                anchor: (4, 6),
+                head: (5, 9),
+                mode: SelectMode::Block
+            })
+        );
+    }
+
+    #[test]
+    fn a_double_click_on_a_link_selects_the_whole_link() {
+        let mut s = SelectModel::default();
+        s.start_span((0, 18), (1, 4));
+        assert_eq!(
+            s.selection(20),
+            Some(Selection {
+                anchor: (0, 18),
+                head: (1, 4),
+                mode: SelectMode::Simple
+            })
+        );
+        s.extend((1, 2));
+        assert_eq!(s.selection(20).map(|x| x.head), Some((1, 4)), "dentro");
+        s.extend((2, 3));
+        assert_eq!(
+            s.selection(20),
+            Some(Selection {
+                anchor: (0, 18),
+                head: (2, 3),
+                mode: SelectMode::Word
+            })
+        );
+        s.extend((0, 1));
+        assert_eq!(
+            s.selection(20),
+            Some(Selection {
+                anchor: (0, 1),
+                head: (1, 4),
+                mode: SelectMode::Word
+            })
+        );
+        s.start(SelectMode::Word, (0, 2));
+        assert_eq!(s.selection(20).map(|x| x.mode), Some(SelectMode::Word));
     }
 
     #[test]
@@ -1153,27 +1458,53 @@ mod tests {
             ..Modes::default()
         };
         assert_eq!(
-            classify_press(0, 1, false, &off),
+            classify_press(0, 1, (false, false), &off),
             Some(Press::Select(SelectMode::Simple))
         );
         assert_eq!(
-            classify_press(0, 2, false, &off),
+            classify_press(0, 2, (false, false), &off),
             Some(Press::Select(SelectMode::Word))
         );
         assert_eq!(
-            classify_press(0, 3, false, &off),
+            classify_press(0, 3, (false, false), &off),
             Some(Press::Select(SelectMode::Line))
         );
-        assert_eq!(classify_press(0, 4, false, &off), None);
-        assert_eq!(classify_press(0, 1, true, &off), Some(Press::Extend));
-        assert_eq!(classify_press(2, 1, false, &off), None);
-        assert_eq!(classify_press(0, 1, false, &tmux), Some(Press::Report));
-        assert_eq!(classify_press(2, 1, false, &tmux), Some(Press::Report));
-        assert_eq!(classify_press(5, 1, false, &tmux), None);
+        assert_eq!(classify_press(0, 4, (false, false), &off), None);
         assert_eq!(
-            classify_press(0, 2, true, &tmux),
+            classify_press(0, 1, (true, false), &off),
+            Some(Press::Extend)
+        );
+        assert_eq!(classify_press(2, 1, (false, false), &off), None);
+        assert_eq!(
+            classify_press(0, 1, (false, false), &tmux),
+            Some(Press::Report)
+        );
+        assert_eq!(
+            classify_press(2, 1, (false, false), &tmux),
+            Some(Press::Report)
+        );
+        assert_eq!(classify_press(5, 1, (false, false), &tmux), None);
+        assert_eq!(
+            classify_press(0, 2, (true, false), &tmux),
             Some(Press::Select(SelectMode::Word)),
             "Shift fuerza la selección con el ratón de tmux"
+        );
+        assert_eq!(
+            classify_press(0, 1, (false, true), &off),
+            Some(Press::Select(SelectMode::Block)),
+            "Alt selecciona en columna"
+        );
+        assert_eq!(
+            classify_press(0, 2, (false, true), &off),
+            Some(Press::Select(SelectMode::Word))
+        );
+        assert_eq!(
+            classify_press(0, 1, (true, true), &tmux),
+            Some(Press::Select(SelectMode::Block))
+        );
+        assert_eq!(
+            classify_press(0, 1, (false, true), &tmux),
+            Some(Press::Report)
         );
     }
 }

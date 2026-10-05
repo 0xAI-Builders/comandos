@@ -35,6 +35,11 @@
 //!   acepta además cualquier URL cuyo protocolo analizado sea http/https,
 //!   p. ej. `http:a.mx`; rechazar de más es lo seguro). `regex` no se usa: los
 //!   dos patrones se evalúan a mano.
+//! - **Alt+clic** ([`move_to_cell`]): copia de `moveToCellSequence` con sus
+//!   rarezas (en la pantalla alternativa, hacia la izquierda en la misma fila
+//!   no manda nada, y `horizontalDirection` recibe la columna destino como
+//!   fila). Donde xterm.js podría recorrer la rejilla sin terminar, aquí el
+//!   recorrido tiene tope y no se manda nada.
 //! - **Ligaduras.** Los rangos son índices de carácter (`char`), no de
 //!   UTF-16 ni de byte; el addon usa `m.index` (UTF-16) como columna, que
 //!   coincide mientras no haya caracteres anchos ni astrales antes.
@@ -63,6 +68,10 @@ pub enum SelectMode {
     Word,
     /// Triple clic: líneas lógicas enteras (con todas sus filas envueltas).
     Line,
+    /// Alt+arrastre (`shouldColumnSelect`, modo 3 de xterm.js): el
+    /// rectángulo de filas y columnas entre `anchor` y `head`, ambas celdas
+    /// incluidas; cada fila se copia aparte, sin unir las envueltas.
+    Block,
 }
 
 /// Selección en coordenadas absolutas. `anchor` y `head` pueden venir en
@@ -224,6 +233,7 @@ pub fn selection_bounds(engine: &Engine, s: &Selection) -> Option<(Point, Point)
             }
             ((top, 0), (bottom, max_col))
         }
+        SelectMode::Block => ((lo.0, a.1.min(b.1)), (hi.0, a.1.max(b.1))),
     })
 }
 
@@ -241,6 +251,14 @@ pub fn selected_text(engine: &Engine, s: &Selection) -> String {
             .unwrap_or_default()
     };
     let end_col = usize::from(col1) + 1;
+    if s.mode == SelectMode::Block {
+        // `selectionText` en modo columna: cada fila recortada a las
+        // columnas, sin unir las envueltas.
+        for row in row0..=row1 {
+            parts.push(piece(row, usize::from(col0), Some(end_col)));
+        }
+        return parts.join("\n").replace('\u{a0}', " ");
+    }
     parts.push(piece(
         row0,
         usize::from(col0),
@@ -364,6 +382,195 @@ fn word_extent(engine: &Engine, point: Point) -> Option<(Point, Point)> {
         cur_end = ne;
     }
     Some((start, end))
+}
+
+/// La celda `point` es la mitad derecha de un carácter ancho (`hasWidth`
+/// 0 de xterm.js): un clic que cae en su borde izquierdo pasa a su borde
+/// derecho (`_handleSingleClick`/`_handleMouseMove`).
+pub fn is_wide_char_tail(engine: &Engine, point: Point) -> bool {
+    cells(engine, point.0)
+        .and_then(|row| row.get(usize::from(point.1)))
+        .is_some_and(|cell| cell.flags.contains(Flags::WIDE_CHAR_SPACER))
+}
+
+// --- Alt+clic ------------------------------------------------------------------
+
+/// `translateBufferLineToString(row, false, start, end).length`: unidades
+/// UTF-16 de las columnas `start..end`, sin recortar; un carácter ancho salta
+/// sus dos columnas y su mitad derecha suelta cuenta como un espacio. Una
+/// fila que no existe no aporta nada.
+fn js_row_len(engine: &Engine, row: i64, start: i64, end: i64) -> i64 {
+    let Some(line) = i32::try_from(row).ok().and_then(|r| cells(engine, r)) else {
+        return 0;
+    };
+    let end = end.min(i64::try_from(line.len()).unwrap_or(i64::MAX));
+    let (mut col, mut len) = (start.max(0), 0i64);
+    while col < end {
+        let Some(cell) = usize::try_from(col).ok().and_then(|c| line.get(c)) else {
+            break;
+        };
+        if is_spacer(cell) {
+            len += 1;
+            col += 1;
+            continue;
+        }
+        let marks: usize = cell
+            .zerowidth()
+            .unwrap_or_default()
+            .iter()
+            .map(|m| m.len_utf16())
+            .sum();
+        len += i64::try_from(cell_char(cell).len_utf16() + marks).unwrap_or(1);
+        col += if cell.flags.contains(Flags::WIDE_CHAR) {
+            2
+        } else {
+            1
+        };
+    }
+    len
+}
+
+/// Datos de la rejilla que usa `moveToCellSequence`.
+struct MoveGrid<'a> {
+    engine: &'a Engine,
+    cols: i64,
+    rows: i64,
+}
+
+impl MoveGrid<'_> {
+    fn wrapped(&self, row: i64) -> bool {
+        i32::try_from(row).is_ok_and(|r| is_wrapped(self.engine, r))
+    }
+
+    /// `wrappedRowsForRow`: filas envueltas encima de `row`.
+    fn wrapped_rows_for_row(&self, mut row: i64) -> i64 {
+        let mut count = 0;
+        let mut wrapped = self.wrapped(row);
+        while wrapped && row >= 0 && row < self.rows {
+            count += 1;
+            row -= 1;
+            wrapped = self.wrapped(row);
+        }
+        count
+    }
+
+    /// `wrappedRowsCount`: filas envueltas entre las dos filas lógicas.
+    fn wrapped_rows_between(&self, start_y: i64, target_y: i64) -> i64 {
+        let start_row = start_y - self.wrapped_rows_for_row(start_y);
+        let end_row = target_y - self.wrapped_rows_for_row(target_y);
+        let dir = if start_y > target_y { -1 } else { 1 };
+        (0..(start_row - end_row).abs())
+            .filter(|n| self.wrapped(start_row + dir * n))
+            .count() as i64
+    }
+
+    /// `moveToRequestedRow`: cuántas flechas verticales y en qué sentido.
+    fn requested_row(&self, start_y: i64, target_y: i64) -> (i64, u8) {
+        let start_row = start_y - self.wrapped_rows_for_row(start_y);
+        let end_row = target_y - self.wrapped_rows_for_row(target_y);
+        let n = (start_row - end_row).abs() - self.wrapped_rows_between(start_y, target_y);
+        (n.max(0), if start_y > target_y { b'A' } else { b'B' })
+    }
+
+    /// `bufferLine(...).length`: celdas recorridas de `(start_x, start_y)` a
+    /// `(end_x, end_y)`. xterm.js puede no terminar si el destino queda en
+    /// el sentido contrario; aquí el recorrido tiene tope y entonces no se
+    /// mueve nada.
+    fn walk_len(&self, start: (i64, i64), end: (i64, i64), forward: bool) -> i64 {
+        let ((mut from, mut row), (end_x, end_y)) = (start, end);
+        let mut col = from;
+        let mut len = 0;
+        let mut budget = self.cols.saturating_mul(self.rows.saturating_add(2));
+        while col != end_x || row != end_y {
+            budget -= 1;
+            if budget < 0 {
+                return 0;
+            }
+            col += if forward { 1 } else { -1 };
+            if forward && col > self.cols - 1 {
+                len += js_row_len(self.engine, row, from, col);
+                col = 0;
+                from = 0;
+                row += 1;
+            } else if !forward && col < 0 {
+                len += js_row_len(self.engine, row, 0, from + 1);
+                col = self.cols - 1;
+                from = col;
+                row -= 1;
+            }
+        }
+        len + js_row_len(self.engine, row, from, col)
+    }
+}
+
+/// `moveToCellSequence` de xterm.js 5.5.0 (Alt+clic con
+/// `altClickMovesCursor`): las flechas que llevan el cursor a `target`
+/// (columna, fila de la pantalla). Sin historia (pantalla alternativa)
+/// recorre las celdas de la rejilla como xterm.js, con su error de pasar la
+/// columna destino como fila en `horizontalDirection`; con historia cuenta
+/// celdas en línea recta.
+pub fn move_to_cell(
+    engine: &Engine,
+    target: (u16, u16),
+    app_cursor: bool,
+    has_scrollback: bool,
+) -> Vec<u8> {
+    let grid = engine.term().grid();
+    let g = MoveGrid {
+        engine,
+        cols: i64::try_from(grid.columns()).unwrap_or(0),
+        rows: i64::try_from(grid.screen_lines()).unwrap_or(0),
+    };
+    let start_x = i64::try_from(grid.cursor.point.column.0).unwrap_or(0);
+    let start_y = i64::from(grid.cursor.point.line.0);
+    let (target_x, target_y) = (i64::from(target.0), i64::from(target.1));
+    let mut out = Vec::new();
+    let mut push = |n: i64, dir: u8| {
+        for _ in 0..n.max(0) {
+            out.extend_from_slice(&[0x1b, if app_cursor { b'O' } else { b'[' }, dir]);
+        }
+    };
+    if !has_scrollback {
+        // resetStartingRow
+        let (rows, vertical) = g.requested_row(start_y, target_y);
+        if rows > 0 {
+            let back = start_y - g.wrapped_rows_for_row(start_y);
+            push(g.walk_len((start_x, start_y), (start_x, back), false), b'D');
+        }
+        // moveToRequestedRow
+        push(rows, vertical);
+        // moveToRequestedCol
+        let start_row = if rows > 0 {
+            target_y - g.wrapped_rows_for_row(target_y)
+        } else {
+            start_y
+        };
+        let probe = if g.requested_row(target_x, target_y).0 > 0 {
+            target_y - g.wrapped_rows_for_row(target_y)
+        } else {
+            start_y
+        };
+        let right =
+            (start_x < target_x && probe <= target_y) || (start_x >= target_x && probe < target_y);
+        let n = g.walk_len((start_x, start_row), (target_x, target_y), right);
+        push(n, if right { b'C' } else { b'D' });
+        return out;
+    }
+    if start_y == target_y {
+        push(
+            (start_x - target_x).abs(),
+            if start_x > target_x { b'D' } else { b'C' },
+        );
+        return out;
+    }
+    let up = start_y > target_y;
+    let rows = (start_y - target_y).abs();
+    let n = (g.cols - if up { target_x } else { start_x })
+        + (rows - 1) * g.cols
+        + 1
+        + ((if up { start_x } else { target_x }) - 1);
+    push(n, if up { b'D' } else { b'C' });
+    out
 }
 
 // --- enlaces -----------------------------------------------------------------
@@ -767,7 +974,7 @@ pub fn find_urls(engine: &Engine, line: i32) -> Vec<UrlSpan> {
         }
     }
     let mut spans: Vec<UrlSpan> = out.into_iter().map(|(_, span)| span).collect();
-    spans.sort_by_key(|span| span.start);
+    spans.sort_unstable_by_key(|span| span.start);
     spans
 }
 

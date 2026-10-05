@@ -274,9 +274,10 @@ pub struct Term<T> {
 
     pub selection: Option<Selection>,
 
-    /// COMANDOS: líneas que han subido desde la fila superior de la pantalla
-    /// normal (región de desplazamiento que empieza arriba): todo el
-    /// contenido por encima del final de la región baja de fila absoluta.
+    /// COMANDOS: líneas que han subido desde la fila superior (región de
+    /// desplazamiento que empieza arriba), en la pantalla normal o en la
+    /// alternativa: todo el contenido por encima del final de la región
+    /// baja de fila absoluta.
     /// Lo usa `comandos-term` para que una selección siga a su texto, como
     /// las coordenadas de búfer de xterm.js. Contador que da la vuelta.
     scrolled_up: u64,
@@ -791,9 +792,10 @@ impl<T> Term<T> {
         // Scroll selection.
         self.selection = self.selection.take().and_then(|s| s.rotate(self, &region, lines as i32));
 
-        // COMANDOS: con la región pegada arriba en la pantalla normal, las
-        // líneas pasan a la historia y todo lo de encima sube de fila.
-        if region.start == Line(0) && !self.mode.contains(TermMode::ALT_SCREEN) {
+        // COMANDOS: con la región pegada arriba, las líneas salen por arriba
+        // (a la historia, o fuera en la pantalla alternativa) y todo lo de
+        // encima sube de fila, como el `onTrim` de xterm.js.
+        if region.start == Line(0) {
             self.scrolled_up = self.scrolled_up.wrapping_add(lines as u64);
         }
 

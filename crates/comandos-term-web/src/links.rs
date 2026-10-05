@@ -2,16 +2,20 @@
 //! [`comandos_term::select::find_urls`] (OSC 8, `WebLinksAddon` y las URL
 //! envueltas por tmux de `dash/term.html`), su subrayado y su apertura.
 //!
+//! Como `Linkifier` de xterm.js 5.5.0: un enlace se abre con un **clic
+//! simple** (pulsar y soltar sobre el mismo enlace), y esa pulsación sigue
+//! llegando a tmux o empezando una selección. El subrayado y el puntero
+//! aparecen al pasar por encima; el subrayado usa el color de texto del tema
+//! (`_fireUnderlineEvent` no pasa color y addon-canvas usa
+//! `colors.foreground`). El enlace se olvida solo cuando se repintan sus
+//! filas ([`repainted`]); entonces se vuelve a buscar bajo el ratón.
+//!
 //! ## Diferencias con `term.html`
 //!
-//! - Un enlace se abre con **Ctrl+clic** (o Cmd+clic), no con un clic
-//!   simple: con el ratón de tmux activo un clic simple también llega a tmux,
-//!   y abrir una pestaña por un clic para mover el foco sobra. El subrayado y
-//!   el puntero aparecen al pasar por encima, como en xterm.js.
 //! - Solo se abren `http://` y `https://` (lo mismo que ya filtra
 //!   `find_urls`; aquí se vuelve a comprobar antes de abrir).
-//! - El subrayado usa el color de texto del tema; xterm.js usa el color de
-//!   la celda si es uno de los 256 de la paleta.
+//! - Solo abre el botón izquierdo: xterm.js activa con cualquier botón (el
+//!   central, que en Linux pega, también abriría la pestaña).
 use comandos_term::select::{Point, UrlSpan};
 
 /// Solo `http://` y `https://`, sin distinguir mayúsculas.
@@ -28,9 +32,15 @@ pub fn span_contains(span: &UrlSpan, p: Point) -> bool {
     span.start <= p && p <= span.end
 }
 
-/// Ctrl+clic (Cmd+clic en macOS) abre.
-pub fn activates(ctrl: bool, meta: bool) -> bool {
-    ctrl || meta
+/// `onRenderedViewportChange` de `Linkifier`: el cuadro repintó las filas
+/// `lo..=hi` de la vista y el enlace cae dentro (si el repintado empieza en
+/// la primera fila, también vale un enlace que empieza más arriba), así que
+/// ya no vale.
+pub fn repainted(span: &UrlSpan, display_offset: usize, (lo, hi): (usize, usize)) -> bool {
+    let view = |row: i32| i64::from(row) + i64::try_from(display_offset).unwrap_or(i64::MAX);
+    let lo = i64::try_from(lo).unwrap_or(i64::MAX);
+    let hi = i64::try_from(hi).unwrap_or(i64::MAX);
+    (lo == 0 || view(span.start.0) >= lo) && view(span.end.0) <= hi
 }
 
 /// Enlaces de la última fila consultada; se rehacen cuando cambia la
@@ -157,7 +167,21 @@ mod tests {
         assert!(span_contains(&s, (1, 4)));
         assert!(!span_contains(&s, (0, 17)));
         assert!(!span_contains(&s, (1, 5)));
-        assert!(activates(true, false) && activates(false, true) && !activates(false, false));
+    }
+
+    #[test]
+    fn a_link_is_dropped_only_when_its_rows_are_repainted() {
+        let s = span((2, 4), (3, 1));
+        assert!(repainted(&s, 0, (2, 3)));
+        assert!(repainted(&s, 0, (0, 23)), "todo");
+        assert!(!repainted(&s, 0, (23, 23)), "barra de estado de tmux");
+        assert!(!repainted(&s, 0, (3, 5)), "solo una de sus filas");
+        assert!(!repainted(&s, 0, (1, 2)));
+        // Con la vista desplazada, las filas de la vista son otras.
+        assert!(repainted(&span((-5, 0), (-5, 9)), 5, (0, 0)));
+        assert!(!repainted(&span((-5, 0), (-5, 9)), 4, (2, 23)));
+        // Un enlace que empieza encima de la vista solo cae con la fila 0.
+        assert!(repainted(&span((-1, 70), (0, 3)), 0, (0, 1)));
     }
 
     #[test]

@@ -39,14 +39,17 @@ pub enum KeyOutcome {
     Ignore,
     /// Copiar la selección; `preventDefault`.
     Copy,
-    /// Bytes para el PTY; `preventDefault`. Con Esc o Enter el `<textarea>`
-    /// se vacía (como xterm.js).
+    /// Bytes para el PTY; `preventDefault`. Con Ctrl+C (ETX) o Enter el
+    /// `<textarea>` se vacía (como xterm.js).
     Send {
         bytes: Vec<u8>,
         clear_textarea: bool,
     },
     /// Desplazar la vista una página (−1 arriba); `preventDefault`.
     ScrollPage(i32),
+    /// Composición o keyCode 229: el evento es del IME, pero la vista baja
+    /// al final (`scrollOnUserInput` en esa rama de `_keyDown`).
+    Ime,
 }
 
 /// Estado del teclado de una terminal.
@@ -69,7 +72,7 @@ impl Keys {
             return KeyOutcome::Copy;
         }
         if e.is_composing || self.ime.keydown_ignored(e.key_code) {
-            return KeyOutcome::Ignore;
+            return KeyOutcome::Ime;
         }
         if e.key == "Dead" || e.key == "AltGraph" {
             self.dead_pending = true;
@@ -94,7 +97,7 @@ impl Keys {
                     return KeyOutcome::Ignore;
                 }
                 self.ime.forget_commit();
-                let clear_textarea = bytes == [0x1b] || bytes == [b'\r'];
+                let clear_textarea = bytes == [0x03] || bytes == [b'\r'];
                 KeyOutcome::Send {
                     bytes,
                     clear_textarea,
@@ -172,7 +175,7 @@ mod tests {
     }
 
     #[test]
-    fn keys_are_encoded_and_enter_clears_the_textarea() {
+    fn keys_are_encoded_and_enter_and_ctrl_c_clear_the_textarea() {
         let mut k = Keys::default();
         let m = Modes::default();
         assert_eq!(k.keydown(&key("a", 65), &m, false), send(b"a"));
@@ -185,8 +188,17 @@ mod tests {
         );
         assert_eq!(
             k.keydown(&key("Escape", 27), &m, false),
+            send(b"\x1b"),
+            "Esc no vacía el <textarea>"
+        );
+        let ctrl_c = KeyEvent {
+            ctrl: true,
+            ..key("c", 67)
+        };
+        assert_eq!(
+            k.keydown(&ctrl_c, &m, false),
             KeyOutcome::Send {
-                bytes: b"\x1b".to_vec(),
+                bytes: b"\x03".to_vec(),
                 clear_textarea: true
             }
         );
@@ -206,7 +218,13 @@ mod tests {
             ctrl: true,
             ..key("c", 67)
         };
-        assert_eq!(k.keydown(&ctrl_c, &m, false), send(b"\x03"));
+        assert_eq!(
+            k.keydown(&ctrl_c, &m, false),
+            KeyOutcome::Send {
+                bytes: b"\x03".to_vec(),
+                clear_textarea: true
+            }
+        );
         assert_eq!(k.keydown(&ctrl_c, &m, true), KeyOutcome::Copy);
         let ctrl_shift_c = KeyEvent {
             shift: true,
@@ -230,15 +248,12 @@ mod tests {
         let mut k = Keys::default();
         let m = Modes::default();
         k.composition_start();
-        assert_eq!(
-            k.keydown(&key("Process", 229), &m, false),
-            KeyOutcome::Ignore
-        );
+        assert_eq!(k.keydown(&key("Process", 229), &m, false), KeyOutcome::Ime);
         let composing = KeyEvent {
             is_composing: true,
             ..key("a", 65)
         };
-        assert_eq!(k.keydown(&composing, &m, false), KeyOutcome::Ignore);
+        assert_eq!(k.keydown(&composing, &m, false), KeyOutcome::Ime);
         assert_eq!(
             k.before_input("insertCompositionText", Some("漢"), true),
             None
@@ -344,6 +359,7 @@ mod web {
             let has_selection = self.has_selection();
             match self.keys.keydown(&ev, &modes, has_selection) {
                 KeyOutcome::Ignore => {}
+                KeyOutcome::Ime => self.scroll_to_bottom(),
                 KeyOutcome::Copy => {
                     cancel(e);
                     self.outbox.copy = Some(self.selection_text());

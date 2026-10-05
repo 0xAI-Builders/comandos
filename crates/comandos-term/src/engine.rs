@@ -497,13 +497,13 @@ impl Engine {
         self.term.grid().history_size()
     }
 
-    /// Líneas que han subido a la historia desde la fila superior de la
-    /// pantalla normal (contador que da la vuelta). Cada una baja una fila
-    /// absoluta todo lo que había por encima del final de la región: la
-    /// capa web lo usa para que una selección siga a su texto, como las
-    /// coordenadas de búfer de xterm.js. Ni la pantalla alternativa ni una
-    /// región que no empieza arriba cuentan (xterm.js tampoco mueve ahí sus
-    /// coordenadas).
+    /// Líneas que han salido por la fila superior (contador que da la
+    /// vuelta), en la pantalla normal o en la alternativa. Cada una baja una
+    /// fila absoluta todo lo que había por encima del final de la región: la
+    /// capa web lo usa para que una selección siga a su texto, como el
+    /// `onTrim` de xterm.js (que también mueve la selección en el búfer
+    /// alternativo, donde vive tmux). Una región que no empieza arriba no
+    /// cuenta (xterm.js tampoco recorta ahí).
     pub fn scrolled_up(&self) -> u64 {
         self.term.scrolled_up()
     }

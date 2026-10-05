@@ -43,7 +43,7 @@ pub mod theme;
 use canvas::{Canvas2d, CanvasTheme};
 use comandos_term::select::{Selection, UrlSpan, selected_text};
 use comandos_term::{
-    engine::{ClipboardTarget, Engine, GridSize, Palette},
+    engine::{ClipboardTarget, Engine, GridSize, MouseMode, Palette},
     render::RenderOpts,
 };
 use metrics::CellMetrics;
@@ -386,8 +386,15 @@ struct Inner {
     link_gen: u64,
     /// Enlace bajo el ratón.
     hover: Option<UrlSpan>,
-    /// Enlace pulsado con Ctrl (se abre al soltar sobre él).
+    /// Última posición del ratón sobre la pantalla (para volver a buscar el
+    /// enlace cuando se repintan sus filas, como `Linkifier`).
+    hover_xy: Option<(f64, f64)>,
+    /// Enlace pulsado (se abre al soltar sobre él).
     link_down: Option<UrlSpan>,
+    /// `timeStamp` del último `mousedown` (Alt+clic).
+    down_ts: f64,
+    /// Protocolo de ratón visto por última vez (`onProtocolChange`).
+    mouse_seen: MouseMode,
     overlay: overlay::Overlay,
     /// Color de la selección (`rgba`), según el tema.
     selection_color: String,
@@ -730,13 +737,18 @@ impl Inner {
             return;
         }
         if user {
-            let offset = self.engine.display_offset();
-            if offset != 0 {
-                self.scroll_lines(-i32::try_from(offset).unwrap_or(i32::MAX));
-            }
+            self.scroll_to_bottom();
             self.clear_selection();
         }
         self.outbox.data.push(bytes);
+    }
+
+    /// `scrollOnUserInput`: la vista vuelve al final.
+    fn scroll_to_bottom(&mut self) {
+        let offset = self.engine.display_offset();
+        if offset != 0 {
+            self.scroll_lines(-i32::try_from(offset).unwrap_or(i32::MAX));
+        }
     }
 
     /// Desplaza la vista (positivo = hacia atrás en la historia).
@@ -751,7 +763,7 @@ impl Inner {
         if self.select.is_started() {
             self.overlay.dirty = true;
         }
-        self.drop_hover();
+        // El enlace bajo el ratón cae al repintarse sus filas (todas).
         self.schedule_ligatures();
         self.touch();
     }
@@ -791,32 +803,65 @@ impl Inner {
         }
     }
 
-    /// Tras escribir en el motor: la selección sigue a su texto (o se va con
-    /// la pantalla alternativa, como `_handleBufferActivate`), y los enlaces
-    /// calculados ya no valen.
+    /// Tras escribir en el motor: la selección sigue a su texto, en las dos
+    /// pantallas (`onTrim`), se recorta si la historia se borró (ED 3), y se
+    /// va al cambiar de pantalla (`_handleBufferActivate`) o al activar el
+    /// ratón de la aplicación (`onProtocolChange` → `disable()`). Los
+    /// enlaces calculados ya no valen; el que está bajo el ratón solo cae
+    /// si se repintan sus filas ([`Inner::on_frame`]).
     fn after_output(&mut self) {
         self.link_gen = self.link_gen.wrapping_add(1);
-        self.drop_hover();
         let scrolled = self.engine.scrolled_up();
         let lines = scrolled.wrapping_sub(self.scrolled_seen);
         self.scrolled_seen = scrolled;
-        let alt = self.engine.modes().alt_screen;
-        if alt != self.alt_seen {
-            self.alt_seen = alt;
+        let modes = self.engine.modes();
+        let mouse_changed = modes.mouse != self.mouse_seen;
+        self.mouse_seen = modes.mouse;
+        if modes.alt_screen != self.alt_seen {
+            self.alt_seen = modes.alt_screen;
             self.clear_selection();
-        } else if lines > 0 && self.select.is_started() {
+        } else if mouse_changed && modes.mouse != MouseMode::Off {
+            self.clear_selection();
+        } else if self.select.is_started() {
             // La misma selección en otras filas no es un cambio para la
             // página (xterm.js no avisa al recortar la historia).
+            let before = self.select.clone();
             let reported = self.reported_selection == self.selection();
             let first = -i32::try_from(self.engine.history_len()).unwrap_or(i32::MAX);
             self.select.shift_up(lines, first);
-            if reported && self.select.is_started() {
-                self.reported_selection = self.selection();
+            if self.select != before {
+                if reported && self.select.is_started() {
+                    self.reported_selection = self.selection();
+                }
+                self.overlay.dirty = true;
             }
-            self.overlay.dirty = true;
         }
         // `onRender` del addon de ligaduras.
         self.schedule_ligatures();
+    }
+
+    /// `onRenderedViewportChange` de `Linkifier`: si el cuadro repintó las
+    /// filas del enlace bajo el ratón, ese enlace (y su pulsación) ya no
+    /// vale; se vuelve a buscar en la última posición del ratón.
+    fn forget_repainted_link(&mut self, range: (usize, usize)) {
+        let offset = self.engine.display_offset();
+        let stale = |span: &Option<UrlSpan>| {
+            span.as_ref()
+                .is_some_and(|s| links::repainted(s, offset, range))
+        };
+        if stale(&self.link_down) {
+            self.link_down = None;
+        }
+        if stale(&self.hover) {
+            self.hover = None;
+            self.set_pointer(false);
+            self.overlay.dirty = true;
+            if self.drag.is_none()
+                && let Some((x, y)) = self.hover_xy
+            {
+                self.update_hover(x, y);
+            }
+        }
     }
 
     /// Quita el enlace bajo el ratón (su subrayado y el puntero).
@@ -848,9 +893,14 @@ impl Inner {
         let (rows, cols) = (self.size.rows, self.size.cols);
         let rects = self
             .selection()
-            .and_then(|s| comandos_term::select::selection_bounds(&self.engine, &s))
-            .map(|(lo, hi)| {
-                overlay::selection_rects(lo, (hi.0, hi.1.saturating_add(1)), offset, rows, cols)
+            .and_then(|s| {
+                let (lo, hi) = comandos_term::select::selection_bounds(&self.engine, &s)?;
+                let end = (hi.0, hi.1.saturating_add(1));
+                Some(if s.mode == comandos_term::select::SelectMode::Block {
+                    overlay::block_rects(lo, end, offset, rows, cols)
+                } else {
+                    overlay::selection_rects(lo, end, offset, rows, cols)
+                })
             })
             .unwrap_or_default();
         let lines = self
@@ -1027,7 +1077,7 @@ impl Inner {
         self.frame_id = None;
         let now = self.now();
         let input = self.cursor_input();
-        self.scheduler.frame(
+        let stats = self.scheduler.frame(
             &mut self.engine,
             &self.palette,
             &self.render_opts,
@@ -1036,6 +1086,9 @@ impl Inner {
             &mut self.painter,
         );
         self.sync_scroll_area();
+        if let Some(range) = stats.content {
+            self.forget_repainted_link(range);
+        }
         if self.overlay.dirty {
             self.paint_overlay();
         }
@@ -1258,6 +1311,10 @@ impl Drop for Inner {
         if let Some(id) = self.ligatures.as_mut().and_then(|l| l.timer.take()) {
             self.window.clear_timeout_with_handle(id);
         }
+        // La cara de ligaduras no se queda en `document.fonts`.
+        if let Some(face) = self.liga_face.take() {
+            let _ = self.document.fonts().delete(&face);
+        }
         // Las escuchas y el arrastre se quitan al soltarse los campos.
         self.drag = None;
         self.listeners.clear();
@@ -1325,10 +1382,12 @@ impl WebTerm {
         } else {
             None
         };
+        // Bytes en vez de `str::contains`, que arrastra el buscador de
+        // subcadenas al wasm.
         let is_linux = window
             .navigator()
             .platform()
-            .is_ok_and(|p| p.contains("Linux"));
+            .is_ok_and(|p| p.as_bytes().windows(5).any(|w| w == b"Linux"));
         let selection_color = selection_css(&opts.theme);
         let scrollbar_w = metrics::scrollbar_width(&dom.viewport, &dom.scroll_area);
         let engine =
@@ -1387,7 +1446,10 @@ impl WebTerm {
             links: links::LinkCache::default(),
             link_gen: 0,
             hover: None,
+            hover_xy: None,
             link_down: None,
+            down_ts: 0.0,
+            mouse_seen: MouseMode::Off,
             overlay,
             selection_color,
             ligatures,
@@ -1879,8 +1941,10 @@ impl Inner {
             (&root, "wheel", Some(false), Inner::on_wheel),
             (&root, "touchstart", Some(true), Inner::on_touch_start),
             (&root, "touchmove", Some(false), Inner::on_touch_move),
-            (&screen, "mousedown", None, Inner::on_mouse_down),
-            (&screen, "mousemove", None, Inner::on_mouse_move),
+            // `bindMouse` escucha en la raíz: la franja que deja `fit` también
+            // da el foco e informa (acotado a la última celda).
+            (&root, "mousedown", None, Inner::on_mouse_down),
+            (&root, "mousemove", None, Inner::on_mouse_move),
             (&screen, "mouseup", None, Inner::on_mouse_up),
             (&screen, "mouseleave", None, Inner::on_mouse_leave),
             (&viewport, "scroll", None, Inner::on_viewport_scroll),

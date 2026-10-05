@@ -84,6 +84,31 @@ pub fn selection_rects(
     out
 }
 
+/// `_redrawSelection` en modo columna (Alt+arrastre): un solo rectángulo de
+/// las columnas `left..right` (`right` excluido) en las filas visibles de
+/// `top` a `bottom` (absolutas, incluidas).
+pub fn block_rects(
+    (top, left): Point,
+    (bottom, right): Point,
+    display_offset: usize,
+    rows: u16,
+    cols: u16,
+) -> Vec<CellRect> {
+    let view = |row: i32| i64::from(row) + display_offset as i64;
+    let first = view(top).max(0);
+    let last = view(bottom).min(i64::from(rows) - 1);
+    let (x, end) = (left.min(cols), right.min(cols));
+    match (u16::try_from(first), u16::try_from(last - first + 1)) {
+        (Ok(y), Ok(h)) if h > 0 && end > x => vec![CellRect {
+            x,
+            y,
+            w: end - x,
+            h,
+        }],
+        _ => Vec::new(),
+    }
+}
+
 /// Secuencias de [`comandos_term::select::ligature_runs`] que tienen glifo
 /// `.liga` en `JetBrainsMonoNerdFontMono-Regular.ttf` (sacado de la tabla
 /// `post` de esa fuente: el addon descarta las que no lo tienen).
@@ -378,6 +403,34 @@ mod tests {
         assert_eq!(
             selection_rects((-1_000_000, 0), (1_000_000, 0), 0, 3, 20).len(),
             3
+        );
+    }
+
+    #[test]
+    fn block_rects_are_one_column_band_over_the_visible_rows() {
+        assert_eq!(
+            block_rects((1, 3), (4, 7), 0, 10, 20),
+            vec![CellRect {
+                x: 3,
+                y: 1,
+                w: 4,
+                h: 4
+            }]
+        );
+        // Recortado a la vista desplazada y a las columnas.
+        assert_eq!(
+            block_rects((-9, 15), (1, 30), 2, 10, 20),
+            vec![CellRect {
+                x: 15,
+                y: 0,
+                w: 5,
+                h: 4
+            }]
+        );
+        assert!(block_rects((12, 0), (14, 3), 0, 10, 20).is_empty());
+        assert!(
+            block_rects((1, 4), (2, 4), 0, 10, 20).is_empty(),
+            "sin ancho"
         );
     }
 

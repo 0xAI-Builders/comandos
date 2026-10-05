@@ -168,6 +168,11 @@ pub struct FrameStats {
     pub cleared: usize,
     /// Se dibujó el cursor.
     pub cursor: bool,
+    /// Primera y última fila de la vista con daño de contenido (escritura,
+    /// desplazamiento, tema), sin contar el cursor solo: el
+    /// `onRenderedViewportChange` con el que xterm.js decide si el enlace
+    /// bajo el ratón sigue valiendo.
+    pub content: Option<(usize, usize)>,
 }
 
 /// Junta daños y decide cuándo pintar.
@@ -183,6 +188,8 @@ pub struct Scheduler {
     empty: Vec<usize>,
     /// Índices de daño del motor (reutilizado).
     damage: Vec<usize>,
+    /// Rango de filas con daño de contenido desde el último cuadro.
+    content: Option<(usize, usize)>,
 }
 
 impl Scheduler {
@@ -197,12 +204,28 @@ impl Scheduler {
     pub fn resize(&mut self, rows: u16) {
         self.dirty.resize(usize::from(rows));
         self.dirty.mark_all();
+        self.note_all();
         self.painted_cursor = None;
     }
 
     /// Repintar todo (tema, fuente, tamaño de celda).
     pub fn invalidate_all(&mut self) {
         self.dirty.mark_all();
+        self.note_all();
+    }
+
+    /// Suma `lo..=hi` al rango de contenido del próximo cuadro.
+    fn note(&mut self, lo: usize, hi: usize) {
+        self.content = Some(match self.content {
+            Some((a, b)) => (a.min(lo), b.max(hi)),
+            None => (lo, hi),
+        });
+    }
+
+    fn note_all(&mut self) {
+        if let Some(last) = self.dirty.rows.len().checked_sub(1) {
+            self.note(0, last);
+        }
     }
 
     /// Hay algo que pintar.
@@ -215,6 +238,7 @@ impl Scheduler {
     pub fn absorb(&mut self, engine: &mut Engine, input: CursorInput) {
         if engine.take_damage_into(&mut self.damage) {
             self.dirty.mark_all();
+            self.note_all();
         } else {
             // alacritty da `línea de pantalla + display_offset`, que es justo
             // la fila de la vista donde se ve esa línea; lo que queda debajo
@@ -223,6 +247,9 @@ impl Scheduler {
             for i in 0..self.damage.len() {
                 if let Some(&line) = self.damage.get(i) {
                     self.dirty.mark(line);
+                    if line < self.dirty.rows.len() {
+                        self.note(line, line);
+                    }
                 }
             }
         }
@@ -274,7 +301,10 @@ impl Scheduler {
         // Los daños ya llegaron con cada `absorb`; aquí solo el cursor (la
         // fase del parpadeo puede haber cambiado mientras tanto).
         self.absorb_cursor(engine, input);
-        let mut stats = FrameStats::default();
+        let mut stats = FrameStats {
+            content: self.content.take(),
+            ..FrameStats::default()
+        };
         if !self.has_work() {
             return stats;
         }
@@ -454,6 +484,33 @@ mod tests {
             ]
         );
         assert!(!calls.iter().any(|c| matches!(c, Call::Row(1 | 3, _))));
+    }
+
+    #[test]
+    fn frames_report_the_rows_damaged_by_content_not_by_the_cursor() {
+        let (mut e, p, mut s, m) = setup(5);
+        let (stats, _) = run(&mut e, &p, &mut s, &m, FOCUSED);
+        assert_eq!(stats.content, Some((0, 4)), "primer cuadro: todo");
+        e.advance(b"\x1b[2;1Ha\x1b[4;1Hb", 0.0);
+        s.absorb(&mut e, FOCUSED);
+        e.advance(b"\x1b[3;1Hc", 0.0);
+        s.absorb(&mut e, FOCUSED);
+        let (stats, _) = run(&mut e, &p, &mut s, &m, FOCUSED);
+        let (lo, hi) = stats.content.unwrap_or_default();
+        assert!(lo <= 1 && hi >= 3, "{:?}", stats.content);
+        // El parpadeo y el foco solo repintan el cursor.
+        let hidden = CursorInput {
+            focused: true,
+            blink_on: false,
+        };
+        s.absorb_cursor(&e, hidden);
+        let (stats, _) = run(&mut e, &p, &mut s, &m, hidden);
+        assert!(stats.cursor || stats.cleared + stats.painted > 0);
+        assert_eq!(stats.content, None);
+        e.scroll_display(0);
+        s.invalidate_all();
+        let (stats, _) = run(&mut e, &p, &mut s, &m, hidden);
+        assert_eq!(stats.content, Some((0, 4)), "tema o fuente");
     }
 
     #[test]

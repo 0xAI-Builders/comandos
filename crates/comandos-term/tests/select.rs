@@ -350,3 +350,58 @@ fn erase_and_shift_operations_leave_cells_that_are_not_written() {
     e.advance(b"\x1b[1;1H\x1b[3@", 0.0);
     assert!(!written(&e, 0) && !written(&e, 2) && written(&e, 3));
 }
+
+#[test]
+fn block_mode_copies_each_row_cut_to_the_columns() {
+    let mut e = eng(10);
+    e.advance(b"abcdef\r\n123456\r\nxy\r\n0123456789wrap", 0.0);
+    let block = sel((0, 1), (2, 3), SelectMode::Block);
+    assert_eq!(selection_bounds(&e, &block), Some(((0, 1), (2, 3))));
+    assert_eq!(selected_text(&e, &block), "bcd\n234\ny");
+    // Esquinas cruzadas: el mismo rectángulo.
+    assert_eq!(
+        selected_text(&e, &sel((2, 1), (0, 3), SelectMode::Block)),
+        "bcd\n234\ny"
+    );
+    // Las filas envueltas no se unen en columna.
+    assert_eq!(
+        selected_text(&e, &sel((3, 8), (4, 9), SelectMode::Block)),
+        "89\n"
+    );
+}
+
+#[test]
+fn wide_char_tails_are_the_second_half() {
+    let mut e = eng(10);
+    e.advance("日本x".as_bytes(), 0.0);
+    assert!(!is_wide_char_tail(&e, (0, 0)));
+    assert!(is_wide_char_tail(&e, (0, 1)));
+    assert!(is_wide_char_tail(&e, (0, 3)));
+    assert!(!is_wide_char_tail(&e, (0, 4)));
+    assert!(!is_wide_char_tail(&e, (9, 0)), "fuera de la rejilla");
+}
+
+/// `moveToCellSequence` con historia: celdas en línea recta.
+#[test]
+fn alt_click_counts_cells_in_the_normal_screen() {
+    let mut e = eng(10);
+    e.advance(b"\r\n\r\nabcde", 0.0);
+    let arrows = |n: usize, d: &str| d.repeat(n).into_bytes();
+    assert_eq!(move_to_cell(&e, (2, 2), false, true), arrows(3, "\x1b[D"));
+    assert_eq!(move_to_cell(&e, (5, 2), false, true), Vec::<u8>::new());
+    assert_eq!(move_to_cell(&e, (1, 4), false, true), arrows(16, "\x1b[C"));
+    assert_eq!(move_to_cell(&e, (8, 0), true, true), arrows(17, "\x1bOD"));
+}
+
+/// Sin historia (pantalla alternativa) recorre la rejilla como xterm.js,
+/// incluido que hacia la izquierda en la misma fila no se mueve.
+#[test]
+fn alt_click_walks_the_grid_in_the_alternate_screen() {
+    let mut e = eng(10);
+    e.advance(b"\x1b[?1049h\x1b[3;4H", 0.0);
+    let arrows = |n: usize, d: &str| d.repeat(n).into_bytes();
+    assert_eq!(move_to_cell(&e, (6, 2), false, false), arrows(3, "\x1b[C"));
+    assert_eq!(move_to_cell(&e, (1, 2), false, false), Vec::<u8>::new());
+    assert_eq!(move_to_cell(&e, (3, 4), false, false), arrows(2, "\x1b[B"));
+    assert_eq!(move_to_cell(&e, (3, 0), true, false), arrows(2, "\x1bOA"));
+}
