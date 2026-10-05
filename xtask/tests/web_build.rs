@@ -286,6 +286,24 @@ fn builds_a_fixture_crate_end_to_end() {
         m.path("fixture_web_boot.js"),
         Some(format!("{hash}/boot.js").as_str())
     );
+    // El snippet de `inline_js` va plano junto al cargador, con clave de
+    // manifiesto prefijada por el crate, y el módulo JS lo importa por ese nombre.
+    let (key, snippet) = m
+        .files
+        .iter()
+        .find(|(k, _)| k.starts_with("fixture_web_snippets-fixture-web-"))
+        .unwrap_or_else(|| panic!("sin snippet en {m:?}"));
+    assert!(key.ends_with("-inline0.js"), "{key}");
+    let flat = snippet.strip_prefix(&format!("{hash}/")).unwrap();
+    assert_eq!(key, &format!("fixture_web_{flat}"));
+    assert!(
+        fs::read_to_string(out.join(snippet))
+            .unwrap()
+            .contains("export function twice")
+    );
+    let module = fs::read_to_string(out.join(hash).join("fixture_web.js")).unwrap();
+    assert!(module.contains(&format!("'./{flat}'")), "{module}");
+    assert!(!module.contains("./snippets/"));
     let wasm = fs::read(out.join(&wasm_rel)).unwrap();
     assert_eq!(wasm.get(..4), Some(b"\0asm".as_slice()));
     let boot = fs::read_to_string(out.join(hash).join("boot.js")).unwrap();
@@ -452,4 +470,64 @@ fn missing_tools_fail_with_the_install_command() {
         err.contains("cargo install --locked wasm-bindgen-cli --version =0.2.129"),
         "{err}"
     );
+}
+
+#[test]
+fn snippets_are_flattened_next_to_the_loader_and_imports_rewritten() {
+    // `inline_js` de wasm-bindgen sale como `snippets/<crate>-<hash>/inlineN.js`;
+    // el frente sirve `/web/<hash>/<archivo>` (un segmento), así que van planos.
+    let js = "import { api_fetch } from './snippets/comandos-web-dom-90199b/inline0.js';\nimport * as x from \"./snippets/otro-1/inline1.js\";\nlet y = 1;\n";
+    let snippets = vec![
+        (
+            "snippets/comandos-web-dom-90199b/inline0.js".to_string(),
+            b"export function api_fetch(){}".to_vec(),
+        ),
+        (
+            "snippets/otro-1/inline1.js".to_string(),
+            b"export const z = 1;".to_vec(),
+        ),
+    ];
+    let (out, files) = web_build::flatten_snippets(js, snippets).unwrap();
+    assert_eq!(
+        out,
+        "import { api_fetch } from './snippets-comandos-web-dom-90199b-inline0.js';\nimport * as x from \"./snippets-otro-1-inline1.js\";\nlet y = 1;\n"
+    );
+    assert_eq!(
+        files.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+        [
+            "snippets-comandos-web-dom-90199b-inline0.js",
+            "snippets-otro-1-inline1.js"
+        ]
+    );
+    assert_eq!(files[0].1, b"export function api_fetch(){}");
+}
+
+#[test]
+fn a_snippet_nobody_imports_is_not_shipped() {
+    // wasm-bindgen escribe el fragmento aunque LTO haya quitado sus usos
+    // (arranque vacío): no se copia.
+    let (out, files) =
+        web_build::flatten_snippets("let y = 1;", vec![("snippets/a/inline0.js".into(), vec![])])
+            .unwrap();
+    assert_eq!(out, "let y = 1;");
+    assert!(files.is_empty());
+}
+
+#[test]
+fn an_import_of_a_snippet_that_was_not_found_is_an_error() {
+    let r = web_build::flatten_snippets("import { f } from './snippets/b/inline0.js';", vec![]);
+    assert!(r.unwrap_err().contains("./snippets/"));
+}
+
+#[test]
+fn two_snippets_that_flatten_to_the_same_name_are_an_error() {
+    let js = "import './snippets/a-b/c.js';\nimport './snippets/a/b-c.js';\n";
+    let r = web_build::flatten_snippets(
+        js,
+        vec![
+            ("snippets/a-b/c.js".into(), vec![]),
+            ("snippets/a/b-c.js".into(), vec![]),
+        ],
+    );
+    assert!(r.unwrap_err().contains("snippets-a-b-c.js"));
 }

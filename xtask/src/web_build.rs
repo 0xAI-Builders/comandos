@@ -40,6 +40,77 @@ pub fn render_boot(module_js: &str, wasm: &str) -> String {
         .replace("{{WASM}}", wasm)
 }
 
+/// Un archivo con su nombre (o ruta relativa) y sus bytes.
+pub type NamedFile = (String, Vec<u8>);
+
+/// Módulos de `inline_js`/`module` que wasm-bindgen deja en
+/// `snippets/<crate>-<hash>/<archivo>.js` (los usan los crates web en lugar del
+/// constructor `Function`, para que una CSP sin `unsafe-eval` funcione). El
+/// frente sirve `/web/<hash>/<archivo>` con un solo segmento, así que cada uno
+/// pasa a `snippets-<crate>-<hash>-<archivo>.js` junto al cargador (clave de
+/// manifiesto `<lib>_snippets-…`) y su `import './snippets/…'` se reescribe;
+/// dos rutas que se aplanen al mismo nombre son un error. Un fragmento que nadie importa (LTO
+/// quitó sus usos, p. ej. en el arranque vacío) no se copia; un `./snippets/`
+/// que queda sin reescribir es un error (el navegador no lo encontraría).
+pub fn flatten_snippets(
+    js: &str,
+    snippets: Vec<NamedFile>,
+) -> Result<(String, Vec<NamedFile>), String> {
+    let mut out = js.to_string();
+    let mut files: Vec<NamedFile> = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for (rel, bytes) in snippets {
+        let flat = rel.replace('/', "-");
+        if !seen.insert(flat.clone()) {
+            return Err(format!("dos snippets se aplanan a {flat}"));
+        }
+        let mut found = false;
+        for q in ['\'', '"'] {
+            let from = format!("{q}./{rel}{q}");
+            if out.contains(&from) {
+                out = out.replace(&from, &format!("{q}./{flat}{q}"));
+                found = true;
+            }
+        }
+        if found {
+            files.push((flat, bytes));
+        }
+    }
+    if out.contains("./snippets/") {
+        return Err(
+            "el módulo JS importa ./snippets/… que wasm-bindgen no dejó en snippets/".to_string(),
+        );
+    }
+    Ok((out, files))
+}
+
+/// `(ruta relativa con `/`, bytes)` de cada archivo bajo `dir/snippets`, en orden.
+fn read_snippets(dir: &Path) -> Result<Vec<NamedFile>, String> {
+    let root = dir.join("snippets");
+    let mut out = Vec::new();
+    let mut stack = vec![root.clone()];
+    while let Some(d) = stack.pop() {
+        let Ok(rd) = fs::read_dir(&d) else { continue };
+        for entry in rd {
+            let entry = entry.map_err(|e| format!("no se pudo leer {}: {e}", d.display()))?;
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if let Ok(rel) = path.strip_prefix(dir) {
+                let rel: Vec<String> = rel
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect();
+                let bytes = fs::read(&path)
+                    .map_err(|e| format!("no se pudo leer {}: {e}", path.display()))?;
+                out.push((rel.join("/"), bytes));
+            }
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
 /// `sha256` de las partes concatenadas, 12 dígitos hexadecimales.
 pub fn content_hash(parts: &[&[u8]]) -> String {
     let mut h = Sha256::new();
@@ -331,6 +402,11 @@ fn build_one(opts: &Options, c: &WasmCrate) -> Result<Built, String> {
     )?;
     let read = |p: &Path| fs::read(p).map_err(|e| format!("no se pudo leer {}: {e}", p.display()));
     let js = read(&work.join(&js_name))?;
+    let (js, snippets) = flatten_snippets(
+        &String::from_utf8(js).map_err(|e| format!("{js_name} no es UTF-8: {e}"))?,
+        read_snippets(&work)?,
+    )?;
+    let js = js.into_bytes();
     let wasm = read(&wasm_path)?;
     let gz = gzip_len(&wasm)?;
     println!(
@@ -345,6 +421,12 @@ fn build_one(opts: &Options, c: &WasmCrate) -> Result<Built, String> {
         (js_name.clone(), js_name.clone(), js),
         (wasm_name.clone(), wasm_name.clone(), wasm),
     ];
+    // Clave lógica con el crate delante: dos WASM que usen el mismo crate
+    // (p. ej. `comandos-web-dom`) emiten el mismo nombre plano en sus `<hash>/`
+    // respectivos, y el manifiesto debe seguir siendo un mapa fiel.
+    for (name, bytes) in snippets {
+        files.push((format!("{}_{name}", c.lib), name, bytes));
+    }
     if let Some(boot) = boot_name {
         let text = render_boot(&format!("./{js_name}"), &format!("./{wasm_name}"));
         files.push((boot, BOOT_FILE.to_string(), text.into_bytes()));

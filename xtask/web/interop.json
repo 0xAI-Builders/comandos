@@ -1,0 +1,2769 @@
+{
+  "$": {
+    "defined_by": [
+      "region:prelude"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:i18n",
+      "region:app-nativa",
+      "region:helpers",
+      "region:app-combinada",
+      "region:barra-de-comandos",
+      "region:render",
+      "region:avisos-de-eventos",
+      "region:conmutador-ctrl-k",
+      "region:tema",
+      "region:prefs-de-terminal",
+      "region:preview-de-tipografia",
+      "region:remoto",
+      "region:servidores",
+      "region:notificaciones-del-sistema",
+      "region:modales-en-medio",
+      "region:ui-general",
+      "region:funciones-de-ui-globales",
+      "region:analytics",
+      "region:tail"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "ACTIVE_TAB": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "let"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-combinada"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "Analytics": {
+    "defined_by": [
+      "script:analytics.js"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:analytics"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "AnalyticsRender": {
+    "defined_by": [
+      "script:analytics-render.js"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:analytics.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "CENTER_PANELS": {
+    "defined_by": [
+      "region:app-nativa"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:modales-en-medio"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "ComandosChainBuilder": {
+    "defined_by": [
+      "script:chain-builder.js"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:barra-de-comandos"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "ComandosCommandSidebar": {
+    "defined_by": [
+      "script:command-sidebar.js"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:chain-builder.js",
+      "region:barra-de-comandos"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "ComandosDeviceDrafts": {
+    "defined_by": [
+      "script:device-drafts.js"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "term:main"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "ComandosNotices": {
+    "defined_by": [
+      "script:notifications.js"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:helpers",
+      "region:avisos-de-eventos",
+      "region:notificaciones-del-sistema",
+      "region:tail"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "ComandosQuickTerminal": {
+    "defined_by": [
+      "script:quick-terminal.js"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-combinada",
+      "region:barra-de-comandos"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "DESKTOP_POPUPS": {
+    "defined_by": [
+      "region:notificaciones-del-sistema"
+    ],
+    "binding": [
+      "let"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:tail"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "ICON": {
+    "defined_by": [
+      "region:iconos"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:helpers"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "L": {
+    "defined_by": [
+      "region:i18n"
+    ],
+    "binding": [
+      "let"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:ui-general"
+    ],
+    "mutated_by": [
+      "region:ui-general"
+    ],
+    "called_by": [],
+    "host_calls": [],
+    "risks": [
+      "mutado desde otra unidad y declarado con let/const: no es propiedad de window, el puente global_set no lo alcanza"
+    ]
+  },
+  "LABEL": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "let"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:ui-general",
+      "script:workspace.js"
+    ],
+    "mutated_by": [
+      "region:ui-general"
+    ],
+    "called_by": [],
+    "host_calls": [],
+    "risks": [
+      "mutado desde otra unidad y declarado con let/const: no es propiedad de window, el puente global_set no lo alcanza"
+    ]
+  },
+  "NS": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:servidores",
+      "script:workspace.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "NewsReader": {
+    "defined_by": [
+      "script:news-reader.js"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:tail"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "ONLY_PANEL": {
+    "defined_by": [
+      "region:app-nativa"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:helpers",
+      "region:barra-de-comandos",
+      "region:modales-en-medio",
+      "region:tail"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "PROVIDERS": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "let"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:workspace.js"
+    ],
+    "mutated_by": [
+      "script:workspace.js"
+    ],
+    "called_by": [],
+    "host_calls": [],
+    "risks": [
+      "mutado desde otra unidad y declarado con let/const: no es propiedad de window, el puente global_set no lo alcanza"
+    ]
+  },
+  "S": {
+    "defined_by": [
+      "region:prelude"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:i18n",
+      "region:helpers",
+      "region:app-combinada",
+      "region:barra-de-comandos",
+      "region:render",
+      "region:loop",
+      "region:conmutador-ctrl-k",
+      "region:ui-general",
+      "script:workspace.js",
+      "script:work-marks.js",
+      "script:pomodoro.js",
+      "region:tail"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "SYSTEM_POPUP_CATS": {
+    "defined_by": [
+      "region:notificaciones-del-sistema"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:tail"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "SessionConfig": {
+    "defined_by": [
+      "script:session-config.js"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:helpers",
+      "script:workspace.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "TERM_BASE": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-combinada",
+      "region:barra-de-comandos",
+      "script:news-reader.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "TERM_FALLBACK_BASE": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-combinada"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "TERM_PRIMARY_ATTEMPTS": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-combinada"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "TERM_PRIMARY_PROBE_TIMEOUT_MS": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-combinada"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "TERM_PRIMARY_RETRY_MS": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-combinada"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "WEBTERM": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-nativa",
+      "region:app-combinada",
+      "region:barra-de-comandos",
+      "region:remoto",
+      "region:servidores"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "WS_DEVICE": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:tail"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "WorkMarks": {
+    "defined_by": [
+      "script:work-marks.js"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:workspace-dock.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "WorkspaceDock": {
+    "defined_by": [
+      "script:workspace-dock.js"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-combinada"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "WorkspaceLayout": {
+    "defined_by": [
+      "script:workspace-layout.js"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:workspace-dock.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "__comandosOwnsTouchGestures": {
+    "defined_by": [
+      "term:main"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [],
+    "mutated_by": [],
+    "called_by": [
+      "parent:index.html"
+    ],
+    "host_calls": [],
+    "risks": [],
+    "member_access": [
+      "parent:index.html (contentWindow.__comandosOwnsTouchGestures)"
+    ]
+  },
+  "__comandosTerm": {
+    "defined_by": [
+      "term:main"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "term:tail"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "activateMtab": {
+    "defined_by": [
+      "region:tabs-internos-de-modales"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-nativa",
+      "region:tema",
+      "region:modales-en-medio"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "activePaneTarget": {
+    "defined_by": [
+      "region:barra-de-comandos"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:registro-local-de-uso"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "activeTerm": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "let"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:workspace-dock.js",
+      "region:remoto",
+      "region:analytics"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "activeView": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "let"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:workspace-dock.js",
+      "region:helpers",
+      "region:servidores"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "addTermTab": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:remoto"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "alertClear": {
+    "defined_by": [
+      "region:avisos-de-eventos"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:render"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "alertResolve": {
+    "defined_by": [
+      "region:avisos-de-eventos"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-nativa"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "api": {
+    "defined_by": [
+      "region:red"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-nativa",
+      "region:helpers",
+      "region:app-combinada",
+      "region:barra-de-comandos",
+      "region:loop",
+      "region:conmutador-ctrl-k",
+      "region:tema",
+      "region:favoritos",
+      "region:prefs-de-terminal",
+      "region:remoto",
+      "region:servidores",
+      "region:notificaciones-del-sistema",
+      "region:ui-general",
+      "region:snippets",
+      "region:analytics",
+      "script:workspace.js",
+      "region:tail"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "appEnabled": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:tail"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "appLeftPanel": {
+    "defined_by": [],
+    "binding": [],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [],
+    "mutated_by": [],
+    "called_by": [
+      "bin/cc-app"
+    ],
+    "host_calls": [
+      {
+        "from": "bin/cc-app",
+        "line": 7901,
+        "via": "_dash_js_quiet",
+        "origin": "literal"
+      }
+    ],
+    "risks": [
+      "nadie lo define: la llamada falla o depende de algo fuera del inventario"
+    ],
+    "member_access": [
+      "bin/cc-app:7901 (window.appLeftPanel)"
+    ]
+  },
+  "applyAppLayout": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:analytics"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "applyButtonStyle": {
+    "defined_by": [
+      "region:tema"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:favoritos"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "applyFavorites": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:favoritos"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "applyI18n": {
+    "defined_by": [
+      "region:i18n"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:ui-general"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "applyTabsLayout": {
+    "defined_by": [
+      "region:prefs-de-terminal"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:favoritos",
+      "region:servidores"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "applyTheme": {
+    "defined_by": [
+      "region:tema"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:favoritos"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "arm": {
+    "defined_by": [
+      "region:loop"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:remoto",
+      "region:ui-general"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "attrEsc": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:prefs-de-terminal",
+      "script:workspace.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "authToken": {
+    "defined_by": [
+      "region:red"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:workspace-dock.js",
+      "region:app-combinada",
+      "region:remoto",
+      "script:work-marks.js",
+      "script:pomodoro.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "closeModelMenus": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:funciones-de-ui-globales"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "closeSnippets": {
+    "defined_by": [
+      "region:snippets"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:analytics"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "commandSidebar": {
+    "defined_by": [
+      "region:barra-de-comandos"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [],
+    "mutated_by": [],
+    "called_by": [
+      "bin/cc-app"
+    ],
+    "host_calls": [
+      {
+        "from": "bin/cc-app",
+        "line": 7208,
+        "via": "_dash_js",
+        "origin": "literal"
+      }
+    ],
+    "risks": [],
+    "member_access": [
+      "bin/cc-app:7208 (window.commandSidebar)"
+    ]
+  },
+  "copyText": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:remoto"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "curTheme": {
+    "defined_by": [
+      "region:tema"
+    ],
+    "binding": [
+      "let"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-combinada",
+      "region:barra-de-comandos",
+      "script:news-reader.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "favoriteReadAt": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "let"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:favoritos"
+    ],
+    "mutated_by": [
+      "region:favoritos"
+    ],
+    "called_by": [],
+    "host_calls": [],
+    "risks": [
+      "mutado desde otra unidad y declarado con let/const: no es propiedad de window, el puente global_set no lo alcanza"
+    ]
+  },
+  "favoriteVersion": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "let"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:favoritos"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "fmtTokens": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:workspace.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "handleTermFrameMessage": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:ui-general"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "handleTermInteractionsPageShow": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:ui-general"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "hydrateIcons": {
+    "defined_by": [
+      "region:iconos"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:barra-de-comandos"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "hydrateTerminalPrefs": {
+    "defined_by": [
+      "region:prefs-de-terminal"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:favoritos"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "inApp": {
+    "defined_by": [
+      "region:app-nativa"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:helpers",
+      "region:app-combinada",
+      "region:barra-de-comandos",
+      "region:render",
+      "region:registro-local-de-uso",
+      "region:tema",
+      "region:servidores",
+      "region:modales-en-medio",
+      "region:ui-general",
+      "region:tail"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "initApp": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:ui-general"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "loadConf": {
+    "defined_by": [
+      "region:notificaciones-del-sistema"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:ui-general"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "loadDesktopTabs": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:remoto"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "loadPrefs": {
+    "defined_by": [
+      "region:favoritos"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:ui-general"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "loadRemote": {
+    "defined_by": [
+      "region:remoto"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:ui-general"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "loadSsh": {
+    "defined_by": [
+      "region:servidores"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:barra-de-comandos",
+      "region:ui-general"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "mdEsc": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:tema",
+      "region:prefs-de-terminal",
+      "script:workspace.js",
+      "script:pomodoro.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "mountChainPage": {
+    "defined_by": [
+      "region:barra-de-comandos"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:ui-general"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "mountCommandSidebar": {
+    "defined_by": [
+      "region:barra-de-comandos"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:ui-general"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "notifBadge": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:render",
+      "region:avisos-de-eventos"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "notifRender": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [],
+    "mutated_by": [],
+    "called_by": [
+      "bin/cc-app"
+    ],
+    "host_calls": [
+      {
+        "from": "bin/cc-app",
+        "line": 6471,
+        "via": "run_javascript",
+        "origin": "literal"
+      }
+    ],
+    "risks": []
+  },
+  "nsOpen": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:servidores",
+      "region:funciones-de-ui-globales",
+      "script:workspace.js"
+    ],
+    "mutated_by": [],
+    "called_by": [
+      "bin/cc-app"
+    ],
+    "host_calls": [
+      {
+        "from": "bin/cc-app",
+        "line": 6409,
+        "via": "run_javascript",
+        "origin": "literal"
+      }
+    ],
+    "risks": []
+  },
+  "nsOpenForPane": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [],
+    "mutated_by": [],
+    "called_by": [
+      "bin/cc-app"
+    ],
+    "host_calls": [
+      {
+        "from": "bin/cc-app",
+        "line": 5004,
+        "via": "_dash_js",
+        "origin": "literal"
+      }
+    ],
+    "risks": []
+  },
+  "nsRender": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:workspace.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "nsSelectDefaults": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:workspace.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "openAnalytics": {
+    "defined_by": [
+      "region:analytics"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-nativa",
+      "region:barra-de-comandos",
+      "region:modales-en-medio",
+      "region:ui-general"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "openAnalyticsTab": {
+    "defined_by": [
+      "region:analytics"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:pomodoro.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "openCenterPanel": {
+    "defined_by": [
+      "region:modales-en-medio"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-nativa"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "openInApp": {
+    "defined_by": [
+      "region:app-nativa"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:helpers",
+      "region:barra-de-comandos",
+      "region:servidores",
+      "region:tail"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "openPaneExtensions": {
+    "defined_by": [
+      "script:extensions.js"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [],
+    "mutated_by": [],
+    "called_by": [
+      "iframe:term.html"
+    ],
+    "host_calls": [],
+    "risks": [],
+    "member_access": [
+      "term:tail (parent.openPaneExtensions)"
+    ]
+  },
+  "openSession": {
+    "defined_by": [
+      "region:app-nativa"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:helpers",
+      "region:conmutador-ctrl-k",
+      "script:workspace.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "openSnippets": {
+    "defined_by": [
+      "region:snippets"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:analytics"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "openSwitcherFromKey": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:conmutador-ctrl-k"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "openTerm": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-nativa",
+      "region:helpers",
+      "region:barra-de-comandos",
+      "region:conmutador-ctrl-k",
+      "region:remoto",
+      "region:servidores",
+      "region:tail"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "openTerms": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:workspace-dock.js",
+      "region:barra-de-comandos",
+      "region:tema",
+      "region:remoto",
+      "region:analytics",
+      "region:tail"
+    ],
+    "mutated_by": [],
+    "called_by": [
+      "iframe:term.html"
+    ],
+    "host_calls": [],
+    "risks": [
+      "leído como propiedad (window.openTerms/parent.openTerms) pero declarado con let/const/class: por esa vía vale undefined, sin excepción; el lector sigue con su valor por defecto"
+    ],
+    "member_access": [
+      "term:tail (parent.openTerms)"
+    ]
+  },
+  "pickSel": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:barra-de-comandos",
+      "script:workspace.js",
+      "script:pomodoro.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "pomoRender": {
+    "defined_by": [
+      "script:pomodoro.js"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [],
+    "mutated_by": [],
+    "called_by": [
+      "bin/cc-app"
+    ],
+    "host_calls": [
+      {
+        "from": "bin/cc-app",
+        "line": 6471,
+        "via": "run_javascript",
+        "origin": "literal"
+      }
+    ],
+    "risks": []
+  },
+  "quickTerminal": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [
+      "region:barra-de-comandos"
+    ],
+    "used_by": [
+      "region:barra-de-comandos"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": [
+      "respaldo con guarda en region:barra-de-comandos: solo crea window.quickTerminal si falta; el port del definidor debe seguir publicándolo en window antes de que corra el respaldo, o habrá dos instancias"
+    ]
+  },
+  "quickTerminalInstance": {
+    "defined_by": [
+      "region:barra-de-comandos"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:servidores"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "refreshDesktopTabs": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:render"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "refreshFavorites": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:loop"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "rememberRemotePaneFocus": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:render"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "render": {
+    "defined_by": [
+      "region:render"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:helpers",
+      "region:app-combinada",
+      "region:loop"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "renderButtonStyleGallery": {
+    "defined_by": [
+      "region:tema"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-nativa"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "renderSessionOverview": {
+    "defined_by": [
+      "script:workspace.js"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:render"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "renderTabbar": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:render"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "renderThemeGallery": {
+    "defined_by": [
+      "region:tema"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-nativa"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "resolveTermBase": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:barra-de-comandos",
+      "script:news-reader.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "restoreAllTermInteractions": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:ui-general"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "restoreSplitLeft": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:analytics"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "rowKey": {
+    "defined_by": [
+      "region:identidad-de-fila"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:helpers",
+      "region:render",
+      "script:workspace.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "saveCfg": {
+    "defined_by": [
+      "region:i18n"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:ui-general"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "setPref": {
+    "defined_by": [
+      "region:prefs-de-terminal"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:preview-de-tipografia"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "setSessionFavorite": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-combinada",
+      "region:funciones-de-ui-globales",
+      "script:work-marks.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "setSplitLeft": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [
+      "region:analytics"
+    ],
+    "fallback_by": [],
+    "used_by": [
+      "region:analytics"
+    ],
+    "mutated_by": [
+      "region:analytics"
+    ],
+    "called_by": [],
+    "host_calls": [],
+    "risks": [
+      "parcheado con window.setSplitLeft = desde region:analytics: portar el definidor sin seguir exportando setSplitLeft por window rompe el parche, y portar el parche exige que el definidor ya lo haya creado",
+      "mutado desde otra unidad: debe seguir siendo propiedad de window mientras ambos lados vivan"
+    ]
+  },
+  "showView": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:workspace-dock.js",
+      "region:helpers",
+      "region:servidores"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "sidebarActiveTab": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:helpers",
+      "region:barra-de-comandos",
+      "script:news-reader.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "sidebarTermAction": {
+    "defined_by": [
+      "region:barra-de-comandos"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [],
+    "mutated_by": [],
+    "called_by": [
+      "bin/cc-app"
+    ],
+    "host_calls": [
+      {
+        "from": "bin/cc-app",
+        "line": 7415,
+        "via": "_dash_js_quiet",
+        "origin": "literal"
+      }
+    ],
+    "risks": [],
+    "member_access": [
+      "bin/cc-app:7415 (window.sidebarTermAction)"
+    ]
+  },
+  "sidebarTermFocused": {
+    "defined_by": [
+      "region:barra-de-comandos"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [],
+    "mutated_by": [],
+    "called_by": [
+      "bin/cc-app"
+    ],
+    "host_calls": [
+      {
+        "from": "bin/cc-app",
+        "line": 7777,
+        "via": "_dash_js_quiet",
+        "origin": "literal"
+      },
+      {
+        "from": "bin/cc-app",
+        "line": 7780,
+        "via": "_dash_js_quiet",
+        "origin": "literal"
+      }
+    ],
+    "risks": [],
+    "member_access": [
+      "bin/cc-app:7777 (window.sidebarTermFocused)",
+      "bin/cc-app:7780 (window.sidebarTermFocused)"
+    ]
+  },
+  "snipDlg": {
+    "defined_by": [
+      "region:snippets"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:analytics"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "styleTermFrame": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:tema"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "svg": {
+    "defined_by": [
+      "region:iconos"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:helpers",
+      "region:tema",
+      "region:notificaciones-del-sistema",
+      "script:pomodoro.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "swOpen": {
+    "defined_by": [
+      "region:conmutador-ctrl-k"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-combinada",
+      "region:funciones-de-ui-globales"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "syncCommandSidebar": {
+    "defined_by": [
+      "region:barra-de-comandos"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:render"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "t": {
+    "defined_by": [
+      "region:i18n"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:conmutador-ctrl-k",
+      "region:servidores"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "tabRowsHold": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "let"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:prefs-de-terminal"
+    ],
+    "mutated_by": [
+      "region:prefs-de-terminal"
+    ],
+    "called_by": [],
+    "host_calls": [],
+    "risks": [
+      "mutado desde otra unidad y declarado con let/const: no es propiedad de window, el puente global_set no lo alcanza"
+    ]
+  },
+  "tabsPollTs": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "let"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:barra-de-comandos"
+    ],
+    "mutated_by": [
+      "region:barra-de-comandos"
+    ],
+    "called_by": [],
+    "host_calls": [],
+    "risks": [
+      "mutado desde otra unidad y declarado con let/const: no es propiedad de window, el puente global_set no lo alcanza"
+    ]
+  },
+  "termFallbackNotified": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "let"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-combinada"
+    ],
+    "mutated_by": [
+      "region:app-combinada"
+    ],
+    "called_by": [],
+    "host_calls": [],
+    "risks": [
+      "mutado desde otra unidad y declarado con let/const: no es propiedad de window, el puente global_set no lo alcanza"
+    ]
+  },
+  "tf": {
+    "defined_by": [
+      "region:i18n"
+    ],
+    "binding": [
+      "const"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:workspace-dock.js",
+      "region:app-nativa",
+      "region:helpers",
+      "region:app-combinada",
+      "region:barra-de-comandos",
+      "region:avisos-de-eventos",
+      "region:conmutador-ctrl-k",
+      "region:tema",
+      "region:prefs-de-terminal",
+      "region:preview-de-tipografia",
+      "region:remoto",
+      "region:servidores",
+      "region:notificaciones-del-sistema",
+      "region:ui-general",
+      "script:work-marks.js",
+      "script:pomodoro.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "tick": {
+    "defined_by": [
+      "region:loop"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:helpers",
+      "region:barra-de-comandos",
+      "region:ui-general"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "tickUsage": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:loop"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "toast": {
+    "defined_by": [
+      "region:avisos-de-eventos"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:workspace-dock.js",
+      "region:helpers",
+      "region:app-combinada",
+      "region:barra-de-comandos",
+      "region:conmutador-ctrl-k",
+      "region:tema",
+      "region:prefs-de-terminal",
+      "region:remoto",
+      "region:servidores",
+      "region:notificaciones-del-sistema",
+      "region:ui-general",
+      "region:snippets",
+      "script:workspace.js",
+      "script:work-marks.js",
+      "script:pomodoro.js",
+      "region:tail"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "toggleSshManager": {
+    "defined_by": [
+      "region:servidores"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:modales-en-medio"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "uiSounds": {
+    "defined_by": [
+      "script:ui-sounds.js"
+    ],
+    "binding": [
+      "window"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:pomodoro.js",
+      "script:notifications.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "ulog": {
+    "defined_by": [
+      "region:registro-local-de-uso"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-nativa",
+      "region:helpers",
+      "region:prefs-de-terminal"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "updateFavoriteButton": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-combinada"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "updateTabNavigation": {
+    "defined_by": [
+      "region:app-combinada"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:prefs-de-terminal"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "usageForItem": {
+    "defined_by": [
+      "region:helpers"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "script:workspace.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "webtermAccessToken": {
+    "defined_by": [
+      "region:red"
+    ],
+    "binding": [
+      "function"
+    ],
+    "patched_by": [],
+    "fallback_by": [],
+    "used_by": [
+      "region:app-combinada",
+      "region:barra-de-comandos",
+      "script:news-reader.js"
+    ],
+    "mutated_by": [],
+    "called_by": [],
+    "host_calls": [],
+    "risks": []
+  },
+  "@frame_contract": {
+    "__comandosOwnsTouchGestures": {
+      "read_by": [
+        "region:app-combinada"
+      ],
+      "defined_by": [
+        "term:main"
+      ],
+      "written_by": []
+    },
+    "__comandosScrollWired": {
+      "read_by": [
+        "region:app-combinada"
+      ],
+      "written_by": [
+        "region:app-combinada"
+      ],
+      "defined_by": []
+    },
+    "__comandosSwitchWired": {
+      "read_by": [
+        "region:app-combinada"
+      ],
+      "written_by": [
+        "region:app-combinada"
+      ],
+      "defined_by": []
+    }
+  },
+  "@frame_dom_access": [
+    "region:app-combinada",
+    "region:tail"
+  ],
+  "@dom_ids": {
+    "btn-notif": {
+      "called_by": [
+        "bin/cc-app"
+      ],
+      "in_markup": true
+    },
+    "btn-settings": {
+      "called_by": [
+        "bin/cc-app"
+      ],
+      "in_markup": true
+    },
+    "notif-badge": {
+      "called_by": [
+        "bin/cc-app"
+      ],
+      "in_markup": true
+    },
+    "notif-panel": {
+      "called_by": [
+        "bin/cc-app"
+      ],
+      "in_markup": true
+    }
+  },
+  "@messages": {
+    "*/comandos-extensions-close": {
+      "sent_by": [
+        "script:extensions.js"
+      ],
+      "handled_by": [
+        "script:extensions.js"
+      ]
+    },
+    "*/comandos:open-event": {
+      "sent_by": [
+        "script:sw.js"
+      ],
+      "handled_by": [
+        "script:push-settings.js"
+      ]
+    },
+    "comandos-term/interaction-request": {
+      "sent_by": [
+        "term:main"
+      ],
+      "handled_by": [
+        "region:app-combinada"
+      ]
+    },
+    "comandos-term/pane-selected": {
+      "sent_by": [
+        "term:main"
+      ],
+      "handled_by": [
+        "region:app-combinada"
+      ]
+    },
+    "comandos-term/ready": {
+      "sent_by": [
+        "term:main"
+      ],
+      "handled_by": [
+        "region:app-combinada"
+      ]
+    },
+    "comandos-term/user-interaction": {
+      "sent_by": [
+        "term:main"
+      ],
+      "handled_by": [
+        "region:tail"
+      ]
+    },
+    "comandos/button-style": {
+      "sent_by": [
+        "region:tema"
+      ],
+      "handled_by": [
+        "term:main"
+      ]
+    },
+    "comandos/interaction-state": {
+      "sent_by": [
+        "region:app-combinada"
+      ],
+      "handled_by": [
+        "term:main"
+      ]
+    },
+    "comandos/select-pane": {
+      "sent_by": [
+        "region:tail"
+      ],
+      "handled_by": [
+        "term:main"
+      ]
+    },
+    "comandos/theme": {
+      "sent_by": [
+        "bin/cc-app-mac",
+        "region:tema"
+      ],
+      "handled_by": [
+        "term:main"
+      ]
+    },
+    "comandos/toolbar": {
+      "sent_by": [
+        "region:analytics"
+      ],
+      "handled_by": [
+        "term:main"
+      ]
+    }
+  },
+  "@host_handlers": {
+    "centro": {
+      "registered_by": [
+        "bin/cc-app",
+        "bin/cc-app-mac"
+      ],
+      "posted_by": [
+        "region:app-nativa",
+        "region:barra-de-comandos",
+        "region:tema",
+        "region:servidores",
+        "region:modales-en-medio",
+        "region:ui-general",
+        "script:extensions.js",
+        "script:news-reader.js",
+        "region:tail"
+      ]
+    },
+    "extensions": {
+      "registered_by": [
+        "bin/cc-app"
+      ],
+      "posted_by": [
+        "script:extensions.js"
+      ]
+    }
+  },
+  "@host_dynamic": [
+    {
+      "from": "bin/cc-app",
+      "line": 6983,
+      "via": "_dash_js",
+      "origin": "dinamico"
+    }
+  ],
+  "@hosts": {
+    "bin/cc-app": {
+      "found": true,
+      "calls": 12
+    },
+    "bin/cc-app-mac": {
+      "found": true,
+      "calls": 1
+    }
+  }
+}
