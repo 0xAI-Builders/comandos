@@ -244,6 +244,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "comandos-notifyd"
+version = "0.1.0"
+dependencies = [
+ "comandos-core",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "comandos-runtime"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,21 @@
+[package]
+name = "comandos-notifyd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "comandos-notifyd"
+path = "src/main.rs"
+
+[dependencies]
+# Semántica de Python compartida: `json.loads(bytes)` y `str()`/`repr()` de valores JSON.
+comandos-core = { path = "../comandos-core" }
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio = { version = "=1.53.1", default-features = false, features = ["rt", "macros", "net", "io-util", "time"] }
+
+[lints]
+workspace = true
