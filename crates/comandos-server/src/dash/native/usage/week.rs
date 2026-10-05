@@ -164,7 +164,9 @@ async fn payload(native: &Native, offset: i64, sidebar: bool) -> Answer {
         )
     })
     .await
-    .map_err(|_| failure())?;
+    // Un pánico del hilo de cálculo: todavía no hubo efectos (ni el refresco
+    // de límites), así que se declina en vez de responder 500.
+    .map_err(|_| Fault::Decline)?;
     if let Err(Fault::Decline) = built {
         return Err(Fault::Decline);
     }

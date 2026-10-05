@@ -151,9 +151,9 @@
 {"name":"h-model-status-ajena","method":"GET","path":"/model/status?operationKey=local&operationId=no-existe","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"h-model-status-sin-registro","method":"GET","path":"/model/status?operationKey=sin-registro-paridad","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
 # --- 2e · uso y analítica (nativas; leen la base de uso y la caché de límites calentada arriba)
-{"name":"u-week","method":"GET","path":"/analytics/week","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/week/now","/week/measuredAt"],"expect":"same"}
-{"name":"u-week-sidebar","method":"GET","path":"/analytics/week?offset=0&sidebar=1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/week/now","/week/measuredAt"],"expect":"same"}
-{"name":"u-week-prev","method":"GET","path":"/analytics/week?offset=-1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/week/measuredAt"],"expect":"same"}
+{"name":"u-week","method":"GET","path":"/analytics/week","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/accounts/*/left","/accounts/*/h5Left","/accounts/*/model/left","/week/now","/week/measuredAt"],"expect":"same"}
+{"name":"u-week-sidebar","method":"GET","path":"/analytics/week?offset=0&sidebar=1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/accounts/*/left","/accounts/*/h5Left","/accounts/*/model/left","/week/now","/week/measuredAt"],"expect":"same"}
+{"name":"u-week-prev","method":"GET","path":"/analytics/week?offset=-1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/accounts/*/left","/accounts/*/h5Left","/accounts/*/model/left","/week/measuredAt"],"expect":"same"}
 {"name":"u-week-offset-malo","method":"GET","path":"/analytics/week?offset=x","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"u-week-offset-fuera","method":"GET","path":"/analytics/week?offset=3","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"u-week-demo","method":"GET","path":"/analytics/week?demo=normal","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
