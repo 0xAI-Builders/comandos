@@ -1011,7 +1011,7 @@ Frente (`usage/providers.rs`):
 **Files:**
 - Modify: `crates/comandos-runtime/src/providers.rs`; Create: `crates/comandos-runtime/tests/providers_public_oracle.rs`
 - Create: `crates/comandos-server/src/dash/native/usage/providers.rs`
-- Modify: `crates/comandos-server/src/dash/native/usage/mod.rs` (`Providers`, `OptimizationPlans`, `Accounts`), `crates/comandos-server/src/dash/native/lanes.rs` (`ROUTES` + `, GET /accounts`)
+- Modify: `crates/comandos-server/src/dash/native/usage/mod.rs` (`Providers`, `OptimizationPlans`, `Accounts`), `crates/comandos-server/src/dash/native/lanes.rs` (`ROUTES`: `, GET /accounts` antes de `GET /extension-usage`, que ya está desde la 5b; tras el rebase el texto es `"GET /pomodoro, GET /sovereignty, GET /state, GET /analytics/week, GET /accounts y GET /extension-usage"`)
 - Create: `crates/comandos-server/tests/dash_native_providers.rs`
 - Modify: `xtask/parity/frente.jsonl`
 
@@ -1160,7 +1160,7 @@ En `states/context.rs`: sustituir los dos `subrequest::get` por `guard::token_gu
 
 **Files:**
 - Create: `crates/comandos-server/src/dash/native/usage/guard.rs`, `crates/comandos-server/src/dash/native/usage/extensions.rs`
-- Modify: `crates/comandos-server/src/dash/native/states/context.rs`, `crates/comandos-server/src/dash/native/states/gather.rs` (llamada a `Context::get`), `crates/comandos-server/src/dash/native/usage/mod.rs` (`Extensions`), `crates/comandos-server/src/dash/native/lanes.rs` (`ROUTES` + `, GET /extension-usage`), `crates/comandos-store/src/usage_read.rs` (`extension_usage_check`, `extension_usage_empty`)
+- Modify: `crates/comandos-server/src/dash/native/states/context.rs`, `crates/comandos-server/src/dash/native/states/gather.rs` (llamada a `Context::get`), `crates/comandos-server/src/dash/native/usage/mod.rs` (`Extensions`), `crates/comandos-server/src/dash/native/lanes.rs` (`ROUTES` ya nombra `GET /extension-usage` desde la 5b; no cambia), `crates/comandos-store/src/usage_read.rs` (`extension_usage_check`, `extension_usage_empty`)
 - Delete (si queda sin llamador): `crates/comandos-server/src/dash/native/subrequest.rs`
 - Create: `crates/comandos-server/tests/dash_native_usage_guard.rs`; Modify: la prueba `suggestion_context_legacy_500_is_empty_and_down_declines` de `crates/comandos-server/tests/dash_native_state.rs` (2d) pasa a `suggestion_context_is_native`
 - Modify: `xtask/parity/frente.jsonl`
@@ -2187,7 +2187,14 @@ Volver a la release anterior (la 2d):
 ~/.local/share/comandos/bin/comandos install --rollback-release
 systemctl --user restart cc-dash.service
 grep -qa 'GET /extension-usage y GET /usage/state' "$(readlink -f ~/.local/share/comandos/bin/comandos)" && echo "SIGUE LA 2e"
+grep -qa 'GET /pomodoro, GET /sovereignty y GET /state' "$(readlink -f ~/.local/share/comandos/bin/comandos)" || echo "NO ES LA 2d: revisar releases/previous"
 ```
+
+El centinela de la 2d (`'GET /pomodoro, GET /sovereignty y GET /state'`) solo lo lleva el binario
+de la 2d. Desde el rebase de la 2e sobre main, `UsageBackend::ROUTES` dice `"GET /pomodoro, GET
+/sovereignty, GET /state, GET /analytics/week y GET /extension-usage"`; tras la Tarea 8, `"…, GET
+/analytics/week, GET /accounts, GET /extension-usage y GET /usage/state"`. El centinela de la 2e
+(`'GET /extension-usage y GET /usage/state'`) exige ese orden.
 
 Las filas que escribe el frente (turnos, tramos, configuraciones, paneles, fotos de cuota) tienen
 el formato y las claves del Python: revertir no necesita limpiar nada. `comandos-usage-import.lock`
