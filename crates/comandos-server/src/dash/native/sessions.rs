@@ -510,7 +510,6 @@ pub(crate) async fn ensure_shell_window(
 
 /// `select_claude_window(sess)` (7735): la ventana `claude`; si tmux la
 /// renombró, la que corre `claude`; si ninguna, la primera.
-#[expect(dead_code, reason = "T4–T6")]
 pub(crate) async fn select_claude_window(native: &Native, sess: &str) -> Result<(), Fault> {
     let opts = native.options();
     let claude = format!("={sess}:claude");

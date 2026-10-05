@@ -14,3 +14,7 @@
 {"name":"t-recover-tab-sin-cwd","method":"POST","path":"/recover-tab","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"rec2-2f","label":"nada-2f"},"volatile":[],"expect":"same"}
 {"name":"t-ssh-connect-desconocido","method":"POST","path":"/ssh-connect","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"host":"desconocido-2f"},"volatile":[],"expect":"same"}
 {"name":"t-ssh-new-tab-desconocido","method":"POST","path":"/ssh-new-tab","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"host":"desconocido-2f"},"volatile":[],"expect":"same"}
+{"name":"t-send-vacio","method":"POST","path":"/send","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"p2f-in","text":"   "},"volatile":[],"expect":"same"}
+{"name":"t-key-no-permitida","method":"POST","path":"/key","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"p2f-in","key":"F1"},"volatile":[],"expect":"same"}
+{"name":"t-kill-interna","method":"POST","path":"/kill","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"hub"},"volatile":[],"expect":"same"}
+{"name":"t-export-formato","method":"POST","path":"/export","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"p2f-in","format":"doc"},"volatile":[],"expect":"same"}
