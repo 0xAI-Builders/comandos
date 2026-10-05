@@ -135,20 +135,26 @@ pub fn reserve_directory(base: &Path, now: DateTime<FixedOffset>) -> std::io::Re
     }
 }
 
-struct Terminal {
-    cwd: String,
-    session: String,
-    pane: String,
+/// La terminal reservada para un `requestId`: carpeta, sesión tmux y llave del pane.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Terminal {
+    pub cwd: String,
+    pub session: String,
+    pub pane: String,
 }
 impl Terminal {
-    fn label(&self) -> &str {
+    /// `os.path.basename(cwd)`.
+    pub fn label(&self) -> &str {
         self.cwd.rsplit('/').next().unwrap_or("")
     }
-    fn result(&self, created: bool) -> Value {
+    /// `_result(row, created)`.
+    pub fn result(&self, created: bool) -> Value {
         json!({"tabId":self.session,"paneKey":self.pane,"cwd":self.cwd,"label":self.label(),"created":created})
     }
 }
-enum Claim {
+/// Resultado de `_claim`: ya lista, propia (hay que lanzarla) o en curso.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Claim {
     Ready(Terminal),
     Own(Terminal),
     Wait,
@@ -185,11 +191,12 @@ fn io_message(error: &std::io::Error) -> String {
         message
     }
 }
-fn claim(
+/// `_claim`: una transacción `BEGIN IMMEDIATE`; la carpeta se reserva dentro.
+pub fn claim(
     conn: &Connection,
     id: &str,
     options: &Options<'_>,
-    callbacks: &Callbacks<'_>,
+    clock: &dyn Fn() -> f64,
 ) -> Result<Claim> {
     require_own_transaction(conn)?;
     let tx = rusqlite::Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
@@ -197,7 +204,7 @@ fn claim(
     let row=conn.query_row("SELECT state,cwd,session,pane_key,lease_until FROM quick_terminal_requests WHERE request_id=?",[id],|r|{
         Ok((r.get::<_,String>(0)?,Terminal{cwd:r.get(1)?,session:r.get(2)?,pane:r.get(3)?},r.get::<_,f64>(4)?))
     }).optional().map_err(|e|sql(e,None))?;
-    let t = (callbacks.clock)();
+    let t = clock();
     let mut reserved_cwd = None;
     let outcome = match row {
         None => {
@@ -234,7 +241,8 @@ fn claim(
     tx.commit().map_err(|e| sql(e, reserved_cwd))?;
     Ok(outcome)
 }
-fn finish(
+/// `_finish`: fija `state`/`error` de la fila en su propia transacción.
+pub fn finish(
     conn: &Connection,
     id: &str,
     state: &str,
@@ -267,7 +275,7 @@ pub fn open_quick_terminal(
     let id = request_id.as_str().expect("validated request id");
     let deadline = (callbacks.clock)() + options.wait;
     let row = loop {
-        match claim(conn, id, options, callbacks)? {
+        match claim(conn, id, options, callbacks.clock)? {
             Claim::Ready(row) => return Ok(row.result(false)),
             Claim::Own(row) => break row,
             Claim::Wait => {

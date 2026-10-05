@@ -15,6 +15,7 @@ pub mod operations;
 pub mod pomodoro;
 pub mod py;
 pub mod query;
+pub mod quick;
 pub mod retired;
 pub mod snippets;
 pub mod state;
@@ -62,6 +63,7 @@ pub enum NativeRoute {
     PaneType,
     ModelStatus,
     State,
+    QuickTerminal,
     Retired,
 }
 
@@ -118,6 +120,7 @@ const TABLES: &[&[Entry]] = &[
     typing::ROUTES,
     operations::ROUTES,
     states::ROUTES,
+    quick::ROUTES,
     retired::ROUTES,
 ];
 
@@ -251,6 +254,12 @@ pub struct NativeOptions {
     pub grok_home: Option<PathBuf>,
     /// `ssh` de `ssh_state` (7708).
     pub ssh: tmux::Program,
+    /// `systemd-run --user --scope --collect --quiet` de `scope_cmd` (5420) para
+    /// lanzar la terminal rápida; `None` (sin `systemd-run` en el `PATH`) declina
+    /// POST `/terminal/quick`.
+    pub scope: Option<tmux::Program>,
+    /// `quick_terminal_lib.default_base()` (carpetas de la terminal rápida).
+    pub quick_base: PathBuf,
 }
 
 impl NativeOptions {
@@ -275,6 +284,8 @@ impl NativeOptions {
             codex_home: env_path("CODEX_HOME"),
             grok_home: env_path("GROK_HOME"),
             ssh: tmux::Program::named("ssh"),
+            scope: quick::find_scope(std::env::var_os("PATH").as_deref()),
+            quick_base: quick::default_base(home),
         }
     }
 }
@@ -497,6 +508,7 @@ impl Native {
             NativeRoute::PaneType => typing::answer(self, request).await,
             NativeRoute::ModelStatus => operations::answer(self, request).await,
             NativeRoute::State => states::answer(self).await,
+            NativeRoute::QuickTerminal => quick::answer(self, request).await,
             NativeRoute::Retired => {
                 let path = request
                     .target

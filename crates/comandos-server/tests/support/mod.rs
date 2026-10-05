@@ -201,8 +201,56 @@ impl TestHome {
         opts.grok_home = None;
         opts.cwd = self.root.clone();
         opts.legacy = std::net::SocketAddr::from(([127, 0, 0, 1], 1));
+        // Nunca el `systemd-run` real (lo resuelve `for_home` con el PATH del
+        // desarrollador): sin scope, POST /terminal/quick declina. Las pruebas
+        // de la terminal rápida fijan un `systemd-run` falso (`fake_scope`).
+        opts.scope = None;
+        opts.quick_base = self.root.join("Terminal");
         opts
     }
+}
+
+/// `systemd-run` falso en `<home>/fakescope/systemd-run`: anota su argv (una
+/// línea por argumento y `--` al final) en `<home>/fakescope/argv`, exige las
+/// banderas de `scope_cmd` (`--user --scope --collect --quiet`) y ejecuta el
+/// resto, que es el tmux de la prueba con su `-S` privado. Nunca toca systemd.
+pub fn fake_scope(home: &TestHome) -> Program {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = home.root.join("fakescope");
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = dir.join("argv");
+    let path = dir.join("systemd-run");
+    std::fs::write(
+        &path,
+        format!(
+            "#!/bin/sh\n\
+             for a in \"$@\"; do printf '%s\\n' \"$a\" >> '{log}'; done\n\
+             printf -- '--\\n' >> '{log}'\n\
+             [ \"$1\" = --user ] && [ \"$2\" = --scope ] && [ \"$3\" = --collect ] \
+             && [ \"$4\" = --quiet ] || exit 97\n\
+             shift 4\n\
+             exec \"$@\"\n",
+            log = log.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    comandos_server::dash::native::quick::scope_program(path)
+}
+
+/// Llamadas al `systemd-run` falso, cada una como su lista de argumentos.
+pub fn fake_scope_calls(home: &TestHome) -> Vec<Vec<String>> {
+    let text = std::fs::read_to_string(home.root.join("fakescope/argv")).unwrap_or_default();
+    let mut calls = Vec::new();
+    let mut current = Vec::new();
+    for line in text.lines() {
+        if line == "--" {
+            calls.push(std::mem::take(&mut current));
+        } else {
+            current.push(line.to_owned());
+        }
+    }
+    calls
 }
 
 /// Copia `/bin/sleep` como `<home>/bin/<name>`: un proceso con ese argv[0]
