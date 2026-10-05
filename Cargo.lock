@@ -260,6 +260,7 @@ dependencies = [
  "icu_collator",
  "icu_locale_core",
  "nix",
+ "regex",
  "rusqlite",
  "serde_json",
  "sha2",

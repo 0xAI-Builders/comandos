@@ -14,6 +14,12 @@ pub mod quick_terminal;
 pub mod session_operations;
 pub mod terminal_history;
 pub mod terminal_panes;
+pub mod tui_state;
+
+/// El Python leería algo que este port no reproduce con certeza: quien lo
+/// recibe declina (el frente reenvía al heredado).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unsure;
 
 pub fn state_path(
     explicit: Option<&Path>,

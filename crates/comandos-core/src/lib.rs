@@ -22,3 +22,5 @@ pub mod analytics_week;
 pub mod work_marks;
 
 pub mod dashboard_access;
+
+pub mod text;
