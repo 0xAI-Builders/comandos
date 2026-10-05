@@ -708,9 +708,9 @@ fn tmux_available() -> bool {
 
 /// Servidor tmux privado en `socket_dir`. `-f /dev/null`: el servidor nace sin
 /// la configuración del usuario (sus `run-shell` y plugins nunca corren aquí).
-fn start_tmux(socket_dir: &Path, sessions: &[String]) -> Result<(), String> {
+fn start_tmux(socket_dir: &Path, home: &Path, sessions: &[String]) -> Result<(), String> {
     for name in sessions {
-        let status = private_tmux(socket_dir)
+        let status = confined(private_tmux(socket_dir), socket_dir, home)
             .args(["-f", "/dev/null", "new-session", "-d", "-s", name, "cat"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -749,13 +749,17 @@ fn wait_next_second() {
 /// `session_activity` en todas. `read_states` del Python ordena por ella (en
 /// segundos enteros): si la creación cruza un cambio de segundo, los empates
 /// se rompen distinto a cada lado y `/state` difiere sin que nada haya cambiado.
-fn start_tmux_pair(a: &Path, b: &Path, sessions: &[String]) -> Result<(), String> {
+fn start_tmux_pair(
+    (a, home_a): (&Path, &Path),
+    (b, home_b): (&Path, &Path),
+    sessions: &[String],
+) -> Result<(), String> {
     const TRIES: usize = 5;
     for _ in 0..TRIES {
         // Empezar justo tras un cambio de segundo deja casi un segundo entero.
         wait_next_second();
-        start_tmux(a, sessions)?;
-        start_tmux(b, sessions)?;
+        start_tmux(a, home_a, sessions)?;
+        start_tmux(b, home_b, sessions)?;
         let mut stamps = tmux_activity(a)?;
         stamps.extend(tmux_activity(b)?);
         stamps.sort();
@@ -778,6 +782,20 @@ fn start_tmux_pair(a: &Path, b: &Path, sessions: &[String]) -> Result<(), String
 /// en silencio un `TMUX_TMPDIR` cuyo directorio no existe y cae en
 /// `/tmp/tmux-<uid>/default`, el servidor real del usuario; con `-S` un
 /// directorio borrado da «no server running» y nunca un `kill-server` ajeno.
+/// El entorno del cliente tmux que puede arrancar el servidor privado: si lo
+/// arranca, el servidor y todo panel nacen con el HOME de la copia, `PATH`
+/// mínimo y `SHELL=/bin/sh`, sin escritorio, DBus ni el HOME real (un
+/// `new-session` sin orden abriría si no un shell de login del desarrollador).
+fn confined(mut cmd: Command, socket_dir: &Path, home: &Path) -> Command {
+    cmd.env_clear()
+        .env("HOME", home)
+        .env("PATH", "/usr/bin:/bin")
+        .env("SHELL", "/bin/sh")
+        .env("LANG", "C.UTF-8")
+        .env("TMUX_TMPDIR", socket_dir);
+    cmd
+}
+
 fn private_tmux(socket_dir: &Path) -> Command {
     let socket = socket_dir
         .join(format!("tmux-{}", nix::unistd::getuid().as_raw()))
@@ -959,7 +977,7 @@ impl Stack {
         let mut tmux_guard = TmuxGuard(vec![tmux1.clone(), tmux2.clone()]);
         let sessions = tmux_sessions_for(&hooks1);
         if tmux_available() {
-            start_tmux_pair(&tmux1, &tmux2, &sessions)?;
+            start_tmux_pair((&tmux1, &home1), (&tmux2, &home2), &sessions)?;
         }
 
         let (p_py, p_front, p_legacy) = (free_port()?, free_port()?, free_port()?);
@@ -1084,14 +1102,10 @@ impl Stack {
             guard_home(dir)?;
             let home = self._root.path.join(home);
             guard_home(&home)?;
-            let out = private_tmux(dir)
+            let out = confined(private_tmux(dir), dir, &home)
                 .arg("-f")
                 .arg("/dev/null")
                 .args(args)
-                .env("HOME", &home)
-                .env_remove("DISPLAY")
-                .env_remove("WAYLAND_DISPLAY")
-                .env_remove("DBUS_SESSION_BUS_ADDRESS")
                 .stdout(Stdio::null())
                 .output()
                 .map_err(|e| format!("tmux: {e}"))?;

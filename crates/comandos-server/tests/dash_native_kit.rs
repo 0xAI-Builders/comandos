@@ -192,6 +192,7 @@ async fn tmux_timeout_missing_and_decode_errors() {
             prefix: vec![OsString::from("-f"), "/dev/null".into(), "--".into()],
             env: vec![],
             env_remove: vec![],
+            env_clear: false,
         },
         timeout: Duration::from_millis(300),
     };
@@ -217,6 +218,7 @@ async fn tmux_timeout_missing_and_decode_errors() {
             prefix: vec![OsString::from("a\\r\\nb\\rc\\n%.0s")],
             env: vec![],
             env_remove: vec![],
+            env_clear: false,
         },
         timeout: Duration::from_secs(5),
     };
@@ -227,6 +229,7 @@ async fn tmux_timeout_missing_and_decode_errors() {
             prefix: vec![OsString::from("\\377%.0s")],
             env: vec![],
             env_remove: vec![],
+            env_clear: false,
         },
         timeout: Duration::from_secs(5),
     };

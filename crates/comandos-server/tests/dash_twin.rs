@@ -13,6 +13,8 @@
 //! privados mueren en el `Drop` de `TestHome`, siempre con su `-S`.
 mod support;
 
+use comandos_runtime::providers;
+use comandos_server::dash::native::procs::{gui_env_for, spawn_detached};
 use std::{
     path::Path,
     process::{Command, Stdio},
@@ -41,9 +43,8 @@ fn twin_normalizes_clock_but_not_content() {
 
 #[test]
 fn tmux_guard_refuses_missing_socket_dir() {
-    let dir = std::env::temp_dir().join(format!("cmd-guard-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = TempDir::new("cmd-guard");
+    let dir = dir.0.as_path();
     // El directorio del socket NO existe: el guardián debe negarse sin lanzar
     // tmux (un tmux real con `-S` daría «no server running», no 97). El
     // «tmux real» del guardián es además un programa que deja una marca: si se
@@ -65,7 +66,24 @@ fn tmux_guard_refuses_missing_socket_dir() {
         !marker.exists(),
         "el guardián lanzó tmux sin socket privado"
     );
-    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Directorio temporal que se borra aunque la prueba falle (no tiene tmux).
+struct TempDir(std::path::PathBuf);
+
+impl TempDir {
+    fn new(tag: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        Self(dir)
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 /// Canario del oráculo: la red sale cerrada (4778/4779/4780, DNS, sockets Unix
@@ -399,4 +417,184 @@ fn run_dash_loads_the_module() {
         return;
     };
     assert_eq!(text.trim(), "True");
+}
+
+/// Canario de C1 (revisión de la Tarea 2): lo que el frente lanza fuera de
+/// tmux (`NativeOptions::program` + `spawn_detached`) solo ve el entorno
+/// confinado de A: HOME temporal, `PATH` = su `fakebin`, sin escritorio, DBus
+/// ni `CLAUDE_CONFIG_DIR`; `gui_env_for` trata `DISPLAY` como ausente.
+#[tokio::test]
+async fn canary_front_children_get_confined_env() {
+    let Some(twin) = Twin::start("canary-child", |_| {}).await else {
+        return;
+    };
+    let opts = &twin.front_options;
+    let fakebin = twin.a.root.join("fakebin");
+    let out = twin.a.root.join("child.env");
+    let sh = opts.program(fakebin.join("sh"));
+    spawn_detached(
+        &sh,
+        &[
+            "-c".into(),
+            format!("env > '{}'; echo FIN >> '{}'", out.display(), out.display()).into(),
+        ],
+        &[],
+    )
+    .unwrap();
+    let text = wait_for(&out, "FIN");
+    let env: Vec<&str> = text.lines().collect();
+    assert!(
+        env.contains(&format!("HOME={}", twin.a.root.display()).as_str()),
+        "{text}"
+    );
+    assert!(
+        env.contains(&format!("PATH={}", fakebin.display()).as_str()),
+        "{text}"
+    );
+    for key in [
+        "DISPLAY=",
+        "WAYLAND_DISPLAY=",
+        "DBUS_SESSION_BUS_ADDRESS=",
+        "CLAUDE_CONFIG_DIR=",
+        "TMUX=",
+    ] {
+        assert!(
+            !env.iter().any(|l| l.starts_with(key)),
+            "{key} llegó al hijo: {text}"
+        );
+    }
+    assert_eq!(
+        gui_env_for(opts),
+        vec![(
+            std::ffi::OsString::from("DISPLAY"),
+            std::ffi::OsString::from(":1")
+        )]
+    );
+    assert_eq!(opts.ssh.path, fakebin.join("ssh"));
+    assert!(opts.ssh.env_clear);
+    // Producción no cambia: sin `child_env` el programa hereda el entorno.
+    let mut production = opts.clone();
+    production.child_env = None;
+    let plain = production.program("/bin/sh");
+    assert!(!plain.env_clear && plain.env.is_empty());
+}
+
+/// Los binarios que nombra `config/providers.json` (arneses, `command[0]` de
+/// ACP y `requires`) más `node`/`npx`/`bun`.
+fn registry_binaries() -> Vec<String> {
+    let text = std::fs::read_to_string(support::repo().join("config/providers.json")).unwrap();
+    let registry: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let mut names: Vec<String> = ["node", "npx", "bun"]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
+    let mut add = |v: &serde_json::Value| {
+        if let Some(name) = v.as_str().filter(|n| !n.is_empty())
+            && !names.iter().any(|n| n == name)
+        {
+            names.push(name.to_owned());
+        }
+    };
+    for harness in registry["harnesses"].as_object().unwrap().values() {
+        add(&harness["binary"]);
+    }
+    for agent in registry["acpAgents"].as_object().unwrap().values() {
+        add(&agent["command"][0]);
+        for need in agent["requires"].as_array().into_iter().flatten() {
+            add(need);
+        }
+    }
+    names
+}
+
+/// Canario de I1: `lib/providers.py` y `lib/acp.py` caen en `/usr/local/bin`
+/// (y en los bins de usuario del HOME, aquí vacíos) si `PATH` no tiene el
+/// nombre. Cada binario del registro tiene su falso en el `fakebin`, así que
+/// el `PATH` confinado lo encuentra antes en los dos lados.
+#[test]
+fn canary_registry_binaries_resolve_to_fakes() {
+    let home = TestHome::new_short("canary-reg");
+    let fakebin = support::oracle::confined_fakebin(&home, &[]);
+    let names = registry_binaries();
+    for name in &names {
+        let hit = providers::which(name, Some(fakebin.as_os_str()), &home.root)
+            .unwrap_or_else(|| panic!("{name} no resuelve"));
+        assert!(
+            hit.starts_with(&fakebin),
+            "Rust: {name} → {}",
+            hit.display()
+        );
+    }
+    let code = format!(
+        "import json, shutil\nimport providers, acp\nnames = json.loads({names:?})\n\
+         print(json.dumps([[n, shutil.which(n), providers.which(n), acp.which(n)] for n in names]))",
+        names = serde_json::to_string(&names).unwrap()
+    );
+    let Some(text) = run_dash(&home, &code) else {
+        return;
+    };
+    let rows: Vec<Vec<serde_json::Value>> = serde_json::from_str(text.trim()).unwrap();
+    assert_eq!(rows.len(), names.len());
+    for row in rows {
+        for hit in &row[1..] {
+            let hit = hit.as_str().unwrap_or("");
+            assert!(
+                hit.starts_with(&fakebin.display().to_string()),
+                "Python: {row:?}"
+            );
+        }
+    }
+}
+
+/// Canario menor de la revisión de la Tarea 2: un `new-session` sin orden abre
+/// un shell de login, que añade directorios por `/etc/profile.d` (p. ej.
+/// `/snap/bin`) al FINAL del `PATH`. El `fakebin` sigue primero y los agentes y
+/// efectos resuelven a sus falsos.
+#[test]
+fn canary_bare_session_path_keeps_fakebin_first() {
+    if !support::tmux_available() {
+        eprintln!("tmux no está instalado: se salta");
+        return;
+    }
+    let home = TestHome::new_short("canary-bare");
+    let fakebin = support::oracle::confined_fakebin(&home, &[]);
+    let out = home.root.join("bare.out");
+    let guard = fakebin.join("tmux");
+    let status = Command::new(&guard)
+        .args(["new-session", "-d", "-s", "bare"])
+        .env_remove("TMUX")
+        .stdin(Stdio::null())
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let line = format!(
+        "{{ printf 'PATH=%s\\n' \"$PATH\"; for n in claude codex node npx bun ssh-copy-id tilix; do \
+         printf '%s=%s\\n' \"$n\" \"$(command -v $n)\"; done; echo FIN; }} > '{}'",
+        out.display()
+    );
+    support::run_tmux(&home, &["send-keys", "-t", "=bare:", "-l", &line]);
+    support::run_tmux(&home, &["send-keys", "-t", "=bare:", "Enter"]);
+    let text = wait_for(&out, "FIN");
+    let path = text
+        .lines()
+        .find_map(|l| l.strip_prefix("PATH="))
+        .unwrap_or_else(|| panic!("{text}"));
+    assert!(
+        path.split(':').next() == Some(fakebin.to_str().unwrap()),
+        "el fakebin no va primero: {path}"
+    );
+    for name in [
+        "claude",
+        "codex",
+        "node",
+        "npx",
+        "bun",
+        "ssh-copy-id",
+        "tilix",
+    ] {
+        assert!(
+            text.contains(&format!("{name}={}/{name}\n", fakebin.display())),
+            "{name} no es el falso: {text}"
+        );
+    }
 }

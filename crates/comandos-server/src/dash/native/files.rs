@@ -194,6 +194,14 @@ struct WaiterSlot {
 
 /// Una cola por ruta. Las rutas de candado son unas pocas fijas
 /// (`app-tabs.json`, `snippets.json`…): el mapa no se poda.
+///
+/// La clave es la ruta tal como llega, sin canonizar: dos grafías de un mismo
+/// archivo (`a/../b`, un enlace) tendrían dos colas y podrían esperar en dos
+/// hilos a la vez. No pasa porque todos los llamadores construyen la ruta de
+/// la misma forma (`opts.hooks.join(<nombre fijo>)`); el `flock` sigue siendo
+/// el mismo archivo, así que la exclusión no se pierde, solo el tope de hilos.
+/// No se canoniza a propósito: `canonicalize` toca el disco y falla si el
+/// archivo aún no existe.
 fn waiter_slot(path: &Path) -> Arc<WaiterSlot> {
     static SLOTS: OnceLock<Mutex<HashMap<PathBuf, Arc<WaiterSlot>>>> = OnceLock::new();
     let mut slots = SLOTS

@@ -475,6 +475,14 @@ pub struct NativeOptions {
     /// Puertos de salud de la terminal web (`4779`, `4780` en el Python): las
     /// pruebas los cambian para no tocar nunca la terminal web real.
     pub webterm_health_ports: [u16; 2],
+    /// Entorno COMPLETO de los programas que lanza el frente fuera de tmux
+    /// (`program`). `None` (producción): el del proceso, como el Python. Las
+    /// pruebas confinadas fijan el del HOME temporal (sin `DISPLAY`, DBus ni el
+    /// `PATH` del desarrollador).
+    pub child_env: Option<Vec<(OsString, OsString)>>,
+    /// `DISPLAY` que ve `procs::gui_env_for`: `None` (producción) = el del
+    /// proceso; `Some(None)` = ausente; `Some(Some(v))` = `v`.
+    pub display: Option<Option<OsString>>,
 }
 
 /// D7: lo que `usage_runtime_env` toma de `os.environ`.
@@ -558,7 +566,21 @@ impl NativeOptions {
             census_path: None,
             xdg_state_home: env_path("XDG_STATE_HOME"),
             webterm_health_ports: [4779, 4780],
+            child_env: None,
+            display: None,
         }
+    }
+
+    /// Un programa externo del frente (`path`, normalmente de
+    /// `procs::which_in`) con el entorno de los hijos: el del proceso en
+    /// producción; solo `child_env` si está fijado (pruebas confinadas).
+    pub fn program(&self, path: impl Into<PathBuf>) -> tmux::Program {
+        let mut program = tmux::Program::named(path);
+        if let Some(env) = &self.child_env {
+            program.env_clear = true;
+            program.env = env.clone();
+        }
+        program
     }
 }
 

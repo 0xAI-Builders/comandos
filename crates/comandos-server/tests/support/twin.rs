@@ -28,7 +28,7 @@ use super::{
 };
 use comandos_server::dash::native::{NativeOptions, quick::scope_program};
 use regex::Regex;
-use std::sync::OnceLock;
+use std::{ffi::OsString, sync::OnceLock};
 
 /// Órdenes de tmux que mutan (R9 del pre-flight): las que se comparan entre
 /// los dos lados. Las lecturas no (el frente cachea `/state`, el Python no).
@@ -164,6 +164,21 @@ impl Twin {
         search.push(":");
         search.push(a.root.join("bin"));
         front_options.search_path = Some(search);
+        // C1 de la revisión de la Tarea 2: lo que el frente lance fuera de tmux
+        // (`NativeOptions::program`) solo ve el entorno confinado de A, sin
+        // `DISPLAY` (`gui_env_for` lo trata como ausente, como el oráculo).
+        let child_env: Vec<(OsString, OsString)> = a
+            .confined_env()
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        front_options.child_env = Some(child_env.clone());
+        front_options.display = Some(None);
+        front_options.ssh = front_options.program(fakebin_a.join("ssh"));
+        if let Some(scope) = &mut front_options.scope {
+            scope.env_clear = true;
+            scope.env = child_env;
+        }
         if let Some(hook) = opts.front {
             hook(&mut front_options);
         }

@@ -2,6 +2,12 @@
 //! sueltos (`Popen(..., start_new_session=True)`), la búsqueda de ejecutables
 //! en el `PATH` del frente y el registro de tareas largas (D12 del plan 2f).
 //!
+//! Entorno de los hijos: todo programa externo del frente se construye con
+//! `NativeOptions::program(ruta)` (la ruta, de `which_in`). En producción
+//! hereda el entorno del proceso, como el Python; con `opts.child_env` (pruebas
+//! confinadas) el hijo solo ve ese entorno (`env_clear`), y `gui_env_for` toma
+//! el `DISPLAY` de `opts.display`.
+//!
 //! Ligereza: nada de esto crea hilos. Los hijos sueltos los recoge una tarea
 //! del runtime (no un hilo por hijo) y las tareas largas son tareas `tokio`.
 use super::tmux::{Output, Program, RunError, universal};
@@ -22,6 +28,9 @@ use tokio::io::AsyncWriteExt;
 fn command(program: &Program, args: &[OsString]) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(&program.path);
     cmd.args(&program.prefix).args(args);
+    if program.env_clear {
+        cmd.env_clear();
+    }
     for key in &program.env_remove {
         cmd.env_remove(key);
     }
@@ -132,6 +141,15 @@ pub fn spawn_detached_blocking(
 /// que añadir al entorno heredado del proceso.
 pub fn gui_env() -> Vec<(OsString, OsString)> {
     gui_env_with(std::env::var_os("DISPLAY"))
+}
+
+/// `gui_env()` con el `DISPLAY` que fijan las opciones (`opts.display`); sin
+/// él, el del proceso (producción).
+pub fn gui_env_for(opts: &super::NativeOptions) -> Vec<(OsString, OsString)> {
+    match &opts.display {
+        Some(display) => gui_env_with(display.clone()),
+        None => gui_env(),
+    }
 }
 
 /// `gui_env()` con el `DISPLAY` actual dado (las pruebas no tocan el entorno

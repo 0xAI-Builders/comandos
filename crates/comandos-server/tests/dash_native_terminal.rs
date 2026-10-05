@@ -55,6 +55,7 @@ fn fake_tmux(script: &str, timeout: Duration) -> Tmux {
             ],
             env: vec![],
             env_remove: vec![],
+            env_clear: false,
         },
         timeout,
     }

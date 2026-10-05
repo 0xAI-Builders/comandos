@@ -384,6 +384,14 @@ pub const LOGGING_FAKES: &[&str] = &[
     "agy",
     "acp",
     "cc-acp",
+    "claude-agent-acp",
+    "codex-acp",
+    "node",
+    "nodejs",
+    "npx",
+    "npm",
+    "bun",
+    "bunx",
     "cc-model-proxy",
     "cc-proxy",
     "ssh-copy-id",
@@ -553,8 +561,7 @@ fn confined_scope(root: &Path, guard: &Path) -> String {
     let log = dir.join("argv");
     format!(
         "#!/bin/sh\nmkdir -p {dir}\n\
-         for a in \"$@\"; do printf '%s\\n' \"$a\" >> {log}; done\n\
-         printf -- '--\\n' >> {log}\n\
+         printf '%s\\0' systemd-run \"$@\" \"$(printf '\\036')\" >> {log}\n\
          flags=\n\
          while [ $# -gt 0 ]; do case \"$1\" in --*) flags=\"$flags $1\"; shift;; *) break;; esac; done\n\
          [ $# -gt 0 ] || exit 0\n\

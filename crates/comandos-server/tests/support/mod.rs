@@ -299,6 +299,15 @@ impl TestHome {
         opts.xdg_state_home = Some(self.root.join(".local/state"));
         opts.webterm_health_ports = [1, 1];
         opts.census_path = None;
+        // Lo que el frente lance fuera de tmux (`NativeOptions::program`) ve el
+        // entorno confinado de este HOME, nunca el del proceso de pruebas.
+        opts.child_env = Some(
+            self.confined_env()
+                .into_iter()
+                .map(|(k, v)| (k.into(), v.into()))
+                .collect(),
+        );
+        opts.display = Some(None);
         opts
     }
 }
@@ -349,8 +358,7 @@ pub fn fake_scope(home: &TestHome) -> Program {
         &path,
         format!(
             "#!/bin/sh\n\
-             for a in \"$@\"; do printf '%s\\n' \"$a\" >> '{log}'; done\n\
-             printf -- '--\\n' >> '{log}'\n\
+             printf '%s\\0' systemd-run \"$@\" \"$(printf '\\036')\" >> '{log}'\n\
              [ \"$1\" = --user ] && [ \"$2\" = --scope ] && [ \"$3\" = --collect ] \
              && [ \"$4\" = --quiet ] || exit 97\n\
              shift 4\n\
@@ -363,19 +371,14 @@ pub fn fake_scope(home: &TestHome) -> Program {
     comandos_server::dash::native::quick::scope_program(path)
 }
 
-/// Llamadas al `systemd-run` falso, cada una como su lista de argumentos.
+/// Llamadas al `systemd-run` falso, cada una como su lista de argumentos. El
+/// registro separa con NUL (`oracle::calls_in`): un argumento con saltos de
+/// línea no parte la llamada.
 pub fn fake_scope_calls(home: &TestHome) -> Vec<Vec<String>> {
-    let text = std::fs::read_to_string(home.root.join("fakescope/argv")).unwrap_or_default();
-    let mut calls = Vec::new();
-    let mut current = Vec::new();
-    for line in text.lines() {
-        if line == "--" {
-            calls.push(std::mem::take(&mut current));
-        } else {
-            current.push(line.to_owned());
-        }
-    }
-    calls
+    oracle::calls_in(&home.root.join("fakescope/argv"))
+        .into_iter()
+        .map(|call| call.args)
+        .collect()
 }
 
 /// Copia `/bin/sleep` como `<home>/bin/<name>`: un proceso con ese argv[0]
@@ -428,34 +431,68 @@ pub fn private_tmux_command(socket_dir: &Path) -> Command {
     cmd
 }
 
+/// `kill-server` del servidor privado de `tmux_dir`, solo por su `-S`.
+fn kill_private_server(tmux_dir: &Path) {
+    let tmux = oracle::real_program("tmux").unwrap_or_else(|| PathBuf::from("tmux"));
+    let _ = Command::new(tmux)
+        .arg("-S")
+        .arg(private_socket(tmux_dir))
+        .arg("kill-server")
+        .env_remove("TMUX")
+        .env("TMUX_TMPDIR", tmux_dir)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
 impl Drop for TestHome {
     fn drop(&mut self) {
         // Nunca el servidor tmux del usuario: socket explícito con `-S`. Solo
         // `TMUX_TMPDIR` no basta: si el directorio ya no existe, tmux cae en
         // silencio al `/tmp/tmux-<uid>/default` real y el kill-server es suyo.
-        let _ = Command::new("tmux")
-            .arg("-S")
-            .arg(private_socket(&self.tmux_dir()))
-            .arg("kill-server")
-            .env_remove("TMUX")
-            .env("TMUX_TMPDIR", self.tmux_dir())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        let _ = std::fs::remove_dir_all(&self.root);
+        kill_private_server(&self.tmux_dir());
+        // Algo que siguiera vivo (una tarea del frente, un hijo suelto) podría
+        // volver a arrancar el servidor entre el `kill-server` y el borrado.
+        // Tras renombrar, el socket viejo ya no tiene directorio (tmux con `-S`
+        // daría «no server running»), y un servidor que se colara se mata en
+        // la ruta nueva antes de borrar.
+        let mut dying = self.root.clone().into_os_string();
+        dying.push(".dying");
+        let dying = PathBuf::from(dying);
+        let _ = std::fs::remove_dir_all(&dying);
+        let root = if std::fs::rename(&self.root, &dying).is_ok() {
+            kill_private_server(&dying.join("tmux"));
+            dying
+        } else {
+            self.root.clone()
+        };
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
 
 pub struct Front {
     pub port: u16,
     stop: watch::Sender<bool>,
-    task: JoinHandle<std::io::Result<()>>,
+    task: Option<JoinHandle<std::io::Result<()>>>,
 }
 
 impl Front {
-    pub async fn stop(self) {
+    pub async fn stop(mut self) {
         let _ = self.stop.send(true);
-        let _ = self.task.await;
+        if let Some(task) = self.task.take() {
+            let _ = task.await;
+        }
+    }
+}
+
+/// Un `Front` que no se paró (la prueba falló antes del `stop`) no deja el
+/// servidor vivo: se pide la parada y se aborta su tarea.
+impl Drop for Front {
+    fn drop(&mut self) {
+        let _ = self.stop.send(true);
+        if let Some(task) = self.task.take() {
+            task.abort();
+        }
     }
 }
 
@@ -474,7 +511,11 @@ pub async fn front(home: &TestHome, legacy_port: u16, opts: NativeOptions) -> Fr
     let (stop, shutdown) = watch::channel(false);
     let cfg = config(home, legacy_port);
     let task = tokio::spawn(serve_with(listener, cfg, Some(opts), shutdown));
-    Front { port, stop, task }
+    Front {
+        port,
+        stop,
+        task: Some(task),
+    }
 }
 
 /// Heredado falso: responde `{"legacy": true}` y anota la línea de petición.

@@ -19,6 +19,9 @@ pub struct Program {
     pub prefix: Vec<OsString>,
     pub env: Vec<(OsString, OsString)>,
     pub env_remove: Vec<OsString>,
+    /// `env_clear` antes de `env`: el hijo solo ve `env` (pruebas confinadas;
+    /// en producción siempre `false`, el entorno del proceso como el Python).
+    pub env_clear: bool,
 }
 
 impl Program {
@@ -29,6 +32,7 @@ impl Program {
             prefix: Vec::new(),
             env: Vec::new(),
             env_remove: Vec::new(),
+            env_clear: false,
         }
     }
 }
@@ -66,6 +70,9 @@ pub async fn run_program(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    if program.env_clear {
+        cmd.env_clear();
+    }
     for name in &program.env_remove {
         cmd.env_remove(name);
     }

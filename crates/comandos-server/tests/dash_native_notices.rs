@@ -246,6 +246,7 @@ async fn notices_survive_hung_tmux() {
             prefix: vec!["-f".into(), "/dev/null".into(), "--".into()],
             env: vec![],
             env_remove: vec![],
+            env_clear: false,
         },
         timeout: Duration::from_millis(300),
     };
