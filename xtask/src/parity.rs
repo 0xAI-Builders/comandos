@@ -32,7 +32,14 @@ const RELEVANT_HEADERS: [&str; 4] = [
 /// Marca de que ya estamos dentro del namespace de red aislado.
 const NETNS_ENV: &str = "COMANDOS_XTASK_NETNS";
 /// Ejecutables que el oráculo podría lanzar y que aquí no deben hacer nada.
-const FAKE_BINS: [&str; 12] = [
+/// Los CLIs del catálogo (`/commands/catalog` ejecuta `--version` y `--help`,
+/// `/opencode/models` ejecuta `opencode models`) también: nunca los reales.
+const FAKE_BINS: [&str; 17] = [
+    "claude",
+    "codex",
+    "grok",
+    "opencode",
+    "agy",
     "systemctl",
     "wmctrl",
     "cc-webterm",
