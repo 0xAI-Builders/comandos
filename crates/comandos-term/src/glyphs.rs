@@ -1,690 +1,766 @@
-//! Glifos de dibujo que xterm.js 5.5.0 pinta a mano con `customGlyphs: true`
-//! (por omisión) en vez de pedírselos a la fuente: líneas de caja
-//! U+2500–U+257F, bloques y sombreados U+2580–U+259F y las flechas de
-//! powerline U+E0B0–U+E0B3. Así las cajas se tocan entre celdas aunque la
-//! fuente no llene la celda (el interlineado es 1.2).
+//! Glifos que xterm.js 5.5.0 dibuja a mano con `customGlyphs: true` (por
+//! omisión) en vez de pedírselos a la fuente, copiados de las tablas de
+//! `@xterm/addon-canvas` 0.7.0 (el renderizador que carga `dash/term.html`;
+//! leídas del bundle `assets/xterm/addon-canvas.js`):
 //!
-//! Las definiciones copian las de `CustomGlyphs.ts` de xterm.js 5.5.0
-//! (`boxDrawingDefinitions`, `blockElementDefinitions`,
-//! `powerlineDefinitions`; leídas del bundle `assets/xterm/addon-canvas.js`
-//! 0.7.0): cada trazo de SVG `M…L…` es aquí una polilínea con los mismos
-//! puntos.
+//! - `boxDrawingDefinitions`: líneas de caja U+2500–U+257F, como trazos SVG
+//!   (`M`, `L`, `C`) con su peso en píxeles; las cadenas son las del bundle,
+//!   con las variables de las funciones de xterm.js escritas `{.5-t}`.
+//! - `blockElementDefinitions`: bloques U+2580–U+259F (salvo ░▒▓) y los de
+//!   *legacy computing* U+1FB70–U+1FB8B y U+1FB95–U+1FB97, en octavos.
+//! - Tramas ░▒▓: máscaras por píxel de dispositivo.
+//! - `powerlineDefinitions`: U+E0B0–U+E0BF (U+E0BB y U+E0BF son alias de
+//!   U+E0BD y U+E0B9).
+//!
+//! [`box_ops`] da la definición, independiente del tamaño de la celda.
+//! [`draw_ops`] la convierte en órdenes de canvas en píxeles de dispositivo
+//! con las mismas cuentas que `tryDrawCustomChar` (escala, ajuste a medio
+//! píxel, márgenes de powerline, grosores), para que quien pinta (A6) las
+//! repita una a una sobre un `CanvasRenderingContext2D`.
 //!
 //! ## Contrato con quien pinta (A6)
 //!
-//! - Coordenadas en unidades de celda: `x` en fracción del **ancho**, `y`
-//!   en fracción del **alto**, `0..1` dentro de la celda.
-//! - El grosor `w` de `HLine`/`VLine` es siempre fracción del **alto** de la
-//!   celda (para las dos orientaciones), así una línea vertical y una
-//!   horizontal miden los mismos píxeles: fina 1/12 (≈1 px a 11–14 px de
-//!   letra con interlineado 1.2) y gruesa 1/6.
-//! - `Rect` usa el color del texto con opacidad `alpha`.
-//! - Todos los `Tri` de un glifo tienen la misma orientación (área con
-//!   signo positiva en coordenadas de celda) y se rellenan en **un solo
-//!   trazado** con la regla `nonzero`: así no quedan costuras entre
-//!   triángulos vecinos. Pueden salirse un poco de la celda (extremos de un
-//!   trazo diagonal, flechas de powerline); quien pinta recorta a la celda,
-//!   como hace xterm.js con powerline.
-//!
-//! ## Diferencias con xterm.js
-//!
-//! - xterm.js traza con `lineWidth` en píxeles de dispositivo (1 fina,
-//!   3 gruesa); aquí el grosor es relativo a la celda (1/12 y 1/6) porque las
-//!   operaciones no conocen el tamaño en píxeles. Quien pinta redondea a
-//!   píxeles enteros.
-//! - Los sombreados ░▒▓ son en xterm.js tramas de píxeles (cobertura media
-//!   12,5 %, 25 % y 75 %); aquí son un rectángulo de opacidad 0,25, 0,5 y
-//!   0,75 (los valores nominales de Unicode que fija el plan).
-//! - Las dobles líneas y las esquinas redondeadas de xterm.js dependen de la
-//!   proporción real de la celda; aquí se fija [`CELL_ASPECT`].
-use std::sync::OnceLock;
+//! - Las coordenadas de [`DrawOp`] son píxeles de dispositivo relativos a la
+//!   esquina superior izquierda de la celda; A6 suma el origen entero de la
+//!   celda (`col · cell_w`, `fila · cell_h`).
+//! - Color: el de texto de la tira (`Style::fg`); `strokeStyle = fillStyle`.
+//! - Las órdenes de un glifo van entre `save()`/`restore()`: [`DrawOp::ClipCell`]
+//!   recorta a la celda y no se deshace dentro del glifo.
+//! - [`DrawOp::FillPattern`] llena la celda con la máscara repetida y anclada
+//!   en la esquina de la celda: el píxel `(x, y)` de la celda se pinta si
+//!   `mask[y % filas][x % columnas] == 1`.
+//! - [`CellMetrics`] lleva el tamaño de celda **en píxeles de dispositivo**
+//!   tal como lo calcula xterm.js (`deviceCellWidth`, `deviceCellHeight`),
+//!   el `devicePixelRatio` y el `fontSize` en píxeles CSS.
 
-/// Una operación de dibujo de un glifo, en unidades de celda.
+/// Definición de un glifo, en las unidades de las tablas de xterm.js.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BoxOp {
-    /// Línea horizontal centrada en `y`, de `x0` a `x1`, de grosor `w`.
-    HLine { y: f32, x0: f32, x1: f32, w: f32 },
-    /// Línea vertical centrada en `x`, de `y0` a `y1`, de grosor `w`.
-    VLine { x: f32, y0: f32, y1: f32, w: f32 },
-    /// Rectángulo relleno con el color del texto a opacidad `alpha`.
-    Rect {
-        x: f32,
-        y: f32,
-        w: f32,
-        h: f32,
-        alpha: f32,
+    /// Rectángulo relleno (`fillRect`), en fracción de la celda; los valores
+    /// son octavos exactos.
+    Rect { x: f32, y: f32, w: f32, h: f32 },
+    /// Trama de la celda: máscara 0/1 por píxel de dispositivo.
+    Pattern(&'static [&'static [u8]]),
+    /// Trazo de caja: `lineWidth = dpr · weight` (1 fina, 3 gruesa) y
+    /// coordenadas ajustadas al centro del píxel.
+    Stroke { weight: u8, d: &'static str },
+    /// Flecha de powerline recortada a la celda: relleno (`stroke = false`)
+    /// o contorno de `fontSize / 12` px; márgenes en medios de ese grosor.
+    Powerline {
+        d: &'static str,
+        stroke: bool,
+        left_pad: u8,
+        right_pad: u8,
     },
-    /// Triángulo relleno (ver el contrato de orientación del módulo).
-    Tri { pts: [(f32, f32); 3] },
 }
 
-/// Grosor de una línea fina, en fracción del alto de la celda.
-pub const THIN: f32 = 1.0 / 12.0;
-/// Grosor de una línea gruesa, en fracción del alto de la celda.
-pub const THICK: f32 = 1.0 / 6.0;
-
-/// Proporción ancho/alto de la celda que se supone para las medidas que en
-/// xterm.js dependen de ella. Fuente monoespaciada de avance ≈ 0,6 em con
-/// el interlineado 1.2 de `dash/term.html`: 0,6 / 1,2 = 0,5.
-pub const CELL_ASPECT: f32 = 0.5;
-
-/// Interlineado de `dash/term.html` (`lineHeight: 1.2`).
-const LINE_HEIGHT: f32 = 1.2;
-
-/// Media separación de una doble línea: xterm.js usa 0,15 del ancho en
-/// horizontal y `0,15 · ancho / alto` en vertical (mismos píxeles).
-const DOUBLE_X: f32 = 0.15;
-const DOUBLE_Y: f32 = DOUBLE_X * CELL_ASPECT;
-/// Columnas y filas de las dos líneas de una doble línea.
-const XL: f32 = 0.5 - DOUBLE_X;
-const XR: f32 = 0.5 + DOUBLE_X;
-const YT: f32 = 0.5 - DOUBLE_Y;
-const YB: f32 = 0.5 + DOUBLE_Y;
-/// Centro.
-const C: f32 = 0.5;
-
-/// Tramo recto de una esquina redondeada: xterm.js va recto hasta
-/// `0,5 ± 0,5 · ancho / alto` y desde ahí traza la curva.
-const ROUND_B: f32 = 0.5 + 0.5 * CELL_ASPECT;
-const ROUND_T: f32 = 0.5 - 0.5 * CELL_ASPECT;
-
-/// Grosor del contorno de powerline: xterm.js usa `fontSize / 12` px; la
-/// letra mide `alto / 1,2`.
-const POWERLINE_STROKE: f32 = 1.0 / 12.0 / LINE_HEIGHT;
-/// Margen de powerline (`rightPadding: 2` = `fontSize / 12` px), en
-/// fracción del ancho.
-const POWERLINE_PAD: f32 = POWERLINE_STROKE / CELL_ASPECT;
-/// Punta del triángulo relleno U+E0B0 (y la base de U+E0B2).
-const PL_TIP: f32 = 1.0 - POWERLINE_PAD;
-/// Contorno U+E0B1: `M-1,-.5 L1,.5 L-1,1.5` con margen de medio paso a cada
-/// lado (`x · (1 − p) + p / 2`), recortado a `x = 0`.
-const PL_OUT: f32 = -1.0 + 1.5 * POWERLINE_PAD;
-const PL_IN: f32 = 1.0 - 0.5 * POWERLINE_PAD;
-const PL_CUT: f32 = -0.5 + (0.0 - PL_OUT) / (PL_IN - PL_OUT);
-const PL_CUT_LOW: f32 = 1.0 - PL_CUT;
-
-/// Tramos con que se aproxima la Bézier de una esquina redondeada.
-const CURVE_STEPS: u8 = 8;
-
-/// Cómo se describe un glifo antes de convertirlo en [`BoxOp`].
-enum Shape {
-    /// Polilíneas (cada una un subtrazo `M…L…L…`) de grosor dado.
-    Lines(f32, &'static [&'static [(f32, f32)]]),
-    /// Esquina redondeada: `M start L p0 C p1, p2, p3` de xterm.js.
-    Round([(f32, f32); 5]),
-    /// Rectángulos en octavos de celda: `(x, y, ancho, alto)`.
-    Blocks(&'static [(u8, u8, u8, u8)]),
-    /// Sombreado de celda completa con esta opacidad.
-    Shade(f32),
-    /// Triángulo relleno.
-    Fill([(f32, f32); 3]),
+/// Tamaño de la celda para resolver un glifo.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CellMetrics {
+    /// `deviceCellWidth` de xterm.js (píxeles de dispositivo, entero).
+    pub cell_w: f64,
+    /// `deviceCellHeight` de xterm.js (píxeles de dispositivo, entero).
+    pub cell_h: f64,
+    /// `devicePixelRatio`.
+    pub dpr: f64,
+    /// `fontSize` del terminal, en píxeles CSS.
+    pub font_size: f64,
 }
 
-macro_rules! thin {
-    ($([$($x:expr, $y:expr);+])+) => {
-        Shape::Lines(THIN, &[$(&[$(($x, $y)),+]),+])
-    };
+/// Una orden de canvas, en píxeles de dispositivo relativos a la celda.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DrawOp {
+    FillRect {
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+    },
+    FillPattern {
+        mask: &'static [&'static [u8]],
+    },
+    /// `ctx.clip()` al rectángulo de la celda.
+    ClipCell,
+    BeginPath,
+    MoveTo {
+        x: f64,
+        y: f64,
+    },
+    LineTo {
+        x: f64,
+        y: f64,
+    },
+    /// `bezierCurveTo(x1, y1, x2, y2, x, y)`.
+    CurveTo {
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        x: f64,
+        y: f64,
+    },
+    /// `ctx.lineWidth = line_width; ctx.stroke()`.
+    Stroke {
+        line_width: f64,
+    },
+    /// `ctx.fill()` (regla `nonzero`).
+    Fill,
 }
 
-macro_rules! thick {
-    ($([$($x:expr, $y:expr);+])+) => {
-        Shape::Lines(THICK, &[$(&[$(($x, $y)),+]),+])
-    };
+const fn stroke(weight: u8, d: &'static str) -> BoxOp {
+    BoxOp::Stroke { weight, d }
 }
 
-/// Definición de cada glifo, en el orden de `CustomGlyphs.ts`.
-fn spec(c: char) -> Option<&'static [Shape]> {
-    let shapes: &'static [Shape] = match c {
-        // Líneas simples y gruesas.
-        '─' => &[thin!([0.0, C; 1.0, C])],
-        '━' => &[thick!([0.0, C; 1.0, C])],
-        '│' => &[thin!([C, 0.0; C, 1.0])],
-        '┃' => &[thick!([C, 0.0; C, 1.0])],
-        '┌' => &[thin!([C, 1.0; C, C; 1.0, C])],
-        '┏' => &[thick!([C, 1.0; C, C; 1.0, C])],
-        '┐' => &[thin!([0.0, C; C, C; C, 1.0])],
-        '┓' => &[thick!([0.0, C; C, C; C, 1.0])],
-        '└' => &[thin!([C, 0.0; C, C; 1.0, C])],
-        '┗' => &[thick!([C, 0.0; C, C; 1.0, C])],
-        '┘' => &[thin!([C, 0.0; C, C; 0.0, C])],
-        '┛' => &[thick!([C, 0.0; C, C; 0.0, C])],
-        '├' => &[thin!([C, 0.0; C, 1.0] [C, C; 1.0, C])],
-        '┣' => &[thick!([C, 0.0; C, 1.0] [C, C; 1.0, C])],
-        '┤' => &[thin!([C, 0.0; C, 1.0] [C, C; 0.0, C])],
-        '┫' => &[thick!([C, 0.0; C, 1.0] [C, C; 0.0, C])],
-        '┬' => &[thin!([0.0, C; 1.0, C] [C, C; C, 1.0])],
-        '┳' => &[thick!([0.0, C; 1.0, C] [C, C; C, 1.0])],
-        '┴' => &[thin!([0.0, C; 1.0, C] [C, C; C, 0.0])],
-        '┻' => &[thick!([0.0, C; 1.0, C] [C, C; C, 0.0])],
-        '┼' => &[thin!([0.0, C; 1.0, C] [C, 0.0; C, 1.0])],
-        '╋' => &[thick!([0.0, C; 1.0, C] [C, 0.0; C, 1.0])],
-        '╴' => &[thin!([C, C; 0.0, C])],
-        '╸' => &[thick!([C, C; 0.0, C])],
-        '╵' => &[thin!([C, C; C, 0.0])],
-        '╹' => &[thick!([C, C; C, 0.0])],
-        '╶' => &[thin!([C, C; 1.0, C])],
-        '╺' => &[thick!([C, C; 1.0, C])],
-        '╷' => &[thin!([C, C; C, 1.0])],
-        '╻' => &[thick!([C, C; C, 1.0])],
-        // Dobles líneas.
-        '═' => &[thin!([0.0, YT; 1.0, YT] [0.0, YB; 1.0, YB])],
-        '║' => &[thin!([XL, 0.0; XL, 1.0] [XR, 0.0; XR, 1.0])],
-        '╒' => &[thin!([C, 1.0; C, YT; 1.0, YT] [C, YB; 1.0, YB])],
-        '╓' => &[thin!([XL, 1.0; XL, C; 1.0, C] [XR, C; XR, 1.0])],
-        '╔' => &[thin!([1.0, YT; XL, YT; XL, 1.0] [1.0, YB; XR, YB; XR, 1.0])],
-        '╕' => &[thin!([0.0, YT; C, YT; C, 1.0] [0.0, YB; C, YB])],
-        '╖' => &[thin!([XR, 1.0; XR, C; 0.0, C] [XL, C; XL, 1.0])],
-        '╗' => &[thin!([0.0, YB; XL, YB; XL, 1.0] [0.0, YT; XR, YT; XR, 1.0])],
-        '╘' => &[thin!([C, 0.0; C, YB; 1.0, YB] [C, YT; 1.0, YT])],
-        '╙' => &[thin!([1.0, C; XL, C; XL, 0.0] [XR, C; XR, 0.0])],
-        '╚' => &[thin!([1.0, YT; XR, YT; XR, 0.0] [1.0, YB; XL, YB; XL, 0.0])],
-        '╛' => &[thin!([0.0, YB; C, YB; C, 0.0] [0.0, YT; C, YT])],
-        '╜' => &[thin!([0.0, C; XR, C; XR, 0.0] [XL, C; XL, 0.0])],
-        '╝' => &[thin!([0.0, YT; XL, YT; XL, 0.0] [0.0, YB; XR, YB; XR, 0.0])],
-        '╞' => &[thin!([C, 0.0; C, 1.0] [C, YT; 1.0, YT] [C, YB; 1.0, YB])],
-        '╟' => &[thin!([XL, 0.0; XL, 1.0] [XR, 0.0; XR, 1.0] [XR, C; 1.0, C])],
-        '╠' => &[thin!(
-            [XL, 0.0; XL, 1.0]
-            [1.0, YB; XR, YB; XR, 1.0]
-            [1.0, YT; XR, YT; XR, 0.0]
-        )],
-        '╡' => &[thin!([C, 0.0; C, 1.0] [0.0, YT; C, YT] [0.0, YB; C, YB])],
-        '╢' => &[thin!([0.0, C; XL, C] [XL, 0.0; XL, 1.0] [XR, 0.0; XR, 1.0])],
-        '╣' => &[thin!(
-            [XR, 0.0; XR, 1.0]
-            [0.0, YB; XL, YB; XL, 1.0]
-            [0.0, YT; XL, YT; XL, 0.0]
-        )],
-        '╤' => &[thin!([0.0, YT; 1.0, YT] [0.0, YB; 1.0, YB] [C, YB; C, 1.0])],
-        '╥' => &[thin!([0.0, C; 1.0, C] [XL, C; XL, 1.0] [XR, C; XR, 1.0])],
-        '╦' => &[thin!(
-            [0.0, YT; 1.0, YT]
-            [0.0, YB; XL, YB; XL, 1.0]
-            [1.0, YB; XR, YB; XR, 1.0]
-        )],
-        '╧' => &[thin!([C, 0.0; C, YT] [0.0, YT; 1.0, YT] [0.0, YB; 1.0, YB])],
-        '╨' => &[thin!([0.0, C; 1.0, C] [XL, C; XL, 0.0] [XR, C; XR, 0.0])],
-        '╩' => &[thin!(
-            [0.0, YB; 1.0, YB]
-            [0.0, YT; XL, YT; XL, 0.0]
-            [1.0, YT; XR, YT; XR, 0.0]
-        )],
-        '╪' => &[thin!([C, 0.0; C, 1.0] [0.0, YT; 1.0, YT] [0.0, YB; 1.0, YB])],
-        '╫' => &[thin!([0.0, C; 1.0, C] [XL, 0.0; XL, 1.0] [XR, 0.0; XR, 1.0])],
-        '╬' => &[thin!(
-            [0.0, YB; XL, YB; XL, 1.0]
-            [1.0, YB; XR, YB; XR, 1.0]
-            [0.0, YT; XL, YT; XL, 0.0]
-            [1.0, YT; XR, YT; XR, 0.0]
-        )],
-        // Diagonales.
-        '╱' => &[thin!([1.0, 0.0; 0.0, 1.0])],
-        '╲' => &[thin!([0.0, 0.0; 1.0, 1.0])],
-        '╳' => &[thin!([1.0, 0.0; 0.0, 1.0] [0.0, 0.0; 1.0, 1.0])],
-        // Mitad fina, mitad gruesa.
-        '╼' => &[thin!([C, C; 0.0, C]), thick!([C, C; 1.0, C])],
-        '╽' => &[thin!([C, C; C, 0.0]), thick!([C, C; C, 1.0])],
-        '╾' => &[thin!([C, C; 1.0, C]), thick!([C, C; 0.0, C])],
-        '╿' => &[thin!([C, C; C, 1.0]), thick!([C, C; C, 0.0])],
-        '┍' => &[thin!([C, C; C, 1.0]), thick!([C, C; 1.0, C])],
-        '┎' => &[thin!([C, C; 1.0, C]), thick!([C, C; C, 1.0])],
-        '┑' => &[thin!([C, C; C, 1.0]), thick!([C, C; 0.0, C])],
-        '┒' => &[thin!([C, C; 0.0, C]), thick!([C, C; C, 1.0])],
-        '┕' => &[thin!([C, C; C, 0.0]), thick!([C, C; 1.0, C])],
-        '┖' => &[thin!([C, C; 1.0, C]), thick!([C, C; C, 0.0])],
-        '┙' => &[thin!([C, C; C, 0.0]), thick!([C, C; 0.0, C])],
-        '┚' => &[thin!([C, C; 0.0, C]), thick!([C, C; C, 0.0])],
-        '┝' => &[thin!([C, 0.0; C, 1.0]), thick!([C, C; 1.0, C])],
-        '┞' => &[thin!([C, 1.0; C, C; 1.0, C]), thick!([C, C; C, 0.0])],
-        '┟' => &[thin!([C, 0.0; C, C; 1.0, C]), thick!([C, C; C, 1.0])],
-        '┠' => &[thin!([C, C; 1.0, C]), thick!([C, 0.0; C, 1.0])],
-        '┡' => &[thin!([C, C; C, 1.0]), thick!([C, 0.0; C, C; 1.0, C])],
-        '┢' => &[thin!([C, C; C, 0.0]), thick!([C, 1.0; C, C; 1.0, C])],
-        '┥' => &[thin!([C, 0.0; C, 1.0]), thick!([C, C; 0.0, C])],
-        '┦' => &[thin!([0.0, C; C, C; C, 1.0]), thick!([C, C; C, 0.0])],
-        '┧' => &[thin!([C, 0.0; C, C; 0.0, C]), thick!([C, C; C, 1.0])],
-        '┨' => &[thin!([C, C; 0.0, C]), thick!([C, 0.0; C, 1.0])],
-        '┩' => &[thin!([C, C; C, 1.0]), thick!([C, 0.0; C, C; 0.0, C])],
-        '┪' => &[thin!([C, C; C, 0.0]), thick!([0.0, C; C, C; C, 1.0])],
-        '┭' => &[thin!([C, 1.0; C, C; 1.0, C]), thick!([C, C; 0.0, C])],
-        '┮' => &[thin!([0.0, C; C, C; C, 1.0]), thick!([C, C; 1.0, C])],
-        '┯' => &[thin!([C, C; C, 1.0]), thick!([0.0, C; 1.0, C])],
-        '┰' => &[thin!([0.0, C; 1.0, C]), thick!([C, C; C, 1.0])],
-        '┱' => &[thin!([C, C; 1.0, C]), thick!([0.0, C; C, C; C, 1.0])],
-        '┲' => &[thin!([C, C; 0.0, C]), thick!([C, 1.0; C, C; 1.0, C])],
-        '┵' => &[thin!([C, 0.0; C, C; 1.0, C]), thick!([C, C; 0.0, C])],
-        '┶' => &[thin!([C, 0.0; C, C; 0.0, C]), thick!([C, C; 1.0, C])],
-        '┷' => &[thin!([C, C; C, 0.0]), thick!([0.0, C; 1.0, C])],
-        '┸' => &[thin!([0.0, C; 1.0, C]), thick!([C, C; C, 0.0])],
-        '┹' => &[thin!([C, C; 1.0, C]), thick!([C, 0.0; C, C; 0.0, C])],
-        '┺' => &[thin!([C, C; 0.0, C]), thick!([C, 0.0; C, C; 1.0, C])],
-        '┽' => &[
-            thin!([C, 0.0; C, 1.0] [C, C; 1.0, C]),
-            thick!([C, C; 0.0, C]),
-        ],
-        '┾' => &[
-            thin!([C, 0.0; C, 1.0] [C, C; 0.0, C]),
-            thick!([C, C; 1.0, C]),
-        ],
-        '┿' => &[thin!([C, 0.0; C, 1.0]), thick!([0.0, C; 1.0, C])],
-        '╀' => &[
-            thin!([0.0, C; 1.0, C] [C, C; C, 1.0]),
-            thick!([C, C; C, 0.0]),
-        ],
-        '╁' => &[
-            thin!([C, C; C, 0.0] [0.0, C; 1.0, C]),
-            thick!([C, C; C, 1.0]),
-        ],
-        '╂' => &[thin!([0.0, C; 1.0, C]), thick!([C, 0.0; C, 1.0])],
-        '╃' => &[
-            thin!([C, 1.0; C, C; 1.0, C]),
-            thick!([C, 0.0; C, C; 0.0, C]),
-        ],
-        '╄' => &[
-            thin!([0.0, C; C, C; C, 1.0]),
-            thick!([C, 0.0; C, C; 1.0, C]),
-        ],
-        '╅' => &[
-            thin!([C, 0.0; C, C; 1.0, C]),
-            thick!([0.0, C; C, C; C, 1.0]),
-        ],
-        '╆' => &[
-            thin!([C, 0.0; C, C; 0.0, C]),
-            thick!([C, 1.0; C, C; 1.0, C]),
-        ],
-        '╇' => &[
-            thin!([C, C; C, 1.0]),
-            thick!([C, C; C, 0.0] [0.0, C; 1.0, C]),
-        ],
-        '╈' => &[
-            thin!([C, C; C, 0.0]),
-            thick!([0.0, C; 1.0, C] [C, C; C, 1.0]),
-        ],
-        '╉' => &[
-            thin!([C, C; 1.0, C]),
-            thick!([C, 0.0; C, 1.0] [C, C; 0.0, C]),
-        ],
-        '╊' => &[
-            thin!([C, C; 0.0, C]),
-            thick!([C, 0.0; C, 1.0] [C, C; 1.0, C]),
-        ],
-        // Discontinuas.
-        '╌' => &[thin!([0.1, C; 0.4, C] [0.6, C; 0.9, C])],
-        '╍' => &[thick!([0.1, C; 0.4, C] [0.6, C; 0.9, C])],
-        '┄' => &[thin!(
-            [0.0667, C; 0.2667, C]
-            [0.4, C; 0.6, C]
-            [0.7333, C; 0.9333, C]
-        )],
-        '┅' => &[thick!(
-            [0.0667, C; 0.2667, C]
-            [0.4, C; 0.6, C]
-            [0.7333, C; 0.9333, C]
-        )],
-        '┈' => &[thin!(
-            [0.05, C; 0.2, C]
-            [0.3, C; 0.45, C]
-            [0.55, C; 0.7, C]
-            [0.8, C; 0.95, C]
-        )],
-        '┉' => &[thick!(
-            [0.05, C; 0.2, C]
-            [0.3, C; 0.45, C]
-            [0.55, C; 0.7, C]
-            [0.8, C; 0.95, C]
-        )],
-        '╎' => &[thin!([C, 0.1; C, 0.4] [C, 0.6; C, 0.9])],
-        '╏' => &[thick!([C, 0.1; C, 0.4] [C, 0.6; C, 0.9])],
-        '┆' => &[thin!(
-            [C, 0.0667; C, 0.2667]
-            [C, 0.4; C, 0.6]
-            [C, 0.7333; C, 0.9333]
-        )],
-        '┇' => &[thick!(
-            [C, 0.0667; C, 0.2667]
-            [C, 0.4; C, 0.6]
-            [C, 0.7333; C, 0.9333]
-        )],
-        // xterm.js define ┊/┋ con un tramo de 0,3 a 0,55 (no simétrico).
-        '┊' => &[thin!(
-            [C, 0.05; C, 0.2]
-            [C, 0.3; C, 0.45; C, 0.55]
-            [C, 0.7; C, 0.95]
-        )],
-        '┋' => &[thick!(
-            [C, 0.05; C, 0.2]
-            [C, 0.3; C, 0.45; C, 0.55]
-            [C, 0.7; C, 0.95]
-        )],
-        // Esquinas redondeadas.
-        '╭' => &[Shape::Round([
-            (C, 1.0),
-            (C, ROUND_B),
-            (C, ROUND_B),
-            (C, C),
-            (1.0, C),
-        ])],
-        '╮' => &[Shape::Round([
-            (C, 1.0),
-            (C, ROUND_B),
-            (C, ROUND_B),
-            (C, C),
-            (0.0, C),
-        ])],
-        '╯' => &[Shape::Round([
-            (C, 0.0),
-            (C, ROUND_T),
-            (C, ROUND_T),
-            (C, C),
-            (0.0, C),
-        ])],
-        '╰' => &[Shape::Round([
-            (C, 0.0),
-            (C, ROUND_T),
-            (C, ROUND_T),
-            (C, C),
-            (1.0, C),
-        ])],
-        // Bloques (en octavos).
-        '▀' => &[Shape::Blocks(&[(0, 0, 8, 4)])],
-        '▁' => &[Shape::Blocks(&[(0, 7, 8, 1)])],
-        '▂' => &[Shape::Blocks(&[(0, 6, 8, 2)])],
-        '▃' => &[Shape::Blocks(&[(0, 5, 8, 3)])],
-        '▄' => &[Shape::Blocks(&[(0, 4, 8, 4)])],
-        '▅' => &[Shape::Blocks(&[(0, 3, 8, 5)])],
-        '▆' => &[Shape::Blocks(&[(0, 2, 8, 6)])],
-        '▇' => &[Shape::Blocks(&[(0, 1, 8, 7)])],
-        '█' => &[Shape::Blocks(&[(0, 0, 8, 8)])],
-        '▉' => &[Shape::Blocks(&[(0, 0, 7, 8)])],
-        '▊' => &[Shape::Blocks(&[(0, 0, 6, 8)])],
-        '▋' => &[Shape::Blocks(&[(0, 0, 5, 8)])],
-        '▌' => &[Shape::Blocks(&[(0, 0, 4, 8)])],
-        '▍' => &[Shape::Blocks(&[(0, 0, 3, 8)])],
-        '▎' => &[Shape::Blocks(&[(0, 0, 2, 8)])],
-        '▏' => &[Shape::Blocks(&[(0, 0, 1, 8)])],
-        '▐' => &[Shape::Blocks(&[(4, 0, 4, 8)])],
-        '░' => &[Shape::Shade(0.25)],
-        '▒' => &[Shape::Shade(0.5)],
-        '▓' => &[Shape::Shade(0.75)],
-        '▔' => &[Shape::Blocks(&[(0, 0, 8, 1)])],
-        '▕' => &[Shape::Blocks(&[(7, 0, 1, 8)])],
-        '▖' => &[Shape::Blocks(&[(0, 4, 4, 4)])],
-        '▗' => &[Shape::Blocks(&[(4, 4, 4, 4)])],
-        '▘' => &[Shape::Blocks(&[(0, 0, 4, 4)])],
-        '▙' => &[Shape::Blocks(&[(0, 0, 4, 8), (0, 4, 8, 4)])],
-        '▚' => &[Shape::Blocks(&[(0, 0, 4, 4), (4, 4, 4, 4)])],
-        '▛' => &[Shape::Blocks(&[(0, 0, 4, 8), (4, 0, 4, 4)])],
-        '▜' => &[Shape::Blocks(&[(0, 0, 8, 4), (4, 0, 4, 8)])],
-        '▝' => &[Shape::Blocks(&[(4, 0, 4, 4)])],
-        '▞' => &[Shape::Blocks(&[(4, 0, 4, 4), (0, 4, 4, 4)])],
-        '▟' => &[Shape::Blocks(&[(4, 0, 4, 8), (0, 4, 8, 4)])],
-        // Powerline: flechas rellenas (tipo 0) y contornos (tipo 1).
-        '\u{E0B0}' => &[Shape::Fill([(0.0, 0.0), (PL_TIP, C), (0.0, 1.0)])],
-        '\u{E0B1}' => &[Shape::Lines(
-            POWERLINE_STROKE,
-            &[&[(0.0, PL_CUT), (PL_IN, C), (0.0, PL_CUT_LOW)]],
-        )],
-        '\u{E0B2}' => &[Shape::Fill([(1.0, 0.0), (POWERLINE_PAD, C), (1.0, 1.0)])],
-        '\u{E0B3}' => &[Shape::Lines(
-            POWERLINE_STROKE,
-            &[&[(1.0, PL_CUT), (1.0 - PL_IN, C), (1.0, PL_CUT_LOW)]],
-        )],
-        _ => return None,
-    };
-    Some(shapes)
+const fn rect(x: u8, y: u8, w: u8, h: u8) -> BoxOp {
+    BoxOp::Rect {
+        x: x as f32 / 8.0,
+        y: y as f32 / 8.0,
+        w: w as f32 / 8.0,
+        h: h as f32 / 8.0,
+    }
 }
 
-/// Primer código de cada bloque de la tabla y cuántos glifos tiene.
-const BOX_FIRST: u32 = 0x2500;
-const BOX_COUNT: u32 = 0xA0;
-const POWERLINE_FIRST: u32 = 0xE0B0;
-const POWERLINE_COUNT: u32 = 4;
-
-/// Posición de `c` en la tabla, si es un glifo dibujado.
-fn slot(c: char) -> Option<usize> {
-    let code = u32::from(c);
-    let index = if (BOX_FIRST..BOX_FIRST + BOX_COUNT).contains(&code) {
-        code - BOX_FIRST
-    } else if (POWERLINE_FIRST..POWERLINE_FIRST + POWERLINE_COUNT).contains(&code) {
-        BOX_COUNT + code - POWERLINE_FIRST
-    } else {
-        return None;
-    };
-    usize::try_from(index).ok()
+const fn powerline(d: &'static str, stroke: bool, left_pad: u8, right_pad: u8) -> BoxOp {
+    BoxOp::Powerline {
+        d,
+        stroke,
+        left_pad,
+        right_pad,
+    }
 }
 
-/// Operaciones de cada glifo, construidas una sola vez.
-static TABLE: OnceLock<Vec<Box<[BoxOp]>>> = OnceLock::new();
-
-fn build_table() -> Vec<Box<[BoxOp]>> {
-    (BOX_FIRST..BOX_FIRST + BOX_COUNT)
-        .chain(POWERLINE_FIRST..POWERLINE_FIRST + POWERLINE_COUNT)
-        .map(|code| {
-            let mut ops = Vec::new();
-            if let Some(shapes) = char::from_u32(code).and_then(spec) {
-                for shape in shapes {
-                    push_shape(&mut ops, shape);
-                }
-            }
-            ops.into_boxed_slice()
-        })
-        .collect()
+/// Lista estática de operaciones (las llamadas `const fn` necesitan un
+/// contexto constante para vivir en `'static`).
+macro_rules! ops {
+    ($($op:expr),+ $(,)?) => {{
+        const OPS: &[BoxOp] = &[$($op),+];
+        OPS
+    }};
 }
+
+/// Máscaras de `patternCharacterDefinitions` (cobertura 12,5 %, 25 %, 75 %).
+const SHADE_LIGHT: &[&[u8]] = &[&[1, 0, 0, 0], &[0, 0, 0, 0], &[0, 0, 1, 0], &[0, 0, 0, 0]];
+const SHADE_MEDIUM: &[&[u8]] = &[&[1, 0], &[0, 0], &[0, 1], &[0, 0]];
+const SHADE_DARK: &[&[u8]] = &[&[0, 1], &[1, 1], &[1, 0], &[1, 1]];
 
 /// Cómo dibuja xterm.js 5.5.0 el carácter `c` con `customGlyphs`, o `None`
-/// si lo pinta la fuente.
+/// si lo pinta la fuente. Mismo orden de búsqueda que `tryDrawCustomChar`:
+/// bloques, tramas, cajas, powerline.
 pub fn box_ops(c: char) -> Option<&'static [BoxOp]> {
-    let index = slot(c)?;
-    let ops = TABLE.get_or_init(build_table).get(index)?;
-    (!ops.is_empty()).then_some(&**ops)
+    let ops: &'static [BoxOp] = match c {
+        // Tramas.
+        '░' => ops![BoxOp::Pattern(SHADE_LIGHT)],
+        '▒' => ops![BoxOp::Pattern(SHADE_MEDIUM)],
+        '▓' => ops![BoxOp::Pattern(SHADE_DARK)],
+        // Alias de `powerlineDefinitions`.
+        '\u{E0BB}' => return box_ops('\u{E0BD}'),
+        '\u{E0BF}' => return box_ops('\u{E0B9}'),
+        // Tablas copiadas del bundle.
+        '─' => ops![stroke(1, "M0,.5 L1,.5")],
+        '━' => ops![stroke(3, "M0,.5 L1,.5")],
+        '│' => ops![stroke(1, "M.5,0 L.5,1")],
+        '┃' => ops![stroke(3, "M.5,0 L.5,1")],
+        '┌' => ops![stroke(1, "M0.5,1 L.5,.5 L1,.5")],
+        '┏' => ops![stroke(3, "M0.5,1 L.5,.5 L1,.5")],
+        '┐' => ops![stroke(1, "M0,.5 L.5,.5 L.5,1")],
+        '┓' => ops![stroke(3, "M0,.5 L.5,.5 L.5,1")],
+        '└' => ops![stroke(1, "M.5,0 L.5,.5 L1,.5")],
+        '┗' => ops![stroke(3, "M.5,0 L.5,.5 L1,.5")],
+        '┘' => ops![stroke(1, "M.5,0 L.5,.5 L0,.5")],
+        '┛' => ops![stroke(3, "M.5,0 L.5,.5 L0,.5")],
+        '├' => ops![stroke(1, "M.5,0 L.5,1 M.5,.5 L1,.5")],
+        '┣' => ops![stroke(3, "M.5,0 L.5,1 M.5,.5 L1,.5")],
+        '┤' => ops![stroke(1, "M.5,0 L.5,1 M.5,.5 L0,.5")],
+        '┫' => ops![stroke(3, "M.5,0 L.5,1 M.5,.5 L0,.5")],
+        '┬' => ops![stroke(1, "M0,.5 L1,.5 M.5,.5 L.5,1")],
+        '┳' => ops![stroke(3, "M0,.5 L1,.5 M.5,.5 L.5,1")],
+        '┴' => ops![stroke(1, "M0,.5 L1,.5 M.5,.5 L.5,0")],
+        '┻' => ops![stroke(3, "M0,.5 L1,.5 M.5,.5 L.5,0")],
+        '┼' => ops![stroke(1, "M0,.5 L1,.5 M.5,0 L.5,1")],
+        '╋' => ops![stroke(3, "M0,.5 L1,.5 M.5,0 L.5,1")],
+        '╴' => ops![stroke(1, "M.5,.5 L0,.5")],
+        '╸' => ops![stroke(3, "M.5,.5 L0,.5")],
+        '╵' => ops![stroke(1, "M.5,.5 L.5,0")],
+        '╹' => ops![stroke(3, "M.5,.5 L.5,0")],
+        '╶' => ops![stroke(1, "M.5,.5 L1,.5")],
+        '╺' => ops![stroke(3, "M.5,.5 L1,.5")],
+        '╷' => ops![stroke(1, "M.5,.5 L.5,1")],
+        '╻' => ops![stroke(3, "M.5,.5 L.5,1")],
+        '═' => ops![stroke(1, "M0,{.5-t} L1,{.5-t} M0,{.5+t} L1,{.5+t}")],
+        '║' => ops![stroke(1, "M{.5-e},0 L{.5-e},1 M{.5+e},0 L{.5+e},1")],
+        '╒' => ops![stroke(1, "M.5,1 L.5,{.5-t} L1,{.5-t} M.5,{.5+t} L1,{.5+t}")],
+        '╓' => ops![stroke(1, "M{.5-e},1 L{.5-e},.5 L1,.5 M{.5+e},.5 L{.5+e},1")],
+        '╔' => ops![stroke(
+            1,
+            "M1,{.5-t} L{.5-e},{.5-t} L{.5-e},1 M1,{.5+t} L{.5+e},{.5+t} L{.5+e},1"
+        )],
+        '╕' => ops![stroke(1, "M0,{.5-t} L.5,{.5-t} L.5,1 M0,{.5+t} L.5,{.5+t}")],
+        '╖' => ops![stroke(1, "M{.5+e},1 L{.5+e},.5 L0,.5 M{.5-e},.5 L{.5-e},1")],
+        '╗' => ops![stroke(
+            1,
+            "M0,{.5+t} L{.5-e},{.5+t} L{.5-e},1 M0,{.5-t} L{.5+e},{.5-t} L{.5+e},1"
+        )],
+        '╘' => ops![stroke(1, "M.5,0 L.5,{.5+t} L1,{.5+t} M.5,{.5-t} L1,{.5-t}")],
+        '╙' => ops![stroke(1, "M1,.5 L{.5-e},.5 L{.5-e},0 M{.5+e},.5 L{.5+e},0")],
+        '╚' => ops![stroke(
+            1,
+            "M1,{.5-t} L{.5+e},{.5-t} L{.5+e},0 M1,{.5+t} L{.5-e},{.5+t} L{.5-e},0"
+        )],
+        '╛' => ops![stroke(1, "M0,{.5+t} L.5,{.5+t} L.5,0 M0,{.5-t} L.5,{.5-t}")],
+        '╜' => ops![stroke(1, "M0,.5 L{.5+e},.5 L{.5+e},0 M{.5-e},.5 L{.5-e},0")],
+        '╝' => ops![stroke(
+            1,
+            "M0,{.5-t} L{.5-e},{.5-t} L{.5-e},0 M0,{.5+t} L{.5+e},{.5+t} L{.5+e},0"
+        )],
+        '╞' => ops![stroke(
+            1,
+            "M.5,0 L.5,1 M.5,{.5-t} L1,{.5-t} M.5,{.5+t} L1,{.5+t}"
+        )],
+        '╟' => ops![stroke(
+            1,
+            "M{.5-e},0 L{.5-e},1 M{.5+e},0 L{.5+e},1 M{.5+e},.5 L1,.5"
+        )],
+        '╠' => ops![stroke(
+            1,
+            "M{.5-e},0 L{.5-e},1 M1,{.5+t} L{.5+e},{.5+t} L{.5+e},1 M1,{.5-t} L{.5+e},{.5-t} L{.5+e},0"
+        )],
+        '╡' => ops![stroke(
+            1,
+            "M.5,0 L.5,1 M0,{.5-t} L.5,{.5-t} M0,{.5+t} L.5,{.5+t}"
+        )],
+        '╢' => ops![stroke(
+            1,
+            "M0,.5 L{.5-e},.5 M{.5-e},0 L{.5-e},1 M{.5+e},0 L{.5+e},1"
+        )],
+        '╣' => ops![stroke(
+            1,
+            "M{.5+e},0 L{.5+e},1 M0,{.5+t} L{.5-e},{.5+t} L{.5-e},1 M0,{.5-t} L{.5-e},{.5-t} L{.5-e},0"
+        )],
+        '╤' => ops![stroke(
+            1,
+            "M0,{.5-t} L1,{.5-t} M0,{.5+t} L1,{.5+t} M.5,{.5+t} L.5,1"
+        )],
+        '╥' => ops![stroke(
+            1,
+            "M0,.5 L1,.5 M{.5-e},.5 L{.5-e},1 M{.5+e},.5 L{.5+e},1"
+        )],
+        '╦' => ops![stroke(
+            1,
+            "M0,{.5-t} L1,{.5-t} M0,{.5+t} L{.5-e},{.5+t} L{.5-e},1 M1,{.5+t} L{.5+e},{.5+t} L{.5+e},1"
+        )],
+        '╧' => ops![stroke(
+            1,
+            "M.5,0 L.5,{.5-t} M0,{.5-t} L1,{.5-t} M0,{.5+t} L1,{.5+t}"
+        )],
+        '╨' => ops![stroke(
+            1,
+            "M0,.5 L1,.5 M{.5-e},.5 L{.5-e},0 M{.5+e},.5 L{.5+e},0"
+        )],
+        '╩' => ops![stroke(
+            1,
+            "M0,{.5+t} L1,{.5+t} M0,{.5-t} L{.5-e},{.5-t} L{.5-e},0 M1,{.5-t} L{.5+e},{.5-t} L{.5+e},0"
+        )],
+        '╪' => ops![stroke(
+            1,
+            "M.5,0 L.5,1 M0,{.5-t} L1,{.5-t} M0,{.5+t} L1,{.5+t}"
+        )],
+        '╫' => ops![stroke(
+            1,
+            "M0,.5 L1,.5 M{.5-e},0 L{.5-e},1 M{.5+e},0 L{.5+e},1"
+        )],
+        '╬' => ops![stroke(
+            1,
+            "M0,{.5+t} L{.5-e},{.5+t} L{.5-e},1 M1,{.5+t} L{.5+e},{.5+t} L{.5+e},1 M0,{.5-t} L{.5-e},{.5-t} L{.5-e},0 M1,{.5-t} L{.5+e},{.5-t} L{.5+e},0"
+        )],
+        '╱' => ops![stroke(1, "M1,0 L0,1")],
+        '╲' => ops![stroke(1, "M0,0 L1,1")],
+        '╳' => ops![stroke(1, "M1,0 L0,1 M0,0 L1,1")],
+        '╼' => ops![stroke(1, "M.5,.5 L0,.5"), stroke(3, "M.5,.5 L1,.5")],
+        '╽' => ops![stroke(1, "M.5,.5 L.5,0"), stroke(3, "M.5,.5 L.5,1")],
+        '╾' => ops![stroke(1, "M.5,.5 L1,.5"), stroke(3, "M.5,.5 L0,.5")],
+        '╿' => ops![stroke(1, "M.5,.5 L.5,1"), stroke(3, "M.5,.5 L.5,0")],
+        '┍' => ops![stroke(1, "M.5,.5 L.5,1"), stroke(3, "M.5,.5 L1,.5")],
+        '┎' => ops![stroke(1, "M.5,.5 L1,.5"), stroke(3, "M.5,.5 L.5,1")],
+        '┑' => ops![stroke(1, "M.5,.5 L.5,1"), stroke(3, "M.5,.5 L0,.5")],
+        '┒' => ops![stroke(1, "M.5,.5 L0,.5"), stroke(3, "M.5,.5 L.5,1")],
+        '┕' => ops![stroke(1, "M.5,.5 L.5,0"), stroke(3, "M.5,.5 L1,.5")],
+        '┖' => ops![stroke(1, "M.5,.5 L1,.5"), stroke(3, "M.5,.5 L.5,0")],
+        '┙' => ops![stroke(1, "M.5,.5 L.5,0"), stroke(3, "M.5,.5 L0,.5")],
+        '┚' => ops![stroke(1, "M.5,.5 L0,.5"), stroke(3, "M.5,.5 L.5,0")],
+        '┝' => ops![stroke(1, "M.5,0 L.5,1"), stroke(3, "M.5,.5 L1,.5")],
+        '┞' => ops![stroke(1, "M0.5,1 L.5,.5 L1,.5"), stroke(3, "M.5,.5 L.5,0")],
+        '┟' => ops![stroke(1, "M.5,0 L.5,.5 L1,.5"), stroke(3, "M.5,.5 L.5,1")],
+        '┠' => ops![stroke(1, "M.5,.5 L1,.5"), stroke(3, "M.5,0 L.5,1")],
+        '┡' => ops![stroke(1, "M.5,.5 L.5,1"), stroke(3, "M.5,0 L.5,.5 L1,.5")],
+        '┢' => ops![stroke(1, "M.5,.5 L.5,0"), stroke(3, "M0.5,1 L.5,.5 L1,.5")],
+        '┥' => ops![stroke(1, "M.5,0 L.5,1"), stroke(3, "M.5,.5 L0,.5")],
+        '┦' => ops![stroke(1, "M0,.5 L.5,.5 L.5,1"), stroke(3, "M.5,.5 L.5,0")],
+        '┧' => ops![stroke(1, "M.5,0 L.5,.5 L0,.5"), stroke(3, "M.5,.5 L.5,1")],
+        '┨' => ops![stroke(1, "M.5,.5 L0,.5"), stroke(3, "M.5,0 L.5,1")],
+        '┩' => ops![stroke(1, "M.5,.5 L.5,1"), stroke(3, "M.5,0 L.5,.5 L0,.5")],
+        '┪' => ops![stroke(1, "M.5,.5 L.5,0"), stroke(3, "M0,.5 L.5,.5 L.5,1")],
+        '┭' => ops![stroke(1, "M0.5,1 L.5,.5 L1,.5"), stroke(3, "M.5,.5 L0,.5")],
+        '┮' => ops![stroke(1, "M0,.5 L.5,.5 L.5,1"), stroke(3, "M.5,.5 L1,.5")],
+        '┯' => ops![stroke(1, "M.5,.5 L.5,1"), stroke(3, "M0,.5 L1,.5")],
+        '┰' => ops![stroke(1, "M0,.5 L1,.5"), stroke(3, "M.5,.5 L.5,1")],
+        '┱' => ops![stroke(1, "M.5,.5 L1,.5"), stroke(3, "M0,.5 L.5,.5 L.5,1")],
+        '┲' => ops![stroke(1, "M.5,.5 L0,.5"), stroke(3, "M0.5,1 L.5,.5 L1,.5")],
+        '┵' => ops![stroke(1, "M.5,0 L.5,.5 L1,.5"), stroke(3, "M.5,.5 L0,.5")],
+        '┶' => ops![stroke(1, "M.5,0 L.5,.5 L0,.5"), stroke(3, "M.5,.5 L1,.5")],
+        '┷' => ops![stroke(1, "M.5,.5 L.5,0"), stroke(3, "M0,.5 L1,.5")],
+        '┸' => ops![stroke(1, "M0,.5 L1,.5"), stroke(3, "M.5,.5 L.5,0")],
+        '┹' => ops![stroke(1, "M.5,.5 L1,.5"), stroke(3, "M.5,0 L.5,.5 L0,.5")],
+        '┺' => ops![stroke(1, "M.5,.5 L0,.5"), stroke(3, "M.5,0 L.5,.5 L1,.5")],
+        '┽' => ops![
+            stroke(1, "M.5,0 L.5,1 M.5,.5 L1,.5"),
+            stroke(3, "M.5,.5 L0,.5")
+        ],
+        '┾' => ops![
+            stroke(1, "M.5,0 L.5,1 M.5,.5 L0,.5"),
+            stroke(3, "M.5,.5 L1,.5")
+        ],
+        '┿' => ops![stroke(1, "M.5,0 L.5,1"), stroke(3, "M0,.5 L1,.5")],
+        '╀' => ops![
+            stroke(1, "M0,.5 L1,.5 M.5,.5 L.5,1"),
+            stroke(3, "M.5,.5 L.5,0")
+        ],
+        '╁' => ops![
+            stroke(1, "M.5,.5 L.5,0 M0,.5 L1,.5"),
+            stroke(3, "M.5,.5 L.5,1")
+        ],
+        '╂' => ops![stroke(1, "M0,.5 L1,.5"), stroke(3, "M.5,0 L.5,1")],
+        '╃' => ops![
+            stroke(1, "M0.5,1 L.5,.5 L1,.5"),
+            stroke(3, "M.5,0 L.5,.5 L0,.5")
+        ],
+        '╄' => ops![
+            stroke(1, "M0,.5 L.5,.5 L.5,1"),
+            stroke(3, "M.5,0 L.5,.5 L1,.5")
+        ],
+        '╅' => ops![
+            stroke(1, "M.5,0 L.5,.5 L1,.5"),
+            stroke(3, "M0,.5 L.5,.5 L.5,1")
+        ],
+        '╆' => ops![
+            stroke(1, "M.5,0 L.5,.5 L0,.5"),
+            stroke(3, "M0.5,1 L.5,.5 L1,.5")
+        ],
+        '╇' => ops![
+            stroke(1, "M.5,.5 L.5,1"),
+            stroke(3, "M.5,.5 L.5,0 M0,.5 L1,.5")
+        ],
+        '╈' => ops![
+            stroke(1, "M.5,.5 L.5,0"),
+            stroke(3, "M0,.5 L1,.5 M.5,.5 L.5,1")
+        ],
+        '╉' => ops![
+            stroke(1, "M.5,.5 L1,.5"),
+            stroke(3, "M.5,0 L.5,1 M.5,.5 L0,.5")
+        ],
+        '╊' => ops![
+            stroke(1, "M.5,.5 L0,.5"),
+            stroke(3, "M.5,0 L.5,1 M.5,.5 L1,.5")
+        ],
+        '╌' => ops![stroke(1, "M.1,.5 L.4,.5 M.6,.5 L.9,.5")],
+        '╍' => ops![stroke(3, "M.1,.5 L.4,.5 M.6,.5 L.9,.5")],
+        '┄' => ops![stroke(
+            1,
+            "M.0667,.5 L.2667,.5 M.4,.5 L.6,.5 M.7333,.5 L.9333,.5"
+        )],
+        '┅' => ops![stroke(
+            3,
+            "M.0667,.5 L.2667,.5 M.4,.5 L.6,.5 M.7333,.5 L.9333,.5"
+        )],
+        '┈' => ops![stroke(
+            1,
+            "M.05,.5 L.2,.5 M.3,.5 L.45,.5 M.55,.5 L.7,.5 M.8,.5 L.95,.5"
+        )],
+        '┉' => ops![stroke(
+            3,
+            "M.05,.5 L.2,.5 M.3,.5 L.45,.5 M.55,.5 L.7,.5 M.8,.5 L.95,.5"
+        )],
+        '╎' => ops![stroke(1, "M.5,.1 L.5,.4 M.5,.6 L.5,.9")],
+        '╏' => ops![stroke(3, "M.5,.1 L.5,.4 M.5,.6 L.5,.9")],
+        '┆' => ops![stroke(
+            1,
+            "M.5,.0667 L.5,.2667 M.5,.4 L.5,.6 M.5,.7333 L.5,.9333"
+        )],
+        '┇' => ops![stroke(
+            3,
+            "M.5,.0667 L.5,.2667 M.5,.4 L.5,.6 M.5,.7333 L.5,.9333"
+        )],
+        '┊' => ops![stroke(
+            1,
+            "M.5,.05 L.5,.2 M.5,.3 L.5,.45 L.5,.55 M.5,.7 L.5,.95"
+        )],
+        '┋' => ops![stroke(
+            3,
+            "M.5,.05 L.5,.2 M.5,.3 L.5,.45 L.5,.55 M.5,.7 L.5,.95"
+        )],
+        '╭' => ops![stroke(
+            1,
+            "M.5,1 L.5,{.5+t/.15*.5} C.5,{.5+t/.15*.5},.5,.5,1,.5"
+        )],
+        '╮' => ops![stroke(
+            1,
+            "M.5,1 L.5,{.5+t/.15*.5} C.5,{.5+t/.15*.5},.5,.5,0,.5"
+        )],
+        '╯' => ops![stroke(
+            1,
+            "M.5,0 L.5,{.5-t/.15*.5} C.5,{.5-t/.15*.5},.5,.5,0,.5"
+        )],
+        '╰' => ops![stroke(
+            1,
+            "M.5,0 L.5,{.5-t/.15*.5} C.5,{.5-t/.15*.5},.5,.5,1,.5"
+        )],
+        '▀' => ops![rect(0, 0, 8, 4)],
+        '▁' => ops![rect(0, 7, 8, 1)],
+        '▂' => ops![rect(0, 6, 8, 2)],
+        '▃' => ops![rect(0, 5, 8, 3)],
+        '▄' => ops![rect(0, 4, 8, 4)],
+        '▅' => ops![rect(0, 3, 8, 5)],
+        '▆' => ops![rect(0, 2, 8, 6)],
+        '▇' => ops![rect(0, 1, 8, 7)],
+        '█' => ops![rect(0, 0, 8, 8)],
+        '▉' => ops![rect(0, 0, 7, 8)],
+        '▊' => ops![rect(0, 0, 6, 8)],
+        '▋' => ops![rect(0, 0, 5, 8)],
+        '▌' => ops![rect(0, 0, 4, 8)],
+        '▍' => ops![rect(0, 0, 3, 8)],
+        '▎' => ops![rect(0, 0, 2, 8)],
+        '▏' => ops![rect(0, 0, 1, 8)],
+        '▐' => ops![rect(4, 0, 4, 8)],
+        '▔' => ops![rect(0, 0, 8, 1)],
+        '▕' => ops![rect(7, 0, 1, 8)],
+        '▖' => ops![rect(0, 4, 4, 4)],
+        '▗' => ops![rect(4, 4, 4, 4)],
+        '▘' => ops![rect(0, 0, 4, 4)],
+        '▙' => ops![rect(0, 0, 4, 8), rect(0, 4, 8, 4)],
+        '▚' => ops![rect(0, 0, 4, 4), rect(4, 4, 4, 4)],
+        '▛' => ops![rect(0, 0, 4, 8), rect(4, 0, 4, 4)],
+        '▜' => ops![rect(0, 0, 8, 4), rect(4, 0, 4, 8)],
+        '▝' => ops![rect(4, 0, 4, 4)],
+        '▞' => ops![rect(4, 0, 4, 4), rect(0, 4, 4, 4)],
+        '▟' => ops![rect(4, 0, 4, 8), rect(0, 4, 8, 4)],
+        '\u{1FB70}' => ops![rect(1, 0, 1, 8)],
+        '\u{1FB71}' => ops![rect(2, 0, 1, 8)],
+        '\u{1FB72}' => ops![rect(3, 0, 1, 8)],
+        '\u{1FB73}' => ops![rect(4, 0, 1, 8)],
+        '\u{1FB74}' => ops![rect(5, 0, 1, 8)],
+        '\u{1FB75}' => ops![rect(6, 0, 1, 8)],
+        '\u{1FB76}' => ops![rect(0, 1, 8, 1)],
+        '\u{1FB77}' => ops![rect(0, 2, 8, 1)],
+        '\u{1FB78}' => ops![rect(0, 3, 8, 1)],
+        '\u{1FB79}' => ops![rect(0, 4, 8, 1)],
+        '\u{1FB7A}' => ops![rect(0, 5, 8, 1)],
+        '\u{1FB7B}' => ops![rect(0, 6, 8, 1)],
+        '\u{1FB7C}' => ops![rect(0, 0, 1, 8), rect(0, 7, 8, 1)],
+        '\u{1FB7D}' => ops![rect(0, 0, 1, 8), rect(0, 0, 8, 1)],
+        '\u{1FB7E}' => ops![rect(7, 0, 1, 8), rect(0, 0, 8, 1)],
+        '\u{1FB7F}' => ops![rect(7, 0, 1, 8), rect(0, 7, 8, 1)],
+        '\u{1FB80}' => ops![rect(0, 0, 8, 1), rect(0, 7, 8, 1)],
+        '\u{1FB81}' => ops![
+            rect(0, 0, 8, 1),
+            rect(0, 2, 8, 1),
+            rect(0, 4, 8, 1),
+            rect(0, 7, 8, 1)
+        ],
+        '\u{1FB82}' => ops![rect(0, 0, 8, 2)],
+        '\u{1FB83}' => ops![rect(0, 0, 8, 3)],
+        '\u{1FB84}' => ops![rect(0, 0, 8, 5)],
+        '\u{1FB85}' => ops![rect(0, 0, 8, 6)],
+        '\u{1FB86}' => ops![rect(0, 0, 8, 7)],
+        '\u{1FB87}' => ops![rect(6, 0, 2, 8)],
+        '\u{1FB88}' => ops![rect(5, 0, 3, 8)],
+        '\u{1FB89}' => ops![rect(3, 0, 5, 8)],
+        '\u{1FB8A}' => ops![rect(2, 0, 6, 8)],
+        '\u{1FB8B}' => ops![rect(1, 0, 7, 8)],
+        '\u{1FB95}' => ops![
+            rect(0, 0, 2, 2),
+            rect(4, 0, 2, 2),
+            rect(2, 2, 2, 2),
+            rect(6, 2, 2, 2),
+            rect(0, 4, 2, 2),
+            rect(4, 4, 2, 2),
+            rect(2, 6, 2, 2),
+            rect(6, 6, 2, 2)
+        ],
+        '\u{1FB96}' => ops![
+            rect(2, 0, 2, 2),
+            rect(6, 0, 2, 2),
+            rect(0, 2, 2, 2),
+            rect(4, 2, 2, 2),
+            rect(2, 4, 2, 2),
+            rect(6, 4, 2, 2),
+            rect(0, 6, 2, 2),
+            rect(4, 6, 2, 2)
+        ],
+        '\u{1FB97}' => ops![rect(0, 2, 8, 2), rect(0, 6, 8, 2)],
+        '\u{E0B0}' => ops![powerline("M0,0 L1,.5 L0,1", false, 0, 2)],
+        '\u{E0B1}' => ops![powerline("M-1,-.5 L1,.5 L-1,1.5", true, 1, 1)],
+        '\u{E0B2}' => ops![powerline("M1,0 L0,.5 L1,1", false, 2, 0)],
+        '\u{E0B3}' => ops![powerline("M2,-.5 L0,.5 L2,1.5", true, 1, 1)],
+        '\u{E0B4}' => ops![powerline(
+            "M0,0 L0,1 C0.552,1,1,0.776,1,.5 C1,0.224,0.552,0,0,0",
+            false,
+            0,
+            1
+        )],
+        '\u{E0B5}' => ops![powerline(
+            "M.2,1 C.422,1,.8,.826,.78,.5 C.8,.174,0.422,0,.2,0",
+            true,
+            0,
+            1
+        )],
+        '\u{E0B6}' => ops![powerline(
+            "M1,0 L1,1 C0.448,1,0,0.776,0,.5 C0,0.224,0.448,0,1,0",
+            false,
+            1,
+            0
+        )],
+        '\u{E0B7}' => ops![powerline(
+            "M.8,1 C0.578,1,0.2,.826,.22,.5 C0.2,0.174,0.578,0,0.8,0",
+            true,
+            1,
+            0
+        )],
+        '\u{E0B8}' => ops![powerline("M-.5,-.5 L1.5,1.5 L-.5,1.5", false, 0, 0)],
+        '\u{E0B9}' => ops![powerline("M-.5,-.5 L1.5,1.5", true, 1, 1)],
+        '\u{E0BA}' => ops![powerline("M1.5,-.5 L-.5,1.5 L1.5,1.5", false, 0, 0)],
+        '\u{E0BC}' => ops![powerline("M1.5,-.5 L-.5,1.5 L-.5,-.5", false, 0, 0)],
+        '\u{E0BD}' => ops![powerline("M1.5,-.5 L-.5,1.5", true, 1, 1)],
+        '\u{E0BE}' => ops![powerline("M-.5,-.5 L1.5,1.5 L1.5,-.5", false, 0, 0)],
+        _ => return None,
+    };
+    Some(ops)
 }
 
-fn push_shape(out: &mut Vec<BoxOp>, shape: &Shape) {
-    match shape {
-        Shape::Lines(w, polylines) => {
-            for points in polylines.iter() {
-                if is_axis_aligned(points) {
-                    push_axis_lines(out, *w, points);
-                } else {
-                    push_stroke(out, *w, points, None);
+/// Variables de las funciones de `boxDrawingDefinitions`: xterm.js las
+/// llama con `e = .15` y `t = .15 / deviceCellHeight · deviceCellWidth`.
+struct Vars {
+    t: f64,
+}
+
+/// `e` de xterm.js.
+const E: f64 = 0.15;
+
+impl Vars {
+    /// Valor de una variable `{…}` con el mismo orden de operaciones que el
+    /// JavaScript original (los resultados en coma flotante coinciden).
+    fn eval(&self, expr: &str) -> Option<f64> {
+        let t = self.t;
+        Some(match expr {
+            ".5-e" => 0.5 - E,
+            ".5+e" => 0.5 + E,
+            ".5-t" => 0.5 - t,
+            ".5+t" => 0.5 + t,
+            ".5-t/.15*.5" => 0.5 - t / 0.15 * 0.5,
+            ".5+t/.15*.5" => 0.5 + t / 0.15 * 0.5,
+            _ => return None,
+        })
+    }
+}
+
+/// `Math.round` de JavaScript: al entero más cercano, empates hacia +∞.
+fn js_round(v: f64) -> f64 {
+    let floor = v.floor();
+    if v - floor >= 0.5 { floor + 1.0 } else { floor }
+}
+
+/// Transformación de coordenadas de `h()` en `CustomGlyphs.ts`.
+#[derive(Clone, Copy)]
+struct Place {
+    cell_w: f64,
+    cell_h: f64,
+    /// Ajuste al centro del píxel (cajas sí, powerline no).
+    snap: bool,
+    /// Márgenes izquierdo y derecho ya en píxeles de dispositivo.
+    left: f64,
+    right: f64,
+}
+
+impl Place {
+    fn x(&self, v: f64) -> f64 {
+        let mut c = v * (self.cell_w - self.left - self.right);
+        if self.snap && c != 0.0 {
+            c = (js_round(c + 0.5) - 0.5).min(self.cell_w).max(0.0);
+        }
+        c + self.left
+    }
+
+    fn y(&self, v: f64) -> f64 {
+        let mut c = v * self.cell_h;
+        if self.snap && c != 0.0 {
+            c = (js_round(c + 0.5) - 0.5).min(self.cell_h).max(0.0);
+        }
+        c
+    }
+}
+
+/// Número o variable de una coordenada (`parseFloat` acepta `.5` y `-.5`).
+fn coord(token: &str, vars: &Vars) -> Option<f64> {
+    match token.strip_prefix('{').and_then(|t| t.strip_suffix('}')) {
+        Some(expr) => vars.eval(expr),
+        None => token.parse::<f64>().ok(),
+    }
+}
+
+/// Recorre un trazo `M…L…C…` y añade sus órdenes. Devuelve las
+/// instrucciones que no entendió (xterm.js las salta con un aviso).
+fn push_path(out: &mut Vec<DrawOp>, d: &str, vars: &Vars, place: Place) -> usize {
+    let mut skipped = 0;
+    for instruction in d.split(' ') {
+        let mut chars = instruction.chars();
+        let Some(cmd) = chars.next() else {
+            skipped += 1;
+            continue;
+        };
+        let mut nums = [0.0_f64; 6];
+        let mut count = 0;
+        let mut ok = true;
+        for (i, token) in chars.as_str().split(',').enumerate() {
+            match (coord(token, vars), nums.get_mut(i)) {
+                (Some(v), Some(slot)) => {
+                    *slot = if i % 2 == 0 { place.x(v) } else { place.y(v) };
+                    count += 1;
                 }
+                _ => ok = false,
             }
         }
-        Shape::Round([start, p0, p1, p2, p3]) => {
-            let mut points = Vec::with_capacity(usize::from(CURVE_STEPS) + 2);
-            points.push(*start);
-            points.push(*p0);
-            for step in 1..=CURVE_STEPS {
-                let t = f32::from(step) / f32::from(CURVE_STEPS);
-                points.push(cubic(*p0, *p1, *p2, *p3, t));
+        let [a, b, c, e, f, g] = nums;
+        let op = match (cmd, count) {
+            ('M', 2) if ok => DrawOp::MoveTo { x: a, y: b },
+            ('L', 2) if ok => DrawOp::LineTo { x: a, y: b },
+            ('C', 6) if ok => DrawOp::CurveTo {
+                x1: a,
+                y1: b,
+                x2: c,
+                y2: e,
+                x: f,
+                y: g,
+            },
+            _ => {
+                skipped += 1;
+                continue;
             }
-            // El final usa la tangente exacta de la curva (`p3 − p2`): el
-            // extremo queda recto contra el borde de la celda.
-            push_stroke(out, THIN, &points, Some((p3.0 - p2.0, p3.1 - p2.1)));
-        }
-        Shape::Blocks(rects) => {
-            for &(x, y, w, h) in rects.iter() {
-                out.push(BoxOp::Rect {
-                    x: f32::from(x) / 8.0,
-                    y: f32::from(y) / 8.0,
-                    w: f32::from(w) / 8.0,
-                    h: f32::from(h) / 8.0,
-                    alpha: 1.0,
+        };
+        out.push(op);
+    }
+    skipped
+}
+
+/// Órdenes de canvas para pintar `c` en una celda de `metrics`, añadidas a
+/// `out` (no se vacía: quien pinta lo reutiliza). `false` si `c` lo pinta
+/// la fuente.
+pub fn draw_ops(c: char, metrics: &CellMetrics, out: &mut Vec<DrawOp>) -> bool {
+    let Some(ops) = box_ops(c) else {
+        return false;
+    };
+    push_ops(ops, metrics, out);
+    true
+}
+
+fn push_ops(ops: &[BoxOp], m: &CellMetrics, out: &mut Vec<DrawOp>) -> usize {
+    let vars = Vars {
+        t: 0.15 / m.cell_h * m.cell_w,
+    };
+    let mut skipped = 0;
+    for op in ops {
+        match *op {
+            BoxOp::Rect { x, y, w, h } => {
+                // `fillRect(x + a.x · (ancho/8), …)` con los octavos exactos.
+                let (eighth_w, eighth_h) = (m.cell_w / 8.0, m.cell_h / 8.0);
+                let eighths = |v: f32| f64::from(v) * 8.0;
+                out.push(DrawOp::FillRect {
+                    x: eighths(x) * eighth_w,
+                    y: eighths(y) * eighth_h,
+                    w: eighths(w) * eighth_w,
+                    h: eighths(h) * eighth_h,
+                });
+            }
+            BoxOp::Pattern(mask) => out.push(DrawOp::FillPattern { mask }),
+            BoxOp::Stroke { weight, d } => {
+                out.push(DrawOp::BeginPath);
+                let place = Place {
+                    cell_w: m.cell_w,
+                    cell_h: m.cell_h,
+                    snap: true,
+                    left: 0.0,
+                    right: 0.0,
+                };
+                skipped += push_path(out, d, &vars, place);
+                out.push(DrawOp::Stroke {
+                    line_width: m.dpr * f64::from(weight),
+                });
+            }
+            BoxOp::Powerline {
+                d,
+                stroke,
+                left_pad,
+                right_pad,
+            } => {
+                // `d = fontSize / 12`; márgenes `padding · (d / 2)` en px CSS.
+                let unit = m.font_size / 12.0;
+                let place = Place {
+                    cell_w: m.cell_w,
+                    cell_h: m.cell_h,
+                    snap: false,
+                    left: f64::from(left_pad) * (unit / 2.0) * m.dpr,
+                    right: f64::from(right_pad) * (unit / 2.0) * m.dpr,
+                };
+                out.push(DrawOp::ClipCell);
+                out.push(DrawOp::BeginPath);
+                skipped += push_path(out, d, &vars, place);
+                out.push(if stroke {
+                    DrawOp::Stroke {
+                        line_width: m.dpr * unit,
+                    }
+                } else {
+                    DrawOp::Fill
                 });
             }
         }
-        Shape::Shade(alpha) => out.push(BoxOp::Rect {
-            x: 0.0,
-            y: 0.0,
-            w: 1.0,
-            h: 1.0,
-            alpha: *alpha,
-        }),
-        Shape::Fill([a, b, c]) => push_tri(out, *a, *b, *c),
     }
-}
-
-fn cubic(p0: (f32, f32), p1: (f32, f32), p2: (f32, f32), p3: (f32, f32), t: f32) -> (f32, f32) {
-    let mt = 1.0 - t;
-    let (a, b, c, d) = (mt * mt * mt, 3.0 * mt * mt * t, 3.0 * mt * t * t, t * t * t);
-    (
-        a * p0.0 + b * p1.0 + c * p2.0 + d * p3.0,
-        a * p0.1 + b * p1.1 + c * p2.1 + d * p3.1,
-    )
-}
-
-fn is_axis_aligned(points: &[(f32, f32)]) -> bool {
-    points.windows(2).all(|pair| match pair {
-        [a, b] => a.0 == b.0 || a.1 == b.1,
-        _ => true,
-    })
-}
-
-/// Polilínea de tramos horizontales y verticales. En un vértice interior
-/// (una unión dentro del mismo subtrazo) los dos tramos se prolongan medio
-/// grosor, como la unión «miter» de xterm.js: sin eso la esquina queda con
-/// una muesca. Los extremos libres no se prolongan (`lineCap: butt`).
-fn push_axis_lines(out: &mut Vec<BoxOp>, w: f32, points: &[(f32, f32)]) {
-    let last = points.len().saturating_sub(2);
-    for (i, pair) in points.windows(2).enumerate() {
-        let [a, b] = pair else { continue };
-        let (joined_start, joined_end) = (i > 0, i < last);
-        if a.1 == b.1 {
-            // Medio grosor (fracción del alto) en fracción del ancho.
-            let ext = w / 2.0 / CELL_ASPECT;
-            let (x0, x1, ext0, ext1) = if a.0 <= b.0 {
-                (a.0, b.0, joined_start, joined_end)
-            } else {
-                (b.0, a.0, joined_end, joined_start)
-            };
-            out.push(BoxOp::HLine {
-                y: a.1,
-                x0: clamp01(if ext0 { x0 - ext } else { x0 }),
-                x1: clamp01(if ext1 { x1 + ext } else { x1 }),
-                w,
-            });
-        } else {
-            let ext = w / 2.0;
-            let (y0, y1, ext0, ext1) = if a.1 <= b.1 {
-                (a.1, b.1, joined_start, joined_end)
-            } else {
-                (b.1, a.1, joined_end, joined_start)
-            };
-            out.push(BoxOp::VLine {
-                x: a.0,
-                y0: clamp01(if ext0 { y0 - ext } else { y0 }),
-                y1: clamp01(if ext1 { y1 + ext } else { y1 }),
-                w,
-            });
-        }
-    }
-}
-
-fn clamp01(v: f32) -> f32 {
-    v.clamp(0.0, 1.0)
-}
-
-/// Trazo de grosor `w` (fracción del alto) a lo largo de una polilínea con
-/// tramos oblicuos, como triángulos. Se calcula en un espacio de píxeles
-/// cuadrados (`x · CELL_ASPECT`) para que el grosor no dependa de la
-/// dirección; uniones «miter» (acotadas) y extremos rectos. `end_dir` fija
-/// la dirección del último extremo (tangente de una curva).
-fn push_stroke(out: &mut Vec<BoxOp>, w: f32, points: &[(f32, f32)], end_dir: Option<(f32, f32)>) {
-    let mut square: Vec<(f32, f32)> = Vec::with_capacity(points.len());
-    for &(x, y) in points {
-        let p = (x * CELL_ASPECT, y);
-        if square.last() != Some(&p) {
-            square.push(p);
-        }
-    }
-    let half = w / 2.0;
-    let count = square.len();
-    let mut sides: Vec<((f32, f32), (f32, f32))> = Vec::with_capacity(count);
-    for (i, &p) in square.iter().enumerate() {
-        let prev = i.checked_sub(1).and_then(|j| square.get(j));
-        let next = square.get(i + 1);
-        let offset = match (prev, next) {
-            (None, Some(n)) => scale(normal(sub(*n, p)), half),
-            (Some(q), None) => {
-                let dir = end_dir.map_or_else(|| sub(p, *q), |(dx, dy)| (dx * CELL_ASPECT, dy));
-                scale(normal(dir), half)
-            }
-            (Some(q), Some(n)) => {
-                let (n1, n2) = (normal(sub(p, *q)), normal(sub(*n, p)));
-                let miter = unit(add(n1, n2)).unwrap_or(n1);
-                // Unión «miter» con el límite de 4 medios grosores.
-                let cos = dot(miter, n1).max(0.25);
-                scale(miter, half / cos)
-            }
-            (None, None) => continue,
-        };
-        sides.push((add(p, offset), sub(p, offset)));
-    }
-    let to_cell = |(x, y): (f32, f32)| (x / CELL_ASPECT, y);
-    for pair in sides.windows(2) {
-        let [(l0, r0), (l1, r1)] = pair else { continue };
-        let (l0, r0, l1, r1) = (to_cell(*l0), to_cell(*r0), to_cell(*l1), to_cell(*r1));
-        push_tri(out, l0, r0, r1);
-        push_tri(out, l0, r1, l1);
-    }
-}
-
-/// Añade un triángulo con la orientación común (área con signo positiva);
-/// descarta los degenerados.
-fn push_tri(out: &mut Vec<BoxOp>, a: (f32, f32), b: (f32, f32), c: (f32, f32)) {
-    let area = (b.0 - a.0) * (c.1 - a.1) - (c.0 - a.0) * (b.1 - a.1);
-    if area.abs() < 1e-7 {
-        return;
-    }
-    let pts = if area > 0.0 { [a, b, c] } else { [a, c, b] };
-    out.push(BoxOp::Tri { pts });
-}
-
-fn add(a: (f32, f32), b: (f32, f32)) -> (f32, f32) {
-    (a.0 + b.0, a.1 + b.1)
-}
-
-fn sub(a: (f32, f32), b: (f32, f32)) -> (f32, f32) {
-    (a.0 - b.0, a.1 - b.1)
-}
-
-fn scale(a: (f32, f32), k: f32) -> (f32, f32) {
-    (a.0 * k, a.1 * k)
-}
-
-fn dot(a: (f32, f32), b: (f32, f32)) -> f32 {
-    a.0 * b.0 + a.1 * b.1
-}
-
-fn unit(a: (f32, f32)) -> Option<(f32, f32)> {
-    let len = dot(a, a).sqrt();
-    (len > 1e-6).then(|| scale(a, 1.0 / len))
-}
-
-/// Normal unitaria (girada 90°) de una dirección; cero si es nula.
-fn normal(dir: (f32, f32)) -> (f32, f32) {
-    unit((-dir.1, dir.0)).unwrap_or((0.0, 0.0))
+    skipped
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn table_covers_exactly_the_drawn_ranges() {
-        let table = TABLE.get_or_init(build_table);
-        assert_eq!(table.len(), 164);
-        assert!(table.iter().all(|ops| !ops.is_empty()));
-        assert_eq!(slot('\u{24FF}'), None);
-        assert_eq!(slot('\u{2500}'), Some(0));
-        assert_eq!(slot('\u{E0B3}'), Some(163));
+    fn all_chars() -> impl Iterator<Item = char> {
+        ('\u{2500}'..='\u{259F}')
+            .chain('\u{1FB70}'..='\u{1FB8B}')
+            .chain('\u{1FB95}'..='\u{1FB97}')
+            .chain('\u{E0B0}'..='\u{E0BF}')
     }
 
     #[test]
-    fn powerline_outline_is_clipped_at_the_cell_edge() {
-        // El contorno entra en la celda por x = 0 a la altura de la línea
-        // original de xterm.js (cerca de las esquinas).
-        const { assert!(PL_CUT > -0.1 && PL_CUT < 0.1 && PL_CUT_LOW > 0.9) };
-        const { assert!(PL_TIP > 0.8 && PL_TIP < 1.0) };
+    fn every_definition_parses_completely() {
+        let m = CellMetrics {
+            cell_w: 9.0,
+            cell_h: 20.0,
+            dpr: 1.0,
+            font_size: 14.0,
+        };
+        for c in all_chars() {
+            let ops = box_ops(c).unwrap_or_else(|| panic!("falta {c:?}"));
+            let mut out = Vec::new();
+            assert_eq!(
+                push_ops(ops, &m, &mut out),
+                0,
+                "{c:?} con instrucciones sin entender"
+            );
+            assert!(!out.is_empty(), "{c:?}");
+        }
+    }
+
+    #[test]
+    fn js_round_ties_go_up() {
+        assert_eq!(js_round(2.5), 3.0);
+        assert_eq!(js_round(-2.5), -2.0);
+        assert_eq!(js_round(2.4999999), 2.0);
+        assert_eq!(".5".parse::<f64>().ok(), Some(0.5));
+        assert_eq!("-.5".parse::<f64>().ok(), Some(-0.5));
     }
 }

@@ -1,6 +1,6 @@
 use comandos_term::{
     engine::{Engine, GridSize, Palette},
-    glyphs::{BoxOp, box_ops},
+    glyphs::{BoxOp, CellMetrics, DrawOp, box_ops, draw_ops},
     render::*,
 };
 
@@ -69,7 +69,15 @@ fn box_drawing_is_drawn_not_typed() {
     e.advance("─│█".as_bytes(), 0.0);
     let r = render_row(&e, 0, &p, &O);
     assert!(r.runs.iter().all(|x| matches!(x.kind, RunKind::Box(_))));
-    assert!(matches!(box_ops('─').unwrap(), [BoxOp::HLine { y, .. }] if (*y - 0.5).abs() < 1e-6));
+    // Enmienda de la ronda 1: xterm.js traza la caja como camino SVG con peso
+    // en píxeles (no una `HLine` en fracción de celda).
+    assert_eq!(
+        box_ops('─').unwrap(),
+        [BoxOp::Stroke {
+            weight: 1,
+            d: "M0,.5 L1,.5"
+        }]
+    );
     assert!(matches!(box_ops('█').unwrap(), [BoxOp::Rect { w, h, .. }] if *w == 1.0 && *h == 1.0));
     assert!(box_ops('a').is_none());
 }
@@ -175,6 +183,50 @@ fn hidden_text_takes_the_background_color() {
     let s = render_row(&e, 0, &p, &O).runs[0].style;
     assert!(s.hidden);
     assert_eq!((s.fg, s.bg), (p.ansi[2], p.ansi[2]));
+    // xterm.js no dibuja nada de una celda oculta: tampoco subrayado ni tachado.
+    let (mut e, p) = eng();
+    e.advance(b"\x1b[8;4;9;58;5;1mX", 0.0);
+    let s = render_row(&e, 0, &p, &O).runs[0].style;
+    assert_eq!(
+        (s.underline, s.strike, s.underline_color),
+        (Underline::None, false, None)
+    );
+}
+
+#[test]
+fn underline_color_follows_sgr_58_like_xterm_js() {
+    let (mut e, p) = eng();
+    e.advance(
+        b"\x1b[4;58;5;1mA\x1b[1;58;5;2mB\x1b[58;2;1;2;3mC\x1b[59mD\x1b[0;4;7;58;5;3mE",
+        0.0,
+    );
+    let colors: Vec<_> = render_row(&e, 0, &p, &O)
+        .runs
+        .iter()
+        .map(|x| x.style.underline_color)
+        .collect();
+    // Negrita aclara el índice 0–7; el inverso no toca el subrayado.
+    assert_eq!(
+        colors,
+        [
+            Some(p.ansi[1]),
+            Some(p.ansi[10]),
+            Some([1, 2, 3]),
+            None,
+            Some(p.ansi[3])
+        ]
+    );
+}
+
+#[test]
+fn drawing_glyph_with_combining_mark_is_left_to_the_font() {
+    // xterm.js busca la cadena entera de la celda en sus tablas.
+    let (mut e, p) = eng();
+    e.advance("─\u{301}│".as_bytes(), 0.0);
+    let r = render_row(&e, 0, &p, &O);
+    assert_eq!(r.runs[0].kind, RunKind::Text);
+    assert_eq!(r.runs[0].text, "─\u{301}");
+    assert_eq!(r.runs[1].kind, RunKind::Box('│'));
 }
 
 #[test]
@@ -284,6 +336,14 @@ fn render_into_reuses_buffers_and_matches_render_row() {
     assert_eq!(out, first);
     assert_eq!(out, render_row(&e, 0, &p, &O));
     assert_eq!((out.runs.capacity(), out.bg_runs.capacity()), cap);
+
+    // Una fila con menos tiras y luego con más vuelve a la misma salida.
+    let (mut short, _) = eng();
+    short.advance(b"x", 0.0);
+    render_row_into(&short, 0, &p, &O, &mut out);
+    assert_eq!(out, render_row(&short, 0, &p, &O));
+    render_row_into(&e, 0, &p, &O, &mut out);
+    assert_eq!(out, first);
 }
 
 /// Contraste WCAG como lo calcula xterm.js (`rgb.relativeLuminance2`).
@@ -348,115 +408,322 @@ fn cursor_tracks_wide_cells_visibility_and_scrollback() {
     );
 }
 
-#[test]
-fn every_xterm_custom_glyph_has_ops() {
-    for c in ('\u{2500}'..='\u{259F}').chain('\u{E0B0}'..='\u{E0B3}') {
-        let ops = box_ops(c).unwrap_or_else(|| panic!("falta {c:?}"));
-        assert!(!ops.is_empty(), "{c:?} sin operaciones");
-        for op in ops {
-            let coords: Vec<f32> = match *op {
-                BoxOp::HLine { y, x0, x1, w } => vec![y, x0, x1, w],
-                BoxOp::VLine { x, y0, y1, w } => vec![x, y0, y1, w],
-                BoxOp::Rect { x, y, w, h, alpha } => vec![x, y, w, h, alpha],
-                BoxOp::Tri { pts } => pts.iter().flat_map(|&(a, b)| [a, b]).collect(),
-            };
-            assert!(
-                coords
-                    .iter()
-                    .all(|v| v.is_finite() && (-0.6..=1.6).contains(v)),
-                "{c:?} fuera de la celda: {op:?}"
-            );
-        }
+fn metrics(w: f64, h: f64, dpr: f64, font_size: f64) -> CellMetrics {
+    CellMetrics {
+        cell_w: w,
+        cell_h: h,
+        dpr,
+        font_size,
     }
-    assert!(box_ops('\u{E0B4}').is_none());
-    assert!(box_ops('\u{24FF}').is_none());
-    assert!(box_ops('\u{25A0}').is_none());
+}
+
+fn ops(c: char, m: &CellMetrics) -> Vec<DrawOp> {
+    let mut out = Vec::new();
+    assert!(draw_ops(c, m, &mut out), "{c:?}");
+    out
 }
 
 #[test]
-fn lines_joints_blocks_and_shades_match_xterm_geometry() {
-    // Línea fina y gruesa.
-    let thin = match box_ops('─').unwrap() {
-        [BoxOp::HLine { x0, x1, w, .. }] => {
-            assert_eq!((*x0, *x1), (0.0, 1.0));
-            *w
-        }
-        other => panic!("{other:?}"),
-    };
-    let thick = match box_ops('━').unwrap() {
-        [BoxOp::HLine { w, .. }] => *w,
-        other => panic!("{other:?}"),
-    };
-    assert!((thin - 1.0 / 12.0).abs() < 1e-6 && (thick - 1.0 / 6.0).abs() < 1e-6);
+fn every_xterm_custom_glyph_has_ops() {
+    // Lo que `tryDrawCustomChar` de addon-canvas 0.7.0 dibuja a mano.
+    let drawn = ('\u{2500}'..='\u{259F}')
+        .chain('\u{1FB70}'..='\u{1FB8B}')
+        .chain('\u{1FB95}'..='\u{1FB97}')
+        .chain('\u{E0B0}'..='\u{E0BF}');
+    for c in drawn {
+        assert!(box_ops(c).is_some_and(|o| !o.is_empty()), "falta {c:?}");
+    }
+    for c in [
+        '\u{24FF}',
+        '\u{25A0}',
+        '\u{1FB6F}',
+        '\u{1FB8C}',
+        '\u{1FB94}',
+        '\u{1FB98}',
+        '\u{E0AF}',
+        '\u{E0C0}',
+        'a',
+    ] {
+        assert!(box_ops(c).is_none(), "{c:?}");
+        assert!(!draw_ops(
+            c,
+            &metrics(9.0, 20.0, 1.0, 14.0),
+            &mut Vec::new()
+        ));
+    }
+    // Alias de `powerlineDefinitions`.
+    assert_eq!(box_ops('\u{E0BB}'), box_ops('\u{E0BD}'));
+    assert_eq!(box_ops('\u{E0BF}'), box_ops('\u{E0B9}'));
+}
 
-    // Una esquina se prolonga medio grosor en la unión (como el «miter» de
-    // xterm.js) para no dejar muesca.
-    let corner = box_ops('┌').unwrap();
-    assert!(corner.iter().any(|op| matches!(*op,
-        BoxOp::VLine { x, y0, y1, .. } if (x - 0.5).abs() < 1e-6 && y0 < 0.5 && y1 == 1.0)));
-    assert!(corner.iter().any(|op| matches!(*op,
-        BoxOp::HLine { y, x0, x1, .. } if (y - 0.5).abs() < 1e-6 && x0 < 0.5 && x1 == 1.0)));
+#[test]
+fn box_lines_are_pixel_weights_snapped_to_pixel_centers() {
+    use DrawOp::*;
+    let m = metrics(9.0, 20.0, 1.0, 14.0);
+    // `lineWidth = dpr · peso`; `round(c + .5) − .5` y el máximo acotado.
+    assert_eq!(
+        ops('─', &m),
+        [
+            BeginPath,
+            MoveTo { x: 0.0, y: 10.5 },
+            LineTo { x: 9.0, y: 10.5 },
+            Stroke { line_width: 1.0 }
+        ]
+    );
+    assert_eq!(
+        ops('│', &m),
+        [
+            BeginPath,
+            MoveTo { x: 4.5, y: 0.0 },
+            LineTo { x: 4.5, y: 20.0 },
+            Stroke { line_width: 1.0 }
+        ]
+    );
+    assert_eq!(ops('━', &m).last(), Some(&Stroke { line_width: 3.0 }));
+    let hidpi = metrics(18.0, 40.0, 2.0, 14.0);
+    assert_eq!(
+        ops('─', &hidpi),
+        [
+            BeginPath,
+            MoveTo { x: 0.0, y: 20.5 },
+            LineTo { x: 18.0, y: 20.5 },
+            Stroke { line_width: 2.0 }
+        ]
+    );
+    assert_eq!(ops('┃', &hidpi).last(), Some(&Stroke { line_width: 6.0 }));
+    // Mitad fina, mitad gruesa: dos trazos en el orden de las claves (1, 3).
+    let mixed: Vec<_> = ops('╼', &m)
+        .into_iter()
+        .filter(|op| matches!(op, Stroke { .. }))
+        .collect();
+    assert_eq!(
+        mixed,
+        [Stroke { line_width: 1.0 }, Stroke { line_width: 3.0 }]
+    );
+}
 
-    // Doble línea: dos trazos simétricos alrededor del centro.
-    let ys: Vec<f32> = box_ops('═')
-        .unwrap()
+#[test]
+fn double_lines_and_round_corners_use_the_real_cell_aspect() {
+    use DrawOp::*;
+    // t = .15 / 20 · 9 = .0675: filas .4325 y .5675 → 8,65 y 11,35 → 8,5 y 11,5.
+    let m = metrics(9.0, 20.0, 1.0, 14.0);
+    assert_eq!(
+        ops('═', &m),
+        [
+            BeginPath,
+            MoveTo { x: 0.0, y: 8.5 },
+            LineTo { x: 9.0, y: 8.5 },
+            MoveTo { x: 0.0, y: 11.5 },
+            LineTo { x: 9.0, y: 11.5 },
+            Stroke { line_width: 1.0 }
+        ]
+    );
+    // e = .15 en horizontal: .35 · 9 = 3,15 → 3,5; .65 · 9 = 5,85 → 5,5.
+    assert_eq!(
+        ops('║', &m),
+        [
+            BeginPath,
+            MoveTo { x: 3.5, y: 0.0 },
+            LineTo { x: 3.5, y: 20.0 },
+            MoveTo { x: 5.5, y: 0.0 },
+            LineTo { x: 5.5, y: 20.0 },
+            Stroke { line_width: 1.0 }
+        ]
+    );
+    // Esquina: recta hasta .5 + t/.15·.5 = .725 (14,5) y Bézier nativa.
+    assert_eq!(
+        ops('╭', &m),
+        [
+            BeginPath,
+            MoveTo { x: 4.5, y: 20.0 },
+            LineTo { x: 4.5, y: 14.5 },
+            CurveTo {
+                x1: 4.5,
+                y1: 14.5,
+                x2: 4.5,
+                y2: 10.5,
+                x: 9.0,
+                y: 10.5
+            },
+            Stroke { line_width: 1.0 }
+        ]
+    );
+    // Otra proporción mueve la doble línea: t = .15 / 16 · 8 = .075 → 6,8 y 9,2.
+    let narrow = metrics(8.0, 16.0, 1.0, 12.0);
+    let ys: Vec<f64> = ops('═', &narrow)
         .iter()
         .filter_map(|op| match *op {
-            BoxOp::HLine { y, .. } => Some(y),
+            MoveTo { y, .. } => Some(y),
             _ => None,
         })
         .collect();
-    assert_eq!(ys.len(), 2);
-    assert!(((ys[0] + ys[1]) / 2.0 - 0.5).abs() < 1e-6 && (ys[0] - ys[1]).abs() > 0.1);
-
-    // Bloques en octavos y sombreados como rectángulo traslúcido.
-    assert!(matches!(box_ops('▄').unwrap(),
-        [BoxOp::Rect { x, y, w, h, alpha }] if (*x, *y, *w, *h, *alpha) == (0.0, 0.5, 1.0, 0.5, 1.0)));
-    assert!(matches!(box_ops('▕').unwrap(),
-        [BoxOp::Rect { x, w, .. }] if (*x, *w) == (0.875, 0.125)));
-    for (c, a) in [('░', 0.25), ('▒', 0.5), ('▓', 0.75)] {
-        assert!(matches!(box_ops(c).unwrap(),
-            [BoxOp::Rect { w, h, alpha, .. }] if (*w, *h, *alpha) == (1.0, 1.0, a)));
-    }
+    assert_eq!(ys, [6.5, 9.5]);
 }
 
 #[test]
-fn curves_diagonals_and_powerline_are_consistent_triangles() {
-    // A6 rellena todos los `Tri` de un glifo en un solo trazado (regla
-    // nonzero): tienen que tener la misma orientación y área positiva.
-    for c in [
-        '╭', '╮', '╯', '╰', '╱', '╲', '╳', '\u{E0B0}', '\u{E0B1}', '\u{E0B2}', '\u{E0B3}',
-    ] {
-        let ops = box_ops(c).unwrap();
-        assert!(
-            ops.iter().all(|op| matches!(op, BoxOp::Tri { .. })),
-            "{c:?}"
-        );
-        for op in ops {
-            if let BoxOp::Tri { pts: [a, b, d] } = *op {
-                let area = (b.0 - a.0) * (d.1 - a.1) - (d.0 - a.0) * (b.1 - a.1);
-                assert!(area > 0.0, "{c:?}: {op:?}");
+fn blocks_are_eighths_and_shades_are_pixel_patterns() {
+    use DrawOp::*;
+    let m = metrics(9.0, 20.0, 1.0, 14.0);
+    assert_eq!(
+        ops('█', &m),
+        [FillRect {
+            x: 0.0,
+            y: 0.0,
+            w: 9.0,
+            h: 20.0
+        }]
+    );
+    assert_eq!(
+        ops('▄', &m),
+        [FillRect {
+            x: 0.0,
+            y: 10.0,
+            w: 9.0,
+            h: 10.0
+        }]
+    );
+    assert_eq!(
+        ops('▕', &m),
+        [FillRect {
+            x: 7.875,
+            y: 0.0,
+            w: 1.125,
+            h: 20.0
+        }]
+    );
+    assert_eq!(
+        ops('\u{1FB97}', &m),
+        [
+            FillRect {
+                x: 0.0,
+                y: 5.0,
+                w: 9.0,
+                h: 5.0
+            },
+            FillRect {
+                x: 0.0,
+                y: 15.0,
+                w: 9.0,
+                h: 5.0
             }
-        }
+        ]
+    );
+    // Cobertura de las tramas de xterm.js: 12,5 %, 25 %, 75 %.
+    for (c, ones, cells) in [('░', 2, 16), ('▒', 2, 8), ('▓', 6, 8)] {
+        let [FillPattern { mask }] = ops(c, &m)[..] else {
+            panic!("{c:?}");
+        };
+        let total: usize = mask.iter().map(|row| row.len()).sum();
+        let set: usize = mask
+            .iter()
+            .flat_map(|row| row.iter())
+            .filter(|&&v| v == 1)
+            .count();
+        assert_eq!((set, total), (ones, cells), "{c:?}");
     }
-    // El triángulo relleno de powerline apunta a la derecha y cubre el alto.
-    let ops = box_ops('\u{E0B0}').unwrap();
-    assert_eq!(ops.len(), 1);
-    if let [BoxOp::Tri { pts }] = ops {
-        let max_x = pts.iter().map(|p| p.0).fold(0.0_f32, f32::max);
-        assert!(max_x > 0.8 && max_x <= 1.0);
-        assert!(pts.contains(&(0.0, 0.0)) && pts.contains(&(0.0, 1.0)));
+    assert!(matches!(box_ops('▒').unwrap(), [BoxOp::Pattern(_)]));
+}
+
+#[test]
+fn powerline_is_clipped_padded_and_sized_by_font() {
+    use DrawOp::*;
+    // fontSize 12 → d = 1 px; E0B0: rightPadding 2 → margen derecho d.
+    let m = metrics(9.0, 20.0, 1.0, 12.0);
+    assert_eq!(
+        ops('\u{E0B0}', &m),
+        [
+            ClipCell,
+            BeginPath,
+            MoveTo { x: 0.0, y: 0.0 },
+            LineTo { x: 8.0, y: 10.0 },
+            LineTo { x: 0.0, y: 20.0 },
+            Fill
+        ]
+    );
+    // E0B1: contorno de d px, márgenes de medio d a cada lado, sin ajuste.
+    assert_eq!(
+        ops('\u{E0B1}', &m),
+        [
+            ClipCell,
+            BeginPath,
+            MoveTo { x: -7.5, y: -10.0 },
+            LineTo { x: 8.5, y: 10.0 },
+            LineTo { x: -7.5, y: 30.0 },
+            Stroke { line_width: 1.0 }
+        ]
+    );
+    // dpr 2: el contorno mide 2 px de dispositivo.
+    let hidpi = metrics(18.0, 40.0, 2.0, 12.0);
+    assert_eq!(
+        ops('\u{E0B5}', &hidpi).last(),
+        Some(&Stroke { line_width: 2.0 })
+    );
+    assert!(
+        ops('\u{E0B4}', &m)
+            .iter()
+            .any(|op| matches!(op, CurveTo { .. }))
+    );
+}
+
+/// Las órdenes de `draw_ops` coinciden número a número con las que emite
+/// `tryDrawCustomChar` de `assets/xterm/addon-canvas.js` 0.7.0. El fixture
+/// se generó ejecutando esa función del bundle sobre un contexto que anota
+/// cada llamada (`fillRect`, `moveTo`, `bezierCurveTo`, `stroke`, `clip`…;
+/// una trama se anota como su máscara) para dos celdas: 9×20 a dpr 1 con
+/// letra de 14 px y 13×29 a dpr 1,25 con 15 px.
+#[test]
+fn draw_ops_match_xterm_js_call_for_call() {
+    use serde_json::{Value, json};
+    let fixture: serde_json::Map<String, Value> =
+        serde_json::from_str(include_str!("fixtures/xterm-custom-glyphs.json")).unwrap();
+    assert_eq!(fixture.len(), 2 * 207);
+    for (key, expected) in &fixture {
+        let (cell, code) = key.split_once(':').unwrap();
+        let (size, rest) = cell.split_once('@').unwrap();
+        let (w, h) = size.split_once('x').unwrap();
+        let (dpr, font) = rest.split_once('/').unwrap();
+        let num = |s: &str| s.parse::<f64>().unwrap();
+        let m = metrics(num(w), num(h), num(dpr), num(font));
+        let c = char::from_u32(u32::from_str_radix(code, 16).unwrap()).unwrap();
+        let got: Vec<Value> = ops(c, &m)
+            .into_iter()
+            .map(|op| match op {
+                DrawOp::FillRect { x, y, w, h } => json!(["FillRect", x, y, w, h]),
+                DrawOp::FillPattern { mask } => json!(["FillPattern", mask]),
+                DrawOp::ClipCell => json!(["ClipCell"]),
+                DrawOp::BeginPath => json!(["BeginPath"]),
+                DrawOp::MoveTo { x, y } => json!(["MoveTo", x, y]),
+                DrawOp::LineTo { x, y } => json!(["LineTo", x, y]),
+                DrawOp::CurveTo {
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    x,
+                    y,
+                } => json!(["CurveTo", x1, y1, x2, y2, x, y]),
+                DrawOp::Stroke { line_width } => json!(["Stroke", line_width]),
+                DrawOp::Fill => json!(["Fill"]),
+            })
+            .collect();
+        // Compara como f64 (el JSON de JavaScript escribe 10 donde Rust 10.0).
+        let flat = |v: &Value| -> Vec<String> {
+            v.as_array()
+                .unwrap()
+                .iter()
+                .map(|op| {
+                    op.as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|x| match x.as_f64() {
+                            Some(f) => format!("{f:?}"),
+                            None => x.to_string(),
+                        })
+                        .collect::<Vec<_>>()
+                        .join(",")
+                })
+                .collect()
+        };
+        assert_eq!(flat(&Value::Array(got)), flat(expected), "{key}");
     }
-    // La esquina redondeada empieza en el borde inferior y acaba en el derecho.
-    let pts: Vec<(f32, f32)> = box_ops('╭')
-        .unwrap()
-        .iter()
-        .flat_map(|op| match *op {
-            BoxOp::Tri { pts } => pts.to_vec(),
-            _ => Vec::new(),
-        })
-        .collect();
-    assert!(pts.iter().any(|p| (p.1 - 1.0).abs() < 1e-6));
-    assert!(pts.iter().any(|p| (p.0 - 1.0).abs() < 1e-6));
-    assert!(pts.iter().all(|p| p.0 > 0.3 && p.1 > 0.3));
 }

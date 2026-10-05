@@ -19,17 +19,37 @@
 //!   oscurece en pasos del 10 % hasta el contraste pedido (la mitad si está
 //!   atenuado, y entonces no se atenúa); los glifos de dibujo y de
 //!   powerline quedan fuera, como en xterm.js.
-//! - Oculto: el texto toma el color del fondo.
+//! - Oculto: el texto toma el color del fondo y no hay subrayado ni tachado
+//!   (xterm.js no dibuja nada de la celda).
+//! - Subrayado con color propio (SGR 58): ni atenuado ni invertido; la
+//!   negrita aclara el índice 0–7. `None` = el color del texto.
 //!
 //! ## Tiras
 //!
-//! Una tira `Text` junta celdas seguidas con el mismo estilo y enlace cuyos
-//! caracteres son ASCII imprimible o latinos de ancho 1 (la fuente principal
-//! los tiene con el avance de la celda); los espacios entre ellas se
-//! conservan y los del final no generan tira. Un carácter ancho, uno con
-//! marcas combinantes o cualquier otro carácter va en su propia tira, y los
-//! glifos de [`crate::glyphs`] en una `Box` de una celda. El fondo va aparte
-//! en `bg_runs`, solo donde no es el de la terminal.
+//! Una tira junta celdas seguidas que comparten estilo y enlace, para que
+//! quien pinta (A6) cambie de fuente y color una sola vez. **No** implica
+//! dibujar su texto de una vez: xterm.js coloca cada glifo en su celda
+//! (`deviceCellWidth = floor(charWidth · dpr)`) y el avance real de la
+//! fuente es fraccional, así que un `fillText` de la tira entera se iría
+//! desplazando. A6 pinta cada carácter de una tira `Text` en
+//! `(col + i) · cell_w` (en `text` hay exactamente un carácter por celda,
+//! con espacios donde hay huecos).
+//!
+//! Se agrupan los caracteres ASCII imprimibles y latinos de ancho 1; los
+//! espacios entre ellos se conservan y los del final no generan tira. Un
+//! carácter ancho (`Wide`, dos celdas), uno con marcas combinantes o
+//! cualquier otro va en su propia tira (el texto lleva el carácter y sus
+//! marcas). Los glifos de [`crate::glyphs`] van en una `Box` de una celda,
+//! salvo si llevan marcas combinantes: xterm.js busca la cadena entera de la
+//! celda en sus tablas y entonces la pinta la fuente. El fondo va aparte en
+//! `bg_runs`, solo donde no es el de la terminal.
+//!
+//! ## Indexación
+//!
+//! `Grid` (por `Line`) y `Colors` de alacritty solo ofrecen `Index`, sin
+//! `get`: los tres accesos de este módulo comprueban el rango antes y
+//! están anotados (excepción a la regla de no indexar, como en
+//! `engine::color_for_request`).
 use crate::{
     engine::{Engine, Palette},
     glyphs::box_ops,
@@ -56,6 +76,8 @@ pub struct Style {
     pub italic: bool,
     pub dim: bool,
     pub underline: Underline,
+    /// Color del subrayado (SGR 58); `None` = el del texto.
+    pub underline_color: Option<[u8; 3]>,
     pub strike: bool,
     pub hidden: bool,
 }
@@ -98,7 +120,7 @@ pub struct Run {
 }
 
 /// Una fila lista para pintar.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default)]
 pub struct RowRender {
     /// Fila de la vista (0 = arriba), la misma que se pidió.
     pub line: usize,
@@ -107,7 +129,24 @@ pub struct RowRender {
     pub runs: Vec<Run>,
     /// URI de los hipervínculos de la fila, sin repetir.
     pub links: Vec<String>,
+    /// Cadenas vacías de tiras y enlaces que sobraron en un cuadro, para no
+    /// volver a asignarlas cuando la fila vuelva a tener más.
+    spare: Vec<String>,
 }
+
+/// Igualdad de lo que se pinta (sin las cadenas de reserva).
+impl PartialEq for RowRender {
+    fn eq(&self, other: &RowRender) -> bool {
+        self.line == other.line
+            && self.bg_runs == other.bg_runs
+            && self.runs == other.runs
+            && self.links == other.links
+    }
+}
+
+/// Tope de cadenas de reserva por fila (una fila tiene como mucho tantas
+/// tiras como columnas; más allá no merece la pena guardarlas).
+const MAX_SPARE: usize = 512;
 
 /// Opciones de color, con los nombres de xterm.js.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -161,6 +200,7 @@ pub fn render_row_into(
 ) {
     out.line = line;
     out.bg_runs.clear();
+    let spare = &mut out.spare;
     let mut runs = Runs::new(&mut out.runs);
     let mut links = Links::new(&mut out.links);
     if let Some(cells) = row_cells(engine, line) {
@@ -175,12 +215,12 @@ pub fn render_row_into(
             {
                 continue;
             }
-            let link = links.index_of(cell);
-            runs.push_cell(cell, col, style, link);
+            let link = links.index_of(cell, spare);
+            runs.push_cell(cell, col, style, link, spare);
         }
     }
-    runs.finish();
-    links.finish();
+    runs.finish(spare);
+    links.finish(spare);
 }
 
 /// Celdas de la fila de la vista `line`, si está en pantalla.
@@ -259,7 +299,14 @@ impl<'a> Runs<'a> {
             .filter(|run| run.style == *style && run.link == link)
     }
 
-    fn push_cell(&mut self, cell: &Cell, col: u16, style: Style, link: Option<u32>) {
+    fn push_cell(
+        &mut self,
+        cell: &Cell,
+        col: u16,
+        style: Style,
+        link: Option<u32>,
+        spare: &mut Vec<String>,
+    ) {
         if is_blank(cell, &style) {
             if self.open_run(&style, link).is_some() {
                 self.blanks = self.blanks.saturating_add(1);
@@ -273,9 +320,11 @@ impl<'a> Runs<'a> {
         let glyph = if matches!(c, '\t' | '\0') { ' ' } else { c };
         let zerowidth = cell.zerowidth().filter(|z| !z.is_empty());
         let wide = cell.flags.contains(Flags::WIDE_CHAR);
+        // xterm.js busca la cadena entera de la celda en sus tablas: con
+        // marcas combinantes, el glifo de dibujo lo pinta la fuente.
         let kind = if wide {
             RunKind::Wide
-        } else if box_ops(c).is_some() {
+        } else if zerowidth.is_none() && box_ops(c).is_some() {
             RunKind::Box(c)
         } else {
             RunKind::Text
@@ -292,7 +341,7 @@ impl<'a> Runs<'a> {
             return;
         }
         self.close();
-        if let Some(run) = self.start(col, style, kind, link) {
+        if let Some(run) = self.start(col, style, kind, link, spare) {
             run.text.push(glyph);
             if let Some(marks) = zerowidth {
                 run.text.extend(marks.iter());
@@ -314,13 +363,14 @@ impl<'a> Runs<'a> {
         style: Style,
         kind: RunKind,
         link: Option<u32>,
+        spare: &mut Vec<String>,
     ) -> Option<&mut Run> {
         let index = self.len;
         if index >= self.out.len() {
             self.out.push(Run {
                 col,
                 cells: 0,
-                text: String::new(),
+                text: spare.pop().unwrap_or_default(),
                 style,
                 kind,
                 link,
@@ -337,8 +387,20 @@ impl<'a> Runs<'a> {
         Some(run)
     }
 
-    fn finish(self) {
-        self.out.truncate(self.len);
+    /// Quita las tiras sobrantes y guarda sus cadenas para otro cuadro.
+    fn finish(self, spare: &mut Vec<String>) {
+        keep_spare(self.out.drain(self.len..).map(|run| run.text), spare);
+    }
+}
+
+/// Guarda cadenas vaciadas (sin perder su capacidad) hasta [`MAX_SPARE`].
+fn keep_spare(texts: impl Iterator<Item = String>, spare: &mut Vec<String>) {
+    for mut text in texts {
+        if spare.len() >= MAX_SPARE {
+            break;
+        }
+        text.clear();
+        spare.push(text);
     }
 }
 
@@ -360,7 +422,7 @@ impl<'a> Links<'a> {
         }
     }
 
-    fn index_of(&mut self, cell: &Cell) -> Option<u32> {
+    fn index_of(&mut self, cell: &Cell, spare: &mut Vec<String>) -> Option<u32> {
         let link = cell.hyperlink()?;
         let uri = link.uri();
         let known = self.out.get(..self.len).unwrap_or_default();
@@ -368,28 +430,32 @@ impl<'a> Links<'a> {
             Some(last) if known.get(last as usize).is_some_and(|s| s == uri) => last,
             _ => match known.iter().position(|s| s == uri) {
                 Some(found) => u32::try_from(found).ok()?,
-                None => self.insert(uri)?,
+                None => self.insert(uri, spare)?,
             },
         };
         self.last = Some(index);
         Some(index)
     }
 
-    fn insert(&mut self, uri: &str) -> Option<u32> {
+    fn insert(&mut self, uri: &str, spare: &mut Vec<String>) -> Option<u32> {
         let index = self.len;
         match self.out.get_mut(index) {
             Some(slot) => {
                 slot.clear();
                 slot.push_str(uri);
             }
-            None => self.out.push(uri.to_owned()),
+            None => {
+                let mut slot = spare.pop().unwrap_or_default();
+                slot.push_str(uri);
+                self.out.push(slot);
+            }
         }
         self.len += 1;
         u32::try_from(index).ok()
     }
 
-    fn finish(self) {
-        self.out.truncate(self.len);
+    fn finish(self, spare: &mut Vec<String>) {
+        keep_spare(self.out.drain(self.len..), spare);
     }
 }
 
@@ -443,19 +509,30 @@ impl<'a> Resolver<'a> {
         if dim && !adjusted {
             fg = dim_toward(fg, bg);
         }
-        if hidden {
-            fg = bg;
-        }
-        Style {
+        // `_drawToCache`: un subrayado con color propio no se atenúa ni se
+        // invierte; la negrita aclara el índice 0–7.
+        let underline_color = cell
+            .underline_color()
+            .map(|color| self.color(color, bold && self.opts.bold_is_bright));
+        let mut style = Style {
             fg,
             bg,
             bold,
             italic: flags.contains(Flags::ITALIC),
             dim,
             underline: underline(flags),
+            underline_color,
             strike: flags.contains(Flags::STRIKEOUT),
             hidden,
+        };
+        if hidden {
+            // xterm.js no dibuja nada de una celda oculta (`isInvisible`).
+            style.fg = bg;
+            style.underline = Underline::None;
+            style.underline_color = None;
+            style.strike = false;
         }
+        style
     }
 
     fn contrast(&mut self, bg: [u8; 3], fg: [u8; 3], ratio: f32) -> Option<[u8; 3]> {
@@ -642,6 +719,7 @@ pub fn cursor(engine: &Engine) -> CursorView {
     let term = engine.term();
     let grid = term.grid();
     let point = grid.cursor.point;
+    // `Grid` solo ofrece `Index`; la línea se comprueba antes.
     let row = (point.line >= grid.topmost_line() && point.line <= grid.bottommost_line())
         .then(|| &grid[point.line][..]);
     let cell_at = |col: usize| row.and_then(|cells| cells.get(col));
