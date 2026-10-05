@@ -600,7 +600,7 @@ fn scan_json(raw: &str) -> (usize, bool) {
 
 /// `json.loads(texto)`: `None` es el `ValueError` del Python; `Unsure` si el
 /// anidamiento puede acabar en `RecursionError`.
-fn loads_text(raw: &str) -> Result<Option<(Value, bool)>, Unsure> {
+pub(crate) fn loads_text(raw: &str) -> Result<Option<(Value, bool)>, Unsure> {
     let (fixed, touched) = replace_lone_surrogates(raw);
     let (depth, huge_int) = scan_json(&fixed);
     if depth >= PY_JSON_DEPTH {
@@ -612,7 +612,7 @@ fn loads_text(raw: &str) -> Result<Option<(Value, bool)>, Unsure> {
     Ok(workspace_loads(&fixed).ok().map(|v| (v, touched)))
 }
 
-fn loads_bytes(raw: &[u8]) -> Result<Option<(Value, bool)>, Unsure> {
+pub(crate) fn loads_bytes(raw: &[u8]) -> Result<Option<(Value, bool)>, Unsure> {
     let Some((text, decoded_touched)) = decode_json_bytes(raw) else {
         return Ok(None);
     };
