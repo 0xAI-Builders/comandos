@@ -2395,24 +2395,67 @@ def _claude_config_dir(alias):
     return os.path.join(root, alias)
 
 
+def _inherit_codex_trust(cwd, from_alias, to_alias):
+    registry = load_provider_registry()
+    source = account_registry.account_home(registry, 'codex', from_alias or 'main') / 'config.toml'
+    target = account_registry.account_home(registry, 'codex', to_alias or 'main') / 'config.toml'
+    if source.is_symlink() or target.is_symlink():
+        return False
+    cwd = os.path.realpath(cwd)
+    def decision(data):
+        projects = data.get('projects') or {}
+        folder = cwd
+        while True:
+            entry = projects.get(folder) or {}
+            if entry.get('trust_level'):
+                return entry['trust_level']
+            parent = os.path.dirname(folder)
+            if parent == folder:
+                return ''
+            folder = parent
+    if decision(extension_launch._read(source)) != 'trusted':
+        return False
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with file_lock(str(target)):
+        if decision(extension_launch._read(target)):
+            return False
+        before = target.read_text() if target.exists() else ''
+        after = before + '\n[projects.' + json.dumps(cwd) + ']\ntrust_level = "trusted"\n'
+        extension_launch._parse_toml(after)
+        fd, temporary = tempfile.mkstemp(prefix='.trust-', dir=str(target.parent))
+        try:
+            with os.fdopen(fd, 'w') as out:
+                out.write(after)
+                out.flush()
+                os.fsync(out.fileno())
+            os.replace(temporary, target)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+    return True
+
+
 def inherit_trust_for_switch(cwd, from_alias, to_alias, harness="claude"):
     """Copia la aceptación de la carpeta de la cuenta origen a la destino.
 
-    Solo Claude, solo cuando la cuenta cambia de verdad, y solo si el origen ya
+    Claude y Codex, solo cuando la cuenta cambia de verdad, y solo si el origen ya
     la tenía aceptada: nunca inventa confianza que el usuario no diera antes.
 
     Heredar trust es un extra de conveniencia sobre un cambio de cuenta/sesión:
     nunca debe poder romper ese cambio. Cualquier excepción aquí dentro (o al
     escribir el ledger) se traga y se reporta como False/no-op.
     """
-    if harness != "claude" or not cwd or (to_alias or "main") == (from_alias or "main"):
+    if harness not in ("claude", "codex") or not cwd or (to_alias or "main") == (from_alias or "main"):
         return False
     try:
-        dest = _claude_config_dir(to_alias)
-        if not dest:
-            return False
-        ok = claude_trust.inherit_cwd_trust(cwd, source_config_dir=_claude_config_dir(from_alias),
-                                            dest_config_dir=dest, home=os.path.expanduser("~"))
+        if harness == "codex":
+            ok = _inherit_codex_trust(cwd, from_alias, to_alias)
+        else:
+            dest = _claude_config_dir(to_alias)
+            if not dest:
+                return False
+            ok = claude_trust.inherit_cwd_trust(cwd, source_config_dir=_claude_config_dir(from_alias),
+                                                dest_config_dir=dest, home=os.path.expanduser("~"))
     except Exception:
         return False        # heredar el trust nunca puede impedir el cambio de sesión
     if ok:
@@ -2698,6 +2741,81 @@ def _preserve_extension_plan(adapter,plan):
         os.path.join(HOOKS,'extension-launches'),adapter.data['requestId'])
     plan['extensionLaunch']=launch
     plan['command']=extension_launch.wrap_command(plan['command'],launch)
+
+
+_ACCOUNT_ADD_LOCK = threading.Lock()
+
+
+def account_add_request(data):
+    with _ACCOUNT_ADD_LOCK:
+        return _account_add_request(data)
+
+
+def _account_add_request(data):
+    provider = str(data.get("provider") or "claude")
+    if provider not in ("claude", "codex", "grok"):
+        return (400, {"error": "provider de cuenta no soportado"})
+    registry = load_provider_registry()
+    alias = str(data.get("alias") or "").strip()
+    if not alias:
+        n = 2
+        while account_registry.account_home(registry, provider, f"cuenta-{n}").exists():
+            n += 1
+        alias = f"cuenta-{n}"
+    try:
+        alias = account_registry.validate_alias(alias)
+        d = str(account_registry.account_home(load_provider_registry(), provider, alias))
+    except account_registry.AccountError as e:
+        return (400, {"error": str(e)})
+    chosen = next((a for a in account_registry.list_accounts(registry, provider) if a['alias'] == alias), None)
+    if chosen and chosen.get('selectable'):
+        return 409, {"error": f"La cuenta {alias} ya tiene sesión iniciada. Elígela para cambiar."}
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    if provider == "codex":
+        config_path = os.path.join(d, "config.toml")
+        if not os.path.exists(config_path):
+            with open(config_path, "x") as f:
+                f.write('cli_auth_credentials_store = "file"\n')
+            os.chmod(config_path, 0o600)
+    # los hooks de Claude viven en settings por cuenta; Grok hereda los
+    # hooks Claude y agrega errores/cancelaciones mediante cc-agents.
+    try:
+        if provider != "claude":
+            raise RuntimeError("Claude settings only")
+        with open(os.path.expanduser("~/.claude/settings.json")) as f:
+            hooks = json.load(f).get("hooks") or {}
+        def seed(st):
+            if hooks and not st.get("hooks"):
+                st["hooks"] = hooks
+            # los avisos van por los popups con tema de ComandOS, no los nativos de GNOME
+            st["preferredNotifChannel"] = "notifications_disabled"
+        # Si el settings.json de la cuenta no parsea, se deja intacto.
+        update_json_object(os.path.join(d, "settings.json"), seed)
+    except Exception:
+        pass
+    cwd = str(data.get("cwd") or os.path.expanduser("~"))
+    if not os.path.isdir(cwd):
+        cwd = os.path.expanduser("~")
+    n = int(time.time() * 10) % 1000000
+    new_sess = f"term-r{n}"
+    while tmux("has-session", "-t", "=" + new_sess).returncode == 0:
+        n += 1
+        new_sess = f"term-r{n}"
+    r = tmux("new-session", "-d", "-s", new_sess, "-c", cwd)
+    if r.returncode != 0:
+        return (500, {"error": (r.stderr or "tmux fallo").strip()})
+    register_app_tab(new_sess, f"login {provider} · {alias}", kind="project", cwd=cwd)
+    login_commands = {"claude": "claude auth login --claudeai", "codex": 'codex -c \'cli_auth_credentials_store="file"\' login' + (' --device-auth' if data.get('deviceAuth') else ''), "grok": "grok login"}
+    env_prefix = " ".join(
+        f"{key}={shlex.quote(value)}"
+        for key, value in account_registry.account_environment(load_provider_registry(), provider, alias).items()
+    )
+    cmd = "env -u CLAUDECODE -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u GROK_HOME -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_BASE_URL -u OPENAI_API_KEY -u CODEX_API_KEY " + env_prefix + " " + login_commands[provider]
+    def _send(sess=new_sess, c=cmd):
+        time.sleep(1.5)
+        tmux("send-keys", "-t", "=" + sess + ":", c, "Enter")
+    threading.Thread(target=_send, daemon=True).start()
+    return (200, {"ok": True, "session": new_sess, "alias": alias, "provider": provider})
 
 
 def account_switch_configuration(data, sess, pane):
@@ -9418,57 +9536,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {"session": new_sess, "label": label})
 
         if self.path == "/account/add":
-            provider = str(data.get("provider") or "claude")
-            if provider not in ("claude", "codex", "grok"):
-                return self._json(400, {"error": "provider de cuenta no soportado"})
-            alias = str(data.get("alias") or "").strip()[:64]
-            try:
-                alias = account_registry.validate_alias(alias)
-                if alias == "main":
-                    raise account_registry.AccountError("usa iniciar sesion para la cuenta main")
-                d = str(account_registry.account_home(load_provider_registry(), provider, alias))
-            except account_registry.AccountError as e:
-                return self._json(400, {"error": str(e)})
-            os.makedirs(d, exist_ok=True)
-            # los hooks de Claude viven en settings por cuenta; Grok hereda los
-            # hooks Claude y agrega errores/cancelaciones mediante cc-agents.
-            try:
-                if provider != "claude":
-                    raise RuntimeError("Claude settings only")
-                with open(os.path.expanduser("~/.claude/settings.json")) as f:
-                    hooks = json.load(f).get("hooks") or {}
-                def seed(st):
-                    if hooks and not st.get("hooks"):
-                        st["hooks"] = hooks
-                    # los avisos van por los popups con tema de ComandOS, no los nativos de GNOME
-                    st["preferredNotifChannel"] = "notifications_disabled"
-                # Si el settings.json de la cuenta no parsea, se deja intacto.
-                update_json_object(os.path.join(d, "settings.json"), seed)
-            except Exception:
-                pass
-            cwd = str(data.get("cwd") or os.path.expanduser("~"))
-            if not os.path.isdir(cwd):
-                cwd = os.path.expanduser("~")
-            n = int(time.time() * 10) % 1000000
-            new_sess = f"term-r{n}"
-            while tmux("has-session", "-t", "=" + new_sess).returncode == 0:
-                n += 1
-                new_sess = f"term-r{n}"
-            r = tmux("new-session", "-d", "-s", new_sess, "-c", cwd)
-            if r.returncode != 0:
-                return self._json(500, {"error": (r.stderr or "tmux fallo").strip()})
-            register_app_tab(new_sess, f"login {provider} · {alias}", kind="project", cwd=cwd)
-            login_commands = {"claude": "claude /login", "codex": "codex login", "grok": "grok login"}
-            env_prefix = " ".join(
-                f"{key}={shlex.quote(value)}"
-                for key, value in account_registry.account_environment(load_provider_registry(), provider, alias).items()
-            )
-            cmd = env_prefix + " " + login_commands[provider]
-            def _send(sess=new_sess, c=cmd):
-                time.sleep(1.5)
-                tmux("send-keys", "-t", "=" + sess + ":", c, "Enter")
-            threading.Thread(target=_send, daemon=True).start()
-            return self._json(200, {"ok": True, "session": new_sess, "alias": alias, "provider": provider})
+            return self._json(*account_add_request(data))
 
         if self.path == "/app/command":
             cmd = str(data.get("command") or "")

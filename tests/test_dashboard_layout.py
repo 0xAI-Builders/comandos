@@ -103,11 +103,8 @@ def test_ssh_connection_list_is_an_independent_touch_scroller():
     ) in CSS
 
 
-def test_motor_picker_is_inline_and_contained_in_gtk_sidebar():
-    assert '$("#command-sidebar").before(pop)' in INDEX
-    assert 'pop.classList.add("inline")' in INDEX
-    assert 'html.gtkapp #motor-pop.inline' in INDEX
-    assert 'box-sizing:border-box' in rule("#motor-pop")
-    assert 'minmax(260px,1fr)' in rule("#motor-pop .mp-grid")
-    assert 'box-sizing:border-box' in rule(".mtile")
-    assert 'min-width:0' in rule(".mtile")
+def test_ai_picker_and_its_controller_are_removed():
+    assert 'id="motor-pop"' not in INDEX
+    assert 'openMotorFor' not in INDEX
+    assert 'session-controls.js' not in INDEX
+    assert not Path('dash/session-controls.js').exists()

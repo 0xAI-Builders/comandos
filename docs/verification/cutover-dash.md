@@ -1325,6 +1325,20 @@ serialización del `RLock` del Python, igual en los tres.
   `--slow-tmux-ms 1500`), y en vivo, tras una vuelta de `cc-app` al frente, el frente sigue en
   ≤ 12 hilos (principal, 2 `comandos-handler`, el de `/state` y hasta 8 del pool).
 
+### Ejecutado — 5 de octubre de 2026, 03:02 (release `790e58866107`, main `81e8e14`)
+
+- Fusión de `migration/rust-ligero` (`81e8e14`); fmt, clippy, pruebas de server/cli/xtask (318) y
+  `xtask parity` 139 OK / 0 DIFF con el binario de `main`.
+- Carga realista aislada 10 min (`--agents 48 --extra-panes 190 --pollers 3 --burst 17` con
+  `--max-threads 12 --max-pss-mib 48 --max-static-p95-ms 100`): sale 0; `/state` p95 802 ms,
+  estáticos durante la ola p95 6 ms.
+- Nada en vuelo; `install --stage` (la release instalada es idéntica, `cmp`, al binario
+  compilado; centinela 2d presente); hook OK; reinicio solo de `cc-dash.service`.
+- En vivo antes: 270 MiB de Pss y 26 hilos. Después, 15 min de muestras: **40–42 MiB y 4–5
+  hilos, planos**, `NRestarts=0`, 0 líneas de pánico/error/«GET /state declina». `/state` 200 en
+  ≈ 10 ms (231 panes) con la caché caliente.
+- Reversión: `install --rollback-release` (→ `9f6fa07f26f0`) + reinicio de la unidad.
+
 ## 2e: uso y analítica nativos
 
 Procedimiento para el controlador, como el de la 2d. El frente está en 4777 y el Python heredado

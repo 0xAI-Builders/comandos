@@ -45,7 +45,9 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[i],"-c")) sscanf(argv[++i],"model_reasoning_effort=\"%39[^\"]",effort);
   }
   if (!strcmp(model,"gpt-5.6-luna")) return 23;
-  snprintf(path,sizeof(path),"%s/sessions/rollout-test-%s.jsonl",getenv("CODEX_HOME"),sid);
+  const char *account_home=getenv("CODEX_HOME");
+  if (account_home) snprintf(path,sizeof(path),"%s/sessions/rollout-test-%s.jsonl",account_home,sid);
+  else snprintf(path,sizeof(path),"%s/.codex/sessions/rollout-test-%s.jsonl",getenv("HOME"),sid);
   FILE *f=fopen(path,"a+"); if (!f) return 24;
   fseek(f,0,SEEK_END);
   if (!ftell(f)) fprintf(f,"{\"type\":\"session_meta\",\"payload\":{\"id\":\"%s\",\"source\":\"cli\"}}\n",sid);
@@ -132,6 +134,25 @@ def test_real_tmux_adapter_switch_and_recovery_preserve_other_pane(live, mode):
     assert args[args.index('--ask-for-approval') + 1] == 'untrusted'
     assert live.checked('display-message', '-p', '-t', live.other, '#{pane_pid}\t#{pane_current_command}') == before
     assert live.checked('display-message', '-p', '-t', live.pane, '#{window_layout}') == layout
+
+
+def test_direct_account_switch_round_trip_keeps_conversation_model_and_other_pane(live):
+    dash = live.dash
+    before = live.checked('display-message', '-p', '-t', live.other, '#{pane_pid}\t#{pane_current_command}')
+    for alias in ('work', 'main'):
+        data = dash.account_switch_configuration({'alias': alias}, 'audit', live.pane)
+        data['requestId'] = 'direct-account-' + alias
+        identity = dash._pane_identity('audit', live.pane)
+        adapter = dash.SessionConfiguration(data, identity)
+        adapter.store = live.store
+        live.store.claim(data['requestId'], dash._identity_key(identity), data)
+        result = run_operation(live.store, data['requestId'], adapter)
+        assert result['ok'] is True, result
+        assert result['observed']['conversationId'] == SID
+        assert result['observed']['harnessAccount'] == alias
+        assert result['observed']['model'] == 'gpt-5.5'
+        assert result['observed']['effort'] == 'high'
+        assert live.checked('display-message', '-p', '-t', live.other, '#{pane_pid}\t#{pane_current_command}') == before
 
 
 def test_old_prompt_cannot_confirm_delayed_new_cli(live):

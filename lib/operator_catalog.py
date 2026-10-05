@@ -147,8 +147,6 @@ CATALOG: list[ToolSpec] = [
     T("optimization_set_default", "models", "Perfil de optimización por defecto.", P(profile="Perfil"), ("profile",), api("POST", "/optimization/default", {"profile": "$profile"})),
     T("optimization_apply", "models", "Aplica un perfil a varias sesiones (un model_switch por sesión).", P(profile="Perfil", sessions=ARR("Sesiones")), ("profile", "sessions"), local("optimization_apply")),
     T("undo_guard_switch", "models", "Deshace el último cambio de modelo hecho por la guardia (vuelve al anterior).", P(session="Sesión", model="Modelo previo"), ("session", "model"), api("POST", "/model/switch", {"session": "$session", "model": "$model"})),
-    T("open_motor_picker", "models", "Abre el selector de motor/modelo/cuenta de un pane en el tablero.", P(session="Sesión", pane=PANE), ("session",), ui_call("openMotorFor", "$session", "$pane")),
-    T("open_global_motor_picker", "models", "Abre el selector de motor GLOBAL.", target=ui_click("#motor-global")),
     # ───────────── usage / guard / analytics ─────────────
     T("usage_state", "usage", "Uso y cuotas por proveedor/cuenta, alertas, salud de credenciales.", target=api("GET", "/usage/state"), readonly=True),
     T("session_usage", "usage", "Contadores de uso asociados al panel seleccionado; scope=session incluye todos sus paneles. Conserva confianza y ámbito: contadores compartidos por carpeta no son atribución exacta por pane y no deben sumarse entre paneles. Sin registro significa desconocido.", P(session="Sesión exacta", pane=PANE, scope=("string", "Ámbito", ("selected", "session"))), ("session",), api("GET", "/usage/state"), readonly=True),
