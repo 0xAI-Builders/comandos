@@ -394,6 +394,34 @@ pub async fn run(cfg: DashConfig, shutdown: watch::Receiver<bool>) -> io::Result
     serve_listener(listener, cfg, shutdown).await
 }
 
+/// Tope de hilos de bloqueo del frente. Con el de tokio (512) una ola de
+/// peticiones simultáneas (los iframes de `term.html` que despiertan a la vez
+/// con `visibilitychange`, cada `/terminal-panes` esperando a tmux en su hilo)
+/// creaba 17 hilos de golpe, y ninguno volvía a quedar 10 s ocioso: el pool
+/// despierta a sus hilos en orden FIFO y GET `/state` daba cientos de saltos
+/// por cómputo, así que la recolección se repartía entre todos y cada uno
+/// engordaba su propia arena de glibc (en vivo tras la 2d: 4 → 24 hilos y
+/// 45 → 198 MiB de Pss). Ahora `/state` tiene su hilo (`states::serial`) y el
+/// pool queda para el trabajo esporádico (estáticos, terminal, tecleo).
+///
+/// Ningún trabajo de bloqueo espera a otro trabajo de bloqueo (solo a
+/// procesos de tmux que mueve el hilo del runtime), así que el tope no puede
+/// interbloquear: lo que no cabe espera en la cola del pool. Un tecleo largo
+/// de `/terminal/type` ocupa uno y quedan tres para lo demás.
+pub const MAX_BLOCKING_THREADS: usize = 4;
+
+/// Ocio tras el que un hilo de bloqueo se retira (tokio: 10 s).
+pub const BLOCKING_KEEP_ALIVE: Duration = Duration::from_secs(2);
+
+/// El runtime del frente: monohilo para la red y un pool de bloqueo acotado.
+pub fn runtime() -> io::Result<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .max_blocking_threads(MAX_BLOCKING_THREADS)
+        .thread_keep_alive(BLOCKING_KEEP_ALIVE)
+        .build()
+}
+
 /// Punto de entrada del binario: runtime monohilo, señales y código de salida.
 pub fn main(args: &[String]) -> i32 {
     let cfg = match from_env(args) {
@@ -407,10 +435,7 @@ pub fn main(args: &[String]) -> i32 {
             return 1;
         }
     };
-    let runtime = match tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    {
+    let runtime = match runtime() {
         Ok(runtime) => runtime,
         Err(error) => {
             eprintln!("comandos dash: runtime: {error}");
