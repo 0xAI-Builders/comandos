@@ -58,7 +58,30 @@ pub async fn run_program(
     args: &[&str],
     timeout: Duration,
 ) -> Result<Output, RunError> {
+    run(program, args, None, timeout).await
+}
+
+/// `run_program` con `cwd=…`: un directorio que no existe (o no se puede
+/// abrir) da `Spawn`, como el `FileNotFoundError` de `subprocess.run`.
+pub async fn run_program_in(
+    program: &Program,
+    args: &[&str],
+    cwd: &Path,
+    timeout: Duration,
+) -> Result<Output, RunError> {
+    run(program, args, Some(cwd), timeout).await
+}
+
+async fn run(
+    program: &Program,
+    args: &[&str],
+    cwd: Option<&Path>,
+    timeout: Duration,
+) -> Result<Output, RunError> {
     let mut cmd = tokio::process::Command::new(&program.path);
+    if let Some(cwd) = cwd {
+        cmd.current_dir(cwd);
+    }
     cmd.args(&program.prefix)
         .args(args)
         .stdin(Stdio::null())

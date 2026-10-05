@@ -7,6 +7,9 @@ pub mod guard;
 pub mod limits;
 pub mod pane_models;
 pub mod providers;
+/// Motor de GET `/usage/state` (latente: sin entrada en `ROUTES` hasta la
+/// Tarea 8).
+pub mod state;
 pub mod week;
 
 use super::{Answer, Entry, Key, Native, NativeRoute, Verb};

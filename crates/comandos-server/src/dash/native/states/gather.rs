@@ -96,12 +96,62 @@ struct Scan {
 /// `MOTOR_RESULT` desde su espejo `H/motor-results.json` (D1): ausente → `{}`;
 /// ilegible, incierto, no objeto o con un valor que no es objeto → declinar
 /// (la memoria del Python es desconocida).
-fn motor_results(hooks: &Path) -> Result<Map<String, Value>, StateFault> {
+pub(crate) fn motor_results(hooks: &Path) -> Result<Map<String, Value>, StateFault> {
     match files::read_json_strict(&hooks.join("motor-results.json")) {
         Strict::Missing => Ok(Map::new()),
         Strict::Value(Value::Object(map)) if map.values().all(Value::is_object) => Ok(map),
         _ => Err(StateFault::Decline),
     }
+}
+
+/// `load_provider_registry()` con la caché compartida del motor de `/state`
+/// (B9 de la 2e: una sola `RegistryCache`). El candado solo cubre la carga.
+pub(crate) fn load_registry(
+    opts: &NativeOptions,
+    cache: &mut Blocking,
+) -> Result<Value, StateFault> {
+    let repo = opts.repo_root.as_ref().ok_or(StateFault::Decline)?;
+    let catalog = catalog_paths(
+        &opts.home,
+        &opts.cwd,
+        opts.codex_home.as_deref(),
+        opts.grok_home.as_deref(),
+    );
+    cache
+        .registry
+        .load(&repo.join("config/providers.json"), &catalog)
+        .map_err(unsure)
+}
+
+/// Agentes de `/proc` emparejados con los panes: `agent_pane_maps(procs,
+/// panes, ownership)` (6103) tras `agent_procs()` (5992), y los agentes
+/// externos de `read_states`. Lee `AGENTS` de `cc-notify.conf`.
+pub(crate) fn agent_maps(
+    opts: &NativeOptions,
+    registry: &Value,
+    panes: &[PaneRow],
+) -> Result<(AgentMaps, HashSet<(String, String)>), StateFault> {
+    let conf = providers::read_conf(&opts.hooks.join("cc-notify.conf")).map_err(unsure)?;
+    let conf_agents = conf
+        .iter()
+        .find(|(k, _)| k == "AGENTS")
+        .map(|(_, v)| v.as_str());
+    let agents = providers::agent_set(conf_agents, registry);
+    let aliases = providers::process_aliases(&agents, registry);
+    let proc_root = opts.proc_root.as_path();
+    let procs = agent_procs(proc_root, &aliases).map_err(unsure)?;
+    // Padres y `cmdline` de `/proc` con cachés locales de este cómputo.
+    let mut parents: HashMap<i64, i64> = HashMap::new();
+    let mut parent = |pid: i64| {
+        *parents
+            .entry(pid)
+            .or_insert_with(|| agent_procs::parent_pid(proc_root, pid))
+    };
+    let owners = process_owners(&procs, panes, &mut parent);
+    let mut cmdline = |pid: i64| agent_procs::proc_cmdline(proc_root, pid);
+    let maps = agent_pane_maps(&procs, panes, &owners, &mut cmdline, &mut parent);
+    let external = external_agents(&procs, &owners, &mut parent);
+    Ok((maps, external))
 }
 
 /// Paso 2: registro, agentes, `/proc`, inspector, registros de estado,
@@ -111,40 +161,11 @@ fn scan(
     panes: Vec<PaneRow>,
     shared: &Mutex<Blocking>,
 ) -> Result<Scan, StateFault> {
-    let repo = opts.repo_root.as_ref().ok_or(StateFault::Decline)?;
-    let catalog = catalog_paths(
-        &opts.home,
-        &opts.cwd,
-        opts.codex_home.as_deref(),
-        opts.grok_home.as_deref(),
-    );
     let mut cache = lock(shared);
-    let registry = cache
-        .registry
-        .load(&repo.join("config/providers.json"), &catalog)
-        .map_err(unsure)?;
-    let conf = providers::read_conf(&opts.hooks.join("cc-notify.conf")).map_err(unsure)?;
-    let conf_agents = conf
-        .iter()
-        .find(|(k, _)| k == "AGENTS")
-        .map(|(_, v)| v.as_str());
-    let agents = providers::agent_set(conf_agents, &registry);
-    let aliases = providers::process_aliases(&agents, &registry);
-    let proc_root = opts.proc_root.as_path();
+    let registry = load_registry(opts, &mut cache)?;
     // `PaneInspector()` se crea al empezar `read_states`.
-    let inspector = PaneInspector::new(&opts.home, proc_root).map_err(unsure)?;
-    let procs = agent_procs(proc_root, &aliases).map_err(unsure)?;
-    // Padres y `cmdline` de `/proc` con cachés locales de este cómputo.
-    let mut parents: HashMap<i64, i64> = HashMap::new();
-    let mut parent = |pid: i64| {
-        *parents
-            .entry(pid)
-            .or_insert_with(|| agent_procs::parent_pid(proc_root, pid))
-    };
-    let owners = process_owners(&procs, &panes, &mut parent);
-    let mut cmdline = |pid: i64| agent_procs::proc_cmdline(proc_root, pid);
-    let maps = agent_pane_maps(&procs, &panes, &owners, &mut cmdline, &mut parent);
-    let external = external_agents(&procs, &owners, &mut parent);
+    let inspector = PaneInspector::new(&opts.home, opts.proc_root.as_path()).map_err(unsure)?;
+    let (maps, external) = agent_maps(opts, &registry, &panes)?;
     let tabs = light::tab_labels(&opts.hooks)?;
     let history = light::read_tab_history(&opts.hooks)?;
     let records = cache.records.scan(&opts.hooks.join("state"))?;
@@ -167,7 +188,7 @@ fn scan(
 
 /// `session_labels` (6700): etiquetas de pestañas más el historial de las
 /// sesiones vivas que no tienen etiqueta propia o la tienen igual al nombre.
-fn session_labels(
+pub(crate) fn session_labels(
     tabs: Vec<(String, String)>,
     live: &HashSet<String>,
     history: &[Map<String, Value>],

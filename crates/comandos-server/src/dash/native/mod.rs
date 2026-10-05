@@ -404,6 +404,8 @@ pub struct Native {
     pub(crate) typing: Arc<typing::TypingState>,
     /// GET `/state`: caché de 1,2 s, vuelo único y cachés de los lectores.
     pub(crate) states: states::Engine,
+    /// Memo de GET `/usage/state` (`cached_usage_state`) y su generación.
+    pub usage_engine: usage::state::UsageEngine,
 }
 
 impl Native {
@@ -425,6 +427,7 @@ impl Native {
             notice_feed: notices::RevisionFeed::default(),
             typing: Arc::default(),
             states: states::Engine::default(),
+            usage_engine: usage::state::UsageEngine::default(),
         }
     }
 

@@ -1059,6 +1059,11 @@ pub fn read_conf(path: &Path) -> Result<Vec<(String, String)>, Unsure> {
         Err(_) => return Err(Unsure),
     };
     let text = std::str::from_utf8(&bytes).map_err(|_| Unsure)?;
+    parse_conf(text)
+}
+
+/// El cuerpo de `read_conf` sobre el texto ya leído y decodificado.
+pub fn parse_conf(text: &str) -> Result<Vec<(String, String)>, Unsure> {
     let mut out: Vec<(String, String)> = Vec::new();
     // Modo texto con saltos universales: `\r\n`, `\r` y `\n` acaban línea.
     for raw in text.split('\n').flat_map(|l| l.split('\r')) {
