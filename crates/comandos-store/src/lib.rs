@@ -2,6 +2,7 @@
 pub mod intake;
 pub mod marks;
 pub mod news;
+pub mod session_profiles;
 #[path = "state_db/mod.rs"]
 pub mod state;
 use comandos_core::event;
