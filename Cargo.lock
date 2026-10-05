@@ -283,6 +283,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "nix",
+ "regex",
  "rusqlite",
  "serde_json",
  "sha2",

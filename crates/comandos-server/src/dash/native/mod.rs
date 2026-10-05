@@ -18,6 +18,7 @@ pub mod query;
 pub mod retired;
 pub mod snippets;
 pub mod state;
+pub mod states;
 pub mod terminal;
 pub mod tmux;
 pub mod typing;

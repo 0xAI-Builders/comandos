@@ -23,6 +23,8 @@ getrandom.workspace = true
 futures-util = { version = "=0.3.34", default-features = false, features = ["std", "async-await"] }
 # `kill(pid, 0)` como el `os.kill` del Python; misma versión y rasgos que comandos-extensions.
 nix = { version = "0.31", features = ["signal", "process", "user", "fs", "resource"] }
+# Expresiones fijas de `read_states` (pista de Codex, Claude ocupado, modelos caros).
+regex = "=1.13.1"
 
 [dev-dependencies]
 hyper = { version = "=1.11.1", default-features = false, features = ["client", "http1"] }

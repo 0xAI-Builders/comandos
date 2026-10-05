@@ -195,6 +195,15 @@ pub fn is_pane(s: &str) -> Option<bool> {
     )
 }
 
+/// `session_name(project)` (5919): `re.sub(r"[.:]", "-", project)[:80]`.
+pub fn session_name(project: &str) -> String {
+    project
+        .chars()
+        .map(|c| if c == '.' || c == ':' { '-' } else { c })
+        .take(80)
+        .collect()
+}
+
 /// `s[:n]` de Python (por caracteres).
 pub fn take_chars(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
