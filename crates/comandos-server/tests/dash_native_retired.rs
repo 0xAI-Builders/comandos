@@ -12,7 +12,7 @@ const BODY: &str = r#"{"error": "El chat de CommandOS se retir\u00f3; usa la bar
 async fn retired_routes_answer_operator_410() {
     let home = TestHome::new("retired");
     let front = front(&home, dead_port(), home.options()).await;
-    assert_eq!(GET_PATHS.len() + POST_PATHS.len(), 31);
+    assert_eq!(GET_PATHS.len() + POST_PATHS.len(), 37);
     for path in GET_PATHS {
         for target in [path.to_string(), format!("{path}?x=1")] {
             let wire = get(front.port, &target).await;
@@ -28,7 +28,7 @@ async fn retired_routes_answer_operator_410() {
     }
     // Lo que no es exactamente una ruta retirada sigue su camino.
     assert_eq!(
-        get(front.port, "/proxy").await.status,
+        get(front.port, "/proxy-extra").await.status,
         502,
         "reenviada al heredado (muerto)"
     );
@@ -39,7 +39,7 @@ async fn retired_routes_answer_operator_410() {
         "nativa del dominio B"
     );
     assert_eq!(
-        request_body(front.port, "POST", "/proxy", "", "{}")
+        request_body(front.port, "POST", "/proxy-extra", "", "{}")
             .await
             .status,
         502

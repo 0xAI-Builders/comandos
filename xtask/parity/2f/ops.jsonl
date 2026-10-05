@@ -1,0 +1,2 @@
+{"name":"o-proxy-retirada","method":"GET","path":"/proxy","headers":{"Host":"127.0.0.1"},"volatile":[],"expect":"differs","reason":"D8: retirada en el frente, viva en el heredado sin llamadores"}
+{"name":"o-harness-switch-retirada","method":"POST","path":"/harness/switch","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"volatile":[],"expect":"differs","reason":"D8: retirada en el frente, viva en el heredado sin llamadores","body":{}}
