@@ -1,0 +1,455 @@
+//! Toda llamada a tmux de la app pasa por aquí, siempre con `-S <socket>`
+//! explícito: nunca se cae por descuido en el servidor `default` del usuario.
+//! El modo decide qué se puede hacer: la sombra solo lee.
+use crate::config::{AppConfig, RunMode, TmuxServer};
+use crate::guard::{GuardError, WriteGuard};
+use crate::proc::{ProcSpec, run};
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+/// Plazo de `tmuxc` (`bin/cc-app:414`).
+pub const TMUX_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Verbos que no cambian nada (con las reglas de `check_read_args`).
+pub const READ_VERBS: &[&str] = &[
+    "has-session",
+    "list-sessions",
+    "list-windows",
+    "list-panes",
+    "list-clients",
+    "list-buffers",
+    "display-message",
+    "show-options",
+    "show-buffer",
+    "save-buffer",
+    "capture-pane",
+    "show-environment",
+];
+
+/// Verbos que la app usa para cambiar tmux (solo fuera de la sombra). Ni
+/// `kill-server` ni `kill-session`: el único borrado es `kill_owned_session`.
+pub const MUTATE_VERBS: &[&str] = &[
+    "new-session",
+    "new-window",
+    "split-window",
+    "send-keys",
+    "select-pane",
+    "select-window",
+    "select-layout",
+    "resize-pane",
+    "resize-window",
+    "set-option",
+    "load-buffer",
+    "paste-buffer",
+    "delete-buffer",
+    "respawn-pane",
+    "move-window",
+];
+
+/// Shells cuya presencia exclusiva hace «ociosa» una sesión `term-*` (`close_tab`, 3386).
+const IDLE_SHELLS: &[&str] = &["zsh", "bash", "sh", "fish"];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TmuxError {
+    ShadowRefused(String),
+    Forbidden(String),
+    BadArgs(String),
+    Spawn(String),
+    Timeout(String),
+}
+
+/// Como `subprocess.CompletedProcess` del Python.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TmuxOut {
+    pub code: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+impl TmuxOut {
+    pub fn ok(&self) -> bool {
+        self.code == 0
+    }
+}
+
+/// Prueba de que una sesión se puede borrar. Solo la crean `idle_scratch` y
+/// `new_placeholder_session`; no se puede construir desde fuera.
+#[derive(Debug)]
+pub struct OwnedSession {
+    name: String,
+    socket: PathBuf,
+    identity: String,
+    idle: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct TmuxCtl {
+    mode: RunMode,
+    socket: PathBuf,
+}
+
+fn valid_session_name(name: &str) -> bool {
+    // SESSION_RE de bin/cc-app:3572 (el mismo que cc-dash).
+    !name.is_empty()
+        && name.len() <= 80
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+
+fn valid_target(t: &str) -> bool {
+    let id = |p: char| {
+        t.strip_prefix(p)
+            .is_some_and(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_digit()))
+    };
+    if id('%') || id('@') || id('$') {
+        return true;
+    }
+    let body = t.strip_prefix('=').unwrap_or(t);
+    let (sess, rest) = match body.split_once(':') {
+        Some((s, r)) => (s, Some(r)),
+        None => (body, None),
+    };
+    valid_session_name(sess)
+        && rest.is_none_or(|r| {
+            r.is_empty()
+                || r == "^"
+                || r.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+        })
+}
+
+/// Reglas de lectura (F07, F09): sin `#(`, `-p` obligatorio donde sin él se
+/// muta, `save-buffer` solo a stdout, objetivos `-t` válidos.
+pub fn check_read_args(args: &[&str]) -> Result<(), TmuxError> {
+    let verb = *args
+        .first()
+        .ok_or_else(|| TmuxError::BadArgs("sin verbo".into()))?;
+    if !READ_VERBS.contains(&verb) {
+        return Err(TmuxError::Forbidden(verb.to_string()));
+    }
+    if let Some(bad) = args.iter().find(|a| a.contains("#(")) {
+        return Err(TmuxError::BadArgs(format!(
+            "formato que ejecuta comandos: {bad}"
+        )));
+    }
+    reject_command_chain(args)?;
+    if matches!(verb, "display-message" | "capture-pane") {
+        let mut printed = false;
+        let mut it = args.iter().skip(1);
+        while let Some(arg) = it.next() {
+            match *arg {
+                "-p" => printed = true,
+                "-t" | "-c" | "-F" | "-b" | "-S" | "-E" => {
+                    it.next()
+                        .ok_or_else(|| TmuxError::BadArgs(format!("{arg} sin valor")))?;
+                }
+                "-a" | "-v" | "-l" | "-C" | "-e" | "-J" | "-N" | "-P" | "-q" => {}
+                other if other.starts_with('-') => {
+                    return Err(TmuxError::BadArgs(format!(
+                        "opción de lectura desconocida: {other}"
+                    )));
+                }
+                _ => break,
+            }
+        }
+        if !printed {
+            return Err(TmuxError::BadArgs(format!("{verb} sin -p")));
+        }
+    }
+    if verb == "save-buffer" && args.last() != Some(&"-") {
+        return Err(TmuxError::BadArgs("save-buffer solo a stdout (-)".into()));
+    }
+    let mut it = args.iter().skip(1);
+    while let Some(a) = it.next() {
+        if *a == "-t" {
+            let target = it
+                .next()
+                .ok_or_else(|| TmuxError::BadArgs("-t sin valor".into()))?;
+            if !valid_target(target) {
+                return Err(TmuxError::BadArgs(format!("objetivo no válido: {target}")));
+            }
+        }
+    }
+    Ok(())
+}
+
+// tmux interpreta separadores y llaves como listas de comandos incluso sin shell.
+fn reject_command_chain(args: &[&str]) -> Result<(), TmuxError> {
+    if args
+        .iter()
+        .any(|a| a.contains(';') || matches!(*a, "{" | "}"))
+    {
+        return Err(TmuxError::BadArgs("lista de comandos tmux".into()));
+    }
+    Ok(())
+}
+
+/// `TMUX_TMPDIR` como lo usa tmux 3.2a: si no es un directorio existente, `/tmp`.
+fn tmux_tmpdir(env: &dyn Fn(&str) -> Option<String>) -> PathBuf {
+    env("TMUX_TMPDIR")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .filter(|p| p.is_dir())
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+}
+
+impl TmuxCtl {
+    /// Único constructor: lee el modo y el servidor de la configuración.
+    pub fn from_config(
+        cfg: &AppConfig,
+        env: &dyn Fn(&str) -> Option<String>,
+    ) -> Result<TmuxCtl, TmuxError> {
+        let uid = nix::unistd::getuid().as_raw();
+        let user_dir = tmux_tmpdir(env).join(format!("tmux-{uid}"));
+        let socket = match (cfg.mode(), cfg.tmux_server(), cfg.sandbox_root()) {
+            (RunMode::Sandbox, TmuxServer::Private(label), Some(root)) => {
+                root.join("tmux").join(label.as_str())
+            }
+            (RunMode::Sandbox, _, _) => {
+                return Err(TmuxError::Forbidden("sandbox sin socket propio".into()));
+            }
+            (_, TmuxServer::User, _) => user_dir.join("default"),
+            (_, TmuxServer::Private(label), _) => user_dir.join(label.as_str()),
+        };
+        if cfg.mode() == RunMode::Sandbox
+            && (socket.starts_with(&user_dir) || socket.starts_with(format!("/tmp/tmux-{uid}")))
+        {
+            return Err(TmuxError::Forbidden(format!(
+                "el socket del sandbox no puede vivir con los del usuario: {}",
+                socket.display()
+            )));
+        }
+        Ok(TmuxCtl {
+            mode: cfg.mode(),
+            socket,
+        })
+    }
+
+    pub fn socket_path(&self) -> &Path {
+        &self.socket
+    }
+
+    pub fn mode(&self) -> RunMode {
+        self.mode
+    }
+
+    /// Crea `<raíz>/tmux` (0700, como tmux exige) en sandbox; en otro modo no hace nada.
+    pub fn prepare_socket_dir(&self, guard: &WriteGuard) -> Result<(), GuardError> {
+        match (self.mode, self.socket.parent()) {
+            (RunMode::Sandbox, Some(dir)) => guard.create_dir_all(dir, 0o700),
+            _ => Ok(()),
+        }
+    }
+
+    fn exec(&self, args: &[&str], stdin: Option<&[u8]>) -> Result<TmuxOut, TmuxError> {
+        let mut argv: Vec<OsString> = vec!["-S".into(), self.socket.clone().into_os_string()];
+        argv.extend(args.iter().map(OsString::from));
+        let spec = ProcSpec {
+            program: "tmux".into(),
+            args: argv,
+            stdin: stdin.map(<[u8]>::to_vec),
+            env: Vec::new(),
+            env_remove: vec!["TMUX".into(), "TMUX_PANE".into()],
+            cwd: None,
+            timeout: TMUX_TIMEOUT,
+        };
+        let out = run(&spec).map_err(|e| TmuxError::Spawn(format!("{e:?}")))?;
+        if out.timed_out {
+            return Err(TmuxError::Timeout(args.join(" ")));
+        }
+        Ok(TmuxOut {
+            code: out.code.unwrap_or(1),
+            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        })
+    }
+
+    pub fn read(&self, args: &[&str]) -> Result<TmuxOut, TmuxError> {
+        check_read_args(args)?;
+        self.exec(args, None)
+    }
+
+    fn check_mutate(&self, args: &[&str]) -> Result<(), TmuxError> {
+        let verb = *args
+            .first()
+            .ok_or_else(|| TmuxError::BadArgs("sin verbo".into()))?;
+        if !MUTATE_VERBS.contains(&verb) {
+            return Err(TmuxError::Forbidden(verb.to_string()));
+        }
+        if self.mode == RunMode::Shadow {
+            return Err(TmuxError::ShadowRefused(verb.to_string()));
+        }
+        reject_command_chain(args)?;
+        if let Some(bad) = args.iter().find(|a| a.contains("#(")) {
+            return Err(TmuxError::BadArgs(format!(
+                "formato que ejecuta comandos: {bad}"
+            )));
+        }
+        Ok(())
+    }
+
+    pub fn mutate(&self, args: &[&str]) -> Result<TmuxOut, TmuxError> {
+        self.check_mutate(args)?;
+        self.exec(args, None)
+    }
+
+    /// `load-buffer -` con el texto por stdin (`snip_paste`, F38).
+    pub fn mutate_with_stdin(&self, args: &[&str], stdin: &[u8]) -> Result<TmuxOut, TmuxError> {
+        self.check_mutate(args)?;
+        self.exec(args, Some(stdin))
+    }
+
+    /// `Some` solo si `session` es `term-*` y todos sus panes son shells ociosos.
+    pub fn idle_scratch(&self, session: &str) -> Result<Option<OwnedSession>, TmuxError> {
+        if !session.starts_with("term-") || !valid_session_name(session) {
+            return Ok(None);
+        }
+        let target = format!("={session}");
+        let out = self.read(&[
+            "list-panes",
+            "-s",
+            "-t",
+            &target,
+            "-F",
+            "#{pane_current_command}",
+        ])?;
+        let cmds: Vec<&str> = out.stdout.split_whitespace().collect();
+        if out.ok() && !cmds.is_empty() && cmds.iter().all(|c| IDLE_SHELLS.contains(c)) {
+            self.owned(session, true).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn owned(&self, name: &str, idle: bool) -> Result<OwnedSession, TmuxError> {
+        let target = format!("={name}:");
+        let out = self.read(&[
+            "display-message",
+            "-p",
+            "-t",
+            &target,
+            "#{pid}:#{session_id}",
+        ])?;
+        if !out.ok() || out.stdout.trim().is_empty() {
+            return Err(TmuxError::BadArgs("la sesión ya no existe".into()));
+        }
+        Ok(OwnedSession {
+            name: name.into(),
+            socket: self.socket.clone(),
+            identity: out.stdout.trim().into(),
+            idle,
+        })
+    }
+
+    /// `new-session` de la restauración: devuelve la prueba de propiedad si tmux
+    /// la creó (el nombre sale del `-s` de `args`).
+    pub fn new_placeholder_session(
+        &self,
+        args: &[&str],
+    ) -> Result<(TmuxOut, Option<OwnedSession>), TmuxError> {
+        if args.first() != Some(&"new-session") {
+            return Err(TmuxError::BadArgs(
+                "new_placeholder_session solo crea sesiones".into(),
+            ));
+        }
+        // Nunca aceptar -A: devuelve éxito para una sesión que ya existía.
+        let mut options = args.iter().skip(1);
+        let mut session = None;
+        while let Some(arg) = options.next() {
+            match *arg {
+                "-d" | "-P" | "-E" => {}
+                "-s" => {
+                    let name = options
+                        .next()
+                        .filter(|n| valid_session_name(n))
+                        .ok_or_else(|| TmuxError::BadArgs("new-session sin -s válido".into()))?;
+                    if session.replace((*name).to_string()).is_some() {
+                        return Err(TmuxError::BadArgs("-s duplicado".into()));
+                    }
+                }
+                "-x" | "-y" | "-F" | "-n" | "-c" | "-e" => {
+                    options
+                        .next()
+                        .ok_or_else(|| TmuxError::BadArgs(format!("{arg} sin valor")))?;
+                }
+                other if other.starts_with('-') => {
+                    return Err(TmuxError::BadArgs(format!(
+                        "opción no permitida de placeholder: {other}"
+                    )));
+                }
+                _ => break,
+            }
+        }
+        let name = session.ok_or_else(|| TmuxError::BadArgs("new-session sin -s válido".into()))?;
+        let out = self.mutate(args)?;
+        let owned = if out.ok() {
+            Some(self.owned(&name, false)?)
+        } else {
+            None
+        };
+        Ok((out, owned))
+    }
+
+    pub fn kill_owned_session(&self, owned: OwnedSession) -> Result<TmuxOut, TmuxError> {
+        if self.mode == RunMode::Shadow {
+            return Err(TmuxError::ShadowRefused("kill-session".into()));
+        }
+        if owned.socket != self.socket {
+            return Err(TmuxError::Forbidden("token de otro servidor".into()));
+        }
+        let current = self.owned(&owned.name, owned.idle)?;
+        if current.identity != owned.identity {
+            return Err(TmuxError::Forbidden(
+                "sesión reemplazada desde la prueba de propiedad".into(),
+            ));
+        }
+        if owned.idle && self.idle_scratch(&owned.name)?.is_none() {
+            return Err(TmuxError::Forbidden(
+                "la sesión dejó de estar ociosa".into(),
+            ));
+        }
+        let target = owned
+            .identity
+            .split_once(':')
+            .map(|(_, id)| id)
+            .filter(|id| valid_target(id))
+            .ok_or_else(|| TmuxError::BadArgs("identidad de sesión inválida".into()))?;
+        self.exec(&["kill-session", "-t", target], None)
+    }
+
+    /// Mismo comando que `open_tab` (3611) con `-S`; la sombra se engancha en
+    /// solo lectura y sin cambiar el tamaño de la sesión.
+    pub fn attach_argv(&self, session: &str) -> Vec<String> {
+        let quote = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
+        let flags = if self.mode == RunMode::Shadow {
+            "-f read-only,ignore-size "
+        } else {
+            ""
+        };
+        let attach = format!(
+            "tmux -S {} attach {flags}-t {} || {{ echo '[sesion terminada — cierra esta pestana con la x]'; exec cat; }}",
+            quote(&self.socket.display().to_string()),
+            quote(&format!("={session}")),
+        );
+        vec!["/bin/sh".into(), "-c".into(), attach]
+    }
+
+    /// `_tmux_window_size` (749): tamaño que la sesión ya tiene, si es razonable.
+    pub fn window_size(&self, session: &str) -> Option<(u16, u16)> {
+        let target = format!("={session}:");
+        let out = self
+            .read(&[
+                "display-message",
+                "-p",
+                "-t",
+                &target,
+                "#{window_width} #{window_height}",
+            ])
+            .ok()?;
+        let mut it = out.stdout.split_whitespace().map(str::parse::<u16>);
+        let (cols, rows) = (it.next()?.ok()?, it.next()?.ok()?);
+        (cols >= 20 && rows >= 5).then_some((cols, rows))
+    }
+}

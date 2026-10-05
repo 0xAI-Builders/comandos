@@ -37,3 +37,4 @@ async-channel = "=2.5.0"
 ureq = { version = "=3.4.2", default-features = false }
 regex = "=1.13.1"
 nix = { version = "=0.31.3", default-features = false, features = ["fs", "signal", "process", "user"] }
+getrandom.workspace = true

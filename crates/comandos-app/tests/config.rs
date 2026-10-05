@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_methods)]
 use comandos_app::config::{
     AppConfig, Entry, RunMode, TmuxServer, parse_args, resolve_entry, ui_lang,
 };

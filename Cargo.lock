@@ -273,6 +273,7 @@ dependencies = [
  "comandos-runtime",
  "gdk",
  "gdk-pixbuf",
+ "getrandom 0.3.4",
  "gio",
  "glib",
  "gtk",
