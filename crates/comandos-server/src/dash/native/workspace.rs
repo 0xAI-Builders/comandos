@@ -212,6 +212,17 @@ pub fn sync(
     hooks: &Path,
     now_seconds: f64,
 ) -> Result<WorkspaceState, Fault> {
+    sync_with_reason(backend, hooks, now_seconds, "auto")
+}
+
+/// `workspace_sync(reason=…)`: `close_app_tab` pasa `"user"` (sin la puerta de
+/// fase `ready` ni la negativa a vaciar el workspace de `"auto"`).
+pub fn sync_with_reason(
+    backend: &StateBackend,
+    hooks: &Path,
+    now_seconds: f64,
+    reason: &str,
+) -> Result<WorkspaceState, Fault> {
     let store = store(&backend.conn)?;
     for _ in 0..3 {
         let current = store
@@ -236,7 +247,7 @@ pub fn sync(
             &json!(current.revision),
             &wanted,
             &request_id,
-            "auto",
+            reason,
             now_seconds,
         ) {
             Ok(saved) => return Ok(saved),
