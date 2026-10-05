@@ -229,7 +229,8 @@ fn switch_only_between_distinct_claude_accounts() {
     assert_eq!(call("main", "main", "claude"), Ok(false));
     assert_eq!(call("", "main", "claude"), Ok(false));
     assert_eq!(call("main", "rel", "grok"), Ok(false));
-    assert!(call("main", "rel", "codex").is_err(), "Codex: 2f-2/T1");
+    // Codex (D8): sin cuentas Codex en este registro, la excepción es `False`.
+    assert_eq!(call("main", "rel", "codex"), Ok(false));
     assert_eq!(call("main", "rel", "claude"), Ok(true));
     let dest = h.0.join(".claude-accounts/rel/.claude.json");
     let text = fs::read_to_string(dest).unwrap();

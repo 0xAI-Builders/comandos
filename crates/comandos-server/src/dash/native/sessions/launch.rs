@@ -635,19 +635,11 @@ fn danger_flag(opts: &NativeOptions, agent: &str, danger: bool) -> Result<String
 
 /// `motor_lock_env(motor, model)` (1834) como palabras.
 fn motor_lock(motor: &str, model: &str) -> String {
-    if !matches!(motor, "codex" | "grok") || model.is_empty() {
-        return String::new();
-    }
-    [
-        "ANTHROPIC_DEFAULT_OPUS_MODEL",
-        "ANTHROPIC_DEFAULT_SONNET_MODEL",
-        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-        "CLAUDE_CODE_SUBAGENT_MODEL",
-    ]
-    .iter()
-    .map(|k| format!("{k}={}", shlex_quote(model)))
-    .collect::<Vec<_>>()
-    .join(" ")
+    launch_command::motor_lock_env(motor, model)
+        .iter()
+        .map(|(k, v)| format!("{k}={}", shlex_quote(v)))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Todo lo que el comando necesita del agente elegido.

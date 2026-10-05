@@ -29,7 +29,7 @@ use std::{
 };
 
 /// `json.load(open(path))` clasificado como lo ve el Python.
-enum Read {
+pub(crate) enum Read {
     /// `FileNotFoundError`.
     Missing,
     /// Cualquier otra excepción (JSON roto, BOM, directorio…): el `except`.
@@ -37,7 +37,7 @@ enum Read {
     Value(Value),
 }
 
-fn read_json(path: &Path) -> Result<Read, Unsure> {
+pub(crate) fn read_json(path: &Path) -> Result<Read, Unsure> {
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Read::Missing),

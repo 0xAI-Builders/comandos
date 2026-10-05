@@ -59,14 +59,14 @@ pub fn py_regex(pattern: &str, ignore_case: bool) -> Result<PyRegex, Unsure> {
         match trailing_lookahead(alternative)? {
             Some((prefix, negative, body)) => {
                 let literal = literal_text(prefix, ignore_case)?;
-                let body = compile(&translate(body, ignore_case)?, ignore_case)?;
+                let body = compile(&translate(body, Fold::new(ignore_case))?, ignore_case)?;
                 looks.push(Look {
                     literal,
                     negative,
                     body,
                 });
             }
-            None => plains.push(translate(alternative, ignore_case)?),
+            None => plains.push(translate(alternative, Fold::new(ignore_case))?),
         }
     }
     let plain = if plains.is_empty() {
@@ -301,16 +301,51 @@ fn literal_text(p: &[char], ignore_case: bool) -> Result<String, Unsure> {
 
 /// Literal ya decidido: alfanumérico ASCII tal cual, el resto como `\x{…}`
 /// (nunca metacarácter de `regex`, ni `\<`, ni operador de clases).
-fn push_literal(out: &mut String, c: char, ignore_case: bool) -> Result<(), Unsure> {
+fn push_literal(out: &mut String, c: char, fold: Fold) -> Result<(), Unsure> {
     if c.is_ascii_alphanumeric() {
         out.push(c);
         return Ok(());
     }
-    if ignore_case && !c.is_ascii() {
+    let refused = match fold {
+        Fold::Exact => false,
+        Fold::Ascii => !c.is_ascii(),
+        Fold::Latin => !c.is_ascii() && !case_safe(c),
+    };
+    if refused {
         return Err(Unsure);
     }
     out.push_str(&format!("\\x{{{:X}}}", u32::from(c)));
     Ok(())
+}
+
+/// Cómo se pliegan los literales: sin `re.I`; con `re.I` solo ASCII (los
+/// sujetos de `py_search` son ASCII); con `re.I` y letras latinas de órbita
+/// simple (`py_regex_lines`, pantallas con texto en español).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Fold {
+    Exact,
+    Ascii,
+    Latin,
+}
+
+impl Fold {
+    fn new(ignore_case: bool) -> Self {
+        if ignore_case {
+            Self::Ascii
+        } else {
+            Self::Exact
+        }
+    }
+    fn on(self) -> bool {
+        self != Self::Exact
+    }
+}
+
+/// Literal no ASCII que `re.I` y `(?i)` pliegan igual: sin mayúsculas (marcos
+/// de la TUI, `❯`) o una letra latina de U+00C0–U+00FE (salvo `ß`), cuya
+/// órbita es su par mayúscula/minúscula en ambos motores.
+fn case_safe(c: char) -> bool {
+    !c.is_alphabetic() || (('\u{C0}'..='\u{FE}').contains(&c) && c != '\u{DF}')
 }
 
 /// `{m}`, `{m,}`, `{,n}`, `{m,n}` con dígitos ASCII (`sre_parse`); cualquier
@@ -399,7 +434,7 @@ fn range_safe(lo: char, hi: char, ignore_case: bool) -> bool {
     !has_letter || lo.is_ascii_lowercase() && hi <= 'z' || lo.is_ascii_uppercase() && hi <= 'Z'
 }
 
-fn translate_class(p: &[char], i: &mut usize, ignore_case: bool) -> Result<String, Unsure> {
+fn translate_class(p: &[char], i: &mut usize, fold: Fold) -> Result<String, Unsure> {
     let mut out = String::from("[");
     *i += 1;
     if p.get(*i) == Some(&'^') {
@@ -418,7 +453,7 @@ fn translate_class(p: &[char], i: &mut usize, ignore_case: bool) -> Result<Strin
             match p.get(*i + 1) {
                 None => return Err(Unsure),
                 Some(']') => {
-                    push_item(&mut out, &lo, ignore_case)?;
+                    push_item(&mut out, &lo, fold)?;
                     out.push_str("\\x{2D}");
                     *i += 2;
                     break;
@@ -429,7 +464,7 @@ fn translate_class(p: &[char], i: &mut usize, ignore_case: bool) -> Result<Strin
                     let (ClassItem::Char(lo), ClassItem::Char(hi)) = (lo, hi) else {
                         return Err(Unsure);
                     };
-                    if hi < lo || !range_safe(lo, hi, ignore_case) {
+                    if hi < lo || !range_safe(lo, hi, fold.on()) {
                         return Err(Unsure);
                     }
                     out.push_str(&format!(
@@ -441,25 +476,25 @@ fn translate_class(p: &[char], i: &mut usize, ignore_case: bool) -> Result<Strin
                 }
             }
         }
-        push_item(&mut out, &lo, ignore_case)?;
+        push_item(&mut out, &lo, fold)?;
     }
     out.push(']');
     Ok(out)
 }
 
-fn push_item(out: &mut String, item: &ClassItem, ignore_case: bool) -> Result<(), Unsure> {
+fn push_item(out: &mut String, item: &ClassItem, fold: Fold) -> Result<(), Unsure> {
     match item {
         ClassItem::Category(c) => {
             out.push('\\');
             out.push(*c);
             Ok(())
         }
-        ClassItem::Char(c) => push_literal(out, *c, ignore_case),
+        ClassItem::Char(c) => push_literal(out, *c, fold),
     }
 }
 
 /// Patrón sin lookarounds (los rechaza) con la sintaxis de `sre_parse`.
-fn translate(p: &[char], ignore_case: bool) -> Result<String, Unsure> {
+fn translate(p: &[char], fold: Fold) -> Result<String, Unsure> {
     let mut out = String::new();
     let mut i = 0;
     let mut depth = 0usize;
@@ -487,9 +522,9 @@ fn translate(p: &[char], ignore_case: bool) -> Result<String, Unsure> {
                     }
                     d => {
                         match control_escape(d) {
-                            Some(ctrl) => push_literal(&mut out, ctrl, ignore_case)?,
+                            Some(ctrl) => push_literal(&mut out, ctrl, fold)?,
                             None if d.is_ascii_alphanumeric() => return Err(Unsure),
-                            None => push_literal(&mut out, d, ignore_case)?,
+                            None => push_literal(&mut out, d, fold)?,
                         }
                         atom = true;
                     }
@@ -497,7 +532,7 @@ fn translate(p: &[char], ignore_case: bool) -> Result<String, Unsure> {
                 continue;
             }
             '[' => {
-                out.push_str(&translate_class(p, &mut i, ignore_case)?);
+                out.push_str(&translate_class(p, &mut i, fold)?);
                 atom = true;
                 continue;
             }
@@ -549,12 +584,12 @@ fn translate(p: &[char], ignore_case: bool) -> Result<String, Unsure> {
                     continue;
                 }
                 None => {
-                    push_literal(&mut out, '{', ignore_case)?;
+                    push_literal(&mut out, '{', fold)?;
                     atom = true;
                 }
             },
             other => {
-                push_literal(&mut out, other, ignore_case)?;
+                push_literal(&mut out, other, fold)?;
                 atom = true;
             }
         }
@@ -564,6 +599,66 @@ fn translate(p: &[char], ignore_case: bool) -> Result<String, Unsure> {
         return Err(Unsure);
     }
     Ok(out)
+}
+
+/// `re.compile(pattern, re.M | (re.I if ignore_case else 0))` traducido para
+/// buscar en texto de varias líneas (`re.search` sobre una pantalla). Sin
+/// lookarounds. Quien busca comprueba antes `screen_safe` sobre el sujeto.
+pub fn py_regex_lines(pattern: &str, ignore_case: bool) -> Result<Regex, Unsure> {
+    let chars: Vec<char> = pattern.chars().collect();
+    let fold = if ignore_case {
+        Fold::Latin
+    } else {
+        Fold::Exact
+    };
+    let translated = translate(&chars, fold)?;
+    let flags = if ignore_case { "(?im)" } else { "(?m)" };
+    Regex::new(&format!("{flags}{translated}")).map_err(|_| Unsure)
+}
+
+/// ¿Da `py_regex_lines(pattern, …)` sobre `subject` lo mismo que `re.search`?
+/// No con U+001C–U+001F (el `\s` de Python los incluye), con `İ`/`ı` bajo
+/// `re.I` (Python las iguala a `i`), con `\B` y sujeto vacío, ni, si el patrón
+/// usa `\b \B \w \W`, con caracteres no ASCII cuya clase de palabra podría
+/// diferir (`str.isalnum` frente a la `\w` Unicode de `regex`).
+pub fn screen_safe(pattern: &str, ignore_case: bool, subject: &str) -> bool {
+    static WORD: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"^\w$").ok());
+    let chars: Vec<char> = pattern.chars().collect();
+    let mut escapes = Vec::new();
+    let mut i = 0;
+    while let Some(&c) = chars.get(i) {
+        if c == '\\' {
+            if let Some(&d) = chars.get(i + 1) {
+                escapes.push(d);
+            }
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    if subject.is_empty() && escapes.contains(&'B') {
+        return false;
+    }
+    let words = escapes.iter().any(|d| matches!(d, 'b' | 'B' | 'w' | 'W'));
+    subject.chars().all(|c| {
+        if ('\u{1c}'..='\u{1f}').contains(&c) {
+            return false;
+        }
+        if c.is_ascii() {
+            return true;
+        }
+        if ignore_case && matches!(c, '\u{130}' | '\u{131}') {
+            return false;
+        }
+        if !words {
+            return true;
+        }
+        let latin = ('\u{C0}'..='\u{24F}').contains(&c) && c.is_alphabetic();
+        let rust_word = WORD
+            .as_ref()
+            .is_some_and(|re| re.is_match(c.encode_utf8(&mut [0; 4])));
+        latin || (!c.is_alphanumeric() && !rust_word)
+    })
 }
 
 /// `?` perezoso opcional; otro cuantificador detrás es `multiple repeat`.
@@ -2192,7 +2287,7 @@ mod tests {
     #[test]
     fn translation_emits_safe_syntax() {
         let t = |p: &str, ic: bool| -> Option<String> {
-            translate(&p.chars().collect::<Vec<_>>(), ic).ok()
+            translate(&p.chars().collect::<Vec<_>>(), Fold::new(ic)).ok()
         };
         assert_eq!(t(r"a\<b", false).as_deref(), Some(r"a\x{3C}b"));
         assert_eq!(
@@ -2205,6 +2300,15 @@ mod tests {
         assert_eq!(t(r"^*", false), None);
         assert_eq!(t(r"\p{L}", false), None);
         assert_eq!(t(r"é", true), None);
+        // Para pantallas (`py_regex_lines`): letras latinas de una sola órbita
+        // y símbolos sin mayúsculas se pliegan igual en `re.I` y `(?i)`;
+        // `µ`, `ß` o `K` (Kelvin), no.
+        let latin = |p: &str| translate(&p.chars().collect::<Vec<_>>(), Fold::Latin).ok();
+        assert_eq!(latin(r"é").as_deref(), Some(r"\x{E9}"));
+        assert_eq!(latin(r"❯").as_deref(), Some(r"\x{276F}"));
+        assert_eq!(latin(r"µ"), None);
+        assert_eq!(latin(r"ß"), None);
+        assert_eq!(latin("\u{212A}"), None);
         assert_eq!(t(r"é", false).as_deref(), Some(r"\x{E9}"));
         assert_eq!(t(r"[Z-a]", true), None);
         assert!(t(r"[a-z]", true).is_some());
