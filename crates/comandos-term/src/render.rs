@@ -22,7 +22,8 @@
 //! - Oculto: el texto toma el color del fondo y no hay subrayado ni tachado
 //!   (xterm.js no dibuja nada de la celda).
 //! - Subrayado con color propio (SGR 58): ni atenuado ni invertido; la
-//!   negrita aclara el índice 0–7. `None` = el color del texto.
+//!   negrita aclara el índice 0–7. `None` = el color del texto, o no hay
+//!   subrayado (así un SGR 58 sin subrayado no parte tiras).
 //!
 //! ## Tiras
 //!
@@ -31,9 +32,11 @@
 //! dibujar su texto de una vez: xterm.js coloca cada glifo en su celda
 //! (`deviceCellWidth = floor(charWidth · dpr)`) y el avance real de la
 //! fuente es fraccional, así que un `fillText` de la tira entera se iría
-//! desplazando. A6 pinta cada carácter de una tira `Text` en
-//! `(col + i) · cell_w` (en `text` hay exactamente un carácter por celda,
-//! con espacios donde hay huecos).
+//! desplazando. A6 pinta cada **celda** (un carácter con sus marcas
+//! combinantes, o un carácter ancho de dos columnas) en `col · cell_w`;
+//! [`Run::cell_texts`] da `(columna, texto)` de cada celda: en una tira
+//! `Text` de varias celdas cada carácter es una celda (un hueco es `" "`),
+//! y una tira de una celda lleva el carácter con todas sus marcas.
 //!
 //! Se agrupan los caracteres ASCII imprimibles y latinos de ancho 1; los
 //! espacios entre ellos se conservan y los del final no generan tira. Un
@@ -117,6 +120,49 @@ pub struct Run {
     pub kind: RunKind,
     /// Índice en [`RowRender::links`] del hipervínculo OSC 8.
     pub link: Option<u32>,
+}
+
+impl Run {
+    /// `(columna, texto)` de cada celda de la tira, para pintarla en
+    /// `columna · cell_w`. Una celda es un carácter con sus marcas
+    /// combinantes (o un carácter ancho de dos columnas). Solo las tiras
+    /// `Text` de varias celdas tienen más de una entrada, y en ellas cada
+    /// carácter es una celda: nunca se agrupan celdas con marcas.
+    pub fn cell_texts(&self) -> CellTexts<'_> {
+        CellTexts {
+            rest: self.text.as_str(),
+            col: self.col,
+            per_char: self.kind == RunKind::Text && self.cells > 1,
+        }
+    }
+}
+
+/// Iterador de [`Run::cell_texts`].
+#[derive(Debug, Clone)]
+pub struct CellTexts<'a> {
+    rest: &'a str,
+    col: u16,
+    per_char: bool,
+}
+
+impl<'a> Iterator for CellTexts<'a> {
+    type Item = (u16, &'a str);
+
+    fn next(&mut self) -> Option<(u16, &'a str)> {
+        if self.rest.is_empty() {
+            return None;
+        }
+        let len = if self.per_char {
+            self.rest.chars().next().map_or(0, char::len_utf8)
+        } else {
+            self.rest.len()
+        };
+        let (cell, rest) = self.rest.split_at_checked(len)?;
+        let col = self.col;
+        self.rest = rest;
+        self.col = self.col.saturating_add(1);
+        Some((col, cell))
+    }
 }
 
 /// Una fila lista para pintar.
@@ -511,8 +557,11 @@ impl<'a> Resolver<'a> {
         }
         // `_drawToCache`: un subrayado con color propio no se atenúa ni se
         // invierte; la negrita aclara el índice 0–7.
+        // Sin subrayado no hay nada que colorear: no debe partir tiras.
+        let underline = underline(flags);
         let underline_color = cell
             .underline_color()
+            .filter(|_| underline != Underline::None)
             .map(|color| self.color(color, bold && self.opts.bold_is_bright));
         let mut style = Style {
             fg,
@@ -520,7 +569,7 @@ impl<'a> Resolver<'a> {
             bold,
             italic: flags.contains(Flags::ITALIC),
             dim,
-            underline: underline(flags),
+            underline,
             underline_color,
             strike: flags.contains(Flags::STRIKEOUT),
             hidden,

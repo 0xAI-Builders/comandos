@@ -727,3 +727,44 @@ fn draw_ops_match_xterm_js_call_for_call() {
         assert_eq!(flat(&Value::Array(got)), flat(expected), "{key}");
     }
 }
+
+#[test]
+fn each_cell_maps_to_its_grapheme_for_per_cell_drawing() {
+    // A6 pinta cada celda en `col · cell_w`: un carácter con sus marcas
+    // combinantes ocupa una sola celda.
+    let (mut e, p) = eng();
+    e.advance("ab\u{301}c 漢─x".as_bytes(), 0.0);
+    let r = render_row(&e, 0, &p, &O);
+    let cells: Vec<(u16, &str)> = r.runs.iter().flat_map(Run::cell_texts).collect();
+    assert_eq!(
+        cells,
+        [
+            (0, "a"),
+            (1, "b\u{301}"),
+            (2, "c"),
+            (4, "漢"),
+            (6, "─"),
+            (7, "x")
+        ]
+    );
+    // Dentro de una tira agrupada, un hueco es su propia celda.
+    let (mut e, p) = eng();
+    e.advance(b"a  b", 0.0);
+    let r = render_row(&e, 0, &p, &O);
+    let cells: Vec<(u16, &str)> = r.runs[0].cell_texts().collect();
+    assert_eq!(cells, [(0, "a"), (1, " "), (2, " "), (3, "b")]);
+}
+
+#[test]
+fn underline_color_without_underline_does_not_split_runs() {
+    let (mut e, p) = eng();
+    e.advance(b"x\x1b[58;5;1my\x1b[4mz", 0.0);
+    let r = render_row(&e, 0, &p, &O);
+    assert_eq!(
+        r.runs
+            .iter()
+            .map(|x| (x.text.as_str(), x.style.underline_color))
+            .collect::<Vec<_>>(),
+        [("xy", None), ("z", Some(p.ansi[1]))]
+    );
+}
