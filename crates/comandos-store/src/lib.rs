@@ -241,4 +241,5 @@ pub mod workspace;
 pub mod focus;
 pub mod pomodoro;
 pub mod usage;
+pub mod usage_import;
 pub mod usage_read;

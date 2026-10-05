@@ -99,3 +99,45 @@ fn parse_raw(raw: &str, unique: bool, depth: usize) -> Result<Value, serde_json:
         }
     }
 }
+
+/// Las claves `keys` de un objeto JSON de nivel superior como texto crudo prestado de
+/// `raw`, sin copiar ni decodificar el resto: serde valida cada valor y descarta los
+/// que no se piden (una línea de transcript de varios MiB no se materializa). Una
+/// clave repetida se queda con su último valor, como `json.loads`. `Err` si `raw` no
+/// es un objeto o serde no lo acepta (p. ej. `NaN`, que `json.loads` sí admite): quien
+/// llama puede reintentar con `workspace_loads`.
+pub fn object_fields<'a>(
+    raw: &'a str,
+    keys: &[&str],
+) -> Result<Vec<Option<&'a RawValue>>, serde_json::Error> {
+    struct Fields<'k> {
+        keys: &'k [&'k str],
+    }
+    impl<'de> Visitor<'de> for Fields<'_> {
+        type Value = Vec<Option<&'de RawValue>>;
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("JSON object")
+        }
+        fn visit_map<A: MapAccess<'de>>(self, mut input: A) -> Result<Self::Value, A::Error> {
+            let mut out = vec![None; self.keys.len()];
+            while let Some(key) = input.next_key::<String>()? {
+                match self.keys.iter().position(|k| *k == key) {
+                    Some(i) => {
+                        let value = input.next_value::<&'de RawValue>()?;
+                        if let Some(slot) = out.get_mut(i) {
+                            *slot = Some(value);
+                        }
+                    }
+                    None => {
+                        input.next_value::<de::IgnoredAny>()?;
+                    }
+                }
+            }
+            Ok(out)
+        }
+    }
+    let mut decoder = serde_json::Deserializer::from_str(raw);
+    let fields = decoder.deserialize_map(Fields { keys })?;
+    decoder.end()?;
+    Ok(fields)
+}
