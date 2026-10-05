@@ -21,8 +21,9 @@ use super::{
     light::{data, error, read_reply},
     procs::which_in,
     py::{str_scalar, take_chars},
+    quick::scoped_tmux,
     reply,
-    tmux::{Program, RunError, run_program},
+    tmux::{RunError, run_program},
 };
 use crate::{HandlerError, Request};
 use comandos_core::text::{is_space, shlex_quote, splitlines, strip};
@@ -470,18 +471,6 @@ fn setup_command(host: &str, key: &str) -> String {
     )
 }
 
-/// `systemd-run --user --scope --collect --quiet <tmux> …` con el entorno de
-/// tmux (el socket privado en las pruebas), como el lanzamiento de
-/// `/terminal/quick`.
-fn scoped(scope: &Program, tmux: &Program) -> Program {
-    let mut program = scope.clone();
-    program.prefix.push(tmux.path.clone().into_os_string());
-    program.prefix.extend(tmux.prefix.iter().cloned());
-    program.env.extend(tmux.env.iter().cloned());
-    program.env_remove.extend(tmux.env_remove.iter().cloned());
-    program
-}
-
 /// POST `/ssh-key-setup`: `ssh_key_setup(data.get("host", ""))`.
 async fn key_setup(native: &Native, d: &Map<String, Value>) -> Answer {
     // `SSH_HOST_RE.match(<no texto>)` es `TypeError` (500).
@@ -528,7 +517,7 @@ async fn key_setup(native: &Native, d: &Map<String, Value>) -> Answer {
     let Some(scope) = opts.scope.as_ref() else {
         return Err(Fault::Decline);
     };
-    let program = scoped(scope, &opts.tmux.program);
+    let program = scoped_tmux(scope, &opts.tmux.program);
     let cmd = setup_command(&host, &key);
     let args = ["new-session", "-d", "-s", &session, "-n", "setup", &cmd];
     let out = match run_program(&program, &args, Duration::from_secs(SETUP_SECONDS)).await {

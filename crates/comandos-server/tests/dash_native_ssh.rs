@@ -326,3 +326,106 @@ async fn ssh_add_waits_for_lock() {
     );
     server.stop().await;
 }
+
+/// Baja y edición sin `~/.ssh`: los dos lados crean el directorio y el
+/// candado (`file_lock` hace `makedirs`) y responden «No hay ~/.ssh/config».
+#[tokio::test]
+async fn ssh_del_and_update_without_dir_match_python() {
+    let Some(t) = Twin::start("ssh-nodir", |_| {}).await else {
+        return;
+    };
+    assert!(!t.a.root.join(".ssh").exists());
+    let body = same(&t, "POST", "/ssh-del", r#"{"host": "srv"}"#).await;
+    assert_eq!(body, r#"{"error": "No hay ~/.ssh/config"}"#);
+    let _ = std::fs::remove_dir_all(t.a.root.join(".ssh"));
+    let _ = std::fs::remove_dir_all(t.b.root.join(".ssh"));
+    let edit = json!({"orig": "srv", "host": "srv", "hostname": "h"});
+    let body = same(&t, "POST", "/ssh-update", &edit.to_string()).await;
+    assert_eq!(body, r#"{"error": "No hay ~/.ssh/config"}"#);
+    assert!(snapshot(&t.a).contains("config - \"<sin archivo>\""));
+}
+
+/// `~/.ssh/config` que no es UTF-8: el Python (locale UTF-8) lanza al leerlo
+/// y el frente da el mismo 500, sin tocar el archivo.
+#[tokio::test]
+async fn ssh_non_utf8_config_fails_and_keeps_file() {
+    let Some(t) = Twin::start("ssh-latin", |_| {}).await else {
+        return;
+    };
+    let text = b"Host a\n  HostName caf\xe9\n";
+    for home in [&t.a, &t.b] {
+        let ssh = home.root.join(".ssh");
+        std::fs::create_dir_all(&ssh).unwrap();
+        std::fs::set_permissions(&ssh, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    both(&t, ".ssh/config", text, 0o600);
+    let before = std::fs::metadata(t.a.root.join(".ssh/config")).unwrap();
+    for (method, path, body) in [
+        ("GET", "/ssh", String::new()),
+        (
+            "POST",
+            "/ssh-add",
+            json!({"host": "b", "hostname": "h"}).to_string(),
+        ),
+        ("POST", "/ssh-del", json!({"host": "a"}).to_string()),
+        (
+            "POST",
+            "/ssh-update",
+            json!({"orig": "a", "host": "a", "hostname": "h"}).to_string(),
+        ),
+    ] {
+        let run = t.request(method, path, &body).await;
+        run.assert_same();
+        assert_eq!(
+            run.front.status,
+            500,
+            "{method} {path}: {}",
+            run.front.text()
+        );
+        assert_eq!(
+            snapshot(&t.a),
+            snapshot(&t.b),
+            "~/.ssh tras {method} {path}"
+        );
+        let config = t.a.root.join(".ssh/config");
+        assert_eq!(std::fs::read(&config).unwrap(), text);
+        assert_eq!(std::fs::metadata(&config).unwrap().ino(), before.ino());
+    }
+}
+
+/// Sin `systemd-run` el frente declina `/ssh-key-setup` antes de crear la
+/// sesión: la petición llega tal cual al heredado y no nace ningún servidor
+/// tmux ni corre `ssh-copy-id`.
+#[tokio::test]
+async fn ssh_key_setup_without_scope_declines() {
+    let home = TestHome::new("ssh-noscope");
+    let ssh = home.root.join(".ssh");
+    std::fs::create_dir_all(&ssh).unwrap();
+    std::fs::write(ssh.join("config"), "Host srv\n  HostName h\n").unwrap();
+    std::fs::write(ssh.join("id_ed25519.pub"), "ssh-ed25519 AAAA prueba\n").unwrap();
+    let log = home.root.join("ssh-copy-id.log");
+    write_executable(
+        &home.root.join("bin/ssh-copy-id"),
+        &format!("#!/bin/sh\necho \"$@\" >> '{}'\n", log.display()),
+    );
+    let legacy = FakeLegacy::start().await;
+    let opts = home.options();
+    assert!(opts.scope.is_none());
+    let server = front(&home, legacy.port, opts).await;
+    let wire = request_body(
+        server.port,
+        "POST",
+        "/ssh-key-setup",
+        "",
+        r#"{"host": "srv"}"#,
+    )
+    .await;
+    assert_eq!(wire.text(), r#"{"legacy": true}"#);
+    assert_eq!(legacy.requests().len(), 1, "{:?}", legacy.requests());
+    assert!(!log.exists(), "ssh-copy-id no corrió");
+    assert!(
+        !support::private_socket_of(&home.tmux_dir()).exists(),
+        "ningún servidor tmux"
+    );
+    server.stop().await;
+}
