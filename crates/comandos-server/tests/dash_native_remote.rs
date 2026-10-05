@@ -87,6 +87,66 @@ fn logs_equal(t: &Twin) {
     assert_eq!(webterm(&t.a), webterm(&t.b), "cc-webterm / pkill");
 }
 
+/// `qrencode` falso: anota sus argumentos, guarda su stdin en
+/// `<HOME>/qrencode.stdin` y escribe un «PNG» fijo en el `-o`.
+const QRENCODE: &str = r#"#!/bin/sh
+printf '%s\0' qrencode "$@" "$(printf '\036')" >> "$HOME/fakebin.log"
+out=""; prev=""
+for a in "$@"; do [ "$prev" = "-o" ] && out=$a; prev=$a; done
+cat > "$HOME/qrencode.stdin"
+printf 'PNG-FALSO' > "$out"
+"#;
+
+/// La URL del QR lleva el token: el frente la pasa por stdin (nunca en `argv`,
+/// visible en `/proc`); el Python, como argumento. Desviación intencionada: el
+/// PNG es el mismo (con el `qrencode` real lo compara `remote_routes_match_python`).
+#[tokio::test]
+async fn qr_url_goes_by_stdin_not_argv() {
+    let mut fakes = remote_fakes();
+    fakes.push(("qrencode".into(), QRENCODE.into()));
+    let opts = TwinOpts {
+        fakebin_extra: fakes,
+        ..TwinOpts::default()
+    };
+    let Some(t) = Twin::start_with("remote-qr", |_| {}, opts).await else {
+        return;
+    };
+    assert_confined(&t);
+    both(&t, |h| tailscale_set(h, "status.json", Some(STATUS_JSON)));
+    let (code, body) = same(&t, "GET", "/remote-state").await;
+    assert_eq!(code, 200);
+    let state: Value = serde_json::from_str(&body).unwrap();
+    let url = state["urls"]["dashboard"].as_str().unwrap().to_owned();
+    assert!(url.contains(support::TOKEN), "{url}");
+    let run = t.get("/remote-qr.png").await;
+    assert_eq!((run.front.status, run.oracle.status), (200, 200));
+    assert_eq!(run.front.body, run.oracle.body);
+    assert_eq!(&run.front.body[..], b"PNG-FALSO");
+    let front = calls_of(&t.a, "qrencode");
+    let oracle = calls_of(&t.b, "qrencode");
+    assert_eq!(front.len(), 1);
+    assert_eq!(oracle.len(), 1);
+    let front = &front[0];
+    assert_eq!(front.len(), 6, "{front:?}");
+    assert!(
+        front.iter().all(|a| !a.contains(support::TOKEN)),
+        "{front:?}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(t.a.root.join("qrencode.stdin")).unwrap(),
+        url
+    );
+    // El Python: la misma forma más la URL al final, y stdin vacío.
+    assert_eq!(oracle[0].len(), 7);
+    assert_eq!(oracle[0][6], url);
+    assert_eq!(
+        std::fs::read_to_string(t.b.root.join("qrencode.stdin")).unwrap(),
+        ""
+    );
+    assert_eq!(front[..1], oracle[0][..1]);
+    assert_eq!(front[2..], oracle[0][2..6]);
+}
+
 #[tokio::test]
 async fn remote_routes_match_python() {
     let opts = TwinOpts {
@@ -140,6 +200,11 @@ async fn remote_routes_match_python() {
             run.oracle.header(name),
             "cabecera {name}"
         );
+    }
+    // Con el `qrencode` real instalado el PNG sí se compara (el frente le
+    // pasa la URL por stdin; el Python, por argumento).
+    if support::oracle::real_program("qrencode").is_some() {
+        assert_eq!(run.front.status, 200, "{}", run.front.text());
     }
     if run.front.status == 200 {
         assert_eq!(run.front.header("content-type"), Some("image/png"));

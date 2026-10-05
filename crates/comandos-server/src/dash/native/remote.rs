@@ -297,6 +297,20 @@ async fn run_quiet(
     args: &[&str],
     seconds: u64,
 ) -> Quiet {
+    run_quiet_input(opts, argv0, program, args, None, seconds).await
+}
+
+/// `run_quiet` con `input` por stdin (como `communicate`: se escribe mientras
+/// se lee la salida; un hijo que cierra stdin antes no es un error). Lo que va
+/// por stdin nunca aparece en `argv` ni en el texto de un error.
+async fn run_quiet_input(
+    opts: &NativeOptions,
+    argv0: &str,
+    program: Option<&Path>,
+    args: &[&str],
+    input: Option<&[u8]>,
+    seconds: u64,
+) -> Quiet {
     let Some(path) = program else {
         return Quiet::failed(os_error_message(2, argv0));
     };
@@ -312,15 +326,30 @@ async fn run_quiet(
     for (key, value) in &program.env {
         cmd.env(key, value);
     }
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    let child = match cmd.spawn() {
+    cmd.stdin(if input.is_some() {
+        Stdio::piped()
+    } else {
+        Stdio::null()
+    })
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .kill_on_drop(true);
+    let mut child = match cmd.spawn() {
         Ok(child) => child,
         Err(e) => return Quiet::failed(io_message(&e, argv0)),
     };
-    let waited = tokio::time::timeout(Duration::from_secs(seconds), child.wait_with_output()).await;
+    let stdin = child.stdin.take();
+    let feed = async move {
+        if let (Some(mut pipe), Some(input)) = (stdin, input) {
+            let _ = pipe.write_all(input).await;
+            // Al soltar `pipe` el hijo ve el fin de la entrada.
+        }
+    };
+    let run = async move {
+        let ((), output) = tokio::join!(feed, child.wait_with_output());
+        output
+    };
+    let waited = tokio::time::timeout(Duration::from_secs(seconds), run).await;
     let output = match waited {
         Err(_) => return Quiet::failed(timeout_message(argv0, args, seconds)),
         Ok(Err(e)) => return Quiet::failed(io_message(&e, argv0)),
@@ -546,7 +575,23 @@ async fn webterm_health(ports: [u16; 2]) -> (bool, bool) {
 /// la respuesta es `2xx` (urllib levanta `HTTPError` en lo demás). Las
 /// redirecciones no se siguen (ttyd nunca redirige: desviación anotada).
 async fn http_healthy(port: u16, path: &str) -> bool {
-    probe(port, path).await.unwrap_or(false)
+    // Plazo total de la sonda: un servidor que gotea un byte cada 0,39 s no
+    // la alarga sin fin (cada lectura sola sí respetaría los 0,4 s).
+    tokio::time::timeout(PROBE_DEADLINE, probe(port, path))
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(false)
+}
+
+/// Tope de una sonda entera (conexión, petición y cabeceras).
+const PROBE_DEADLINE: Duration = Duration::from_secs(1);
+
+/// ¿Terminan las cabeceras en `head`? Solo mira lo recién leído (desde
+/// `from`, con 3 bytes de solape por si el `\r\n\r\n` quedó partido).
+fn headers_end(head: &[u8], from: usize) -> bool {
+    let tail = head.get(from.saturating_sub(3)..).unwrap_or_default();
+    tail.windows(4).any(|w| w == b"\r\n\r\n") || tail.windows(2).any(|w| w == b"\n\n")
 }
 
 async fn probe(port: u16, path: &str) -> Option<bool> {
@@ -567,10 +612,12 @@ async fn probe(port: u16, path: &str) -> Option<bool> {
     // el plazo del socket; el cuerpo no se lee.
     let mut head: Vec<u8> = Vec::new();
     let mut buf = [0u8; 2048];
+    let mut scanned = 0;
     loop {
-        if head.windows(4).any(|w| w == b"\r\n\r\n") || head.windows(2).any(|w| w == b"\n\n") {
+        if headers_end(&head, scanned) {
             break;
         }
+        scanned = head.len();
         if head.len() > MAX_LINE {
             return None;
         }
@@ -888,11 +935,16 @@ async fn qr(native: &Arc<Native>) -> Answer {
         Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, &message),
     };
     let name = temp.0.to_string_lossy().into_owned();
-    let r = run_quiet(
+    // La URL lleva el token de acceso: va por stdin (`qrencode` sin texto lo
+    // lee de ahí), no en `argv` (visible en `/proc` para todo usuario) ni en el
+    // texto de un plazo vencido. El Python la pasa como argumento; el PNG es
+    // el mismo byte a byte.
+    let r = run_quiet_input(
         native.options(),
         "qrencode",
         Some(&qrencode),
-        &["-o", &name, "-s", "8", "-m", "2", &url],
+        &["-o", &name, "-s", "8", "-m", "2"],
+        Some(url.as_bytes()),
         QRENCODE_SECONDS,
     )
     .await;
@@ -991,6 +1043,42 @@ pub fn start(native: &Arc<Native>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn headers_end_scans_only_the_new_bytes_with_overlap() {
+        assert!(headers_end(b"HTTP/1.0 200 OK\r\n\r\n", 0));
+        // El `\r\n\r\n` partido entre dos lecturas se ve con el solape.
+        assert!(headers_end(b"HTTP/1.0 200 OK\r\n\r\n", 17));
+        assert!(headers_end(b"HTTP/1.0 200 OK\n\n", 16));
+        assert!(!headers_end(b"HTTP/1.0 200 OK\r\n", 0));
+        // Lo ya revisado (más de 3 bytes atrás) no se vuelve a mirar.
+        assert!(!headers_end(b"\n\nHTTP/1.0 200 OK", 10));
+    }
+
+    /// Un servidor local que gotea un byte cada 0,3 s (cada lectura cabe en
+    /// los 0,4 s del socket) no alarga la sonda más allá de su plazo total.
+    #[tokio::test]
+    async fn probe_has_an_overall_deadline() {
+        let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 512];
+            let _ = socket.read(&mut request).await;
+            for byte in b"HTTP/1.1 200 OK\r\nX-Lento: 1".iter().cycle().take(200) {
+                if socket.write_all(&[*byte]).await.is_err() {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(300)).await;
+            }
+        });
+        let started = Instant::now();
+        assert!(!http_healthy(port, "/token").await);
+        assert!(started.elapsed() < Duration::from_millis(1500));
+        server.abort();
+    }
 
     #[test]
     fn status_text_states() {
