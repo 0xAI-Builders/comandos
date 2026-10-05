@@ -1870,4 +1870,6 @@ importa). `diff` de bordes y `pane-models.txt`: vacío. Minuto 30: 43 075 KiB, 7
 
 El heredado sigue en ≈ 440 MiB: ya no importa ni reconstruye, pero el Python no devuelve al
 sistema lo que reservó; baja solo al reiniciar `cc-dash-legacy` (no hace falta para la 2e).
-Pendientes: muestra de las 4–6 h y la del día siguiente.
+Muestra de las 4–6 h (16:17:12, 4 h 45 min después del cutover): 43 084 KiB, 7 hilos,
+`NRestarts=0`, mismo PID (583166); por debajo de 56 MiB y 12 hilos. No se revirtió.
+Pendiente: la muestra del día siguiente.
