@@ -219,3 +219,22 @@ fn merged_view_is_trimmed_like_python() {
     assert!(!all.contains_key("py100|%100"));
     assert!(all.contains_key("py101|%101"));
 }
+
+#[test]
+fn late_rust_write_keeps_newer_own_entry_after_legacy_overwrite() {
+    let home = TestHome::new("motor-own-newer");
+    let results = MotorResults::load_with(&home.hooks().join("motor-results.json"), fixed(1.0));
+    results
+        .set_with_ts("audit|%0", true, "nuevo", &[], 300.0)
+        .unwrap();
+    home.write("motor-results.json", "{}");
+    results
+        .set_with_ts("audit|%0", false, "atrasado", &[], 200.0)
+        .unwrap();
+    assert_eq!(results.get("audit|%0").unwrap()["ts"], json!(300.0));
+    assert_eq!(on_disk(&home)["audit|%0"]["detail"], json!("nuevo"));
+    results
+        .set_with_ts("audit|%0", true, "igual", &[], 300.0)
+        .unwrap();
+    assert_eq!(results.get("audit|%0").unwrap()["detail"], json!("igual"));
+}

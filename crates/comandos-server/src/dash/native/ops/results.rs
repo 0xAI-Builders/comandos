@@ -127,14 +127,7 @@ impl MotorResults {
     fn merged(state: &State) -> Result<Map<String, Value>, Uncertain> {
         let mut map = state.disk.clone();
         for (key, own) in &state.own {
-            let newer = match map.get(key) {
-                None => true,
-                Some(theirs) => match (sort_key(own), sort_key(theirs)) {
-                    (Some(a), Some(b)) => a >= b,
-                    (Some(_), None) => true,
-                    _ => false,
-                },
-            };
+            let newer = newest(own, map.get(key));
             if newer {
                 map.insert(key.clone(), own.clone());
             }
@@ -225,7 +218,9 @@ impl MotorResults {
         let entry = Value::Object(result);
         // `merged` decide por timestamp y conserva la posición del disco.
         // Sustituir aquí la entrada del disco perdería el resultado más nuevo.
-        state.own.insert(key.to_owned(), entry);
+        if newest(&entry, state.own.get(key)) {
+            state.own.insert(key.to_owned(), entry);
+        }
         let _ = trim(&mut state.own);
         if state.uncertain {
             return Err(Uncertain);
@@ -292,6 +287,18 @@ fn extend(result: &mut Map<String, Value>, fields: &[(&str, Value)]) {
 
 /// `float(value.get("ts") or 0)`, sin NaN (su orden en `sorted` depende de
 /// las comparaciones de timsort).
+/// La misma regla para disco y memoria propia; un empate gana el entrante.
+fn newest(incoming: &Value, existing: Option<&Value>) -> bool {
+    match existing {
+        None => true,
+        Some(existing) => match (sort_key(incoming), sort_key(existing)) {
+            (Some(a), Some(b)) => a >= b,
+            (Some(_), None) => true,
+            _ => false,
+        },
+    }
+}
+
 fn sort_key(value: &Value) -> Option<f64> {
     let ts = value.as_object()?.get("ts").unwrap_or(&Value::Null);
     let f = match ts {
