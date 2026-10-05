@@ -13,9 +13,16 @@ thread_local! {
     static NOW_MS: Cell<f64> = const { Cell::new(0.0) };
 }
 
-/// Fija el «ahora» que verán los temporizadores de este hilo.
-pub(crate) fn set_now(now_ms: f64) {
-    NOW_MS.with(|n| n.set(now_ms));
+/// Fija el «ahora» que verán los temporizadores de este hilo y lo devuelve.
+/// Un valor no finito (NaN, ±∞) no se acepta: se conserva el anterior, así
+/// un reloj roto no fija plazos infinitos ni los vence todos de golpe.
+pub(crate) fn set_now(now_ms: f64) -> f64 {
+    NOW_MS.with(|n| {
+        if now_ms.is_finite() {
+            n.set(now_ms);
+        }
+        n.get()
+    })
 }
 
 fn now() -> f64 {

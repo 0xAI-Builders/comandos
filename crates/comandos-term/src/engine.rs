@@ -6,9 +6,12 @@ use crate::{
     osc::OscLimiter,
 };
 use alacritty_terminal::{
-    event::{Event, EventListener, WindowSize},
+    event::{Event, EventListener},
     grid::{Dimensions, Scroll},
-    term::{Config, MIN_COLUMNS, MIN_SCREEN_LINES, Term, TermDamage, TermMode},
+    term::{
+        ClipboardType, Config, MIN_COLUMNS, MIN_SCREEN_LINES, Term, TermDamage, TermMode,
+        color::COUNT as COLOR_COUNT,
+    },
     vte::ansi::{Processor, Rgb},
 };
 use std::{cell::Cell, rc::Rc, sync::Arc};
@@ -169,8 +172,18 @@ pub struct Drained {
     pub title: Option<String>,
     /// Último texto que la aplicación quiso copiar (OSC 52).
     pub clipboard: Option<String>,
+    /// Destino de `clipboard` (es `Some` exactamente cuando `clipboard` lo es).
+    pub clipboard_target: Option<ClipboardTarget>,
     /// Sonó la campana al menos una vez.
     pub bell: bool,
+}
+
+/// Destino de un OSC 52. alacritty junta `p` (primaria) y `s` (selección) en
+/// `Selection`; `c` es el portapapeles normal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClipboardTarget {
+    Clipboard,
+    Selection,
 }
 
 /// Seguimiento del ratón que pidió la aplicación.
@@ -201,21 +214,25 @@ pub struct Modes {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Damage {
     Full,
-    /// Índices de línea de pantalla (0 = arriba del todo de lo visible).
+    /// Índices de línea tal como los da alacritty: línea de pantalla **más**
+    /// `display_offset`. Con la vista desplazada por la historia pueden pasar
+    /// de `screen_lines - 1`: quien pinta (A6) resta el desplazamiento y
+    /// recorta a la pantalla. Desplazar la vista llega como `Full`.
     Lines(Vec<usize>),
 }
 
-/// Formateadores que alacritty adjunta a sus peticiones de respuesta.
+/// Formateador que alacritty adjunta a una consulta de color.
 type ColorFormat = Arc<dyn Fn(Rgb) -> String + Sync + Send + 'static>;
-type SizeFormat = Arc<dyn Fn(WindowSize) -> String + Sync + Send + 'static>;
 
-/// Respuesta pendiente; las de color y tamaño se formatean en `drain`, que
-/// conoce la paleta y la celda en píxeles.
+/// Respuesta pendiente; las de color y tamaño se arman en `drain`, que
+/// conoce la paleta, los colores cambiados por OSC y la celda en píxeles.
 enum Reply {
     /// Ya reescrita (DA de xterm.js), para que su coste sea el real.
     Bytes(Vec<u8>),
     Color(usize, ColorFormat),
-    TextAreaSize(SizeFormat),
+    /// CSI 14 t. Se arma aquí en `u32`: el formateador de alacritty
+    /// multiplica en `u16` y se desborda con rejillas o celdas grandes.
+    TextAreaPixels,
 }
 
 impl Reply {
@@ -223,7 +240,7 @@ impl Reply {
     fn cost(&self) -> usize {
         match self {
             Reply::Bytes(bytes) => bytes.len(),
-            Reply::Color(..) | Reply::TextAreaSize(_) => REQUEST_REPLY_COST,
+            Reply::Color(..) | Reply::TextAreaPixels => REQUEST_REPLY_COST,
         }
     }
 }
@@ -235,7 +252,7 @@ struct Pending {
     replies: Vec<Reply>,
     reply_bytes: usize,
     title: Option<String>,
-    clipboard: Option<String>,
+    clipboard: Option<(ClipboardTarget, String)>,
     bell: bool,
 }
 
@@ -263,13 +280,18 @@ impl EventListener for Collector {
                 pending.push_reply(Reply::Bytes(rewrite_reply(text.as_bytes()).to_vec()))
             }
             Event::ColorRequest(index, format) => pending.push_reply(Reply::Color(index, format)),
-            Event::TextAreaSizeRequest(format) => pending.push_reply(Reply::TextAreaSize(format)),
+            // En alacritty 0.26 solo CSI 14 t emite este evento.
+            Event::TextAreaSizeRequest(_) => pending.push_reply(Reply::TextAreaPixels),
             Event::Title(title) => pending.title = Some(bounded_title(title)),
             Event::ResetTitle => pending.title = Some(String::new()),
             // Un texto mayor que el tope se descarta entero: copiar media
             // salida sería peor que no copiar.
-            Event::ClipboardStore(_, text) if text.len() <= MAX_CLIPBOARD_BYTES => {
-                pending.clipboard = Some(text);
+            Event::ClipboardStore(kind, text) if text.len() <= MAX_CLIPBOARD_BYTES => {
+                let target = match kind {
+                    ClipboardType::Clipboard => ClipboardTarget::Clipboard,
+                    ClipboardType::Selection => ClipboardTarget::Selection,
+                };
+                pending.clipboard = Some((target, text));
             }
             Event::Bell => pending.bell = true,
             _ => {}
@@ -331,7 +353,7 @@ impl Engine {
 
     /// Procesa bytes del PTY; `now_ms` es el reloj del llamador.
     pub fn advance(&mut self, bytes: &[u8], now_ms: f64) {
-        set_now(now_ms);
+        let now_ms = set_now(now_ms);
         // Si una actualización sincronizada venció sin `tick`, se vuelca antes:
         // si no, los bytes nuevos se pintarían antes que los retenidos.
         if self.sync_expired(now_ms) {
@@ -348,7 +370,7 @@ impl Engine {
 
     /// Cierra una actualización sincronizada vencida; `true` si volcó algo.
     pub fn tick(&mut self, now_ms: f64) -> bool {
-        set_now(now_ms);
+        let now_ms = set_now(now_ms);
         if !self.sync_expired(now_ms) {
             return false;
         }
@@ -374,29 +396,41 @@ impl Engine {
         let mut out = Drained {
             replies: Vec::with_capacity(pending.reply_bytes),
             title: pending.title,
-            clipboard: pending.clipboard,
+            clipboard_target: pending.clipboard.as_ref().map(|(target, _)| *target),
+            clipboard: pending.clipboard.map(|(_, text)| text),
             bell: pending.bell,
         };
         for reply in pending.replies {
             match reply {
                 Reply::Bytes(bytes) => out.replies.extend_from_slice(&bytes),
                 Reply::Color(index, format) => {
-                    let [r, g, b] = self.palette.color_for_request(index);
-                    out.replies
-                        .extend_from_slice(format(Rgb { r, g, b }).as_bytes());
+                    let color = self.color_for_request(index);
+                    out.replies.extend_from_slice(format(color).as_bytes());
                 }
-                Reply::TextAreaSize(format) => {
-                    let size = WindowSize {
-                        num_lines: self.size.rows,
-                        num_cols: self.size.cols,
-                        cell_width: self.cell_px.0,
-                        cell_height: self.cell_px.1,
-                    };
-                    out.replies.extend_from_slice(format(size).as_bytes());
+                Reply::TextAreaPixels => {
+                    let height = u32::from(self.size.rows) * u32::from(self.cell_px.1);
+                    let width = u32::from(self.size.cols) * u32::from(self.cell_px.0);
+                    out.replies
+                        .extend_from_slice(format!("\x1b[4;{height};{width}t").as_bytes());
                 }
             }
         }
         out
+    }
+
+    /// Color que se contesta a OSC 4/10/11/12 `?`: primero el que la
+    /// aplicación cambió por OSC (`Term::colors`), luego la paleta del tema.
+    fn color_for_request(&self, index: usize) -> Rgb {
+        // `Colors` solo ofrece `Index`; el índice se comprueba antes.
+        let changed = if index < COLOR_COUNT {
+            self.term.colors()[index]
+        } else {
+            None
+        };
+        changed.unwrap_or_else(|| {
+            let [r, g, b] = self.palette.color_for_request(index);
+            Rgb { r, g, b }
+        })
     }
 
     /// Líneas que cambiaron desde la última llamada (y las reinicia).

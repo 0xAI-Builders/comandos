@@ -5,8 +5,8 @@ use alacritty_terminal::{
     vte::ansi::{Color, Rgb},
 };
 use comandos_term::engine::{
-    DA1_REPLY, DA2_REPLY, Damage, Engine, GridSize, MAX_CLIPBOARD_BYTES, MAX_REPLY_BYTES,
-    MAX_TITLE_BYTES, MouseMode, Palette,
+    ClipboardTarget, DA1_REPLY, DA2_REPLY, Damage, Engine, GridSize, MAX_CLIPBOARD_BYTES,
+    MAX_REPLY_BYTES, MAX_TITLE_BYTES, MouseMode, Palette,
 };
 
 fn engine(cols: u16, rows: u16) -> Engine {
@@ -259,4 +259,55 @@ fn base64_encode(data: &[u8]) -> String {
         }
     }
     out
+}
+
+#[test]
+fn color_query_answers_osc_overrides_before_the_palette() {
+    let mut e = engine(20, 3);
+    e.advance(b"\x1b]10;rgb:12/34/56\x07\x1b]4;1;rgb:ab/cd/ef\x07", 0.0);
+    e.advance(b"\x1b]10;?\x07\x1b]4;1;?\x07\x1b]11;?\x07", 0.0);
+    let replies = String::from_utf8(e.drain().replies).unwrap();
+    assert!(replies.contains("rgb:1212/3434/5656"), "{replies:?}");
+    assert!(replies.contains("rgb:abab/cdcd/efef"), "{replies:?}");
+    assert!(replies.contains("rgb:0a0a/0d0d/1313"), "{replies:?}");
+}
+
+#[test]
+fn osc52_keeps_the_clipboard_target() {
+    let mut e = engine(20, 3);
+    e.advance(b"\x1b]52;p;aG9sYQ==\x07", 0.0);
+    let d = e.drain();
+    assert_eq!(d.clipboard.as_deref(), Some("hola"));
+    assert_eq!(d.clipboard_target, Some(ClipboardTarget::Selection));
+    e.advance(b"\x1b]52;c;aG9sYQ==\x07", 0.0);
+    assert_eq!(e.drain().clipboard_target, Some(ClipboardTarget::Clipboard));
+    assert_eq!(e.drain().clipboard_target, None);
+}
+
+#[test]
+fn text_area_pixels_do_not_overflow_u16() {
+    let mut e = engine(20, 3);
+    e.resize(
+        GridSize {
+            cols: 1_000,
+            rows: 500,
+        },
+        (200, 300),
+    );
+    e.advance(b"\x1b[14t", 0.0);
+    assert_eq!(e.drain().replies, b"\x1b[4;150000;200000t");
+}
+
+#[test]
+fn non_finite_clock_is_ignored() {
+    let mut e = engine(20, 3);
+    e.advance(b"\x1b[?2026hX", 0.0);
+    assert!(!e.tick(f64::NAN));
+    assert!(!e.tick(f64::INFINITY), "∞ no vence el plazo");
+    e.advance(b"Y", f64::NEG_INFINITY);
+    assert_eq!(cell(&e, 0, 0).c, ' ', "sigue retenido");
+    assert!(e.next_deadline_ms().is_some_and(f64::is_finite));
+    assert!(e.tick(1_000.0));
+    assert_eq!(cell(&e, 0, 0).c, 'X');
+    assert_eq!(cell(&e, 0, 1).c, 'Y');
 }
