@@ -73,9 +73,13 @@ fn main() {
                 );
                 exit(2);
             }
+            // Salida 1 es solo deriva; un archivo ilegible o una línea base corrupta sale 2.
             match app_drift::run(&baseline, &paths, write, &accept) {
                 Ok(code) => exit(code),
-                Err(e) => fail(e),
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    exit(2);
+                }
             }
         }
         _ => {
