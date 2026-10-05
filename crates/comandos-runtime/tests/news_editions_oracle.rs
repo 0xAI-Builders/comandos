@@ -707,13 +707,27 @@ with tempfile.TemporaryDirectory(dir=os.environ['HOME']) as media:
 }
 #[test]
 fn radar_fetcher_selection_and_provenance_match_python() {
-    let item = json!({"family":"oficial","origin":"Lab","title":"Introducing AI model 4.0","url":"https://www.a.test:8443/article?ref=page2&s=source&t=2&utm_source=test","publishedAt":1791212000,"official":true,"lab":"Lab","discussion":null,"signals":{},"summary":"Fallback article text.","heat":0.0,"release":true});
-    let item2 = json!({"family":"hn","origin":"Hacker News","title":"Introducing AI model 4.0","url":"https://www.a.test:8443/article?ref=page2&s=source&t=2&utm_source=test","publishedAt":1791212001,"official":false,"lab":null,"discussion":"https://news.ycombinator.com/item?id=1","signals":{"hnId":"1","points":100,"comments":10},"summary":"","heat":20.0,"release":false});
-    let items = json!([item, item2]);
-    let fixtures = json!([{"match":"article","body":"<article><p>A short source.</p></article>","kind":"text/html"},{"match":"hn.algolia.com","body":{"text":"Original","children":[{"author":"a","text":"comment"}]}}]);
-    let expected = oracle(
-        "radar-fetcher",
-        r#"
+    for empty in [false, true] {
+        let mut item = json!({"family":"oficial","origin":"Lab","title":"Introducing AI model 4.0","url":"https://www.a.test:8443/article?ref=page2&s=source&t=2&utm_source=test","publishedAt":1791212000,"official":true,"lab":"Lab","discussion":null,"signals":{},"summary":"Fallback article text.","heat":0.0,"release":true});
+        let mut item2 = json!({"family":"hn","origin":"Hacker News","title":"Introducing AI model 4.0","url":"https://www.a.test:8443/article?ref=page2&s=source&t=2&utm_source=test","publishedAt":1791212001,"official":false,"lab":null,"discussion":"https://news.ycombinator.com/item?id=1","signals":{"hnId":"1","points":100,"comments":10},"summary":"","heat":20.0,"release":false});
+        if empty {
+            item["publishedAt"] = json!(0);
+            item["summary"] = json!(" ");
+            item2["publishedAt"] = json!("");
+        }
+        let mut current = item2.clone();
+        current["publishedAt"] = json!(1791212002);
+        let items = json!([item, item2, current]);
+        let mut fixtures = json!([{"match":"article","body":"<article><p>A short source.</p></article>","kind":"text/html"},{"match":"hn.algolia.com","body":{"text":"Original","children":[{"author":"a","text":"comment"}]}}]);
+        if empty {
+            fixtures[1]["body"] = json!({"text":"<p></p>","children":[]});
+            fixtures[0]["body"] = json!(
+                "<meta property='og:title' content='Empty'><meta property='article:published_time' content='2026-10-05T10:00:00Z'>"
+            );
+        }
+        let expected = oracle(
+            "radar-fetcher",
+            r#"
 import types,tempfile,os
 def fetch(url,**kw):
  f=next(x for x in data['fixtures'] if x['match'] in url);return True,(f['body'].encode() if isinstance(f['body'],str) else json.dumps(f['body']).encode()),f.get('kind','application/json'),url,None
@@ -722,18 +736,31 @@ with tempfile.TemporaryDirectory(dir=os.environ['HOME']) as media:
  f=e.make_radar_fetcher(radar,media=media,recent_urls=lambda:[],now=lambda:1791212400)
  print(json.dumps(f(e.default_policy(),25)))
 "#,
-        &json!({"items":items,"fixtures":fixtures}),
-    );
-    let media = std::env::temp_dir().join(format!("news-t4-radar-fetcher-{}", std::process::id()));
-    let f = editions::make_radar_fetcher(
-        Arc::new(move |_| Ok(json!({"items":items,"failures":[]}))),
-        network(fixtures),
-        media,
-        Arc::new(|| 1791212400),
-        Arc::new(|| Ok(vec![])),
-        5,
-    );
-    assert_eq!(f(&editions::default_policy(), 25).unwrap(), expected);
+            &json!({"items":items,"fixtures":fixtures}),
+        );
+        let media =
+            std::env::temp_dir().join(format!("news-t4-radar-fetcher-{}", std::process::id()));
+        let f = editions::make_radar_fetcher(
+            Arc::new(move |_| Ok(json!({"items":items,"failures":[]}))),
+            network(fixtures),
+            media,
+            Arc::new(|| 1791212400),
+            Arc::new(|| Ok(vec![])),
+            5,
+        );
+        let actual = f(&editions::default_policy(), 25).unwrap();
+        if empty {
+            assert!(
+                expected["items"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|i| i["fetchError"] == "sin texto"),
+                "{expected}"
+            );
+        }
+        assert_eq!(actual, expected, "empty={empty}");
+    }
 }
 #[test]
 fn reddit_retry_and_budget_match_reference() {

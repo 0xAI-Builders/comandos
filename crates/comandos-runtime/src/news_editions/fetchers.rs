@@ -340,7 +340,7 @@ pub fn make_radar_fetcher(
             };
             let mut signals = i["signals"].as_object().cloned().unwrap_or_default();
             signals.remove("selftext");
-            json!({"url":url,"title":cap["title"].as_str().filter(|s|!s.is_empty()).unwrap_or(s(&i["title"])),"kind":g["kind"],"source":origin,"publishedAt":i.get("publishedAt").filter(|v|!v.is_null()).unwrap_or(&cap["publishedAt"]),"discoveredAt":ts*1000,"announcementKey":g["key"],"meta":{"role":role,"official":i["official"]==true&&*role=="article","lab":i["lab"],"family":i["family"],"heat":radar::heat_label(i),"signals":signals,"groupKind":g["kind"],"groupLab":g["lab"],"groupRank":index,"groupScore":g["score"]},"fetchStatus":if ok&&!text.is_empty(){"ok"}else{"failed"},"fetchError":if ok&&!text.is_empty(){None}else{error},"text":text,"capture":if ok{cap}else{Value::Null}})
+            json!({"url":url,"title":cap["title"].as_str().filter(|s|!s.is_empty()).unwrap_or(s(&i["title"])),"kind":g["kind"],"source":origin,"publishedAt":i.get("publishedAt").filter(|v|comandos_core::json::truthy(v)).unwrap_or(&cap["publishedAt"]),"discoveredAt":ts*1000,"announcementKey":g["key"],"meta":{"role":role,"official":i["official"]==true&&*role=="article","lab":i["lab"],"family":i["family"],"heat":radar::heat_label(i),"signals":signals,"groupKind":g["kind"],"groupLab":g["lab"],"groupRank":index,"groupScore":g["score"]},"fetchStatus":if ok&&!text.is_empty(){"ok"}else{"failed"},"fetchError":if ok&&!text.is_empty(){None}else{Some(error.filter(|e|!e.is_empty()).unwrap_or_else(||"sin texto".into()))},"text":text,"capture":if ok{cap}else{Value::Null}})
         });
         Ok(json!({"items":items,"failures":found["failures"]}))
     })
