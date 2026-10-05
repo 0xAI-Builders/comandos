@@ -1,0 +1,450 @@
+//! Catálogo de CLIs, cadenas y modelos de OpenCode nativos (plan 2f-3,
+//! Tarea 4) contra el `cc-dash` Python (D8: `shortcuts` y el marcador
+//! `COMANDOS_CODEX_ORIGINAL` del lanzador YOLO).
+//!
+//! Confinamiento: los CLIs del catálogo (`claude`, `codex`, `grok`,
+//! `opencode`, `agy`) son guiones del `fakebin` del gemelo que responden
+//! `--version`, `--help` y `models` con texto fijo y anotan cada llamada; el
+//! `codex` de cada lado es además un lanzador con el marcador hacia un «ELF»
+//! falso de su HOME. El `PATH` de los dos lados es solo ese `fakebin` (el
+//! frente, `search_path` + `user_bin_dirs` del HOME), y una prueba canario
+//! comprueba que ningún nombre resuelve fuera del HOME temporal. Las cadenas
+//! viven en `$XDG_CONFIG_HOME` del entorno confinado (el HOME temporal). Sin
+//! tmux salvo el privado de cada HOME (la consulta de `?pane=`).
+mod support;
+
+use comandos_runtime::providers;
+use serde_json::{Value, json};
+use support::{
+    FakeLegacy, TestHome, front, get,
+    oracle::{OracleOpts, run_dash_with},
+    twin::{Twin, TwinOpts},
+};
+
+const CLAUDE_HELP: &str = "Usage: claude [options] [command] [prompt]
+
+Claude Code - starts an interactive session by default
+
+Options:
+  --dangerously-skip-permissions                    Bypass all permission checks. Recommended only for sandboxes.
+  --model <model>                                   Model for the current session
+  -c, --continue                                    Continue the most recent conversation
+
+Commands:
+  mcp                                               Configure and manage MCP servers
+  update|upgrade                                    Check for updates and install if available
+";
+
+const CODEX_HELP: &str = "Codex CLI
+
+Usage: codex [OPTIONS] [PROMPT]
+
+Commands:
+  exec        Run Codex non-interactively [aliases: e]
+  resume      Resume a previous interactive session
+
+Options:
+  -s, --sandbox <SANDBOX_MODE>
+          Select the sandbox policy
+
+          [possible values: read-only, workspace-write, danger-full-access]
+
+  -a, --ask-for-approval <APPROVAL_POLICY>
+          Configure when the model requires human approval
+
+          Possible values:
+          - untrusted:  Only run trusted commands
+          - on-request: The model decides when to ask
+          - never:      Never ask
+
+      --dangerously-bypass-approvals-and-sandbox
+          Skip all confirmation prompts and execute commands without sandboxing
+";
+
+/// Guion de un CLI falso: anota su argv en `$HOME/cli.log` y responde.
+fn fake_cli(version: &str, help: &str, extra: &str) -> String {
+    format!(
+        "#!/bin/sh\n\
+         printf '%s\\n' \"$(basename \"$0\") $*\" >> \"$HOME/cli.log\"\n\
+         case \"$1\" in\n\
+         --version) echo {version};;\n\
+         --help) cat <<'AYUDA'\n{help}AYUDA\n;;\n\
+         {extra}\
+         esac\n"
+    )
+}
+
+const OPENCODE_MODELS: &str = "models) cat <<'MODELOS'\n\
+opencode/big-pickle\n\
+{\"id\": \"big-pickle\", \"providerID\": \"opencode\", \"name\": \"Big Pickle\", \"status\": \"active\", \"capabilities\": {\"toolcall\": true, \"input\": {\"text\": true}, \"output\": {\"text\": true}}, \"limit\": {\"context\": 200000}}\n\
+anthropic/claude-x\n\
+{\"id\": \"claude-x\", \"providerID\": \"anthropic\", \"name\": \"Claude X\", \"capabilities\": {\"toolcall\": true}, \"limit\": {\"context\": \"1000\"}}\n\
+groq/whisper\n\
+{\"id\": \"whisper\", \"providerID\": \"groq\", \"capabilities\": {\"toolcall\": false}}\n\
+openrouter/free-one\n\
+{\"id\": \"free-one\", \"providerID\": \"openrouter\", \"status\": \"deprecated\"}\n\
+broken {\"id\": \n\
+{\"id\": \"~alias\", \"providerID\": \"opencode\"}\n\
+MODELOS\n\
+if [ -f \"$HOME/oc-second\" ]; then echo '{\"id\": \"late\", \"providerID\": \"zz\"}'; fi\n\
+touch \"$HOME/oc-second\";;\n";
+
+fn fakes() -> Vec<(String, String)> {
+    vec![
+        ("claude".into(), fake_cli("2.1.286", CLAUDE_HELP, "")),
+        ("grok".into(), fake_cli("'grok 1.0.44'", "", "")),
+        (
+            "agy".into(),
+            fake_cli(
+                "v1.2.14",
+                "Usage of agy:\n  -yolo\n    \tAuto-approve all tool executions\n",
+                "",
+            ),
+        ),
+        ("opencode".into(), fake_cli("1.18.33", "", OPENCODE_MODELS)),
+    ]
+}
+
+/// «ELF» falso de `codex` con algunos comandos del catálogo, común a los dos
+/// lados (el marcador del lanzador lleva una ruta absoluta, y el `fakebin` del
+/// oráculo se reinstala al arrancarlo: no puede apuntar a cada HOME).
+struct SharedElf(std::path::PathBuf);
+
+impl SharedElf {
+    fn new(tag: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("lane2f-elf-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("codex"),
+            b"\x7fELF ... /status /model fork ... review\0",
+        )
+        .unwrap();
+        Self(dir)
+    }
+
+    /// `codex`: lanzador YOLO con el marcador hacia el «ELF».
+    fn launcher(&self) -> String {
+        format!(
+            "#!/bin/sh\n# COMANDOS_CODEX_ORIGINAL={}\n{}",
+            json!(self.0.join("codex").display().to_string()),
+            fake_cli("'codex-cli 0.159.2'", CODEX_HELP, "").trim_start_matches("#!/bin/sh\n")
+        )
+    }
+
+    fn opts(&self) -> TwinOpts {
+        let mut fakebin = fakes();
+        fakebin.push(("codex".into(), self.launcher()));
+        TwinOpts {
+            fakebin_extra: fakebin,
+            ..TwinOpts::default()
+        }
+    }
+}
+
+impl Drop for SharedElf {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn seed_snapshot(home: &TestHome) {
+    home.write(
+        "model-watch.json",
+        &json!({
+            "checkedAt": 1759680000.5,
+            "versions": {"claude": "2.1.286", "codex": "0.150.0", "grok": "1.0.44", "agy": "1.2.14"},
+            "discovered": {"claude": ["claude-opus-5-6", "claude-opus-5-5", "claude-haiku-4-5-20251001"],
+                           "codex": ["gpt-5.6", "gpt-5.10"], "grok": ["grok-4.7"]},
+            "newSince": {"claude": {"models": ["claude-opus-5-6"], "at": 1, "cli": "2.1.286"},
+                         "grok": "no-dict"},
+        })
+        .to_string(),
+    );
+}
+
+fn seed_accounts(home: &TestHome) {
+    std::fs::create_dir_all(home.root.join(".claude-accounts/trabajo")).unwrap();
+    std::fs::create_dir_all(home.root.join(".claude-accounts/x.lock")).unwrap();
+}
+
+fn unhome(home: &TestHome, text: &str) -> String {
+    text.replace(&home.root.display().to_string(), "<HOME>")
+}
+
+async fn same(t: &Twin, path: &str) -> String {
+    let run = t.get(path).await;
+    assert_eq!(run.front.status, run.oracle.status, "{path}");
+    let front = unhome(&t.a, &run.front.text());
+    assert_eq!(front, unhome(&t.b, &run.oracle.text()), "{path}");
+    front
+}
+
+fn opts() -> TwinOpts {
+    TwinOpts {
+        fakebin_extra: fakes(),
+        ..TwinOpts::default()
+    }
+}
+
+/// Canario: con las opciones del gemelo ningún binario del catálogo (ni `sh`)
+/// resuelve fuera del HOME temporal, ni en el frente ni en el oráculo.
+#[tokio::test]
+async fn catalog_binaries_resolve_inside_the_home() {
+    let elf = SharedElf::new("canary");
+    let Some(t) = Twin::start_with("cat-canary", |_| {}, elf.opts()).await else {
+        return;
+    };
+    let names = ["claude", "codex", "grok", "opencode", "agy", "gemini", "sh"];
+    for name in names {
+        let hit = providers::which_in_dirs(
+            name,
+            t.front_options.search_path.as_deref(),
+            &t.front_options.home,
+            &t.front_options.user_bin_dirs,
+        );
+        if let Some(hit) = hit {
+            assert!(hit.starts_with(&t.a.root), "{name} -> {}", hit.display());
+        }
+    }
+    let code = format!(
+        "import os, sys\nsys.path.insert(0, os.path.join({:?}, 'lib'))\nimport providers, shutil\nprint([providers.which(n) for n in {names:?}], shutil.which('opencode'))\n",
+        support::repo().display().to_string()
+    );
+    let Some(out) = run_dash_with(&t.b, &code, &OracleOpts::default()) else {
+        return;
+    };
+    assert!(!out.contains("/home/someguy/.local"), "{out}");
+    assert!(!out.contains(".opencode/bin"), "{out}");
+}
+
+#[tokio::test]
+async fn commands_catalog_matches_python() {
+    let seed = |home: &TestHome| {
+        seed_snapshot(home);
+        seed_accounts(home);
+    };
+    let elf = SharedElf::new("snap");
+    let Some(t) = Twin::start_with("cat-snap", seed, elf.opts()).await else {
+        return;
+    };
+    let body = same(&t, "/commands/catalog?session=s&pane=%250").await;
+    let doc: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(doc["target"], json!({"session": "s", "pane": "%0"}));
+    assert_eq!(doc["cliInPane"], "");
+    assert_eq!(doc["versionsAt"], json!(1759680000.5));
+    let clis = doc["catalog"]["clis"].as_array().unwrap();
+    let codex = clis.iter().find(|c| c["id"] == "codex").unwrap();
+    // D8: el lanzador lleva al «ELF» y solo quedan sus comandos; atajos de Codex.
+    assert!(codex["detected"]["found"].as_i64().unwrap() > 0);
+    assert_eq!(codex["start"]["shortcuts"].as_array().unwrap().len(), 3);
+    let claude = clis.iter().find(|c| c["id"] == "claude").unwrap();
+    assert_eq!(
+        claude["start"]["rows"][1]["text"]
+            .as_str()
+            .unwrap()
+            .split(' ')
+            .count(),
+        2
+    );
+    // Segunda vez, desde las cachés (sin volver a leer `--help`).
+    same(&t, "/commands/catalog").await;
+    same(&t, "/commands/catalog?session=una-sesion-muy-larga-que-pasa-de-ochenta-caracteres-y-se-corta-justo-en-ochenta-xyz&pane=nope").await;
+    let helps = |home: &TestHome| {
+        std::fs::read_to_string(home.root.join("cli.log"))
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| l.ends_with("--help"))
+            .count()
+    };
+    assert_eq!(helps(&t.a), helps(&t.b));
+    // Las tres ayudas con texto se guardan; las vacías (grok, opencode) se
+    // vuelven a pedir en cada petición, como en el Python.
+    assert_eq!(helps(&t.a), 3 + 2 * 3);
+}
+
+/// Sin snapshot del vigilante el Python sondea `--version` (una vez, 600 s):
+/// todo igual salvo `versionsAt` (la hora del sondeo de cada lado).
+#[tokio::test]
+async fn commands_catalog_without_snapshot_matches_python() {
+    let elf = SharedElf::new("nosnap");
+    let Some(t) = Twin::start_with("cat-nosnap", |_| {}, elf.opts()).await else {
+        return;
+    };
+    for _ in 0..2 {
+        let run = t.get("/commands/catalog").await;
+        assert_eq!(run.front.status, 200);
+        assert_eq!(run.oracle.status, 200);
+        let mut a: Value = serde_json::from_str(&unhome(&t.a, &run.front.text())).unwrap();
+        let mut b: Value = serde_json::from_str(&unhome(&t.b, &run.oracle.text())).unwrap();
+        assert!(a["versionsAt"].as_f64().unwrap() > 1.0e9);
+        a["versionsAt"] = Value::Null;
+        b["versionsAt"] = Value::Null;
+        assert_eq!(a, b);
+        assert_eq!(a["catalog"]["clis"][0]["version"]["installed"], "2.1.286");
+        assert_eq!(a["catalog"]["clis"][1]["version"]["installed"], "0.159.2");
+    }
+    let versions = |home: &TestHome| {
+        std::fs::read_to_string(home.root.join("cli.log"))
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| l.ends_with("--version"))
+            .count()
+    };
+    assert_eq!(versions(&t.a), 5);
+    assert_eq!(versions(&t.b), 5);
+}
+
+/// `?refresh=1` fuerza un ciclo del vigilante (Tarea 6): hasta entonces el
+/// frente declina antes de leer o ejecutar nada.
+#[tokio::test]
+async fn catalog_refresh_declines_until_t6() {
+    let home = TestHome::new("cat-refresh");
+    let mut opts = home.options();
+    opts.user_bin_dirs = support::twin::home_bin_dirs();
+    let legacy = FakeLegacy::start().await;
+    let server = front(&home, legacy.port, opts).await;
+    let wire = get(server.port, "/commands/catalog?refresh=1&session=s").await;
+    assert_eq!(wire.text(), r#"{"legacy": true}"#);
+    assert_eq!(
+        legacy.requests(),
+        vec!["GET /commands/catalog?refresh=1&session=s HTTP/1.1".to_owned()]
+    );
+    // Sin `refresh` responde él (sin CLIs en su `PATH`).
+    let wire = get(server.port, "/commands/catalog").await;
+    assert_eq!(wire.status, 200, "{}", wire.text());
+    assert_eq!(legacy.requests().len(), 1);
+    server.stop().await;
+}
+
+const CHAIN_DIR: &str = ".config/comandos/cadenas";
+
+fn seed_chains(home: &TestHome) {
+    let dir = home.root.join(CHAIN_DIR);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("deploy.md"),
+        "# Deploy\n\n1. shell: git pull\n2. pane: make\n",
+    )
+    .unwrap();
+    std::fs::write(dir.join("Mala.md"), "# x\n").unwrap();
+    std::fs::write(dir.join("rota.md"), "# R\nesto no es un paso\n").unwrap();
+}
+
+#[tokio::test]
+async fn chains_routes_match_python() {
+    let Some(t) = Twin::start_with("chains", seed_chains, opts()).await else {
+        return;
+    };
+    same(&t, "/chains").await;
+    let posts = [
+        r#"{"name": "Nueva cadena", "steps": [{"kind": "shell", "text": " ls "}]}"#,
+        r#"{"name": "Nueva cadena", "steps": [{"kind": "pane", "text": "pwd"}]}"#,
+        r#"{"name": "Fija", "slug": "deploy", "steps": [{"kind": "pane", "text": "make test"}]}"#,
+        r#"{"name": "Mal", "slug": "Con Espacios", "steps": [{"kind": "pane", "text": "x"}]}"#,
+        r#"{"name": "", "steps": [{"kind": "pane", "text": "x"}]}"#,
+        r#"{"name": "Sin pasos", "steps": []}"#,
+        r#"{"name": "Tipo", "steps": [{"kind": "bash", "text": "x"}]}"#,
+        r#"{"name": "Control", "steps": [{"kind": "shell", "text": "a\u0007b"}]}"#,
+    ];
+    for body in posts {
+        let run = t.post("/chains", body).await;
+        assert_eq!(run.front.status, run.oracle.status, "{body}");
+        assert_eq!(run.front.text(), run.oracle.text(), "{body}");
+    }
+    t.files_equal(&[
+        "~/.config/comandos/cadenas/nueva-cadena.md",
+        "~/.config/comandos/cadenas/nueva-cadena-2.md",
+        "~/.config/comandos/cadenas/deploy.md",
+        "~/.config/comandos/cadenas/mal.md",
+    ])
+    .unwrap();
+    same(&t, "/chains").await;
+}
+
+/// Un archivo en lugar del directorio de cadenas: `FileExistsError` (500).
+#[tokio::test]
+async fn chains_post_os_error_matches_python() {
+    let seed = |home: &TestHome| {
+        std::fs::create_dir_all(home.root.join(".config/comandos")).unwrap();
+        std::fs::write(home.root.join(CHAIN_DIR), "no soy un directorio").unwrap();
+    };
+    let Some(t) = Twin::start_with("chains-os", seed, opts()).await else {
+        return;
+    };
+    let run = t
+        .post(
+            "/chains",
+            r#"{"name": "X", "steps": [{"kind": "shell", "text": "y"}]}"#,
+        )
+        .await;
+    assert_eq!(run.front.status, 500);
+    assert_eq!(run.front.text(), run.oracle.text());
+    same(&t, "/chains").await;
+}
+
+/// `~/.claude/hooks/providers.env`: sin él, el `. archivo` del `sh -c` es un
+/// error fatal de `sh` y la lista sale vacía (igual en los dos lados).
+fn seed_providers_env(home: &TestHome) {
+    home.write("providers.env", "# claves de prueba\n");
+}
+
+#[tokio::test]
+async fn opencode_models_cold_and_cached_match_python() {
+    let Some(t) = Twin::start_with("oc-models", seed_providers_env, opts()).await else {
+        return;
+    };
+    let first = same(&t, "/opencode/models").await;
+    let doc: Value = serde_json::from_str(&first).unwrap();
+    let providers = doc["providers"].as_array().unwrap();
+    assert_eq!(providers.len(), 2, "{first}");
+    // Desde la caché (900 s): el segundo `models` no corre.
+    assert_eq!(same(&t, "/opencode/models?x").await, first);
+    let models = |home: &TestHome| {
+        std::fs::read_to_string(home.root.join("cli.log"))
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| l.starts_with("opencode models"))
+            .count()
+    };
+    assert_eq!(models(&t.a), 1);
+    assert_eq!(models(&t.b), 1);
+}
+
+/// Un `opencode` que no imprime nada: `[]` (la lista vacía no se guarda).
+#[tokio::test]
+async fn opencode_models_empty_output_matches_python() {
+    let Some(t) = Twin::start("oc-none", seed_providers_env).await else {
+        return;
+    };
+    // El `opencode` que anota del `fakebin` no imprime nada: `[]`.
+    let body = same(&t, "/opencode/models").await;
+    assert_eq!(body, r#"{"providers": []}"#);
+}
+
+#[test]
+fn routes_follow_python_matching() {
+    use comandos_server::dash::native::{NativeRoute, catalog_cli::CliRoute, route};
+    use http::Method;
+    let cases = [
+        (Method::GET, "/commands/catalog", Some(CliRoute::Catalog)),
+        (Method::GET, "/commands/catalogX?y", Some(CliRoute::Catalog)),
+        (Method::GET, "/chains", Some(CliRoute::ChainsGet)),
+        (Method::GET, "/chains?x", None),
+        (Method::POST, "/chains", Some(CliRoute::ChainsPost)),
+        (Method::POST, "/chains?x", None),
+        (Method::POST, "/chains/delete", None),
+        (
+            Method::GET,
+            "/opencode/models?refresh=1",
+            Some(CliRoute::OpencodeModels),
+        ),
+    ];
+    for (method, target, want) in cases {
+        let got = match route(&method, target) {
+            Some(NativeRoute::Cli(r)) => Some(r),
+            _ => None,
+        };
+        assert_eq!(got, want, "{method} {target}");
+    }
+}

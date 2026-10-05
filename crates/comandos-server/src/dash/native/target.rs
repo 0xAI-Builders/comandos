@@ -418,6 +418,51 @@ pub async fn resolve_project_session(
         .map(|info| (info.session.clone(), info.pane.clone())))
 }
 
+/// `agent_info_for_pane(pane)` (1591) para un pane que ya casa `PANE_RE`:
+/// `agent_pane_maps(agent_procs())` (que siempre lee `list-panes -a`) y el
+/// primer agente de `by_cwd` en ese pane, o `None`. Solo lee.
+pub async fn agent_info_for_pane(native: &Native, pane: &str) -> Result<Option<AgentInfo>, Fault> {
+    let opts = native.options();
+    let ctx = Context::of(opts);
+    let procs = blocking(move || {
+        let aliases = process_aliases(&ctx)?;
+        agent_procs(&ctx.proc_root, &aliases).map_err(|_| Fault::Decline)
+    })
+    .await?;
+    let listed = opts
+        .tmux
+        .run(&["list-panes", "-a", "-F", PANE_FORMAT])
+        .await
+        .map_err(|e| Fault::Error(e.uncaught()))?;
+    let panes = if listed.ok {
+        parse_pane_inventory(&listed.stdout)
+    } else {
+        Vec::new()
+    };
+    if procs.is_empty() {
+        return Ok(None);
+    }
+    let proc_root = opts.proc_root.clone();
+    let pane = pane.to_owned();
+    blocking(move || {
+        let mut parents: HashMap<i64, i64> = HashMap::new();
+        let mut parent = |pid: i64| {
+            *parents
+                .entry(pid)
+                .or_insert_with(|| agent_procs::parent_pid(&proc_root, pid))
+        };
+        let owners = process_owners(&procs, &panes, &mut parent);
+        let mut cmdline = |pid: i64| agent_procs::proc_cmdline(&proc_root, pid);
+        let maps = agent_pane_maps(&procs, &panes, &owners, &mut cmdline, &mut parent);
+        Ok(maps
+            .by_cwd
+            .into_iter()
+            .flat_map(|(_, infos)| infos)
+            .find(|info| info.pane == pane))
+    })
+    .await
+}
+
 /// Los campos de `_pane_identity`, en su orden.
 pub const IDENTITY_FIELDS: [&str; 8] = [
     "socket_path",

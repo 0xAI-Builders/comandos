@@ -639,6 +639,8 @@ pub struct Native {
     pub(crate) tasks: Arc<procs::TaskTracker>,
     /// Foto de `/remote-state` (`_remote_state_cache`, 2f-3/T2).
     pub(crate) remote: remote::RemoteCache,
+    /// Cachés del catálogo de CLIs y de los modelos de OpenCode (2f-3/T4).
+    pub(crate) cli: catalog_cli::CliState,
 }
 
 impl Native {
@@ -662,6 +664,7 @@ impl Native {
             census: Arc::default(),
             tasks: Arc::default(),
             remote: remote::RemoteCache::default(),
+            cli: catalog_cli::CliState::default(),
         }
     }
 

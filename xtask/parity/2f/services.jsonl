@@ -12,3 +12,7 @@
 {"name":"s-push-key","method":"GET","path":"/push/key","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"s-push-test","method":"POST","path":"/push/test","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"endpoint":"https://push.example/x"},"volatile":[],"expect":"same"}
 {"name":"s-pomodoro-settings-invalido","method":"POST","path":"/pomodoro","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"settings":{"style":"neon","cycles":4}},"volatile":[],"expect":"same"}
+{"name":"s-chains-get","method":"GET","path":"/chains","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"s-chains-post-invalida","method":"POST","path":"/chains","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"name":"","steps":[]},"volatile":[],"expect":"same"}
+{"name":"s-commands-catalog","method":"GET","path":"/commands/catalog?session=s1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/versionsAt"],"expect":"same"}
+{"name":"s-opencode-models","method":"GET","path":"/opencode/models","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
