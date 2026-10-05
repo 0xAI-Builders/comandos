@@ -20,3 +20,64 @@ fn tf_picks_by_current_lang() {
     assert_eq!(Lang::En.code(), "en");
     set_lang(Lang::Es);
 }
+
+#[test]
+fn t_translates_with_t_en_like_the_inline_t() {
+    use comandos_web_dom::i18n::t;
+    // `const t = s => L === "en" ? (T_EN[s] ?? s) : s;`
+    set_lang(Lang::Es);
+    assert_eq!(t("Copiar"), "Copiar");
+    set_lang(Lang::En);
+    assert_eq!(t("Copiar"), "Copy");
+    assert_eq!(t("Servidores SSH"), "SSH servers");
+    assert_eq!(t("sin traducción"), "sin traducción");
+    assert_eq!(
+        t(
+            "Viven en ~/.ssh/config: estandar y tuyo. Conectar abre una\n    sesion tmux reconectable. Para dejar de teclear passwords: corre cc-keys una vez."
+        ),
+        "They live in ~/.ssh/config: standard and yours. Connect opens a reconnectable tmux session. To stop typing passwords: run cc-keys once."
+    );
+    set_lang(Lang::Es);
+}
+
+/// Cadenas JS entre comillas dobles del bloque `const T_EN = {…};`, en orden.
+fn js_strings(block: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut it = block.chars();
+    while let Some(c) = it.next() {
+        if c != '"' {
+            continue;
+        }
+        let mut s = String::new();
+        while let Some(c) = it.next() {
+            match c {
+                '"' => break,
+                '\\' => match it.next() {
+                    Some('n') => s.push('\n'),
+                    Some('t') => s.push('\t'),
+                    Some(o) => s.push(o),
+                    None => {}
+                },
+                o => s.push(o),
+            }
+        }
+        out.push(s);
+    }
+    out
+}
+
+#[test]
+fn t_en_matches_the_inline_table() {
+    // Vigilancia de deriva: la tabla Rust es la de `dash/index.html`.
+    let html = include_str!("../../../dash/index.html");
+    let start = html.find("const T_EN = {").expect("T_EN en index.html");
+    let rest = &html[start..];
+    let block = &rest[..rest.find("\n};").expect("fin de T_EN")];
+    let lits = js_strings(&block[block.find('{').unwrap()..]);
+    assert_eq!(lits.len() % 2, 0);
+    let js: Vec<(&str, &str)> = lits
+        .chunks(2)
+        .map(|p| (p[0].as_str(), p[1].as_str()))
+        .collect();
+    assert_eq!(comandos_web_dom::i18n::T_EN, js.as_slice());
+}

@@ -609,3 +609,39 @@ fn messages_through_an_aliased_native_bridge_go_to_host_handlers() {
     );
     assert!(ix["@messages"].get("?").is_none(), "{}", ix["@messages"]);
 }
+
+#[test]
+fn component_ids_are_unique_even_when_a_script_and_a_region_share_a_name() {
+    // Revisión B1, I7: `region:analytics` y `script:analytics.js` daban los dos
+    // `analytics`. Con un archivo por componente, el segundo `pin` pisaba al primero.
+    let t = tmp("colision");
+    fs::write(t.0.join("repo/red.js"), "function redScript(){}\n").unwrap();
+    let units = scan(&t.0.join("repo"));
+    let mut comps: Vec<&str> = units.iter().map(|u| u.component.as_str()).collect();
+    let n = comps.len();
+    comps.sort();
+    comps.dedup();
+    assert_eq!(comps.len(), n, "componentes repetidos: {units:#?}");
+    assert_eq!(unit(&units, "script:red.js").component, "red");
+    assert_eq!(unit(&units, "region:red").component, "red-inline");
+    // Sin choque, el nombre no cambia.
+    assert_eq!(unit(&units, "region:helpers").component, "helpers");
+}
+
+#[test]
+fn pin_refuses_to_overwrite_an_entry_of_another_source() {
+    let t = tmp("otra-fuente");
+    let mut o = opts(&t);
+    fs::create_dir_all(t.0.join("components")).unwrap();
+    // Una entrada `red` hecha a mano que apunta a otro origen.
+    let entry = json!({"id": "red", "kind": "script", "source": "a.js", "sha256": "00", "exports": [], "deps": []});
+    fs::write(t.0.join("components/red.json"), entry.to_string()).unwrap();
+    o.registry = t.0.join("components.json");
+    let err = web_port::pin(&o, "region:red").unwrap_err();
+    assert!(matches!(err, PortError::Invalid(_)), "{err}");
+    assert!(err.to_string().contains("no se sobrescribe"), "{err}");
+    let kept: Value =
+        serde_json::from_str(&fs::read_to_string(t.0.join("components/red.json")).unwrap())
+            .unwrap();
+    assert_eq!(kept, entry, "la entrada queda intacta");
+}

@@ -85,3 +85,15 @@ fn call_errors_read_in_spanish() {
         "window.S no es una función"
     );
 }
+
+#[test]
+fn reexporting_a_name_replaces_and_returns_the_old_value() {
+    // Revisión B1, I3: el registro de exportaciones va por nombre, así que
+    // reexportar suelta la clausura anterior en lugar de acumularla.
+    use comandos_web_dom::bridge::Exports;
+    let mut e = Exports::default();
+    assert_eq!(e.keep("a", 1), None);
+    assert_eq!(e.keep("b", 2), None);
+    assert_eq!(e.keep("a", 3), Some(1));
+    assert_eq!(e.len(), 2);
+}

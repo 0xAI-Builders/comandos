@@ -354,6 +354,39 @@ fn new_entry(o: &PortOptions, id: &str) -> Result<Map<String, Value>, PortError>
     Ok(m)
 }
 
+/// Si `id` es una unidad del inventario, la entrada que se va a fijar debe ser
+/// la suya (mismo `kind`, `source` y marcadores): un `pin` nunca sobrescribe la
+/// entrada de otro origen que comparta el nombre.
+fn same_origin(o: &PortOptions, id: &str, entry: &Map<String, Value>) -> Result<(), PortError> {
+    let (units, _) = inventory(o)?;
+    let Some(u) = units.iter().find(|u| u["id"] == id || u["component"] == id) else {
+        return Ok(());
+    };
+    let keys: &[&str] = if u["kind"] == "region" {
+        &["kind", "source", "marker_start", "marker_end"]
+    } else {
+        &["kind", "source"]
+    };
+    let differs: Vec<&str> = keys
+        .iter()
+        .copied()
+        .filter(|k| entry.get(*k).unwrap_or(&Value::Null) != &u[*k])
+        .collect();
+    if differs.is_empty() {
+        return Ok(());
+    }
+    Err(PortError::Invalid(format!(
+        "{}: la entrada existente ({} {}) no es la de {} ({} {}); difiere en {}: no se sobrescribe",
+        field(entry, "id").unwrap_or(id),
+        field(entry, "kind").unwrap_or("?"),
+        field(entry, "source").unwrap_or("?"),
+        u["id"].as_str().unwrap_or(id),
+        u["kind"].as_str().unwrap_or("?"),
+        u["source"].as_str().unwrap_or("?"),
+        differs.join(", ")
+    )))
+}
+
 pub fn pin(o: &PortOptions, id: &str) -> Result<Pinned, PortError> {
     let reg = load(&o.registry)?;
     let by_id = |want: &str| {
@@ -369,7 +402,10 @@ pub fn pin(o: &PortOptions, id: &str) -> Result<Pinned, PortError> {
         None => component_of(o, id)?.and_then(|c| by_id(&c)),
     };
     let (slot, mut entry) = match found {
-        Some(x) => x,
+        Some(x) => {
+            same_origin(o, id, &x.1)?;
+            x
+        }
         None => {
             let e = new_entry(o, id)?;
             let eid = field(&e, "id").unwrap_or(id).to_string();

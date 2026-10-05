@@ -31,6 +31,11 @@
 //!
 //! El plan de B1 pedía `ui_log(event, data)`; el JS vivo es `ulog(k, n, c, d)` y
 //! manda el JS vivo.
+//!
+//! **No registrar en `mount`.** `mount` corre en el `<head>`, antes de que el
+//! JS del cuerpo defina `window.ulog`: un evento ahí arrancaría el búfer propio
+//! y los siguientes irían al del JS (dos búferes). Se registra desde `attach`
+//! en adelante, cuando el JS del cuerpo ya corrió.
 
 /// Con tantos eventos en el búfer se vacía sin esperar al temporizador.
 pub const FLUSH_AT: usize = 40;
@@ -126,10 +131,12 @@ mod web {
             return Some("".into());
         }
         let t = call_global("activePaneTarget", &[]).ok()?;
-        let s = if t.is_undefined() || t.is_null() {
-            JsValue::UNDEFINED
-        } else {
+        // `?.session` sobre un primitivo da `undefined` en JS; `Reflect.get`
+        // lanzaría, así que solo se lee de objetos.
+        let s = if t.is_object() || t.is_function() {
             Reflect::get(&t, &"session".into()).ok()?
+        } else {
+            JsValue::UNDEFINED
         };
         Some(if s.is_truthy() { s } else { "".into() })
     }
@@ -157,7 +164,11 @@ mod web {
             }
         }
         start();
-        let full = BUF.with(|b| b.borrow_mut().push(ev.into()));
+        let full = BUF.with(|b| {
+            b.try_borrow_mut()
+                .map(|mut b| b.push(ev.into()))
+                .unwrap_or(false)
+        });
         if full {
             ui_log_flush();
         }
@@ -181,7 +192,11 @@ mod web {
 
     /// `ulogFlush()` del búfer propio.
     pub fn ui_log_flush() {
-        let events = BUF.with(|b| b.borrow_mut().take_batch());
+        let events = BUF.with(|b| {
+            b.try_borrow_mut()
+                .map(|mut b| b.take_batch())
+                .unwrap_or_default()
+        });
         if events.is_empty() {
             return;
         }

@@ -16,6 +16,16 @@
 //! idéntica a la del JS (p. ej. para comparar antes de reescribir), usa
 //! [`escape::text`].
 
+#![deny(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::todo,
+    clippy::unimplemented
+)]
+
 pub mod escape;
 
 /// La macro de plantillas, para que los componentes no fijen otra versión.

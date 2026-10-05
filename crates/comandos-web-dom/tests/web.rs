@@ -93,6 +93,71 @@ async fn api_post_with_a_falsy_body_is_a_get() {
 }
 
 #[wasm_bindgen_test]
+async fn api_network_failure_passes_the_engine_message() {
+    let f = Function::new_with_args(
+        "p, o",
+        "return Promise.reject(new TypeError('Failed to fetch'));",
+    );
+    bridge::global_set("fetch", &f).unwrap();
+    assert_eq!(api::get("/x").await.unwrap_err().message, "Failed to fetch");
+}
+
+#[wasm_bindgen_test]
+async fn api_http_error_with_empty_body_and_200_non_json() {
+    // `r.json()` rechaza en los dos: `j = {}`.
+    fake_fetch(r#"{ok: false, statusText: "", json: () => Promise.reject(new SyntaxError("x"))}"#);
+    assert_eq!(
+        api::get("/x").await.unwrap_err().message,
+        api::DEFAULT_ERROR
+    );
+    fake_fetch(
+        r#"{ok: false, statusText: "Not Found", json: () => Promise.reject(new SyntaxError("x"))}"#,
+    );
+    assert_eq!(api::get("/x").await.unwrap_err().message, "Not Found");
+    fake_fetch(r#"{ok: true, statusText: "OK", json: () => Promise.reject(new SyntaxError("x"))}"#);
+    assert_eq!(api::get("/x").await.unwrap(), json!({}));
+}
+
+#[wasm_bindgen_test]
+async fn api_null_body_error_is_the_engine_type_error() {
+    fake_fetch(r#"{ok: false, statusText: "Bad", json: () => Promise.resolve(null)}"#);
+    let got = api::get("/x").await.unwrap_err().message;
+    // El mismo texto que da el motor al leer `j.error` de `null`.
+    let expected =
+        Function::new_with_args("j", "try { return j.error } catch (e) { return e.message }")
+            .call1(&JsValue::UNDEFINED, &JsValue::NULL)
+            .unwrap()
+            .as_string()
+            .unwrap();
+    assert_eq!(got, expected);
+}
+
+#[wasm_bindgen_test]
+async fn api_keeps_lone_surrogates_and_deep_nesting() {
+    fake_fetch(
+        r#"{ok: true, json: () => Promise.resolve({t: "x\ud800y", d: JSON.parse("[".repeat(300) + "1" + "]".repeat(300))})}"#,
+    );
+    let v = api::get("/x").await.unwrap();
+    assert_eq!(v["t"], "x\u{FFFD}y");
+    let mut d = &v["d"];
+    let mut n = 0;
+    while let Some(a) = d.as_array() {
+        d = &a[0];
+        n += 1;
+    }
+    assert_eq!((n, d.to_string()), (300, "1".to_string()));
+}
+
+#[wasm_bindgen_test]
+fn reexport_replaces_and_drops_the_old_closure() {
+    bridge::export_fn0("__b1Again", || {}).unwrap();
+    let old: Function = bridge::global_get("__b1Again").into();
+    bridge::export_fn0("__b1Again", || {}).unwrap();
+    assert!(old.call0(&JsValue::UNDEFINED).is_err(), "la vieja se soltó");
+    assert!(bridge::call_global("__b1Again", &[]).is_ok());
+}
+
+#[wasm_bindgen_test]
 fn bridge_exports_and_calls_globals() {
     bridge::export_fn1("__b1Twice", |v| {
         JsValue::from_f64(v.as_f64().unwrap_or(0.0) * 2.0)
@@ -115,7 +180,7 @@ fn dom_helpers_find_and_fill_elements() {
         .unwrap()
         .append_child(&el)
         .unwrap();
-    dom::set_html(&el, "<i class=\"x\">a</i><i class=\"x\">b</i>");
+    dom::set_html(&el, maud::html! { i.x { "a" } i.x { "b" } });
     assert!(dom::by_id("b1-probe").is_some());
     assert_eq!(dom::query_all("#b1-probe .x").len(), 2);
     assert!(dom::query("#b1-probe .nada").is_none());

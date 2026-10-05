@@ -6,10 +6,13 @@
 //! que el JS que queda, `cc-app` (`run_javascript`), `cc-app-mac`
 //! (`evaluateJavaScript`) y los iframes (`parent.X`) lo llamen sin enterarse
 //! del cambio; y llama a lo que aún vive en JS con `call_global`, que da
-//! `Err` (nunca pánico) si el nombre no existe o no es una función. Las
-//! clausuras exportadas se guardan en un `thread_local` y viven lo que la
-//! página: un JS que guardó la función antes de una reexportación sigue
-//! pudiendo llamarla.
+//! `Err` (nunca pánico) si el nombre no existe o no es una función.
+//!
+//! Las clausuras exportadas se guardan por nombre ([`Exports`]) en un
+//! `thread_local`. Contrato: **se exporta una vez por montaje**. Reexportar
+//! el mismo nombre sustituye la entrada y suelta la clausura anterior; un JS
+//! que hubiera guardado la función vieja recibe entonces un error visible
+//! («closure invoked … after being dropped») en lugar de una fuga muda.
 //!
 //! ## Limitación: `let`/`const`/`class` del script en línea
 //!
@@ -61,15 +64,15 @@ pub enum CallError<E> {
 }
 
 impl<E> CallError<E> {
-    /// Texto del error (lo lanzado no se describe aquí: es del llamador).
+    /// Texto del error (lo lanzado no se describe aquí: es del llamador). Sin
+    /// `format!`: el formateador pesa en el WASM.
     pub fn describe(&self, name: &str) -> String {
-        match self {
-            CallError::Missing => {
-                format!("window.{name} no existe (¿es un let/const del script en línea?)")
-            }
-            CallError::NotCallable => format!("window.{name} no es una función"),
-            CallError::Threw(_) => format!("window.{name} lanzó una excepción"),
-        }
+        let tail = match self {
+            CallError::Missing => " no existe (¿es un let/const del script en línea?)",
+            CallError::NotCallable => " no es una función",
+            CallError::Threw(_) => " lanzó una excepción",
+        };
+        ["window.", name, tail].concat()
     }
 }
 
@@ -87,6 +90,36 @@ pub trait Scope {
         f: &Self::Value,
         args: &[Self::Value],
     ) -> Result<Self::Value, Self::Error>;
+}
+
+/// Lo exportado a `window`, por nombre: reexportar sustituye y devuelve lo
+/// anterior (que el llamador suelta).
+#[derive(Debug)]
+pub struct Exports<T> {
+    by_name: std::collections::BTreeMap<String, T>,
+}
+
+impl<T> Default for Exports<T> {
+    fn default() -> Self {
+        Exports {
+            by_name: std::collections::BTreeMap::new(),
+        }
+    }
+}
+
+impl<T> Exports<T> {
+    /// Guarda `v` como `name`; devuelve lo que hubiera antes con ese nombre.
+    pub fn keep(&mut self, name: &str, v: T) -> Option<T> {
+        self.by_name.insert(name.to_string(), v)
+    }
+
+    pub fn len(&self) -> usize {
+        self.by_name.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.by_name.is_empty()
+    }
 }
 
 /// Resuelve `name` en `scope` y lo llama con `args`.
@@ -110,7 +143,7 @@ pub use web::{
 
 #[cfg(target_arch = "wasm32")]
 mod web {
-    use super::{CallError, Scope, call_in};
+    use super::{CallError, Exports, Scope, call_in};
     use js_sys::{Array, Function, Object, Reflect};
     use std::any::Any;
     use std::cell::RefCell;
@@ -118,27 +151,26 @@ mod web {
     use wasm_bindgen::{JsCast, JsValue};
 
     thread_local! {
-        /// Clausuras publicadas en `window`: viven lo que la página.
-        static KEEP: RefCell<Vec<Box<dyn Any>>> = const { RefCell::new(Vec::new()) };
+        /// Clausuras publicadas en `window`, por nombre.
+        static KEEP: RefCell<Exports<Box<dyn Any>>> = RefCell::new(Exports::default());
     }
 
     fn global() -> Object {
         js_sys::global()
     }
 
-    /// `String(v)` de JS (sin lanzar: un `Symbol` da cadena vacía).
+    /// `String(v)` de JS, con la función `String` del motor. Si lanza (un
+    /// `toString` que lanza) da cadena vacía; un `Symbol` da `Symbol(…)`.
     pub fn js_text(v: &JsValue) -> String {
-        if v.is_null() {
-            return "null".into();
-        }
-        if v.is_undefined() {
-            return "undefined".into();
-        }
         if let Some(s) = v.as_string() {
             return s;
         }
-        // `[v].join("")` aplica `ToString` a `v`.
-        String::from(Array::of1(v).join(""))
+        Reflect::get(&global(), &"String".into())
+            .ok()
+            .and_then(|f| f.dyn_into::<Function>().ok())
+            .and_then(|f| f.call1(&JsValue::UNDEFINED, v).ok())
+            .and_then(|s| s.as_string())
+            .unwrap_or_default()
     }
 
     /// `window[name]` (o `undefined`).
@@ -186,11 +218,22 @@ mod web {
     }
 
     /// `window[name] = c` para una clausura de cualquier aridad (p. ej.
-    /// `Closure<dyn Fn(JsValue, JsValue, JsValue, JsValue)>` para `ulog`); la
-    /// clausura queda guardada y vive lo que la página.
+    /// `Closure<dyn Fn(JsValue, JsValue, JsValue, JsValue)>` para `ulog`). La
+    /// clausura queda guardada por nombre; reexportar suelta la anterior.
     pub fn export_closure<T: ?Sized + 'static>(name: &str, c: Closure<T>) -> Result<(), JsValue> {
         global_set(name, c.as_ref())?;
-        KEEP.with(|k| k.borrow_mut().push(Box::new(c)));
+        let boxed: Box<dyn Any> = Box::new(c);
+        let kept = KEEP.with(|k| match k.try_borrow_mut() {
+            Ok(mut k) => Ok(k.keep(name, boxed)),
+            Err(_) => Err(boxed),
+        });
+        match kept {
+            // La vieja se suelta fuera del préstamo.
+            Ok(previous) => drop(previous),
+            // Reentrada imposible en la práctica: antes fugar que invalidar
+            // la función que `window` ya apunta.
+            Err(boxed) => std::mem::forget(boxed),
+        }
         Ok(())
     }
 

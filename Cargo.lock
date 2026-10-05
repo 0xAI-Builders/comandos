@@ -457,7 +457,9 @@ dependencies = [
 name = "comandos-web-dom"
 version = "0.1.0"
 dependencies = [
+ "comandos-web-view",
  "js-sys",
+ "maud",
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",

@@ -1,19 +1,29 @@
-use comandos_web_dom::api::{DEFAULT_ERROR, error_message, js_string_of};
+use comandos_web_dom::api::{
+    DEFAULT_ERROR, Failure, Node, error_message, from_tree, js_string_of, utf16_lossy,
+};
 use serde_json::{Value, json};
+
+/// La regla como texto, para las pruebas que solo miran mensajes.
+fn msg(f: Option<Failure>) -> Option<String> {
+    f.map(|f| match f {
+        Failure::Message(m) => m,
+        Failure::ReadNull(k) => format!("<lee {k} de null>"),
+    })
+}
 
 #[test]
 fn api_error_rules_match_the_inline_api_function() {
     assert_eq!(
-        error_message("Bad", &json!({"error": "x"}), false, false).as_deref(),
+        msg(error_message("Bad", &json!({"error": "x"}), false, false)).as_deref(),
         Some("x")
     );
     assert_eq!(
-        error_message("Bad", &json!({"message": "m"}), false, false).as_deref(),
+        msg(error_message("Bad", &json!({"message": "m"}), false, false)).as_deref(),
         Some("m")
     );
     assert_eq!(error_message("", &json!({}), true, true), None);
     assert_eq!(
-        error_message("", &json!({"ok": false}), true, true).as_deref(),
+        msg(error_message("", &json!({"ok": false}), true, true)).as_deref(),
         Some("La acción no se completó")
     );
     assert_eq!(
@@ -26,7 +36,7 @@ fn api_error_rules_match_the_inline_api_function() {
 #[test]
 fn error_chain_follows_js_truthiness() {
     // `j.error || j.message || r.statusText || "La acción no se completó"`.
-    let e = |j: Value| error_message("Not Found", &j, false, false);
+    let e = |j: Value| msg(error_message("Not Found", &j, false, false));
     assert_eq!(
         e(json!({"error": "", "message": "m"})).as_deref(),
         Some("m")
@@ -39,7 +49,7 @@ fn error_chain_follows_js_truthiness() {
     assert_eq!(e(json!({"error": null})).as_deref(), Some("Not Found"));
     assert_eq!(e(json!({})).as_deref(), Some("Not Found"));
     assert_eq!(
-        error_message("", &json!({}), false, false).as_deref(),
+        msg(error_message("", &json!({}), false, false)).as_deref(),
         Some(DEFAULT_ERROR)
     );
     // Valores verdaderos que no son cadena: `new Error(v)` hace `String(v)`.
@@ -59,14 +69,20 @@ fn error_chain_follows_js_truthiness() {
 
 #[test]
 fn post_checks_ok_false_only_strictly() {
-    let p = |j: Value| error_message("", &j, true, true);
+    let p = |j: Value| msg(error_message("", &j, true, true));
     assert_eq!(p(json!({"ok": true})), None);
     assert_eq!(p(json!({"ok": 0})), None, "=== false, no falsy");
     assert_eq!(p(json!({"ok": null})), None);
     assert_eq!(p(json!({"ok": false, "error": "e"})).as_deref(), Some("e"));
     // Un HTTP fallido es error con o sin cuerpo y en GET o POST.
     assert_eq!(
-        error_message("Bad Gateway", &json!({"ok": true}), true, false).as_deref(),
+        msg(error_message(
+            "Bad Gateway",
+            &json!({"ok": true}),
+            true,
+            false
+        ))
+        .as_deref(),
         Some("Bad Gateway")
     );
 }
@@ -77,7 +93,7 @@ fn non_object_bodies_have_no_fields() {
     for j in [json!(5), json!("texto"), json!([1, 2]), json!(true)] {
         assert_eq!(error_message("", &j, true, true), None, "{j}");
         assert_eq!(
-            error_message("S", &j, false, false).as_deref(),
+            msg(error_message("S", &j, false, false)).as_deref(),
             Some("S"),
             "{j}"
         );
@@ -85,15 +101,20 @@ fn non_object_bodies_have_no_fields() {
 }
 
 #[test]
-fn null_body_reproduces_the_type_error() {
-    // `j.error` / `j.ok` con `j === null` lanza un TypeError; texto de Chromium.
+fn null_body_is_a_read_the_engine_must_do() {
+    // `j.error` / `j.ok` con `j === null` lanza un TypeError cuyo texto es del
+    // motor (Chromium y WebKitGTK difieren): la regla solo dice qué se lee.
     assert_eq!(
-        error_message("", &Value::Null, false, false).as_deref(),
-        Some("Cannot read properties of null (reading 'error')")
+        error_message("", &Value::Null, false, false),
+        Some(Failure::ReadNull("error"))
     );
     assert_eq!(
-        error_message("", &Value::Null, true, true).as_deref(),
-        Some("Cannot read properties of null (reading 'ok')")
+        error_message("S", &Value::Null, true, false),
+        Some(Failure::ReadNull("error"))
+    );
+    assert_eq!(
+        error_message("", &Value::Null, true, true),
+        Some(Failure::ReadNull("ok"))
     );
     assert_eq!(error_message("", &Value::Null, false, true), None);
 }
@@ -135,4 +156,92 @@ fn post_is_get_when_the_body_is_falsy() {
     for t in ["1", "-1", "0.5", "1e-7", "10", "0.01", "5e0"] {
         assert!(js_truthy(&num(t)), "{t}");
     }
+}
+
+/// Árbol de prueba con la forma de un valor de JS ya analizado por el motor.
+#[derive(Clone)]
+enum J {
+    Undef,
+    Null,
+    Num(&'static str),
+    Str(String),
+    Arr(Vec<J>),
+    Obj(Vec<(&'static str, J)>),
+    Fun,
+}
+
+fn walk(j: J) -> Value {
+    from_tree(j, |j: &J| -> Result<Node<J>, String> {
+        Ok(match j {
+            J::Undef | J::Fun => Node::Skip,
+            J::Null => Node::Null,
+            J::Num(t) => Node::Number(t.parse().map_err(|_| "número".to_string())?),
+            J::Str(s) => Node::Str(s.clone()),
+            J::Arr(a) => Node::Array(a.clone()),
+            J::Obj(o) => Node::Object(o.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()),
+        })
+    })
+    .unwrap()
+}
+
+#[test]
+fn tree_conversion_keeps_order_numbers_and_json_stringify_rules() {
+    let v = walk(J::Obj(vec![
+        ("2", J::Num("1e+21")),
+        ("b", J::Arr(vec![J::Undef, J::Fun, J::Null, J::Num("0.1")])),
+        ("a", J::Undef),
+        ("f", J::Fun),
+        ("s", J::Str("x".into())),
+    ]));
+    // Como `JSON.stringify`: `undefined`/funciones se omiten en objetos y son
+    // `null` en listas; el texto de cada número es el de JS.
+    assert_eq!(
+        serde_json::to_string(&v).unwrap(),
+        r#"{"2":1e+21,"b":[null,null,null,0.1],"s":"x"}"#
+    );
+    assert_eq!(walk(J::Undef), Value::Null, "la raíz `undefined` es null");
+    assert_eq!(walk(J::Arr(vec![])), json!([]));
+    assert_eq!(walk(J::Obj(vec![])), json!({}));
+}
+
+#[test]
+fn deep_nesting_beyond_serde_limit_converts() {
+    // `serde_json::from_str` corta a 128 niveles; el motor no. Revisión B1, I2.
+    let depth = 2000;
+    let mut j = J::Num("7");
+    for _ in 0..depth {
+        j = J::Arr(vec![j]);
+    }
+    let mut v = &walk(j);
+    let mut n = 0;
+    while let Value::Array(a) = v {
+        v = &a[0];
+        n += 1;
+    }
+    assert_eq!((n, v.to_string()), (depth, "7".to_string()));
+}
+
+#[test]
+fn errors_from_the_engine_are_returned_not_turned_into_null() {
+    let r = from_tree(
+        J::Arr(vec![J::Num("x")]),
+        |j: &J| -> Result<Node<J>, String> {
+            match j {
+                J::Arr(a) => Ok(Node::Array(a.clone())),
+                _ => Err("getter lanzó".into()),
+            }
+        },
+    );
+    assert_eq!(r, Err("getter lanzó".to_string()));
+}
+
+#[test]
+fn lone_surrogates_become_replacement_characters() {
+    // Un `String` de Rust no puede guardar un sustituto suelto; el texto
+    // conserva todo lo demás y el sustituto pasa a U+FFFD (lo que pinta el
+    // navegador para ese código), nunca a `null` ni a error.
+    assert_eq!(utf16_lossy(&[0x61, 0xD800, 0x62]), "a\u{FFFD}b");
+    assert_eq!(utf16_lossy(&[0xD83C, 0xDF45]), "🍅");
+    let v = walk(J::Obj(vec![("t", J::Str(utf16_lossy(&[0x78, 0xDC00])))]));
+    assert_eq!(v["t"], "x\u{FFFD}");
 }

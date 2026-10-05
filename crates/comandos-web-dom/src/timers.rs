@@ -71,3 +71,12 @@ pub fn timeout(ms: i32, f: impl FnOnce() + 'static) -> Handle {
         kind: id.map(|_| Kind::Timeout(c)),
     }
 }
+
+/// `setTimeout(f, ms)` de usar y olvidar: la clausura se libera al ejecutarse
+/// (`Handle::forget` en cambio la fuga). No se puede cancelar.
+pub fn timeout_detached(ms: i32, f: impl FnOnce() + 'static) {
+    let cb = Closure::once_into_js(f);
+    if let Some(w) = web_sys::window() {
+        let _ = w.set_timeout_with_callback_and_timeout_and_arguments_0(cb.unchecked_ref(), ms);
+    }
+}

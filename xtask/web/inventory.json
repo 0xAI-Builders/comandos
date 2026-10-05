@@ -2596,7 +2596,7 @@
     {
       "id": "region:analytics",
       "kind": "region",
-      "component": "analytics",
+      "component": "analytics-inline",
       "source": "dash/index.html",
       "pages": [
         "index.html"

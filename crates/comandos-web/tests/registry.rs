@@ -48,20 +48,23 @@ fn strs(v: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Lo que una entrada debe declarar en `exports`: cada global que define una
-/// de sus unidades y que consume algo de fuera de esas unidades (otra unidad,
-/// `cc-app`, `cc-app-mac` o un iframe), o que otra unidad parchea o respalda.
+/// Lo que una entrada debe declarar en `exports`: cada global que define su
+/// unidad (una sola por componente, ver `inventory_components_are_unique`) y
+/// que consume algo de fuera de ella (otra unidad, `cc-app`, `cc-app-mac` o un
+/// iframe), o que otra unidad parchea o respalda.
 fn required_exports(component: &str, inventory: &Value, interop: &Value) -> BTreeSet<String> {
-    let units: BTreeSet<String> = inventory["units"]
+    let units: Vec<&str> = inventory["units"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|u| u["component"] == component)
-        .filter_map(|u| u["id"].as_str().map(str::to_string))
+        .filter_map(|u| u["id"].as_str())
         .collect();
+    assert_eq!(units.len(), 1, "{component}: unidades {units:?}");
+    let unit = units[0];
     let mut out = BTreeSet::new();
     for (name, g) in interop.as_object().into_iter().flatten() {
-        if name.starts_with('@') || !strs(&g["defined_by"]).iter().any(|d| units.contains(d)) {
+        if name.starts_with('@') || !strs(&g["defined_by"]).iter().any(|d| d == unit) {
             continue;
         }
         let external = [
@@ -73,7 +76,7 @@ fn required_exports(component: &str, inventory: &Value, interop: &Value) -> BTre
         ]
         .iter()
         .flat_map(|k| strs(&g[*k]))
-        .any(|c| !units.contains(&c));
+        .any(|c| c != unit);
         if external {
             out.insert(name.clone());
         }
@@ -88,6 +91,21 @@ fn missing_exports(entry: &Map<String, Value>, inventory: &Value, interop: &Valu
         .into_iter()
         .filter(|n| !declared.contains(n))
         .collect()
+}
+
+#[test]
+fn inventory_components_are_unique() {
+    // Un archivo por componente exige un id por unidad (revisión B1, I7).
+    let inventory: Value = serde_json::from_str(INVENTORY).unwrap();
+    let mut seen = BTreeMap::new();
+    for u in inventory["units"].as_array().unwrap() {
+        let c = u["component"].as_str().unwrap();
+        if let Some(prev) = seen.insert(c, u["id"].as_str().unwrap()) {
+            panic!("{c}: {prev} y {}", u["id"]);
+        }
+    }
+    assert_eq!(seen.get("analytics"), Some(&"script:analytics.js"));
+    assert_eq!(seen.get("analytics-inline"), Some(&"region:analytics"));
 }
 
 #[test]
@@ -264,7 +282,7 @@ fn mount_all_keeps_going_after_a_failure_and_keeps_order() {
     .collect();
     let r: Report = mount_all(
         &["c", "x", "b", "a"],
-        |id| known.get(id).copied(),
+        |id| known.get(id).map(|f| f()),
         |e| e.clone(),
     );
     assert_eq!(r.mounted, ["c", "a"]);
@@ -278,4 +296,35 @@ fn mount_all_keeps_going_after_a_failure_and_keeps_order() {
             ("b".to_string(), "se rompió".to_string())
         ]
     );
+}
+
+#[test]
+fn attach_waits_only_while_the_document_is_loading() {
+    use comandos_web::registry::dom_ready;
+    assert!(!dom_ready("loading"));
+    assert!(
+        dom_ready("interactive"),
+        "boot tardío (async) tras DOMContentLoaded"
+    );
+    assert!(dom_ready("complete"));
+}
+
+#[test]
+fn attach_runs_for_mounted_components_in_meta_order() {
+    use comandos_web::registry::attach_order;
+    let r = Report {
+        mounted: vec!["c".into(), "a".into(), "b".into()],
+        failed: vec![("x".into(), "e".into())],
+    };
+    // Solo los que montaron y tienen `attach`, en el orden de montaje.
+    let order = attach_order(&r, |id| id != "a");
+    assert_eq!(order, ["c", "b"]);
+}
+
+#[test]
+fn boot_runs_once() {
+    use comandos_web::registry::first_boot;
+    assert!(first_boot(false, false));
+    assert!(!first_boot(true, false), "ya arrancó en esta instancia");
+    assert!(!first_boot(false, true), "__comandosReady ya vale true");
 }

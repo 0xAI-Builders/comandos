@@ -16,6 +16,16 @@
 //! navegador solo existe en `wasm32` y lo prueban las `wasm-bindgen-test` de
 //! `tests/web.rs`, que corren en el Mac (A12/B4), nunca en un navegador local.
 
+#![deny(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::todo,
+    clippy::unimplemented
+)]
+
 pub mod api;
 pub mod bridge;
 pub mod i18n;
@@ -29,3 +39,8 @@ pub mod events;
 pub mod storage;
 #[cfg(target_arch = "wasm32")]
 pub mod timers;
+
+/// `document.readyState !== "loading"`: el DOM ya está para tocarlo.
+pub fn dom_ready(ready_state: &str) -> bool {
+    ready_state != "loading"
+}

@@ -17,22 +17,34 @@
 //!
 //! Detalles que se conservan a propósito:
 //!
-//! - `fetch` se toma de `window` en cada llamada (`Reflect.get`), no del enlace
-//!   estático, para que los dobles de prueba que sustituyen `window.fetch`
-//!   sigan funcionando; y la respuesta se lee por propiedades (`ok`,
-//!   `statusText`, `json()`), sin exigir un `Response` de verdad.
+//! - `fetch(path, opt)` y `r.json()` se evalúan en el motor con el mismo texto
+//!   que el JS (funciones creadas una vez con el constructor `Function`), así
+//!   que `fetch` se resuelve en cada llamada (los dobles de prueba que
+//!   sustituyen `window.fetch` siguen funcionando), la respuesta se lee por
+//!   propiedades sin exigir un `Response` de verdad, y un error del motor trae
+//!   su propio texto nativo.
 //! - `opt` son objetos planos con las claves en el orden del JS; sin token y
 //!   sin cuerpo se pasa `undefined` como segundo argumento, igual que el JS.
 //! - Un cuerpo «falso» en JS (`null`, `false`, `0`, `""`) hace GET: `post`
 //!   también (ver [`js_truthy`]).
 //! - El cuerpo se envía con `JSON.stringify` del valor ya convertido a JS, así
 //!   que los bytes son los del JS (orden de claves y texto de números).
-//! - La respuesta pasa por `r.json()` y vuelve a texto con `JSON.stringify`
-//!   antes de llegar a `serde_json`: las claves quedan en el orden de JS (índices
-//!   enteros primero; `preserve_order`) y cada número conserva el texto de
-//!   `String(n)` (`arbitrary_precision`). Así `value.to_string()` de un número
-//!   pinta lo mismo que el JS.
+//! - La respuesta la analiza el motor (`r.json()`) y [`from_tree`] la recorre
+//!   tal cual, sin volver a texto ni a `serde_json::from_str` (que corta a 128
+//!   niveles y rechaza sustitutos sueltos). Las claves quedan en el orden de JS
+//!   (índices enteros primero; `preserve_order`), `undefined` y funciones se
+//!   tratan como en `JSON.stringify`, y cada número conserva el texto de
+//!   `String(n)` (`arbitrary_precision`): `value.to_string()` pinta lo mismo que
+//!   el JS. La única pérdida posible es un sustituto UTF-16 suelto en una
+//!   cadena, que un `String` de Rust no puede guardar: pasa a U+FFFD
+//!   ([`utf16_lossy`]), lo mismo que pinta el navegador. Un fallo al recorrer
+//!   (un getter que lanza) es un error, nunca `null`.
 //! - Un `r.json()` que falla da `{}` (como `.catch(()=>({}))`).
+//! - Con `j === null` el JS lanza al leer `j.error` o `j.ok`: [`error_message`]
+//!   devuelve [`Failure::ReadNull`] y la lectura se hace de verdad en el motor,
+//!   así que el mensaje es el nativo de cada uno (Chromium:
+//!   «Cannot read properties of null (reading 'error')»; WebKitGTK:
+//!   «null is not an object (evaluating 'j.error')»).
 
 use serde_json::Value;
 
@@ -106,41 +118,146 @@ fn field<'a>(j: &'a Value, key: &str) -> Option<&'a Value> {
     j.as_object().and_then(|m| m.get(key))
 }
 
-/// TypeError de leer una propiedad de `null` (texto de Chromium). Sin
-/// `format!`: el formateador pesa en el WASM.
-fn null_read(key: &str) -> String {
-    ["Cannot read properties of null (reading '", key, "')"].concat()
+/// Por qué falla una llamada según la regla de `api()`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Failure {
+    /// `throw new Error(msg)`.
+    Message(String),
+    /// `j` es `null`/`undefined` y el JS lanza al leer `j.<campo>` (`"error"`
+    /// u `"ok"`); el texto del TypeError lo pone el motor.
+    ReadNull(&'static str),
 }
 
-/// Regla de error de `api()`. `None` = la llamada devuelve `j`; `Some(msg)` =
-/// lanza `Error(msg)`. `status_text` es `r.statusText`; `is_post` es la
-/// truthiness del cuerpo; `ok` es `r.ok`.
-///
-/// `j === null` (un servidor que responde `null`) hace que el JS lance un
-/// TypeError al leer `j.error` o `j.ok`; se reproduce con el texto de Chromium
-/// (WebKitGTK lo redacta distinto).
-pub fn error_message(status_text: &str, j: &Value, is_post: bool, ok: bool) -> Option<String> {
+/// Regla de error de `api()`. `None` = la llamada devuelve `j`. `status_text`
+/// es `r.statusText`; `is_post` es la truthiness del cuerpo; `ok` es `r.ok`;
+/// `Value::Null` representa un `j` nulo (`null` o `undefined`).
+pub fn error_message(status_text: &str, j: &Value, is_post: bool, ok: bool) -> Option<Failure> {
     if ok {
         if !is_post {
             return None;
         }
         if j.is_null() {
-            return Some(null_read("ok"));
+            return Some(Failure::ReadNull("ok"));
         }
         if field(j, "ok") != Some(&Value::Bool(false)) {
             return None;
         }
     }
     if j.is_null() {
-        return Some(null_read("error"));
+        return Some(Failure::ReadNull("error"));
     }
     let pick = |key: &str| field(j, key).filter(|v| js_truthy(v)).map(js_string_of);
-    Some(
+    Some(Failure::Message(
         pick("error")
             .or_else(|| pick("message"))
             .or_else(|| (!status_text.is_empty()).then(|| status_text.to_string()))
             .unwrap_or_else(|| DEFAULT_ERROR.to_string()),
-    )
+    ))
+}
+
+/// Un nodo de un valor de JS ya analizado, visto por [`from_tree`].
+#[derive(Debug, Clone)]
+pub enum Node<C> {
+    Null,
+    Bool(bool),
+    /// Con el texto de `String(n)`.
+    Number(serde_json::Number),
+    Str(String),
+    /// Elementos en orden; un hueco o `undefined` va como hijo [`Node::Skip`].
+    Array(Vec<C>),
+    /// Claves en el orden de `Object.keys`.
+    Object(Vec<(String, C)>),
+    /// `undefined`, funciones y símbolos: se omiten en objetos y son `null`
+    /// en listas, como en `JSON.stringify`.
+    Skip,
+}
+
+enum Frame<C> {
+    Array(Vec<Value>, std::vec::IntoIter<C>),
+    Object(
+        serde_json::Map<String, Value>,
+        std::vec::IntoIter<(String, C)>,
+        String,
+    ),
+}
+
+/// Convierte un valor de JS en `serde_json::Value` sin pasar por texto.
+/// Iterativo: no tiene límite de anidamiento ni consume pila por nivel. Un
+/// error de `inspect` se devuelve tal cual.
+pub fn from_tree<C, E>(
+    root: C,
+    mut inspect: impl FnMut(&C) -> Result<Node<C>, E>,
+) -> Result<Value, E> {
+    let mut stack: Vec<Frame<C>> = Vec::new();
+    let mut next = Some(root);
+    loop {
+        // Visita: un valor hecho (`Some`, con `None` = omitido) o un marco nuevo.
+        let mut done: Option<Option<Value>> = match next.take() {
+            None => None,
+            Some(c) => match inspect(&c)? {
+                Node::Null => Some(Some(Value::Null)),
+                Node::Bool(b) => Some(Some(Value::Bool(b))),
+                Node::Number(n) => Some(Some(Value::Number(n))),
+                Node::Str(s) => Some(Some(Value::String(s))),
+                Node::Skip => Some(None),
+                Node::Array(items) => {
+                    stack.push(Frame::Array(
+                        Vec::with_capacity(items.len()),
+                        items.into_iter(),
+                    ));
+                    None
+                }
+                Node::Object(fields) => {
+                    stack.push(Frame::Object(
+                        serde_json::Map::new(),
+                        fields.into_iter(),
+                        String::new(),
+                    ));
+                    None
+                }
+            },
+        };
+        loop {
+            if let Some(v) = done.take() {
+                match stack.last_mut() {
+                    None => return Ok(v.unwrap_or(Value::Null)),
+                    Some(Frame::Array(out, _)) => out.push(v.unwrap_or(Value::Null)),
+                    Some(Frame::Object(map, _, key)) => {
+                        if let Some(v) = v {
+                            map.insert(std::mem::take(key), v);
+                        }
+                    }
+                }
+            }
+            match stack.last_mut() {
+                None => return Ok(Value::Null),
+                Some(Frame::Array(_, rest)) => {
+                    if let Some(c) = rest.next() {
+                        next = Some(c);
+                        break;
+                    }
+                }
+                Some(Frame::Object(_, rest, key)) => {
+                    if let Some((k, c)) = rest.next() {
+                        *key = k;
+                        next = Some(c);
+                        break;
+                    }
+                }
+            }
+            // Marco agotado: es un valor hecho para su padre.
+            done = match stack.pop() {
+                Some(Frame::Array(out, _)) => Some(Some(Value::Array(out))),
+                Some(Frame::Object(map, _, _)) => Some(Some(Value::Object(map))),
+                None => return Ok(Value::Null),
+            };
+        }
+    }
+}
+
+/// UTF-16 a `String`; un sustituto suelto pasa a U+FFFD.
+pub fn utf16_lossy(units: &[u16]) -> String {
+    String::from_utf16_lossy(units)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -148,11 +265,35 @@ pub use web::{auth_token, get, post};
 
 #[cfg(target_arch = "wasm32")]
 mod web {
-    use super::{ApiError, error_message};
-    use js_sys::{Function, JSON, Object, Promise, Reflect};
+    use super::{ApiError, Failure, Node, error_message, from_tree, utf16_lossy};
+    use js_sys::{Array, Function, JSON, JsString, Object, Promise, Reflect};
     use serde_json::Value;
+    use std::cell::OnceCell;
     use wasm_bindgen::{JsCast, JsValue};
     use wasm_bindgen_futures::JsFuture;
+
+    /// Expresiones del JS vivo evaluadas en el motor, creadas una vez.
+    struct Engine {
+        fetch: Function,
+        json: Function,
+        read_error: Function,
+        read_ok: Function,
+    }
+
+    thread_local! {
+        static ENGINE: OnceCell<Engine> = const { OnceCell::new() };
+    }
+
+    fn with_engine<T>(f: impl FnOnce(&Engine) -> T) -> T {
+        ENGINE.with(|cell| {
+            f(cell.get_or_init(|| Engine {
+                fetch: Function::new_with_args("path, opt", "return fetch(path, opt)"),
+                json: Function::new_with_args("r", "return r.json()"),
+                read_error: Function::new_with_args("j", "return j.error"),
+                read_ok: Function::new_with_args("j", "return j.ok"),
+            }))
+        })
+    }
 
     /// `authToken()`: `localStorage.getItem("cc_token") || ""`, y `""` si el
     /// almacenamiento no está disponible o lanza.
@@ -190,9 +331,6 @@ mod web {
     }
 
     async fn request(path: &str, body: &JsValue) -> Result<Value, ApiError> {
-        let win = web_sys::window().ok_or_else(|| ApiError {
-            message: "sin window".into(),
-        })?;
         let headers = Object::new();
         let tok = auth_token();
         if !tok.is_empty() {
@@ -215,29 +353,16 @@ mod web {
         } else {
             JsValue::UNDEFINED
         };
-        let fetch: Function = Reflect::get(&win, &"fetch".into())
-            .map_err(|e| from_js(&e))?
-            .dyn_into()
-            .map_err(|_| ApiError {
-                message: "fetch is not a function".into(),
-            })?;
-        let r = JsFuture::from(Promise::resolve(
-            &fetch
-                .call2(&win, &path.into(), &opt)
-                .map_err(|e| from_js(&e))?,
-        ))
-        .await
-        .map_err(|e| from_js(&e))?;
+        let pending = with_engine(|e| e.fetch.call2(&JsValue::UNDEFINED, &path.into(), &opt))
+            .map_err(|e| from_js(&e))?;
+        let r = JsFuture::from(Promise::resolve(&pending))
+            .await
+            .map_err(|e| from_js(&e))?;
         // Mismo orden de lecturas que el JS: `r.json()`, luego `r.ok` y
         // `r.statusText`. `r.json().catch(()=>({}))`: una excepción síncrona
         // sí sale (el JS también lanza antes de llegar al `.catch`).
-        let json: Function = Reflect::get(&r, &"json".into())
-            .map_err(|e| from_js(&e))?
-            .dyn_into()
-            .map_err(|_| ApiError {
-                message: "r.json is not a function".into(),
-            })?;
-        let pending = json.call0(&r).map_err(|e| from_js(&e))?;
+        let pending =
+            with_engine(|e| e.json.call1(&JsValue::UNDEFINED, &r)).map_err(|e| from_js(&e))?;
         let j = match JsFuture::from(Promise::resolve(&pending)).await {
             Ok(j) => j,
             Err(_) => Object::new().into(),
@@ -251,20 +376,77 @@ mod web {
         } else {
             String::new()
         };
-        let value = to_value(&j);
+        let value = to_value(&j)?;
         match error_message(&status, &value, is_post, ok) {
-            Some(message) => Err(ApiError { message }),
             None => Ok(value),
+            Some(Failure::Message(message)) => Err(ApiError { message }),
+            Some(Failure::ReadNull(key)) => Err(read_in_engine(&j, key)),
         }
     }
 
-    /// `j` de JS a `serde_json` por su texto JSON (orden y números de JS).
-    /// `undefined` (solo lo da un doble de prueba) cuenta como `null`.
-    fn to_value(j: &JsValue) -> Value {
-        JSON::stringify(j)
-            .ok()
-            .and_then(|s| s.as_string())
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or(Value::Null)
+    /// Hace en el motor la lectura que lanza en el JS (`j.error` o `j.ok` con
+    /// `j` nulo), para que el TypeError lleve el texto nativo del motor.
+    fn read_in_engine(j: &JsValue, key: &str) -> ApiError {
+        let read = with_engine(|e| {
+            if key == "ok" {
+                e.read_ok.call1(&JsValue::UNDEFINED, j)
+            } else {
+                e.read_error.call1(&JsValue::UNDEFINED, j)
+            }
+        });
+        match read {
+            Err(e) => from_js(&e),
+            Ok(_) => ApiError {
+                message: super::DEFAULT_ERROR.to_string(),
+            },
+        }
+    }
+
+    /// Un valor de JS como lo vería `JSON.stringify` (ver [`super::from_tree`]).
+    fn inspect(v: &JsValue) -> Result<Node<JsValue>, ApiError> {
+        if v.is_null() {
+            return Ok(Node::Null);
+        }
+        if let Some(b) = v.as_bool() {
+            return Ok(Node::Bool(b));
+        }
+        if let Some(x) = v.as_f64() {
+            if !x.is_finite() {
+                return Ok(Node::Null);
+            }
+            let text = crate::bridge::js_text(v);
+            return text.parse().map(Node::Number).map_err(|_| ApiError {
+                message: ["número de JS sin forma JSON: ", &text].concat(),
+            });
+        }
+        if let Some(s) = v.dyn_ref::<JsString>() {
+            if s.is_valid_utf16() {
+                return Ok(Node::Str(String::from(s)));
+            }
+            let units: Vec<u16> = s.iter().collect();
+            return Ok(Node::Str(utf16_lossy(&units)));
+        }
+        if Array::is_array(v) {
+            let a: &Array = v.unchecked_ref();
+            return Ok(Node::Array((0..a.length()).map(|i| a.get(i)).collect()));
+        }
+        if !v.is_object() {
+            // `undefined`, funciones, símbolos y BigInt.
+            return Ok(Node::Skip);
+        }
+        if v.is_function() {
+            return Ok(Node::Skip);
+        }
+        let obj: &Object = v.unchecked_ref();
+        let mut fields = Vec::new();
+        for key in Object::keys(obj).iter() {
+            let val = Reflect::get(obj, &key).map_err(|e| from_js(&e))?;
+            fields.push((crate::bridge::js_text(&key), val));
+        }
+        Ok(Node::Object(fields))
+    }
+
+    fn to_value(j: &JsValue) -> Result<Value, ApiError> {
+        from_tree(j.clone(), inspect)
     }
 }

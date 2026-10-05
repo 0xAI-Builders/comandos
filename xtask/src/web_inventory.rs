@@ -563,8 +563,35 @@ fn scan_all(repo: &Path) -> Scan {
             drafts.push(d);
         }
     }
+    unique_components(&mut drafts);
     resolve(&mut drafts);
     Scan { drafts, pages }
+}
+
+/// Un id de componente por unidad (un archivo `components/<id>.json` cada
+/// uno). Si una región choca con otro componente (p. ej. la región
+/// `analytics` y `dash/analytics.js`), la región pasa a `<nombre>-inline`; si
+/// aún chocara, se numera.
+fn unique_components(drafts: &mut [Draft]) {
+    let mut taken: BTreeSet<String> = drafts
+        .iter()
+        .filter(|d| d.unit.kind != Kind::Region)
+        .map(|d| d.unit.component.clone())
+        .collect();
+    for d in drafts.iter_mut().filter(|d| d.unit.kind == Kind::Region) {
+        let base = d.unit.component.clone();
+        let mut name = base.clone();
+        if taken.contains(&name) {
+            name = format!("{base}-inline");
+            let mut n = 2;
+            while taken.contains(&name) {
+                name = format!("{base}-inline-{n}");
+                n += 1;
+            }
+        }
+        taken.insert(name.clone());
+        d.unit.component = name;
+    }
 }
 
 /// Dos unidades comparten globales si alguna página carga las dos.

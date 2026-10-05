@@ -27,6 +27,27 @@
 //! leen de su sitio con `include_str!`, así que regenerar el inventario
 //! revalida los `exports` sin duplicar nada a mano.
 
+//! ## Pánicos
+//!
+//! `release-wasm` compila con `panic = "abort"`: un pánico de Rust es una
+//! trampa (`unreachable`). La frontera de cada `mount`/`attach` (una llamada
+//! desde JS con `try/catch`, ver `registry`) la convierte en una entrada de
+//! `failed` y los demás componentes siguen, pero tras una trampa el estado de
+//! Rust (préstamos de `RefCell`, el asignador) no es fiable. Por eso los tres
+//! crates web niegan a nivel de crate `unwrap`, `expect`, la indexación que
+//! puede fallar, `panic!`, `unreachable!`, `todo!` y `unimplemented!`: sin
+//! esas vías un pánico no puede salir de código nuestro.
+
+#![deny(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::todo,
+    clippy::unimplemented
+)]
+
 pub mod registry;
 
 #[cfg(target_arch = "wasm32")]
