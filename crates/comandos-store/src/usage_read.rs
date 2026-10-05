@@ -244,6 +244,16 @@ pub fn usage_settings(conn: &Connection) -> Result<Vec<(String, Value)>> {
 pub fn state_rows(conn: &Connection, since: i64) -> Result<StateRows> {
     let mut turns = usage_state::StateTurns::new();
     {
+        // Solo una pista de tamaño: si una importación escribe entre las dos
+        // lecturas, el vector crece como siempre.
+        let count: i64 = conn.query_row(
+            "select count(*) from usage_turns where turn_finished_at >= ?",
+            params![since],
+            |r| r.get(0),
+        )?;
+        turns.reserve(usize::try_from(count).unwrap_or(0));
+        // Las once columnas, en el orden de `TURN_TEXT` y luego las numéricas:
+        // cada fila se lee por índice, sin el objeto de `dict(sqlite3.Row)`.
         let mut stmt = conn.prepare(
             "select tmux_session, tmux_pane, pane_pwd, git_root, agent, provider,\
              \x20model, confidence, cost_usd, total_tokens, turn_finished_at\
@@ -251,9 +261,29 @@ pub fn state_rows(conn: &Connection, since: i64) -> Result<StateRows> {
         )?;
         let mut cursor = stmt.query(params![since])?;
         while let Some(row) = cursor.next()? {
-            turns.push(&row_object(row)?);
+            let text_cell = |i: usize| -> Result<usage_state::TurnCell<'_>> {
+                Ok(match row.get_ref(i)? {
+                    ValueRef::Text(t) => usage_state::TurnCell::Text(
+                        std::str::from_utf8(t).map_err(|_| ReadError::Undecodable)?,
+                    ),
+                    other => usage_state::TurnCell::Value(cell(other)?),
+                })
+            };
+            let text = [
+                text_cell(0)?,
+                text_cell(1)?,
+                text_cell(2)?,
+                text_cell(3)?,
+                text_cell(4)?,
+                text_cell(5)?,
+                text_cell(6)?,
+                text_cell(7)?,
+            ];
+            let (cost, tokens, finished) = (column(row, 8)?, column(row, 9)?, column(row, 10)?);
+            turns.push_cells(text, &finished, &tokens, &cost);
         }
     }
+    turns.finish();
     Ok(StateRows {
         turns,
         provider_usage: rows(

@@ -732,14 +732,35 @@ const TURN_TEXT: [&str; 8] = [
 /// Clave ausente en la fila (distinta de `null`: `turn.get(k, "")`).
 const ABSENT: u32 = u32::MAX;
 
-/// Un turno compacto: las columnas de texto como índices de una tabla de valores
-/// distintos y las tres numéricas ya convertidas como las convierte cada uso
-/// (`_as_int(…, 0)`, `_as_float(…, 0.0)`), con su error si lo hay.
+/// Un turno compacto (64 B): las columnas de texto como índices de una tabla de
+/// valores distintos y las tres numéricas ya convertidas como las convierte cada
+/// uso (`_as_int(…, 0)`, `_as_float(…, 0.0)`); su error, si lo hay, va aparte en
+/// `faults` (finalizado, tokens, coste).
 struct Turn {
     text: [u32; 8],
-    finished: Result<i64>,
-    tokens: Result<i64>,
-    cost: Result<f64>,
+    finished: i64,
+    tokens: i64,
+    cost: f64,
+    faults: [Option<UsageError>; 3],
+}
+
+impl Turn {
+    fn new(text: [u32; 8], finished: Result<i64>, tokens: Result<i64>, cost: Result<f64>) -> Self {
+        Self {
+            text,
+            finished: *finished.as_ref().unwrap_or(&0),
+            tokens: *tokens.as_ref().unwrap_or(&0),
+            cost: *cost.as_ref().unwrap_or(&0.0),
+            faults: [finished.err(), tokens.err(), cost.err()],
+        }
+    }
+}
+
+/// Una columna de texto de un turno tal como sale de SQLite: un texto prestado
+/// (se interna sin copiarlo si ya está) o cualquier otro valor.
+pub enum TurnCell<'a> {
+    Text(&'a str),
+    Value(Value),
 }
 
 /// Los turnos de 14 días de `build_usage_state` sin guardar cada fila como objeto
@@ -778,6 +799,51 @@ impl StateTurns {
         self.turns.is_empty()
     }
 
+    /// Reserva sitio para `n` turnos más (sin el crecimiento al doble del `Vec`).
+    pub fn reserve(&mut self, n: usize) {
+        self.turns.reserve_exact(n);
+    }
+
+    /// Un turno leído columna a columna, sin el objeto de la fila: las ocho de
+    /// texto en el orden de `TURN_TEXT` y las tres numéricas. Lo mismo que
+    /// `push` de la fila con esas once claves.
+    pub fn push_cells(
+        &mut self,
+        text: [TurnCell<'_>; 8],
+        finished: &Value,
+        tokens: &Value,
+        cost: &Value,
+    ) {
+        let mut ids = [ABSENT; 8];
+        for (slot, cell) in ids.iter_mut().zip(text) {
+            *slot = match cell {
+                TurnCell::Text(s) => self.intern_str(s),
+                TurnCell::Value(value) => self.intern(&value),
+            };
+        }
+        self.turns.push(Turn::new(
+            ids,
+            as_int(finished, 0),
+            as_int(tokens, 0),
+            as_float(cost, 0.0),
+        ));
+    }
+
+    /// Fin de la lectura: suelta los índices de internado y el sitio sobrante.
+    pub fn finish(&mut self) {
+        self.strings = HashMap::new();
+        self.scalars = HashMap::new();
+        self.values.shrink_to_fit();
+        self.turns.shrink_to_fit();
+    }
+
+    fn intern_str(&mut self, s: &str) -> u32 {
+        if let Some(&i) = self.strings.get(s) {
+            return i;
+        }
+        self.intern(&Value::String(s.to_owned()))
+    }
+
     /// Un turno leído (`dict(sqlite3.Row)`); solo se quedan las columnas que usa
     /// `build_usage_state`.
     pub fn push(&mut self, row: &Row) {
@@ -787,12 +853,12 @@ impl StateTurns {
                 *slot = self.intern(value);
             }
         }
-        self.turns.push(Turn {
+        self.turns.push(Turn::new(
             text,
-            finished: as_int(get(row, "turn_finished_at"), 0),
-            tokens: as_int(get(row, "total_tokens"), 0),
-            cost: as_float(get(row, "cost_usd"), 0.0),
-        });
+            as_int(get(row, "turn_finished_at"), 0),
+            as_int(get(row, "total_tokens"), 0),
+            as_float(get(row, "cost_usd"), 0.0),
+        ));
     }
 
     fn intern(&mut self, value: &Value) -> u32 {
@@ -857,15 +923,18 @@ impl<'a> TurnRef<'a> {
     }
     /// `_as_int(turn.get("turn_finished_at"), 0)`.
     fn finished(&self) -> Result<i64> {
-        self.turn.finished
+        let [f, _, _] = self.turn.faults;
+        f.map_or(Ok(self.turn.finished), Err)
     }
     /// `_as_int(turn.get("total_tokens"), 0)`.
     fn tokens(&self) -> Result<i64> {
-        self.turn.tokens
+        let [_, f, _] = self.turn.faults;
+        f.map_or(Ok(self.turn.tokens), Err)
     }
     /// `_as_float(turn.get("cost_usd"), 0.0)`.
     fn cost(&self) -> Result<f64> {
-        self.turn.cost
+        let [_, _, f] = self.turn.faults;
+        f.map_or(Ok(self.turn.cost), Err)
     }
     /// `turn.get("provider") or turn.get("agent") or default`.
     fn provider_or(&self, default: &str) -> Value {
@@ -1562,6 +1631,66 @@ mod tests {
                 assert_eq!(row.get(key), turn.slot(key), "{key}");
             }
         }
+    }
+
+    #[test]
+    fn push_cells_matches_push_of_the_row() {
+        use serde_json::json;
+        assert_eq!(std::mem::size_of::<Turn>(), 64);
+        let texts = [
+            json!("s"),
+            json!("%1"),
+            Value::Null,
+            json!(3),
+            json!("/r"),
+            json!(true),
+            json!("m"),
+            json!(""),
+        ];
+        let nums = [
+            (json!(1_791_000_000), json!(12), json!(0.5)),
+            (json!("x"), Value::Null, json!("1e400")),
+            (json!(1.5e300), json!(7.9), json!(true)),
+        ];
+        let mut by_row = StateTurns::new();
+        let mut by_cell = StateTurns::new();
+        by_cell.reserve(nums.len());
+        for (finished, tokens, cost) in &nums {
+            let mut row = Row::new();
+            for (key, value) in TURN_TEXT.iter().zip(&texts) {
+                row.insert((*key).into(), value.clone());
+            }
+            row.insert("turn_finished_at".into(), finished.clone());
+            row.insert("total_tokens".into(), tokens.clone());
+            row.insert("cost_usd".into(), cost.clone());
+            by_row.push(&row);
+            let cells = texts.clone().map(|v| match v {
+                Value::String(s) => TurnCell::Value(Value::String(s)),
+                other => TurnCell::Value(other),
+            });
+            by_cell.push_cells(cells, finished, tokens, cost);
+        }
+        by_cell.push_cells(
+            texts.clone().map(|v| match v {
+                Value::String(s) if s == "m" => TurnCell::Text("m"),
+                other => TurnCell::Value(other),
+            }),
+            &nums[0].0,
+            &nums[0].1,
+            &nums[0].2,
+        );
+        by_cell.finish();
+        assert!(by_cell.strings.is_empty());
+        for (a, b) in by_row.iter().zip(by_cell.iter()) {
+            for key in TURN_TEXT {
+                assert_eq!(a.slot(key), b.slot(key), "{key}");
+            }
+            assert_eq!(a.finished(), b.finished());
+            assert_eq!(a.tokens(), b.tokens());
+            assert_eq!(a.cost().map(f64::to_bits), b.cost().map(f64::to_bits));
+        }
+        assert_eq!(by_cell.len(), 4);
+        assert_eq!(by_cell.values.len(), by_row.values.len());
     }
 
     #[test]
