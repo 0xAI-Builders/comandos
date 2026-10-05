@@ -17,6 +17,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use comandos_core::malloc_tuning::{GLIBC_TUNABLES_ENV, PRODUCTION_GLIBC_TUNABLES};
 use serde_json::Value;
 
 /// El arnés decide el modo del frente con `--no-native`, nunca el entorno del usuario.
@@ -655,6 +656,9 @@ pub struct StackOptions<'a> {
     pub usage_db: Option<&'a Path>,
     /// Pasa `--no-native` al frente: A/B contra la 2a.
     pub no_native: bool,
+    /// `GLIBC_TUNABLES` del frente (`None`: sin la variable). Producción lo
+    /// lleva en el drop-in de `cc-dash`; los dos Python nunca.
+    pub glibc_tunables: Option<&'a str>,
 }
 
 /// Copia la base con la API de backup: nunca escribe en `src`.
@@ -979,7 +983,8 @@ impl Stack {
             let mut c = Command::new("python3");
             c.arg(repo.join("bin/cc-dash"))
                 .arg(port.to_string())
-                .arg("--no-open");
+                .arg("--no-open")
+                .env_remove(GLIBC_TUNABLES_ENV);
             c
         };
         let mut front = Command::new(comandos);
@@ -993,6 +998,11 @@ impl Stack {
         if o.no_native {
             front.arg("--no-native");
         }
+        // `spawn` no la toca: la memoria medida es la del frente de producción.
+        match o.glibc_tunables {
+            Some(value) => front.env(GLIBC_TUNABLES_ENV, value),
+            None => front.env_remove(GLIBC_TUNABLES_ENV),
+        };
         // `spawn` no la quita: el resumen de reenvíos sale de esta traza.
         front.env("COMANDOS_DASH_TRACE_FORWARD", "1");
         // El Python importa en su primera petición de GET /usage/state; el frente
@@ -1273,6 +1283,7 @@ pub fn run(args: &[String]) -> Result<i32, String> {
         state_db: a.state_db.as_deref(),
         usage_db: a.usage_db.as_deref(),
         no_native: a.no_native,
+        glibc_tunables: Some(PRODUCTION_GLIBC_TUNABLES),
     })?;
     let results = std::env::temp_dir().join(format!("comandos-parity-results-{}", unix_secs()));
 
