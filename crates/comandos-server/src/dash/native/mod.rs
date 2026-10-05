@@ -50,12 +50,13 @@ use tokio::sync::OnceCell;
 /// Trabajos en cola del worker de la base (sin contar el que corre).
 pub const WORKER_CAPACITY: usize = 64;
 
-/// GET `/usage/state` nativo con todos sus efectos (Tarea 8, D1). Apagado: la
-/// puerta de ligereza (`xtask poll --shadow` realista, `--max-pss-mib 56`) no
-/// pasa con la ruta nativa (≈ 67–76 MiB: el memo se reconstruye tras cada
-/// importación y sus ≈ 22 MiB de trabajo quedan en las arenas de glibc). El
-/// frente la declina sin efectos y el Python sigue siendo dueño de todo.
-pub const USAGE_STATE_NATIVE: bool = false;
+/// GET `/usage/state` nativo con todos sus efectos (Tarea 8, D1) y el refresco
+/// de límites al arrancar que va con ella. La puerta de ligereza (`xtask poll
+/// --shadow` realista, `--max-pss-mib 56`) se mide con el `GLIBC_TUNABLES` de
+/// producción (`comandos_core::malloc_tuning`, en el drop-in de `cc-dash`): sin
+/// él la ruta funciona igual, pero el memo que se reconstruye tras cada
+/// importación deja ≈ 61 MiB retenidos en las arenas de glibc.
+pub const USAGE_STATE_NATIVE: bool = true;
 
 /// Gracia de la primera importación de uso del frente tras arrancar (D1 c): un
 /// hilo de importación del Python que estuviera en curso termina antes.
@@ -294,9 +295,8 @@ pub struct NativeOptions {
     pub zone: Arc<dyn LocalZone + Send + Sync>,
     /// Milisegundos desde el arranque antes de la primera importación de uso.
     pub usage_import_grace_ms: i64,
-    /// `USAGE_STATE_NATIVE` en producción; las pruebas lo encienden. Apagado,
-    /// GET `/usage/state` declina antes de cualquier efecto y no hay refresco
-    /// de límites al arrancar.
+    /// `USAGE_STATE_NATIVE` en producción. Apagado, GET `/usage/state` declina
+    /// antes de cualquier efecto y no hay refresco de límites al arrancar.
     pub usage_state_native: bool,
 }
 

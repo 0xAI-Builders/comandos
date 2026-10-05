@@ -188,8 +188,8 @@ impl TestHome {
     pub fn options(&self) -> NativeOptions {
         let mut opts = NativeOptions::for_home(&self.root, self.state_db());
         opts.clock = Arc::new(|| NOW_MS);
-        // Las pruebas ejercitan GET `/usage/state` nativo aunque producción
-        // lo tenga apagado (`USAGE_STATE_NATIVE`).
+        // GET `/usage/state` nativo, como producción (`USAGE_STATE_NATIVE`),
+        // aunque la constante se apague.
         opts.usage_state_native = true;
         // Nunca la red real: OAuth falso sin guion (toda petición es un error).
         opts.oauth = Arc::new(FakeOauth::default());

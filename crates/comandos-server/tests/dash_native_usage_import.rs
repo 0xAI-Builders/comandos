@@ -155,18 +155,18 @@ async fn import_lock_contended_skips_cycle() {
     front.stop().await;
 }
 
-/// Producción (`USAGE_STATE_NATIVE` apagado): GET /usage/state va al Python y
-/// el frente no hace ninguno de sus efectos (ni importa ni registra panes; el
-/// refresco de límites al arrancar lo cubre `dash_native_limits`).
+/// La ruta apagada (`USAGE_STATE_NATIVE = false`): GET /usage/state va al
+/// Python y el frente no hace ninguno de sus efectos (ni importa ni registra
+/// panes; el refresco de límites al arrancar lo cubre `dash_native_limits`).
 #[tokio::test]
-async fn usage_state_off_in_production_forwards_without_effects() {
+async fn usage_state_off_forwards_without_effects() {
     let home = TestHome::new("import-off");
     seed_usage(&home, "");
     claude_line(&home, "m0");
     let mut opts = home.options();
     assert!(
-        !NativeOptions::for_home(&home.root, home.state_db()).usage_state_native,
-        "apagado en producción"
+        NativeOptions::for_home(&home.root, home.state_db()).usage_state_native,
+        "encendido en producción"
     );
     opts.usage_state_native = false;
     opts.usage_import_grace_ms = 0;
