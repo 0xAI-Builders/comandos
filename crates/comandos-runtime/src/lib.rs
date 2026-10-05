@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub mod accounts;
 pub mod agent_procs;
+pub mod closed_panes;
 pub mod events_cli;
 pub mod hooks;
 pub mod legacy;
@@ -18,6 +19,7 @@ pub mod quick_terminal;
 pub mod session_operations;
 pub mod terminal_history;
 pub mod terminal_panes;
+pub mod tmux_snapshot;
 pub mod tui_state;
 
 /// El Python leería algo que este port no reproduce con certeza: quien lo
