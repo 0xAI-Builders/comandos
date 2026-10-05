@@ -42,6 +42,11 @@ pub const TRANSLATE_TIMEOUT: Duration = Duration::from_secs(300);
 pub const LEAD_TIMEOUT: Duration = Duration::from_secs(120);
 /// `new_session()` de `_default_acp_open` (90 s por omisión).
 const NEW_SESSION_TIMEOUT: f64 = 90.0;
+/// Tope del texto de una respuesta de agente (1 MiB): más es un fallo
+/// (el Python lo juntaría entero, sin tope).
+pub const MAX_REPLY: usize = 1024 * 1024;
+/// Texto del fallo de una respuesta más larga que `MAX_REPLY`.
+pub const TOO_LONG: &str = "respuesta demasiado larga";
 /// Tope de `_sources_payload`.
 const SOURCES_MAX_CHARS: usize = 36000;
 /// Trozo de `run_translation`.
@@ -169,7 +174,7 @@ impl Asker {
 }
 
 /// `_acp_text(agent, model, timeout, acp_open, prompt)`: el texto que manda
-/// el agente; la sesión se cierra siempre.
+/// el agente (a lo sumo `MAX_REPLY`); la sesión se cierra siempre.
 pub fn acp_text(
     opener: &Opener,
     agent: &str,
@@ -179,17 +184,26 @@ pub fn acp_text(
 ) -> Result<String, String> {
     let mut session = opener(agent, model)?;
     let mut chunks = String::new();
+    let mut too_long = false;
     let result = session.prompt(
         prompt,
         &mut |event: &Event| {
             if let Event::Text(text) = event {
-                chunks.push_str(&py_str_or_empty(text));
+                let piece = py_str_or_empty(text);
+                if chunks.len().saturating_add(piece.len()) > MAX_REPLY {
+                    too_long = true;
+                } else if !too_long {
+                    chunks.push_str(&piece);
+                }
             }
         },
         timeout,
     );
     session.close();
     result.map_err(|e| e.to_string())?;
+    if too_long {
+        return Err(TOO_LONG.into());
+    }
     Ok(chunks)
 }
 

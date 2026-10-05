@@ -62,6 +62,21 @@ const USER_BIN_DIRS: [&str; 8] = [
 
 /// Líneas de stderr que se guardan (`del self.stderr[:-200]`).
 const STDERR_KEEP: usize = 200;
+/// Tope de una línea del agente (4 MiB). Una línea de `stdout` mayor es fin
+/// de flujo (la sesión falla y se cierra); una de `stderr` se recorta y se
+/// sigue leyendo. El Python no tiene tope: un agente que no para de escribir
+/// sin salto de línea agotaría la memoria del tablero.
+pub const MAX_LINE: usize = 4 * 1024 * 1024;
+/// Lo que se guarda de cada línea de stderr (solo acaba en textos de error).
+const STDERR_LINE_KEEP: usize = 4096;
+/// Presupuesto de líneas de `stdout` leídas y aún no consumidas: el lector
+/// espera (y con él el agente, por la tubería llena) hasta que la sesión las
+/// consuma. Cada línea cuesta 16 veces su tamaño (lo que puede ocupar ya
+/// convertida a `Value`) más un fijo.
+const LINES_BUDGET: usize = 64 * 1024 * 1024;
+const LINE_OVERHEAD: usize = 256;
+/// Líneas en la cola a lo sumo (además del presupuesto en bytes).
+const LINES_QUEUE: usize = 256;
 /// Paso de la espera de una línea (`queue.get(timeout=0.25)`).
 const POLL: Duration = Duration::from_millis(250);
 /// Margen del vigía sobre el plazo de una espera: solo desbloquea una
@@ -410,10 +425,63 @@ enum Transport {
     Agy,
 }
 
-/// Una línea de `stdout` ya leída: JSON o fin.
+/// Una línea de `stdout` ya leída (JSON y su coste en el presupuesto) o fin.
 enum Line {
-    Json(Value),
+    Json(Value, usize),
     Eof,
+}
+
+/// El presupuesto en bytes de la cola de líneas (`LINES_BUDGET`).
+struct Flow {
+    state: Mutex<FlowState>,
+    room: Condvar,
+}
+
+struct FlowState {
+    used: usize,
+    closed: bool,
+}
+
+impl Flow {
+    fn new() -> Flow {
+        Flow {
+            state: Mutex::new(FlowState {
+                used: 0,
+                closed: false,
+            }),
+            room: Condvar::new(),
+        }
+    }
+
+    fn lock(&self) -> MutexGuard<'_, FlowState> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Espera sitio para `cost` (una línea sola siempre cabe con la cola
+    /// vacía). `false` si la sesión se cerró.
+    fn acquire(&self, cost: usize) -> bool {
+        let mut state = self.lock();
+        while !state.closed && state.used > 0 && state.used.saturating_add(cost) > LINES_BUDGET {
+            state = self.room.wait(state).unwrap_or_else(|e| e.into_inner());
+        }
+        if state.closed {
+            return false;
+        }
+        state.used = state.used.saturating_add(cost);
+        true
+    }
+
+    fn release(&self, cost: usize) {
+        let mut state = self.lock();
+        state.used = state.used.saturating_sub(cost);
+        drop(state);
+        self.room.notify_all();
+    }
+
+    fn close(&self) {
+        self.lock().closed = true;
+        self.room.notify_all();
+    }
 }
 
 /// El vigía: mata el grupo del agente si vence el plazo armado. Mata solo
@@ -474,6 +542,7 @@ pub struct Session {
     stdin: Option<ChildStdin>,
     lines: Receiver<Line>,
     stderr: Arc<Mutex<Vec<String>>>,
+    flow: Arc<Flow>,
     watch: Arc<Watch>,
     next_id: i64,
     session_id: Value,
@@ -502,14 +571,28 @@ fn universal_lines(raw: &[u8]) -> Option<Vec<String>> {
     Some(text.split(['\n', '\r']).map(str::to_owned).collect())
 }
 
-fn pump_stdout(stdout: impl Read, lines: mpsc::Sender<Line>, stderr: Arc<Mutex<Vec<String>>>) {
+fn pump_stdout(
+    stdout: impl Read,
+    lines: mpsc::SyncSender<Line>,
+    stderr: Arc<Mutex<Vec<String>>>,
+    flow: Arc<Flow>,
+) {
     let mut reader = BufReader::new(stdout);
     let mut raw = Vec::new();
     loop {
         raw.clear();
-        match reader.read_until(b'\n', &mut raw) {
+        match (&mut reader)
+            .take(MAX_LINE as u64 + 1)
+            .read_until(b'\n', &mut raw)
+        {
             Ok(0) | Err(_) => break,
             Ok(_) => {}
+        }
+        if raw.len() > MAX_LINE {
+            // Fin de flujo: la sesión falla («cerró stdout») y quien la usa
+            // la cierra; el resto de la línea no se lee.
+            push_stderr(&stderr, "línea de más de 4 MiB en stdout");
+            break;
         }
         let Some(pieces) = universal_lines(&raw) else {
             break;
@@ -519,13 +602,20 @@ fn pump_stdout(stdout: impl Read, lines: mpsc::Sender<Line>, stderr: Arc<Mutex<V
             if line.is_empty() {
                 continue;
             }
+            let cost = line.len().saturating_mul(16).saturating_add(LINE_OVERHEAD);
+            if !flow.acquire(cost) {
+                return;
+            }
             match comandos_store::news::py_loads(line) {
                 Ok(Some(value)) => {
-                    if lines.send(Line::Json(value)).is_err() {
+                    if lines.send(Line::Json(value, cost)).is_err() {
                         return;
                     }
                 }
-                _ => push_stderr(&stderr, line.to_owned()),
+                _ => {
+                    flow.release(cost);
+                    push_stderr(&stderr, line);
+                }
             }
         }
     }
@@ -534,21 +624,53 @@ fn pump_stdout(stdout: impl Read, lines: mpsc::Sender<Line>, stderr: Arc<Mutex<V
 
 fn pump_stderr(stream: impl Read, stderr: Arc<Mutex<Vec<String>>>) {
     let mut reader = BufReader::new(stream);
-    let mut raw = Vec::new();
+    let mut kept: Vec<u8> = Vec::with_capacity(STDERR_LINE_KEEP);
     loop {
-        raw.clear();
-        match reader.read_until(b'\n', &mut raw) {
-            Ok(0) | Err(_) => return,
-            Ok(_) => {}
+        // Una línea: se guardan sus primeros `STDERR_LINE_KEEP` bytes y el
+        // resto se descarta sin copiarlo; nunca se deja de leer (el agente no
+        // se queda bloqueado escribiendo en stderr).
+        kept.clear();
+        let mut seen = false;
+        let mut ended = false;
+        loop {
+            let buf = match reader.fill_buf() {
+                Ok(buf) => buf,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(_) => return,
+            };
+            if buf.is_empty() {
+                ended = true;
+                break;
+            }
+            seen = true;
+            let newline = buf.iter().position(|b| *b == b'\n');
+            let part = buf.get(..newline.unwrap_or(buf.len())).unwrap_or_default();
+            let room = STDERR_LINE_KEEP.saturating_sub(kept.len());
+            kept.extend_from_slice(part.get(..room.min(part.len())).unwrap_or_default());
+            let used = part.len() + usize::from(newline.is_some());
+            reader.consume(used);
+            if newline.is_some() {
+                break;
+            }
         }
-        let Ok(text) = std::str::from_utf8(&raw) else {
+        if seen {
+            let text = String::from_utf8_lossy(&kept);
+            push_stderr(&stderr, text.trim_end_matches('\r'));
+        }
+        if ended {
             return;
-        };
-        push_stderr(&stderr, text.trim_end_matches('\n').to_owned());
+        }
     }
 }
 
-fn push_stderr(stderr: &Mutex<Vec<String>>, line: String) {
+/// Guarda una línea de stderr recortada a `STDERR_LINE_KEEP` bytes (en un
+/// límite de carácter, sin copiar el resto) y solo las 200 últimas.
+fn push_stderr(stderr: &Mutex<Vec<String>>, line: &str) {
+    let mut cut = line.len().min(STDERR_LINE_KEEP);
+    while !line.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    let line = line.get(..cut).unwrap_or_default().to_owned();
     let mut lines = stderr.lock().unwrap_or_else(|e| e.into_inner());
     lines.push(line);
     let extra = lines.len().saturating_sub(STDERR_KEEP);
@@ -601,7 +723,8 @@ impl Session {
         let mut child = spawn_retrying(&mut command).map_err(|e| os_error(&e, &program))?;
         let group = Pid::from_raw(i32::try_from(child.id()).unwrap_or(0));
         let stderr = Arc::new(Mutex::new(Vec::new()));
-        let (tx, lines) = mpsc::channel();
+        let (tx, lines) = mpsc::sync_channel(LINES_QUEUE);
+        let flow = Arc::new(Flow::new());
         let watch = Arc::new(Watch {
             state: Mutex::new(WatchState {
                 deadline: None,
@@ -616,6 +739,7 @@ impl Session {
             stdin,
             lines,
             stderr: Arc::clone(&stderr),
+            flow: Arc::clone(&flow),
             watch: Arc::clone(&watch),
             next_id: 0,
             session_id: json!(""),
@@ -630,7 +754,7 @@ impl Session {
                 let stderr = Arc::clone(&stderr);
                 std::thread::Builder::new()
                     .name("comandos-acp-out".into())
-                    .spawn(move || pump_stdout(out, tx, stderr))?;
+                    .spawn(move || pump_stdout(out, tx, stderr, flow))?;
             }
             if let Some(err) = err {
                 let stderr = Arc::clone(&stderr);
@@ -650,6 +774,15 @@ impl Session {
                 Err(AcpError(format!("can't start new thread: {error}")))
             }
         }
+    }
+
+    /// La siguiente línea de `stdout`; su coste vuelve al presupuesto.
+    fn next_line(&self, wait: Duration) -> Result<Line, RecvTimeoutError> {
+        let line = self.lines.recv_timeout(wait)?;
+        if let Line::Json(_, cost) = &line {
+            self.flow.release(*cost);
+        }
+        Ok(line)
     }
 
     /// `" | ".join(self.proc.stderr[-3:])`.
@@ -728,7 +861,7 @@ impl Session {
             if now >= deadline {
                 break;
             }
-            let message = match self.lines.recv_timeout(POLL.min(deadline - now)) {
+            let message = match self.next_line(POLL.min(deadline - now)) {
                 Err(RecvTimeoutError::Timeout) => {
                     if !self.alive() {
                         return fail(format!("el agente murió: {}", self.tail()));
@@ -737,10 +870,10 @@ impl Session {
                 }
                 Err(RecvTimeoutError::Disconnected)
                 | Ok(Line::Eof)
-                | Ok(Line::Json(Value::Null)) => {
+                | Ok(Line::Json(Value::Null, _)) => {
                     return fail(format!("el agente cerró stdout: {}", self.tail()));
                 }
-                Ok(Line::Json(message)) => message,
+                Ok(Line::Json(message, _)) => message,
             };
             let map = match &message {
                 Value::Object(map) => map,
@@ -900,7 +1033,7 @@ impl Session {
             if now >= deadline {
                 break;
             }
-            let message = match self.lines.recv_timeout(POLL.min(deadline - now)) {
+            let message = match self.next_line(POLL.min(deadline - now)) {
                 Err(RecvTimeoutError::Timeout) => {
                     if !self.alive() {
                         return fail(format!("agy murió: {}", self.tail()));
@@ -909,10 +1042,10 @@ impl Session {
                 }
                 Err(RecvTimeoutError::Disconnected)
                 | Ok(Line::Eof)
-                | Ok(Line::Json(Value::Null)) => {
+                | Ok(Line::Json(Value::Null, _)) => {
                     return fail(format!("agy cerró stdout: {}", self.tail()));
                 }
-                Ok(Line::Json(message)) => message,
+                Ok(Line::Json(message, _)) => message,
             };
             let map = as_dict(&message)?;
             match get(map, "event").as_str() {
@@ -973,6 +1106,7 @@ impl Session {
             return;
         }
         self.closed = true;
+        self.flow.close();
         drop(self.stdin.take());
         let valid = self.group.as_raw() > 1;
         if valid {

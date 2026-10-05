@@ -765,3 +765,45 @@ async fn agent_routes_decline_before_effects() {
     assert_eq!(news_rows(&home), before);
     assert!(fake.pids().is_empty());
 }
+
+/// Ronda 1: un agente que manda más de 1 MiB de texto deja el chat fallido
+/// («respuesta demasiado larga»), queda cerrado y devuelve su puesto: dos
+/// chats así seguidos y después uno normal terminan.
+#[tokio::test]
+async fn flooding_agent_fails_and_frees_its_slot() {
+    let home = TestHome::new("news-flood");
+    seed_editions(&home);
+    let fake = FakeAcp::install(
+        &home,
+        &[("FAKEACP_CHUNK", REPLY), ("FAKEACP_FLOOD", "chunks")],
+    );
+    home.write("news-editions.json", FAKE_CHAIN);
+    fake.canary(&home);
+    let legacy = FakeLegacy::start().await;
+    let mut opts = home.options();
+    opts.repo_root = Some(fake.repo.clone());
+    let f = front(&home, legacy.port, opts).await;
+    let busy = r#""state": "pending""#;
+    for story in [10, 11] {
+        let body = serde_json::json!({"storyId": story, "message": "¿Qué pasó?"}).to_string();
+        let wire = request_body(f.port, "POST", "/news/chat", "", &body).await;
+        assert_eq!(wire.status, 200, "{}", wire.text());
+        let text = settled(f.port, &format!("/news/chat?story={story}"), busy).await;
+        assert!(
+            text.contains(r#""state": "failed", "text": "No pude responder: ning\u00fan agente respondi\u00f3 (falso:predeterminado: respuesta demasiado larga)""#),
+            "{text}"
+        );
+    }
+    // El mismo agente sin inundar: el puesto está libre y responde.
+    let fake = FakeAcp::install(&home, &[("FAKEACP_CHUNK", REPLY)]);
+    let body = serde_json::json!({"storyId": 12, "message": "¿Y ahora?"}).to_string();
+    let wire = request_body(f.port, "POST", "/news/chat", "", &body).await;
+    assert_eq!(wire.status, 200, "{}", wire.text());
+    let text = settled(f.port, "/news/chat?story=12", busy).await;
+    assert!(text.contains("Cuesta **10 USD**"), "{text}");
+    assert_eq!(fake.pids().len(), 3, "un agente por chat");
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert!(fake.alive().is_empty());
+    assert!(legacy.requests().is_empty(), "{:?}", legacy.requests());
+    f.stop().await;
+}

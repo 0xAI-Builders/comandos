@@ -105,8 +105,9 @@ pub fn seed_editions(home: &TestHome) {
 /// del repositorio). Lee JSON-RPC por líneas y las anota en `FAKEACP_LOG`;
 /// `session/new` → `{"sessionId": "s1"}`; `session/prompt` → con
 /// `FAKEACP_PERMISSION=1` pide permiso para `rm -rf /` y anota la respuesta,
-/// espera `FAKEACP_SLEEP` segundos, manda `FAKEACP_CHUNK` (un literal JSON de
-/// texto) y cierra el turno. La primera línea del registro es `PID <pid> <$0>`.
+/// espera `FAKEACP_SLEEP` segundos, con `FAKEACP_FLOOD=chunks` manda 2 MiB de
+/// texto en cuatro trozos, manda `FAKEACP_CHUNK` (un literal JSON de texto) y
+/// cierra el turno. La primera línea del registro es `PID <pid> <$0>`.
 pub const FAKE_ACP: &str = r#"#!/bin/sh
 PATH=/usr/bin:/bin
 log=${FAKEACP_LOG:?}
@@ -124,6 +125,14 @@ while IFS= read -r line; do
         printf '%s\n' "$answer" >> "$log"
       fi
       sleep "${FAKEACP_SLEEP:-0}"
+      if [ "${FAKEACP_FLOOD:-}" = chunks ]; then
+        i=0; while [ $i -lt 4 ]; do
+          printf '{"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "s1", "update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "'
+          head -c 524288 /dev/zero | tr '\0' a
+          printf '"}}}}\n'
+          i=$((i+1))
+        done
+      fi
       printf '{"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "s1", "update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": %s}}}}\n' "$FAKEACP_CHUNK"
       printf '{"jsonrpc": "2.0", "id": %s, "result": {"stopReason": "end_turn"}}\n' "$id" ;;
   esac
