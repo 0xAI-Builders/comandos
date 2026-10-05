@@ -4,8 +4,9 @@
 
 use comandos_web::registry::{Component, boot_with};
 use comandos_web_dom::bridge;
-use js_sys::{Function, Reflect};
+use js_sys::Reflect;
 use wasm_bindgen::JsValue;
+use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -21,13 +22,15 @@ fn meta(content: &str) -> web_sys::Element {
     m
 }
 
-fn capture_ready() {
-    let f = Function::new_with_args(
-        "path, opt",
-        "(window.__ready = window.__ready || []).push([path, opt.body]); return Promise.resolve({ok: true});",
-    );
-    bridge::global_set("__ready", &js_sys::Array::new()).unwrap();
-    bridge::global_set("fetch", &f).unwrap();
+// Doble de `fetch` como módulo (`inline_js`): sin `eval` ni constructor `Function`.
+#[wasm_bindgen(inline_js = r#"
+export function capture_ready() {
+  window.__ready = [];
+  window.fetch = (path, opt) => { window.__ready.push([path, opt.body]); return Promise.resolve({ok: true}); };
+}
+"#)]
+extern "C" {
+    fn capture_ready();
 }
 
 fn last_ready_body() -> Option<String> {

@@ -453,3 +453,50 @@ fn missing_tools_fail_with_the_install_command() {
         "{err}"
     );
 }
+
+#[test]
+fn snippets_are_flattened_next_to_the_loader_and_imports_rewritten() {
+    // `inline_js` de wasm-bindgen sale como `snippets/<crate>-<hash>/inlineN.js`;
+    // el frente sirve `/web/<hash>/<archivo>` (un segmento), así que van planos.
+    let js = "import { api_fetch } from './snippets/comandos-web-dom-90199b/inline0.js';\nimport * as x from \"./snippets/otro-1/inline1.js\";\nlet y = 1;\n";
+    let snippets = vec![
+        (
+            "snippets/comandos-web-dom-90199b/inline0.js".to_string(),
+            b"export function api_fetch(){}".to_vec(),
+        ),
+        (
+            "snippets/otro-1/inline1.js".to_string(),
+            b"export const z = 1;".to_vec(),
+        ),
+    ];
+    let (out, files) = web_build::flatten_snippets(js, snippets).unwrap();
+    assert_eq!(
+        out,
+        "import { api_fetch } from './snippets-comandos-web-dom-90199b-inline0.js';\nimport * as x from \"./snippets-otro-1-inline1.js\";\nlet y = 1;\n"
+    );
+    assert_eq!(
+        files.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+        [
+            "snippets-comandos-web-dom-90199b-inline0.js",
+            "snippets-otro-1-inline1.js"
+        ]
+    );
+    assert_eq!(files[0].1, b"export function api_fetch(){}");
+}
+
+#[test]
+fn a_snippet_nobody_imports_is_not_shipped() {
+    // wasm-bindgen escribe el fragmento aunque LTO haya quitado sus usos
+    // (arranque vacío): no se copia.
+    let (out, files) =
+        web_build::flatten_snippets("let y = 1;", vec![("snippets/a/inline0.js".into(), vec![])])
+            .unwrap();
+    assert_eq!(out, "let y = 1;");
+    assert!(files.is_empty());
+}
+
+#[test]
+fn an_import_of_a_snippet_that_was_not_found_is_an_error() {
+    let r = web_build::flatten_snippets("import { f } from './snippets/b/inline0.js';", vec![]);
+    assert!(r.unwrap_err().contains("./snippets/"));
+}

@@ -3,11 +3,12 @@
 #![cfg(target_arch = "wasm32")]
 
 use comandos_web_dom::{api, bridge, dom, events, log, storage};
-use js_sys::{Function, Object, Reflect};
+use js_sys::{Function, JSON, Object, Reflect};
 use serde_json::json;
 use std::cell::Cell;
 use std::rc::Rc;
 use wasm_bindgen::JsValue;
+use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -16,17 +17,33 @@ fn get(o: &JsValue, k: &str) -> JsValue {
     Reflect::get(o, &k.into()).unwrap_or(JsValue::UNDEFINED)
 }
 
+// Dobles de prueba como módulo (`inline_js`): sin `eval` ni constructor
+// `Function`, como el propio crate.
+#[wasm_bindgen(inline_js = r#"
+export function install_fetch(ok, statusText, body, fails) {
+  window.__fetchCalls = [];
+  window.fetch = (path, opt) => {
+    window.__fetchCalls.push([path, opt]);
+    return Promise.resolve({ok, statusText, json: () => fails ? Promise.reject(new SyntaxError("no json")) : Promise.resolve(body)});
+  };
+}
+export function fetch_rejects(msg) { window.fetch = () => Promise.reject(new TypeError(msg)); }
+export function engine_message(j) { try { return j.error; } catch (e) { return e.message; } }
+export function record_ulog() { window.ulog = (k, n, c, d) => { window.__ulogArgs = [k, n, c, d]; }; }
+"#)]
+extern "C" {
+    fn install_fetch(ok: bool, status_text: &str, body: &JsValue, fails: bool);
+    fn fetch_rejects(msg: &str);
+    fn engine_message(j: &JsValue) -> String;
+    fn record_ulog();
+}
+
 /// Sustituye `window.fetch` por un doble que guarda `[path, opt]` en
-/// `window.__fetchCalls` y responde `resp`.
-fn fake_fetch(resp: &str) {
-    let f = Function::new_with_args(
-        "path, opt",
-        &format!(
-            "(window.__fetchCalls = window.__fetchCalls || []).push([path, opt]); return Promise.resolve({resp});"
-        ),
-    );
-    let _ = bridge::global_set("__fetchCalls", &js_sys::Array::new());
-    let _ = bridge::global_set("fetch", &f);
+/// `window.__fetchCalls` y responde `{ok, statusText, json}` con `body` (texto
+/// JSON que analiza el motor) o con un `r.json()` que rechaza (`None`).
+fn fake_fetch(ok: bool, status_text: &str, body: Option<&str>) {
+    let parsed = body.map_or(JsValue::UNDEFINED, |b| JSON::parse(b).unwrap());
+    install_fetch(ok, status_text, &parsed, body.is_none());
 }
 
 fn last_call() -> (JsValue, JsValue) {
@@ -38,9 +55,7 @@ fn last_call() -> (JsValue, JsValue) {
 #[wasm_bindgen_test]
 async fn api_get_without_token_passes_undefined_and_returns_js_order() {
     let _ = storage::remove("cc_token");
-    fake_fetch(
-        r#"{ok: true, statusText: "OK", json: () => Promise.resolve({b: 1, 2: "x", a: 1.0})}"#,
-    );
+    fake_fetch(true, "OK", Some(r#"{"b": 1, "2": "x", "a": 1.0}"#));
     let v = api::get("/state").await.unwrap();
     let (path, opt) = last_call();
     assert_eq!(path.as_string().as_deref(), Some("/state"));
@@ -54,7 +69,7 @@ async fn api_get_without_token_passes_undefined_and_returns_js_order() {
 #[wasm_bindgen_test]
 async fn api_post_sends_token_then_content_type_and_js_body() {
     storage::set("cc_token", "tk").unwrap();
-    fake_fetch(r#"{ok: true, json: () => Promise.resolve({ok: true})}"#);
+    fake_fetch(true, "", Some(r#"{"ok": true}"#));
     api::post("/x", &json!({"b": 1.50, "a": [1]}))
         .await
         .unwrap();
@@ -74,19 +89,17 @@ async fn api_post_sends_token_then_content_type_and_js_body() {
 
 #[wasm_bindgen_test]
 async fn api_post_ok_false_and_http_errors_follow_the_rules() {
-    fake_fetch(r#"{ok: true, statusText: "", json: () => Promise.resolve({ok: false})}"#);
+    fake_fetch(true, "", Some(r#"{"ok": false}"#));
     let e = api::post("/x", &json!({"a": 1})).await.unwrap_err();
     assert_eq!(e.message, api::DEFAULT_ERROR);
-    fake_fetch(
-        r#"{ok: false, statusText: "Bad Gateway", json: () => Promise.reject(new Error("no json"))}"#,
-    );
+    fake_fetch(false, "Bad Gateway", None);
     let e = api::get("/x").await.unwrap_err();
     assert_eq!(e.message, "Bad Gateway");
 }
 
 #[wasm_bindgen_test]
 async fn api_post_with_a_falsy_body_is_a_get() {
-    fake_fetch(r#"{ok: true, json: () => Promise.resolve({})}"#);
+    fake_fetch(true, "", Some("{}"));
     api::post("/x", &json!(null)).await.unwrap();
     let (_, opt) = last_call();
     assert!(opt.is_undefined());
@@ -94,49 +107,41 @@ async fn api_post_with_a_falsy_body_is_a_get() {
 
 #[wasm_bindgen_test]
 async fn api_network_failure_passes_the_engine_message() {
-    let f = Function::new_with_args(
-        "p, o",
-        "return Promise.reject(new TypeError('Failed to fetch'));",
-    );
-    bridge::global_set("fetch", &f).unwrap();
+    fetch_rejects("Failed to fetch");
     assert_eq!(api::get("/x").await.unwrap_err().message, "Failed to fetch");
 }
 
 #[wasm_bindgen_test]
 async fn api_http_error_with_empty_body_and_200_non_json() {
     // `r.json()` rechaza en los dos: `j = {}`.
-    fake_fetch(r#"{ok: false, statusText: "", json: () => Promise.reject(new SyntaxError("x"))}"#);
+    fake_fetch(false, "", None);
     assert_eq!(
         api::get("/x").await.unwrap_err().message,
         api::DEFAULT_ERROR
     );
-    fake_fetch(
-        r#"{ok: false, statusText: "Not Found", json: () => Promise.reject(new SyntaxError("x"))}"#,
-    );
+    fake_fetch(false, "Not Found", None);
     assert_eq!(api::get("/x").await.unwrap_err().message, "Not Found");
-    fake_fetch(r#"{ok: true, statusText: "OK", json: () => Promise.reject(new SyntaxError("x"))}"#);
+    fake_fetch(true, "OK", None);
     assert_eq!(api::get("/x").await.unwrap(), json!({}));
 }
 
 #[wasm_bindgen_test]
 async fn api_null_body_error_is_the_engine_type_error() {
-    fake_fetch(r#"{ok: false, statusText: "Bad", json: () => Promise.resolve(null)}"#);
+    fake_fetch(false, "Bad", Some("null"));
     let got = api::get("/x").await.unwrap_err().message;
     // El mismo texto que da el motor al leer `j.error` de `null`.
-    let expected =
-        Function::new_with_args("j", "try { return j.error } catch (e) { return e.message }")
-            .call1(&JsValue::UNDEFINED, &JsValue::NULL)
-            .unwrap()
-            .as_string()
-            .unwrap();
+    let expected = engine_message(&JsValue::NULL);
     assert_eq!(got, expected);
 }
 
 #[wasm_bindgen_test]
 async fn api_keeps_lone_surrogates_and_deep_nesting() {
-    fake_fetch(
-        r#"{ok: true, json: () => Promise.resolve({t: "x\ud800y", d: JSON.parse("[".repeat(300) + "1" + "]".repeat(300))})}"#,
+    let body = format!(
+        r#"{{"t": "x\ud800y", "d": {}1{}}}"#,
+        "[".repeat(300),
+        "]".repeat(300)
     );
+    fake_fetch(true, "", Some(&body));
     let v = api::get("/x").await.unwrap();
     assert_eq!(v["t"], "x\u{FFFD}y");
     let mut d = &v["d"];
@@ -206,8 +211,7 @@ fn listener_is_removed_on_drop() {
 
 #[wasm_bindgen_test]
 fn ui_log_delegates_to_the_inline_ulog_when_present() {
-    let f = Function::new_with_args("k, n, c, d", "window.__ulogArgs = [k, n, c, d];");
-    bridge::global_set("ulog", &f).unwrap();
+    record_ulog();
     log::ui_log("click", "#btn", "header", 1.5);
     let args: js_sys::Array = bridge::global_get("__ulogArgs").into();
     assert_eq!(

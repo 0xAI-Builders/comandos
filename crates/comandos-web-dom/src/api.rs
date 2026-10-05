@@ -18,8 +18,9 @@
 //! Detalles que se conservan a propósito:
 //!
 //! - `fetch(path, opt)` y `r.json()` se evalúan en el motor con el mismo texto
-//!   que el JS (funciones creadas una vez con el constructor `Function`), así
-//!   que `fetch` se resuelve en cada llamada (los dobles de prueba que
+//!   que el JS (un módulo JS de `inline_js`, que `wasm-bindgen` emite como
+//!   archivo: nada de `eval` ni del constructor `Function`, así que una CSP sin
+//!   `unsafe-eval` sigue funcionando), de modo que `fetch` se resuelve en cada llamada (los dobles de prueba que
 //!   sustituyen `window.fetch` siguen funcionando), la respuesta se lee por
 //!   propiedades sin exigir un `Response` de verdad, y un error del motor trae
 //!   su propio texto nativo.
@@ -266,33 +267,33 @@ pub use web::{auth_token, get, post};
 #[cfg(target_arch = "wasm32")]
 mod web {
     use super::{ApiError, Failure, Node, error_message, from_tree, utf16_lossy};
-    use js_sys::{Array, Function, JSON, JsString, Object, Promise, Reflect};
+    use js_sys::{Array, JSON, JsString, Object, Promise, Reflect};
     use serde_json::Value;
-    use std::cell::OnceCell;
+    use wasm_bindgen::prelude::wasm_bindgen;
     use wasm_bindgen::{JsCast, JsValue};
     use wasm_bindgen_futures::JsFuture;
 
-    /// Expresiones del JS vivo evaluadas en el motor, creadas una vez.
-    struct Engine {
-        fetch: Function,
-        json: Function,
-        read_error: Function,
-        read_ok: Function,
-    }
-
-    thread_local! {
-        static ENGINE: OnceCell<Engine> = const { OnceCell::new() };
-    }
-
-    fn with_engine<T>(f: impl FnOnce(&Engine) -> T) -> T {
-        ENGINE.with(|cell| {
-            f(cell.get_or_init(|| Engine {
-                fetch: Function::new_with_args("path, opt", "return fetch(path, opt)"),
-                json: Function::new_with_args("r", "return r.json()"),
-                read_error: Function::new_with_args("j", "return j.error"),
-                read_ok: Function::new_with_args("j", "return j.ok"),
-            }))
-        })
+    // Las expresiones del JS vivo, evaluadas por el motor con su mismo texto:
+    // `fetch` se resuelve en cada llamada y un error trae el mensaje nativo
+    // (`j.error` sobre `null`: Chromium «Cannot read properties of null
+    // (reading 'error')», WebKitGTK «null is not an object (evaluating
+    // 'j.error')»). Es un módulo que `wasm-bindgen` escribe como archivo y
+    // `xtask web-build` deja junto al cargador; no usa `eval`.
+    #[wasm_bindgen(inline_js = "
+export function api_fetch(path, opt) { return fetch(path, opt); }
+export function api_json(r) { return r.json(); }
+export function api_read_error(j) { return j.error; }
+export function api_read_ok(j) { return j.ok; }
+")]
+    extern "C" {
+        #[wasm_bindgen(catch)]
+        fn api_fetch(path: &str, opt: &JsValue) -> Result<JsValue, JsValue>;
+        #[wasm_bindgen(catch)]
+        fn api_json(r: &JsValue) -> Result<JsValue, JsValue>;
+        #[wasm_bindgen(catch)]
+        fn api_read_error(j: &JsValue) -> Result<JsValue, JsValue>;
+        #[wasm_bindgen(catch)]
+        fn api_read_ok(j: &JsValue) -> Result<JsValue, JsValue>;
     }
 
     /// `authToken()`: `localStorage.getItem("cc_token") || ""`, y `""` si el
@@ -353,16 +354,14 @@ mod web {
         } else {
             JsValue::UNDEFINED
         };
-        let pending = with_engine(|e| e.fetch.call2(&JsValue::UNDEFINED, &path.into(), &opt))
-            .map_err(|e| from_js(&e))?;
+        let pending = api_fetch(path, &opt).map_err(|e| from_js(&e))?;
         let r = JsFuture::from(Promise::resolve(&pending))
             .await
             .map_err(|e| from_js(&e))?;
         // Mismo orden de lecturas que el JS: `r.json()`, luego `r.ok` y
         // `r.statusText`. `r.json().catch(()=>({}))`: una excepción síncrona
         // sí sale (el JS también lanza antes de llegar al `.catch`).
-        let pending =
-            with_engine(|e| e.json.call1(&JsValue::UNDEFINED, &r)).map_err(|e| from_js(&e))?;
+        let pending = api_json(&r).map_err(|e| from_js(&e))?;
         let j = match JsFuture::from(Promise::resolve(&pending)).await {
             Ok(j) => j,
             Err(_) => Object::new().into(),
@@ -387,13 +386,11 @@ mod web {
     /// Hace en el motor la lectura que lanza en el JS (`j.error` o `j.ok` con
     /// `j` nulo), para que el TypeError lleve el texto nativo del motor.
     fn read_in_engine(j: &JsValue, key: &str) -> ApiError {
-        let read = with_engine(|e| {
-            if key == "ok" {
-                e.read_ok.call1(&JsValue::UNDEFINED, j)
-            } else {
-                e.read_error.call1(&JsValue::UNDEFINED, j)
-            }
-        });
+        let read = if key == "ok" {
+            api_read_ok(j)
+        } else {
+            api_read_error(j)
+        };
         match read {
             Err(e) => from_js(&e),
             Ok(_) => ApiError {
