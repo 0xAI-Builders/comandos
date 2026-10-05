@@ -633,22 +633,27 @@ pub trait GlyphStore {
 }
 
 /// El glifo de `text` con `key`, del índice o rasterizado con `raster`
-/// (que da el hueco y si se puede guardar). Si guardarlo pasaría de los
-/// topes, el atlas se vacía *antes* de rasterizar: así el hueco nuevo nunca
-/// apunta a una página que se vacía justo después.
+/// (recibe si puede guardarse en el atlas y da el hueco y si se guarda).
+/// Si guardarlo pasaría de los topes, el atlas se vacía *antes* de
+/// rasterizar: así el hueco nuevo nunca apunta a una página que se vacía
+/// justo después. Una clave que por sí sola pasa del tope de bytes se
+/// dibuja sin caché y no vacía nada.
 pub fn cached_glyph<A: GlyphStore, E>(
     atlas: &mut A,
     text: &str,
     key: A::Key,
-    raster: impl FnOnce(&mut A) -> Result<(A::Slot, bool), E>,
+    raster: impl FnOnce(&mut A, bool) -> Result<(A::Slot, bool), E>,
 ) -> Result<A::Slot, E> {
+    if text.len() > MAX_KEY_BYTES {
+        return raster(atlas, false).map(|(slot, _)| slot);
+    }
     if let Some(slot) = atlas.index().lookup(text, &key) {
         return Ok(slot);
     }
     if atlas.index().needs_room(text) {
         atlas.clear_all();
     }
-    let (slot, cacheable) = raster(atlas)?;
+    let (slot, cacheable) = raster(atlas, true)?;
     if cacheable {
         atlas.index().insert(text, key, slot);
     }
@@ -724,18 +729,20 @@ impl Atlas {
         key: GlyphStyle,
         rc: &mut RasterCtx<'_>,
     ) -> Result<Slot, JsValue> {
-        cached_glyph(self, text, key, |atlas| {
-            let slot = atlas.rasterize(text, &key, rc)?;
+        cached_glyph(self, text, key, |atlas, cache| {
+            let slot = atlas.rasterize(text, &key, rc, cache)?;
             Ok((slot, slot.page != Slot::UNCACHED))
         })
     }
 
-    /// `_drawToCache` paso a paso.
+    /// `_drawToCache` paso a paso. Con `cache = false` el glifo no ocupa
+    /// página: se copia desde el auxiliar.
     fn rasterize(
         &mut self,
         text: &str,
         key: &GlyphStyle,
         rc: &mut RasterCtx<'_>,
+        cache: bool,
     ) -> Result<Slot, JsValue> {
         let m = rc.m;
         let (cell_w, cell_h) = (f64::from(m.dev_w), f64::from(m.dev_h));
@@ -954,9 +961,9 @@ impl Atlas {
             return Ok(Slot::EMPTY);
         };
         let (w, h) = (right - left + 1, bottom - top + 1);
-        let (page, sx, sy) = if w > UNCACHED_LIMIT || h > UNCACHED_LIMIT {
-            // Demasiado grande para el atlas: la imagen ya limpia vuelve al
-            // auxiliar y se copia desde allí.
+        let (page, sx, sy) = if !cache || w > UNCACHED_LIMIT || h > UNCACHED_LIMIT {
+            // Demasiado grande para el atlas (o clave sin caché): la imagen
+            // ya limpia vuelve al auxiliar y se copia desde allí.
             let data = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&bytes), tw, th)?;
             self.tmp_ctx.put_image_data(&data, 0.0, 0.0)?;
             (Slot::UNCACHED, left, top)
@@ -1662,7 +1669,11 @@ mod tests {
     }
 
     impl FakeAtlas {
-        fn raster(&mut self, text: &str) -> Result<((usize, usize, u32), bool), ()> {
+        fn raster(&mut self, text: &str, cache: bool) -> Result<((usize, usize, u32), bool), ()> {
+            if !cache {
+                // Sin caché: no ocupa página.
+                return Ok(((usize::MAX, 0, self.index.generation()), false));
+            }
             if self.pages.last().is_none_or(|p| p.len() >= self.per_page) {
                 if self.pages.len() >= self.max_pages {
                     self.clear_all();
@@ -1696,7 +1707,7 @@ mod tests {
                     .unwrap_or_default()
             };
             let key = (n % 251) as u8;
-            let slot = cached_glyph(&mut atlas, &text, key, |a| a.raster(&text))
+            let slot = cached_glyph(&mut atlas, &text, key, |a, cache| a.raster(&text, cache))
                 .unwrap_or_else(|()| panic!("raster"));
             let (page, pos, generation) = slot;
             assert_eq!(generation, atlas.index.generation());
@@ -1726,6 +1737,35 @@ mod tests {
                 );
             });
         assert_eq!(seen, atlas.index.len());
+    }
+
+    #[test]
+    fn a_key_longer_than_the_byte_cap_is_drawn_uncached_without_clearing() {
+        let mut atlas = FakeAtlas {
+            index: GlyphIndex::default(),
+            pages: Vec::new(),
+            per_page: 3000,
+            max_pages: 4,
+        };
+        for text in ["a", "b", "e\u{301}"] {
+            let _ = cached_glyph(&mut atlas, text, 0, |a, cache| a.raster(text, cache));
+        }
+        let (generation, len, pages) = (
+            atlas.index.generation(),
+            atlas.index.len(),
+            atlas.pages.len(),
+        );
+        // Una celda con más de 256 KiB de marcas combinantes.
+        let huge = format!("e{}", "\u{301}".repeat(MAX_KEY_BYTES / 2 + 1));
+        assert!(huge.len() > MAX_KEY_BYTES);
+        for _ in 0..3 {
+            let slot = cached_glyph(&mut atlas, &huge, 0, |a, cache| a.raster(&huge, cache))
+                .unwrap_or_else(|()| panic!("raster"));
+            assert_eq!(slot.0, usize::MAX, "debe dibujarse sin caché");
+        }
+        assert_eq!(atlas.index.generation(), generation, "no vacía el atlas");
+        assert_eq!((atlas.index.len(), atlas.pages.len()), (len, pages));
+        assert_eq!(atlas.index.lookup("a", &0).map(|s| s.1), Some(0));
     }
 
     #[test]
