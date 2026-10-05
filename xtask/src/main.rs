@@ -1,3 +1,4 @@
+mod app_drift;
 mod parity;
 mod poll;
 mod rss;
@@ -47,8 +48,38 @@ fn main() {
                 Err(e) => fail(e),
             }
         }
+        Some("app-drift") => {
+            let mut baseline =
+                std::path::PathBuf::from("docs/verification/app-drift-baseline.json");
+            let (mut write, mut accept, mut paths) = (false, Vec::new(), Vec::new());
+            let mut it = args[1..].iter();
+            while let Some(a) = it.next() {
+                match a.as_str() {
+                    "--write-baseline" => write = true,
+                    "--baseline" => match it.next() {
+                        Some(p) => baseline = p.into(),
+                        None => fail("--baseline pide una ruta"),
+                    },
+                    "--accept" => match it.next() {
+                        Some(n) => accept.push(n.clone()),
+                        None => fail("--accept pide un nombre"),
+                    },
+                    _ => paths.push(a.clone()),
+                }
+            }
+            if paths.is_empty() {
+                eprintln!(
+                    "uso: cargo xtask app-drift [--write-baseline] [--accept NOMBRE…] [--baseline RUTA] CC_APP [CC_NOTIFYD]"
+                );
+                exit(2);
+            }
+            match app_drift::run(&baseline, &paths, write, &accept) {
+                Ok(code) => exit(code),
+                Err(e) => fail(e),
+            }
+        }
         _ => {
-            eprintln!("subcomandos: rss, parity, poll");
+            eprintln!("subcomandos: rss, parity, poll, app-drift");
             exit(2);
         }
     }
