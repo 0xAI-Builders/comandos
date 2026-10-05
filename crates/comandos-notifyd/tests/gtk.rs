@@ -92,13 +92,13 @@ fn install(hooks: &Path, opened: Rc<RefCell<Vec<(String, String)>>>) {
     let cache = Arc::new(Mutex::new(PrefsCache::default()));
     let source = PrefsSource {
         dash,
-        themes_file: repo.join("config/themes.json"),
+        themes_file: Some(repo.join("config/themes.json")),
     };
     source.refresh(&cache);
     popup::install(
         Context {
             lang: Lang::Es,
-            icons_dir: repo.join("dash/icons"),
+            icons_dir: Some(repo.join("dash/icons")),
             pos_file: hooks.join("notifyd-pos.json"),
             prefs: cache,
             prefs_source: source,
@@ -110,10 +110,30 @@ fn install(hooks: &Path, opened: Rc<RefCell<Vec<(String, String)>>>) {
     );
 }
 
+/// Ventanas de popup VIVAS para GTK (`list_toplevels`, que incluye las
+/// ocultas sin destruir), sin contar la pastilla «Cerrar todas», que se oculta
+/// y no se destruye. Solo las de clase `ccpop`: un tooltip que aparezca si el
+/// ratón pasa por encima no cuenta.
+fn live_popup_windows() -> usize {
+    let pill = popup::clear_all_window();
+    gtk::Window::list_toplevels()
+        .into_iter()
+        .filter(|w| w.style_context().has_class("ccpop"))
+        .filter(|w| {
+            pill.as_ref()
+                .is_none_or(|p| p.upcast_ref::<gtk::Widget>() != w)
+        })
+        .count()
+}
+
+/// La pila lógica vacía y, además, GTK sin ninguna ventana de popup viva
+/// (I2: una ventana oculta y sin destruir es una fuga de días).
 fn close_everything() {
     popup::with_stack(popup::close_all);
     pump(300);
     assert!(popup::snapshot().is_empty(), "quedaron popups abiertos");
+    pump(800);
+    assert_eq!(live_popup_windows(), 0, "ventanas de popup sin destruir");
 }
 
 #[test]
@@ -133,7 +153,52 @@ fn gtk_popups() {
     close_everything();
     clear_all_appears_from_two();
     close_everything();
+    many_cycles_leave_no_windows();
+    close_everything();
+    close_survives_a_foreign_grab();
+    close_everything();
     assert!(opened.borrow().is_empty(), "ninguna prueba pulsa «Abrir»");
+}
+
+/// Muchos ciclos de abrir y cerrar por las tres vías (✕/«Cerrar todas»,
+/// reemplazo por la misma clave y desalojo con la pila llena): al final GTK
+/// no conserva ninguna ventana de popup.
+fn many_cycles_leave_no_windows() {
+    for round in 0..5 {
+        for i in 0..12 {
+            popup::show(notice("waiting", &format!("c{round}-{i}"), "", "ciclo"));
+            pump(20);
+        }
+        // Reemplazo: la misma sesión vuelve a avisar.
+        popup::show(notice("done", &format!("c{round}-11"), "", "otra vez"));
+        pump(100);
+        assert!(popup::snapshot().len() <= 8);
+        popup::with_stack(popup::close_all);
+        pump(200);
+    }
+    pump(800);
+    assert!(popup::snapshot().is_empty());
+    assert_eq!(live_popup_windows(), 0, "fuga tras los ciclos");
+}
+
+/// Con un grab de OTRA ventana activo (`gtk_grab_add`, como un menú o un
+/// diálogo modal), el cierre destruye la ventana igual y antes del primer
+/// reintento (500 ms): cada popup vive en su propio `WindowGroup`.
+fn close_survives_a_foreign_grab() {
+    let grabber = gtk::Window::new(gtk::WindowType::Toplevel);
+    grabber.set_default_size(10, 10);
+    grabber.show();
+    pump(200);
+    grabber.grab_add();
+    popup::show(notice("waiting", "grab", "", "con grab ajeno"));
+    pump(300);
+    assert_eq!(live_popup_windows(), 1);
+    popup::with_stack(popup::close_all);
+    pump(300);
+    assert_eq!(live_popup_windows(), 0, "el grab ajeno se tragó el cierre");
+    grabber.grab_remove();
+    grabber.close();
+    pump(300);
 }
 
 /// Aviso de permiso con tres opciones: el popup es un AVISO PURO como el del

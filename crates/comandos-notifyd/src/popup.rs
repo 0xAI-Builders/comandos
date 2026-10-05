@@ -40,7 +40,8 @@ pub type OpenAction = Box<dyn Fn(&str, &str)>;
 pub struct Context {
     pub lang: Lang,
     /// `dash/icons` del checkout (`_NOTIF_ICONS`).
-    pub icons_dir: PathBuf,
+    /// `None` sin checkout: viñeta «•» en vez de icono.
+    pub icons_dir: Option<PathBuf>,
     /// `<hooks>/notifyd-pos.json` (`POS_FILE`).
     pub pos_file: PathBuf,
     /// Caché de `/prefs` que rellenan otros hilos.
@@ -333,29 +334,61 @@ pub fn close_popup(shared: &Shared, id: u64) {
         Err(_) => return,
     };
     if let Some(popup) = removed {
-        popup.window.hide();
-        popup.window.close();
-        // Si un grab se tragó el cierre, se reintenta una vez: la ventana
-        // sigue viva y realizada solo en ese caso.
-        let weak = popup.window.downgrade();
-        later(CLOSE_RETRY_MS, move || {
-            if let Some(window) = weak.upgrade()
-                && window.is_realized()
-            {
-                window.hide();
-                window.close();
-            }
-        });
+        close_window(&popup.window);
+        retry_close(popup.window.downgrade(), CLOSE_RETRIES);
     }
     reposition(shared);
 }
 
-/// Reintento de un cierre que no llegó a destruir la ventana.
+/// Reintentos de un cierre que no llegó a destruir la ventana, y su pausa.
+const CLOSE_RETRIES: u32 = 6;
 const CLOSE_RETRY_MS: u64 = 500;
+
+/// Oculta la ventana y pide su destrucción. Sin `unsafe` no hay
+/// `gtk_widget_destroy`; `close()` encola un `GDK_DELETE` cuyo manejador por
+/// omisión la destruye (no tiene manejador propio de `delete-event`). Solo
+/// actúa sobre una ventana realizada, así que una que nunca llegó a
+/// realizarse se realiza antes (oculta: no se ve).
+fn close_window(window: &gtk::Window) {
+    window.hide();
+    if !window.is_realized() {
+        window.realize();
+    }
+    window.close();
+}
+
+/// Comprueba que la ventana se destruyó: `gtk_widget_destroy` la desrealiza,
+/// así que una ventana viva y realizada pasado el plazo es un cierre perdido.
+/// Con un grupo propio por popup (`notice_window`) ningún grab de otra ventana
+/// puede tragarse el `GDK_DELETE`; los reintentos cubren lo que quede y, si
+/// se agotan, queda constancia en el journal.
+fn retry_close(weak: glib::WeakRef<gtk::Window>, left: u32) {
+    later(CLOSE_RETRY_MS, move || {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        if !window.is_realized() {
+            return;
+        }
+        if left == 0 {
+            eprintln!(
+                "comandos-notifyd: aviso: una ventana de popup sigue viva tras {CLOSE_RETRIES} cierres"
+            );
+            return;
+        }
+        close_window(&window);
+        retry_close(weak, left - 1);
+    });
+}
 
 /// Ventana sin decoración, encima, sin foco al mapear y con fondo RGBA.
 fn notice_window() -> gtk::Window {
     let win = gtk::Window::new(gtk::WindowType::Toplevel);
+    // Grupo propio: GTK descarta el `GDK_DELETE` de `close()` si el grupo de
+    // la ventana tiene un grab de otra ventana (`gtk_grab_add` de un menú o
+    // un diálogo); con un grupo por popup eso no puede pasar y la ventana se
+    // destruye siempre (I2 de la revisión final).
+    gtk::WindowGroup::new().add_window(&win);
     win.style_context().add_class("ccpop");
     win.set_decorated(false);
     win.set_keep_above(true);
@@ -403,14 +436,16 @@ fn blocks_widget(blocks: &[Block]) -> gtk::Box {
 }
 
 /// `_icon_image(name, 15, color)`: el SVG tintado o la viñeta `•`.
-fn kind_badge(icons_dir: &std::path::Path, model: &PopupModel) -> gtk::Widget {
-    let pixbuf = icon_svg(icons_dir, model).and_then(|svg| {
-        let loader = gdk_pixbuf::PixbufLoader::with_type("svg").ok()?;
-        loader.set_size(ICON_SIZE, ICON_SIZE);
-        loader.write(&svg).ok()?;
-        loader.close().ok()?;
-        loader.pixbuf()
-    });
+fn kind_badge(icons_dir: Option<&std::path::Path>, model: &PopupModel) -> gtk::Widget {
+    let pixbuf = icons_dir
+        .and_then(|dir| icon_svg(dir, model))
+        .and_then(|svg| {
+            let loader = gdk_pixbuf::PixbufLoader::with_type("svg").ok()?;
+            loader.set_size(ICON_SIZE, ICON_SIZE);
+            loader.write(&svg).ok()?;
+            loader.close().ok()?;
+            loader.pixbuf()
+        });
     match pixbuf {
         Some(pb) => gtk::Image::from_pixbuf(Some(&pb)).upcast(),
         None => gtk::Label::new(Some(ICON_FALLBACK)).upcast(),
@@ -561,7 +596,7 @@ pub fn make_popup(shared: &Shared, notice: &Notice, expanded: bool) {
         });
     }
     hdi.pack_start(&arrow_box, false, false, 0);
-    let badge = kind_badge(&icons_dir, &model);
+    let badge = kind_badge(icons_dir.as_deref(), &model);
     badge.style_context().add_class("kbadge");
     if model.waiting {
         badge.style_context().add_class("waiting");
@@ -1008,6 +1043,18 @@ pub fn snapshot() -> Vec<(String, gtk::Window)> {
                 .iter()
                 .map(|p| (p.key.clone(), p.window.clone()))
                 .collect();
+        }
+    });
+    out
+}
+
+/// Para las pruebas de pantalla: la ventana de la pastilla «Cerrar todas» si
+/// ya se creó (oculta o no: se oculta, nunca se destruye).
+pub fn clear_all_window() -> Option<gtk::Window> {
+    let mut out = None;
+    with_stack(|shared| {
+        if let Ok(stack) = shared.try_borrow() {
+            out = stack.clear_all.as_ref().map(|(win, _)| win.clone());
         }
     });
     out
