@@ -49,6 +49,8 @@ pub async fn run(home: &Path, catalog: &Path) -> Result<()> {
         },
         registry: Mutex::default(),
     });
+    // `tests/broker_daemon.rs` (`Daemon::ready`) espera esta línea para saber que el daemon
+    // ya tiene los manejadores de señales y el socket: no cambiar su prefijo sin la prueba.
     eprintln!(
         "broker: escuchando en {} (inactividad {idle} s)",
         path.display()

@@ -158,7 +158,8 @@ impl Drop for Registration {
         }
     }
 }
-/// Toma `pending` aunque esté envenenado: lo usan los `Drop`, que no pueden entrar en pánico.
+/// Toma `pending` aunque esté envenenado (el mapa sigue siendo válido): así el proxy
+/// sobrevive en todas las rutas y los `Drop` nunca entran en pánico.
 fn lock_pending(
     pending: &Pending,
 ) -> std::sync::MutexGuard<'_, HashMap<u64, oneshot::Sender<Value>>> {
@@ -179,7 +180,7 @@ impl Drop for ChildGroup {
 fn dispatch(value: Value, pending: &Pending) {
     if let Some(id) = value.get("id").and_then(Value::as_u64)
         && (value.get("result").is_some() || value.get("error").is_some())
-        && let Some(sender) = pending.lock().unwrap().remove(&id)
+        && let Some(sender) = lock_pending(pending).remove(&id)
     {
         let _ = sender.send(value);
     }
@@ -420,7 +421,7 @@ impl Transport {
                         dispatch(value, &pending);
                     }
                 }
-                pending.lock().unwrap().clear();
+                lock_pending(&pending).clear();
                 let _ = died.send(true);
             }));
             this.tasks.push(tokio::spawn(async move {
@@ -536,7 +537,7 @@ impl Transport {
                             }
                         }
                     }
-                    pending.lock().unwrap().clear();
+                    lock_pending(&pending).clear();
                     let _ = dead.send(true);
                 }));
                 let destination = tokio::time::timeout(Duration::from_secs(20), endpoint_rx)
@@ -578,7 +579,7 @@ impl Transport {
         value["id"] = json!(id);
         let (tx, rx) = oneshot::channel();
         {
-            let mut pending = self.pending.lock().unwrap();
+            let mut pending = lock_pending(&self.pending);
             if pending.len() >= MAX_INFLIGHT {
                 return Err("Too many upstream requests".into());
             }
@@ -650,7 +651,7 @@ impl Transport {
         .await
         .map_err(|_| "Upstream request timed out")?;
         if result.is_ok() {
-            self.pending.lock().unwrap().remove(&id);
+            lock_pending(&self.pending).remove(&id);
         }
         result
     }
