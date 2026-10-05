@@ -445,6 +445,7 @@ name = "comandos-term-web"
 version = "0.1.0"
 dependencies = [
  "comandos-term",
+ "comandos-web-dom",
  "js-sys",
  "serde_json",
  "wasm-bindgen",
@@ -484,7 +485,9 @@ dependencies = [
 name = "comandos-web-view"
 version = "0.1.0"
 dependencies = [
+ "comandos-domdiff",
  "maud",
+ "scraper",
 ]
 
 [[package]]

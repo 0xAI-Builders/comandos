@@ -32,12 +32,17 @@
 //! `ClipboardAddon`) y aquí igual. [`WebTerm::take_clipboard`] lo deja a la
 //! página, que tendría que pedir un gesto del usuario antes de escribir.
 pub mod canvas;
+pub mod connection;
 pub mod keyboard;
 pub mod links;
 pub mod metrics;
 pub mod mouse;
 pub mod overlay;
+#[cfg(target_arch = "wasm32")]
+pub mod page;
+pub mod page_theme;
 pub mod paint;
+pub mod parent;
 pub mod theme;
 
 use canvas::{Canvas2d, CanvasTheme};
@@ -1685,6 +1690,48 @@ impl WebTerm {
             } else {
                 observer.disconnect();
             }
+        });
+    }
+
+    /// Clear PTY state, history, selection and overlays before a fresh attachment.
+    pub fn reset(&mut self) {
+        self.dispatch(|i| {
+            i.engine = Engine::with_cursor_blink(
+                i.size,
+                i.opts.scrollback,
+                i.palette.clone(),
+                i.opts.cursor_blink,
+            );
+            let (cw, ch) = i
+                .metrics
+                .css_cell(i.size.cols, i.size.rows)
+                .unwrap_or((i.metrics.css_w, i.metrics.css_h));
+            i.engine.resize(
+                i.size,
+                (
+                    metrics::js_round(cw).clamp(0.0, 65535.0) as u16,
+                    metrics::js_round(ch).clamp(0.0, 65535.0) as u16,
+                ),
+            );
+            i.restart_blink(i.now());
+            i.select = mouse::SelectModel::default();
+            i.drag.take();
+            i.keys = keyboard::Keys::default();
+            i.reporter = mouse::MouseReporter::default();
+            i.wheel = mouse::Wheel::default();
+            i.composing = false;
+            i.dom.textarea.set_value("");
+            i.replies.clear();
+            i.title = None;
+            i.bell = false;
+            i.clipboard = None;
+            i.overlay.dirty = true;
+            i.drop_hover();
+            i.scrolled_seen = 0;
+            i.scroll_sync = ScrollSync::default();
+            i.scheduler.resize(i.size.rows);
+            i.after_output();
+            i.touch();
         });
     }
 

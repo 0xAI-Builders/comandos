@@ -28,6 +28,7 @@
 )]
 
 pub mod escape;
+pub mod term_page;
 
 /// La macro de plantillas, para que los componentes no fijen otra versión.
 pub use maud;
