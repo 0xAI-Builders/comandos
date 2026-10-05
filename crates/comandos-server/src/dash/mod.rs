@@ -33,6 +33,9 @@ pub const NATIVE_ENV: &str = "COMANDOS_DASH_NATIVE";
 pub const TRACE_ENV: &str = "COMANDOS_DASH_TRACE_FORWARD";
 /// Raíz del checkout del Python heredado (`REPO_ROOT`, `bin/cc-dash:1370`).
 pub const REPO_ENV: &str = comandos_core::repo::REPO_ENV;
+/// `COMANDOS_DASH_USAGE_EFFECTS=0` (o `--no-usage-effects`): la sombra no
+/// refresca límites (ni red ni escrituras) ni aplica efectos de uso (D1 b, R4).
+pub const USAGE_EFFECTS_ENV: &str = "COMANDOS_DASH_USAGE_EFFECTS";
 
 #[derive(Clone)]
 pub struct DashConfig {
@@ -51,6 +54,8 @@ pub struct DashConfig {
     pub trace_forward: bool,
     /// Checkout del heredado (`config/model-tiers.json`); `None` si no se sabe.
     pub repo_root: Option<PathBuf>,
+    /// Falso con `--no-usage-effects` o `COMANDOS_DASH_USAGE_EFFECTS=0` (sombra).
+    pub usage_effects: bool,
 }
 
 impl fmt::Debug for DashConfig {
@@ -66,14 +71,16 @@ impl fmt::Debug for DashConfig {
             .field("state_db", &self.state_db)
             .field("trace_forward", &self.trace_forward)
             .field("repo_root", &self.repo_root)
+            .field("usage_effects", &self.usage_effects)
             .finish()
     }
 }
 
-/// `[puerto] [--no-open] [--legacy-port N] [--no-native]`. Como el Python, el
-/// primer argumento numérico es el puerto y los demás argumentos se ignoran;
-/// `--no-open` se acepta y no hace nada (nunca se abre navegador).
-/// `--no-native` reenvía todo lo no estático, como en la Fase 2a.
+/// `[puerto] [--no-open] [--legacy-port N] [--no-native] [--no-usage-effects]`.
+/// Como el Python, el primer argumento numérico es el puerto y los demás
+/// argumentos se ignoran; `--no-open` se acepta y no hace nada (nunca se abre
+/// navegador). `--no-native` reenvía todo lo no estático, como en la Fase 2a;
+/// `--no-usage-effects` (la sombra) apaga los efectos de uso y la red de límites.
 /// Devuelve `dash_dir`, `state_db` por defecto y token vacío: `from_env` los resuelve.
 pub fn parse_args(
     args: &[String],
@@ -83,10 +90,13 @@ pub fn parse_args(
     let mut port = None;
     let mut legacy_flag = None;
     let mut native = true;
+    let mut usage_effects = true;
     let mut words = args.iter();
     while let Some(word) = words.next() {
         if word == "--no-native" {
             native = false;
+        } else if word == "--no-usage-effects" {
+            usage_effects = false;
         } else if word == "--legacy-port" {
             let value = words
                 .next()
@@ -119,6 +129,7 @@ pub fn parse_args(
         state_db: home.join(".local/state/comandos/app-state.sqlite3"),
         trace_forward: false,
         repo_root: None,
+        usage_effects,
     })
 }
 
@@ -205,6 +216,9 @@ pub fn from_env(args: &[String]) -> Result<DashConfig, StartError> {
         cfg.native = false;
     }
     cfg.trace_forward = std::env::var(TRACE_ENV).is_ok_and(|v| v == "1");
+    if std::env::var(USAGE_EFFECTS_ENV).is_ok_and(|v| v == "0") {
+        cfg.usage_effects = false;
+    }
     let state_override = std::env::var_os("COMANDOS_STATE_DB").map(PathBuf::from);
     let xdg = std::env::var_os("XDG_STATE_HOME").map(PathBuf::from);
     cfg.state_db =
@@ -332,6 +346,8 @@ pub fn build(
         // El contexto de sugerencias habla con el MISMO heredado al que se reenvía.
         o.legacy = SocketAddr::from((Ipv4Addr::LOCALHOST, cfg.legacy_port));
         o.legacy_token = cfg.token.clone();
+        // La sombra nunca tiene efectos de uso, tampoco con opciones inyectadas.
+        o.usage_effects &= cfg.usage_effects;
         Arc::new(native::Native::new(o))
     });
     let state = Arc::new(DashState {
@@ -365,6 +381,8 @@ pub async fn serve_with(
     if let Some(native) = &native {
         // Abre la base antes de atender: la primera petición no paga la migración.
         native.ready().await;
+        // Refresco de límites de arranque (D3): en una tarea, sin esperar.
+        native.start_background();
     }
     let served = crate::serve(listener, config, shutdown).await;
     if let Some(native) = native {

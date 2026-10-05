@@ -795,7 +795,8 @@ impl AccountCache {
     }
 
     /// `account_email_for_dir`: identidad pública solo cuando cambia su fuente.
-    fn email_for_dir(&mut self, path: &[u8], agent: &str) -> Result<Value, Unsure> {
+    /// Público para los límites de proveedor (`limits::email_for_dir`).
+    pub fn email_for_dir(&mut self, path: &[u8], agent: &str) -> Result<Value, Unsure> {
         let name: &[u8] = if matches!(agent, "codex" | "grok") {
             b"auth.json"
         } else {

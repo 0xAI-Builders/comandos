@@ -341,6 +341,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "chrono",
+ "chrono-tz",
  "comandos-core",
  "comandos-runtime",
  "comandos-store",
@@ -353,6 +354,7 @@ dependencies = [
  "hyper-util",
  "nix",
  "regex",
+ "reqwest",
  "rusqlite",
  "serde_json",
  "sha2",

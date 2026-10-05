@@ -25,6 +25,7 @@ pub mod terminal;
 pub mod tmux;
 pub mod typing;
 pub mod ui_log;
+pub mod usage;
 pub mod workspace;
 
 use crate::{
@@ -32,9 +33,11 @@ use crate::{
     blocking::{BackendCaller, BackendWorker},
     dash::router::path_of,
 };
+use comandos_core::usage_state::LocalZone;
 use http::Method;
 use state::{Refusal, StateBackend};
 use std::{
+    collections::BTreeMap,
     ffi::OsString,
     net::{Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
@@ -260,6 +263,63 @@ pub struct NativeOptions {
     pub scope: Option<tmux::Program>,
     /// `quick_terminal_lib.default_base()` (carpetas de la terminal rápida).
     pub quick_base: PathBuf,
+    /// Cliente de `api.anthropic.com/api/oauth/usage`; las pruebas ponen uno falso.
+    pub oauth: Arc<dyn usage::limits::OauthHttp>,
+    /// Falso en la sombra (`--no-usage-effects`): sin refresco de límites (ni red
+    /// ni escrituras) ni el resto de efectos de uso de la fase.
+    pub usage_effects: bool,
+    /// Las claves de entorno que el Python de uso lee (D7), tomadas al arrancar.
+    /// De `OPENAI_ADMIN_KEY`/`ANTHROPIC_ADMIN_KEY` solo la presencia (R6).
+    pub usage_env: Arc<BTreeMap<String, String>>,
+    /// Zona de `datetime.fromtimestamp` (la del proceso: `TZ` o `/etc/localtime`).
+    pub zone: Arc<dyn LocalZone + Send + Sync>,
+}
+
+/// D7: lo que `usage_runtime_env` toma de `os.environ`.
+pub const USAGE_ENV_KEYS: &[&str] = &[
+    "COMANDOS_DAILY_BUDGET_USD",
+    "COMANDOS_USAGE_DAILY_BUDGET_USD",
+    "COMANDOS_CODEX_DAILY_TOKEN_LIMIT",
+    "COMANDOS_CODEX_WEEKLY_TOKEN_LIMIT",
+    "COMANDOS_CLAUDE_DAILY_TOKEN_LIMIT",
+    "COMANDOS_CLAUDE_WEEKLY_TOKEN_LIMIT",
+    "CODEX_DAILY_TOKEN_LIMIT",
+    "CODEX_WEEKLY_TOKEN_LIMIT",
+    "CLAUDE_DAILY_TOKEN_LIMIT",
+    "CLAUDE_WEEKLY_TOKEN_LIMIT",
+    "COMANDOS_USAGE_LOCAL_DAYS",
+    "COMANDOS_USAGE_CLAUDE_MAX_FILES",
+    "COMANDOS_USAGE_CODEX_MAX_FILES",
+    "COMANDOS_CLAUDE_PROJECTS_DIR",
+    "COMANDOS_OPENCODE_DB",
+    "OPENAI_ADMIN_KEY",
+    "ANTHROPIC_ADMIN_KEY",
+    "LANG",
+];
+
+/// Claves cuyo valor es un secreto: se guarda `"1"` si están definidas y no
+/// vacías (lo único que el Python mira de ellas es su veracidad).
+const SECRET_ENV_KEYS: &[&str] = &["OPENAI_ADMIN_KEY", "ANTHROPIC_ADMIN_KEY"];
+
+/// `usage_env` desde el entorno del proceso (`vars_os`: un valor que no es
+/// UTF-8 se ignora en vez de entrar en pánico, C6).
+pub fn usage_env_from_process() -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    for (key, value) in std::env::vars_os() {
+        let (Some(key), Some(value)) = (key.to_str(), value.to_str()) else {
+            continue;
+        };
+        if !USAGE_ENV_KEYS.contains(&key) {
+            continue;
+        }
+        let value = if SECRET_ENV_KEYS.contains(&key) {
+            if value.is_empty() { "" } else { "1" }
+        } else {
+            value
+        };
+        out.insert(key.to_owned(), value.to_owned());
+    }
+    out
 }
 
 impl NativeOptions {
@@ -286,6 +346,10 @@ impl NativeOptions {
             ssh: tmux::Program::named("ssh"),
             scope: quick::find_scope(std::env::var_os("PATH").as_deref()),
             quick_base: quick::default_base(home),
+            oauth: Arc::new(usage::limits::ReqwestOauth),
+            usage_effects: true,
+            usage_env: Arc::new(usage_env_from_process()),
+            zone: Arc::new(chrono::Local),
         }
     }
 }
@@ -309,8 +373,11 @@ pub struct Native {
     pub(crate) fonts: Mutex<Option<(std::time::Instant, std::collections::HashSet<String>)>>,
     /// La revisión de avisos que comparten las esperas de `/notices/watch`.
     pub(crate) notice_feed: notices::RevisionFeed,
-    /// Carril de la base de uso (`GET /pomodoro`, `GET /sovereignty`).
-    pub(crate) usage: lanes::Lane<lanes::UsageBackend>,
+    /// Carril de la base de uso (`GET /pomodoro`, `GET /sovereignty`); `Arc`
+    /// para las tareas de fondo (D13).
+    pub(crate) usage: Arc<lanes::Lane<lanes::UsageBackend>>,
+    /// Caché de límites de proveedor (`_limits_cache`).
+    pub(crate) limits: Arc<usage::limits::LimitsCache>,
     /// Carril del journal de operaciones (`GET /model/status`).
     pub(crate) journal: lanes::Lane<lanes::JournalBackend>,
     /// Caché por `requestId` y candados de `POST /pane/type`.
@@ -322,7 +389,8 @@ pub struct Native {
 impl Native {
     pub fn new(opts: NativeOptions) -> Self {
         Self {
-            usage: lanes::Lane::new(opts.usage_db.clone()),
+            usage: Arc::new(lanes::Lane::new(opts.usage_db.clone())),
+            limits: Arc::default(),
             journal: lanes::Lane::new(opts.journal_db.clone()),
             opts,
             enabled: AtomicBool::new(true),
@@ -353,6 +421,28 @@ impl Native {
     /// El carril de la base de uso (estado y líneas de apagado, para las pruebas).
     pub fn usage_lane(&self) -> &lanes::Lane<lanes::UsageBackend> {
         &self.usage
+    }
+
+    /// La caché de límites de proveedor.
+    pub fn limits(&self) -> &Arc<usage::limits::LimitsCache> {
+        &self.limits
+    }
+
+    /// Lo que la tarea de refresco de límites necesita (sin `&Native`, D13).
+    pub fn refresh_deps(&self) -> usage::limits::RefreshDeps {
+        usage::limits::RefreshDeps {
+            opts: self.opts.clone(),
+            usage: self.usage.clone(),
+        }
+    }
+
+    /// El refresco de arranque de D3 (el `_limits_snapshot_loop` del Python lee
+    /// los límites al arrancar). No repite cada 300 s: el heredado conserva su
+    /// bucle. Sin efectos de uso (sombra) no hace nada.
+    pub fn start_background(&self) {
+        if self.enabled() {
+            let _ = self.limits.get(&self.refresh_deps());
+        }
     }
 
     /// El carril del journal de operaciones (estado y líneas de apagado).

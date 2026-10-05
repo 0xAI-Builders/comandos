@@ -144,7 +144,7 @@ fn trunc_float(x: f64) -> Result<i64> {
 }
 
 /// `round(x, n)` de Python para `float` (redondeo decimal correcto, mitad al par).
-fn round_float(x: f64, digits: usize) -> f64 {
+pub fn round_float(x: f64, digits: usize) -> f64 {
     crate::allocation::round_digits(x, digits)
 }
 
