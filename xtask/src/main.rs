@@ -1,3 +1,4 @@
+mod app_drift;
 mod parity;
 mod poll;
 mod rss;
@@ -47,8 +48,30 @@ fn main() {
                 Err(e) => fail(e),
             }
         }
+        Some("app-drift") => {
+            // Errores de uso: salida 2, sin tocar nada.
+            let o = app_drift::parse_args(&args[1..]).unwrap_or_else(|e| {
+                eprintln!(
+                    "{}",
+                    if e.starts_with("uso:") {
+                        e
+                    } else {
+                        format!("error: {e}")
+                    }
+                );
+                exit(2);
+            });
+            // Salida 1 es solo deriva; un archivo ilegible o una línea base corrupta sale 2.
+            match app_drift::run(&o.baseline, &o.paths, o.write, &o.accept) {
+                Ok(code) => exit(code),
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    exit(2);
+                }
+            }
+        }
         _ => {
-            eprintln!("subcomandos: rss, parity, poll");
+            eprintln!("subcomandos: rss, parity, poll, app-drift");
             exit(2);
         }
     }
