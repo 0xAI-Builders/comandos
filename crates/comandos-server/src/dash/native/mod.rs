@@ -161,6 +161,29 @@ pub fn wall_clock_ms() -> i64 {
     comandos_runtime::now_ms().map_or(0, |ms| i64::try_from(ms).unwrap_or(i64::MAX))
 }
 
+/// Segundos Unix con la precisión de `time.time()`; las pruebas lo sustituyen.
+pub type SecondsClock = Arc<dyn Fn() -> f64 + Send + Sync>;
+
+/// `time.time()` del Python: los nanosegundos de `CLOCK_REALTIME` (el de
+/// `SystemTime`) convertidos como `_PyTime_AsSecondsDouble`.
+pub fn python_time() -> f64 {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_nanos()).unwrap_or(i64::MAX));
+    python_seconds(nanos)
+}
+
+/// `_PyTime_AsSecondsDouble`: segundos exactos si no hay fracción; si no,
+/// `(double)ns / 1e9`. Mismo `double`, bit a bit, que escribe el Python.
+pub fn python_seconds(nanos: i64) -> f64 {
+    const NS: i64 = 1_000_000_000;
+    if nanos % NS == 0 {
+        (nanos / NS) as f64
+    } else {
+        nanos as f64 / 1e9
+    }
+}
+
 /// `"desktop-" + re.sub(r"[^A-Za-z0-9_.-]", "-", os.uname().nodename or "local")[:60]`.
 /// `/proc/sys/kernel/hostname` es el `nodename` de `uname`.
 pub fn desktop_device() -> String {
@@ -192,6 +215,8 @@ pub struct NativeOptions {
     /// `~/.claude/hooks` (el `HOOKS` del Python).
     pub hooks: PathBuf,
     pub clock: Clock,
+    /// `time.time()` de las escrituras del journal (`recover_abandoned`).
+    pub clock_seconds: SecondsClock,
     /// `tmux` como lo llama el Python (entorno heredado, plazo 5 s).
     pub tmux: tmux::Tmux,
     /// `fc-list` de `_installed_font_families` (7603).
@@ -212,6 +237,7 @@ impl NativeOptions {
             state_db,
             hooks: home.join(".claude/hooks"),
             clock: Arc::new(wall_clock_ms),
+            clock_seconds: Arc::new(python_time),
             tmux: tmux::Tmux::system(),
             fc_list: tmux::Program::named("fc-list"),
             usage_db: home.join(".claude/hooks/comandos-usage.sqlite"),

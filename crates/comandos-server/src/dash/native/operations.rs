@@ -14,7 +14,6 @@ use comandos_runtime::session_operations::{self as ops, OperationStore};
 use http::StatusCode;
 use rusqlite::{Connection, OptionalExtension};
 use serde_json::{Map, Value};
-use std::path::Path;
 
 pub const ROUTES: &[Entry] = &[Entry {
     verb: Verb::Get,
@@ -52,13 +51,10 @@ pub async fn answer(native: &Native, request: &crate::Request) -> Answer {
         return light::error(StatusCode::BAD_REQUEST, "operationId inválido");
     }
     let (session, pane) = (session.to_owned(), pane.to_owned());
-    let clock = native.options().clock.clone();
+    let clock = native.options().clock_seconds.clone();
     let status = native
         .journal
-        .with(move |journal| {
-            let now = move || clock() as f64 / 1000.0;
-            status_in(&journal.conn, &session, &pane, &operation_id, &now)
-        })
+        .with(move |journal| status_in(&journal.conn, &session, &pane, &operation_id, &*clock))
         .await?;
     match status {
         Status::Ok(mut result) => {
@@ -71,33 +67,34 @@ pub async fn answer(native: &Native, request: &crate::Request) -> Answer {
     }
 }
 
-/// `os.kill(pid, 0)`: `ProcessLookupError` → muerto; `PermissionError` → vivo.
-/// En Linux equivale a que exista `/proc/<pid>` (también hilos y zombis). Solo
-/// un `NotFound` cierto dice «muerto»; cualquier otra duda dice «vivo».
+/// `os.kill(pid, 0)` de `recover_abandoned` (`lib/session_operations.py:169`),
+/// la misma llamada: `ESRCH` (`ProcessLookupError`) → muerto; `EPERM`
+/// (`PermissionError`) o éxito → vivo. 0 es el propio grupo de procesos y un
+/// negativo es un grupo, igual que en el Python. Cualquier otro error haría
+/// subir una excepción en el Python (500): se reenvía sin escribir.
 fn alive(pid: i64) -> ops::Result<bool> {
-    // `os.kill(0, 0)` señala al propio grupo de procesos: siempre vivo.
-    if pid == 0 {
+    use nix::{errno::Errno, sys::signal::kill, unistd::Pid};
+    // Fuera de `pid_t` el Python lanza `OverflowError`: `recovery_is_certain`
+    // ya lo declinó; si una fila nueva cuela entre medias, «vivo» no escribe.
+    let Ok(raw) = i32::try_from(pid) else {
         return Ok(true);
-    }
-    match std::fs::symlink_metadata(format!("/proc/{pid}")) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        _ => Ok(true),
+    };
+    match kill(Pid::from_raw(raw), None) {
+        Ok(()) | Err(Errno::EPERM) => Ok(true),
+        Err(Errno::ESRCH) => Ok(false),
+        Err(other) => Err(ops::Error::Callback(other.to_string())),
     }
 }
 
-/// Antes de recuperar: `/proc` debe ser el de nuestro espacio de pids (aparece
-/// el propio pid) y ningún dueño pendiente puede salirse de lo que `os.kill`
-/// trata como un pid (negativo = grupo de procesos; fuera de `pid_t` =
-/// `OverflowError`). Si no, se declina sin escribir nada.
+/// Antes de recuperar: ningún dueño pendiente puede salirse de lo que
+/// `os.kill` acepta como pid (un no entero da `TypeError`; fuera de `pid_t`,
+/// `OverflowError`: el Python respondería 500). Si no, se declina sin escribir.
 fn recovery_is_certain(conn: &Connection) -> Result<bool, rusqlite::Error> {
-    if !Path::new(&format!("/proc/{}", std::process::id())).exists() {
-        return Ok(false);
-    }
     let unusual: Option<i64> = conn
         .query_row(
             "SELECT 1 FROM session_operations WHERE state NOT IN \
              ('confirmed','failed','rolled_back','recovery_required','awaiting_confirmation') \
-             AND (typeof(owner) != 'integer' OR owner < 0 OR owner > 2147483647) LIMIT 1",
+             AND (typeof(owner) != 'integer' OR owner < -2147483648 OR owner > 2147483647) LIMIT 1",
             [],
             |r| r.get(0),
         )

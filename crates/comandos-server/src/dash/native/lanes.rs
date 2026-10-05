@@ -231,6 +231,11 @@ impl LaneBackend for JournalBackend {
                     | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
             )
             .map_err(|e| Refusal::Unopened(e.to_string()))?;
+            // Como `sqlite3.connect(…, timeout=15)` (`lib/session_operations.py:39`):
+            // un `SQLITE_BUSY` pasajero al primer abrir no retira el carril.
+            probe
+                .busy_timeout(std::time::Duration::from_secs(15))
+                .map_err(|e| Refusal::Unopened(e.to_string()))?;
             let names = journal_columns(&probe)?;
             // Sin tabla (archivo vacío o recién creado): la crea `open_journal`.
             if !names.is_empty() {

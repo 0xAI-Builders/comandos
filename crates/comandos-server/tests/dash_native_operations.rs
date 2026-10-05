@@ -2,11 +2,13 @@
 mod support;
 
 use comandos_runtime::session_operations::open_journal;
+use comandos_server::dash::native::python_seconds;
 use comandos_server::{
     Request,
     dash::native::{Native, NativeRoute, Outcome},
 };
 use rusqlite::params;
+use std::sync::Arc;
 use support::{FakeLegacy, TestHome, dead_port, front, get, oracle::oracle};
 
 /// Un pid que no existe: por encima de cualquier `pid_max`.
@@ -197,6 +199,18 @@ async fn model_status_recovery_writes_python_bytes() {
             None,
             11.0,
         ),
+        // Negativo: `os.kill` lo trata como grupo de procesos; sin ese grupo,
+        // `ProcessLookupError` en ambos.
+        (
+            "op-neg",
+            "s10",
+            r#"{"session": "s10", "pane": ""}"#,
+            "waiting",
+            -2_147_483_000,
+            None,
+            None,
+            12.0,
+        ),
     ];
     seed(&py_home, &dead);
     seed(&rust_home, &dead);
@@ -207,12 +221,13 @@ async fn model_status_recovery_writes_python_bytes() {
     for target in [
         "/model/status?operationKey=s5%7C%255",
         "/model/status?operationKey=s6&operationId=op-app",
+        "/model/status?operationKey=s10",
     ] {
         let (a, b) = (get(py.port, target).await, get(front.port, target).await);
         assert_eq!(a.status, 200, "{}", a.text());
         assert_eq!((a.status, masked(&a.text())), (b.status, masked(&b.text())));
     }
-    for id in ["op-val", "op-app"] {
+    for id in ["op-val", "op-app", "op-neg"] {
         assert_eq!(stored(&py_home, id), stored(&rust_home, id), "{id}");
     }
     assert_eq!(
@@ -247,7 +262,7 @@ async fn model_status_recovers_dead_owner_natively() {
 }
 
 /// El dueño de una operación en curso es el Python heredado (u otro proceso),
-/// nunca el frente: mientras su pid exista en /proc, el Rust no la abandona.
+/// nunca el frente: mientras `kill(pid, 0)` no dé `ESRCH`, el Rust no la abandona.
 #[tokio::test]
 async fn model_status_never_abandons_live_foreign_owner() {
     let home = TestHome::new("ops-live");
@@ -322,25 +337,23 @@ async fn model_status_declines_pending_confirmation_and_motor_result() {
     front.stop().await;
 }
 
-/// Un dueño que `os.kill(pid, 0)` no trata como un pid (0, negativo o fuera de
-/// `pid_t`) se reenvía sin recuperar nada.
+/// Un dueño que `os.kill(pid, 0)` no acepta como pid (`TypeError` si no es
+/// entero, `OverflowError` fuera de `pid_t`: el Python respondería 500) se
+/// reenvía sin recuperar nada, tampoco la fila de un dueño muerto. El dueño 0
+/// (el propio grupo) cuenta como vivo y un negativo es un grupo de procesos,
+/// como en el Python: esos sí se resuelven en Rust.
 #[tokio::test]
 async fn model_status_declines_unusual_owner_before_recovering() {
-    let home = TestHome::new("ops-owner");
-    seed(
-        &home,
-        &[
-            (
-                "op-neg",
-                "s8",
-                r#"{"session": "s8", "pane": ""}"#,
-                "validating",
-                -7,
-                None,
-                None,
-                1.0,
-            ),
-            (
+    for (tag, owner) in [
+        ("texto", rusqlite::types::Value::Text("abc".into())),
+        ("real", rusqlite::types::Value::Real(12.5)),
+        ("grande", rusqlite::types::Value::Integer(2_147_483_648)),
+        ("menor", rusqlite::types::Value::Integer(-2_147_483_649)),
+    ] {
+        let home = TestHome::new(&format!("ops-owner-{tag}"));
+        seed(
+            &home,
+            &[(
                 "op-dead",
                 "s9",
                 r#"{"session": "s9", "pane": ""}"#,
@@ -349,19 +362,118 @@ async fn model_status_declines_unusual_owner_before_recovering() {
                 None,
                 None,
                 1.0,
-            ),
-        ],
+            )],
+        );
+        open_journal(&home.journal_db())
+            .unwrap()
+            .execute(
+                "INSERT INTO session_operations VALUES ('op-raro','s8','f',?,'validating',?,NULL,NULL,1.0)",
+                params![r#"{"session": "s8", "pane": ""}"#, owner],
+            )
+            .unwrap();
+        let before = dump(&home);
+        let legacy = FakeLegacy::start().await;
+        let front = front(&home, legacy.port, home.options()).await;
+        assert_eq!(
+            get(front.port, "/model/status?operationKey=s9")
+                .await
+                .text(),
+            r#"{"legacy": true}"#,
+            "{tag}"
+        );
+        front.stop().await;
+        assert_eq!(dump(&home), before, "{tag}: la base no se toca");
+    }
+}
+
+/// Filas y eventos del journal, para comprobar que nada cambió.
+fn dump(home: &TestHome) -> Vec<String> {
+    let conn = rusqlite::Connection::open(home.journal_db()).unwrap();
+    let mut out = Vec::new();
+    for sql in [
+        "SELECT quote(id)||quote(state)||quote(owner)||quote(result)||quote(updated) FROM session_operations ORDER BY id",
+        "SELECT quote(operation_id)||quote(stage)||quote(detail)||quote(at) FROM session_operation_events ORDER BY rowid",
+    ] {
+        let mut stmt = conn.prepare(sql).unwrap();
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0)).unwrap();
+        out.extend(rows.map(Result::unwrap));
+    }
+    out
+}
+
+/// `updated` y `at` de la recuperación son el `double` de `time.time()`: el
+/// reloj inyectado son nanosegundos convertidos como `_PyTime_AsSecondsDouble`
+/// y SQLite guarda esos 8 bytes tal cual (`REAL`), como hace el Python.
+#[tokio::test]
+async fn model_status_recovery_timestamps_are_python_doubles() {
+    const NANOS: i64 = 1_791_115_200_123_456_789;
+    let home = TestHome::new("ops-ts");
+    seed(
+        &home,
+        &[(
+            "op-ts",
+            "s11",
+            r#"{"session": "s11", "pane": ""}"#,
+            "validating",
+            DEAD,
+            None,
+            None,
+            1.0,
+        )],
     );
-    let legacy = FakeLegacy::start().await;
-    let front = front(&home, legacy.port, home.options()).await;
-    assert_eq!(
-        get(front.port, "/model/status?operationKey=s9")
-            .await
-            .text(),
-        r#"{"legacy": true}"#
+    let mut opts = home.options();
+    opts.clock_seconds = Arc::new(|| python_seconds(NANOS));
+    let front = front(&home, dead_port(), opts).await;
+    let wire = get(front.port, "/model/status?operationKey=s11").await;
+    assert!(
+        wire.text().contains(r#""state": "failed""#),
+        "{}",
+        wire.text()
     );
-    assert_eq!(stored(&home, "op-dead").0, "validating", "nada se recuperó");
     front.stop().await;
+    let conn = rusqlite::Connection::open(home.journal_db()).unwrap();
+    let (kind, updated): (String, f64) = conn
+        .query_row(
+            "SELECT typeof(updated), updated FROM session_operations WHERE id='op-ts'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    let (at_kind, at): (String, f64) = conn
+        .query_row(
+            "SELECT typeof(at), at FROM session_operation_events WHERE operation_id='op-ts'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!((kind.as_str(), at_kind.as_str()), ("real", "real"));
+    let hex = |x: f64| {
+        x.to_le_bytes()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+    };
+    // Más fino que el milisegundo: lo que escribía el reloj de milisegundos no.
+    assert_ne!(hex(updated), hex(1_791_115_200_123.0 / 1000.0));
+    assert_eq!(hex(updated), hex(at));
+    // El Python, con los mismos nanosegundos (`int / float` = `(double)ns / 1e9`).
+    let Ok(out) = std::process::Command::new("python3")
+        .args([
+            "-c",
+            &format!("import struct; print(struct.pack('<d', {NANOS} / 1e9).hex(), struct.pack('<d', 1791115200000000000 // 10**9 * 1.0).hex())"),
+        ])
+        .output()
+    else {
+        eprintln!("sin python3: se omite la comparación con el oráculo");
+        return;
+    };
+    let text = String::from_utf8(out.stdout).unwrap();
+    let mut python = text.split_whitespace();
+    assert_eq!(python.next(), Some(hex(updated).as_str()));
+    assert_eq!(
+        python.next(),
+        Some(hex(python_seconds(1_791_115_200_000_000_000)).as_str())
+    );
 }
 
 /// Un journal con otras columnas (un Python más nuevo): una sola línea en
