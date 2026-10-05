@@ -1,0 +1,3428 @@
+{
+  "generator": "cargo run -p xtask -- web-inventory",
+  "source": {
+    "head": "38c91676b67140ed0df87860810f204f8b7e7f5d",
+    "dirty": [
+      "?? dash/prototypes/prototype-analytics.html",
+      "?? dash/prototypes/prototype-usage-cards.html"
+    ]
+  },
+  "pages": {
+    "index.html": [
+      "script:session-config.js",
+      "script:workspace-layout.js",
+      "script:workspace-dock.js",
+      "script:quick-terminal.js",
+      "script:command-sidebar.js",
+      "script:chain-builder.js",
+      "region:prelude",
+      "region:i18n",
+      "region:app-nativa",
+      "region:red",
+      "region:helpers",
+      "region:app-combinada",
+      "region:identidad-de-fila",
+      "region:barra-de-comandos",
+      "region:render",
+      "region:toasts",
+      "region:registro-local-de-uso",
+      "region:avisos-de-eventos",
+      "region:loop",
+      "region:conmutador-ctrl-k",
+      "region:iconos",
+      "region:tema",
+      "region:favoritos",
+      "region:prefs-de-terminal",
+      "region:tabs-internos-de-modales",
+      "region:solid-range-fill",
+      "region:preview-de-tipografia",
+      "region:remoto",
+      "region:servidores",
+      "region:notificaciones-del-sistema",
+      "region:modales-en-medio",
+      "region:ui-general",
+      "region:snippets",
+      "region:funciones-de-ui-globales",
+      "region:analytics",
+      "script:analytics-render.js",
+      "script:analytics.js",
+      "script:extensions.js",
+      "script:workspace.js",
+      "script:work-marks.js",
+      "script:ui-sounds.js",
+      "script:pomodoro.js",
+      "external:/vendor/markdown-it-15.0.2.umd.min.js",
+      "external:/vendor/purify-3.4.16.min.js",
+      "script:news-reader.js",
+      "script:push-settings.js",
+      "script:notifications.js",
+      "region:tail"
+    ],
+    "term.html": [
+      "external:../assets/xterm/xterm.js",
+      "external:../assets/xterm/addon-fit.js",
+      "external:../assets/xterm/addon-web-links.js",
+      "external:../assets/xterm/addon-canvas.js",
+      "external:../assets/opentype/opentype.min.js",
+      "script:device-drafts.js",
+      "external:../assets/xterm/addon-ligatures-web.js",
+      "term:main",
+      "term:tail"
+    ]
+  },
+  "units": [
+    {
+      "id": "script:session-config.js",
+      "kind": "script",
+      "component": "session-config",
+      "source": "dash/session-config.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "7f3232b0a624387517d471ce7156c3da7bd241884c74df1801f242d6bbc9e5fd",
+      "lines": 122,
+      "line_start": 1,
+      "defines": [
+        "SessionConfig"
+      ],
+      "define_kinds": {
+        "SessionConfig": "window"
+      },
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 78,
+      "warnings": []
+    },
+    {
+      "id": "script:workspace-layout.js",
+      "kind": "script",
+      "component": "workspace-layout",
+      "source": "dash/workspace-layout.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "6aa6462bb9bfd56aaf0d6e7634dda0a7e2a4d79f12f624122f13c6619e57a4e3",
+      "lines": 104,
+      "line_start": 1,
+      "defines": [
+        "WorkspaceLayout"
+      ],
+      "define_kinds": {
+        "WorkspaceLayout": "window"
+      },
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [
+        "tab"
+      ],
+      "intervals_ms": [],
+      "strings": 33,
+      "warnings": []
+    },
+    {
+      "id": "script:workspace-dock.js",
+      "kind": "script",
+      "component": "workspace-dock",
+      "source": "dash/workspace-dock.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "9847d6383a2cacb88abc81a20e416993311a702a09c1079dcb91aeb98de91696",
+      "lines": 412,
+      "line_start": 1,
+      "defines": [
+        "WorkspaceDock"
+      ],
+      "define_kinds": {
+        "WorkspaceDock": "window"
+      },
+      "uses_globals": [
+        "WorkMarks",
+        "WorkspaceLayout",
+        "activeTerm",
+        "activeView",
+        "authToken",
+        "openTerms",
+        "showView",
+        "tf",
+        "toast"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "term-area",
+        "tabbar"
+      ],
+      "routes": [
+        "/workspace"
+      ],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [
+        "pen",
+        "tab",
+        "touch"
+      ],
+      "intervals_ms": [],
+      "strings": 214,
+      "warnings": []
+    },
+    {
+      "id": "script:quick-terminal.js",
+      "kind": "script",
+      "component": "quick-terminal",
+      "source": "dash/quick-terminal.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "1c22331636b8e709df5e161eebcacc38be830294b9dacd763ed46ae1eebf385e",
+      "lines": 49,
+      "line_start": 1,
+      "defines": [
+        "ComandosQuickTerminal"
+      ],
+      "define_kinds": {
+        "ComandosQuickTerminal": "window"
+      },
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [
+        "/terminal/quick"
+      ],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 8,
+      "warnings": []
+    },
+    {
+      "id": "script:command-sidebar.js",
+      "kind": "script",
+      "component": "command-sidebar",
+      "source": "dash/command-sidebar.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "6d6d8bedc2d99a1d2e327845012441603b2904cb0618f35641fbc4bc5c4e0130",
+      "lines": 756,
+      "line_start": 1,
+      "defines": [
+        "ComandosCommandSidebar"
+      ],
+      "define_kinds": {
+        "ComandosCommandSidebar": "window"
+      },
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [
+        "/chains",
+        "/pane/type"
+      ],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 543,
+      "warnings": []
+    },
+    {
+      "id": "script:chain-builder.js",
+      "kind": "script",
+      "component": "chain-builder",
+      "source": "dash/chain-builder.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "2fb0e5aaaeae4af5941d03e5cf187837cda0a093e881fd2f21c4e6274a1d962f",
+      "lines": 287,
+      "line_start": 1,
+      "defines": [
+        "ComandosChainBuilder"
+      ],
+      "define_kinds": {
+        "ComandosChainBuilder": "window"
+      },
+      "uses_globals": [
+        "ComandosCommandSidebar"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [
+        "/chains"
+      ],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 136,
+      "warnings": []
+    },
+    {
+      "id": "region:prelude",
+      "kind": "region",
+      "component": "prelude",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "\"use strict\";",
+      "marker_end": "// ---------- i18n ----------",
+      "sha256": "28d4bc51f4b8a5d3b06e716d3d1d0cec79f87c9fa6caa0eeee1eef2f088cc406",
+      "lines": 15,
+      "line_start": 1783,
+      "defines": [
+        "S",
+        "$"
+      ],
+      "define_kinds": {
+        "$": "const",
+        "S": "const"
+      },
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [],
+      "storage_keys": [
+        "cc-cfg"
+      ],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 4,
+      "warnings": []
+    },
+    {
+      "id": "region:i18n",
+      "kind": "region",
+      "component": "i18n",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- i18n ----------",
+      "marker_end": "// ---------- app nativa ----------",
+      "sha256": "57142b5b9b001be52566aeabffbc08f2ec70279e0880bd62c5a806ab1caa9ffd",
+      "lines": 84,
+      "line_start": 1798,
+      "defines": [
+        "L",
+        "T_EN",
+        "t",
+        "tf",
+        "applyI18n",
+        "saveCfg"
+      ],
+      "define_kinds": {
+        "L": "let",
+        "T_EN": "const",
+        "applyI18n": "function",
+        "saveCfg": "function",
+        "t": "const",
+        "tf": "const"
+      },
+      "uses_globals": [
+        "$",
+        "S"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "settings"
+      ],
+      "routes": [],
+      "storage_keys": [
+        "cc-cfg"
+      ],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 195,
+      "warnings": []
+    },
+    {
+      "id": "region:app-nativa",
+      "kind": "region",
+      "component": "app-nativa",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- app nativa ----------",
+      "marker_end": "// ---------- red ----------",
+      "sha256": "f47f0489b6100c2abfec1f4fd8b58d3b9eb058e585f9a6c90b419044e4ea3f60",
+      "lines": 61,
+      "line_start": 1882,
+      "defines": [
+        "inApp",
+        "CENTER_PANELS",
+        "CENTER_REQ",
+        "ONLY_PANEL",
+        "openInApp",
+        "openSession"
+      ],
+      "define_kinds": {
+        "CENTER_PANELS": "const",
+        "CENTER_REQ": "const",
+        "ONLY_PANEL": "const",
+        "inApp": "function",
+        "openInApp": "function",
+        "openSession": "function"
+      },
+      "uses_globals": [
+        "$",
+        "WEBTERM",
+        "activateMtab",
+        "alertResolve",
+        "api",
+        "openAnalytics",
+        "openCenterPanel",
+        "openTerm",
+        "renderButtonStyleGallery",
+        "renderThemeGallery",
+        "tf",
+        "ulog"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "settings"
+      ],
+      "routes": [
+        "/ensure",
+        "/up"
+      ],
+      "storage_keys": [
+        "cc-center-panel"
+      ],
+      "post_messages": [
+        "webkit.centro:{label,session,win}"
+      ],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 53,
+      "warnings": []
+    },
+    {
+      "id": "region:red",
+      "kind": "region",
+      "component": "red",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- red ----------",
+      "marker_end": "// ---------- helpers ----------",
+      "sha256": "c2362d32b695f53a54b0b9cc86020281ddc7e59f29f39553ed5092a87204fe91",
+      "lines": 35,
+      "line_start": 1943,
+      "defines": [
+        "authToken",
+        "webtermTokenPromise",
+        "webtermAccessToken",
+        "api"
+      ],
+      "define_kinds": {
+        "api": "function",
+        "authToken": "function",
+        "webtermAccessToken": "function",
+        "webtermTokenPromise": "let"
+      },
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [
+        "/webterm-token"
+      ],
+      "storage_keys": [
+        "cc_token"
+      ],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 14,
+      "warnings": []
+    },
+    {
+      "id": "region:helpers",
+      "kind": "region",
+      "component": "helpers",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- helpers ----------",
+      "marker_end": "// ---------- App combinada: panel + pestanas de terminal (como el escritorio) ----------",
+      "sha256": "2eb87df4f3cc76a6d50f218548525cb5207205047a3169b570dd273bd3e5ba9e",
+      "lines": 1078,
+      "line_start": 1978,
+      "defines": [
+        "LABEL",
+        "agoTxt",
+        "shortPath",
+        "mdEsc",
+        "attrEsc",
+        "mdInline",
+        "mdHtml",
+        "PATH_LINK_RE",
+        "linkifyPaths",
+        "mdStrip",
+        "copyText",
+        "fmtMoney",
+        "fmtTokens",
+        "usagePaneKey",
+        "indexUsage",
+        "usageForItem",
+        "confidenceLabel",
+        "usageChipText",
+        "usageChipTitle",
+        "fmtPercent",
+        "fmtReset",
+        "renderLimitsStrip",
+        "MODEL_CHOICES",
+        "shortModel",
+        "MT",
+        "PROVIDERS",
+        "providerOf",
+        "providerMark",
+        "tierOf",
+        "tierStyleOf",
+        "NS",
+        "nsMatrix",
+        "nsHarness",
+        "nsMotor",
+        "nsRoute",
+        "nsModels",
+        "nsModel",
+        "nsAccountItems",
+        "nsEnsureAccount",
+        "nsChips",
+        "nsSelectDefaults",
+        "nsSelectableMotors",
+        "nsRender",
+        "nsOpen",
+        "nsFsTimer",
+        "nsFsSeq",
+        "nsShortHome",
+        "FS_HOME_RE",
+        "nsBrowse",
+        "MODEL_NEWS",
+        "ACTIVE_TAB",
+        "pickSel",
+        "modelMenuEl",
+        "mdlMenuBtn",
+        "closeModelMenus",
+        "ocModels",
+        "ocModelsLoading",
+        "loadOpencodeModels",
+        "choicesMenuHtml",
+        "opencodeMenuHtml",
+        "positionModelMenu",
+        "openModelMenu",
+        "switchModel",
+        "wireModelMenu",
+        "renderUsage",
+        "usagePollTs",
+        "sessionStageLabel",
+        "SWITCH_SEEN",
+        "MOTOR_STATUS_BUSY",
+        "MOTOR_PENDING",
+        "fmtBytes",
+        "sovRender",
+        "notifReadSet",
+        "notifKey",
+        "notifMarkRead",
+        "nfStore",
+        "nfSave",
+        "nfHydrate",
+        "nfSnoozed",
+        "nfDismissed",
+        "nfPins",
+        "nfPriorityItems",
+        "nfOpenLight",
+        "nfToggleDetail",
+        "NF_CACHE",
+        "notifRender",
+        "notifPaint",
+        "notifBadge",
+        "tickUsage",
+        "favoritePending",
+        "favoriteQueue",
+        "favoriteVersion",
+        "favoriteReadAt",
+        "favoriteReadPending",
+        "updateFavoriteButton",
+        "applyFavorites",
+        "setSessionFavorite",
+        "refreshFavorites",
+        "LOOPBACK",
+        "WEBTERM",
+        "TERM_BASE",
+        "TERM_FALLBACK_BASE",
+        "TERM_PRIMARY_ATTEMPTS",
+        "TERM_PRIMARY_RETRY_MS",
+        "TERM_PRIMARY_PROBE_TIMEOUT_MS",
+        "termFallbackNotified",
+        "openHarnessFor",
+        "nsOpenForPane",
+        "openAiHere",
+        "NEWS_FEED"
+      ],
+      "define_kinds": {
+        "ACTIVE_TAB": "let",
+        "FS_HOME_RE": "let",
+        "LABEL": "let",
+        "LOOPBACK": "const",
+        "MODEL_CHOICES": "const",
+        "MODEL_NEWS": "let",
+        "MOTOR_PENDING": "const",
+        "MOTOR_STATUS_BUSY": "let",
+        "MT": "let",
+        "NEWS_FEED": "window",
+        "NF_CACHE": "let",
+        "NS": "const",
+        "PATH_LINK_RE": "const",
+        "PROVIDERS": "let",
+        "SWITCH_SEEN": "const",
+        "TERM_BASE": "const",
+        "TERM_FALLBACK_BASE": "const",
+        "TERM_PRIMARY_ATTEMPTS": "const",
+        "TERM_PRIMARY_PROBE_TIMEOUT_MS": "const",
+        "TERM_PRIMARY_RETRY_MS": "const",
+        "WEBTERM": "const",
+        "agoTxt": "function",
+        "applyFavorites": "function",
+        "attrEsc": "function",
+        "choicesMenuHtml": "function",
+        "closeModelMenus": "function",
+        "confidenceLabel": "function",
+        "copyText": "function",
+        "favoritePending": "const",
+        "favoriteQueue": "let",
+        "favoriteReadAt": "let",
+        "favoriteReadPending": "let",
+        "favoriteVersion": "let",
+        "fmtBytes": "function",
+        "fmtMoney": "function",
+        "fmtPercent": "function",
+        "fmtReset": "function",
+        "fmtTokens": "function",
+        "indexUsage": "function",
+        "linkifyPaths": "function",
+        "loadOpencodeModels": "function",
+        "mdEsc": "function",
+        "mdHtml": "function",
+        "mdInline": "function",
+        "mdStrip": "function",
+        "mdlMenuBtn": "let",
+        "modelMenuEl": "function",
+        "nfDismissed": "function",
+        "nfHydrate": "function",
+        "nfOpenLight": "function",
+        "nfPins": "function",
+        "nfPriorityItems": "function",
+        "nfSave": "const",
+        "nfSnoozed": "function",
+        "nfStore": "const",
+        "nfToggleDetail": "function",
+        "notifBadge": "function",
+        "notifKey": "function",
+        "notifMarkRead": "function",
+        "notifPaint": "function",
+        "notifReadSet": "function",
+        "notifRender": "function",
+        "nsAccountItems": "function",
+        "nsBrowse": "function",
+        "nsChips": "function",
+        "nsEnsureAccount": "function",
+        "nsFsSeq": "let",
+        "nsFsTimer": "let",
+        "nsHarness": "const",
+        "nsMatrix": "const",
+        "nsModel": "function",
+        "nsModels": "function",
+        "nsMotor": "const",
+        "nsOpen": "function",
+        "nsOpenForPane": "window",
+        "nsRender": "function",
+        "nsRoute": "function",
+        "nsSelectDefaults": "function",
+        "nsSelectableMotors": "function",
+        "nsShortHome": "function",
+        "ocModels": "let",
+        "ocModelsLoading": "let",
+        "openAiHere": "window",
+        "openHarnessFor": "window",
+        "openModelMenu": "function",
+        "opencodeMenuHtml": "function",
+        "pickSel": "function",
+        "positionModelMenu": "function",
+        "providerMark": "function",
+        "providerOf": "function",
+        "refreshFavorites": "function",
+        "renderLimitsStrip": "function",
+        "renderUsage": "function",
+        "sessionStageLabel": "function",
+        "setSessionFavorite": "function",
+        "shortModel": "function",
+        "shortPath": "function",
+        "sovRender": "function",
+        "switchModel": "function",
+        "termFallbackNotified": "let",
+        "tickUsage": "function",
+        "tierOf": "function",
+        "tierStyleOf": "function",
+        "updateFavoriteButton": "function",
+        "usageChipText": "function",
+        "usageChipTitle": "function",
+        "usageForItem": "function",
+        "usagePaneKey": "function",
+        "usagePollTs": "let",
+        "wireModelMenu": "function"
+      },
+      "uses_globals": [
+        "$",
+        "ComandosNotices",
+        "ICON",
+        "ONLY_PANEL",
+        "S",
+        "SessionConfig",
+        "activeView",
+        "api",
+        "inApp",
+        "openInApp",
+        "openSession",
+        "openTerm",
+        "render",
+        "rowKey",
+        "showView",
+        "sidebarActiveTab",
+        "svg",
+        "tf",
+        "tick",
+        "toast",
+        "ulog"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "limits-strip",
+        "btn-usage",
+        "ns-harness",
+        "ns-motor-wrap",
+        "ns-model-wrap",
+        "ns-effort-wrap",
+        "ns-motor",
+        "ns-model",
+        "ns-effort",
+        "ns-acct-wrap",
+        "ns-acct",
+        "ns-motor-acct-wrap",
+        "ns-motor-acct",
+        "ns-motor-acct-note",
+        "ns-unavailable",
+        "ns-matrix",
+        "ns-go",
+        "ns-note",
+        "newsess",
+        "ns-dirs",
+        "ns-cwd",
+        "ns-crumbs",
+        "ns-dirlist",
+        "ns-fs-state",
+        "ns-mkdir",
+        "ns-cancel",
+        "ns-danger",
+        "mdl-menu",
+        "sov-body",
+        "btn-sov",
+        "sovereignty",
+        "notif-panel",
+        "nf-to-strip",
+        "nf-clearall",
+        "notif-badge",
+        "btn-notif"
+      ],
+      "routes": [
+        "/open-path",
+        "/model-tiers",
+        "/providers",
+        "/optimization/plans",
+        "/fs/dirs",
+        "/fs/mkdir",
+        "/models/latest",
+        "/notify-popup",
+        "/session/configure",
+        "/session-new",
+        "/focus",
+        "/active-tab",
+        "/opencode/models",
+        "/model/switch",
+        "/model/status",
+        "/sovereignty",
+        "/prefs-set",
+        "/open-url",
+        "/news/latest",
+        "/prefs",
+        "/pomodoro",
+        "/key",
+        "/send",
+        "/usage/state"
+      ],
+      "storage_keys": [
+        "cc-model-news",
+        "cc-notif-read",
+        "cc-nf-dismiss",
+        "cc-nf-snooze",
+        "cc-nf-pins"
+      ],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [
+        120000,
+        1000,
+        450
+      ],
+      "strings": 1039,
+      "warnings": []
+    },
+    {
+      "id": "region:app-combinada",
+      "kind": "region",
+      "component": "app-combinada",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- App combinada: panel + pestanas de terminal (como el escritorio) ----------",
+      "marker_end": "// ---------- identidad de fila (sesión|pane) ----------",
+      "sha256": "adad5df43e0eeb4f5ae61fd701b11bfe8d0ed1f37f0f5b9c56506bc7277d63cd",
+      "lines": 1014,
+      "line_start": 3056,
+      "defines": [
+        "openTerms",
+        "activeTerm",
+        "activeTermTs",
+        "remotePaneFocus",
+        "rememberRemotePaneFocus",
+        "sidebarActiveTab",
+        "activeView",
+        "termInteraction",
+        "termInteractionSeq",
+        "termPageHidden",
+        "SPLIT_KEY",
+        "appViewportFrame",
+        "appEnabled",
+        "currentViewportHeight",
+        "pinAppScroll",
+        "appViewportSettle",
+        "updateAppViewport",
+        "scheduleAppViewport",
+        "shouldSplitLayout",
+        "applyAppLayout",
+        "splitBounds",
+        "setSplitLeft",
+        "restoreSplitLeft",
+        "initSplitDrag",
+        "delay",
+        "probePrimaryTerm",
+        "fallbackTermAvailable",
+        "showTermDegraded",
+        "resolveTermBase",
+        "styleTermFrame",
+        "wireTermFrameScroll",
+        "isSwitchShortcut",
+        "openSwitcherFromKey",
+        "wireTermFrameShortcuts",
+        "termInteractionState",
+        "postTermState",
+        "applyTermInteraction",
+        "handleTermFrameMessage",
+        "cleanupTermInteraction",
+        "syncTermInteraction",
+        "setTermSelectionMode",
+        "restoreTermInteraction",
+        "restoreInactiveTermInteractions",
+        "sendTermInteractionKeepalive",
+        "restoreAllTermInteractions",
+        "handleTermInteractionsPageShow",
+        "orderedTermTabs",
+        "renderTabbar",
+        "tabRowsHold",
+        "holdTabRowsHeight",
+        "tabModelShort",
+        "updateTabNavigation",
+        "revealActiveTab",
+        "initTabNavigation",
+        "ensureFrame",
+        "showView",
+        "addTermTab",
+        "askCloseTab",
+        "askCloseGroup",
+        "openTerm",
+        "closeTerm",
+        "WS_DEVICE",
+        "wsFocusTimer",
+        "wsFocusSaved",
+        "wsFocusRestored",
+        "saveDeviceFocus",
+        "restoreDeviceFocus",
+        "loadDesktopTabs",
+        "tabsPollTs",
+        "refreshDesktopTabs",
+        "initApp",
+        "panelViewport",
+        "quickTerminal"
+      ],
+      "define_kinds": {
+        "SPLIT_KEY": "const",
+        "WS_DEVICE": "const",
+        "activeTerm": "let",
+        "activeTermTs": "let",
+        "activeView": "let",
+        "addTermTab": "function",
+        "appEnabled": "function",
+        "appViewportFrame": "let",
+        "appViewportSettle": "let",
+        "applyAppLayout": "function",
+        "applyTermInteraction": "function",
+        "askCloseGroup": "function",
+        "askCloseTab": "function",
+        "cleanupTermInteraction": "function",
+        "closeTerm": "function",
+        "currentViewportHeight": "function",
+        "delay": "function",
+        "ensureFrame": "function",
+        "fallbackTermAvailable": "function",
+        "handleTermFrameMessage": "function",
+        "handleTermInteractionsPageShow": "function",
+        "holdTabRowsHeight": "function",
+        "initApp": "function",
+        "initSplitDrag": "function",
+        "initTabNavigation": "function",
+        "isSwitchShortcut": "function",
+        "loadDesktopTabs": "function",
+        "openSwitcherFromKey": "function",
+        "openTerm": "function",
+        "openTerms": "const",
+        "orderedTermTabs": "function",
+        "panelViewport": "window",
+        "pinAppScroll": "function",
+        "postTermState": "function",
+        "probePrimaryTerm": "function",
+        "quickTerminal": "window",
+        "refreshDesktopTabs": "function",
+        "rememberRemotePaneFocus": "function",
+        "remotePaneFocus": "const",
+        "renderTabbar": "function",
+        "resolveTermBase": "function",
+        "restoreAllTermInteractions": "function",
+        "restoreDeviceFocus": "function",
+        "restoreInactiveTermInteractions": "function",
+        "restoreSplitLeft": "function",
+        "restoreTermInteraction": "function",
+        "revealActiveTab": "function",
+        "saveDeviceFocus": "function",
+        "scheduleAppViewport": "function",
+        "sendTermInteractionKeepalive": "function",
+        "setSplitLeft": "function",
+        "setTermSelectionMode": "function",
+        "shouldSplitLayout": "function",
+        "showTermDegraded": "function",
+        "showView": "function",
+        "sidebarActiveTab": "function",
+        "splitBounds": "function",
+        "styleTermFrame": "function",
+        "syncTermInteraction": "function",
+        "tabModelShort": "function",
+        "tabRowsHold": "let",
+        "tabsPollTs": "let",
+        "termInteraction": "const",
+        "termInteractionSeq": "let",
+        "termInteractionState": "function",
+        "termPageHidden": "let",
+        "updateAppViewport": "function",
+        "updateTabNavigation": "function",
+        "wireTermFrameScroll": "function",
+        "wireTermFrameShortcuts": "function",
+        "wsFocusRestored": "let",
+        "wsFocusSaved": "let",
+        "wsFocusTimer": "let"
+      },
+      "uses_globals": [
+        "$",
+        "ACTIVE_TAB",
+        "ComandosQuickTerminal",
+        "S",
+        "TERM_BASE",
+        "TERM_FALLBACK_BASE",
+        "TERM_PRIMARY_ATTEMPTS",
+        "TERM_PRIMARY_PROBE_TIMEOUT_MS",
+        "TERM_PRIMARY_RETRY_MS",
+        "WEBTERM",
+        "WorkspaceDock",
+        "api",
+        "authToken",
+        "curTheme",
+        "inApp",
+        "render",
+        "setSessionFavorite",
+        "swOpen",
+        "termFallbackNotified",
+        "tf",
+        "toast",
+        "updateFavoriteButton",
+        "webtermAccessToken"
+      ],
+      "mutates_globals": [
+        "termFallbackNotified"
+      ],
+      "parent_refs": [],
+      "dom_ids": [
+        "panes",
+        "view-panel",
+        "splitter",
+        "comandos-term-style",
+        "tabbar",
+        "tab-prev",
+        "tab-next",
+        "tab-panel",
+        "tab-open",
+        "tab-sort",
+        "term-area",
+        "tabclose-name",
+        "tabclose",
+        "tabclose-yes",
+        "groupclose",
+        "groupclose-list",
+        "groupclose-status",
+        "groupclose-yes",
+        "groupclose-title",
+        "groupclose-desc",
+        "groupclose-cancel"
+      ],
+      "routes": [
+        "${}/token",
+        "/remote-state",
+        "/tmux-mouse",
+        "/workspace/sort",
+        "/tab-close",
+        "/workspace/close-group",
+        "/tab-register",
+        "/workspace/client",
+        "/tabs",
+        "/workspace"
+      ],
+      "storage_keys": [
+        "cc-split-left",
+        "comandos.deviceId"
+      ],
+      "post_messages": [
+        "comandos/interaction-state"
+      ],
+      "message_types": [
+        "interaction-request",
+        "pane-selected",
+        "pointerup",
+        "ready"
+      ],
+      "intervals_ms": [],
+      "strings": 311,
+      "warnings": []
+    },
+    {
+      "id": "region:identidad-de-fila",
+      "kind": "region",
+      "component": "identidad-de-fila",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- identidad de fila (sesión|pane) ----------",
+      "marker_end": "// ---------- barra de comandos (S1, dash/command-sidebar.js) ----------",
+      "sha256": "b69c8bd99fa95ba58b43bb68852006502ba4c47fd8a1336ed590d72ac1a26d1c",
+      "lines": 3,
+      "line_start": 4070,
+      "defines": [
+        "rowKey"
+      ],
+      "define_kinds": {
+        "rowKey": "function"
+      },
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 2,
+      "warnings": []
+    },
+    {
+      "id": "region:barra-de-comandos",
+      "kind": "region",
+      "component": "barra-de-comandos",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- barra de comandos (S1, dash/command-sidebar.js) ----------",
+      "marker_end": "// ---------- render ----------",
+      "sha256": "780ab88ff9d07be425d8316a4ada0af0606c57ed582274e2f9ee0643083a35b3",
+      "lines": 299,
+      "line_start": 4073,
+      "defines": [
+        "isQuickTermSession",
+        "SBT",
+        "selectSidebarTerm",
+        "sidebarTermTarget",
+        "sbTermFrames",
+        "sbNativeMsg",
+        "sidebarTermMount",
+        "sidebarKillTerm",
+        "activePaneTarget",
+        "quickTermEntries",
+        "openTabAnywhere",
+        "sidebarQuickTerminal",
+        "quickTerminalInstance",
+        "CS",
+        "refreshCommandSidebar",
+        "CS_CLIS",
+        "SB_LIMITS",
+        "sidebarLimitsCur",
+        "sidebarLimitsPaint",
+        "sidebarLimits",
+        "syncCommandSidebar",
+        "mountCommandSidebar",
+        "mountChainPage",
+        "mountChainBuilder",
+        "sidebarTermAction",
+        "sidebarTermFocused",
+        "sidebarQuickTerm",
+        "quickTerminal",
+        "commandSidebar",
+        "chainBuilder"
+      ],
+      "define_kinds": {
+        "CS": "const",
+        "CS_CLIS": "const",
+        "SBT": "const",
+        "SB_LIMITS": "const",
+        "activePaneTarget": "function",
+        "chainBuilder": "window",
+        "commandSidebar": "window",
+        "isQuickTermSession": "function",
+        "mountChainBuilder": "function",
+        "mountChainPage": "function",
+        "mountCommandSidebar": "function",
+        "openTabAnywhere": "function",
+        "quickTermEntries": "function",
+        "quickTerminal": "window",
+        "quickTerminalInstance": "function",
+        "refreshCommandSidebar": "function",
+        "sbNativeMsg": "let",
+        "sbTermFrames": "const",
+        "selectSidebarTerm": "function",
+        "sidebarKillTerm": "function",
+        "sidebarLimits": "function",
+        "sidebarLimitsCur": "function",
+        "sidebarLimitsPaint": "function",
+        "sidebarQuickTerm": "window",
+        "sidebarQuickTerminal": "function",
+        "sidebarTermAction": "window",
+        "sidebarTermFocused": "window",
+        "sidebarTermMount": "function",
+        "sidebarTermTarget": "function",
+        "syncCommandSidebar": "function"
+      },
+      "uses_globals": [
+        "$",
+        "ComandosChainBuilder",
+        "ComandosCommandSidebar",
+        "ComandosQuickTerminal",
+        "ONLY_PANEL",
+        "S",
+        "TERM_BASE",
+        "WEBTERM",
+        "api",
+        "curTheme",
+        "hydrateIcons",
+        "inApp",
+        "loadSsh",
+        "openAnalytics",
+        "openInApp",
+        "openTerm",
+        "openTerms",
+        "pickSel",
+        "resolveTermBase",
+        "sidebarActiveTab",
+        "tabsPollTs",
+        "tf",
+        "tick",
+        "toast",
+        "webtermAccessToken"
+      ],
+      "mutates_globals": [
+        "tabsPollTs"
+      ],
+      "parent_refs": [],
+      "dom_ids": [
+        "command-sidebar",
+        "servers-panel",
+        "btn-servers",
+        "ssh-bar",
+        "ssh-toggle"
+      ],
+      "routes": [
+        "/kill",
+        "/account/switch",
+        "/analytics/week",
+        "/commands/catalog",
+        "/chains"
+      ],
+      "storage_keys": [
+        "cc-sb-limits3",
+        "cc-sb-limits",
+        "cc-sb-limits2"
+      ],
+      "post_messages": [
+        "webkit.centro:?",
+        "webkit.centro:{headerAction=analytics}",
+        "webkit.centro:{headerAction=chains}"
+      ],
+      "message_types": [],
+      "intervals_ms": [
+        60000
+      ],
+      "strings": 130,
+      "warnings": []
+    },
+    {
+      "id": "region:render",
+      "kind": "region",
+      "component": "render",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- render ----------",
+      "marker_end": "// ---------- toasts ----------",
+      "sha256": "28372375403fb92f8711e81bd66c070241edda401f40f41eeba132f804a220da",
+      "lines": 58,
+      "line_start": 4372,
+      "defines": [
+        "render",
+        "notify",
+        "favColor",
+        "favicon"
+      ],
+      "define_kinds": {
+        "favColor": "let",
+        "favicon": "function",
+        "notify": "function",
+        "render": "function"
+      },
+      "uses_globals": [
+        "$",
+        "S",
+        "alertClear",
+        "inApp",
+        "notifBadge",
+        "refreshDesktopTabs",
+        "rememberRemotePaneFocus",
+        "renderSessionOverview",
+        "renderTabbar",
+        "rowKey",
+        "syncCommandSidebar"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "n-waiting",
+        "n-done",
+        "n-working"
+      ],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 29,
+      "warnings": []
+    },
+    {
+      "id": "region:toasts",
+      "kind": "region",
+      "component": "toasts",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- toasts ----------",
+      "marker_end": "// ---------- registro LOCAL de uso: cada click, cada pantalla, cuánto tiempo. Nada sale de la máquina. ----------",
+      "sha256": "dcb719f526cec9a5a36a42138777276f6c7ad246e79a210c0e0f48c102bb94ec",
+      "lines": 1,
+      "line_start": 4430,
+      "defines": [],
+      "define_kinds": {},
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 0,
+      "warnings": []
+    },
+    {
+      "id": "region:registro-local-de-uso",
+      "kind": "region",
+      "component": "registro-local-de-uso",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- registro LOCAL de uso: cada click, cada pantalla, cuánto tiempo. Nada sale de la máquina. ----------",
+      "marker_end": "// ---------- avisos de eventos: franja por proyecto + flotante (dash/notifications.js, N2).",
+      "sha256": "763c21e14cce1b36225df8cb308a5cc5a6482466a11fd938924c815f10e818d0",
+      "lines": 52,
+      "line_start": 4431,
+      "defines": [
+        "ULOG",
+        "ulog",
+        "ulogFlush",
+        "ulogNameOf",
+        "ulogScreenStart",
+        "ulogScreenEnd"
+      ],
+      "define_kinds": {
+        "ULOG": "const",
+        "ulog": "function",
+        "ulogFlush": "function",
+        "ulogNameOf": "function",
+        "ulogScreenEnd": "function",
+        "ulogScreenStart": "function"
+      },
+      "uses_globals": [
+        "activePaneTarget",
+        "inApp"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "notif-panel",
+        "pomo-panel",
+        "command-sidebar"
+      ],
+      "routes": [
+        "/ui-log"
+      ],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [
+        5000
+      ],
+      "strings": 49,
+      "warnings": []
+    },
+    {
+      "id": "region:avisos-de-eventos",
+      "kind": "region",
+      "component": "avisos-de-eventos",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- avisos de eventos: franja por proyecto + flotante (dash/notifications.js, N2).",
+      "marker_end": "// ---------- loop ----------",
+      "sha256": "9e2be0e00d66a4f20cf424be1887a853a0e276b10c937ff95b278372ab1ea9c3",
+      "lines": 28,
+      "line_start": 4483,
+      "defines": [
+        "ALERTS",
+        "alertPush",
+        "alertLayout",
+        "alertClear",
+        "alertResolve",
+        "ATTENDED",
+        "toast"
+      ],
+      "define_kinds": {
+        "ALERTS": "const",
+        "ATTENDED": "const",
+        "alertClear": "function",
+        "alertLayout": "function",
+        "alertPush": "function",
+        "alertResolve": "function",
+        "toast": "function"
+      },
+      "uses_globals": [
+        "$",
+        "ComandosNotices",
+        "notifBadge",
+        "tf"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "toasts",
+        "btn-notif"
+      ],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 16,
+      "warnings": []
+    },
+    {
+      "id": "region:loop",
+      "kind": "region",
+      "component": "loop",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- loop ----------",
+      "marker_end": "// ---------- conmutador Ctrl+K (salta a cualquier sesion) ----------",
+      "sha256": "7dd2d33b556a04afed9d26d71e7351b88ec9c57d482f68ace4046053ab5f93f8",
+      "lines": 18,
+      "line_start": 4511,
+      "defines": [
+        "statePollInFlight",
+        "tick",
+        "timer",
+        "remotePollSeconds",
+        "arm"
+      ],
+      "define_kinds": {
+        "arm": "function",
+        "remotePollSeconds": "function",
+        "statePollInFlight": "let",
+        "tick": "function",
+        "timer": "let"
+      },
+      "uses_globals": [
+        "S",
+        "api",
+        "refreshFavorites",
+        "render",
+        "tickUsage"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [
+        "/state"
+      ],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 2,
+      "warnings": []
+    },
+    {
+      "id": "region:conmutador-ctrl-k",
+      "kind": "region",
+      "component": "conmutador-ctrl-k",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- conmutador Ctrl+K (salta a cualquier sesion) ----------",
+      "marker_end": "// ---------- iconos ----------",
+      "sha256": "86c3da8f5d8ad5e58f349d3a452121bc2ca2ef0144e82b6f813251fed3ac7501",
+      "lines": 90,
+      "line_start": 4529,
+      "defines": [
+        "swItems",
+        "swSel",
+        "swScore",
+        "SW_ORD",
+        "loadRecover",
+        "swOpen",
+        "swClose",
+        "quickVisible",
+        "swFill",
+        "swGo"
+      ],
+      "define_kinds": {
+        "SW_ORD": "const",
+        "loadRecover": "function",
+        "quickVisible": "function",
+        "swClose": "function",
+        "swFill": "function",
+        "swGo": "function",
+        "swItems": "let",
+        "swOpen": "function",
+        "swScore": "function",
+        "swSel": "let"
+      },
+      "uses_globals": [
+        "$",
+        "S",
+        "api",
+        "openSession",
+        "openSwitcherFromKey",
+        "openTerm",
+        "t",
+        "tf",
+        "toast"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "sw-ov",
+        "sw-in",
+        "sw-list",
+        "btn-switch"
+      ],
+      "routes": [
+        "/tab-history",
+        "/recover-tab"
+      ],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 57,
+      "warnings": []
+    },
+    {
+      "id": "region:iconos",
+      "kind": "region",
+      "component": "iconos",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- iconos ----------",
+      "marker_end": "// ---------- tema ----------",
+      "sha256": "fc04388f16efbfb0c38cc142b0172e50b6535f80c86ca7c2845b32772974e0db",
+      "lines": 82,
+      "line_start": 4619,
+      "defines": [
+        "ICON",
+        "svg",
+        "hydrateIcons",
+        "hydrateButtonTooltips",
+        "tooltipObserver"
+      ],
+      "define_kinds": {
+        "ICON": "const",
+        "hydrateButtonTooltips": "function",
+        "hydrateIcons": "function",
+        "svg": "const",
+        "tooltipObserver": "const"
+      },
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 69,
+      "warnings": []
+    },
+    {
+      "id": "region:tema",
+      "kind": "region",
+      "component": "tema",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- tema ----------",
+      "marker_end": "// ---------- favoritos ----------",
+      "sha256": "cfcaa46089301fbf1579796c9024e3f0383bc1d47a0bc1848cf75b418c925e13",
+      "lines": 89,
+      "line_start": 4701,
+      "defines": [
+        "THEME_SEQ",
+        "THEME_META",
+        "curTheme",
+        "broadcastTermTheme",
+        "applyTheme",
+        "BUTTON_STYLES",
+        "curButtonStyle",
+        "applyButtonStyle",
+        "renderButtonStyleGallery",
+        "selectButtonStyle",
+        "renderThemeGallery",
+        "selectTheme"
+      ],
+      "define_kinds": {
+        "BUTTON_STYLES": "const",
+        "THEME_META": "const",
+        "THEME_SEQ": "const",
+        "applyButtonStyle": "function",
+        "applyTheme": "function",
+        "broadcastTermTheme": "function",
+        "curButtonStyle": "let",
+        "curTheme": "let",
+        "renderButtonStyleGallery": "function",
+        "renderThemeGallery": "function",
+        "selectButtonStyle": "function",
+        "selectTheme": "function"
+      },
+      "uses_globals": [
+        "$",
+        "activateMtab",
+        "api",
+        "inApp",
+        "mdEsc",
+        "openTerms",
+        "styleTermFrame",
+        "svg",
+        "tf",
+        "toast"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "btn-theme",
+        "button-style-gallery",
+        "theme-gallery",
+        "settings"
+      ],
+      "routes": [
+        "/prefs-set"
+      ],
+      "storage_keys": [],
+      "post_messages": [
+        "comandos/theme",
+        "webkit.centro:{theme}",
+        "comandos/button-style",
+        "webkit.centro:{buttonStyle}"
+      ],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 147,
+      "warnings": []
+    },
+    {
+      "id": "region:favoritos",
+      "kind": "region",
+      "component": "favoritos",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- favoritos ----------",
+      "marker_end": "// ---------- prefs de terminal (fuente/cursor/padding/opacity/ligas) ----------",
+      "sha256": "decb470e26ffeed2eb5f6201130e6dcefeaea557bf8ea81d92e492d6550d8158",
+      "lines": 14,
+      "line_start": 4790,
+      "defines": [
+        "loadPrefs"
+      ],
+      "define_kinds": {
+        "loadPrefs": "function"
+      },
+      "uses_globals": [
+        "api",
+        "applyButtonStyle",
+        "applyFavorites",
+        "applyTabsLayout",
+        "applyTheme",
+        "favoriteReadAt",
+        "favoriteVersion",
+        "hydrateTerminalPrefs"
+      ],
+      "mutates_globals": [
+        "favoriteReadAt"
+      ],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [
+        "/prefs"
+      ],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 4,
+      "warnings": []
+    },
+    {
+      "id": "region:prefs-de-terminal",
+      "kind": "region",
+      "component": "prefs-de-terminal",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- prefs de terminal (fuente/cursor/padding/opacity/ligas) ----------",
+      "marker_end": "// ---------- tabs internos de modales ----------",
+      "sha256": "dd0be23d4d901a64070d17c2f5799e8bbf20b1174dfe3427f98fb231727f91d3",
+      "lines": 50,
+      "line_start": 4804,
+      "defines": [
+        "applyTabsLayout",
+        "hydrateTerminalPrefs",
+        "setPref"
+      ],
+      "define_kinds": {
+        "applyTabsLayout": "function",
+        "hydrateTerminalPrefs": "function",
+        "setPref": "function"
+      },
+      "uses_globals": [
+        "$",
+        "api",
+        "attrEsc",
+        "mdEsc",
+        "tabRowsHold",
+        "tf",
+        "toast",
+        "ulog",
+        "updateTabNavigation"
+      ],
+      "mutates_globals": [
+        "tabRowsHold"
+      ],
+      "parent_refs": [],
+      "dom_ids": [
+        "tabbar",
+        "tab-rows",
+        "pf-font-family",
+        "pf-font-size",
+        "pf-font-size-v",
+        "pf-padding",
+        "pf-padding-v",
+        "pf-opacity",
+        "pf-opacity-v",
+        "sw-cursor-blink",
+        "sw-ligatures"
+      ],
+      "routes": [
+        "/prefs-set"
+      ],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 48,
+      "warnings": []
+    },
+    {
+      "id": "region:tabs-internos-de-modales",
+      "kind": "region",
+      "component": "tabs-internos-de-modales",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- tabs internos de modales ----------",
+      "marker_end": "// ---------- solid range fill (color hasta el thumb) ----------",
+      "sha256": "abe7f4942cf4ef4633491ac5b17b30736317581be0f280eac991813d78787f9e",
+      "lines": 24,
+      "line_start": 4854,
+      "defines": [
+        "activateMtab",
+        "wireMtabs"
+      ],
+      "define_kinds": {
+        "activateMtab": "function",
+        "wireMtabs": "function"
+      },
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 9,
+      "warnings": []
+    },
+    {
+      "id": "region:solid-range-fill",
+      "kind": "region",
+      "component": "solid-range-fill",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- solid range fill (color hasta el thumb) ----------",
+      "marker_end": "// ---------- preview de tipografía (Settings > Terminal) ----------",
+      "sha256": "f737145ce386e184837e676fe31d1ae092963aa5389dae9d2023993d7d0f7ead",
+      "lines": 26,
+      "line_start": 4878,
+      "defines": [
+        "updateRangeFill",
+        "refreshAllRangeFills",
+        "wireRangeFills"
+      ],
+      "define_kinds": {
+        "refreshAllRangeFills": "function",
+        "updateRangeFill": "function",
+        "wireRangeFills": "function"
+      },
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [
+        250,
+        250
+      ],
+      "strings": 8,
+      "warnings": []
+    },
+    {
+      "id": "region:preview-de-tipografia",
+      "kind": "region",
+      "component": "preview-de-tipografia",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- preview de tipografía (Settings > Terminal) ----------",
+      "marker_end": "// ---------- remoto ----------",
+      "sha256": "309f9ceb83d5053349eed05fa907f2b974831489e7d7ba7f99dcfe6a4e8cbc1b",
+      "lines": 52,
+      "line_start": 4904,
+      "defines": [
+        "updateFontPreview"
+      ],
+      "define_kinds": {
+        "updateFontPreview": "function"
+      },
+      "uses_globals": [
+        "$",
+        "setPref",
+        "tf"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "pf-font-family",
+        "pf-font-size",
+        "font-preview",
+        "pf-font-size-v",
+        "pf-padding",
+        "pf-padding-v",
+        "pf-opacity",
+        "pf-opacity-v",
+        "sw-cursor-blink",
+        "sw-ligatures"
+      ],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 39,
+      "warnings": []
+    },
+    {
+      "id": "region:remoto",
+      "kind": "region",
+      "component": "remoto",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- remoto ----------",
+      "marker_end": "// ---------- servidores ----------",
+      "sha256": "57a605a0b176926c5410594a8431123570ee962684752dd64712ccdd960a0a08",
+      "lines": 131,
+      "line_start": 4956,
+      "defines": [
+        "REMOTE",
+        "REMOTE_BUSY",
+        "remoteQrPath",
+        "remoteButtonState",
+        "setRemoteButton",
+        "applyRemoteButtonState",
+        "setRemoteBusy",
+        "renderRemote",
+        "loadRemote",
+        "ensureRemoteTerminalVisible",
+        "remoteAction",
+        "copyRemote"
+      ],
+      "define_kinds": {
+        "REMOTE": "let",
+        "REMOTE_BUSY": "let",
+        "applyRemoteButtonState": "function",
+        "copyRemote": "function",
+        "ensureRemoteTerminalVisible": "function",
+        "loadRemote": "function",
+        "remoteAction": "function",
+        "remoteButtonState": "function",
+        "remoteQrPath": "function",
+        "renderRemote": "function",
+        "setRemoteBusy": "function",
+        "setRemoteButton": "function"
+      },
+      "uses_globals": [
+        "$",
+        "WEBTERM",
+        "activeTerm",
+        "addTermTab",
+        "api",
+        "arm",
+        "authToken",
+        "copyText",
+        "loadDesktopTabs",
+        "openTerm",
+        "openTerms",
+        "tf",
+        "toast"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "remote-status",
+        "btn-remote",
+        "remote-dashboard-url",
+        "remote-term-url",
+        "remote-fallback-url",
+        "remote-qr",
+        "remote-no-qr",
+        "remote",
+        "settings",
+        "servers",
+        "usage",
+        "remote-on",
+        "remote-off",
+        "remote-webterm-on",
+        "remote-webterm-off",
+        "remote-open-terminal",
+        "remote-copy-dashboard",
+        "remote-copy-term",
+        "remote-copy-fallback"
+      ],
+      "routes": [
+        "/remote-state",
+        "/state"
+      ],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 101,
+      "warnings": []
+    },
+    {
+      "id": "region:servidores",
+      "kind": "region",
+      "component": "servidores",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- servidores ----------",
+      "marker_end": "// ---------- notificaciones del sistema ----------",
+      "sha256": "392a79ec49f3d1692bda3267440c97b4c742c369b24b7ccfe53ecd9c7d89c493",
+      "lines": 230,
+      "line_start": 5087,
+      "defines": [
+        "connectHost",
+        "openSshTab",
+        "setupSshKey",
+        "fillSrvForm",
+        "loadSsh",
+        "toggleSshManager",
+        "initHeaderActions",
+        "initHeaderPopovers"
+      ],
+      "define_kinds": {
+        "connectHost": "function",
+        "fillSrvForm": "function",
+        "initHeaderActions": "function",
+        "initHeaderPopovers": "function",
+        "loadSsh": "function",
+        "openSshTab": "function",
+        "setupSshKey": "function",
+        "toggleSshManager": "function"
+      },
+      "uses_globals": [
+        "$",
+        "NS",
+        "WEBTERM",
+        "activeView",
+        "api",
+        "applyTabsLayout",
+        "inApp",
+        "nsOpen",
+        "openInApp",
+        "openTerm",
+        "quickTerminalInstance",
+        "showView",
+        "t",
+        "tf",
+        "toast"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "srv-form",
+        "srv-form-title",
+        "srv-cancel",
+        "ssh-bar",
+        "ssh-toggle",
+        "ssh-chips",
+        "ssh-count",
+        "srv-list",
+        "servers",
+        "settings",
+        "remote",
+        "usage",
+        "ssh-manage",
+        "btn-terminal",
+        "btn-newsess",
+        "btn-notif",
+        "tab-term",
+        "tab-left",
+        "view-panel",
+        "splitter",
+        "tab-new",
+        "tab-rows",
+        "btn-menu",
+        "btn-servers",
+        "menu-panel",
+        "servers-panel",
+        "toggle-overview",
+        "open-session-profiles",
+        "open-extension-usage",
+        "btn-sov",
+        "btn-theme",
+        "limits-strip"
+      ],
+      "routes": [
+        "/ssh-connect",
+        "/focus",
+        "/ssh-new-tab",
+        "/ssh-key-setup",
+        "/ssh",
+        "/ssh-del",
+        "/prefs-set",
+        "/ssh-update",
+        "/ssh-add"
+      ],
+      "storage_keys": [
+        "cc-ssh-open",
+        "cc-panel-hidden"
+      ],
+      "post_messages": [
+        "webkit.centro:{headerAction}",
+        "webkit.centro:{leftPanel=toggle}"
+      ],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 222,
+      "warnings": []
+    },
+    {
+      "id": "region:notificaciones-del-sistema",
+      "kind": "region",
+      "component": "notificaciones-del-sistema",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- notificaciones del sistema ----------",
+      "marker_end": "// ---------- Modales en medio (2-oct) ----------",
+      "sha256": "ba33a0260dfe83d59bb7954c55baa9b45b7ab2bd497c79a25c2048ed317d6f78",
+      "lines": 59,
+      "line_start": 5317,
+      "defines": [
+        "DESKTOP_POPUPS",
+        "SYSTEM_POPUP_CATS",
+        "loadConf"
+      ],
+      "define_kinds": {
+        "DESKTOP_POPUPS": "let",
+        "SYSTEM_POPUP_CATS": "const",
+        "loadConf": "function"
+      },
+      "uses_globals": [
+        "$",
+        "ComandosNotices",
+        "api",
+        "svg",
+        "tf",
+        "toast"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "vol",
+        "vol-top",
+        "btn-mute",
+        "sw-voice"
+      ],
+      "routes": [
+        "/conf",
+        "/conf-set"
+      ],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 66,
+      "warnings": []
+    },
+    {
+      "id": "region:modales-en-medio",
+      "kind": "region",
+      "component": "modales-en-medio",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- Modales en medio (2-oct) ----------",
+      "marker_end": "// ---------- UI general ----------",
+      "sha256": "494c322487f628fb4b3534bdc4f0ecadfc8275ea8b016f70fc26a9ed59861fd8",
+      "lines": 39,
+      "line_start": 5376,
+      "defines": [
+        "openCenterPanel"
+      ],
+      "define_kinds": {
+        "openCenterPanel": "function"
+      },
+      "uses_globals": [
+        "$",
+        "CENTER_PANELS",
+        "ONLY_PANEL",
+        "activateMtab",
+        "inApp",
+        "openAnalytics",
+        "toggleSshManager"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "btn-pomo",
+        "btn-sov",
+        "btn-remote",
+        "btn-settings",
+        "settings"
+      ],
+      "routes": [],
+      "storage_keys": [
+        "cc-center-panel"
+      ],
+      "post_messages": [
+        "webkit.centro:{chainModal=close}",
+        "webkit.centro:{headerAction=chains}",
+        "webkit.centro:{headerAction=analytics}"
+      ],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 33,
+      "warnings": []
+    },
+    {
+      "id": "region:ui-general",
+      "kind": "region",
+      "component": "ui-general",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- UI general ----------",
+      "marker_end": "// ---------- snippets (v0) ----------",
+      "sha256": "b9185786dad05840215fd9fa188cff0c3169d702b031c25b1382101538b85d85",
+      "lines": 127,
+      "line_start": 5415,
+      "defines": [
+        "vol",
+        "bindSwitch",
+        "poll"
+      ],
+      "define_kinds": {
+        "bindSwitch": "function",
+        "poll": "const",
+        "vol": "const"
+      },
+      "uses_globals": [
+        "$",
+        "L",
+        "LABEL",
+        "S",
+        "api",
+        "applyI18n",
+        "arm",
+        "handleTermFrameMessage",
+        "handleTermInteractionsPageShow",
+        "inApp",
+        "initApp",
+        "loadConf",
+        "loadPrefs",
+        "loadRemote",
+        "loadSsh",
+        "mountChainPage",
+        "mountCommandSidebar",
+        "openAnalytics",
+        "restoreAllTermInteractions",
+        "saveCfg",
+        "tf",
+        "tick",
+        "toast"
+      ],
+      "mutates_globals": [
+        "L",
+        "LABEL"
+      ],
+      "parent_refs": [],
+      "dom_ids": [
+        "btn-settings",
+        "settings",
+        "servers",
+        "remote",
+        "usage",
+        "btn-usage",
+        "vol",
+        "sw-voice",
+        "test-voice",
+        "test-chime",
+        "test-done",
+        "sw-notif",
+        "poll",
+        "poll-v",
+        "clock"
+      ],
+      "routes": [
+        "/conf-set",
+        "/test",
+        "/conf"
+      ],
+      "storage_keys": [],
+      "post_messages": [
+        "webkit.centro:{headerAction=analytics}"
+      ],
+      "message_types": [],
+      "intervals_ms": [
+        1000
+      ],
+      "strings": 121,
+      "warnings": []
+    },
+    {
+      "id": "region:snippets",
+      "kind": "region",
+      "component": "snippets",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- snippets (v0) ----------",
+      "marker_end": "// ---------- funciones de UI globales ----------",
+      "sha256": "1e94a74be0c226d14e60952fa5eb2eaa9fc4fd0a8f0501445a9f2e9c7b986da1",
+      "lines": 251,
+      "line_start": 5542,
+      "defines": [
+        "snipDlg",
+        "snipState",
+        "snipSessions",
+        "pickDefaultSession",
+        "filterSnippets",
+        "renderSnipList",
+        "renderSnipPane",
+        "openSnipEditor",
+        "openSnippets",
+        "closeSnippets"
+      ],
+      "define_kinds": {
+        "closeSnippets": "function",
+        "filterSnippets": "function",
+        "openSnipEditor": "function",
+        "openSnippets": "function",
+        "pickDefaultSession": "function",
+        "renderSnipList": "function",
+        "renderSnipPane": "function",
+        "snipDlg": "const",
+        "snipSessions": "let",
+        "snipState": "const"
+      },
+      "uses_globals": [
+        "api",
+        "toast"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "dlg-snippets",
+        "snip-items",
+        "snip-pane",
+        "snip-q",
+        "btn-snippets",
+        "snip-new"
+      ],
+      "routes": [
+        "/paste",
+        "/snippets/delete",
+        "/snippets/update",
+        "/snippets",
+        "/state"
+      ],
+      "storage_keys": [
+        "snippet-last-session"
+      ],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 119,
+      "warnings": []
+    },
+    {
+      "id": "region:funciones-de-ui-globales",
+      "kind": "region",
+      "component": "funciones-de-ui-globales",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- funciones de UI globales ----------",
+      "marker_end": "// ---------- Analytics (grill 1–2 oct): Cuentas · Comparar · Pomodoro ----------",
+      "sha256": "e27194bf5f3a0e7947d5672252508a846952fdc773a274c092294b8c37b847c8",
+      "lines": 23,
+      "line_start": 5793,
+      "defines": [
+        "opFavorite",
+        "setPollSeconds",
+        "setBrowserNotifications",
+        "nfDismiss",
+        "nfPin",
+        "nfUnpin",
+        "nfSnooze",
+        "closeAllPanels",
+        "swOpenWith",
+        "nsOpenPrefilled"
+      ],
+      "define_kinds": {
+        "closeAllPanels": "window",
+        "nfDismiss": "window",
+        "nfPin": "window",
+        "nfSnooze": "window",
+        "nfUnpin": "window",
+        "nsOpenPrefilled": "window",
+        "opFavorite": "window",
+        "setBrowserNotifications": "window",
+        "setPollSeconds": "window",
+        "swOpenWith": "window"
+      },
+      "uses_globals": [
+        "$",
+        "closeModelMenus",
+        "nsOpen",
+        "setSessionFavorite",
+        "swOpen"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "poll",
+        "sw-notif",
+        "sw-in",
+        "ns-cwd",
+        "ns-danger"
+      ],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 23,
+      "warnings": []
+    },
+    {
+      "id": "region:analytics",
+      "kind": "region",
+      "component": "analytics",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 1,
+      "marker_start": "// ---------- Analytics (grill 1–2 oct): Cuentas · Comparar · Pomodoro ----------",
+      "marker_end": "</script>",
+      "sha256": "36a26a68b417b69305c8de329483c7abed8498e52a74093387f02f1d24aad894",
+      "lines": 46,
+      "line_start": 5816,
+      "defines": [
+        "ANALYTICS_DEMO",
+        "analyticsView",
+        "analyticsPhone",
+        "analytics",
+        "openAnalytics",
+        "openAnalyticsTab",
+        "setSplitLeft",
+        "reloadDashboard",
+        "focusVisibleTerm"
+      ],
+      "define_kinds": {
+        "ANALYTICS_DEMO": "const",
+        "analytics": "function",
+        "analyticsPhone": "let",
+        "analyticsView": "let",
+        "focusVisibleTerm": "window",
+        "openAnalytics": "function",
+        "openAnalyticsTab": "window",
+        "reloadDashboard": "window",
+        "setSplitLeft": "window"
+      },
+      "uses_globals": [
+        "$",
+        "Analytics",
+        "activeTerm",
+        "api",
+        "applyAppLayout",
+        "closeSnippets",
+        "openSnippets",
+        "openTerms",
+        "restoreSplitLeft",
+        "snipDlg"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "an-root",
+        "usage"
+      ],
+      "routes": [
+        "/analytics/week"
+      ],
+      "storage_keys": [
+        "cc-analytics-tab",
+        "cc-split-left"
+      ],
+      "post_messages": [
+        "comandos/toolbar"
+      ],
+      "message_types": [],
+      "intervals_ms": [
+        60000
+      ],
+      "strings": 29,
+      "warnings": []
+    },
+    {
+      "id": "script:analytics-render.js",
+      "kind": "script",
+      "component": "analytics-render",
+      "source": "dash/analytics-render.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "f3025e42ef03795c768f2cebd55aed6b0230fbee2fe2eb0d6aeca04dc95a83fa",
+      "lines": 195,
+      "line_start": 1,
+      "defines": [
+        "AnalyticsRender"
+      ],
+      "define_kinds": {
+        "AnalyticsRender": "window"
+      },
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 346,
+      "warnings": []
+    },
+    {
+      "id": "script:analytics.js",
+      "kind": "script",
+      "component": "analytics",
+      "source": "dash/analytics.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "d76f554af3e4abeffd3560d935c8d605f3460807b0bac34740bb912350604851",
+      "lines": 135,
+      "line_start": 1,
+      "defines": [
+        "Analytics"
+      ],
+      "define_kinds": {
+        "Analytics": "window"
+      },
+      "uses_globals": [
+        "AnalyticsRender"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 82,
+      "warnings": []
+    },
+    {
+      "id": "script:extensions.js",
+      "kind": "script",
+      "component": "extensions",
+      "source": "dash/extensions.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "6d1a55e1ee5f838c815bf29dcf3f1abdc40e3f4b0ca26322bf1dcc108d3081ac",
+      "lines": 284,
+      "line_start": 1,
+      "defines": [
+        "openPaneExtensions"
+      ],
+      "define_kinds": {
+        "openPaneExtensions": "window"
+      },
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "template-name",
+        "pane-extensions-frame",
+        "pane-extensions-grip",
+        "extensions"
+      ],
+      "routes": [],
+      "storage_keys": [
+        "cc_token",
+        "cc_pane_shelf_height"
+      ],
+      "post_messages": [
+        "webkit.extensions:'close'",
+        "*/comandos-extensions-close",
+        "webkit.centro:*/extensions"
+      ],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 386,
+      "warnings": []
+    },
+    {
+      "id": "script:workspace.js",
+      "kind": "script",
+      "component": "workspace",
+      "source": "dash/workspace.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "6daedb8efc3404a2c59c635872e26432648b98dfca2d2cc763541847b97d0611",
+      "lines": 147,
+      "line_start": 1,
+      "defines": [
+        "scOption",
+        "scSelect",
+        "scModalReturnFocus",
+        "scDialog",
+        "openExtensionUsage",
+        "scProfilesCache",
+        "openSessionProfiles",
+        "useSessionProfile",
+        "renderSessionOverview",
+        "initSessionWorkspace"
+      ],
+      "define_kinds": {
+        "initSessionWorkspace": "function",
+        "openExtensionUsage": "function",
+        "openSessionProfiles": "function",
+        "renderSessionOverview": "function",
+        "scDialog": "function",
+        "scModalReturnFocus": "let",
+        "scOption": "function",
+        "scProfilesCache": "let",
+        "scSelect": "function",
+        "useSessionProfile": "function"
+      },
+      "uses_globals": [
+        "LABEL",
+        "NS",
+        "PROVIDERS",
+        "S",
+        "SessionConfig",
+        "api",
+        "attrEsc",
+        "fmtTokens",
+        "mdEsc",
+        "nsOpen",
+        "nsRender",
+        "nsSelectDefaults",
+        "openSession",
+        "pickSel",
+        "rowKey",
+        "toast",
+        "usageForItem"
+      ],
+      "mutates_globals": [
+        "PROVIDERS"
+      ],
+      "parent_refs": [],
+      "dom_ids": [
+        "session-workspace-modal",
+        "ns-cwd",
+        "ns-profile-note",
+        "session-overview",
+        "open-session-profiles",
+        "open-extension-usage",
+        "toggle-overview",
+        "ns-profile-open",
+        "ns-profile-clear"
+      ],
+      "routes": [
+        "/extension-usage",
+        "/session-profiles",
+        "/providers",
+        "/session-profile-apply"
+      ],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 191,
+      "warnings": []
+    },
+    {
+      "id": "script:work-marks.js",
+      "kind": "script",
+      "component": "work-marks",
+      "source": "dash/work-marks.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "5f1e14513ec7af3ad0d6f1d5ee92173fbbbf447d715e41cf548de2d5bf74da84",
+      "lines": 346,
+      "line_start": 1,
+      "defines": [
+        "WorkMarks"
+      ],
+      "define_kinds": {
+        "WorkMarks": "window"
+      },
+      "uses_globals": [
+        "S",
+        "authToken",
+        "setSessionFavorite",
+        "tf",
+        "toast"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "tabbar"
+      ],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [
+        5000
+      ],
+      "strings": 223,
+      "warnings": []
+    },
+    {
+      "id": "script:ui-sounds.js",
+      "kind": "script",
+      "component": "ui-sounds",
+      "source": "dash/ui-sounds.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "521e54b9c1a77d8c16ba2064f732a8c3ebb298f60085e2ca182776f4ed0c1b63",
+      "lines": 184,
+      "line_start": 1,
+      "defines": [
+        "ComandosUISounds",
+        "uiSounds"
+      ],
+      "define_kinds": {
+        "ComandosUISounds": "window",
+        "uiSounds": "window"
+      },
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 52,
+      "warnings": []
+    },
+    {
+      "id": "script:pomodoro.js",
+      "kind": "script",
+      "component": "pomodoro",
+      "source": "dash/pomodoro.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "a292fab7863afb507620d80010f9d6527d483fbc9a87b495199b04c847ecee84",
+      "lines": 662,
+      "line_start": 1,
+      "defines": [
+        "ComandosPomodoro",
+        "ComandosPomodoroProgress",
+        "pomoRender"
+      ],
+      "define_kinds": {
+        "ComandosPomodoro": "window",
+        "ComandosPomodoroProgress": "window",
+        "pomoRender": "window"
+      },
+      "uses_globals": [
+        "S",
+        "authToken",
+        "mdEsc",
+        "openAnalyticsTab",
+        "pickSel",
+        "svg",
+        "tf",
+        "toast",
+        "uiSounds"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "btn-pomo",
+        "pomo-panel"
+      ],
+      "routes": [],
+      "storage_keys": [
+        "comandos.deviceId"
+      ],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [
+        1000,
+        110
+      ],
+      "strings": 522,
+      "warnings": []
+    },
+    {
+      "id": "script:news-reader.js",
+      "kind": "script",
+      "component": "news-reader",
+      "source": "dash/news-reader.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "d1ff9081995ae4337b8fe7ab37abff92500b6b904e38aa3e6e4199a6070f107a",
+      "lines": 1204,
+      "line_start": 1,
+      "defines": [
+        "NewsReader"
+      ],
+      "define_kinds": {
+        "NewsReader": "window"
+      },
+      "uses_globals": [
+        "TERM_BASE",
+        "curTheme",
+        "resolveTermBase",
+        "sidebarActiveTab",
+        "webtermAccessToken"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "term-area",
+        "panes",
+        "btn-news"
+      ],
+      "routes": [
+        "/news/media/"
+      ],
+      "storage_keys": [
+        "cc_token"
+      ],
+      "post_messages": [
+        "?"
+      ],
+      "message_types": [
+        "caption",
+        "code",
+        "code_inline",
+        "h",
+        "img",
+        "li",
+        "quote",
+        "text"
+      ],
+      "intervals_ms": [],
+      "strings": 820,
+      "warnings": []
+    },
+    {
+      "id": "script:push-settings.js",
+      "kind": "script",
+      "component": "push-settings",
+      "source": "dash/push-settings.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "3af04ea72436664360eeea65959e8290ff3ee1edbf8870a4e58c288abbe2ff19",
+      "lines": 198,
+      "line_start": 1,
+      "defines": [
+        "PushSettings"
+      ],
+      "define_kinds": {
+        "PushSettings": "window"
+      },
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "push-settings",
+        "push-status",
+        "push-enable",
+        "push-disable",
+        "push-test"
+      ],
+      "routes": [],
+      "storage_keys": [
+        "cc_token"
+      ],
+      "post_messages": [],
+      "message_types": [
+        "comandos:open-event"
+      ],
+      "intervals_ms": [],
+      "strings": 96,
+      "warnings": []
+    },
+    {
+      "id": "script:notifications.js",
+      "kind": "script",
+      "component": "notifications",
+      "source": "dash/notifications.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "34b7ff059cc4cdbcabd6bd7c184dfd04d6c4a1d485291e15dd9bdd1db6e50923",
+      "lines": 851,
+      "line_start": 1,
+      "defines": [
+        "ComandosNotices"
+      ],
+      "define_kinds": {
+        "ComandosNotices": "window"
+      },
+      "uses_globals": [
+        "uiSounds"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "panes",
+        "notice-settings"
+      ],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 380,
+      "warnings": []
+    },
+    {
+      "id": "region:tail",
+      "kind": "region",
+      "component": "tail",
+      "source": "dash/index.html",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": 2,
+      "marker_start": "// N2: franja de avisos por proyecto + aviso flotante de llegada. La llegada",
+      "marker_end": "</script>",
+      "sha256": "e1bf12aee4a1a1456a10da513de1193a6b088485be5e97b5157d4d4015b92cab",
+      "lines": 79,
+      "line_start": 5877,
+      "defines": [
+        "selectPaneInFrame"
+      ],
+      "define_kinds": {
+        "selectPaneInFrame": "function"
+      },
+      "uses_globals": [
+        "$",
+        "ComandosNotices",
+        "DESKTOP_POPUPS",
+        "NewsReader",
+        "ONLY_PANEL",
+        "S",
+        "SYSTEM_POPUP_CATS",
+        "WS_DEVICE",
+        "api",
+        "appEnabled",
+        "inApp",
+        "openInApp",
+        "openTerm",
+        "openTerms",
+        "toast"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "panes",
+        "notif-badge",
+        "btn-news",
+        "notices"
+      ],
+      "routes": [
+        "/terminal-panes",
+        "/focus"
+      ],
+      "storage_keys": [],
+      "post_messages": [
+        "comandos/select-pane",
+        "webkit.centro:{headerAction=notices}"
+      ],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 32,
+      "warnings": []
+    },
+    {
+      "id": "script:device-drafts.js",
+      "kind": "script",
+      "component": "device-drafts",
+      "source": "dash/device-drafts.js",
+      "pages": [
+        "term.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "7684f56c8d3a4d2538b4a0935d00df7282f85fad8042fa6c7a0bbdc4e7a9e617",
+      "lines": 93,
+      "line_start": 1,
+      "defines": [
+        "ComandosDeviceDrafts"
+      ],
+      "define_kinds": {
+        "ComandosDeviceDrafts": "window"
+      },
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 15,
+      "warnings": []
+    },
+    {
+      "id": "term:main",
+      "kind": "region",
+      "component": "term-main",
+      "source": "dash/term.html",
+      "pages": [
+        "term.html"
+      ],
+      "script_index": 1,
+      "marker_start": "(function () {",
+      "marker_end": "</script>",
+      "sha256": "5a750fbd26eb334ae1a386faba30e4dc8e0753eb751b7c7b8d1564680fe0bf86",
+      "lines": 1712,
+      "line_start": 288,
+      "defines": [
+        "__comandosTerm",
+        "background",
+        "__comandosOwnsTouchGestures"
+      ],
+      "define_kinds": {
+        "__comandosOwnsTouchGestures": "window",
+        "__comandosTerm": "window",
+        "background": "window"
+      },
+      "uses_globals": [
+        "ComandosDeviceDrafts"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [
+        "dbg",
+        "err",
+        "term",
+        "term-toolbar",
+        "term-shell",
+        "mobile-draft",
+        "paste-dialog",
+        "history-text",
+        "terminal-history",
+        "paste-text",
+        "selection-toolbar",
+        "pane-dialog",
+        "mobile-compose",
+        "draft-insert",
+        "history-pane",
+        "history-status",
+        "selection-close",
+        "history-refresh",
+        "history-bottom",
+        "selection-copy",
+        "selection-all",
+        "pane-list",
+        "pane-status",
+        "pane-confirm",
+        "pane-confirm-label",
+        "pane-close-confirm",
+        "pane-cancel",
+        "pane-dismiss"
+      ],
+      "routes": [
+        "/tmux-scroll",
+        "/workspace/client",
+        "/terminal-history",
+        "/terminal-panes"
+      ],
+      "storage_keys": [
+        "comandos.deviceId"
+      ],
+      "post_messages": [
+        "comandos-term/interaction-request",
+        "comandos-term/ready",
+        "comandos-term/user-interaction",
+        "comandos-term/pane-selected"
+      ],
+      "message_types": [
+        "button-style",
+        "ctrl",
+        "focus",
+        "interaction-state",
+        "keydown",
+        "mode",
+        "paste",
+        "select-pane",
+        "theme",
+        "toolbar"
+      ],
+      "intervals_ms": [],
+      "strings": 658,
+      "warnings": []
+    },
+    {
+      "id": "term:tail",
+      "kind": "region",
+      "component": "term-tail",
+      "source": "dash/term.html",
+      "pages": [
+        "term.html"
+      ],
+      "script_index": 2,
+      "marker_start": "/* Marcos + cabecera B por pane en el remoto (grill 30-sep): misma geometría que",
+      "marker_end": "</script>",
+      "sha256": "1d3e89a2c57cb1c0c979756832190b69e40453de1065bad0abe9185060df15b5",
+      "lines": 336,
+      "line_start": 2003,
+      "defines": [],
+      "define_kinds": {},
+      "uses_globals": [
+        "__comandosTerm"
+      ],
+      "mutates_globals": [],
+      "parent_refs": [
+        "openPaneExtensions",
+        "openTerms"
+      ],
+      "dom_ids": [
+        "pane-chrome",
+        "term"
+      ],
+      "routes": [
+        "/terminal-panes",
+        "/accounts",
+        "/account/add",
+        "/model/status",
+        "/account/switch",
+        "/tab-models"
+      ],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [
+        100,
+        2000
+      ],
+      "strings": 232,
+      "warnings": []
+    },
+    {
+      "id": "script:sw.js",
+      "kind": "script",
+      "component": "sw",
+      "source": "dash/sw.js",
+      "pages": [],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "500e28452888fd4a1438cc59f10cd373ed79807291f6bc53b1c4e799fe8ec5e9",
+      "lines": 80,
+      "line_start": 1,
+      "defines": [
+        "SHELL",
+        "eventIdFrom"
+      ],
+      "define_kinds": {
+        "SHELL": "const",
+        "eventIdFrom": "function"
+      },
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "dom_ids": [],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [
+        "*/comandos:open-event"
+      ],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 53,
+      "warnings": []
+    }
+  ],
+  "port_order": [
+    {
+      "level": 0,
+      "units": [
+        "script:session-config.js"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "script:workspace-layout.js"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "script:quick-terminal.js"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "script:command-sidebar.js"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "region:prelude"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "region:red"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "region:identidad-de-fila"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "region:toasts"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "region:iconos"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "region:tabs-internos-de-modales"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "region:solid-range-fill"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "script:analytics-render.js"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "script:extensions.js"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "script:ui-sounds.js"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "script:push-settings.js"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "script:device-drafts.js"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "script:sw.js"
+      ]
+    },
+    {
+      "level": 1,
+      "units": [
+        "script:chain-builder.js"
+      ]
+    },
+    {
+      "level": 1,
+      "units": [
+        "region:i18n"
+      ]
+    },
+    {
+      "level": 1,
+      "units": [
+        "script:analytics.js"
+      ]
+    },
+    {
+      "level": 1,
+      "units": [
+        "script:notifications.js"
+      ]
+    },
+    {
+      "level": 1,
+      "units": [
+        "term:main"
+      ]
+    },
+    {
+      "level": 2,
+      "units": [
+        "script:workspace-dock.js",
+        "region:app-nativa",
+        "region:helpers",
+        "region:app-combinada",
+        "region:barra-de-comandos",
+        "region:render",
+        "region:registro-local-de-uso",
+        "region:avisos-de-eventos",
+        "region:loop",
+        "region:conmutador-ctrl-k",
+        "region:tema",
+        "region:prefs-de-terminal",
+        "region:servidores",
+        "region:modales-en-medio",
+        "region:snippets",
+        "region:analytics",
+        "script:workspace.js",
+        "script:work-marks.js"
+      ]
+    },
+    {
+      "level": 2,
+      "units": [
+        "term:tail"
+      ]
+    },
+    {
+      "level": 3,
+      "units": [
+        "region:favoritos"
+      ]
+    },
+    {
+      "level": 3,
+      "units": [
+        "region:preview-de-tipografia"
+      ]
+    },
+    {
+      "level": 3,
+      "units": [
+        "region:remoto"
+      ]
+    },
+    {
+      "level": 3,
+      "units": [
+        "region:notificaciones-del-sistema"
+      ]
+    },
+    {
+      "level": 3,
+      "units": [
+        "region:funciones-de-ui-globales"
+      ]
+    },
+    {
+      "level": 3,
+      "units": [
+        "script:pomodoro.js"
+      ]
+    },
+    {
+      "level": 3,
+      "units": [
+        "script:news-reader.js"
+      ]
+    },
+    {
+      "level": 4,
+      "units": [
+        "region:ui-general"
+      ]
+    },
+    {
+      "level": 4,
+      "units": [
+        "region:tail"
+      ]
+    }
+  ]
+}

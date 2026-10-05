@@ -1,0 +1,29 @@
+<meta charset="utf-8">
+<title>Fixture del inventario</title>
+<!-- <script src="/comentado.js"></script> no es una etiqueta -->
+<script src="/a.js?v=1"></script>
+<script src="/vendor/externo.min.js"></script>
+<button id="btn-notif">avisos</button>
+<div id="board"></div>
+<script>
+"use strict";
+const S = { n: 0 };
+// ---------- red ----------
+async function api(path){ return fetch("/webterm-token") }
+// ---------- helpers ----------
+function esc(s){return s}
+let counter = 0;
+const $ = s => document.querySelector(s);
+// ---------- render ----------
+function render(){
+  $("#board").textContent = esc(`fila ${counter}`);
+  // api("/comentario") no es una ruta
+  const note = "api('/cadena') tampoco";
+  return note;
+}
+</script>
+<script src="b.js"></script>
+<script>
+// cola: segundo script en línea
+render();
+</script>
