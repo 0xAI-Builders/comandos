@@ -1,6 +1,9 @@
-//! Corte `tabs` (plan 2f-1, Tarea 3): crear y revivir sesiones.
+//! Corte `tabs` (plan 2f-1, Tareas 3 y 5): crear y revivir sesiones.
 //! POST `/recover-tab` (9540), `/ensure` (9713), `/new` (9737), `/shell`
-//! (9758) y `/up` (9774) de `bin/cc-dash`, con las piezas que las otras tareas
+//! (9758), `/up` (9774), `/ssh-connect` (9130, `ssh_connect` 7750) y
+//! `/ssh-new-tab` (9137, `ssh_open_new_tab` 7801) de `bin/cc-dash`, el
+//! registro de la terminal rápida fuera de la barra (`quick_register`, que
+//! llama `quick.rs`) y las piezas que las otras tareas
 //! del corte reutilizan: `agent_launch` (5948), `agent_set` (5965),
 //! `scope_cmd` (5420), `tmux_new_session` (5441), `ensure_shell_window`
 //! (5458), `focus_session` (5533) y `select_claude_window` (7735).
@@ -30,6 +33,18 @@
 //! `app-focus.json`, el registro de pestañas, la terminal (`systemd-run --user
 //! --collect --quiet <terminal> …`) y `wmctrl` con el pulso keep-above. Nunca
 //! mata ni renombra sesiones; todo destino es `=<sesión pedida>`.
+//!
+//! SSH (T5), en vivo: la prueba de llave `ssh -o BatchMode=yes -o
+//! ConnectTimeout=6 <host> true` (14 s, proceso asíncrono, nunca un hilo
+//! retenido), `ssh -O check <host>` (3 s, solo consulta el socket de control),
+//! `systemd-run --user --scope --collect --quiet tmux new-session -d -s
+//! ssh-<host>|sshtab-<host>-<i> -n ssh "ssh <host>; exec $SHELL"`,
+//! `set-option -t <s> mouse off` (sin `=`, como el Python), `send-keys` al
+//! pane de `=ssh-<host>:` y el registro. El `ssh` es `opts.ssh` (el mismo que
+//! `/state`). Diferencias del Python que se reproducen tal cual: un host con
+//! `.` da una sesión que tmux renombra (`.` → `_`) y los `=<s>` siguientes no
+//! la encuentran; un alias que empieza por `-` (lo admite `SSH_HOST_RE`)
+//! llega a `ssh` como opción.
 use super::{
     Answer, Entry, Fault, Key, Native, NativeOptions, NativeRoute, Verb, light, procs, py, reply,
     states::gather::session_labels,
@@ -60,6 +75,8 @@ pub enum SessionsRoute {
     New,
     Shell,
     Up,
+    SshConnect,
+    SshNewTab,
 }
 
 impl SessionsRoute {
@@ -71,6 +88,8 @@ impl SessionsRoute {
             SessionsRoute::New => "/new",
             SessionsRoute::Shell => "/shell",
             SessionsRoute::Up => "/up",
+            SessionsRoute::SshConnect => "/ssh-connect",
+            SessionsRoute::SshNewTab => "/ssh-new-tab",
         }
     }
 }
@@ -89,6 +108,8 @@ pub const ROUTES: &[Entry] = &[
     entry(SessionsRoute::New),
     entry(SessionsRoute::Shell),
     entry(SessionsRoute::Up),
+    entry(SessionsRoute::SshConnect),
+    entry(SessionsRoute::SshNewTab),
 ];
 
 /// `AGENT_LAUNCH` (5935), literal.
@@ -191,8 +212,12 @@ pub async fn answer(native: &Arc<Native>, route: SessionsRoute, request: &Reques
 }
 
 async fn run(native: &Native, route: SessionsRoute, data: Map<String, Value>) -> Answer {
-    if route == SessionsRoute::RecoverTab {
-        return recover_tab(native, &data).await;
+    // Las tres van antes de `resolve_project_session` en el `do_POST` del Python.
+    match route {
+        SessionsRoute::RecoverTab => return recover_tab(native, &data).await,
+        SessionsRoute::SshConnect => return ssh_connect(native, &data).await,
+        SessionsRoute::SshNewTab => return ssh_new_tab(native, &data).await,
+        _ => {}
     }
     let value = Value::Object(data);
     let pt = match target::post_target(native, route.path(), &value).await {
@@ -207,7 +232,9 @@ async fn run(native: &Native, route: SessionsRoute, data: Map<String, Value>) ->
         SessionsRoute::New => new(native, &pt, &data).await,
         SessionsRoute::Shell => shell(native, &pt, &data, raw_cwd(&data)?).await,
         SessionsRoute::Up => up(native, &pt, &data, raw_cwd(&data)?).await,
-        SessionsRoute::RecoverTab => Err(failure()),
+        SessionsRoute::RecoverTab | SessionsRoute::SshConnect | SessionsRoute::SshNewTab => {
+            Err(failure())
+        }
     }
 }
 
@@ -1054,6 +1081,349 @@ async fn up(
     }
     focus_session(native, sess, "claude").await?;
     reply(StatusCode::OK, &json!({"ok": true}))
+}
+
+// ------------------------------------------------------------- ssh (T5)
+
+/// Plazo de la prueba de llave (`subprocess.run(..., timeout=14)`).
+const SSH_PROBE_SECONDS: u64 = 14;
+
+/// Plazo de `ssh -O check` en `ssh_state` (`timeout=3`).
+const SSH_CHECK_SECONDS: u64 = 3;
+
+/// `"Host desconocido; agregalo primero"` de las dos rutas.
+const UNKNOWN_HOST: &str = "Host desconocido; agregalo primero";
+
+/// `data.get("host", "")`: un valor que no es texto (también `null`) llega a
+/// `SSH_HOST_RE.match` y lanza `TypeError` en el Python (500).
+fn host_of(data: &Map<String, Value>) -> Result<String, Fault> {
+    match data.get("host") {
+        None => Ok(String::new()),
+        Some(Value::String(host)) => Ok(host.clone()),
+        Some(_) => Err(failure()),
+    }
+}
+
+/// `any(h["host"] == host for h in parse_ssh_config())` (equivale a
+/// `ssh_host_entry(host)`): lee el `~/.ssh/config` del HOME del frente en un
+/// hilo de bloqueo; un error al leerlo (salvo «no existe») lanza en el Python.
+async fn known_host(opts: &NativeOptions, host: &str) -> Result<bool, Fault> {
+    let (home, host) = (opts.home.clone(), host.to_owned());
+    blocking(move || {
+        ssh_config::host_entry(&home, &host)
+            .map(|entry| entry.is_some())
+            .map_err(|_| failure())
+    })
+    .await
+}
+
+/// La prueba de llave: `ssh -o BatchMode=yes -o ConnectTimeout=6 <host> true`
+/// con `text=True` y 14 s. Cualquier excepción (no arranca, vence el plazo,
+/// salida que no es UTF-8) es `keyok=False, stderr="timeout"`. Proceso
+/// asíncrono: la espera no ocupa ningún hilo; al vencer, `kill_on_drop` mata
+/// el `ssh` como `subprocess.run`.
+async fn ssh_probe(opts: &NativeOptions, host: &str) -> (bool, String) {
+    mark_effect();
+    let args = [
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=6",
+        host,
+        "true",
+    ];
+    match run_program(&opts.ssh, &args, Duration::from_secs(SSH_PROBE_SECONDS)).await {
+        Ok(out) => (out.ok, out.stderr.to_lowercase()),
+        Err(_) => (false, "timeout".into()),
+    }
+}
+
+/// `subprocess.run(["ssh", "-O", "check", host], capture_output=True,
+/// timeout=3).returncode == 0` dentro de `try/except Exception`: solo cuenta
+/// el estado (la salida son bytes; no se decodifica).
+async fn ssh_control_alive(opts: &NativeOptions, host: &str) -> bool {
+    let program = &opts.ssh;
+    let mut cmd = tokio::process::Command::new(&program.path);
+    cmd.args(&program.prefix)
+        .args(["-O", "check", host])
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
+    if program.env_clear {
+        cmd.env_clear();
+    }
+    for name in &program.env_remove {
+        cmd.env_remove(name);
+    }
+    for (name, value) in &program.env {
+        cmd.env(name, value);
+    }
+    matches!(
+        tokio::time::timeout(Duration::from_secs(SSH_CHECK_SECONDS), cmd.output()).await,
+        Ok(Ok(out)) if out.status.success()
+    )
+}
+
+/// `ssh_state(sess)` (7714): `"ssh"` si algún pane corre `ssh`; `"mux"` si el
+/// maestro de control de `ssh -O check` sigue vivo; `""` si no. Solo lee.
+async fn ssh_state(opts: &NativeOptions, sess: &str) -> Result<&'static str, Fault> {
+    let target = format!("={sess}");
+    let panes = tmux(
+        opts,
+        &[
+            "list-panes",
+            "-s",
+            "-t",
+            &target,
+            "-F",
+            "#{pane_current_command}",
+        ],
+    )
+    .await?;
+    if panes.ok && split_ws(&panes.stdout).contains(&"ssh") {
+        return Ok("ssh");
+    }
+    // `sess[4:]`: quien llama pasa `"ssh-" + host`.
+    let host = sess.get(4..).unwrap_or("");
+    if ssh_config::is_host(host) && ssh_control_alive(opts, host).await {
+        return Ok("mux");
+    }
+    Ok("")
+}
+
+/// `scope_cmd(["tmux", "new-session", "-d", "-s", sess, "-n", "ssh", "ssh
+/// <shlex.quote(host)>; exec $SHELL"])` con 15 s; `Err` con el texto del 400
+/// (`r.stderr.strip() or "No se pudo crear la sesion"`) si tmux falla.
+async fn new_ssh_session(
+    opts: &NativeOptions,
+    sess: &str,
+    host: &str,
+) -> Result<Result<(), String>, Fault> {
+    let command = format!("ssh {}; exec $SHELL", shlex_quote(host));
+    mark_effect();
+    let out = run_scoped_tmux(
+        opts,
+        &["new-session", "-d", "-s", sess, "-n", "ssh", &command],
+    )
+    .await?;
+    if out.ok {
+        return Ok(Ok(()));
+    }
+    let text = py::strip(&out.stderr);
+    Ok(Err(if text.is_empty() {
+        "No se pudo crear la sesion".into()
+    } else {
+        text.to_owned()
+    }))
+}
+
+/// `tmux("set-option", "-t", sess, "mouse", "off")`: sin `=`, tal cual el
+/// Python.
+async fn mouse_off(opts: &NativeOptions, sess: &str) -> Result<(), Fault> {
+    mutate(opts, &["set-option", "-t", sess, "mouse", "off"]).await?;
+    Ok(())
+}
+
+/// `400 {"error": note}` de las dos rutas cuando no hay sesión.
+fn ssh_refused(note: &str) -> Answer {
+    reply(StatusCode::BAD_REQUEST, &json!({"error": note}))
+}
+
+/// ¿El `stderr` (ya en minúsculas) de la prueba de llave pide contraseña?
+fn asks_password(stderr: &str) -> bool {
+    stderr.contains("denied") || stderr.contains("authentication")
+}
+
+/// POST `/ssh-connect` (9130, `ssh_connect` 7750): la sesión `ssh-<host>`;
+/// verifica la llave antes de prometer nada.
+async fn ssh_connect(native: &Native, data: &Map<String, Value>) -> Answer {
+    const PATH: &str = "/ssh-connect";
+    let opts = native.options();
+    let host = host_of(data)?;
+    if !ssh_config::is_host(&host) || !known_host(opts, &host).await? {
+        return ssh_refused(UNKNOWN_HOST);
+    }
+    let sess = format!("ssh-{host}");
+    let done = |connected: bool, note: Option<String>| {
+        reply(
+            StatusCode::OK,
+            &json!({"ok": true, "session": sess, "connected": connected, "note": note}),
+        )
+    };
+    write_meta(native, PATH, &sess, "ssh", &host, "").await?;
+    let target = format!("={sess}");
+    if tmux(opts, &["has-session", "-t", &target]).await?.ok {
+        mouse_off(opts, &sess).await?;
+        let state = ssh_state(opts, &sess).await?;
+        if state == "ssh" {
+            return done(true, None);
+        }
+        // El ssh del pane murió: relanzar la conexión en su pestaña.
+        let pane = format!("={sess}:");
+        let line = format!("ssh {host}");
+        mutate(opts, &["send-keys", "-t", &pane, "-l", "--", &line]).await?;
+        mutate(opts, &["send-keys", "-t", &pane, "Enter"]).await?;
+        if state == "mux" {
+            return done(
+                true,
+                Some(format!(
+                    "Reconectado a {host} por el tunel vivo (sin password)"
+                )),
+            );
+        }
+        return done(
+            false,
+            Some("Reintentando conexion en su pestana; si pide password, tecleala ahi".into()),
+        );
+    }
+    let (keyok, stderr) = ssh_probe(opts, &host).await;
+    if let Err(note) = new_ssh_session(opts, &sess, &host).await? {
+        return ssh_refused(&note);
+    }
+    mouse_off(opts, &sess).await?;
+    if keyok {
+        return done(true, None);
+    }
+    let note = if asks_password(&stderr) {
+        format!(
+            "{host} pide password: tecleala en su pestana (o corre cc-keys para no volver a hacerlo)"
+        )
+    } else {
+        format!("{host} no responde (red caida o host apagado); la pestana quedo reintentando")
+    };
+    done(false, Some(note))
+}
+
+/// `ssh_new_tab_session(host)` (7791): `sshtab-<host>-<i>` (prefijo recortado
+/// a 80 caracteres en total) para el primer `i` sin sesión; `""` si no hay.
+async fn ssh_new_tab_session(opts: &NativeOptions, host: &str) -> Result<String, Fault> {
+    let prefix = format!("sshtab-{host}");
+    for i in 1..1000 {
+        let suffix = format!("-{i}");
+        let sess = format!(
+            "{}{suffix}",
+            py::take_chars(&prefix, 80usize.saturating_sub(suffix.chars().count()))
+        );
+        let target = format!("={sess}");
+        if !tmux(opts, &["has-session", "-t", &target]).await?.ok {
+            return Ok(sess);
+        }
+    }
+    Ok(String::new())
+}
+
+/// POST `/ssh-new-tab` (9137, `ssh_open_new_tab` 7801): SIEMPRE una sesión y
+/// una pestaña nuevas para un host guardado.
+async fn ssh_new_tab(native: &Native, data: &Map<String, Value>) -> Answer {
+    const PATH: &str = "/ssh-new-tab";
+    let opts = native.options();
+    let host = host_of(data)?;
+    if !ssh_config::is_host(&host) || !known_host(opts, &host).await? {
+        return ssh_refused(UNKNOWN_HOST);
+    }
+    let sess = ssh_new_tab_session(opts, &host).await?;
+    if sess.is_empty() {
+        return ssh_refused("No pude generar nombre de sesion SSH");
+    }
+    // El registro se lee antes de la prueba y de la sesión (ruling 2).
+    registry_preflight(native, PATH, false).await?;
+    let (keyok, stderr) = ssh_probe(opts, &host).await;
+    if let Err(note) = new_ssh_session(opts, &sess, &host).await? {
+        return ssh_refused(&note);
+    }
+    mouse_off(opts, &sess).await?;
+    mark_effect();
+    tab_registry::write_app_tab(native, &sess, &host)
+        .await
+        .map_err(|e| e.into_fault(PATH))?;
+    write_meta(native, PATH, &sess, "ssh-tab", &host, "").await?;
+    let note = if keyok {
+        None
+    } else if asks_password(&stderr) {
+        Some(format!("{host} pide password en su nueva pestana"))
+    } else {
+        Some(format!(
+            "{host} no responde o pide intervencion en su nueva pestana"
+        ))
+    };
+    reply(
+        StatusCode::OK,
+        &json!({
+            "ok": true,
+            "session": sess,
+            "label": host,
+            "connected": keyok,
+            "note": note,
+        }),
+    )
+}
+
+// ------------------------------------------- terminal rápida fuera de la barra
+
+/// Ruta de las líneas de stderr del registro de la terminal rápida.
+const QUICK_PATH: &str = "/terminal/quick";
+
+/// Antes de cualquier efecto de POST `/terminal/quick` sin `place:"sidebar"`
+/// (llama `quick.rs`): con el corte `tabs` apagado declina (la rama escribe el
+/// registro, P12 del pre-flight); un archivo del registro incierto es el 500
+/// del ruling 2 sin reclamo ni sesión.
+pub(crate) async fn quick_register_ready(native: &Native) -> Result<(), Fault> {
+    if super::cut_is_off(&native.options().cuts_off, super::Cut::Tabs) {
+        return Err(Fault::Decline);
+    }
+    registry_preflight(native, QUICK_PATH, false).await
+}
+
+/// `quick_terminal_register(sess, label, cwd)` (5505): la pestaña `scratch` en
+/// el registro y `workspace_sync(reason="user")` (un fallo de la
+/// sincronización solo va a stderr). `Err` es el `str(exc)` que el `try` de
+/// `open_quick_terminal` convierte en el 502 de lanzamiento.
+pub(crate) async fn quick_register(
+    native: &Native,
+    sess: &str,
+    label: &str,
+    cwd: &str,
+) -> Result<(), String> {
+    let registered =
+        tab_registry::register_app_tab(native, sess, Some(label), "scratch", "", cwd).await;
+    if let Err(error) = registered {
+        return Err(match error {
+            // `[Errno N] <strerror>` sin el nombre del temporal de `mkstemp`
+            // (aleatorio en el Python: no se reproduce).
+            RegistryError::Io(error) => match error.raw_os_error() {
+                Some(code) => {
+                    let text = error.to_string();
+                    let strerror = text
+                        .strip_suffix(&format!(" (os error {code})"))
+                        .unwrap_or(&text);
+                    format!("[Errno {code}] {strerror}")
+                }
+                None => error.to_string(),
+            },
+            // Solo si el registro cambió tras `quick_register_ready`: el
+            // Python lo leería con `load_json_file`; aquí, el fallo anotado.
+            other => {
+                let _ = other.into_fault(QUICK_PATH);
+                "Error interno del tablero".into()
+            }
+        });
+    }
+    let hooks = native.options().hooks.clone();
+    let now_seconds = (native.options().clock)() as f64 / 1000.0;
+    let synced = native
+        .with_state(move |b| super::workspace::sync_with_reason(b, &hooks, now_seconds, "user"))
+        .await;
+    match synced {
+        Ok(Ok(_)) => {}
+        Ok(Err(fault)) | Err(fault) => {
+            let what = match fault {
+                Fault::Decline => "no reproducible en el frente",
+                Fault::Error(HandlerError::Timeout) => "tiempo agotado",
+                Fault::Error(_) => "error interno",
+            };
+            eprintln!("workspace quick terminal {sess}: {what}");
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

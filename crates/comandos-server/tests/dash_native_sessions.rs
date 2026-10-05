@@ -518,3 +518,290 @@ async fn bad_inputs_match_python() {
     }
     assert!(windows(&t.a).is_empty() && windows(&t.b).is_empty());
 }
+
+/// `ssh` falso de las pruebas SSH (los dos `fakebin` y el `opts.ssh` del
+/// frente): anota en `$HOME/fakebin.log` (el HOME confinado de cada lado) y
+/// nunca abre una conexión. `-O check` sale con 0 solo para `tunel` (túnel de
+/// control vivo); la prueba de llave (`… <host> true`) sale con 0 para `bueno`,
+/// con 255 y `Permission denied` para `malo` y con 255 y un plazo vencido para
+/// `tunel`; cualquier otra llamada (la del panel, `ssh <host>`) sale con 255.
+const FAKE_SSH: &str = "#!/bin/sh\n\
+printf '%s\\0' ssh \"$@\" \"$(printf '\\036')\" >> \"$HOME/fakebin.log\"\n\
+if [ \"$1\" = -O ]; then [ \"$3\" = tunel ] && exit 0; exit 255; fi\n\
+case \"$*\" in\n\
+  *' bueno true') exit 0 ;;\n\
+  *' malo true') echo 'malo: Permission denied (publickey).' >&2; exit 255 ;;\n\
+  *' tunel true') echo 'ssh: connect to host tunel port 22: Connection timed out' >&2; exit 255 ;;\n\
+esac\n\
+exit 255\n";
+
+/// `~/.ssh/config` del HOME temporal con los tres hosts de las pruebas y el
+/// `ssh` falso de nuevo en el `fakebin` (`seed_registry` reinstala el que
+/// siempre falla).
+fn seed_ssh(home: &TestHome) {
+    use std::os::unix::fs::PermissionsExt;
+    seed_registry(home);
+    let fake = home.root.join("fakebin/ssh");
+    std::fs::write(&fake, FAKE_SSH).unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::write(
+        home.root.join(".ssh/config"),
+        "Host bueno\n  HostName 10.0.0.2\n\nHost malo\n  User u\n\nHost tunel\n",
+    )
+    .unwrap();
+}
+
+/// Nombres de las sesiones del servidor privado de `home`, ordenados.
+fn sessions_of(home: &TestHome) -> Vec<String> {
+    let out = home
+        .tmux_command()
+        .args(["list-sessions", "-F", "#{session_name}"])
+        .output()
+        .unwrap();
+    let mut names: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    names.sort();
+    names
+}
+
+#[tokio::test]
+async fn ssh_routes_match_python() {
+    let Some(t) = Twin::start_with(
+        "ssh",
+        seed_ssh,
+        support::twin::TwinOpts {
+            fakebin_extra: vec![("ssh".into(), FAKE_SSH.into())],
+            ..Default::default()
+        },
+    )
+    .await
+    else {
+        return;
+    };
+    assert_confined(&t);
+    // Crear: prueba de llave buena, sesión `ssh-bueno` con el `ssh` falso.
+    let (status, log) = same_logged(&t, "/ssh-connect", r#"{"host":"bueno"}"#).await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        log,
+        argv(&[
+            &[
+                "new-session",
+                "-d",
+                "-s",
+                "ssh-bueno",
+                "-n",
+                "ssh",
+                "ssh bueno; exec $SHELL"
+            ],
+            &["set-option", "-t", "ssh-bueno", "mouse", "off"],
+        ])
+    );
+    wait_fake(&t, "ssh", 2).await;
+    // Repetida: la sesión existe y su ssh murió (el falso sale): se reintenta.
+    let (status, log) = same_logged(&t, "/ssh-connect", r#"{"host":"bueno"}"#).await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        log,
+        argv(&[
+            &["set-option", "-t", "ssh-bueno", "mouse", "off"],
+            &["send-keys", "-t", "=ssh-bueno:", "-l", "--", "ssh bueno"],
+            &["send-keys", "-t", "=ssh-bueno:", "Enter"],
+        ])
+    );
+    // Llave rechazada y host que no responde; repetida con túnel vivo: «mux».
+    for body in [
+        r#"{"host":"malo"}"#,
+        r#"{"host":"tunel"}"#,
+        r#"{"host":"tunel"}"#,
+    ] {
+        assert_eq!(same(&t, "/ssh-connect", body).await, 200, "{body}");
+    }
+    // Desconocidos y entradas raras: sin efectos (o el 500 del Python).
+    for body in [
+        r#"{"host":"desconocido"}"#,
+        r#"{"host":"mal host"}"#,
+        r#"{}"#,
+        r#"{"host":null}"#,
+        r#"{"host":5}"#,
+    ] {
+        same(&t, "/ssh-connect", body).await;
+        same(&t, "/ssh-new-tab", body).await;
+    }
+    // Pestañas nuevas: siempre una sesión más, `sshtab-<host>-<i>`.
+    for body in [
+        r#"{"host":"bueno"}"#,
+        r#"{"host":"bueno"}"#,
+        r#"{"host":"malo"}"#,
+        r#"{"host":"tunel"}"#,
+    ] {
+        assert_eq!(same(&t, "/ssh-new-tab", body).await, 200, "{body}");
+    }
+    assert_eq!(sessions_of(&t.a), sessions_of(&t.b), "list-sessions");
+    assert_eq!(
+        sessions_of(&t.a),
+        [
+            "ssh-bueno",
+            "ssh-malo",
+            "ssh-tunel",
+            "sshtab-bueno-1",
+            "sshtab-bueno-2",
+            "sshtab-malo-1",
+            "sshtab-tunel-1"
+        ]
+    );
+    // Llamadas al `ssh` falso: pruebas de llave, `-O check` y los paneles.
+    wait_fake(&t, "ssh", 18).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let (mut fa, mut fb) = (fakes(&t.a, &["ssh"]), fakes(&t.b, &["ssh"]));
+    fa.sort();
+    fb.sort();
+    assert_eq!(fa, fb, "llamadas a ssh");
+    assert_eq!(scope_calls(&t.a), scope_calls(&t.b), "systemd-run");
+    assert_eq!(windows(&t.a), windows(&t.b), "ventanas");
+}
+
+/// `T-YYYY-MM-DD-HH-MM-SS[-n]` (la carpeta fechada de la terminal rápida) como
+/// `T-FECHA`: el frente de las pruebas tiene el reloj fijo y el Python, el real.
+fn undated(text: &str) -> String {
+    regex::Regex::new(r"T-[0-9]{4}(-[0-9]{2}){5}(-[0-9]+)?")
+        .unwrap()
+        .replace_all(text, "T-FECHA")
+        .into_owned()
+}
+
+/// El documento de `GET /workspace` comparable: sin `revision`, con las
+/// marcas de tiempo normalizadas y la carpeta fechada como `T-FECHA`.
+fn workspace_doc(home: &TestHome, wire: &support::Wire) -> String {
+    let mut doc: serde_json::Value = serde_json::from_slice(&wire.body).unwrap();
+    if let Some(map) = doc.as_object_mut() {
+        map.remove("revision");
+    }
+    undated(&comparable(home, &doc.to_string()))
+}
+
+#[tokio::test]
+async fn quick_terminal_outside_sidebar_registers_tab() {
+    let Some(t) = Twin::start_with(
+        "quick-tab",
+        seed_registry,
+        support::twin::TwinOpts {
+            // La misma base que el Python (`default_base()` en su HOME).
+            front: Some(Box::new(|o| {
+                o.quick_base = o.home.join("codebase/0xJesus/Terminal");
+            })),
+            ..Default::default()
+        },
+    )
+    .await
+    else {
+        return;
+    };
+    assert_confined(&t);
+    let body = r#"{"requestId":"rq-2f-0001"}"#;
+    for created in [true, false] {
+        take_mutations(&t);
+        let run = t.post("/terminal/quick", body).await;
+        assert_eq!(
+            (run.front.status, run.oracle.status),
+            (200, 200),
+            "{} / {}",
+            run.front.text(),
+            run.oracle.text()
+        );
+        assert_eq!(
+            undated(&comparable(&t.a, &run.front.text())),
+            undated(&comparable(&t.b, &run.oracle.text())),
+            "cuerpo"
+        );
+        assert!(
+            run.front
+                .text()
+                .contains(&format!("\"created\": {created}"))
+        );
+        for name in FILES {
+            assert_eq!(
+                read_normalized(&t.a, name).map(|s| undated(&s)),
+                read_normalized(&t.b, name).map(|s| undated(&s)),
+                "{name}"
+            );
+        }
+        let (a, b) = take_mutations(&t);
+        assert_eq!(
+            a.iter().map(|c| undated(&c.join(" "))).collect::<Vec<_>>(),
+            b.iter().map(|c| undated(&c.join(" "))).collect::<Vec<_>>(),
+            "órdenes de tmux"
+        );
+    }
+    let meta = read_normalized(&t.a, "app-tabs-meta.json").unwrap();
+    assert!(meta.contains(r#""kind": "scratch""#), "{meta}");
+    let ws = t.get("/workspace").await;
+    assert_eq!((ws.front.status, ws.oracle.status), (200, 200));
+    let (wa, wb) = (
+        workspace_doc(&t.a, &ws.front),
+        workspace_doc(&t.b, &ws.oracle),
+    );
+    assert_eq!(wa, wb, "workspace");
+    assert!(wa.contains("term-q"), "{wa}");
+    assert_eq!(sessions_of(&t.a), sessions_of(&t.b), "list-sessions");
+}
+
+/// Un `app-tabs-meta.json` que el frente no lee con certeza (anidamiento ≥
+/// 1000): la terminal rápida fuera de la barra y `/ssh-new-tab` responden el
+/// 500 del ruling 2 ANTES de reclamar, probar la llave o crear la sesión; con
+/// el corte `tabs` apagado, las dos declinan. La terminal de la barra no lee
+/// el registro y sigue igual.
+#[tokio::test]
+async fn unsure_registry_answers_500_before_effects() {
+    if !support::tmux_available() {
+        return;
+    }
+    let home = TestHome::new_short("sess-unsure");
+    seed_ssh(&home);
+    let deep = format!("{}{}", "[".repeat(1100), "]".repeat(1100));
+    home.write("app-tabs-meta.json", &deep);
+    let legacy = FakeLegacy::start().await;
+    let mut opts = options_for(&home);
+    opts.scope = Some(comandos_server::dash::native::quick::scope_program(
+        home.root.join("fakebin/systemd-run"),
+    ));
+    opts.ssh = opts.program(home.root.join("fakebin/ssh"));
+    opts.quick_base = home.root.join("Terminal");
+    let fr = front(&home, legacy.port, opts.clone()).await;
+    for (path, body) in [
+        ("/terminal/quick", r#"{"requestId":"rq-incierto"}"#),
+        ("/ssh-new-tab", r#"{"host":"bueno"}"#),
+    ] {
+        let wire = request_body(fr.port, "POST", path, "", body).await;
+        assert_eq!(
+            (wire.status, wire.text()),
+            (500, r#"{"error": "Error interno del tablero"}"#.to_owned()),
+            "{path}"
+        );
+    }
+    fr.stop().await;
+    assert!(legacy.requests().is_empty(), "{:?}", legacy.requests());
+    assert!(fake_calls(&home.root).is_empty(), "ningún ssh");
+    assert!(fake_scope_calls(&home).is_empty(), "ninguna sesión");
+    assert!(!home.root.join("Terminal").exists(), "ningún reclamo");
+    assert_eq!(
+        std::fs::read_to_string(home.hooks().join("app-tabs-meta.json")).unwrap(),
+        deep
+    );
+    // Corte `tabs` apagado: las dos rutas declinan sin leer nada.
+    opts.cuts_off
+        .insert(comandos_server::dash::native::Cut::Tabs);
+    let fr = front(&home, legacy.port, opts).await;
+    for (path, body) in [
+        ("/terminal/quick", r#"{"requestId":"rq-incierto"}"#),
+        ("/ssh-new-tab", r#"{"host":"bueno"}"#),
+    ] {
+        let wire = request_body(fr.port, "POST", path, "", body).await;
+        assert_eq!(wire.text(), r#"{"legacy": true}"#, "{path}");
+    }
+    fr.stop().await;
+    assert_eq!(legacy.requests().len(), 2);
+    assert!(fake_calls(&home.root).is_empty());
+}

@@ -226,7 +226,12 @@ async fn quick_terminal_concurrent_same_request_one_shell_worker_free() {
 async fn quick_terminal_outside_sidebar_unscoped_and_invalid() {
     let home = TestHome::new("quick-dec");
     let legacy = FakeLegacy::start().await;
-    let front = front(&home, legacy.port, opts(&home)).await;
+    // Fuera de la barra la terminal es una pestaña del registro (2f-1, T5):
+    // con el corte `tabs` apagado declina antes de cualquier efecto.
+    let mut cut = opts(&home);
+    cut.cuts_off
+        .insert(comandos_server::dash::native::Cut::Tabs);
+    let front = front(&home, legacy.port, cut).await;
     for body in [
         r#"{"requestId":"r"}"#,
         r#"{"requestId":"r","place":"tab"}"#,
