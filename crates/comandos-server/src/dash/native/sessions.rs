@@ -20,8 +20,8 @@
 //! registro se leen antes de crear la sesión, así un registro incierto da el
 //! 500 sin sesión nueva.
 //!
-//! Cancelación: cada petición corre en su propia tarea (`tokio::spawn`); si el
-//! cliente se va, la sesión y el registro terminan igual que en el Python.
+//! Cancelación: cada petición corre en su propia tarea, contada en
+//! `Native::tasks` (`spawn_handle`, también al apagar); si el cliente se va, la sesión y el registro terminan igual que en el Python.
 //!
 //! Efectos en vivo (los del Python, en su orden): `systemd-run --user --scope
 //! --collect --quiet tmux new-session -d -s <s> …` (plazo 15 s), `new-window -d
@@ -178,11 +178,14 @@ pub async fn answer(native: &Arc<Native>, route: SessionsRoute, request: &Reques
     }
     let data = light::data(request)?.clone();
     let effects = Arc::new(AtomicBool::new(false));
-    let job = tokio::spawn({
-        let native = Arc::clone(native);
-        let effects = Arc::clone(&effects);
-        EFFECTS.scope(effects, async move { run(&native, route, data).await })
-    });
+    let job = native
+        .tasks()
+        .spawn_handle({
+            let native = Arc::clone(native);
+            let effects = Arc::clone(&effects);
+            EFFECTS.scope(effects, async move { run(&native, route, data).await })
+        })
+        .map_err(|_| failure())?;
     let answer = job.await.map_err(|_| failure())?;
     settle(route.path(), answer, &effects)
 }
@@ -270,7 +273,7 @@ fn conf_get<'a>(conf: &'a [(String, String)], key: &str) -> Option<&'a str> {
 }
 
 /// `agent_launch(agent)` (5948). Bloquea (lee `cc-notify.conf`).
-pub fn agent_launch(opts: &NativeOptions, agent: &str) -> Result<String, Fault> {
+pub(crate) fn agent_launch(opts: &NativeOptions, agent: &str) -> Result<String, Fault> {
     // `.upper()` de Python es Unicode: solo se reproduce en ASCII.
     if !agent.is_ascii() {
         return Err(Fault::Decline);
@@ -299,7 +302,7 @@ pub fn agent_launch(opts: &NativeOptions, agent: &str) -> Result<String, Fault> 
 /// harnesses del registro salvo `shell`. Sin `config/providers.json` el
 /// `except: pass` deja solo la conf; un registro que el frente no reproduce
 /// con certeza declina (solo se llama antes de efectos). Bloquea.
-pub fn agent_set(opts: &NativeOptions) -> Result<BTreeSet<String>, Fault> {
+pub(crate) fn agent_set(opts: &NativeOptions) -> Result<BTreeSet<String>, Fault> {
     let conf = read_conf(opts)?;
     let agents = conf_get(&conf, "AGENTS");
     let repo = opts.repo_root.as_ref().ok_or(Fault::Decline)?;
@@ -324,7 +327,7 @@ pub fn agent_set(opts: &NativeOptions) -> Result<BTreeSet<String>, Fault> {
 /// van en el prefijo, P18) seguido del programa de la cola con su prefijo. El
 /// entorno de la cola (el socket privado en las pruebas) pasa al scope.
 /// `None` sin `systemd-run`: quien llama declina antes de cualquier efecto.
-pub fn scope_cmd(opts: &NativeOptions, tail: &Program) -> Option<Program> {
+pub(crate) fn scope_cmd(opts: &NativeOptions, tail: &Program) -> Option<Program> {
     let mut program = opts.scope.clone()?;
     program.prefix.push(tail.path.clone().into_os_string());
     program.prefix.extend(tail.prefix.iter().cloned());
@@ -354,7 +357,8 @@ async fn launch_of(opts: &NativeOptions, agent: &str) -> Result<String, Fault> {
 
 /// `tmux_new_session(sess, cwd, agent)` (5441): sesión en su scope con la
 /// ventana del agente y, si nació, la ventana `shell`.
-pub async fn tmux_new_session(
+#[expect(dead_code, reason = "T4–T6")]
+pub(crate) async fn tmux_new_session(
     native: &Native,
     sess: &str,
     cwd: &str,
@@ -421,7 +425,11 @@ fn split_ws(text: &str) -> Vec<&str> {
 }
 
 /// `ensure_shell_window(sess, cwd)` (5458).
-pub async fn ensure_shell_window(native: &Native, sess: &str, cwd: &str) -> Result<(), Fault> {
+pub(crate) async fn ensure_shell_window(
+    native: &Native,
+    sess: &str,
+    cwd: &str,
+) -> Result<(), Fault> {
     let opts = native.options();
     let target = format!("={sess}");
     let wins = tmux(
@@ -475,7 +483,8 @@ pub async fn ensure_shell_window(native: &Native, sess: &str, cwd: &str) -> Resu
 
 /// `select_claude_window(sess)` (7735): la ventana `claude`; si tmux la
 /// renombró, la que corre `claude`; si ninguna, la primera.
-pub async fn select_claude_window(native: &Native, sess: &str) -> Result<(), Fault> {
+#[expect(dead_code, reason = "T4–T6")]
+pub(crate) async fn select_claude_window(native: &Native, sess: &str) -> Result<(), Fault> {
     let opts = native.options();
     let claude = format!("={sess}:claude");
     if mutate(opts, &["select-window", "-t", &claude]).await?.ok {
@@ -700,7 +709,7 @@ async fn write_focus(native: &Native, sess: &str, win: &str) -> Result<(), Fault
 
 /// `focus_session(sess, win)` (5533): `Some(error)` si no hay sesión o no
 /// hay terminal que abrir.
-pub async fn focus_session(
+pub(crate) async fn focus_session(
     native: &Native,
     sess: &str,
     win: &str,

@@ -562,3 +562,78 @@ async fn tab_close_waits_for_cc_app_lock() {
     assert!(legacy.requests().is_empty());
     fr.stop().await;
 }
+
+/// Ronda 1: un cierre que el frente no reproduce a mitad del grupo (aquí el
+/// estado de `g2` con un `agent` que no es texto: el Python lanza `TypeError`
+/// en `remember_tab` y lo guarda como error; el frente responde 500). Lo ya
+/// cerrado (`g1`) llega a cc-app en la misma señal agregada que escribe el
+/// Python, y los archivos del registro quedan iguales en los dos lados.
+#[tokio::test]
+async fn aborted_group_still_signals_closed_members() {
+    fn seed_bad_agent(h: &TestHome) {
+        seed(h);
+        h.write("state/g2.json", r#"{"project": "g2", "agent": 5}"#);
+    }
+    let Some(t) = Twin::start("cg-abort", seed_bad_agent).await else {
+        return;
+    };
+    let preview = group_g(&t).await;
+    let body = close_group_body(&preview, "req-cg-abort");
+    let run = t.post("/workspace/close-group", &body).await;
+    assert_eq!(run.front.status, 500, "{}", run.front.text());
+    assert_eq!(run.oracle.status, 200, "{}", run.oracle.text());
+    let oracle = json_of(&run.oracle.text());
+    assert_eq!(oracle["closed"], json!(["g1"]));
+    assert_eq!(oracle["remaining"], json!(["g2"]));
+    t.files_equal(&REGISTRY_FILES).unwrap();
+    for home in [&t.a, &t.b] {
+        let signal =
+            json_of(&std::fs::read_to_string(home.hooks().join("app-tab-close.json")).unwrap());
+        assert_eq!(signal["sessions"], json!(["g1"]));
+        assert_eq!(signal["session"], "g1");
+    }
+    // El frente no guardó un resultado inventado: la repetición vuelve a
+    // intentar (y vuelve a parar en `g2`) en vez de devolver otro texto.
+    let meta: Option<String> = rusqlite::Connection::open(t.a.state_db())
+        .unwrap()
+        .query_row(
+            "SELECT value FROM workspace_meta WHERE key = 'close-group:req-cg-abort'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+    assert_eq!(meta, None);
+}
+
+/// Ronda 1: un resultado guardado que el Python no decodifica es su
+/// `JSONDecodeError` como 400, con el mismo texto en los dos lados.
+#[tokio::test]
+async fn corrupt_saved_result_is_the_python_400() {
+    let Some(t) = Twin::start("cg-corrupt", seed).await else {
+        return;
+    };
+    let preview = group_g(&t).await;
+    for home in [&t.a, &t.b] {
+        rusqlite::Connection::open(home.state_db())
+            .unwrap()
+            .execute(
+                "INSERT OR REPLACE INTO workspace_meta VALUES ('close-group:req-roto', ?1)",
+                ["{\"ok\": true,\n \"closed\" [\"g1\"]}"],
+            )
+            .unwrap();
+    }
+    let run = same(
+        &t,
+        "/workspace/close-group",
+        &close_group_body(&preview, "req-roto"),
+    )
+    .await;
+    assert_eq!(run.front.status, 400, "{}", run.front.text());
+    assert!(
+        run.front
+            .text()
+            .contains("Expecting ':' delimiter: line 2 column 11"),
+        "{}",
+        run.front.text()
+    );
+}

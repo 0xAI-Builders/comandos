@@ -207,6 +207,23 @@ impl TaskTracker {
         Ok(())
     }
 
+    /// Como `spawn`, devolviendo el `JoinHandle` para esperar su resultado:
+    /// las rutas que corren en su propia tarea (para que un cliente que se va
+    /// no las deje a medias) quedan contadas mientras el frente se apaga.
+    pub fn spawn_handle<F, T>(&self, fut: F) -> std::io::Result<tokio::task::JoinHandle<T>>
+    where
+        F: Future<Output = T> + Send + 'static,
+        T: Send + 'static,
+    {
+        let handle = tokio::runtime::Handle::try_current().map_err(std::io::Error::other)?;
+        self.running.fetch_add(1, Ordering::AcqRel);
+        let running = Running(Arc::clone(&self.running));
+        Ok(handle.spawn(async move {
+            let _running = running;
+            fut.await
+        }))
+    }
+
     pub fn len(&self) -> usize {
         self.running.load(Ordering::Acquire)
     }

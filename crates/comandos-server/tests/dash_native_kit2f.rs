@@ -626,3 +626,36 @@ async fn delete_gate_matches_do_delete() {
     assert!(legacy.requests().is_empty());
     fr.stop().await;
 }
+
+/// Ronda 1 de la 2f-1/T2: `spawn_handle` cuenta la tarea mientras corre (también
+/// si nadie espera su `JoinHandle`) y devuelve su resultado.
+#[tokio::test]
+async fn task_tracker_spawn_handle_counts_and_returns() {
+    let tracker = TaskTracker::default();
+    let (go, wait) = tokio::sync::oneshot::channel::<()>();
+    let job = tracker
+        .spawn_handle(async move {
+            let _ = wait.await;
+            7
+        })
+        .unwrap();
+    assert_eq!(tracker.len(), 1);
+    let _ = go.send(());
+    assert_eq!(job.await.unwrap(), 7);
+    assert_eq!(tracker.len(), 0);
+    // Soltar el `JoinHandle` no cancela la tarea: sigue contada hasta terminar.
+    let (go, wait) = tokio::sync::oneshot::channel::<()>();
+    drop(
+        tracker
+            .spawn_handle(async move {
+                let _ = wait.await;
+            })
+            .unwrap(),
+    );
+    assert_eq!(tracker.len(), 1);
+    let _ = go.send(());
+    for _ in 0..20 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(tracker.len(), 0);
+}

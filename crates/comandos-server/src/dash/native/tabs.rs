@@ -12,8 +12,8 @@
 //! lectura o efecto. Lo demás incierto es un 500 con una línea en stderr.
 //!
 //! Cancelación (regla de la revisión de la T1): cada petición corre en su
-//! propia tarea (`tokio::spawn`). Si el cliente se va, o vence el plazo del
-//! manejador, el cierre termina igual: nunca queda a medias (historial escrito
+//! propia tarea, contada en `Native::tasks` (`spawn_handle`). Si el cliente se
+//! va, o vence el plazo del manejador, el cierre termina igual: nunca queda a medias (historial escrito
 //! y espejo sin tocar, o un cierre de grupo sin su señal agregada).
 //!
 //! Efectos en vivo (los mismos que el Python, en el mismo orden): ninguna
@@ -27,7 +27,7 @@ use super::{
 };
 use crate::{HandlerError, Request};
 use comandos_core::{
-    json::{response_dumps, truthy},
+    json::truthy,
     workspace::{CloseGroupState, WorkspaceError, close_group as close_group_core},
 };
 use comandos_store::workspace::WorkspaceStore;
@@ -98,10 +98,14 @@ fn no_decline(path: &str, fault: Fault) -> Fault {
 
 pub async fn answer(native: &Arc<Native>, route: TabsRoute, request: &Request) -> Answer {
     let data = light::data(request)?.clone();
-    let job = tokio::spawn({
-        let native = Arc::clone(native);
-        async move { run(&native, route, &data).await }
-    });
+    // En su propia tarea, contada en `Native::tasks` (también al apagar).
+    let job = native
+        .tasks()
+        .spawn_handle({
+            let native = Arc::clone(native);
+            async move { run(&native, route, &data).await }
+        })
+        .map_err(|_| failure())?;
     job.await.map_err(|_| failure())?
 }
 
@@ -228,6 +232,9 @@ enum CloseOutcome {
     Conflict(Value),
     /// `ValueError`/`TypeError`: `str(exc)`.
     Invalid(String),
+    /// Un cierre que el frente no reproduce paró el grupo (500, ruling 2):
+    /// las sesiones que sí se cerraron antes, para la señal agregada.
+    Aborted(Fault, Vec<String>),
 }
 
 /// POST `/workspace/close-group` (8725).
@@ -267,6 +274,15 @@ async fn close_group(native: &Native, data: &Map<String, Value>) -> Answer {
         ),
         CloseOutcome::Invalid(message) => {
             reply(StatusCode::BAD_REQUEST, &json!({"error": message}))
+        }
+        CloseOutcome::Aborted(fault, closed) => {
+            // Las pestañas ya cerradas se cierran también en cc-app (que solo
+            // ve la última escritura de `app-tab-close.json`): la misma señal
+            // agregada que tras un grupo completo, antes del 500.
+            if !closed.is_empty() {
+                write_close_signal(native.options(), json!(closed)).await;
+            }
+            Err(no_decline(PATH, fault))
         }
     }
 }
@@ -343,17 +359,13 @@ impl CloseGroupState for Store<'_> {
     fn meta(&mut self, key: &str) -> comandos_core::workspace::Result<Option<Value>> {
         CloseGroupState::meta(&mut self.inner, key)
     }
-    /// `store.set_meta(key, json.dumps(result))`: el texto del Python (orden de
-    /// inserción, ASCII escapado, separadores por omisión), no la forma
-    /// canónica ordenada del adaptador de `comandos-store`. La repetición lo
-    /// devuelve tal cual y el Python leería el que escriba el frente.
+    /// El adaptador del almacén guarda `json.dumps(result)` del Python; aquí
+    /// solo se impide guardar el resultado de un grupo abortado.
     fn set_meta(&mut self, key: &str, value: &Value) -> comandos_core::workspace::Result<()> {
         if self.abort.borrow().is_some() {
             return Err(WorkspaceError::Callback("cierre abortado".into()));
         }
-        let text = response_dumps(value).map_err(WorkspaceError::Callback)?;
-        WorkspaceStore::set_meta(&self.inner, key, &text)
-            .map_err(|e| WorkspaceError::Callback(e.to_string()))
+        CloseGroupState::set_meta(&mut self.inner, key, value)
     }
 }
 
@@ -441,6 +453,7 @@ fn close_group_job(
         };
     }
     let exotic = normalize_labels(&mut members);
+    let closed: RefCell<Vec<String>> = RefCell::new(Vec::new());
     let result = close_group_core(
         &mut store,
         &group_id,
@@ -460,6 +473,10 @@ fn close_group_job(
             }
         },
         |sess| match tab_registry::blocking::close_app_tab(backend, opts, handle, sess, false) {
+            Ok(None) => {
+                closed.borrow_mut().push(sess.to_owned());
+                Ok(None)
+            }
             Ok(error) => Ok(error),
             Err(Failure::Caught(message)) => Err(message),
             Err(Failure::Registry(error)) => {
@@ -469,7 +486,7 @@ fn close_group_job(
         },
     );
     if let Some(fault) = abort.borrow_mut().take() {
-        return Err(fault);
+        return Ok(CloseOutcome::Aborted(fault, closed.take()));
     }
     if exotic
         && let Err(WorkspaceError::Invalid(message)) = &result
