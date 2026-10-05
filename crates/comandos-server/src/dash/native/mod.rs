@@ -35,6 +35,7 @@ pub mod state;
 pub mod states;
 pub mod subrequest;
 pub mod tabs;
+pub mod target;
 pub mod terminal;
 pub mod tmux;
 pub mod typing;

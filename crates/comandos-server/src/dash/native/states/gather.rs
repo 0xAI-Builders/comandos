@@ -177,7 +177,7 @@ fn scan(
 
 /// `session_labels` (6700): etiquetas de pestañas más el historial de las
 /// sesiones vivas que no tienen etiqueta propia o la tienen igual al nombre.
-fn session_labels(
+pub(crate) fn session_labels(
     tabs: Vec<(String, String)>,
     live: &HashSet<String>,
     history: &[Map<String, Value>],
