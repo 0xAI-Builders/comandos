@@ -718,8 +718,147 @@ fn or_str(value: &Value, default: &str) -> Value {
     }
 }
 
+/// Columnas de texto de los turnos de `build_usage_state` que se guardan internadas.
+const TURN_TEXT: [&str; 8] = [
+    "tmux_session",
+    "tmux_pane",
+    "pane_pwd",
+    "git_root",
+    "agent",
+    "provider",
+    "model",
+    "confidence",
+];
+/// Clave ausente en la fila (distinta de `null`: `turn.get(k, "")`).
+const ABSENT: u32 = u32::MAX;
+
+/// Un turno compacto: las columnas de texto como índices de una tabla de valores
+/// distintos y las tres numéricas ya convertidas como las convierte cada uso
+/// (`_as_int(…, 0)`, `_as_float(…, 0.0)`), con su error si lo hay.
+struct Turn {
+    text: [u32; 8],
+    finished: Result<i64>,
+    tokens: Result<i64>,
+    cost: Result<f64>,
+}
+
+/// Los turnos de 14 días de `build_usage_state` sin guardar cada fila como objeto
+/// JSON (decenas de miles con la base real): las columnas de texto se repiten mucho
+/// (sesión, pane, carpeta, agente, modelo) y se internan; cada turno ocupa ~80 B.
+/// El orden de los turnos es el de lectura.
+#[derive(Default)]
+pub struct StateTurns {
+    values: Vec<Value>,
+    strings: HashMap<String, u32>,
+    turns: Vec<Turn>,
+}
+
+impl StateTurns {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn from_rows(rows: &[Row]) -> Self {
+        let mut turns = Self::new();
+        for row in rows {
+            turns.push(row);
+        }
+        turns
+    }
+
+    pub fn len(&self) -> usize {
+        self.turns.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.turns.is_empty()
+    }
+
+    /// Un turno leído (`dict(sqlite3.Row)`); solo se quedan las columnas que usa
+    /// `build_usage_state`.
+    pub fn push(&mut self, row: &Row) {
+        let mut text = [ABSENT; 8];
+        for (slot, key) in text.iter_mut().zip(TURN_TEXT) {
+            if let Some(value) = row.get(key) {
+                *slot = self.intern(value);
+            }
+        }
+        self.turns.push(Turn {
+            text,
+            finished: as_int(get(row, "turn_finished_at"), 0),
+            tokens: as_int(get(row, "total_tokens"), 0),
+            cost: as_float(get(row, "cost_usd"), 0.0),
+        });
+    }
+
+    fn intern(&mut self, value: &Value) -> u32 {
+        // Más de 2³² - 1 valores distintos no caben en memoria antes que en `u32`.
+        let next = u32::try_from(self.values.len()).unwrap_or(ABSENT);
+        // Otro tipo en una columna de texto es raro: no se comparte.
+        if let Value::String(s) = value {
+            if let Some(&i) = self.strings.get(s) {
+                return i;
+            }
+            self.strings.insert(s.clone(), next);
+        }
+        self.values.push(value.clone());
+        next
+    }
+
+    fn iter(&self) -> impl Iterator<Item = TurnRef<'_>> {
+        self.turns
+            .iter()
+            .map(move |turn| TurnRef { store: self, turn })
+    }
+}
+
+#[derive(Clone, Copy)]
+struct TurnRef<'a> {
+    store: &'a StateTurns,
+    turn: &'a Turn,
+}
+
+impl<'a> TurnRef<'a> {
+    fn slot(&self, key: &str) -> Option<&'a Value> {
+        let i = TURN_TEXT.iter().position(|k| *k == key)?;
+        let id = *self.turn.text.get(i)?;
+        self.store.values.get(usize::try_from(id).ok()?)
+    }
+    /// `turn.get(key)` (`None` si falta).
+    fn get(&self, key: &str) -> &'a Value {
+        self.slot(key).unwrap_or(&NULL)
+    }
+    /// `turn.get(key, "")`.
+    fn field(&self, key: &str) -> Value {
+        self.slot(key)
+            .cloned()
+            .unwrap_or_else(|| Value::String(String::new()))
+    }
+    /// `_as_int(turn.get("turn_finished_at"), 0)`.
+    fn finished(&self) -> Result<i64> {
+        self.turn.finished
+    }
+    /// `_as_int(turn.get("total_tokens"), 0)`.
+    fn tokens(&self) -> Result<i64> {
+        self.turn.tokens
+    }
+    /// `_as_float(turn.get("cost_usd"), 0.0)`.
+    fn cost(&self) -> Result<f64> {
+        self.turn.cost
+    }
+    /// `turn.get("provider") or turn.get("agent") or default`.
+    fn provider_or(&self, default: &str) -> Value {
+        let v = or(self.get("provider"), self.get("agent"));
+        if truthy(v) {
+            v.clone()
+        } else {
+            Value::String(default.into())
+        }
+    }
+}
+
 /// `_attach_pane_turn_usage` (cc_usage.py:823).
-fn attach_pane_turn_usage(turns: &[Row], panes: &mut [Row], now: i64) -> Result<()> {
+fn attach_pane_turn_usage(turns: &StateTurns, panes: &mut [Row], now: i64) -> Result<()> {
     let day_start = now - 24 * 3600;
     let mut groups: PyDict<(Value, Value), Vec<usize>> = PyDict::new();
     for (i, pane) in panes.iter().enumerate() {
@@ -729,20 +868,20 @@ fn attach_pane_turn_usage(turns: &[Row], panes: &mut [Row], now: i64) -> Result<
     let mut sums: PyDict<(Value, Value), (i64, f64)> = PyDict::new();
     let mut latest_model: PyDict<(Value, Value), String> = PyDict::new();
     let mut day_model_tokens: PyDict<(Value, Value), Vec<(String, i64)>> = PyDict::new();
-    for turn in turns {
-        let key = (provider_of(turn, ""), or_str(get(turn, "pane_pwd"), ""));
+    for turn in turns.iter() {
+        let key = (turn.provider_or(""), or_str(turn.get("pane_pwd"), ""));
         if !groups.contains(&key) {
             continue;
         }
-        let turn_model = real_model(get(turn, "model"))?;
+        let turn_model = real_model(turn.get("model"))?;
         if !turn_model.is_empty() && !latest_model.contains(&key) {
             latest_model.set(&key, turn_model.clone());
         }
-        if as_int(get(turn, "turn_finished_at"), 0)? < day_start {
+        if turn.finished()? < day_start {
             continue;
         }
         if !turn_model.is_empty() {
-            let weight = as_int(get(turn, "total_tokens"), 0)?.max(1);
+            let weight = turn.tokens()?.max(1);
             day_model_tokens.with_entry(&key, Vec::new, |mt| {
                 match mt.iter_mut().find(|(m, _)| *m == turn_model) {
                     Some((_, n)) => *n = checked_add(*n, weight)?,
@@ -751,8 +890,8 @@ fn attach_pane_turn_usage(turns: &[Row], panes: &mut [Row], now: i64) -> Result<
                 Ok::<(), UsageError>(())
             })?;
         }
-        let tokens = as_int(get(turn, "total_tokens"), 0)?;
-        let cost = as_float(get(turn, "cost_usd"), 0.0)?;
+        let tokens = turn.tokens()?;
+        let cost = turn.cost()?;
         sums.with_entry(
             &key,
             || (0, 0.0),
@@ -813,7 +952,7 @@ struct Project {
 /// `_project_rollups` (cc_usage.py:682). Los panes viven en un arena porque el Python
 /// los comparte entre el índice y la lista de su proyecto (un turno de otra carpeta
 /// actualiza el pane de la carpeta original).
-fn project_rollups(turns: &[Row], panes: &[Row]) -> Result<Vec<Value>> {
+fn project_rollups(turns: &StateTurns, panes: &[Row]) -> Result<Vec<Value>> {
     let mut arena: Vec<Row> = Vec::new();
     let mut projects: PyDict<Value, Project> = PyDict::new();
     let detected = Value::String("detected".into());
@@ -849,9 +988,9 @@ fn project_rollups(turns: &[Row], panes: &[Row]) -> Result<Vec<Value>> {
             }
         }
     }
-    for turn in turns {
-        let root = or_str(or(get(turn, "git_root"), get(turn, "pane_pwd")), "");
-        let turn_confidence = get(turn, "confidence");
+    for turn in turns.iter() {
+        let root = or_str(or(turn.get("git_root"), turn.get("pane_pwd")), "");
+        let turn_confidence = turn.get("confidence");
         if !projects.contains(&root) {
             let project = Project {
                 root: root.clone(),
@@ -863,13 +1002,13 @@ fn project_rollups(turns: &[Row], panes: &[Row]) -> Result<Vec<Value>> {
             projects.set(&root, project);
         }
         let key = (
-            get(turn, "tmux_session").clone(),
-            get(turn, "tmux_pane").clone(),
+            turn.get("tmux_session").clone(),
+            turn.get("tmux_pane").clone(),
         );
         let created = match pane_index.get(&key) {
             Some(&i) => (i, false),
             None => {
-                let field = |k: &str| turn.get(k).cloned().unwrap_or_else(|| "".into());
+                let field = |k: &str| turn.field(k);
                 let mut pane = Row::new();
                 pane.insert("tmux_session".into(), field("tmux_session"));
                 pane.insert("tmux_pane".into(), field("tmux_pane"));
@@ -888,8 +1027,8 @@ fn project_rollups(turns: &[Row], panes: &[Row]) -> Result<Vec<Value>> {
             }
         };
         let (index, is_new) = created;
-        let cost = as_float(get(turn, "cost_usd"), 0.0)?;
-        let tokens = as_int(get(turn, "total_tokens"), 0)?;
+        let cost = turn.cost()?;
+        let tokens = turn.tokens()?;
         if let Some(pane) = arena.get_mut(index) {
             let pane_cost = as_float(get(pane, "cost_usd"), 0.0)?;
             let pane_tokens = as_int(get(pane, "total_tokens"), 0)?;
@@ -942,7 +1081,7 @@ fn setting<'a>(settings: &'a Row, keys: &[&str]) -> Option<&'a Value> {
 
 /// `_token_window` (cc_usage.py:759).
 fn token_window(
-    turns: &[Row],
+    turns: &StateTurns,
     provider: &str,
     label: &str,
     window: &str,
@@ -955,11 +1094,11 @@ fn token_window(
         other => &[other],
     };
     let mut used = 0i64;
-    for t in turns {
-        let who = or(get(t, "provider"), get(t, "agent"));
+    for t in turns.iter() {
+        let who = or(t.get("provider"), t.get("agent"));
         let member = who.as_str().is_some_and(|w| aliases.contains(&w));
-        if member && as_int(get(t, "turn_finished_at"), 0)? >= start {
-            used = checked_add(used, as_int(get(t, "total_tokens"), 0)?)?;
+        if member && t.finished()? >= start {
+            used = checked_add(used, t.tokens()?)?;
         }
     }
     let mut item = Row::new();
@@ -993,7 +1132,7 @@ fn token_window(
 }
 
 /// `_usage_windows` (cc_usage.py:795).
-fn usage_windows(turns: &[Row], settings: &Row, now: i64) -> Result<Value> {
+fn usage_windows(turns: &StateTurns, settings: &Row, now: i64) -> Result<Value> {
     let day = now - 24 * 3600;
     let week = now - 7 * 24 * 3600;
     let budget = match setting(
@@ -1092,11 +1231,11 @@ fn get_or(row: &Row, key: &str, default: Value) -> Value {
 }
 
 /// `build_usage_state` (cc_usage.py:871-961) sin la E/S: el llamador ya eligió `panes`
-/// (vivos o `list_panes`) y leyó las filas de `state_rows`.
+/// (vivos o `list_panes`) y leyó los turnos de `state_rows` (`StateTurns`).
 pub fn build_state(
     now: i64,
     mut panes: Vec<Row>,
-    turns: &[Row],
+    turns: &StateTurns,
     provider_usage: &[Row],
     provider_costs: &[Row],
     settings: &Row,
@@ -1104,16 +1243,16 @@ pub fn build_state(
     attach_pane_turn_usage(turns, &mut panes, now)?;
     let projects = project_rollups(turns, &panes)?;
     let mut turn_cost = FloatSum(None);
-    for t in turns {
-        turn_cost.add(as_float(get(t, "cost_usd"), 0.0)?);
+    for t in turns.iter() {
+        turn_cost.add(t.cost()?);
     }
     let mut provider_cost = FloatSum(None);
     for c in provider_costs {
         provider_cost.add(as_float(get(c, "cost_usd"), 0.0)?);
     }
     let mut turn_tokens = 0i64;
-    for t in turns {
-        turn_tokens = checked_add(turn_tokens, as_int(get(t, "total_tokens"), 0)?)?;
+    for t in turns.iter() {
+        turn_tokens = checked_add(turn_tokens, t.tokens()?)?;
     }
     let mut provider_tokens = 0i64;
     for u in provider_usage {
@@ -1163,9 +1302,9 @@ pub fn build_state(
         add_tokens(&mut providers, &name, tokens)?;
     }
     if provider_usage.is_empty() {
-        for turn in turns {
-            let name = provider_of(turn, "unknown");
-            let tokens = as_int(get(turn, "total_tokens"), 0)?;
+        for turn in turns.iter() {
+            let name = turn.provider_or("unknown");
+            let tokens = turn.tokens()?;
             add_tokens(&mut providers, &name, tokens)?;
         }
     }

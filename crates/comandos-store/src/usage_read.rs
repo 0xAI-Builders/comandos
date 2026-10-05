@@ -58,7 +58,8 @@ pub type Result<T> = std::result::Result<T, ReadError>;
 
 /// Filas de `build_usage_state` (cc_usage.py:876-886).
 pub struct StateRows {
-    pub turns: Vec<Object>,
+    /// Los turnos de la ventana, compactos (`StateTurns`): no se guarda cada fila.
+    pub turns: usage_state::StateTurns,
     pub provider_usage: Vec<Object>,
     pub provider_costs: Vec<Object>,
 }
@@ -237,16 +238,24 @@ pub fn usage_settings(conn: &Connection) -> Result<Vec<(String, Value)>> {
     Ok(out)
 }
 
-/// Los tres `select` de `build_usage_state` (cc_usage.py:876-886).
+/// Los tres `select` de `build_usage_state` (cc_usage.py:876-886). Los turnos de
+/// 14 días (decenas de miles con la base real) se compactan según se leen: como
+/// objetos JSON ocupaban cientos de MiB que la arena del carril ya no devolvía.
 pub fn state_rows(conn: &Connection, since: i64) -> Result<StateRows> {
-    Ok(StateRows {
-        turns: rows(
-            conn,
+    let mut turns = usage_state::StateTurns::new();
+    {
+        let mut stmt = conn.prepare(
             "select tmux_session, tmux_pane, pane_pwd, git_root, agent, provider,\
              \x20model, confidence, cost_usd, total_tokens, turn_finished_at\
              \x20from usage_turns where turn_finished_at >= ? order by turn_finished_at desc",
-            &[&since],
-        )?,
+        )?;
+        let mut cursor = stmt.query(params![since])?;
+        while let Some(row) = cursor.next()? {
+            turns.push(&row_object(row)?);
+        }
+    }
+    Ok(StateRows {
+        turns,
         provider_usage: rows(
             conn,
             "select * from provider_usage_buckets order by end_time desc",

@@ -421,11 +421,27 @@ fn window_percent_is_int_100_when_rounding_reaches_100() {
     ];
     let mut settings = Map::new();
     settings.insert("CLAUDE_DAILY_TOKEN_LIMIT".into(), json!("500"));
-    let state = usage_state::build_state(20, vec![], &turns, &[], &[], &settings).unwrap();
+    let state = usage_state::build_state(
+        20,
+        vec![],
+        &usage_state::StateTurns::from_rows(&turns),
+        &[],
+        &[],
+        &settings,
+    )
+    .unwrap();
     let item = &state["windows"]["items"][2];
     assert_eq!(response_dumps(&item["percent"]).unwrap(), "100");
     settings.insert("CLAUDE_DAILY_TOKEN_LIMIT".into(), json!("1001"));
-    let state = usage_state::build_state(20, vec![], &turns, &[], &[], &settings).unwrap();
+    let state = usage_state::build_state(
+        20,
+        vec![],
+        &usage_state::StateTurns::from_rows(&turns),
+        &[],
+        &[],
+        &settings,
+    )
+    .unwrap();
     assert_eq!(
         response_dumps(&state["windows"]["items"][2]["percent"]).unwrap(),
         "99.9"

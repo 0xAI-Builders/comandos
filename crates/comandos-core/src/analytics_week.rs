@@ -389,15 +389,19 @@ fn interval(row: &Value, is_span: bool) -> Result<Option<(GroupKey, Interval)>> 
 /// recorre todos los turnos y después todos los tramos, y eso se reconstruye al
 /// leer. `now` es el de `sidebar_accounts` (la ventana de 7 días).
 pub struct WeekRows {
+    intervals: Intervals,
+    sidebar: SidebarTurns,
+}
+/// Los intervalos de turnos y de tramos por separado (ver `intervals`).
+#[derive(Default)]
+struct Intervals {
     turns: IntervalGroups,
     spans: IntervalGroups,
-    sidebar: SidebarTurns,
 }
 impl WeekRows {
     pub fn new(now: f64) -> Self {
         Self {
-            turns: IntervalGroups::default(),
-            spans: IntervalGroups::default(),
+            intervals: Intervals::default(),
             sidebar: SidebarTurns::new(now),
         }
     }
@@ -413,12 +417,14 @@ impl WeekRows {
         rows
     }
     pub fn push_turn(&mut self, row: &Value) {
-        self.turns.push(row, false);
+        self.intervals.turns.push(row, false);
         self.sidebar.push(row);
     }
     pub fn push_span(&mut self, row: &Value) {
-        self.spans.push(row, true);
+        self.intervals.spans.push(row, true);
     }
+}
+impl Intervals {
     /// `_intervals(turns, spans)`: los grupos de los turnos en su orden y después
     /// los que solo tienen tramos; en cada grupo, los turnos antes que los tramos.
     /// Cada grupo se copia al pedirlo (lo ordena quien lo recibe), no todos a la vez.
@@ -442,9 +448,16 @@ impl WeekRows {
     }
 }
 pub fn sessions(turns: &[Value], spans: &[Value], tz: &str) -> Result<Vec<Value>> {
-    sessions_in(&WeekRows::from_rows(turns, spans, 0.), zone(tz)?)
+    let mut rows = Intervals::default();
+    for row in turns {
+        rows.turns.push(row, false);
+    }
+    for row in spans {
+        rows.spans.push(row, true);
+    }
+    sessions_in(&rows, zone(tz)?)
 }
-fn sessions_in(rows: &WeekRows, tz: chrono_tz::Tz) -> Result<Vec<Value>> {
+fn sessions_in(rows: &Intervals, tz: chrono_tz::Tz) -> Result<Vec<Value>> {
     let mut out = vec![];
     for ((acc, proj), mut items) in rows.intervals()? {
         items.sort_by(|a, b| {
@@ -985,10 +998,13 @@ fn sidebar_in(accounts: &[Value], limits: &[Value], turns: &SidebarTurns) -> Res
         );
         let id = account_id(&p, &row["account"])?;
         let plan = default(&row["plan_type"], &row["plan"]);
-        if let Some(i) = by_id.get(&id)
-            && truthy(plan)
+        if truthy(plan)
+            && let Some(account) = by_id
+                .get(&id)
+                .and_then(|&i| out.get_mut(i))
+                .and_then(Value::as_object_mut)
         {
-            out[*i]["plan"] = plan.clone();
+            account.insert("plan".into(), plan.clone());
         }
     }
     // Las cuentas que cuentan: las de la columna con todos sus turnos y las de
@@ -1037,7 +1053,14 @@ fn sidebar_in(accounts: &[Value], limits: &[Value], turns: &SidebarTurns) -> Res
         measured["tokens"] = integer_value(&group.tokens);
         measured["costUsd"] = number(round_digits(group.cost, 6));
         measured["models"] = Value::Array(group.models);
-        out[*by_id.get(acc).expect("group account")]["measured"] = measured;
+        // Toda cuenta medida está en la columna (`by_id`) y es un objeto (tiene `id`).
+        if let Some(account) = by_id
+            .get(acc)
+            .and_then(|&i| out.get_mut(i))
+            .and_then(Value::as_object_mut)
+        {
+            account.insert("measured".into(), measured);
+        }
     }
     Ok(out)
 }
@@ -1110,7 +1133,7 @@ pub fn build_week(input: &WeekInput<'_>) -> Result<Value> {
         .iter()
         .map(ToString::to_string)
         .collect::<BTreeSet<_>>();
-    let all = sessions_in(input.rows, tz)?;
+    let all = sessions_in(&input.rows.intervals, tz)?;
     let mut sess = vec![];
     let mut last: BTreeMap<String, f64> = BTreeMap::new();
     for s in all {
