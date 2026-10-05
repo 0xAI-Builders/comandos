@@ -51,6 +51,11 @@ use tokio::sync::OnceCell;
 /// Trabajos en cola del worker de la base (sin contar el que corre).
 pub const WORKER_CAPACITY: usize = 64;
 
+/// Refresco de límites al arrancar el frente (D3). Falso hasta la Tarea 8:
+/// sin `/usage/state` nativo nadie necesita la caché caliente al arrancar, y
+/// así un reinicio del frente nunca llama a `api.anthropic.com` por su cuenta.
+pub const STARTUP_LIMITS_REFRESH: bool = false;
+
 /// Cada dominio añade su variante en su tarea.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NativeRoute {
@@ -437,10 +442,13 @@ impl Native {
     }
 
     /// El refresco de arranque de D3 (el `_limits_snapshot_loop` del Python lee
-    /// los límites al arrancar). No repite cada 300 s: el heredado conserva su
-    /// bucle. Sin efectos de uso (sombra) no hace nada.
+    /// los límites al arrancar). Apagado hasta que la Tarea 8 active
+    /// `/usage/state` (`STARTUP_LIMITS_REFRESH`): mientras tanto el frente no
+    /// toca la red al arrancar y las rutas refrescan a demanda con el TTL. No
+    /// repite cada 300 s: el heredado conserva su bucle. Sin efectos de uso
+    /// (sombra) no hace nada.
     pub fn start_background(&self) {
-        if self.enabled() {
+        if STARTUP_LIMITS_REFRESH && self.enabled() {
             let _ = self.limits.get(&self.refresh_deps());
         }
     }

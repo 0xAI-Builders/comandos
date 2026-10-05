@@ -565,27 +565,103 @@ pub fn read_codex_rate_limits(
 
 // ---------------------------------------------------------------- Grok (log local)
 
+/// Marca de las líneas de cobro en el log de Grok.
+const GROK_BILLING_MARK: &str = "fetched credits config";
+
+/// Bloque de lectura de la cola del log de Grok (1 MiB).
+const GROK_BLOCK: usize = 1 << 20;
+
+/// Tope de la línea en curso (entre dos `\n`) mientras se lee por bloques:
+/// 4 MiB. Una línea más larga se descarta entera; la de cobro mide < 1 KiB
+/// (diferencia documentada con el Python, que la leería entera).
+const GROK_LINE_CAP: usize = 4 << 20;
+
 /// `_grok_billing_lines` (cc_usage.py:1825): cola de `tail` bytes que crece ×8
 /// mientras no haya líneas de cobro, hasta cubrir el archivo o pasar `max`.
+/// La ventana se recorre hacia delante en bloques de 1 MiB (memoria acotada
+/// aunque la ventana llegue a 256 MiB) con el mismo resultado que decodificar
+/// la ventana entera y partirla con `splitlines`.
 fn grok_billing_lines(path: &Path, tail: u64, max: u64) -> io::Result<Vec<String>> {
+    grok_billing_lines_with(path, tail, max, GROK_BLOCK, GROK_LINE_CAP)
+}
+
+fn grok_billing_lines_with(
+    path: &Path,
+    tail: u64,
+    max: u64,
+    block: usize,
+    cap: usize,
+) -> io::Result<Vec<String>> {
     let mut file = fs::File::open(path)?;
     let size = file.seek(SeekFrom::End(0))?;
     let mut span = tail;
     loop {
         file.seek(SeekFrom::Start(size.saturating_sub(span)))?;
-        let mut chunk = Vec::new();
-        (&mut file).take(span).read_to_end(&mut chunk)?;
-        let text = String::from_utf8_lossy(&chunk);
-        let lines: Vec<String> = text::splitlines(&text)
-            .into_iter()
-            .filter(|l| l.contains("fetched credits config"))
-            .map(str::to_owned)
-            .collect();
+        let lines = scan_billing(&mut (&mut file).take(span), block, cap)?;
         if !lines.is_empty() || span >= size || span >= max {
             return Ok(lines);
         }
         span = span.saturating_mul(8);
     }
+}
+
+/// `chunk.decode(errors="replace").splitlines()` filtrado por la marca, por
+/// bloques. Se parte en los bytes `\n`: nunca están dentro de un carácter
+/// UTF-8 válido ni los consume una secuencia inválida (son ASCII), así que
+/// decodificar cada tramo por separado da el mismo texto; y `\n` es siempre
+/// un límite de `splitlines`, así que dentro de cada tramo se aplica
+/// `splitlines` (`\r`, `\x0b`, `\x0c`, `\x1c`-`\x1e`, U+0085, U+2028/9) y
+/// las líneas no vacías coinciden. Las vacías no llevan la marca.
+fn scan_billing(reader: &mut impl Read, block: usize, cap: usize) -> io::Result<Vec<String>> {
+    let mut lines = Vec::new();
+    let mut carry: Vec<u8> = Vec::new();
+    // La línea en curso pasó del tope: se descarta hasta el próximo `\n`.
+    let mut skipping = false;
+    let mut buf = vec![0u8; block.max(1)];
+    loop {
+        let n = match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        let mut chunk = buf.get(..n).unwrap_or_default();
+        while let Some(pos) = chunk.iter().position(|&b| b == b'\n') {
+            let (head, rest) = chunk.split_at(pos);
+            if !skipping {
+                carry.extend_from_slice(head);
+                billing_segment(&carry, &mut lines);
+            }
+            carry.clear();
+            skipping = false;
+            chunk = rest.get(1..).unwrap_or_default();
+        }
+        if !skipping {
+            carry.extend_from_slice(chunk);
+            if carry.len() > cap {
+                carry = Vec::new();
+                skipping = true;
+            }
+        }
+    }
+    if !skipping {
+        billing_segment(&carry, &mut lines);
+    }
+    Ok(lines)
+}
+
+/// Un tramo sin `\n`: decodificado con reemplazo y partido con `splitlines`.
+fn billing_segment(segment: &[u8], lines: &mut Vec<String>) {
+    if segment.is_empty() {
+        return;
+    }
+    let text = String::from_utf8_lossy(segment);
+    lines.extend(
+        text::splitlines(&text)
+            .into_iter()
+            .filter(|l| l.contains(GROK_BILLING_MARK))
+            .map(str::to_owned),
+    );
 }
 
 /// `x.get(k) or {}` cuando `x` es un `dict`: el valor verdadero debe ser `dict`.
@@ -1146,4 +1222,87 @@ pub type EmailCache = agent_procs::AccountCache;
 /// lleva un sustituto suelto que el Python emitiría.
 pub fn email_for_dir(cache: &mut EmailCache, dir: &Path, agent: &str) -> Result<Value, Unsure> {
     cache.email_for_dir(dir.as_os_str().as_bytes(), agent)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// La lectura anterior en memoria: la ventana entera decodificada y partida.
+    fn whole(bytes: &[u8]) -> Vec<String> {
+        let text = String::from_utf8_lossy(bytes);
+        text::splitlines(&text)
+            .into_iter()
+            .filter(|l| l.contains(GROK_BILLING_MARK))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    fn fixture() -> Vec<u8> {
+        let mut b = Vec::new();
+        b.extend_from_slice(b"{\"msg\":\"otra\"}\n");
+        b.extend_from_slice(
+            "{\"msg\":\"billing: fetched credits config\",\"ñ\":\"€\"}\r\n".as_bytes(),
+        );
+        b.extend_from_slice(b"basura\xff\xfe fetched credits config \xe2\x82\n");
+        b.extend_from_slice(b"a fetched credits config\rb fetched credits config\x0bc\n");
+        b.extend_from_slice(
+            "x fetched credits config\u{2028}y fetched credits config\u{85}z\n".as_bytes(),
+        );
+        b.extend_from_slice(b"\x1cfetched credits config\x1d\x1e\x0c\r\r\n\n\n");
+        b.extend_from_slice(b"\xf0\x9f\x98\nfetched credits config\xf0\x9f\x98\x80\xc3");
+        b.extend_from_slice(b"\nfetched credits config sin salto final\r");
+        b
+    }
+
+    #[test]
+    fn block_scan_matches_whole_window() {
+        let bytes = fixture();
+        let expected = whole(&bytes);
+        assert!(expected.len() >= 8, "{expected:?}");
+        for block in 1..=40 {
+            let got = scan_billing(&mut bytes.as_slice(), block, usize::MAX).unwrap();
+            assert_eq!(got, expected, "bloque de {block} bytes");
+        }
+        // También con la ventana empezando a media línea y a medio carácter.
+        for cut in 0..bytes.len() {
+            let tail = bytes.get(cut..).unwrap();
+            for block in [1, 3, 7, 64] {
+                let got = scan_billing(&mut &tail[..], block, usize::MAX).unwrap();
+                assert_eq!(got, whole(tail), "corte {cut}, bloque {block}");
+            }
+        }
+    }
+
+    #[test]
+    fn overlong_line_is_dropped_and_the_rest_kept() {
+        let mut bytes = b"fetched credits config ok 1\n".to_vec();
+        bytes.extend(std::iter::repeat_n(b'x', 100));
+        bytes.extend_from_slice(b" fetched credits config larga\nfetched credits config ok 2");
+        let got = scan_billing(&mut bytes.as_slice(), 8, 64).unwrap();
+        assert_eq!(
+            got,
+            ["fetched credits config ok 1", "fetched credits config ok 2"]
+        );
+    }
+
+    #[test]
+    fn window_grows_like_python() {
+        let dir = std::env::temp_dir().join(format!("grok-tail-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("unified.jsonl");
+        let mut bytes = b"{\"msg\":\"billing: fetched credits config\"}\n".to_vec();
+        bytes.extend(std::iter::repeat_n(b'.', 5000));
+        bytes.push(b'\n');
+        fs::write(&path, &bytes).unwrap();
+        // Cola de 100: no hay cobro; ×8 = 800 tampoco; 6400 cubre el archivo.
+        let got = grok_billing_lines_with(&path, 100, 1 << 20, 16, 1 << 20).unwrap();
+        assert_eq!(got, whole(&bytes));
+        assert_eq!(got.len(), 1);
+        // Con `max` por debajo del archivo no se llega a la línea.
+        let short = grok_billing_lines_with(&path, 100, 800, 16, 1 << 20).unwrap();
+        assert!(short.is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
