@@ -381,7 +381,8 @@ pub async fn serve_with(
     if let Some(native) = &native {
         // Abre la base antes de atender: la primera petición no paga la migración.
         native.ready().await;
-        // Refresco de límites de arranque (D3): en una tarea, sin esperar.
+        // Refresco de límites de arranque (D3): apagado hasta la Tarea 8
+        // (`STARTUP_LIMITS_REFRESH`); el arranque no toca la red.
         native.start_background();
     }
     let served = crate::serve(listener, config, shutdown).await;

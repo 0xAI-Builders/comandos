@@ -171,9 +171,19 @@ struct Collected {
 
 async fn refresh(cache: Arc<LimitsCache>, deps: RefreshDeps) {
     let _reset = Reset(cache.clone());
-    // `AbortRefresh`: el hilo del Python moría y la caché no cambiaba.
-    let Ok(done) = collect(&cache, &deps).await else {
-        return;
+    let mut networked = false;
+    // `AbortRefresh`: el hilo del Python moría y la caché no cambiaba. Si ya
+    // hubo red, se fija `at` igualmente (las filas y la salud no cambian): sin
+    // eso cada `get` posterior repetiría la petición OAuth sin TTL. Diferencia
+    // aceptada con el Python, que reintentaba en cada sondeo.
+    let done = match collect(&cache, &deps, &mut networked).await {
+        Ok(done) => done,
+        Err(AbortRefresh) => {
+            if networked {
+                cache.lock().at = secs(&deps.opts);
+            }
+            return;
+        }
     };
     let at = secs(&deps.opts);
     {
@@ -223,7 +233,17 @@ fn mark_error(health: &mut Map<String, Value>, error: &str) {
     );
 }
 
-async fn collect(cache: &Arc<LimitsCache>, deps: &RefreshDeps) -> Result<Collected, AbortRefresh> {
+/// Texto de `health.error` cuando la respuesta OAuth no se puede interpretar
+/// con certeza como el Python (`Raised::Unsure`). Diferencia aceptada: el
+/// Python guardaría el `str(e)` de su excepción o las filas.
+pub const OAUTH_UNSURE_ERROR: &str = "respuesta OAuth no reproducible por el frente";
+
+/// `networked` pasa a `true` antes de la primera petición de red.
+async fn collect(
+    cache: &Arc<LimitsCache>,
+    deps: &RefreshDeps,
+    networked: &mut bool,
+) -> Result<Collected, AbortRefresh> {
     let o = &deps.opts;
     let home = home_of(&o.hooks);
     let zone = o.zone.clone();
@@ -260,6 +280,7 @@ async fn collect(cache: &Arc<LimitsCache>, deps: &RefreshDeps) -> Result<Collect
         let mut rows = Vec::new();
         if !token.is_empty() {
             h.insert("configured".into(), true.into());
+            *networked = true;
             let call = o
                 .oauth
                 .get_json(lim::CLAUDE_OAUTH_USAGE_URL, token, OAUTH_TIMEOUT);
@@ -270,7 +291,9 @@ async fn collect(cache: &Arc<LimitsCache>, deps: &RefreshDeps) -> Result<Collect
                     match lim::parse_claude_oauth_limits(&payload, ts, zone.as_ref()) {
                         Ok(parsed) => rows = parsed,
                         Err(Raised::Exception(e)) => mark_error(&mut h, &e),
-                        Err(Raised::Unsure) => return Err(AbortRefresh),
+                        // Tras la red no se aborta (abortar dejaba `at` sin
+                        // fijar): error propio y el TTL de error (180 s).
+                        Err(Raised::Unsure) => mark_error(&mut h, OAUTH_UNSURE_ERROR),
                     }
                 }
                 Ok(Err(e)) => mark_error(&mut h, &e),
@@ -407,6 +430,11 @@ async fn collect(cache: &Arc<LimitsCache>, deps: &RefreshDeps) -> Result<Collect
 
 // ---------------------------------------------------------------- red real
 
+/// Tope del cuerpo de la respuesta OAuth (1 MiB). Pasarlo es un error propio
+/// del frente (D4: diagnóstico, diferencia aceptada).
+const OAUTH_BODY_CAP: usize = 1 << 20;
+const OAUTH_BODY_TOO_LARGE: &str = "respuesta OAuth de más de 1 MiB";
+
 /// El cliente de producción: `reqwest` con HTTP/1.1, plazos de 8 s y la
 /// resolución hecha antes por el frente para reproducir los errores de DNS.
 pub struct ReqwestOauth;
@@ -460,7 +488,21 @@ async fn fetch_json(url: &'static str, token: String, timeout: Duration) -> Resu
             .unwrap_or_default();
         return Err(format!("HTTP Error {}: {reason}", status.as_u16()));
     }
-    let body = response.bytes().await.map_err(|e| python_error(&e))?;
+    // Cuerpo acotado: la respuesta real mide unos cientos de bytes.
+    if response
+        .content_length()
+        .is_some_and(|n| n > OAUTH_BODY_CAP as u64)
+    {
+        return Err(OAUTH_BODY_TOO_LARGE.to_owned());
+    }
+    let mut response = response;
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|e| python_error(&e))? {
+        if body.len() + chunk.len() > OAUTH_BODY_CAP {
+            return Err(OAUTH_BODY_TOO_LARGE.to_owned());
+        }
+        body.extend_from_slice(&chunk);
+    }
     // Un cuerpo que no es UTF-8 o JSON da un texto propio (D4, diferencia aceptada).
     let text = std::str::from_utf8(&body).map_err(|_| "respuesta no UTF-8".to_owned())?;
     workspace_loads(text).map_err(|e| format!("respuesta no JSON: {e}"))

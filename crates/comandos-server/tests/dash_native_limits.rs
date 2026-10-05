@@ -155,7 +155,7 @@ async fn limits_without_usage_effects_never_refresh() {
 }
 
 #[tokio::test]
-async fn startup_refresh_never_creates_the_usage_db() {
+async fn refresh_never_creates_the_usage_db() {
     let home = TestHome::new("limits-nodb");
     write(
         &home.hooks().join("groq-ratelimit.json"),
@@ -163,13 +163,104 @@ async fn startup_refresh_never_creates_the_usage_db() {
     );
     let native = Native::new(home.options());
     assert!(native.ready().await);
-    native.start_background();
     let deps = native.refresh_deps();
     let cache = native.limits();
+    // A demanda (como lo pide una ruta): el arranque ya no refresca.
+    cache.get(&deps);
     settle(cache).await;
     // Hubo refresco (filas de cabeceras de Groq) y la base no existe.
     assert_eq!(cache.get(&deps).rows[0]["id"], json!("groq_tokens"));
     assert!(!home.usage_db().exists());
+    native.shutdown().await;
+}
+
+/// Arrancar el frente no toca la red (hasta la Tarea 8): cero llamadas OAuth
+/// aunque haya credenciales y la caché esté vacía.
+#[tokio::test]
+async fn boot_makes_no_oauth_calls() {
+    let home = TestHome::new("limits-boot");
+    creds(&home, ".claude/.credentials.json", "tok-main");
+    let oauth = Arc::new(FakeOauth::default());
+    oauth.set("tok-main", FakeAnswer::Json(payload(41.0)));
+    let mut opts = home.options();
+    opts.oauth = oauth.clone();
+    let front = support::front(&home, support::dead_port(), opts).await;
+    // Una ruta nativa cualquiera: el frente ya atendió y abrió la base.
+    let _ = support::get(front.port, "/prefs").await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(oauth.calls(), 0, "el arranque no llama a la red");
+    front.stop().await;
+}
+
+/// Una respuesta OAuth que el port no interpreta con certeza no aborta el
+/// refresco tras la red: error propio y el TTL de error, una sola llamada.
+#[tokio::test]
+async fn unsure_oauth_body_keeps_the_ttl() {
+    let home = TestHome::new("limits-unsure");
+    creds(&home, ".claude/.credentials.json", "tok-main");
+    let oauth = Arc::new(FakeOauth::default());
+    // `kind` no ASCII: el `slug` de Unicode del Python no se reproduce.
+    oauth.set(
+        "tok-main",
+        FakeAnswer::Json(json!({"limits": [{"kind": "sesión", "percent": 5}]})),
+    );
+    let clock = Arc::new(AtomicI64::new(NOW_MS));
+    let mut opts = home.options();
+    opts.oauth = oauth.clone();
+    let c2 = clock.clone();
+    opts.clock = Arc::new(move || c2.load(Ordering::SeqCst));
+    let native = Native::new(opts);
+    let deps = native.refresh_deps();
+    let cache = Arc::new(LimitsCache::default());
+    cache.get(&deps);
+    settle(&cache).await;
+    let health = cache.get(&deps).health;
+    assert_eq!(health["claude_oauth"]["status"], json!("error"));
+    assert_eq!(
+        health["claude_oauth"]["error"],
+        json!(comandos_server::dash::native::usage::limits::OAUTH_UNSURE_ERROR)
+    );
+    clock.fetch_add(61_000, Ordering::SeqCst);
+    cache.get(&deps);
+    assert!(!cache.refreshing(), "con error el TTL es 180 s");
+    assert_eq!(oauth.calls(), 1, "una sola petición");
+    native.shutdown().await;
+}
+
+/// Un aborto (excepción no capturada del Python) DESPUÉS de la red fija `at`:
+/// dentro del TTL no hay otra petición; al vencer, una.
+#[tokio::test]
+async fn abort_after_network_keeps_the_ttl() {
+    let home = TestHome::new("limits-abort");
+    creds(&home, ".claude/.credentials.json", "tok-main");
+    // `int("x")` del Python en `user_quotas()["grok"]["tokens_7d"]`: el hilo moría.
+    home.write("provider-quotas.json", r#"{"grok": {"tokens_7d": "x"}}"#);
+    seed_usage(&home, &turn("g1", "grok", NOW_MS / 1000 - 600, 100));
+    let oauth = Arc::new(FakeOauth::default());
+    oauth.set("tok-main", FakeAnswer::Json(payload(41.0)));
+    let clock = Arc::new(AtomicI64::new(NOW_MS));
+    let mut opts = home.options();
+    opts.oauth = oauth.clone();
+    let c2 = clock.clone();
+    opts.clock = Arc::new(move || c2.load(Ordering::SeqCst));
+    let native = Native::new(opts);
+    let deps = native.refresh_deps();
+    let cache = Arc::new(LimitsCache::default());
+    cache.get(&deps);
+    settle(&cache).await;
+    assert!(
+        cache.get(&deps).rows.is_empty(),
+        "el aborto no publica filas"
+    );
+    assert_eq!(oauth.calls(), 1);
+    clock.fetch_add(30_000, Ordering::SeqCst);
+    cache.get(&deps);
+    assert!(!cache.refreshing(), "dentro del TTL no hay refresco");
+    assert_eq!(oauth.calls(), 1);
+    clock.fetch_add(31_000, Ordering::SeqCst);
+    cache.get(&deps);
+    settle(&cache).await;
+    assert_eq!(oauth.calls(), 2, "vencido el TTL, otra petición");
     native.shutdown().await;
 }
 
