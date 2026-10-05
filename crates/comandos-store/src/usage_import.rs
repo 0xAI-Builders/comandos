@@ -41,8 +41,11 @@ use std::{
 
 type Object = Map<String, Value>;
 
-/// Turnos o tramos pendientes antes de escribirlos en una transacción.
-const BATCH: usize = 2048;
+/// Turnos o tramos pendientes antes de escribirlos en una transacción. Un
+/// turno son 31 celdas (≈ 1 KB): 128 caben en < 128 KiB, bajo el umbral de
+/// `mmap` de glibc. Un lote de 2 MB lo servía glibc con `mmap` y, al soltarlo,
+/// subía su umbral de `mmap` y el de recorte: las arenas dejaban de recortarse.
+const BATCH: usize = 128;
 /// Un búfer de línea que creció por encima de esto se suelta tras la línea.
 const LINE_KEEP: usize = 1 << 20;
 /// `record_local_grok_updates(..., max_files=200)`.
@@ -2186,6 +2189,12 @@ mod tests {
         .unwrap();
         let _ = std::fs::remove_file(&path);
         out
+    }
+
+    #[test]
+    fn a_batch_stays_under_glibc_mmap_threshold() {
+        let batch = std::mem::size_of::<[Sql; 31]>() * BATCH;
+        assert!(batch < 128 * 1024, "{batch}");
     }
 
     #[test]
