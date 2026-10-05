@@ -371,8 +371,10 @@ pub(crate) async fn snippet_paste_to_pane(
     }
 }
 
-/// POST `/key` (9659). El pane pedido que no es el resuelto (muerto, o de
-/// otra sesión) es un 404: nunca se teclea en el pane activo.
+/// POST `/key` (9659). Un pane pedido que ya no vive no es el resuelto
+/// (`post_target` cayó a `=<sesión>:`) y es un 404: nunca se teclea en el pane
+/// activo. Un pane vivo se acepta aunque sea de otra sesión, como en el Python
+/// (`display-message -t <pane>` solo comprueba que exista).
 async fn key(
     native: &Native,
     pt: &target::PostTarget,
@@ -763,8 +765,17 @@ async fn export(
         Some(_) => return error_reply(StatusCode::BAD_REQUEST, "format debe ser txt o pdf"),
     };
     // `read_states()` sin caché, como el Python (que también reescribe
-    // `app-tab-models.json`): el cómputo directo de `/state`.
-    let states = gather::compute(native).await.map_err(Fault::from)?;
+    // `app-tab-models.json`): un cómputo de `/state` que no sirve el resultado
+    // guardado, dentro del vuelo único de la caché (ronda 1): nunca dos
+    // cómputos a la vez (el rastreador de configuración no se pisa) y una
+    // ráfaga de exportaciones hace uno solo.
+    let clock = native.options().clock.clone();
+    let states = native
+        .states
+        .cache
+        .get_fresh(&*clock, || gather::compute(native))
+        .await
+        .map_err(Fault::from)?;
     mark(fx);
     let mut found = None;
     for item in states.items.iter() {

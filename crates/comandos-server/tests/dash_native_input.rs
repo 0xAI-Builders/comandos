@@ -22,7 +22,7 @@ use support::{
     oracle::{FakeCall, confined_fakebin, run_dash},
     run_tmux,
     tabs::{normalize_home, seed_registry},
-    twin::{Twin, TwinOpts, normalize},
+    twin::{Twin, TwinOpts, normalize, tmux_stdin},
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -188,6 +188,13 @@ async fn input_routes_match_python() {
         t.tmux_a(&["list-buffers"]),
         "",
         "un buffer de pegado quedó vivo"
+    );
+    // Lo que recibió `load-buffer` por stdin, byte a byte, en los dos lados.
+    let pasted = tmux_stdin(&t.a);
+    assert_eq!(pasted, tmux_stdin(&t.b));
+    assert_eq!(
+        pasted,
+        vec![b"linea1\nlinea2".to_vec(), b"al cero".to_vec()]
     );
     let (a, b) = take_mutations(&t);
     assert!(!a.is_empty());
@@ -496,4 +503,93 @@ fn md_to_html_matches_python() {
             "caso {case:?}"
         );
     }
+}
+
+/// Cómputos de `/state` del frente: cada uno lee el inventario de panes una
+/// vez (`list-panes -a -F <PANE_FORMAT>`).
+fn computations(home: &TestHome) -> usize {
+    support::twin::tmux_log(home)
+        .iter()
+        .filter(|call| {
+            call.first().is_some_and(|v| v == "list-panes")
+                && call.iter().any(|a| a == "-a")
+                && call
+                    .iter()
+                    .any(|a| a == comandos_runtime::agent_procs::PANE_FORMAT)
+        })
+        .count()
+}
+
+#[tokio::test]
+async fn export_burst_shares_one_state_computation() {
+    // Ronda 1: `/export` relee `/state` dentro del vuelo único de su caché.
+    // Con un tmux lento en el inventario, una ráfaga de exportaciones y
+    // sondeos concurrentes hace un solo cómputo (nunca dos a la vez, así el
+    // rastreador de configuración no se pisa).
+    let opts = TwinOpts {
+        fakebin_extra: vec![("google-chrome".into(), FAKE_CHROME.into())],
+        oracle_env: vec![("TZ".into(), "America/Mexico_City".into())],
+        front: Some(Box::new(|o| {
+            // Un `tmux` que tarda 0,5 s en `list-panes -a` y delega en el
+            // guardián (mismo prefijo `-f /dev/null -S <socket>` del frente).
+            let guard = o.tmux.program.path.clone();
+            let dir = guard
+                .parent()
+                .and_then(|p| p.parent())
+                .unwrap()
+                .join("slowbin");
+            std::fs::create_dir_all(&dir).unwrap();
+            let slow = dir.join("tmux");
+            let sleep = support::oracle::real_program("sleep").unwrap();
+            std::fs::write(
+                &slow,
+                format!(
+                    "#!/bin/sh\nfor a in \"$@\"; do [ \"$a\" = -a ] && {} 0.5; done\nexec {} \"$@\"\n",
+                    sleep.display(),
+                    guard.display()
+                ),
+            )
+            .unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&slow, std::fs::Permissions::from_mode(0o755)).unwrap();
+            o.tmux.program.path = slow;
+        })),
+        ..TwinOpts::default()
+    };
+    let Some(t) = Twin::start_with("burst", seed_export, opts).await else {
+        return;
+    };
+    assert_confined_burst(&t);
+    // Una sola exportación: cuántas lecturas del inventario hace un cómputo.
+    let one = t.post_front("/export", r#"{"session":"s1"}"#).await;
+    assert_eq!(one.status, 200, "{}", one.text());
+    let per = computations(&t.a);
+    assert!(per >= 1);
+    let _ = std::fs::remove_file(t.a.root.join("tmux.log"));
+    let port = t.front.port;
+    let export = || support::request_body(port, "POST", "/export", "", r#"{"session":"s1"}"#);
+    let poll = || support::get(port, "/state");
+    let (a, b, c, d, e, f) = tokio::join!(export(), export(), export(), poll(), export(), poll());
+    for wire in [&a, &b, &c, &e] {
+        assert_eq!(wire.status, 200, "{}", wire.text());
+    }
+    for wire in [&d, &f] {
+        assert_eq!(wire.status, 200, "{}", wire.text());
+    }
+    assert_eq!(computations(&t.a), per, "la ráfaga hizo más de un cómputo");
+}
+
+/// El canario de `assert_confined`, con el `tmux` lento delante del guardián.
+fn assert_confined_burst(t: &Twin) {
+    for home in [&t.a, &t.b] {
+        let socket = comandos_server::dash::native::tmux::private_socket(&home.tmux_dir());
+        let guard = std::fs::read_to_string(home.root.join("fakebin/tmux")).unwrap();
+        assert!(guard.contains(&format!("-S '{}'", socket.display())));
+        assert!(guard.contains(" -i "));
+    }
+    let opts = &t.front_options;
+    assert_eq!(opts.tmux.program.path, t.a.root.join("slowbin/tmux"));
+    let slow = std::fs::read_to_string(&opts.tmux.program.path).unwrap();
+    assert!(slow.contains(&t.a.root.join("fakebin/tmux").display().to_string()));
+    support::assert_private_tmux(opts);
 }

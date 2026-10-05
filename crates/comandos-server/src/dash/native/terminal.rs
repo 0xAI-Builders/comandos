@@ -31,6 +31,11 @@ use tokio::{runtime::Handle, sync::Semaphore};
 /// ocuparía todo el pool con hilos aparcados en ese candado, y los estáticos y
 /// el resto de saltos esperarían detrás (con tmux lento, 5 s × 17 seguidos).
 /// Aquí la espera es asíncrona y la ola ocupa como mucho un hilo.
+///
+/// Un `close` no tiene plazo total, igual que el Python (que hace la copia
+/// bajo su `RLock` sin límite propio): cada `tmux` tiene sus 5 s, pero la
+/// copia hace ≈ 5 llamadas por ventana de la sesión, así que con tmux colgado
+/// retiene la puerta (2 + 5·ventanas)·5 s y las demás acciones esperan detrás.
 static PANES_GATE: Semaphore = Semaphore::const_new(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -315,6 +320,12 @@ impl CloseCopy {
     /// texto (400); cualquier otra excepción es el 503 de la ruta (queda en
     /// `bridge.unavailable`); lo incierto, en `bridge.uncertain` (se declina
     /// si aún no hubo efectos).
+    ///
+    /// Diferencia de orden con el Python: `time.time_ns()`, `uuid4().hex` y
+    /// `time.time()` (nombre del archivo y `closedAt`) se toman aquí, ANTES de
+    /// capturar la sesión; el Python los toma después de `capture_session` y
+    /// de `capture-pane`. Las marcas quedan unos milisegundos antes (lo que
+    /// tarde la captura); el contenido y el orden de las copias no cambian.
     fn save(
         &self,
         handle: &Handle,

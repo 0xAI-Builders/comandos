@@ -297,3 +297,144 @@ async fn pane_close_respects_cuts_off() {
     assert!(!closed_dir(&t.a).exists());
     assert_eq!(panes_of(&t, 'a'), "%0\n%1\n%2\n");
 }
+
+/// Un frente solo (sin oráculo) sobre `home` sembrado con `seed`, cuyo tmux es
+/// un envoltorio llamado `tmux` delante del tmux real: recibe el mismo
+/// prefijo `-f /dev/null -S <socket privado>` de `Tmux::private` y, si
+/// `fake` (un `case` de sh sobre `$*`) no responde él mismo, delega con
+/// `exec`. Así se fuerzan respuestas de tmux concretas sin salir del servidor
+/// privado de la prueba.
+async fn wrapped_front(
+    home: &TestHome,
+    legacy: &support::FakeLegacy,
+    fake: &str,
+) -> support::Front {
+    seed(home);
+    let real = support::oracle::real_program("tmux").unwrap();
+    let dir = home.root.join("wrapbin");
+    std::fs::create_dir_all(&dir).unwrap();
+    let wrapper = dir.join("tmux");
+    std::fs::write(
+        &wrapper,
+        format!(
+            "#!/bin/sh\ncase \"$*\" in\n{fake}\nesac\nexec {} \"$@\"\n",
+            real.display()
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut opts = home.options();
+    opts.tmux.program.path = wrapper;
+    // Canario: el envoltorio lleva el `-S` del socket privado en su prefijo.
+    let socket = comandos_server::dash::native::tmux::private_socket(&home.tmux_dir());
+    assert!(
+        opts.tmux
+            .program
+            .prefix
+            .windows(2)
+            .any(|w| w[0] == "-S" && w[1] == socket.as_os_str())
+    );
+    support::assert_private_tmux(&opts);
+    support::front(home, legacy.port, opts).await
+}
+
+/// `close` de `%1` con la identidad que el frente acaba de listar.
+async fn close_one(front: &support::Front) -> support::Wire {
+    let list = support::request_body(
+        front.port,
+        "POST",
+        "/terminal-panes",
+        "",
+        r#"{"session":"s1","action":"list"}"#,
+    )
+    .await;
+    assert_eq!(list.status, 200, "{}", list.text());
+    let body = json!({"session":"s1","action":"close","pane":"%1","identity":identity_in(&list.text(), "%1")});
+    support::request_body(front.port, "POST", "/terminal-panes", "", &body.to_string()).await
+}
+
+fn alive(home: &TestHome) -> String {
+    run_tmux(home, &["list-panes", "-t", "=s1:", "-F", "#{pane_id}"])
+}
+
+#[tokio::test]
+async fn pane_close_layout_change_during_capture_answers_503() {
+    if !support::tmux_available() {
+        return;
+    }
+    let home = TestHome::new_short("pc503");
+    let legacy = support::FakeLegacy::start().await;
+    // La relectura de `#{window_layout}` de la copia ya no coincide: el
+    // `RuntimeError` del Python (503), sin copia ni cierre.
+    let front = wrapped_front(
+        &home,
+        &legacy,
+        "*'display-message -p -t @'*' #{window_layout}') echo 'otro,1x1,0,0,9'; exit 0;;",
+    )
+    .await;
+    let wire = close_one(&front).await;
+    assert_eq!(
+        (wire.status, wire.text().as_str()),
+        (
+            503,
+            r#"{"error": "No se pudo completar la acci\u00f3n del panel. Comprueba Paneles antes de reintentar"}"#
+        )
+    );
+    assert!(copies(&home).is_empty());
+    assert_eq!(alive(&home), "%0\n%1\n%2\n");
+    assert!(legacy.requests().is_empty());
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn pane_close_failed_capture_answers_400() {
+    if !support::tmux_available() {
+        return;
+    }
+    let home = TestHome::new_short("pc400");
+    let legacy = support::FakeLegacy::start().await;
+    // `capture-pane` con código ≠ 0: el `ValueError` del Python (400).
+    let front = wrapped_front(&home, &legacy, "*'capture-pane -p -J -t'*) exit 1;;").await;
+    let wire = close_one(&front).await;
+    assert_eq!(
+        (wire.status, wire.text().as_str()),
+        (
+            400,
+            r#"{"error": "No se pudo guardar el texto. El panel sigue abierto"}"#
+        )
+    );
+    assert!(copies(&home).is_empty());
+    assert_eq!(alive(&home), "%0\n%1\n%2\n");
+    assert!(legacy.requests().is_empty());
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn pane_close_uncertain_inspector_declines() {
+    if !support::tmux_available() {
+        return;
+    }
+    let home = TestHome::new_short("pcunsure");
+    let legacy = support::FakeLegacy::start().await;
+    // Un `pid` que no se puede hashear en una sesión de Claude: el
+    // `PaneInspector` de la copia no sabe qué haría el Python (`Unsure`) y,
+    // como no hubo efectos, la petición se reenvía.
+    let sessions = home.root.join(".claude/sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    std::fs::write(
+        sessions.join("x.json"),
+        r#"{"pid": [1], "sessionId": "abc"}"#,
+    )
+    .unwrap();
+    let front = wrapped_front(&home, &legacy, "--never--) ;;").await;
+    let wire = close_one(&front).await;
+    assert_eq!(wire.text(), r#"{"legacy": true}"#);
+    assert_eq!(
+        legacy.requests(),
+        vec!["POST /terminal-panes HTTP/1.1".to_owned()]
+    );
+    assert!(copies(&home).is_empty());
+    assert_eq!(alive(&home), "%0\n%1\n%2\n");
+    front.stop().await;
+}

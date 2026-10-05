@@ -412,6 +412,11 @@ pub fn tmux_guard(real_tmux: &Path, socket: &Path) -> String {
 /// `log` (formato de `fake_calls`) y ejecuta tmux con `env -i` y SOLO `env`,
 /// de modo que el servidor privado y todo panel nazcan confinados aunque quien
 /// llame (el frente, la prueba) traiga `DISPLAY`, el HOME o el `PATH` reales.
+///
+/// Una llamada con `load-buffer` guarda además su stdin, byte a byte, en
+/// `tmux-stdin.log` junto a `log` (registros terminados en `\0\x1e\0`,
+/// `twin::tmux_stdin`): tmux lo lee de una copia en el mismo directorio, que
+/// se borra después. El `-S` y el `env -i` son los mismos en los dos caminos.
 pub fn confined_tmux_guard(
     real_tmux: &Path,
     socket: &Path,
@@ -427,12 +432,31 @@ pub fn confined_tmux_guard(
         .map(|(k, v)| sh_quote(&format!("{k}={v}")))
         .collect();
     let env_bin = real_program("env").unwrap_or_else(|| PathBuf::from("/usr/bin/env"));
+    let cat = real_program("cat").unwrap_or_else(|| PathBuf::from("/bin/cat"));
+    let rm = real_program("rm").unwrap_or_else(|| PathBuf::from("/bin/rm"));
+    let stdin_log = log.with_file_name("tmux-stdin.log");
+    let stdin_copy = log.with_file_name("tmux-stdin.");
     format!(
         "#!/bin/sh\n[ -d {dir} ] || {{ echo 'tmux guardián: sin socket privado' >&2; exit 97; }}\n\
          printf '%s\\0' tmux \"$@\" \"$(printf '\\036')\" >> {log}\n\
+         buffer=\n\
+         for a in \"$@\"; do [ \"$a\" = load-buffer ] && buffer=1; done\n\
+         if [ -n \"$buffer\" ]; then\n\
+         copy={copy}$$\n\
+         {cat} > \"$copy\"\n\
+         {{ {cat} \"$copy\"; printf '\\000\\036\\000'; }} >> {stdin_log}\n\
+         {env_bin} -i {assigns} {real} -S {sock} \"$@\" < \"$copy\"\n\
+         rc=$?\n\
+         {rm} -f \"$copy\"\n\
+         exit $rc\n\
+         fi\n\
          exec {env_bin} -i {assigns} {real} -S {sock} \"$@\"\n",
         dir = sh_quote(&dir),
         log = sh_quote(&log.display().to_string()),
+        copy = sh_quote(&stdin_copy.display().to_string()),
+        cat = sh_quote(&cat.display().to_string()),
+        rm = sh_quote(&rm.display().to_string()),
+        stdin_log = sh_quote(&stdin_log.display().to_string()),
         env_bin = sh_quote(&env_bin.display().to_string()),
         assigns = assigns.join(" "),
         real = sh_quote(&real_tmux.display().to_string()),

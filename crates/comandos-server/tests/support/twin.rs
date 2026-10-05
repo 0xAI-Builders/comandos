@@ -308,6 +308,19 @@ pub fn tmux_log(home: &TestHome) -> Vec<Vec<String>> {
         .collect()
 }
 
+/// El stdin de cada `load-buffer` que pasó por el guardián de `home`
+/// (`<root>/tmux-stdin.log`), en orden y byte a byte.
+pub fn tmux_stdin(home: &TestHome) -> Vec<Vec<u8>> {
+    let bytes = std::fs::read(home.root.join("tmux-stdin.log")).unwrap_or_default();
+    let mut out = Vec::new();
+    let mut rest = bytes.as_slice();
+    while let Some(at) = rest.windows(3).position(|w| w == b"\0\x1e\0") {
+        out.push(rest[..at].to_vec());
+        rest = &rest[at + 3..];
+    }
+    out
+}
+
 fn mutations(log: Vec<Vec<String>>) -> Vec<Vec<String>> {
     log.into_iter()
         .filter(|args| {
