@@ -530,6 +530,8 @@ attempt("grok", lambda: cc_usage.record_local_grok_updates(db, [os.path.join(hom
 attempt("grok_meta", lambda: cc_usage.record_local_grok_updates(db, [os.path.join(home, ".grok2")], now=now, max_age_days=21))
 attempt("codex_inf", lambda: cc_usage.record_local_codex_rollouts(db, homes=[("x", os.path.join(home, ".codex-inf"))],
         now=now, max_age_days=21, max_files=None, seen={}))
+attempt("opencode_inf", lambda: cc_usage.record_local_opencode_db(db, os.path.join(home, "opencode-inf.db"), now=now,
+        max_age_days=21))
 print(json.dumps(out, sort_keys=True))
 "#;
 
@@ -585,6 +587,33 @@ fn cuts_and_uncaught_errors_match_python() {
         format!("{{\"type\": \"token_usage_record\", \"timestamp\": {}, \"payload\": {{\"response_id\": \"i\", \"usage\": {{\"input_tokens\": Infinity}}}}}}\n", NOW - 10).as_bytes(),
         (NOW - 10) as f64,
     );
+    // OpenCode: una fila buena y luego una con `Infinity`: el bucle lanza antes
+    // de escribir nada (ni la buena).
+    let oc = Connection::open(home.join("opencode-inf.db")).unwrap();
+    oc.execute_batch(
+        "create table session (id text primary key, directory text);
+         create table message (id text primary key, session_id text, time_created integer, data text);",
+    )
+    .unwrap();
+    for (id, at, data) in [
+        (
+            "ok",
+            (NOW - 20) * 1000,
+            r#"{"role": "assistant", "tokens": {"input": 4}}"#,
+        ),
+        (
+            "inf",
+            (NOW - 10) * 1000,
+            r#"{"role": "assistant", "tokens": {"input": Infinity}}"#,
+        ),
+    ] {
+        oc.execute(
+            "insert into message values (?,'s',?,?)",
+            params![id, at, data],
+        )
+        .unwrap();
+    }
+    drop(oc);
     let ours = scratch.0.join("ours.sqlite");
     let theirs = scratch.0.join("theirs.sqlite");
     seed_db(&ours);
@@ -673,6 +702,14 @@ fn cuts_and_uncaught_errors_match_python() {
         &roots,
     );
     ours_out.insert("codex_inf".into(), show(inf));
+    let mut oc_plan = plan(None, None, home.clone());
+    oc_plan.opencode_db = home.join("opencode-inf.db");
+    ours_out.insert(
+        "opencode_inf".into(),
+        show(usage_import::record_local_opencode_db(
+            &conn, &oc_plan, &roots,
+        )),
+    );
     let mut theirs_out: Map<String, Value> = serde_json::from_str(out.trim()).unwrap();
     for v in theirs_out.values_mut() {
         if v.as_str().is_some_and(|s| s.starts_with("raises:")) {

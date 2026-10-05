@@ -1524,8 +1524,11 @@ pub fn record_local_opencode_db(
     };
     plan.check()?;
     let uri = format!("file:{path}?mode=ro");
-    let Ok(Some(turns)) = opencode_turns(&uri, cutoff_ms, roots) else {
-        return Ok(0);
+    let turns = match opencode_turns(&uri, cutoff_ms, roots) {
+        Ok(OpenCodeRead::Turns(turns)) => turns,
+        // El bucle del Python lanza antes de escribir nada.
+        Ok(OpenCodeRead::Raises) => return Err(ImportError::Raises),
+        Ok(OpenCodeRead::Unread) | Err(_) => return Ok(0),
     };
     let mut sink = Sink::new(plan);
     for turn in turns {
@@ -1534,12 +1537,23 @@ pub fn record_local_opencode_db(
     sink.finish(conn)
 }
 
-/// Los turnos de la base de OpenCode; `Ok(None)` (o `Err`) si la lectura falló.
+/// Lo que da la lectura de la base de OpenCode.
+enum OpenCodeRead {
+    /// La lectura falló (el `try` del `fetchall`): cero filas.
+    Unread,
+    Turns(Vec<Turn>),
+    /// Una fila lanza en el bucle del Python, que corre tras leerlas todas.
+    Raises,
+}
+
+/// Los turnos de la base de OpenCode. El Python lee todas las filas antes de
+/// convertirlas: una fila que lanza no gana a un fallo de lectura posterior,
+/// así que tras ella se sigue leyendo sin convertir.
 fn opencode_turns(
     uri: &str,
     cutoff_ms: i64,
     roots: &dyn GitRoots,
-) -> rusqlite::Result<Option<Vec<Turn>>> {
+) -> rusqlite::Result<OpenCodeRead> {
     let oc = Connection::open_with_flags(
         uri,
         OpenFlags::SQLITE_OPEN_READ_ONLY
@@ -1549,26 +1563,30 @@ fn opencode_turns(
     let mut stmt = oc.prepare(OPENCODE_SQL)?;
     let mut cursor = stmt.query(params![cutoff_ms])?;
     let mut turns = Vec::new();
+    let mut raised = false;
     let mut cache: HashMap<String, String> = HashMap::new();
     while let Some(row) = cursor.next()? {
         let mut cells = Vec::with_capacity(5);
         for i in [0usize, 1, 2, 4] {
             match sql_value(row.get_ref(i)?) {
                 Some(v) => cells.push(v),
-                None => return Ok(None),
+                None => return Ok(OpenCodeRead::Unread),
             }
         }
         let data = row.get_ref(3)?;
         if let ValueRef::Text(t) = data
             && std::str::from_utf8(t).is_err()
         {
-            return Ok(None);
+            return Ok(OpenCodeRead::Unread);
+        }
+        if raised {
+            continue;
         }
         let [mid, session, created, directory] = <[Value; 4]>::try_from(cells).unwrap_or_default();
         let Some(msg) = opencode_message(data) else {
             continue;
         };
-        if let Ok(Some(turn)) = opencode_turn(
+        match opencode_turn(
             &msg,
             &mid,
             &session,
@@ -1581,10 +1599,19 @@ fn opencode_turns(
                     .clone()
             },
         ) {
-            turns.push(turn);
+            Ok(Some(turn)) => turns.push(turn),
+            Ok(None) => {}
+            Err(_) => {
+                raised = true;
+                turns = Vec::new();
+            }
         }
     }
-    Ok(Some(turns))
+    Ok(if raised {
+        OpenCodeRead::Raises
+    } else {
+        OpenCodeRead::Turns(turns)
+    })
 }
 
 fn opencode_turn(
