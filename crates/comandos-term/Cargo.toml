@@ -7,6 +7,8 @@ publish.workspace = true
 
 [dependencies]
 alacritty_terminal = { version = "=0.26.0", default-features = false }
+comandos-core = { path = "../comandos-core" }
+serde_json.workspace = true
 
 [lints]
 workspace = true
