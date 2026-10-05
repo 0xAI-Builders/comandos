@@ -135,6 +135,10 @@ fn seed_home(home: &Path) {
                "cwd": "/r/a", "sessionId": "s-a", "uuid": "dur-1"}),
         json!({"type": "system", "subtype": "turn_duration", "timestamp": iso(NOW - 500), "durationMs": 0}),
         json!({"type": "system", "subtype": "turn_duration", "timestamp": iso(NOW - 400), "durationMs": 1000, "cwd": "/r/zzz"}),
+        // `_text(uuid or f"{path}:{no}")`: un uuid falso (0, false) toma el respaldo.
+        json!({"type": "system", "subtype": "turn_duration", "timestamp": iso(NOW - 390), "durationMs": 1000, "uuid": 0}),
+        json!({"type": "system", "subtype": "turn_duration", "timestamp": iso(NOW - 380), "durationMs": 1000, "uuid": false}),
+        json!({"type": "system", "subtype": "turn_duration", "timestamp": iso(NOW - 370), "durationMs": 1000, "uuid": 7}),
     ]);
     put(
         &home.join(".claude/projects/-r-a/s1.jsonl"),

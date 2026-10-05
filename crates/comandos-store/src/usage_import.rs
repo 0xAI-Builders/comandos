@@ -1059,7 +1059,11 @@ fn claude_line(
         let ms = take!(int(&data.get("durationMs")));
         if end >= f.cutoff && ms > 0 {
             let cwd = take!(usage_state::text(&data.get("cwd")));
-            let uuid = take!(text_or(&data.get("uuid"), &here()));
+            // `_text(uuid or f"{path}:{no}")`: la verdad del uuid, no su texto.
+            let uuid = take!(usage_state::text(&or(
+                data.get("uuid"),
+                Value::String(here())
+            )));
             let session = take!(usage_state::text(&data.get("sessionId")));
             let git_root = or_str(root(roots, &cwd), &cwd);
             sink.span(
