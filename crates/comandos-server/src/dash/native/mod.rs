@@ -20,7 +20,6 @@ pub mod retired;
 pub mod snippets;
 pub mod state;
 pub mod states;
-pub mod subrequest;
 pub mod terminal;
 pub mod tmux;
 pub mod typing;
@@ -252,7 +251,9 @@ pub struct NativeOptions {
     pub home: PathBuf,
     /// Raíz de `/proc` (las pruebas de capa usan una falsa; el frente, la real).
     pub proc_root: PathBuf,
-    /// Heredado para el contexto de sugerencias (D1, D11). `build` lo fija.
+    /// Heredado y token del tablero (`build` los fija). Desde la Tarea 5a de la
+    /// 2e ningún cómputo nativo los lee: el contexto de sugerencias de GET
+    /// `/state` ya no pide nada al heredado.
     pub legacy: SocketAddr,
     pub legacy_token: Vec<u8>,
     /// `PATH` del frente al arrancar, para `providers::which` (D9).

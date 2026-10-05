@@ -1,6 +1,7 @@
 //! Uso, cuotas y analítica (Fase 2e): la caché de límites de proveedor y las
 //! rutas de este dominio. Todas declinan con el carril de uso apagado (D10).
 pub mod extensions;
+pub mod guard;
 pub mod limits;
 pub mod pane_models;
 pub mod week;

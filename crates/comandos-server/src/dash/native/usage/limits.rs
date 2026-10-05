@@ -41,6 +41,9 @@ pub trait OauthHttp: Send + Sync + 'static {
 pub struct Limits {
     pub rows: Vec<Map<String, Value>>,
     pub health: Map<String, Value>,
+    /// Hubo al menos un refresco completo (`at > 0`): las filas son las de una
+    /// lectura real, no la caché vacía del arranque.
+    pub loaded: bool,
 }
 
 #[derive(Default)]
@@ -57,6 +60,8 @@ struct LimitsState {
 pub struct LimitsCache {
     state: Mutex<LimitsState>,
     emails: Mutex<lim::EmailCache>,
+    /// Aviso de fin de refresco (se publicó la caché o terminó la tarea).
+    done: tokio::sync::Notify,
 }
 
 /// Lo que la tarea de refresco necesita, sin `&Native` (D13).
@@ -85,6 +90,14 @@ impl LimitsCache {
 
     pub fn refreshing(&self) -> bool {
         self.lock().refreshing
+    }
+
+    fn copy(st: &LimitsState) -> Limits {
+        Limits {
+            rows: st.rows.clone(),
+            health: st.health.clone(),
+            loaded: st.at > 0,
+        }
     }
 
     /// `usage_provider_limits(force=False)`: si venció y no hay refresco en
@@ -120,22 +133,46 @@ impl LimitsCache {
                 Err(_) => self.lock().refreshing = false,
             }
         }
-        let st = self.lock();
-        Limits {
-            rows: st.rows.clone(),
-            health: st.health.clone(),
-        }
+        Self::copy(&self.lock())
     }
 
     /// La copia actual, sin lanzar refresco: una ruta calcula con ella y llama a
     /// `get` (el efecto) solo cuando ya no puede declinar. Son las mismas filas
     /// que `get` devolvería: el refresco que lanza corre en otra tarea.
     pub fn current(&self) -> Limits {
-        let st = self.lock();
-        Limits {
-            rows: st.rows.clone(),
-            health: st.health.clone(),
+        Self::copy(&self.lock())
+    }
+
+    /// `get` y, si la caché nunca se llenó (arranque del frente), espera como
+    /// mucho `wait` al refresco en vuelo. `None`: sigue vacía (sin efectos de
+    /// uso no hay refresco; red colgada; el lector abortó sin red) y quien
+    /// llama no sabe qué filas ve el Python, que ya tiene su caché llena. La
+    /// espera es async: el runtime sigue libre.
+    pub async fn get_loaded(
+        self: &Arc<Self>,
+        deps: &RefreshDeps,
+        wait: Duration,
+    ) -> Option<Limits> {
+        let limits = self.get(deps);
+        if limits.loaded {
+            return Some(limits);
         }
+        let notified = self.done.notified();
+        tokio::pin!(notified);
+        // Registrado antes de mirar el estado: un aviso intermedio no se pierde.
+        notified.as_mut().enable();
+        {
+            let st = self.lock();
+            if st.at > 0 {
+                return Some(Self::copy(&st));
+            }
+            if !st.refreshing {
+                return None;
+            }
+        }
+        let _ = tokio::time::timeout(wait, notified).await;
+        let st = self.lock();
+        (st.at > 0).then(|| Self::copy(&st))
     }
 
     /// D5: `attach_token_counts` sobre las filas cacheadas, como el Python (que
@@ -153,6 +190,7 @@ struct Reset(Arc<LimitsCache>);
 impl Drop for Reset {
     fn drop(&mut self) {
         self.0.lock().refreshing = false;
+        self.0.done.notify_waiters();
     }
 }
 
@@ -203,6 +241,9 @@ async fn refresh(cache: Arc<LimitsCache>, deps: RefreshDeps) {
         st.rows = done.rows;
         st.health = done.health;
     }
+    // Quien espera la primera lectura (`get_loaded`) no espera la escritura
+    // de las fotos de cuota.
+    cache.done.notify_waiters();
     // `try: record_quota_snapshots(...) except: pass`. Va después de publicar la
     // caché (R3: nadie espera la escritura) y nunca crea la base (A3).
     if !done.snapshot.is_empty() && db_exists(&deps.opts.usage_db).await {

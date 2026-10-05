@@ -216,7 +216,8 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
     }
     // Con un fallo del contexto recordado (R3) el cómputo acabaría declinando
     // si alguna tarjeta lo necesita: se reenvía antes del trabajo de tmux y
-    // `/proc`, para que un heredado lento o caído no lo repita en cada sondeo.
+    // `/proc`, para que una guardia que el frente no reproduce (o la primera
+    // lectura de límites aún pendiente) no lo repita en cada sondeo.
     *phase = "fallo del contexto de sugerencias recordado";
     if native.states.context.failing((opts.clock)()) {
         return Err(StateFault::Decline);
@@ -275,7 +276,7 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
         native
             .states
             .context
-            .get(opts, &native.states.serial, &registry, (opts.clock)())
+            .get(native, &registry, (opts.clock)())
             .await?
     } else {
         Arc::new(SuggestContext::default())
