@@ -72,6 +72,7 @@ pub enum NativeRoute {
     ModelStatus,
     State,
     QuickTerminal,
+    Usage(usage::UsageRoute),
     Retired,
 }
 
@@ -129,6 +130,7 @@ const TABLES: &[&[Entry]] = &[
     operations::ROUTES,
     states::ROUTES,
     quick::ROUTES,
+    usage::ROUTES,
     retired::ROUTES,
 ];
 
@@ -378,7 +380,8 @@ pub struct Native {
     pub(crate) fonts: Mutex<Option<(std::time::Instant, std::collections::HashSet<String>)>>,
     /// La revisión de avisos que comparten las esperas de `/notices/watch`.
     pub(crate) notice_feed: notices::RevisionFeed,
-    /// Carril de la base de uso (`GET /pomodoro`, `GET /sovereignty`); `Arc`
+    /// Carril de la base de uso (`GET /pomodoro`, `GET /sovereignty`,
+    /// `GET /analytics/week`); `Arc`
     /// para las tareas de fondo (D13).
     pub(crate) usage: Arc<lanes::Lane<lanes::UsageBackend>>,
     /// Caché de límites de proveedor (`_limits_cache`).
@@ -607,6 +610,7 @@ impl Native {
             NativeRoute::ModelStatus => operations::answer(self, request).await,
             NativeRoute::State => states::answer(self).await,
             NativeRoute::QuickTerminal => quick::answer(self, request).await,
+            NativeRoute::Usage(route) => usage::answer(self, route, request).await,
             NativeRoute::Retired => {
                 let path = request
                     .target
