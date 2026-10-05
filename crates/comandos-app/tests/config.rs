@@ -590,6 +590,32 @@ fn sandbox_anchors_never_land_on_real_state() {
     );
 }
 
+/// Ronda 3, M-b: un `CLAUDE_CONFIG_DIR` con `..` tras un componente inexistente no se
+/// pierde: se pliega antes de resolver, así que un `TMPDIR` igual (o dentro) se rechaza.
+#[test]
+fn claude_config_dir_with_dots_still_fences() {
+    let fx = Fx::new("ccdots");
+    let acct = fx.base.join("acct2");
+    let raw = fx.base.join("no-existe/../acct2");
+    let root = fx.root();
+    for exists in [false, true] {
+        if exists {
+            std::fs::create_dir_all(acct.join("x")).expect("acct");
+        }
+        for tmpdir in [acct.clone(), acct.join("x"), fx.base.clone()] {
+            let env = fx.env_with(&[("TMPDIR", p(&tmpdir)), ("CLAUDE_CONFIG_DIR", p(&raw))]);
+            let cfg = parse_args(&args(&[]), false, &env)
+                .unwrap_or_else(|e| panic!("{}: {e}", tmpdir.display()));
+            assert_eq!(
+                cfg.sandbox_temp(),
+                Some(root.join("tmp").as_path()),
+                "existe={exists} TMPDIR={}",
+                tmpdir.display()
+            );
+        }
+    }
+}
+
 /// Ronda 2: con `HOME` falso, la lista de respaldo también usa la casa de passwd. Solo
 /// se pasan rutas como texto (TMPDIR y --hooks-dir); `parse_args` no escribe en ellas.
 #[test]

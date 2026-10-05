@@ -281,6 +281,22 @@ fn absolute(path: &Path) -> Result<PathBuf, String> {
         .map_err(|e| format!("no se puede hacer absoluta {}: {e}", path.display()))
 }
 
+/// Pliega `.` y `..` sin mirar el disco (`/a/b/../c` → `/a/c`); `..` en la raíz se queda
+/// en la raíz. Solo para la lista de respaldo: no sigue enlaces.
+fn fold_dots(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for comp in path.components() {
+        match comp {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 /// Ruta real: el ancestro existente más profundo resuelto con `canonicalize` (enlaces
 /// incluidos) y el resto añadido componente a componente. Un `..` en la parte que no
 /// existe, o un componente de esa parte que ya existe (un enlace colgante, o algo
@@ -367,12 +383,22 @@ impl Fence {
         }
     }
 
+    /// Formas de cada ruta que la lista compara: absoluta, plegada (`..` léxico), y las
+    /// dos resueltas. Añadir formas solo endurece la lista; plegar evita perder en
+    /// silencio una ruta como `<inexistente>/../x`, que `resolve` no acepta.
     fn forms(paths: &[PathBuf]) -> Vec<PathBuf> {
         let mut out: Vec<PathBuf> = Vec::new();
         for path in paths {
-            for form in [absolute(path).ok(), resolve(path).ok()]
-                .into_iter()
-                .flatten()
+            let folded = absolute(path).ok().map(|abs| fold_dots(&abs));
+            let resolved_folded = folded.as_deref().and_then(|f| resolve(f).ok());
+            for form in [
+                absolute(path).ok(),
+                folded,
+                resolve(path).ok(),
+                resolved_folded,
+            ]
+            .into_iter()
+            .flatten()
             {
                 if !out.contains(&form) {
                     out.push(form);
@@ -491,10 +517,17 @@ fn repo_root(hooks: &Path, env: &dyn Fn(&str) -> Option<String>) -> Option<PathB
 /// proceso). El temporal candidato del sandbox es `TMPDIR` o `/tmp`, la misma regla que
 /// `std::env::temp_dir()`, leída de `env` para que las pruebas no muten el entorno.
 ///
-/// En sandbox tiene un efecto: crea (`mkdir` 0700, un nivel) el `runtime_dir`, la raíz
-/// y, si hace falta, `raíz/tmp`, y comprueba con `lstat` que son directorios propios
-/// sin escritura de grupo ni de otros. Los errores de argumentos salen antes de tocar
-/// el disco.
+/// En sandbox toca el disco, en este orden:
+/// 1. Sin escribir: opciones desconocidas o sin valor, modo, `--tmux-socket` y
+///    `--dash-url` se validan antes de nada; la raíz se compara con la lista de
+///    respaldo (un `XDG_RUNTIME_DIR` sobre estado real falla aquí, sin crear nada).
+/// 2. Crea (`mkdir` 0700, un nivel, si faltan) el `runtime_dir` y la raíz, y comprueba
+///    con `lstat` que son directorios propios sin escritura de grupo ni de otros.
+/// 3. Si el `TMPDIR` se rechaza, crea y comprueba igual `raíz/tmp`.
+/// 4. Solo entonces valida `--hooks-dir`, los datos y la caché web: un `--hooks-dir`
+///    rechazado deja creada la raíz (y quizá `raíz/tmp`), nunca nada fuera de ella.
+///
+/// `parse_args` no crea `--hooks-dir` ni los directorios web.
 pub fn parse_args(
     args: &[String],
     default_live: bool,
