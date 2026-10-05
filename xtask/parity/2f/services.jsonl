@@ -1,3 +1,9 @@
 {"name":"s-ssh-lista","method":"GET","path":"/ssh","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"s-ssh-add-invalido","method":"POST","path":"/ssh-add","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"host":"srv","hostname":"10.0.0.5\nProxyCommand touch /tmp/pwn"},"files":["~/.ssh/config"],"volatile":[],"expect":"same"}
 {"name":"s-ssh-del-inexistente","method":"POST","path":"/ssh-del","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"host":"no-existe"},"files":["~/.ssh/config"],"volatile":[],"expect":"same"}
+{"name":"s-conf","method":"GET","path":"/conf","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"s-conf-set-invalida","method":"POST","path":"/conf-set","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"key":"VOLUME","value":"101"},"files":["cc-notify.conf"],"volatile":[],"expect":"same"}
+{"name":"s-fs-dirs-fuera","method":"GET","path":"/fs/dirs?path=/etc","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"s-open-url-invalida","method":"POST","path":"/open-url","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"url":"ftp://x"},"volatile":[],"expect":"same"}
+{"name":"s-notify-popup-invalida","method":"POST","path":"/notify-popup","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"title":"  ","body":"x"},"volatile":[],"expect":"same"}
+{"name":"s-test-invalido","method":"POST","path":"/test","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"kind":"ruido"},"volatile":[],"expect":"same"}
