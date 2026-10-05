@@ -165,3 +165,12 @@
 {"name":"u-extension-usage-sesion","method":"GET","path":"/extension-usage?session=a%20b","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"u-extension-usage-panel","method":"GET","path":"/extension-usage?pane=%251","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"u-extension-usage-prefijo","method":"GET","path":"/extension-usageX","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
+# --- 2e · T4: registro de proveedores, planes y menú de cuentas (nativas; los prefijos se reenvían)
+{"name":"u-providers","method":"GET","path":"/providers","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"u-providers-prefijo","method":"GET","path":"/providersX","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
+{"name":"u-optimization-plans","method":"GET","path":"/optimization/plans","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"u-accounts","method":"GET","path":"/accounts","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"u-accounts-codex","method":"GET","path":"/accounts?harness=codex","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"u-accounts-sin-uso","method":"GET","path":"/accounts?harness=claude&usage=0","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"u-accounts-shell","method":"GET","path":"/accounts?harness=shell","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"u-accounts-prefijo","method":"GET","path":"/accountsX","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}

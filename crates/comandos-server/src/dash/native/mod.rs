@@ -386,11 +386,14 @@ pub struct Native {
     /// La revisión de avisos que comparten las esperas de `/notices/watch`.
     pub(crate) notice_feed: notices::RevisionFeed,
     /// Carril de la base de uso (`GET /pomodoro`, `GET /sovereignty`,
-    /// `GET /analytics/week`, `GET /extension-usage`); `Arc`
+    /// `GET /analytics/week`, `GET /accounts`, `GET /extension-usage`); `Arc`
     /// para las tareas de fondo (D13).
     pub(crate) usage: Arc<lanes::Lane<lanes::UsageBackend>>,
     /// Caché de límites de proveedor (`_limits_cache`).
     pub(crate) limits: Arc<usage::limits::LimitsCache>,
+    /// `_provider_registry_cache` de GET `/providers`, `/optimization/plans` y
+    /// `/accounts` (se usa en hilos de bloqueo).
+    pub(crate) registry: Arc<Mutex<comandos_runtime::providers::RegistryCache>>,
     /// Escritor de bordes de pane y `pane-models.txt` (latente hasta la Tarea 8).
     pub(crate) pane_models: Arc<usage::pane_models::PaneModelWriter>,
     /// `_TIER_LAST`/`_TIER_ALERTED` de los avisos de nivel (latente).
@@ -408,6 +411,7 @@ impl Native {
         Self {
             usage: Arc::new(lanes::Lane::new(opts.usage_db.clone())),
             limits: Arc::default(),
+            registry: Arc::default(),
             pane_models: Arc::default(),
             tier_alerts: Mutex::default(),
             journal: lanes::Lane::new(opts.journal_db.clone()),

@@ -31,4 +31,13 @@ impl Query {
             .find(|(k, _)| k == name)
             .map(|(_, v)| v.as_str())
     }
+
+    /// `parse_qs(...).get(name)`: todos los valores no vacíos, en orden.
+    pub fn all(&self, name: &str) -> Vec<&str> {
+        self.0
+            .iter()
+            .filter(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+            .collect()
+    }
 }

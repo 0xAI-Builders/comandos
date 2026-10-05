@@ -1,6 +1,9 @@
 //! Registro de proveedores (`lib/providers.py`) y lo que `bin/cc-dash` deriva
 //! de él para `/state`: motores por modelo, tiers de costo, agentes y alias de
-//! procesos, `which` y las rutas seleccionables de la matriz de capacidades.
+//! procesos, `which` y las rutas seleccionables de la matriz de capacidades;
+//! y para GET `/providers` y `/optimization/plans` (2e): el estado público, la
+//! matriz completa, las rutas a mitad de sesión, la validación de selecciones y
+//! los modelos de Grok.
 //!
 //! El `re` de Python se traduce a `regex` solo donde el resultado es el mismo
 //! con certeza (patrones de usuario del registro y de los tiers); lo demás es
@@ -1235,8 +1238,8 @@ fn any_selectable(accounts: &Value) -> Result<bool, Unsure> {
     Ok(false)
 }
 
-/// `public_state` (`lib/providers.py`), solo `available` y `authenticated`
-/// (`None` sin `authFile`).
+/// `available` y `authenticated` de `public_state` (`lib/providers.py`) para
+/// un harness (`None` sin `authFile`).
 fn public_harness(
     item: &Map<String, Value>,
     available: &dyn Fn(&str) -> bool,
@@ -1272,28 +1275,64 @@ fn public_harness(
     Ok((is_available, authenticated))
 }
 
-/// `provider_runtime_facts` (`bin/cc-dash`). `discovered` es
-/// `accounts::public_accounts(registry, …)`; `available` decide si existe el
-/// binario de un harness (`provider_registry.which`); `home` es el de
-/// `defaultHome`. `Unsure` donde el Python lanzaría (tipos imposibles en un
-/// registro válido).
-pub fn runtime_facts(
+/// Claves de un harness que el estado público nunca muestra.
+const PRIVATE_HARNESS_KEYS: [&str; 4] = ["authFile", "defaultHome", "accountsRoot", "accountEnv"];
+
+/// `public_state` (`lib/providers.py`): copia del registro con `available`
+/// (binario nulo o `which`) y `authenticated` (archivo de credenciales en
+/// `defaultHome`; `null` sin `authFile`) por harness, sin las rutas privadas
+/// ni el `authSource` de `claudeEngines`. Las claves nuevas van al final y las
+/// que se quitan no mueven a las demás (orden del `dict`).
+pub fn public_state(
     registry: &Value,
-    discovered: &Value,
     available: &dyn Fn(&str) -> bool,
     home: &Path,
+) -> Result<Value, Unsure> {
+    let mut out = registry.clone();
+    let obj = out.as_object_mut().ok_or(Unsure)?;
+    if let Some(harnesses) = obj.get_mut("harnesses").filter(|h| truthy(h)) {
+        for item in harnesses.as_object_mut().ok_or(Unsure)?.values_mut() {
+            let item = item.as_object_mut().ok_or(Unsure)?;
+            let (is_available, authenticated) = public_harness(item, available, home)?;
+            item.insert("available".into(), is_available.into());
+            item.insert(
+                "authenticated".into(),
+                authenticated.map_or(Value::Null, Value::Bool),
+            );
+            for key in PRIVATE_HARNESS_KEYS {
+                item.shift_remove(key);
+            }
+        }
+    }
+    if let Some(engines) = obj.get_mut("claudeEngines").filter(|e| truthy(e)) {
+        for item in engines.as_object_mut().ok_or(Unsure)?.values_mut() {
+            item.as_object_mut()
+                .ok_or(Unsure)?
+                .shift_remove("authSource");
+        }
+    }
+    Ok(out)
+}
+
+/// `provider_runtime_facts(public)` (`bin/cc-dash`) sobre un estado público
+/// ya calculado (`public_state`, o el que `provider_public_state` completó con
+/// las cuentas): los harnesses con cuentas exigen una seleccionable; el resto,
+/// que `authenticated` no sea `false`, o la disponibilidad si es `null`.
+/// `discovered` es `accounts::public_accounts`; `gateway_installed`, el
+/// `shutil.which("cc-model-proxy")`, y `gateway_alive`, el sondeo del proxy.
+pub fn public_runtime_facts(
+    registry: &Value,
+    public: &Value,
+    discovered: &Value,
     gateway_installed: bool,
     gateway_alive: bool,
 ) -> Result<Value, Unsure> {
     let discovered = discovered.as_object().ok_or(Unsure)?;
+    let public_harnesses = py_items(public.get("harnesses").unwrap_or(&Value::Null))?;
     let mut harnesses = Map::new();
-    let mut publics = Vec::new();
-    for (key, item) in section(registry, "harnesses")?.into_iter().flatten() {
-        let item = item.as_object().ok_or(Unsure)?;
-        publics.push((key, item, public_harness(item, available, home)?));
-    }
-    for (key, item, (is_available, public_auth)) in publics {
-        let caps = get(item, "capabilities");
+    for (key, value) in public_harnesses.into_iter().flatten() {
+        let value = value.as_object().ok_or(Unsure)?;
+        let caps = get(value, "capabilities");
         let accounts = if truthy(caps) {
             caps.as_object()
                 .ok_or(Unsure)?
@@ -1302,13 +1341,15 @@ pub fn runtime_facts(
         } else {
             false
         };
+        let is_available = truthy(get(value, "available"));
+        let public_auth = get(value, "authenticated");
         let authenticated = if accounts {
             any_selectable(discovered.get(key).unwrap_or(&Value::Null))?
         } else {
-            public_auth != Some(false)
+            *public_auth != Value::Bool(false)
         };
         // Sin `authFile` (`None`): basta la disponibilidad.
-        let authenticated = if public_auth.is_none() {
+        let authenticated = if public_auth.is_null() {
             is_available
         } else {
             authenticated
@@ -1340,37 +1381,642 @@ pub fn runtime_facts(
     }))
 }
 
-/// Ids de las celdas `selectable` de `evaluate_capability_matrix`
-/// (`lib/providers.py`): solo rutas del registro sin ninguna de las cinco
-/// razones (binario, login del harness, pasarela, login del motor, puente
-/// experimental sin verificar). Exclusiones y celdas sin ruta nunca lo son.
-pub fn selectable_routes(registry: &Value, facts: &Value) -> Result<BTreeSet<String>, Unsure> {
-    let flag = |map: &Value, key: &str| map.get(key).is_some_and(truthy);
-    let mut out = BTreeSet::new();
+/// `provider_runtime_facts()` (`bin/cc-dash`), como lo llama
+/// `capability_matrix()`: sobre `public_state(registry)` recién calculado.
+/// `available` decide si existe el binario de un harness
+/// (`provider_registry.which`); `home` es el de `defaultHome`. `Unsure` donde
+/// el Python lanzaría (tipos imposibles en un registro válido).
+pub fn runtime_facts(
+    registry: &Value,
+    discovered: &Value,
+    available: &dyn Fn(&str) -> bool,
+    home: &Path,
+    gateway_installed: bool,
+    gateway_alive: bool,
+) -> Result<Value, Unsure> {
+    let public = public_state(registry, available, home)?;
+    public_runtime_facts(
+        registry,
+        &public,
+        discovered,
+        gateway_installed,
+        gateway_alive,
+    )
+}
+
+/// `provider_public_state` (`bin/cc-dash`) a partir de `public_state(registry)`:
+/// las cuentas descubiertas en su harness (con `motorSelectable`) y su
+/// `authenticated`, los modelos de Grok (`grok_models()` o los del registro),
+/// la matriz evaluada sobre ese estado, `midSessionRoutes` y `matrixSummary`.
+/// `discovered` es `accounts::public_accounts` (el Python lo pide dos veces; el
+/// sistema de archivos es el mismo); `grok_models` solo se llama si hay harness
+/// `grok`, como en el Python.
+pub fn complete_public_state(
+    registry: &Value,
+    mut public: Value,
+    discovered: &Value,
+    grok_models: &dyn Fn() -> Result<Vec<Value>, Unsure>,
+    gateway_installed: bool,
+    gateway_alive: bool,
+) -> Result<Value, Unsure> {
+    let harnesses = public
+        .as_object_mut()
+        .ok_or(Unsure)?
+        .get_mut("harnesses")
+        .filter(|h| truthy(h));
+    let mut harnesses = match harnesses {
+        Some(h) => Some(h.as_object_mut().ok_or(Unsure)?),
+        None => None,
+    };
+    for (provider, accounts) in discovered.as_object().ok_or(Unsure)? {
+        let Some(item) = harnesses.as_mut().and_then(|h| h.get_mut(provider)) else {
+            continue;
+        };
+        if item.is_null() {
+            continue;
+        }
+        let item = item.as_object_mut().ok_or(Unsure)?;
+        let mut listed = Vec::new();
+        for account in py_iter(accounts)? {
+            let mut account = account.as_object().ok_or(Unsure)?.clone();
+            let motor = truthy(get(&account, "selectable")) && get(&account, "alias") == "main";
+            account.insert("motorSelectable".into(), motor.into());
+            listed.push(Value::Object(account));
+        }
+        item.insert("accounts".into(), Value::Array(listed));
+        item.insert("authenticated".into(), any_selectable(accounts)?.into());
+    }
+    if let Some(grok) = harnesses.as_mut().and_then(|h| h.get_mut("grok"))
+        && !grok.is_null()
+    {
+        let grok = grok.as_object_mut().ok_or(Unsure)?;
+        let mut models = Value::Array(grok_models()?);
+        if !truthy(&models) {
+            models = get(grok, "models").clone();
+        }
+        if !truthy(&models) {
+            models = json!([]);
+        }
+        grok.insert("models".into(), models);
+    }
+    let facts = public_runtime_facts(
+        registry,
+        &public,
+        discovered,
+        gateway_installed,
+        gateway_alive,
+    )?;
+    let matrix = evaluate_capability_matrix(registry, &facts)?;
+    let selectable = matrix
+        .iter()
+        .filter(|c| c.get("selectable").is_some_and(truthy))
+        .count();
+    let summary = json!({"selectable": selectable, "unavailable": matrix.len() - selectable});
+    let mid = session_change_support(registry)?;
+    let obj = public.as_object_mut().ok_or(Unsure)?;
+    obj.insert("matrix".into(), Value::Array(matrix));
+    obj.insert("midSessionRoutes".into(), mid);
+    obj.insert("matrixSummary".into(), summary);
+    Ok(public)
+}
+
+/// `obj.get(key, {})` de los hechos (un objeto; otro tipo no tiene `get`).
+fn fact<'a>(facts: &'a Value, key: &Value) -> Result<&'a Value, Unsure> {
+    hashable(key)?;
+    let map = facts.as_object().ok_or(Unsure)?;
+    Ok(key
+        .as_str()
+        .and_then(|k| map.get(k))
+        .unwrap_or(&Value::Null))
+}
+
+/// `d.get(key, default)` de un objeto de hechos (`null` = ausente).
+fn flag(value: &Value, key: &str) -> Result<bool, Unsure> {
+    match value {
+        Value::Null => Ok(false),
+        Value::Object(map) => Ok(map.get(key).is_some_and(truthy)),
+        _ => Err(Unsure),
+    }
+}
+
+/// `any(req == want for req in (route.get("authRequirements") or []))`.
+fn requires(route: &Map<String, Value>, want: &str) -> Result<bool, Unsure> {
+    Ok(py_iter(get(route, "authRequirements"))?
+        .iter()
+        .any(|r| r.as_str() == Some(want)))
+}
+
+/// `{name: i for i, name in enumerate(names)}.get(value, 99)`: la clave del
+/// `dict` es la primera igual y el valor, el último índice.
+fn position(names: &[Value], value: &Value) -> Result<usize, Unsure> {
+    hashable(value)?;
+    Ok(names
+        .iter()
+        .rposition(|name| python_eq(name, value))
+        .unwrap_or(99))
+}
+
+/// `evaluate_capability_matrix` (`lib/providers.py`): una celda por ruta (con
+/// la primera razón que la bloquea), las exclusiones, las celdas `not_routed`
+/// de `matrixHarnesses × motors` sin ruta y el orden estable por
+/// `(matrixHarnesses, motors)` con 99 para lo desconocido.
+pub fn evaluate_capability_matrix(registry: &Value, facts: &Value) -> Result<Vec<Value>, Unsure> {
+    let facts = facts.as_object().ok_or(Unsure)?;
+    let or_empty = |key: &str| -> Result<Value, Unsure> {
+        let value = get(facts, key);
+        if truthy(value) {
+            value.as_object().ok_or(Unsure)?;
+            Ok(value.clone())
+        } else {
+            Ok(json!({}))
+        }
+    };
+    let (binaries, motors, gateway) = (
+        or_empty("harnesses")?,
+        or_empty("motors")?,
+        or_empty("gateway")?,
+    );
+    let mut out: Vec<Value> = Vec::new();
     for route in py_iter(registry.get("routes").unwrap_or(&Value::Null))? {
         let route = route.as_object().ok_or(Unsure)?;
-        let harness = get(route, "harness").as_str().ok_or(Unsure)?;
-        let motor = get(route, "motor").as_str().ok_or(Unsure)?;
-        let hf = facts
-            .get("harnesses")
-            .and_then(|h| h.get(harness))
-            .unwrap_or(&Value::Null);
-        let mf = facts
-            .get("motors")
-            .and_then(|m| m.get(motor))
-            .unwrap_or(&Value::Null);
-        let gateway = facts.get("gateway").unwrap_or(&Value::Null);
-        let requirements = py_iter(get(route, "authRequirements"))?;
-        let requires = |want: &str| requirements.iter().any(|r| r.as_str() == Some(want));
-        let blocked = !flag(hf, "available")
-            || !flag(hf, "authenticated")
-            || (requires("gateway") && !flag(gateway, "alive"))
-            || (requires(&format!("motor:{motor}")) && !flag(mf, "authenticated"))
-            || (truthy(get(route, "experimental")) && !truthy(get(route, "liveVerified")));
-        if !blocked {
-            out.insert(get(route, "id").as_str().ok_or(Unsure)?.to_owned());
+        let harness = route.get("harness").ok_or(Unsure)?;
+        let motor = route.get("motor").ok_or(Unsure)?;
+        let hf = fact(&binaries, harness)?;
+        let mf = fact(&motors, motor)?;
+        let (h, m) = (scalar_str(harness)?, scalar_str(motor)?);
+        let reason: Option<(Value, String)> = if !flag(hf, "available")? {
+            Some((
+                json!("harness_binary_missing"),
+                format!("{h} no está instalado"),
+            ))
+        } else if !flag(hf, "authenticated")? {
+            Some((
+                json!("harness_login_missing"),
+                format!("{h} no tiene login"),
+            ))
+        } else if requires(route, "gateway")? && !flag(&gateway, "alive")? {
+            Some((json!("gateway_down"), "cc-model-proxy no responde".into()))
+        } else if requires(route, &format!("motor:{m}"))? && !flag(mf, "authenticated")? {
+            Some((json!("motor_login_missing"), format!("{m} no tiene login")))
+        } else if truthy(get(route, "experimental")) && !truthy(get(route, "liveVerified")) {
+            let code = get(route, "reasonCode");
+            let code = if truthy(code) {
+                code.clone()
+            } else {
+                json!("route_not_live_verified")
+            };
+            Some((code, "puente pendiente de verificación E2E".into()))
+        } else {
+            None
+        };
+        let mut cell = route.clone();
+        cell.insert("productState".into(), json!("supported"));
+        cell.insert(
+            "runtimeState".into(),
+            json!(if reason.is_none() {
+                "available"
+            } else {
+                "unavailable"
+            }),
+        );
+        cell.insert("selectable".into(), json!(reason.is_none()));
+        cell.insert(
+            "reason".into(),
+            reason.map_or(
+                Value::Null,
+                |(code, message)| json!({"code": code, "message": message}),
+            ),
+        );
+        out.push(Value::Object(cell));
+    }
+    for exclusion in py_iter(registry.get("exclusions").unwrap_or(&Value::Null))? {
+        let mut cell = exclusion.as_object().ok_or(Unsure)?.clone();
+        cell.insert("runtimeState".into(), json!("unavailable"));
+        cell.insert("selectable".into(), json!(false));
+        cell.insert("actionScopes".into(), json!([]));
+        let reason = json!({"code": get(&cell, "reasonCode"), "message": get(&cell, "message")});
+        cell.insert("reason".into(), reason);
+        out.push(Value::Object(cell));
+    }
+    // Celdas fuera del núcleo sin ruta declarada: visibles, nunca seleccionables.
+    let mut covered: Vec<(Value, Value)> = Vec::new();
+    for cell in &out {
+        let (h, m) = (
+            cell.get("harness").unwrap_or(&Value::Null),
+            cell.get("motor").unwrap_or(&Value::Null),
+        );
+        hashable(h)?;
+        hashable(m)?;
+        covered.push((h.clone(), m.clone()));
+    }
+    let motor_ids: Vec<Value> = section(registry, "motors")?
+        .into_iter()
+        .flatten()
+        .map(|(k, _)| Value::String(k.clone()))
+        .collect();
+    let harness_ids = py_iter(registry.get("matrixHarnesses").unwrap_or(&Value::Null))?;
+    for harness_id in &harness_ids {
+        hashable(harness_id)?;
+        for motor_id in &motor_ids {
+            if covered
+                .iter()
+                .any(|(h, m)| python_eq(h, harness_id) && python_eq(m, motor_id))
+            {
+                continue;
+            }
+            let id = format!("{}:{}", scalar_str(harness_id)?, scalar_str(motor_id)?);
+            out.push(json!({"id": id, "harness": harness_id, "motor": motor_id,
+                "productState": "not_routed", "runtimeState": "unavailable", "selectable": false,
+                "actionScopes": [], "reason": {"code": "not_routed",
+                "message": "esta TUI no hospeda ese motor; usa el harness ACP de ComandOS"}}));
         }
     }
+    let mut keyed = Vec::with_capacity(out.len());
+    for cell in out {
+        let key = (
+            position(&harness_ids, cell.get("harness").unwrap_or(&Value::Null))?,
+            position(&motor_ids, cell.get("motor").unwrap_or(&Value::Null))?,
+        );
+        keyed.push((key, cell));
+    }
+    // `sorted` es estable.
+    keyed.sort_by_key(|(key, _)| *key);
+    Ok(keyed.into_iter().map(|(_, cell)| cell).collect())
+}
+
+/// Ids de las celdas `selectable` de `evaluate_capability_matrix`: solo rutas
+/// del registro sin ninguna de las cinco razones (binario, login del
+/// harness, pasarela, login del motor, puente experimental sin verificar).
+pub fn selectable_routes(registry: &Value, facts: &Value) -> Result<BTreeSet<String>, Unsure> {
+    let mut out = BTreeSet::new();
+    for cell in evaluate_capability_matrix(registry, facts)? {
+        if cell.get("selectable").is_some_and(truthy) {
+            out.insert(get_str(&cell, "id")?.to_owned());
+        }
+    }
+    Ok(out)
+}
+
+fn get_str<'a>(value: &'a Value, key: &str) -> Result<&'a str, Unsure> {
+    value.get(key).and_then(Value::as_str).ok_or(Unsure)
+}
+
+/// `session_change_support(registry)` (`bin/cc-dash`, sin `observed`): por
+/// ruta, si admite un cambio a mitad de sesión con recuperación exacta.
+pub fn session_change_support(registry: &Value) -> Result<Value, Unsure> {
+    let acp = py_items(registry.get("acpAgents").unwrap_or(&Value::Null))?;
+    let mut result = Map::new();
+    for route in py_iter(registry.get("routes").unwrap_or(&Value::Null))? {
+        let route = route.as_object().ok_or(Unsure)?;
+        let harness = route.get("harness").ok_or(Unsure)?;
+        let motor = route.get("motor").ok_or(Unsure)?;
+        let is = |name: &str| python_eq(harness, &json!(name));
+        let resumable = || -> Result<bool, Unsure> {
+            hashable(motor)?;
+            let agent = motor
+                .as_str()
+                .and_then(|m| acp.and_then(|a| a.get(m)))
+                .unwrap_or(&Value::Null);
+            if !truthy(agent) {
+                return Ok(false);
+            }
+            Ok(agent
+                .as_object()
+                .ok_or(Unsure)?
+                .get("resume")
+                .is_some_and(truthy))
+        };
+        let reason = if truthy(get(route, "experimental")) && !truthy(get(route, "liveVerified")) {
+            Some(
+                json!({"code": "route_not_live_verified", "message": "puente pendiente de verificación E2E"}),
+            )
+        } else if !["claude", "codex", "grok", "acp"].iter().any(|n| is(n))
+            || (is("acp") && !resumable()?)
+        {
+            Some(
+                json!({"code": "exact_resume_unavailable", "message": "este adaptador no ofrece recuperación exacta; crea una sesión nueva"}),
+            )
+        } else if is("acp") {
+            // Sin `observed`: ninguna sesión ACP publicó su esfuerzo.
+            Some(
+                json!({"code": "acp_effort_unobserved", "message": "se necesita una sesión ACP que publique esfuerzo mediante configOptions"}),
+            )
+        } else {
+            None
+        };
+        let id = route.get("id").ok_or(Unsure)?.as_str().ok_or(Unsure)?;
+        result.insert(
+            id.to_owned(),
+            json!({"selectable": reason.is_none(), "reason": reason}),
+        );
+    }
+    Ok(Value::Object(result))
+}
+
+// ---------------------------------------------------------------------------
+// Modelos y selecciones
+// ---------------------------------------------------------------------------
+
+/// `str(x or "")`.
+fn str_or_empty(value: &Value) -> Result<String, Unsure> {
+    if truthy(value) {
+        scalar_str(value)
+    } else {
+        Ok(String::new())
+    }
+}
+
+/// `_model_key` (`lib/providers.py`): minúsculas, sin el sufijo de contexto
+/// `[…]`, sin la fecha `-AAAAMMDD`, sin `claude-` y sin guiones finales. Solo
+/// ASCII sin saltos de línea (el `lower()` y el `$` de Python con texto
+/// Unicode o un `\n` final no se reproducen con certeza).
+pub fn model_key(model_id: &str) -> Result<String, Unsure> {
+    if !model_id.is_ascii() || model_id.contains('\n') {
+        return Err(Unsure);
+    }
+    let mut key = model_id.to_ascii_lowercase();
+    if let Some(cut) = key.find('[') {
+        key.truncate(cut);
+    }
+    let bytes = key.as_bytes();
+    if bytes.len() >= 9 {
+        let tail = bytes.len() - 9;
+        if bytes.get(tail) == Some(&b'-')
+            && bytes
+                .get(tail + 1..)
+                .is_some_and(|d| d.iter().all(u8::is_ascii_digit))
+        {
+            key.truncate(tail);
+        }
+    }
+    let key = key.strip_prefix("claude-").unwrap_or(&key);
+    Ok(key.trim_end_matches('-').to_owned())
+}
+
+/// `_model_key(model.get("id", ""))`.
+fn model_id_key(model: &Map<String, Value>) -> Result<String, Unsure> {
+    model_key(&str_or_empty(model.get("id").unwrap_or(&json!("")))?)
+}
+
+/// `tuple(int(n) for n in re.findall(r"\d+", key))` (la clave es ASCII).
+fn version(key: &str) -> Result<Vec<u128>, Unsure> {
+    key.split(|c: char| !c.is_ascii_digit())
+        .filter(|run| !run.is_empty())
+        .map(|run| run.parse::<u128>().map_err(|_| Unsure))
+        .collect()
+}
+
+/// `model_spec` (`lib/providers.py`): el modelo con ese id exacto; si no, el
+/// de la misma clave normalizada; si no, el más nuevo de la familia (`max` por
+/// la tupla de enteros: el primero de los máximos).
+pub fn model_spec(
+    registry: &Value,
+    owner: &str,
+    model_id: &str,
+    section_name: &str,
+) -> Result<Option<Value>, Unsure> {
+    let item = section(registry, section_name)?
+        .and_then(|s| s.get(owner))
+        .unwrap_or(&Value::Null);
+    if !truthy(item) {
+        return Ok(None);
+    }
+    let item = item.as_object().ok_or(Unsure)?;
+    let mut models = Vec::new();
+    for model in py_iter(get(item, "models"))? {
+        models.push(model.as_object().ok_or(Unsure)?.clone());
+    }
+    let wanted = json!(model_id);
+    if let Some(model) = models.iter().find(|m| python_eq(get(m, "id"), &wanted)) {
+        return Ok(Some(Value::Object(model.clone())));
+    }
+    let want = model_key(model_id)?;
+    if want.is_empty() {
+        return Ok(None);
+    }
+    for model in &models {
+        if model_id_key(model)? == want {
+            return Ok(Some(Value::Object(model.clone())));
+        }
+    }
+    let family = format!("{want}-");
+    let mut best: Option<(Vec<u128>, &Map<String, Value>)> = None;
+    for model in &models {
+        let key = model_id_key(model)?;
+        if !(key.starts_with(&family) || key.split('-').next() == Some(want.as_str())) {
+            continue;
+        }
+        let ver = version(&key)?;
+        if best.as_ref().is_none_or(|(top, _)| ver > *top) {
+            best = Some((ver, model));
+        }
+    }
+    Ok(best.map(|(_, model)| Value::Object(model.clone())))
+}
+
+/// `model_spec_for_route` (`lib/providers.py`): el modelo del motor de la
+/// ruta (`route_for`: la primera con ese id).
+pub fn model_spec_for_route(
+    registry: &Value,
+    route_id: &str,
+    model_id: &str,
+) -> Result<Option<Value>, Unsure> {
+    let wanted = json!(route_id);
+    for route in py_iter(registry.get("routes").unwrap_or(&Value::Null))? {
+        let route = route.as_object().ok_or(Unsure)?;
+        if !python_eq(get(route, "id"), &wanted) {
+            continue;
+        }
+        let motor = route.get("motor").unwrap_or(&json!("")).clone();
+        hashable(&motor)?;
+        return match motor.as_str() {
+            Some(motor) => model_spec(registry, motor, model_id, "motors"),
+            // Una clave que no es texto no está en `motors`: `{}` sin modelos.
+            None => Ok(None),
+        };
+    }
+    Ok(None)
+}
+
+/// `type(x).__name__` de un valor JSON (para el texto de un `AttributeError`).
+fn type_name(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "NoneType",
+        Value::Bool(_) => "bool",
+        Value::Number(n) if n.as_str().contains(['.', 'e', 'E']) => "float",
+        Value::Number(_) => "int",
+        Value::String(_) => "str",
+        Value::Array(_) => "list",
+        Value::Object(_) => "dict",
+    }
+}
+
+/// `validate_selection` (`lib/providers.py`). `Ok(Err(texto))` es la excepción
+/// del Python: el código de `ProviderRegistryError` (`route_scope_not_supported`,
+/// la razón de la celda, `model_unavailable`, `effort_unavailable`) o el
+/// `AttributeError` de una celda seleccionable fuera de su alcance (su
+/// `reason` es `None`). `Ok(Ok(celda))` es la copia de la celda.
+pub fn validate_selection(
+    registry: &Value,
+    matrix: &[Value],
+    selection: &Value,
+    scope: &str,
+) -> Result<Result<Value, String>, Unsure> {
+    let selection = selection.as_object().ok_or(Unsure)?;
+    let route_id = str_or_empty(get(selection, "routeId"))?;
+    let wanted = json!(route_id);
+    let mut cell = None;
+    for item in matrix {
+        let item = item.as_object().ok_or(Unsure)?;
+        if python_eq(get(item, "id"), &wanted) {
+            cell = Some(item);
+            break;
+        }
+    }
+    let in_scope = |cell: &Map<String, Value>| -> Result<bool, Unsure> {
+        Ok(py_iter(get(cell, "actionScopes"))?
+            .iter()
+            .any(|s| s.as_str() == Some(scope)))
+    };
+    let usable = match cell {
+        Some(c) => truthy(get(c, "selectable")) && in_scope(c)?,
+        None => false,
+    };
+    if !usable {
+        // `(cell or {}).get("reason", {}).get("code") or "route_scope_not_supported"`.
+        let code = match cell.and_then(|c| c.get("reason")) {
+            None => Value::Null,
+            Some(Value::Object(reason)) => get(reason, "code").clone(),
+            Some(other) => {
+                return Ok(Err(format!(
+                    "'{}' object has no attribute 'get'",
+                    type_name(other)
+                )));
+            }
+        };
+        let code = if truthy(&code) {
+            scalar_str(&code)?
+        } else {
+            "route_scope_not_supported".into()
+        };
+        return Ok(Err(code));
+    }
+    let model_id = str_or_empty(get(selection, "model"))?;
+    let Some(spec) = model_spec_for_route(registry, &route_id, &model_id)? else {
+        return Ok(Err("model_unavailable".into()));
+    };
+    let effort = str_or_empty(get(selection, "effort"))?;
+    if !effort.is_empty()
+        && !py_iter(spec.get("efforts").unwrap_or(&Value::Null))?
+            .iter()
+            .any(|e| e.as_str() == Some(effort.as_str()))
+    {
+        return Ok(Err("effort_unavailable".into()));
+    }
+    Ok(Ok(cell.map_or(Value::Null, |c| Value::Object(c.clone()))))
+}
+
+// ---------------------------------------------------------------------------
+// Modelos de Grok
+// ---------------------------------------------------------------------------
+
+/// `int(x or 0)` de Python; lo que no cabe en `i64` o lanzaría → `Unsure`.
+fn py_int_value(value: &Value) -> Result<i64, Unsure> {
+    if !truthy(value) {
+        return Ok(0);
+    }
+    let n: i128 = match value {
+        Value::Bool(_) => 1,
+        Value::String(s) => py_int_text(s)?,
+        Value::Number(n) => {
+            let text = n.as_str();
+            if text.contains(['.', 'e', 'E']) {
+                let f = n.as_f64().ok_or(Unsure)?;
+                if !f.is_finite() || f.abs() >= 1e30 {
+                    return Err(Unsure);
+                }
+                f.trunc() as i128
+            } else {
+                text.parse().map_err(|_| Unsure)?
+            }
+        }
+        _ => return Err(Unsure),
+    };
+    i64::try_from(n).map_err(|_| Unsure)
+}
+
+/// `grok_state.models()` (`lib/grok_state.py`) de `<grok_home>/models_cache.json`:
+/// los modelos visibles con id, nombre, ventana, esfuerzos, esfuerzo por
+/// omisión y `hidden`, ordenados por `id` descendente (orden estable). Un
+/// archivo ausente, ilegible, que no es UTF-8 o JSON, o sin objeto, es el
+/// `except` del Python (sin modelos); lo que el Python quizá aceptaría o que
+/// lanzaría fuera del `try` → `Unsure`.
+pub fn grok_models(grok_home: &Path) -> Result<Vec<Value>, Unsure> {
+    let raw = match fs::read(grok_home.join("models_cache.json")) {
+        Ok(bytes) => match std::str::from_utf8(&bytes) {
+            Ok(text) if !text.starts_with('\u{feff}') => match workspace_loads(text) {
+                Ok(data) => data
+                    .as_object()
+                    .map(|o| get(o, "models").clone())
+                    .unwrap_or(Value::Null),
+                Err(_) if surrogate_escape(text) || deep(text) => return Err(Unsure),
+                Err(_) => Value::Null,
+            },
+            _ => Value::Null,
+        },
+        Err(_) => Value::Null,
+    };
+    let mut out = Vec::new();
+    for (ident, row) in py_items(&raw)?.into_iter().flatten() {
+        let info = if truthy(row) {
+            get(row.as_object().ok_or(Unsure)?, "info")
+        } else {
+            &Value::Null
+        };
+        let empty = Map::new();
+        let info = if truthy(info) {
+            info.as_object().ok_or(Unsure)?
+        } else {
+            &empty
+        };
+        let mut efforts = Vec::new();
+        let listed = get(info, "reasoning_efforts");
+        // Iterar una cadena o un objeto no da diccionarios: sin esfuerzos.
+        if let Value::Array(items) = listed {
+            for effort in items {
+                if let Some(effort) = effort.as_object()
+                    && truthy(get(effort, "id"))
+                {
+                    efforts.push(Value::String(scalar_str(get(effort, "id"))?));
+                }
+            }
+        } else if truthy(listed) && !listed.is_string() && !listed.is_object() {
+            return Err(Unsure);
+        }
+        let or_ident = |key: &str| -> Result<String, Unsure> {
+            let value = get(info, key);
+            if truthy(value) {
+                scalar_str(value)
+            } else {
+                Ok(ident.clone())
+            }
+        };
+        let model = json!({
+            "id": or_ident("id")?,
+            "name": or_ident("name")?,
+            "contextWindow": py_int_value(get(info, "context_window"))?,
+            "efforts": efforts,
+            "defaultEffort": str_or_empty(get(info, "reasoning_effort"))?,
+            "hidden": truthy(get(info, "hidden")),
+        });
+        out.push(model);
+    }
+    out.retain(|m| m.get("hidden") != Some(&Value::Bool(true)));
+    // `sorted(..., reverse=True)` conserva el orden de los iguales.
+    out.sort_by(|a, b| {
+        let key = |m: &Value| m.get("id").and_then(Value::as_str).unwrap_or("").to_owned();
+        key(b).cmp(&key(a))
+    });
     Ok(out)
 }
 
