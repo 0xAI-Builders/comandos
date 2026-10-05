@@ -465,6 +465,16 @@ Bases nuevas, cada una con su hilo y su apagado propio (no global):
   línea análoga y solo GET `/model/status` se reenvía. El primer sondeo espera hasta 15 s si la
   base está ocupada (el `timeout=15` del Python), así un `SQLITE_BUSY` pasajero no apaga el
   carril.
+- En los dos carriles, solo un esquema más nuevo o desconocido (o un pánico) apaga el carril. El
+  primer sondeo de la base de uso espera hasta 10 s (el `timeout=10` de `bin/cc_usage.py`), y
+  cualquier otro fallo al abrir (ocupada más allá de esa espera, permisos) reenvía esa petición
+  y se reintenta en la siguiente, con una sola línea `…: apertura fallida (…); se reenvía esta
+  petición de … y se reintenta en la siguiente`, que no es un apagado.
+- app-state, respecto de la 2b: un fallo pasajero de la puerta (`SQLITE_BUSY` al leer
+  `schema_migrations`) reenvía solo esa petición y el conjunto nativo sigue. Solo una migración
+  desconocida, un esquema incompatible o un worker retirado lo apagan entero (la línea `rutas
+  nativas desactivadas`). Un fallo al abrir app-state en la primera petición sigue apagándolo,
+  como en la 2b (`StateBackend::open` ya reintenta tres veces ante `SQLITE_BUSY`).
 
 `/model-tiers` lee `config/model-tiers.json` del checkout del heredado (`REPO_ROOT` del Python):
 `COMANDOS_DASH_REPO` si está definida; si no, el destino canónico de
@@ -485,9 +495,12 @@ en el paso 0 que es el mismo checkout que ejecuta `cc-dash-legacy.service`.
   Python lo teclearía Rust solo si, tras el reinicio, ningún estado de hooks nombra ya esa sesión;
   el único llamador (la barra de comandos) no reintenta.
 - Candados separados. El frente y el Python no comparten candado de proceso para `/pane/type`
-  (candado por pane) ni para `/terminal-panes` (el `_LOCK` de `lib/terminal_panes.py` contra el de
-  Rust; el `close`, reenviado, toma el del Python). Es seguro porque ninguno de los dos candados
-  cubría tampoco a cc-app ni a un segundo proceso, y lo que protege a los panes está en tmux:
+  (candado por pane) ni para `/terminal-panes` (el `_LOCK` de `lib/terminal_panes.py` contra el
+  `SERIAL` de Rust). cc-app llama a `/terminal-panes` por HTTP (`bin/cc-app:4365,4371,8843,8847`):
+  antes lo serializaba el `_LOCK` del Python y ahora el `SERIAL` del frente, salvo el `close`, que
+  se reenvía y toma el `_LOCK` del Python. Un `close` puede cruzarse, pues, con un `list`,
+  `select`, `split` o `resize` nativo. Ninguno de los dos candados cubre a otros clientes de tmux
+  (el usuario en su terminal, los hooks), y lo que protege a los panes está en tmux:
   `select`, `split` y `close` van en un `if-shell` que comprueba la identidad del pane (y, para
   `close`, que no sea el último) en la cola de tmux, y un `resize` de un pane ya cerrado falla
   con el 400 del Python. En `/pane/type` un pane se resuelve siempre al mismo lado mientras el
@@ -507,8 +520,20 @@ grep -qa COMANDOS_DASH_REPO "$NEW" || echo "BINARIO SIN 2c: no seguir"
 systemctl --user is-active cc-dash.service cc-dash-legacy.service    # active active
 ~/.local/share/comandos/bin/comandos install --releases              # anotar la actual ('*': 2bae7f9cd7d6)
 readlink -f ~/.claude/hooks/dash/index.html                          # …/codebase/0xJesus/ComandOS/dash/index.html
+systemctl --user cat cc-dash-legacy.service | grep ExecStart         # …%h/codebase/0xJesus/ComandOS/bin/cc-dash 4781 --no-open
+git status --short | head; git diff --stat | tail -1                  # ver la nota de abajo
+git diff -U0 -- bin/cc-dash bin/cc-app dash lib \
+  | grep -E '^[+-].*(/snippets|/ui-log|/pomodoro|/model-tiers|/sovereignty|/terminal-panes|/terminal-history|/pane/type|/model/status)'
 ss -ltn 'sport = :4782'                                               # libre
 ```
+
+Las dos primeras rutas deben ser el mismo checkout: de él salen `config/model-tiers.json`, el
+Python de 4781 y los estáticos que sirve el frente. Ese checkout tiene hoy cambios sin commit
+(`bin/cc-dash`, `bin/cc-app`, `dash/*`, `lib/*`): el Python vivo y los estáticos salen de ese
+árbol, no del oráculo commiteado contra el que se probó la paridad. A 4 de octubre el diff no
+cambia ninguna de las 12 rutas ni el cuerpo que envían sus llamadores; la única línea que muestra
+el `grep` es de `dash/session-controls.js` (borrado), que retira un llamador de `/model/status`.
+Si el `grep` muestra otra línea, revisar esa ruta antes de seguir.
 
 ### 1. Sombra en 4782 con nativo, contra el heredado 4781
 
@@ -527,7 +552,7 @@ Desde otra terminal, en `~/codebase/0xJesus/ComandOS`:
   --usage-db ~/.claude/hooks/comandos-usage.sqlite --comandos "$NEW"        # 0 DIFF
 "$XT" poll --shadow --minutes 10 --hooks ~/.claude/hooks \
   --state-db ~/.local/state/comandos/app-state.sqlite3 \
-  --usage-db ~/.claude/hooks/comandos-usage.sqlite --comandos "$NEW"        # Pss plano
+  --usage-db ~/.claude/hooks/comandos-usage.sqlite --comandos "$NEW"        # Pss plano, 0 no-2xx, mismos hilos min 1 y 10
 for r in /snippets /model-tiers /pomodoro; do
   cmp -s <(curl -s 127.0.0.1:4782$r | sed 's/"serverNowMs": [0-9]*//') \
          <(curl -s 127.0.0.1:4781$r | sed 's/"serverNowMs": [0-9]*//') && echo "igual $r" || echo "DISTINTO $r"
@@ -541,9 +566,12 @@ done                                    # el historial puede cambiar entre las d
 ```
 
 Navegación manual en `http://127.0.0.1:4782` con `chrome-bg` (vía `cc-browser-expose start 4782`):
-crear, editar y borrar un snippet; abrir el Pomodoro; abrir «Soberanía»; en una pestaña remota
-partir un pane, redimensionarlo y seleccionar otro; teclear un comando desde la barra de comandos
-(sin Enter). Luego:
+crear, editar y borrar un snippet; abrir el Pomodoro; abrir «Soberanía». La sombra usa el tmux
+real del usuario: para la terminal, abrir antes una pestaña de terminal nueva con el botón «+»
+(un shell vacío) y hacer **solo en ella** el split, el redimensionado, la selección de otro pane
+y el tecleo de un comando desde la barra de comandos (sin Enter), con esa pestaña como destino.
+**Nunca en un pane de agente**: un split reflowa su TUI y el tecleo deja texto en su caja de
+entrada. Al terminar, cerrar esa pestaña (con sus panes). Luego:
 
 ```sh
 grep -c 'se reenvían al heredado\|rutas nativas desactivadas' /tmp/sombra-2c.log   # 0
@@ -554,17 +582,40 @@ No deben aparecer las rutas de «Qué cambia» salvo los casos reenviados descri
 
 ### 2. Cutover
 
+Antes de reiniciar, nada en vuelo: ni un cambio de cuenta o de modelo, ni un tecleo de la barra
+de comandos. Un reinicio a mitad de un `/pane/type` corta el texto en el pane (igual que matar el
+Python, pero evitable). El journal de operaciones se mira en solo lectura; una fila reciente en un
+estado no final es un cambio en curso (las `awaiting_confirmation` y `recovery_required`
+antiguas son residuo y no cuentan):
+
+```sh
+sqlite3 "file:$HOME/.claude/hooks/session-operations.sqlite3?mode=ro" \
+  "SELECT id, state, datetime(updated, 'unixepoch', 'localtime') FROM session_operations
+   WHERE state NOT IN ('confirmed', 'failed', 'rolled_back')
+     AND updated > strftime('%s', 'now') - 900"                       # vacío
+```
+
+`/pane/type` no deja rastro (es nativo y la traza solo registra reenvíos): su único llamador es la
+barra de comandos del tablero, así que la comprobación es no usarla durante el reinicio y que no
+quede un envío suyo pendiente en pantalla.
+
 ```sh
 "$NEW" install --stage
 grep -qa COMANDOS_DASH_REPO "$(readlink -f ~/.local/share/comandos/bin/comandos)" || echo "STAGE MALO: ~/.local/share/comandos/bin/comandos install --rollback-release"
 ~/.local/share/comandos/bin/comandos hook claude-status >/dev/null && echo "hooks OK con la release nueva"
 systemctl --user restart cc-dash.service
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4777/        # 200
+systemctl --user show -p NRestarts --value cc-dash.service           # 0
+# Abre el carril del journal (perezoso): sin registro declina y responde el Python.
+curl -s '127.0.0.1:4777/model/status?operationKey=local' >/dev/null
+for r in /snippets /model-tiers /pomodoro /sovereignty; do              # /pomodoro abre el carril de uso
+  curl -s -o /dev/null -w "$r %{http_code} %{time_total}s\n" 127.0.0.1:4777$r
+done                                                                  # 200 y < 0,1 s
 journalctl --user -u cc-dash.service --since -2min --no-pager | grep -c 'se reenvían al heredado\|rutas nativas desactivadas'   # 0
 ```
 
-Sin operaciones de sesión en vuelo (`/model/status` pendiente en el tablero) en el momento del
-reinicio. El tablero queda sin respuesta unos 3 s; cc-app reintenta solo.
+El tablero queda sin respuesta unos 3 s; cc-app reintenta solo. Una línea `apertura fallida (…);
+se reenvía esta petición` no es un apagado: el carril reintenta en la siguiente petición.
 
 ### 3. Verificación por dominio
 
@@ -580,7 +631,9 @@ systemctl --user unset-environment COMANDOS_DASH_TRACE_FORWARD && systemctl --us
 - **G**: POST `/terminal-panes` solo aparece al cerrar un pane; `/terminal-history` y `/pane/type` no aparecen. Con dos iframes remotos abiertos, `/terminal-panes` cada 2 s no se acumula en la traza.
 - **H**: GET `/model/status` solo aparece en un cambio de cuenta que espera confirmación o sin operación registrada; el resto del cambio se sigue desde Rust.
 - `/state`, `/usage/state` y `/analytics/week` siguen apareciendo: es lo esperado.
-- Memoria: `grep Pss /proc/$(systemctl --user show -p MainPID --value cc-dash.service)/smaps_rollup` al minuto 1 y al 10: plano (± 1 MiB).
+- Memoria e hilos, con dos iframes remotos abiertos, al minuto 1 y al 10:
+  `P=$(systemctl --user show -p MainPID --value cc-dash.service); grep Pss /proc/$P/smaps_rollup; ls /proc/$P/task | wc -l`.
+  Pss plano (± 1 MiB) e hilos sin crecer entre las dos lecturas.
 
 ### 4. Reversión
 
@@ -588,8 +641,27 @@ Igual que en la 2b. A/B sin cambiar binario:
 
 ```sh
 systemctl --user set-environment COMANDOS_DASH_NATIVE=0 && systemctl --user restart cc-dash.service
-# persistente: drop-in ~/.config/systemd/user/cc-dash.service.d/no-native.conf con
-# [Service]\nEnvironment=COMANDOS_DASH_NATIVE=0, daemon-reload y restart (deshacer: rm + daemon-reload + restart)
+# deshacer: systemctl --user unset-environment COMANDOS_DASH_NATIVE && systemctl --user restart cc-dash.service
+```
+
+Lo anterior vive solo en la memoria del gestor de usuario (se pierde al reiniciar o reloguear).
+Para que sobreviva, drop-in persistente:
+
+```sh
+mkdir -p ~/.config/systemd/user/cc-dash.service.d
+cat > ~/.config/systemd/user/cc-dash.service.d/no-native.conf <<'EOF'
+[Service]
+Environment=COMANDOS_DASH_NATIVE=0
+EOF
+systemctl --user daemon-reload && systemctl --user restart cc-dash.service
+systemctl --user show -p Environment cc-dash.service | grep -o 'COMANDOS_DASH_NATIVE=0'
+```
+
+Deshacer el drop-in:
+
+```sh
+rm ~/.config/systemd/user/cc-dash.service.d/no-native.conf
+systemctl --user daemon-reload && systemctl --user restart cc-dash.service
 ```
 
 Volver a la release anterior (`2bae7f9cd7d6`, la 2b):
@@ -605,24 +677,33 @@ Las escrituras nativas (snippets, `ui-events.jsonl`, journal, política de foco)
 archivos y bases que usa el Python, con el mismo formato: revertir no necesita limpiar nada.
 Revertir pierde la caché de `/pane/type` del frente (ver «Diferencias»).
 
-### Medido antes del cutover (rama `migration/rust-fase2c`, `76d8e46`)
+### Medido antes del cutover (rama `migration/rust-fase2c`, `d33e520`; `xtask` de `5fbf1ac`)
 
 Arnés en namespace de red privado, copia de `~/.claude/hooks`, copias de solo lectura de
 `app-state.sqlite3` (`--state-db`) y de `comandos-usage.sqlite` (`--usage-db`), binario release de
-la rama.
+la rama con los arreglos de la revisión final.
 
-- Suite del workspace: 727 pruebas, 0 fallos, 1 ignorada (herramienta manual de RSS); `fmt` y
+- Suite del workspace: 732 pruebas, 0 fallos, 1 ignorada (herramienta manual de RSS); `fmt` y
   `clippy -D warnings` limpios.
 - `xtask parity` con nativo: 133 OK, 0 DIFF, 0 SKIP de 133. Reenviadas al heredado, 8 rutas
   distintas: GET `/state` (2), GET `/operator`, GET `/no-existe.css`, GET `/vendor/`,
   POST `/workspace/close-group` (las 5 de la 2b) y, por diseño, POST `/terminal-panes`
   (`g-terminal-panes-close`), GET `/model/status` (`h-model-status-sin-registro`) y GET `/pomodoro`
   (`f-pomodoro-consulta`, con consulta: llave `Raw`).
-- `xtask poll --shadow --minutes 10` (con nativo): 2910 peticiones, 0 errores de transporte,
-  300 no-2xx (tantas como POST `/terminal-panes` a la sesión inexistente `poll`, que ahora responde
-  el frente con el 400 del Python). Pss del frente 15,1 MiB al minuto 0, 20,8 MiB al minuto 1
-  (21 337 KiB) y 20,9 MiB al minuto 10 (21 425 KiB, +88 KiB); desde el minuto 5,
-  21 369–21 549 KiB, pendiente 405 KiB/h: plano. Reenviadas, 3 rutas distintas: GET `/state`
-  (500), GET `/usage/state` (60), GET `/analytics/week` (10). Respecto de la 2b dejan de llegar al
-  heredado POST `/terminal-panes` (300) y GET `/pomodoro` (40). El Python de la pila aislada pasó
-  de 45 a 224 MiB en el mismo tiempo.
+- `xtask poll --shadow --minutes 10` (con nativo). `/terminal-panes` va contra sesiones reales del
+  tmux privado de la pila: `local` y `poll-b`, de tres panes cada una (inventario completo:
+  `list-panes`, un `display-message` y una lectura de `/proc/<pid>/stat` por pane y
+  `list-clients`, bajo `SERIAL`). El tablero lista `local` cada 2 s; un segundo iframe lista
+  `poll-b` cada 2 s, redimensiona un pane de `local` cada 10 s y selecciona otro con
+  `scope:"client"` cada 20 s. Resultado: 3390 peticiones (las 2910 del calendario más 480 de
+  terminal), 0 errores de transporte, 0 no-2xx. Pss del frente 15,0 MiB al minuto 0 (15 337 KiB),
+  21,2 MiB al minuto 1 (21 689 KiB) y 21,2 MiB al minuto 10 (21 669 KiB, −20 KiB); desde el
+  minuto 5, 21 573–21 845 KiB (272 KiB de banda; la pendiente de mínimos cuadrados sobre esos
+  seis puntos, 1947 KiB/h, la marca el pico de 21 845 KiB del minuto 8, y el minuto 10 queda
+  por debajo): plano. Hilos del frente: 3 al minuto 0, 4 del minuto 1 al 10. Reenviadas, 3 rutas
+  distintas: GET `/state` (500), GET `/usage/state` (60), GET `/analytics/week` (10); ningún
+  `/terminal-panes` ni `/pomodoro`. El Python de la pila aislada pasó de 45 a 226 MiB en el mismo
+  tiempo.
+- Corrida anterior (`76d8e46`, `/terminal-panes` contra la sesión inexistente `poll`, solo el
+  400 tras un `list-panes`): 2910 peticiones, 300 no-2xx, Pss 21 337 KiB al minuto 1 y
+  21 425 KiB al minuto 10.
