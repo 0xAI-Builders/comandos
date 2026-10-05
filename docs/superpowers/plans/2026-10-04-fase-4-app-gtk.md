@@ -425,6 +425,18 @@ Reglas que esta tarea fija para todo el crate:
 - **Escrituras**: solo por `WriteGuard` (clippy `disallowed-methods`); la ruta se vuelve a resolver al escribir, componente a componente con `openat(O_DIRECTORY | O_NOFOLLOW)` desde la raíz canónica, el temporal se crea con `O_CREAT | O_EXCL | O_NOFOLLOW` y se renombra con `renameat` en el mismo descriptor de directorio. Un `..`, un `.` o un enlace en el recorrido es `Escape`.
 - **Procesos**: solo `proc.rs` llama a `std::process::Command::new` (`#[allow(clippy::disallowed_methods)]` en esas dos llamadas, con su motivo). `tmux.rs` lanza tmux a través de `proc::run`.
 
+### Contratos definitivos de T3, implementación Codex 2026-10-05
+
+Estos contratos corrigen los ejemplos de código de abajo. El código implementado está en `/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-fase4/crates/comandos-app/src/`.
+
+- Live permite únicamente los archivos enumerados en Global Constraints, los candados de instancia y el log opt-in. No permite escribir todo hooks ni todo XDG_RUNTIME_DIR. Sombra conserva únicamente candado y layout propios. El recorrido de padres usa descriptores sin seguir enlaces, incluso para archivos de la lista cerrada. El prefijo del temporal debe ser un único componente.
+- OwnedSession tiene campos privados ligados al socket, pid del servidor y session_id. Se revalida la identidad antes de borrar y se apunta por session_id. Para sesiones term-* se repite la comprobación de shell ocioso. El constructor de placeholders rechaza -A, abreviaturas de opciones y -s duplicado, para no reclamar una sesión preexistente. La observación de shell ocioso y el borrado siguen siendo dos operaciones; se requiere revisión de esta carrera al integrar el cierre de pestañas.
+- La lectura analiza opciones de display-message/capture-pane para exigir un -p real y rechazar -I y agrupaciones desconocidas. Se rechazan separadores de listas tmux y formatos #( en lectura y mutación. Los llamadores que necesitan insertar texto con punto y coma lo transmiten por stdin y buffers, no como lista de comandos.
+- Jobs usa mínimo dos trabajadores. to_main devuelve al MainContext thread-default; cae en el global si no hay contexto específico. Los cierres done siguen sin Send y pueden capturar Rc/widgets.
+- run usa tuberías no bloqueantes con plazo, lectores concurrentes, escritor concurrente y grupo de procesos propio. Mata únicamente ese grupo al vencer el plazo y recoge al hijo. La salida retenida conserva el tope de 16 MiB por flujo. spawn_detached separa grupo POSIX y recoge al hijo, pero no hace setsid; el ejemplo anterior que afirmaba equivalencia con start_new_session era incorrecto.
+- El soporte de tmux usa socket privado con -S, configuración /dev/null, entorno limpio y /bin/sh explícito; no carga perfiles ni credenciales del usuario. Todas las pruebas son nativas y sin pantalla. Prohibidos GTK local, Xvfb local y navegador local según la instrucción actual de Jesús, que prevalece sobre los rulings históricos.
+- Verificación autorizada con -j2 y target-fase4; no se necesita ejecutar la app ni cambiar servicios.
+
 - [ ] **Step 1: soporte de pruebas**
 
 `crates/comandos-app/tests/support/mod.rs`:
