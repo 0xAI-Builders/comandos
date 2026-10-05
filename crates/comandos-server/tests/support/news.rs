@@ -4,12 +4,13 @@
 //! `~/.claude/hooks`. Nada de red: ninguna fuente se descarga.
 #![allow(dead_code)]
 use super::TestHome;
+use comandos_runtime::acp_client::{Session, agent_specs};
 use comandos_store::state::{self, MIGRATIONS};
-use std::path::PathBuf;
-
-/// Agente ACP falso de la Tarea 3; vacío hasta entonces.
-#[derive(Default)]
-pub struct FakeAcp;
+use serde_json::{Value, json};
+use std::{
+    os::unix::fs::PermissionsExt,
+    path::{Path, PathBuf},
+};
 
 /// Una imagen pequeña (se lee entera) y una grande (se envía por trozos).
 pub const SMALL_IMAGE: &str = "0123456789abcdef0123456789abcdef.png";
@@ -96,4 +97,201 @@ pub fn seed_editions(home: &TestHome) {
         "news-editions.json",
         r#"{"enabled": true, "summarizer": {"kind": "chain", "steps": [{"agent": "opencode", "model": "free"}, {"agent": "claude"}, "x"]}, "policy": {"slots": ["21:00", "08:30", "15:00"], "budgetUsd": 1, "maxSources": 12}}"#,
     );
+}
+
+// ---------------------------------------------------------------- agente ACP falso (Tarea 3)
+
+/// Agente ACP falso (`sh`, generado por la prueba en su HOME; no es un archivo
+/// del repositorio). Lee JSON-RPC por líneas y las anota en `FAKEACP_LOG`;
+/// `session/new` → `{"sessionId": "s1"}`; `session/prompt` → con
+/// `FAKEACP_PERMISSION=1` pide permiso para `rm -rf /` y anota la respuesta,
+/// espera `FAKEACP_SLEEP` segundos, manda `FAKEACP_CHUNK` (un literal JSON de
+/// texto) y cierra el turno. La primera línea del registro es `PID <pid> <$0>`.
+pub const FAKE_ACP: &str = r#"#!/bin/sh
+PATH=/usr/bin:/bin
+log=${FAKEACP_LOG:?}
+printf 'PID %s %s\n' "$$" "$0" >> "$log"
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> "$log"
+  id=$(printf '%s' "$line" | sed -n 's/^{"jsonrpc": "2.0", "id": \([0-9]*\), "method": .*/\1/p')
+  case "$line" in
+    *'"method": "session/new"'*)
+      printf '{"jsonrpc": "2.0", "id": %s, "result": {"sessionId": "s1"}}\n' "$id" ;;
+    *'"method": "session/prompt"'*)
+      if [ "${FAKEACP_PERMISSION:-}" = 1 ]; then
+        printf '%s\n' '{"jsonrpc": "2.0", "id": 900, "method": "session/request_permission", "params": {"sessionId": "s1", "options": [{"optionId": "si", "kind": "allow_once"}, {"optionId": "no", "kind": "reject_once"}], "toolCall": {"title": "rm -rf /"}}}'
+        IFS= read -r answer
+        printf '%s\n' "$answer" >> "$log"
+      fi
+      sleep "${FAKEACP_SLEEP:-0}"
+      printf '{"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "s1", "update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": %s}}}}\n' "$FAKEACP_CHUNK"
+      printf '{"jsonrpc": "2.0", "id": %s, "result": {"stopReason": "end_turn"}}\n' "$id" ;;
+  esac
+done
+printf 'EOF\n' >> "$log"
+"#;
+
+/// `news-editions.json` con el único agente de las pruebas.
+pub const FAKE_CHAIN: &str =
+    r#"{"enabled": true, "summarizer": {"kind": "acp", "agent": "falso"}}"#;
+
+/// El agente falso instalado en un HOME: el guion, su registro de líneas y un
+/// `config/providers.json` de prueba (`<HOME>/fake-repo`) en el que TODO
+/// agente ACP (también `claude`, `codex`, `grok`, `opencode`, `agy`) es el
+/// guion falso, más el agente `falso`. El frente lo lee por `opts.repo_root`;
+/// el Python del oráculo, por `prelude()` (P58: `PROVIDERS_FILE` es fijo).
+pub struct FakeAcp {
+    pub script: PathBuf,
+    pub log: PathBuf,
+    pub repo: PathBuf,
+}
+
+impl FakeAcp {
+    pub fn at(home: &TestHome) -> FakeAcp {
+        FakeAcp {
+            script: home.root.join("fake-acp"),
+            log: home.root.join("fake-acp.log"),
+            repo: home.root.join("fake-repo"),
+        }
+    }
+
+    /// Instala el guion y el registro; `env` va al entorno del agente.
+    pub fn install(home: &TestHome, env: &[(&str, &str)]) -> FakeAcp {
+        let fake = FakeAcp::at(home);
+        std::fs::write(&fake.script, FAKE_ACP).unwrap();
+        std::fs::set_permissions(&fake.script, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut agent_env = serde_json::Map::new();
+        agent_env.insert("FAKEACP_LOG".into(), json!(fake.log.display().to_string()));
+        for (key, value) in env {
+            agent_env.insert((*key).into(), json!(value));
+        }
+        let spec = json!({"label": "Falso (ACP)", "command": [fake.script.display().to_string()], "env": agent_env});
+        let text = std::fs::read_to_string(super::repo().join("config/providers.json")).unwrap();
+        let mut registry: Value = serde_json::from_str(&text).unwrap();
+        let acp = registry["acpAgents"].as_object_mut().unwrap();
+        for value in acp.values_mut() {
+            *value = spec.clone();
+        }
+        acp.insert("falso".into(), spec);
+        registry["harnesses"]["falso"] = json!({"label": "Falso"});
+        registry["motors"]["falso"] = json!({"label": "Falso", "modelMatch": "^falso$"});
+        assert_eq!(
+            comandos_runtime::providers::validate_registry(&registry),
+            Ok(Ok(())),
+            "registro de prueba inválido"
+        );
+        std::fs::create_dir_all(fake.repo.join("config")).unwrap();
+        std::fs::write(
+            fake.repo.join("config/providers.json"),
+            serde_json::to_string_pretty(&registry).unwrap(),
+        )
+        .unwrap();
+        fake
+    }
+
+    /// Python del oráculo: `providers.load_registry` lee el registro de prueba
+    /// del HOME del oráculo, y el reloj de `news_reading` es `NOW_MS`.
+    pub fn prelude() -> String {
+        format!(
+            "import news_reading\nnews_reading._now = lambda: {now}\n\
+             import providers as _laneb_providers\n\
+             _laneb_load = _laneb_providers.load_registry\n\
+             _laneb_providers.load_registry = lambda path=None: _laneb_load(\
+             os.path.join(os.environ[\"HOME\"], \"fake-repo/config/providers.json\"))\n",
+            now = super::NOW_MS
+        )
+    }
+
+    /// Canario (antes de cualquier `session/prompt`): todo agente del registro
+    /// es el guion falso por ruta absoluta, y el proceso que lanza el cliente
+    /// ACP del frente es `sh <guion>`, que muere al cerrar la sesión.
+    pub fn canary(&self, home: &TestHome) {
+        let text = std::fs::read_to_string(self.repo.join("config/providers.json")).unwrap();
+        let registry: Value = serde_json::from_str(&text).unwrap();
+        let specs = agent_specs(&registry);
+        assert!(specs.contains_key("falso"));
+        for (name, spec) in &specs {
+            assert_eq!(
+                spec["command"],
+                json!([self.script.display().to_string()]),
+                "el agente {name} del registro de prueba no es el falso"
+            );
+        }
+        let before = self.pids().len();
+        let options = comandos_runtime::acp_client::OpenOptions {
+            model: String::new(),
+            extra_env: vec![("COMANDOS_SILENT_AGENT".into(), "1".into())],
+            search_path: Some(home.root.join("bin").into_os_string()),
+            home: home.root.clone(),
+            base_env: Some(
+                home.confined_env()
+                    .into_iter()
+                    .map(|(k, v)| (k.into(), v.into()))
+                    .collect(),
+            ),
+        };
+        let mut session = Session::open(&specs["falso"], &home.root.join("tmp"), &options).unwrap();
+        session.new_session(10.0).unwrap();
+        let pids = self.pids();
+        assert_eq!(pids.len(), before + 1, "{pids:?}");
+        let pid = *pids.last().unwrap();
+        let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap();
+        let args: Vec<&[u8]> = cmdline.split(|b| *b == 0).collect();
+        assert_eq!(
+            args.get(1).copied(),
+            Some(self.script.as_os_str().as_encoded_bytes()),
+            "el proceso lanzado no es el agente falso"
+        );
+        session.close();
+        assert!(
+            !Path::new(&format!("/proc/{pid}")).exists(),
+            "el agente sigue vivo"
+        );
+        let _ = std::fs::remove_file(&self.log);
+    }
+
+    /// PIDs de los agentes lanzados (cada uno anota el suyo al arrancar).
+    pub fn pids(&self) -> Vec<u32> {
+        std::fs::read_to_string(&self.log)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| l.strip_prefix("PID "))
+            .filter_map(|l| l.split(' ').next()?.parse().ok())
+            .collect()
+    }
+
+    /// Lo que recibieron los agentes, sin los PID ni el `EOF` final (carrera
+    /// entre cerrar stdin y el SIGTERM de `close`, la misma en los dos lados) y
+    /// con el HOME como `<HOME>`.
+    pub fn received(&self, home: &TestHome) -> Vec<String> {
+        let root = home.root.display().to_string();
+        std::fs::read_to_string(&self.log)
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| !l.starts_with("PID ") && *l != "EOF")
+            .map(|l| l.replace(&root, "<HOME>"))
+            .collect()
+    }
+
+    /// Procesos vivos de este guion (por `/proc`).
+    pub fn alive(&self) -> Vec<u32> {
+        let needle = self.script.as_os_str().as_encoded_bytes();
+        let mut out = Vec::new();
+        for entry in std::fs::read_dir("/proc").unwrap().flatten() {
+            let Some(pid) = entry
+                .file_name()
+                .to_str()
+                .and_then(|s| s.parse::<u32>().ok())
+            else {
+                continue;
+            };
+            let Ok(cmd) = std::fs::read(entry.path().join("cmdline")) else {
+                continue;
+            };
+            if cmd.windows(needle.len()).any(|w| w == needle) {
+                out.push(pid);
+            }
+        }
+        out
+    }
 }

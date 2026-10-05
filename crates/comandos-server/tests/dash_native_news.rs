@@ -1,7 +1,13 @@
-//! Lector de noticias nativo (plan 2f-4, Tareas 1 y 2) contra el `cc-dash`
-//! Python con el gemelo: las ocho rutas GET y las escrituras sin agente
-//! (POST `/news/saved`, `/news/notes`, `/news/chat/note`), con estado,
+//! Lector de noticias nativo (plan 2f-4, Tareas 1 a 3) contra el `cc-dash`
+//! Python con el gemelo: las ocho rutas GET, las escrituras sin agente
+//! (POST `/news/saved`, `/news/notes`, `/news/chat/note`) y el chat y la
+//! traducción con agentes (POST `/news/chat`, `/news/translate`), con estado,
 //! cabeceras, cuerpo y filas de app-state resultantes.
+//!
+//! Agentes (Tarea 3): el único agente es `FakeAcp` (guion `sh` generado en el
+//! HOME de cada lado); el registro de prueba que leen el frente
+//! (`opts.repo_root`) y el oráculo (`FakeAcp::prelude`) hace de TODO agente
+//! ACP ese guion. Cada prueba que pregunta pasa antes por `FakeAcp::canary`.
 //!
 //! Confinamiento: sin tmux ni procesos propios de estas rutas. app-state,
 //! `news-media` (`XDG_STATE_HOME` = HOME temporal en los dos lados) y
@@ -16,8 +22,8 @@ use std::os::unix::fs::symlink;
 use support::{
     FakeLegacy, NOW_MS, TestHome, front, get,
     news::{
-        EMPTY_IMAGE, LARGE_IMAGE, MISSING_IMAGE, SMALL_IMAGE, large_image, media_dir, migrated,
-        seed_editions,
+        EMPTY_IMAGE, FAKE_CHAIN, FakeAcp, LARGE_IMAGE, MISSING_IMAGE, SMALL_IMAGE, large_image,
+        media_dir, migrated, seed_editions,
     },
     request_body,
     twin::{Twin, TwinOpts},
@@ -401,4 +407,361 @@ async fn news_writes_decline_before_effects() {
     assert_eq!(legacy.requests().len(), 6, "{:?}", legacy.requests());
     assert_eq!(news_rows(&home), before);
     f.stop().await;
+}
+
+// ---------------------------------------------------------------- Tarea 3: agentes
+
+/// La siembra de las pruebas con agente: la de siempre, el agente falso y la
+/// configuración que solo nombra al agente `falso`.
+fn seed_with_fake(env: &'static [(&'static str, &'static str)]) -> impl Fn(&TestHome) {
+    move |home: &TestHome| {
+        seed_editions(home);
+        FakeAcp::install(home, env);
+        home.write("news-editions.json", FAKE_CHAIN);
+    }
+}
+
+/// Gemelo con el agente falso en los dos lados.
+async fn fake_twin(tag: &str, env: &'static [(&'static str, &'static str)]) -> Option<Twin> {
+    let opts = TwinOpts {
+        python_prelude: FakeAcp::prelude(),
+        front: Some(Box::new(|o| o.repo_root = Some(o.home.join("fake-repo")))),
+        ..TwinOpts::default()
+    };
+    Twin::start_with(tag, seed_with_fake(env), opts).await
+}
+
+/// Espera (≤ 5 s) a que no quede nada pendiente en la ruta.
+async fn settled(port: u16, path: &str, busy: &str) -> String {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let text = get(port, path).await.text();
+        if !text.contains(busy) {
+            return text;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "{path} sigue pendiente: {text}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+}
+
+/// Ninguno de los falsos del `fakebin` con nombre de agente real se llamó.
+fn no_named_agent_calls(home: &TestHome) {
+    let log = std::fs::read(home.root.join("fakebin.log")).unwrap_or_default();
+    let text = String::from_utf8_lossy(&log);
+    for name in ["claude", "codex", "grok", "opencode", "agy", "acp"] {
+        assert!(
+            !text
+                .split('\u{1e}')
+                .any(|call| call.trim_start_matches('\0').starts_with(name)),
+            "se llamó a {name}: {text}"
+        );
+    }
+}
+
+const REPLY: &str = "\"Claro: {\\\"reply\\\": \\\"Cuesta **10 USD** según «la fuente».\\\", \\\"cite\\\": \\\"openai.com · párrafo 2\\\"} listo\"";
+
+/// Review Focus 1: sin cadena de agentes, `503` con el texto de `make_asker`
+/// y ninguna fila nueva (ni el mensaje pendiente), en los dos lados. Con la
+/// cadena, los errores de `start_chat`/`start_translation` (404, 400, 409)
+/// son los del Python y tampoco lanzan agentes.
+#[tokio::test]
+async fn chat_without_chain_writes_nothing() {
+    let Some(t) = fake_twin("news-nochain", &[("FAKEACP_CHUNK", "\"x\"")]).await else {
+        return;
+    };
+    let before = (news_rows(&t.a), news_rows(&t.b));
+    for config in [
+        None,
+        Some(r#"{"enabled": true}"#),
+        Some(r#"{"summarizer": {"kind": "anthropic-messages", "model": "m"}}"#),
+        Some(r#"{"summarizer": {"kind": "chain", "steps": []}}"#),
+        Some(r#"{"summarizer": {"kind": "chain"}}"#),
+        Some(r#"{"summarizer": 0}"#),
+        Some("[1]"),
+        Some("{roto"),
+    ] {
+        for home in [&t.a, &t.b] {
+            match config {
+                Some(text) => home.write("news-editions.json", text),
+                None => {
+                    let _ = std::fs::remove_file(home.hooks().join("news-editions.json"));
+                }
+            }
+        }
+        assert_eq!(
+            same_post(&t, "/news/chat", r#"{"storyId": 10, "message": "hola"}"#).await,
+            503,
+            "{config:?}"
+        );
+        assert_eq!(
+            same_post(&t, "/news/translate", r#"{"sourceId": 3}"#).await,
+            503,
+            "{config:?}"
+        );
+    }
+    assert_eq!((news_rows(&t.a), news_rows(&t.b)), before);
+    // Con la cadena: errores antes de prometer nada.
+    for home in [&t.a, &t.b] {
+        home.write("news-editions.json", FAKE_CHAIN);
+        migrated(home)
+            .execute_batch(
+                "INSERT INTO news_chat (id, story_id, edition_id, role, state, text, created_at_ms) \
+                 VALUES (50, 12, '2026-10-03@15:00', 'assistant', 'pending', '', 1)",
+            )
+            .unwrap();
+    }
+    for (path, body, status) in [
+        ("/news/chat", r#"{"storyId": 999, "message": "hola"}"#, 404),
+        ("/news/chat", r#"{"message": "hola"}"#, 404),
+        ("/news/chat", r#"{"storyId": 10, "message": "   "}"#, 400),
+        ("/news/chat", r#"{"storyId": 10}"#, 400),
+        ("/news/chat", r#"{"storyId": 12, "message": "otra"}"#, 409),
+        ("/news/translate", r#"{"sourceId": 4}"#, 404),
+        ("/news/translate", r#"{"sourceId": 999}"#, 404),
+        ("/news/translate", "{}", 404),
+        ("/news/translate", r#"{"sourceId": 1}"#, 200),
+    ] {
+        assert_eq!(same_post(&t, path, body).await, status, "{path} {body}");
+    }
+    assert_eq!(news_rows(&t.a), news_rows(&t.b), "filas");
+    // Ningún agente se lanzó en ningún lado.
+    assert!(FakeAcp::at(&t.a).pids().is_empty());
+    assert!(FakeAcp::at(&t.b).pids().is_empty());
+    no_named_agent_calls(&t.a);
+    no_named_agent_calls(&t.b);
+}
+
+/// Chat completo con el agente falso: `200` inmediato con el pendiente; a los
+/// ≤ 5 s el historial tiene la respuesta, igual en los dos lados; el agente
+/// recibió exactamente las mismas líneas JSON-RPC (prompt incluido) y su
+/// petición de permiso se negó.
+#[tokio::test]
+async fn chat_with_fake_agent_completes() {
+    static ENV: &[(&str, &str)] = &[
+        ("FAKEACP_CHUNK", REPLY),
+        ("FAKEACP_SLEEP", "0.5"),
+        ("FAKEACP_PERMISSION", "1"),
+    ];
+    let Some(t) = fake_twin("news-chat", ENV).await else {
+        return;
+    };
+    FakeAcp::at(&t.a).canary(&t.a);
+    for message in ["¿Cuánto cuesta?", "¿Y en «México»?"] {
+        let body = serde_json::json!({"storyId": 10, "message": message}).to_string();
+        let run = t.post("/news/chat", &body).await;
+        assert_eq!(run.front.status, 200, "{}", run.front.text());
+        assert!(
+            run.front.body == run.oracle.body,
+            "{} / {}",
+            run.front.text(),
+            run.oracle.text()
+        );
+        assert!(
+            run.front.text().contains(r#""state": "pending""#),
+            "{}",
+            run.front.text()
+        );
+        let busy = r#""state": "pending""#;
+        let front = settled(t.front.port, "/news/chat?story=10", busy).await;
+        let oracle = settled(t.oracle.port, "/news/chat?story=10", busy).await;
+        assert_eq!(front, oracle);
+        assert!(front.contains("Cuesta **10 USD**"), "{front}");
+        assert!(
+            front.contains(r#""model": "falso:predeterminado""#),
+            "{front}"
+        );
+    }
+    let (fa, fb) = (FakeAcp::at(&t.a), FakeAcp::at(&t.b));
+    assert_eq!(fa.pids().len(), 2);
+    assert_eq!(fb.pids().len(), 2);
+    let received = fa.received(&t.a);
+    assert_eq!(received, fb.received(&t.b), "lo que recibió el agente");
+    assert!(
+        received.iter().any(|l| l
+            == r#"{"jsonrpc": "2.0", "id": 900, "result": {"outcome": {"outcome": "selected", "optionId": "no"}}}"#),
+        "{received:?}"
+    );
+    assert!(
+        received
+            .iter()
+            .any(|l| l.contains("Conversaci\\u00f3n previa"))
+    );
+    assert_eq!(news_rows(&t.a), news_rows(&t.b), "filas");
+    assert!(fa.alive().is_empty());
+    no_named_agent_calls(&t.a);
+    no_named_agent_calls(&t.b);
+}
+
+/// Dos traducciones seguidas de la misma fuente: un solo trabajo de agente
+/// (la segunda ve `running`), el mismo resultado en los dos lados.
+#[tokio::test]
+async fn translate_twice_starts_once() {
+    static ENV: &[(&str, &str)] = &[
+        (
+            "FAKEACP_CHUNK",
+            "\"{\\\"texts\\\": [\\\"Artículo traducido\\\"]}\"",
+        ),
+        ("FAKEACP_SLEEP", "0.5"),
+    ];
+    let Some(t) = fake_twin("news-tr", ENV).await else {
+        return;
+    };
+    FakeAcp::at(&t.a).canary(&t.a);
+    for _ in 0..2 {
+        let run = t.post("/news/translate", r#"{"sourceId": 3}"#).await;
+        assert_eq!(run.front.status, 200, "{}", run.front.text());
+        assert!(
+            run.front.body == run.oracle.body,
+            "{} / {}",
+            run.front.text(),
+            run.oracle.text()
+        );
+        assert!(run.front.text().contains(r#""state": "running""#));
+    }
+    let busy = r#""state": "running""#;
+    let front = settled(t.front.port, "/news/source?id=3", busy).await;
+    let oracle = settled(t.oracle.port, "/news/source?id=3", busy).await;
+    assert_eq!(front, oracle);
+    assert!(front.contains("Art\\u00edculo traducido"), "{front}");
+    assert_eq!(FakeAcp::at(&t.a).pids().len(), 1);
+    assert_eq!(FakeAcp::at(&t.b).pids().len(), 1);
+    assert_eq!(
+        FakeAcp::at(&t.a).received(&t.a),
+        FakeAcp::at(&t.b).received(&t.b)
+    );
+    // Una traducción hecha se reutiliza sin agente.
+    assert_eq!(
+        same_post(&t, "/news/translate", r#"{"sourceId": 3}"#).await,
+        200
+    );
+    assert_eq!(FakeAcp::at(&t.a).pids().len(), 1);
+    no_named_agent_calls(&t.a);
+    no_named_agent_calls(&t.b);
+}
+
+/// Review Focus 2: cuatro chats con un agente que tarda 1 s; nunca más de dos
+/// procesos `FakeAcp` vivos a la vez (contados por `/proc`) y ninguno se pierde.
+#[tokio::test]
+async fn agent_jobs_limited_to_two() {
+    let home = TestHome::new("news-limit");
+    seed_editions(&home);
+    let fake = FakeAcp::install(&home, &[("FAKEACP_CHUNK", REPLY), ("FAKEACP_SLEEP", "1")]);
+    home.write("news-editions.json", FAKE_CHAIN);
+    migrated(&home)
+        .execute_batch(
+            "INSERT INTO news_stories (id, edition_id, position, story_key, category, title, summary_md, body_md) \
+             VALUES (13, '2026-10-03@15:00', 1, 'k4', 'ia', 'Cuarta', 'Resumen cuatro', 'Cuerpo cuatro')",
+        )
+        .unwrap();
+    fake.canary(&home);
+    let legacy = FakeLegacy::start().await;
+    let mut opts = home.options();
+    opts.repo_root = Some(fake.repo.clone());
+    let f = front(&home, legacy.port, opts).await;
+    for story in [10, 11, 12, 13] {
+        let body = serde_json::json!({"storyId": story, "message": "¿Qué pasó?"}).to_string();
+        let wire = request_body(f.port, "POST", "/news/chat", "", &body).await;
+        assert_eq!(wire.status, 200, "{}", wire.text());
+    }
+    let mut most = 0;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    loop {
+        most = most.max(fake.alive().len());
+        let mut pending = 0;
+        for story in [10, 11, 12, 13] {
+            let text = get(f.port, &format!("/news/chat?story={story}"))
+                .await
+                .text();
+            pending += usize::from(text.contains(r#""state": "pending""#));
+        }
+        if pending == 0 {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "chats sin terminar");
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert!(most <= 2, "{most} agentes a la vez");
+    assert!(most >= 1);
+    assert_eq!(fake.pids().len(), 4, "un agente por chat");
+    for story in [10, 11, 12, 13] {
+        let text = get(f.port, &format!("/news/chat?story={story}"))
+            .await
+            .text();
+        assert!(text.contains("Cuesta **10 USD**"), "{story}: {text}");
+    }
+    assert!(legacy.requests().is_empty(), "{:?}", legacy.requests());
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert!(fake.alive().is_empty());
+    f.stop().await;
+}
+
+/// Lo que no se reproduce con certeza en la cadena (pasos que no son objetos,
+/// `agent` que no es texto, `model` no textual, `summarizer` que no es objeto)
+/// y la falta del checkout del heredado declinan ANTES de escribir.
+#[tokio::test]
+async fn agent_routes_decline_before_effects() {
+    let home = TestHome::new("news-agent-decline");
+    seed_editions(&home);
+    let fake = FakeAcp::install(&home, &[("FAKEACP_CHUNK", "\"x\"")]);
+    let before = news_rows(&home);
+    let legacy = FakeLegacy::start().await;
+    let mut opts = home.options();
+    opts.repo_root = Some(fake.repo.clone());
+    let f = front(&home, legacy.port, opts).await;
+    let mut sent = 0;
+    for config in [
+        r#"{"summarizer": {"kind": "chain", "steps": "x"}}"#,
+        r#"{"summarizer": {"kind": "chain", "steps": {"agent": "falso"}}}"#,
+        r#"{"summarizer": {"kind": "chain", "steps": [{"agent": "falso"}, "x"]}}"#,
+        r#"{"summarizer": {"kind": "chain", "steps": [{"model": "m"}]}}"#,
+        r#"{"summarizer": {"kind": "acp", "agent": 5}}"#,
+        r#"{"summarizer": {"kind": "acp", "agent": "falso", "model": 5}}"#,
+        r#"{"summarizer": "acp"}"#,
+    ] {
+        home.write("news-editions.json", config);
+        for (path, body) in [
+            ("/news/chat", r#"{"storyId": 10, "message": "hola"}"#),
+            ("/news/translate", r#"{"sourceId": 3}"#),
+        ] {
+            let wire = request_body(f.port, "POST", path, "", body).await;
+            assert_eq!(wire.status, 200, "{config} {path}: {}", wire.text());
+            sent += 1;
+        }
+    }
+    // `self.path in (...)` es exacto: con consulta no es del frente.
+    home.write("news-editions.json", FAKE_CHAIN);
+    for path in ["/news/chat?x=1", "/news/translate/"] {
+        let wire = request_body(
+            f.port,
+            "POST",
+            path,
+            "",
+            r#"{"storyId": 10, "message": "hola"}"#,
+        )
+        .await;
+        assert_eq!(wire.status, 200, "{path}: {}", wire.text());
+        sent += 1;
+    }
+    assert_eq!(legacy.requests().len(), sent, "{:?}", legacy.requests());
+    f.stop().await;
+    // Sin checkout del heredado (`repo_root`), tampoco.
+    let mut opts = home.options();
+    opts.repo_root = None;
+    let f = front(&home, legacy.port, opts).await;
+    let wire = request_body(
+        f.port,
+        "POST",
+        "/news/chat",
+        "",
+        r#"{"storyId": 10, "message": "hola"}"#,
+    )
+    .await;
+    assert_eq!(wire.status, 200, "{}", wire.text());
+    assert_eq!(legacy.requests().len(), sent + 1);
+    f.stop().await;
+    assert_eq!(news_rows(&home), before);
+    assert!(fake.pids().is_empty());
 }

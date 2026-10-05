@@ -1,7 +1,7 @@
 //! Lecturas y escrituras sin agente de los Resúmenes de noticias sobre
 //! app-state, portadas de `lib/news_editions.py` y `lib/news_reading.py` con
 //! las mismas sentencias SQL, el mismo orden de filas y las mismas
-//! transacciones (plan 2f-4, Tareas 1 y 2).
+//! transacciones (plan 2f-4, Tareas 1 a 3).
 //!
 //! Cada valor de SQLite se convierte como lo haría `sqlite3` del Python y
 //! después `json.dumps`. Lo que el Python haría con certeza y termina en una
@@ -1084,6 +1084,197 @@ pub fn toggle_chat_note(conn: &Connection, chat_id: Option<i64>, now: i64) -> Wr
         obj.insert("text".into(), Value::String(label));
     }
     Ok(json!({"noted": true, "note": note}))
+}
+
+// ---------------------------------------------------------------- chat y traducción (Tarea 3)
+
+/// `MAX_MESSAGE` de `news_reading`.
+pub const MAX_MESSAGE: usize = 4000;
+/// `CHAT_TURNS` de `news_reading`.
+pub const CHAT_TURNS: i64 = 12;
+
+/// `_clip(text, limit)` de `news_reading`/`news_editions` sobre un texto ya
+/// convertido con `str(text or "")`.
+pub fn py_clip(text: &str, limit: usize) -> String {
+    clip(text, limit)
+}
+
+/// `start_chat(conn, story_id, message, now)`: la pregunta (`user`, `done`) y
+/// la respuesta pendiente (`assistant`, `pending`, `now + 1`) en una
+/// transacción; devuelve el id de la pendiente.
+pub fn start_chat(
+    conn: &Connection,
+    story_id: Option<i64>,
+    message: &Value,
+    now: i64,
+) -> WriteResult<i64> {
+    let story_value = story_id.map_or(SqlValue::Null, SqlValue::Integer);
+    let Some(story) = story_ref(conn, &story_value)? else {
+        return Err(NewsError::Lookup("noticia no encontrada".into()));
+    };
+    let text = clip(&json_str_or_empty(message)?, MAX_MESSAGE);
+    if text.is_empty() {
+        return Err(NewsError::Value("el mensaje está vacío".into()));
+    }
+    let busy = conn
+        .query_row(
+            "SELECT 1 FROM news_chat WHERE story_id = ? AND state = 'pending'",
+            params![story_value],
+            |_| Ok(()),
+        )
+        .optional()?;
+    if busy.is_some() {
+        return Err(NewsError::Runtime(
+            "todavía estoy respondiendo la pregunta anterior".into(),
+        ));
+    }
+    in_write_tx(conn, |c| {
+        c.execute(
+            "INSERT INTO news_chat (story_id, edition_id, role, state, text, created_at_ms) \
+             VALUES (?, ?, 'user', 'done', ?, ?)",
+            params![story_value, story.edition_id, text, now],
+        )?;
+        c.execute(
+            "INSERT INTO news_chat (story_id, edition_id, role, state, text, created_at_ms) \
+             VALUES (?, ?, 'assistant', 'pending', '', ?)",
+            params![story_value, story.edition_id, now + 1],
+        )?;
+        Ok(c.last_insert_rowid())
+    })
+}
+
+/// `start_translation(conn, source_id, "es", now)` → `(arrancar, estado)`.
+/// Una traducción hecha o en curso se devuelve sin arrancar otra.
+pub fn start_translation(
+    conn: &Connection,
+    source_id: Option<i64>,
+    now: i64,
+) -> WriteResult<(bool, Value)> {
+    let source = match source_id {
+        Some(id) => get_source(conn, id)?,
+        None => None,
+    };
+    let (Some(id), Some(source)) = (source_id, source) else {
+        return Err(NewsError::Lookup(
+            "esta fuente no tiene texto capturado".into(),
+        ));
+    };
+    if !source.get("capture").is_some_and(truthy) {
+        return Err(NewsError::Lookup(
+            "esta fuente no tiene texto capturado".into(),
+        ));
+    }
+    if let Some(current) = translation(conn, id, "es")? {
+        let state = current.get("state").and_then(Value::as_str);
+        if matches!(state, Some("done" | "running")) {
+            return Ok((false, current));
+        }
+    }
+    in_write_tx(conn, |c| {
+        c.execute(
+            "INSERT INTO news_translations (source_id, lang, state, created_at_ms, updated_at_ms) \
+             VALUES (?, ?, 'running', ?, ?) ON CONFLICT(source_id, lang) DO UPDATE SET state = 'running', \
+             error = NULL, updated_at_ms = excluded.updated_at_ms",
+            params![id, "es", now, now],
+        )?;
+        Ok(())
+    })?;
+    // `translation(...)` tras escribir: un fallo ya es el 500 del Python.
+    let state = translation(conn, id, "es").map_err(NewsError::AfterWrite)?;
+    Ok((true, state.unwrap_or(Value::Null)))
+}
+
+/// Los ids de las fuentes de una noticia (`_sources_payload`), por id.
+pub fn story_source_ids(conn: &Connection, story_id: i64) -> Result<Vec<i64>> {
+    let mut stmt = conn.prepare(
+        "SELECT s.id FROM news_story_sources l JOIN news_sources s ON s.id = l.source_id \
+         WHERE l.story_id = ? ORDER BY s.id",
+    )?;
+    let mut rows = stmt.query([story_id])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(int_key(row.get_ref(0)?)?);
+    }
+    Ok(out)
+}
+
+/// Los turnos de `chat_prompt`: `(role, text)` de los mensajes hechos
+/// anteriores a la pendiente, los `limit` últimos, del más viejo al más nuevo.
+pub fn chat_turns(
+    conn: &Connection,
+    story_id: i64,
+    pending_id: i64,
+    limit: i64,
+) -> Result<Vec<(Value, Value)>> {
+    let mut stmt = conn.prepare(
+        "SELECT role, text FROM news_chat WHERE story_id = ? AND id < ? AND state = 'done' \
+         ORDER BY id DESC LIMIT ?",
+    )?;
+    let mut rows = stmt.query(params![story_id, pending_id, limit])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push((col(row, 0)?, col(row, 1)?));
+    }
+    out.reverse();
+    Ok(out)
+}
+
+/// La respuesta del agente en la pendiente (`run_chat`, fuera de transacción).
+pub fn finish_chat(
+    conn: &Connection,
+    pending_id: i64,
+    text: &str,
+    cite: Option<&str>,
+    model: &str,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE news_chat SET state = 'done', text = ?, cite = ?, model = ? WHERE id = ?",
+        params![text, cite, model, pending_id],
+    )?;
+    Ok(())
+}
+
+/// El fallo escrito en la pendiente (`run_chat`).
+pub fn fail_chat(conn: &Connection, pending_id: i64, text: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE news_chat SET state = 'failed', text = ? WHERE id = ?",
+        params![text, pending_id],
+    )?;
+    Ok(())
+}
+
+/// La traducción terminada (`run_translation`).
+pub fn finish_translation(
+    conn: &Connection,
+    source_id: i64,
+    lang: &str,
+    title: &str,
+    blocks: &str,
+    model: &str,
+    now: i64,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE news_translations SET state = 'done', title = ?, blocks = ?, model = ?, error = NULL, \
+         updated_at_ms = ? WHERE source_id = ? AND lang = ?",
+        params![title, blocks, model, now, source_id, lang],
+    )?;
+    Ok(())
+}
+
+/// El fallo de una traducción (`run_translation`).
+pub fn fail_translation(
+    conn: &Connection,
+    source_id: i64,
+    lang: &str,
+    error: &str,
+    now: i64,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE news_translations SET state = 'failed', error = ?, updated_at_ms = ? \
+         WHERE source_id = ? AND lang = ?",
+        params![error, now, source_id, lang],
+    )?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------- configuración

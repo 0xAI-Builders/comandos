@@ -6,6 +6,9 @@
 //!   archivos por el pool de bloqueo.
 //! - Tarea 2 (`write`): POST `/news/saved`, `/news/notes` y `/news/chat/note`
 //!   (escrituras sin agente), en su propia tarea y por el worker de la base.
+//! - Tarea 3 (`agents`): POST `/news/chat` y `/news/translate`; el trabajo de
+//!   agente en un hilo de sistema con su conexión, a lo sumo dos a la vez.
+pub mod agents;
 pub mod read;
 pub mod write;
 
@@ -26,6 +29,8 @@ pub enum NewsRoute {
     SavedPost,
     NotesPost,
     ChatNotePost,
+    ChatPost,
+    TranslatePost,
 }
 
 const fn get(key: Key, route: NewsRoute) -> Entry {
@@ -46,8 +51,7 @@ const fn post(path: &'static str, route: NewsRoute) -> Entry {
 }
 
 /// Las ramas de `_do_GET` (8398–8415) y de `do_POST` (9065), con su forma de
-/// comparar la ruta. POST `/news/chat` y `/news/translate` (agentes) son de
-/// la Tarea 3: hasta entonces se reenvían.
+/// comparar la ruta.
 pub const ROUTES: &[Entry] = &[
     // `self.path.startswith("/news/latest")`.
     get(Key::Prefix("/news/latest"), NewsRoute::Latest),
@@ -63,12 +67,17 @@ pub const ROUTES: &[Entry] = &[
     post("/news/saved", NewsRoute::SavedPost),
     post("/news/notes", NewsRoute::NotesPost),
     post("/news/chat/note", NewsRoute::ChatNotePost),
+    post("/news/chat", NewsRoute::ChatPost),
+    post("/news/translate", NewsRoute::TranslatePost),
 ];
 
 pub async fn answer(native: &Arc<Native>, route: NewsRoute, request: &Request) -> Answer {
     match route {
         NewsRoute::SavedPost | NewsRoute::NotesPost | NewsRoute::ChatNotePost => {
             write::answer(native, route, request).await
+        }
+        NewsRoute::ChatPost | NewsRoute::TranslatePost => {
+            agents::answer(native, route, request).await
         }
         _ => read::answer(native, route, request).await,
     }
