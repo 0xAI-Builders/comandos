@@ -13,7 +13,9 @@
 //! de `build_usage_state`); el resto son procesos async (`tmux`, `git`) y
 //! trabajos del carril, que tiene hilo propio.
 use super::super::{
-    Fault, Native, NativeOptions, light,
+    Fault, Native, NativeOptions,
+    lanes::{Lane, UsageImportBackend},
+    light,
     states::{StateFault, gather},
     tmux::{self, Program},
 };
@@ -96,6 +98,16 @@ struct Live {
 pub struct UsageEngine {
     generation: AtomicU64,
     memo: tokio::sync::Mutex<Option<(MemoKey, Arc<UsageMemo>)>>,
+    panes: std::sync::Mutex<PendingPanes>,
+}
+
+/// `record_pane` pendiente: solo el último juego de paneles vivos. Mientras el
+/// carril de escritura está ocupado (una importación), las peticiones que
+/// llegan reemplazan el juego en vez de encolar un trabajo cada una.
+#[derive(Default)]
+struct PendingPanes {
+    rows: Option<Vec<Row>>,
+    queued: bool,
 }
 
 /// El estado de `build_usage_state` ya escrito: cada clave de nivel superior
@@ -262,6 +274,49 @@ impl UsageEngine {
         *memo = Some((key, state.clone()));
         Ok(state)
     }
+}
+
+/// Deja `live` como el juego pendiente de `record_pane` y, si no hay ya un
+/// trabajo en la cola del carril de escritura, encola uno que toma el último
+/// juego al correr.
+fn record_latest_panes(
+    engine: &Arc<UsageEngine>,
+    lane: &Arc<Lane<UsageImportBackend>>,
+    live: Vec<Row>,
+) {
+    fn lock(e: &UsageEngine) -> std::sync::MutexGuard<'_, PendingPanes> {
+        e.panes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+    {
+        let mut pending = lock(engine);
+        pending.rows = Some(live);
+        if pending.queued {
+            return;
+        }
+        pending.queued = true;
+    }
+    let (engine, lane) = (engine.clone(), lane.clone());
+    tokio::spawn(async move {
+        let job = {
+            let engine = engine.clone();
+            move |u: &mut UsageImportBackend| {
+                let rows = {
+                    let mut pending = lock(&engine);
+                    pending.queued = false;
+                    pending.rows.take()
+                };
+                if let Some(rows) = rows {
+                    let _ = usage_read::record_panes(&u.conn, &rows);
+                }
+            }
+        };
+        // El carril declinó o se apagó: el trabajo no corrió.
+        if lane.with(job).await.is_err() {
+            lock(&engine).queued = false;
+        }
+    });
 }
 
 /// Un archivo de configuración leído una vez: `cc-notify.conf` lo usan el
@@ -534,13 +589,7 @@ pub async fn compute(native: &Native) -> Result<UsageStateReply, Fault> {
     // El Python registra antes del memo, pero el memo no lee `usage_panes`
     // cuando hay vivos: el orden no cambia la respuesta.
     if record && opts.usage_effects && !live.is_empty() {
-        let lane = native.import_lane.clone();
-        let to_record = live.clone();
-        tokio::spawn(async move {
-            let _ = lane
-                .with(move |u| usage_read::record_panes(&u.conn, &to_record))
-                .await;
-        });
+        record_latest_panes(&native.usage_engine, &native.import_lane, live.clone());
     }
     let (alerts, recent) = native
         .usage
@@ -601,4 +650,66 @@ pub async fn compute(native: &Native) -> Result<UsageStateReply, Fault> {
         live_declined: !record,
         tmux_panes,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Lane, Row, UsageEngine, UsageImportBackend, record_latest_panes};
+    use serde_json::json;
+    use std::sync::{Arc, mpsc};
+
+    fn pane(id: &str) -> Row {
+        let Ok(serde_json::Value::Object(row)) = serde_json::to_value(json!({
+            "tmux_session": "s", "tmux_pane": id, "pane_pwd": "/r", "agent": "claude",
+            "last_seen_at": 1, "started_at": 1,
+        })) else {
+            unreachable!()
+        };
+        row
+    }
+
+    /// Con el carril de escritura ocupado, tres vueltas dejan un solo trabajo
+    /// pendiente y se escribe el último juego de paneles.
+    #[tokio::test]
+    async fn record_panes_keeps_only_the_latest_live_set() {
+        let dir = std::env::temp_dir().join(format!("2e-panes-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("comandos-usage.sqlite");
+        drop(comandos_store::usage::open_usage_db_at(&db).unwrap());
+        let lane = Arc::new(Lane::<UsageImportBackend>::new(db.clone()));
+        let engine = Arc::new(UsageEngine::default());
+        let (release, wait) = mpsc::channel::<()>();
+        let busy = {
+            let lane = lane.clone();
+            tokio::spawn(async move { lane.with(move |_| wait.recv()).await })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        for id in ["%1", "%2", "%3"] {
+            record_latest_panes(&engine, &lane, vec![pane(id)]);
+        }
+        assert!(engine.panes.lock().unwrap().queued);
+        release.send(()).unwrap();
+        assert!(matches!(busy.await.unwrap(), Ok(Ok(()))));
+        for _ in 0..100 {
+            if !engine.panes.lock().unwrap().queued {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let Ok(ids) = lane
+            .with(|u| {
+                let mut stmt = u.conn.prepare("select tmux_pane from usage_panes").unwrap();
+                stmt.query_map([], |r| r.get::<_, String>(0))
+                    .unwrap()
+                    .collect::<Result<Vec<_>, _>>()
+                    .unwrap()
+            })
+            .await
+        else {
+            panic!("carril");
+        };
+        assert_eq!(ids, ["%3"]);
+        lane.shutdown().await;
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }
