@@ -37,13 +37,24 @@ const EFFORTS: [&str; 10] = [
 const MODEL: &str = r"(?:gpt-[a-z0-9.\-]+|claude-[a-z0-9.\-]+|grok-[a-z0-9.\-]+|(?:opus|sonnet|haiku|fable)(?:-[a-z0-9.]+)?)(?:\[1m\])?";
 
 /// Profundidad de anidamiento a partir de la cual `json.loads` de CPython 3.10
-/// puede acabar en `RecursionError` (el límite de 1000 cuenta también los marcos
-/// del hilo de `cc-dash`): el resultado del Python es desconocido.
+/// puede acabar en `RecursionError`: el resultado del Python es desconocido.
+/// El límite de recursión (1000) cuenta también los marcos que ya ocupa el hilo
+/// de `cc-dash` al leer el transcript (arranque del hilo, `socketserver`,
+/// manejador HTTP, `read_states`, `reconcile_card_config`, `read`): en
+/// CPython 3.10.12 un `json.loads` en el nivel superior falla hacia los 997
+/// niveles, así que 900 es seguro mientras esa pila no pase de ~95 marcos
+/// (hoy son unos 20–30). Si el heredado ganara mucha profundidad de llamada,
+/// este umbral tendría que bajar.
 const PY_JSON_DEPTH: usize = 900;
 
 /// Caracteres que bajo `re.I` casan con una letra ASCII en uno de los dos
 /// motores y no en el otro (İ, ı, ſ, signo Kelvin).
-const FOLDS: [char; 4] = ['\u{130}', '\u{131}', '\u{17f}', '\u{212a}'];
+const FOLDS: [(char, char); 4] = [
+    ('\u{130}', 'i'),
+    ('\u{131}', 'i'),
+    ('\u{17f}', 's'),
+    ('\u{212a}', 'k'),
+];
 
 type Pattern = LazyLock<Result<Regex, regex::Error>>;
 
@@ -74,6 +85,7 @@ pattern!(OPENCODE, r"^\s*┃\s+[\w-]+\s+·\s+(.+)$");
 pattern!(OPENCODE_EFFORT, format!(r"(?i)[·•]\s*{EFFORT}\s*$"));
 pattern!(CLAUDE_RESPONSE, r"^\s*●\s");
 pattern!(CLAUDE_PROMPT, r"^\s*❯\s*/(?:model|effort)\b");
+pattern!(CLAUDE_PROMPT_PREFIX, r"^\s*❯\s*/(?:model|effort)");
 pattern!(
     CLAUDE_CONFIRM,
     r"^\s*⎿\s+(?:Set model to|Kept model as|Current model:)\s+(.+)"
@@ -86,6 +98,13 @@ pattern!(
     CLAUDE_EFFORT,
     format!(r"(?i)^\s*⎿\s+(?:Set effort level to|Effort(?: level)? set to)\s+{EFFORT}\b")
 );
+pattern!(
+    CLAUDE_EFFORT_PREFIX,
+    r"(?i)^\s*⎿\s+(?:Set effort level to|Effort(?: level)? set to)\s+"
+);
+pattern!(OPENCODE_PREFIX, r"^\s*┃\s+");
+pattern!(OPENCODE_TAIL, r"^\s+·\s+.+$");
+pattern!(WORD, r"\w");
 pattern!(
     CLAUDE_STATUS,
     format!(r"(?i)[·•]\s*claude\s*[·•]\s*({MODEL})")
@@ -117,23 +136,79 @@ fn is_in(pattern: &'static Pattern, c: char) -> Result<bool, Unsure> {
     Ok(get(pattern)?.is_match(c.encode_utf8(&mut buf)))
 }
 
-fn folds(s: &str) -> bool {
-    s.chars().any(|c| FOLDS.contains(&c))
+/// Texto con los `FOLDS` cambiados por su letra ASCII y los desplazamientos
+/// (en el texto nuevo) de los cambiados. Bajo `re.I`, el Python trata cada uno
+/// como su letra ASCII; `regex` solo pliega ſ y K. Buscar en el texto cambiado
+/// reproduce al Python mientras la coincidencia no toque uno de ellos (si lo
+/// toca, el `.lower()` del Python conservaría el carácter original).
+fn unfold(s: &str) -> (String, Vec<usize>) {
+    let mut out = String::with_capacity(s.len());
+    let mut at = Vec::new();
+    for c in s.chars() {
+        let Some(&(_, ascii)) = FOLDS.iter().find(|(fold, _)| *fold == c) else {
+            out.push(c);
+            continue;
+        };
+        at.push(out.len());
+        out.push(ascii);
+    }
+    (out, at)
 }
 
-/// Un `\b` de estas expresiones siempre está junto a una letra ASCII: discrepa
-/// solo si el vecino es un carácter de palabra divergente.
-fn word_edge(s: &str) -> Result<bool, Unsure> {
-    let ascii = |c: char| c.is_ascii_alphanumeric() || c == '_';
-    let mut prev: Option<char> = None;
-    for c in s.chars() {
-        if let Some(p) = prev
-            && ((ascii(p) && is_in(&WORD_DIVERGENT, c)?)
-                || (ascii(c) && is_in(&WORD_DIVERGENT, p)?))
-        {
-            return Ok(true);
+fn overlaps(m: &regex::Match<'_>, at: &[usize]) -> bool {
+    at.iter().any(|&i| m.start() <= i && i < m.end())
+}
+
+/// Búsqueda de una expresión con `re.I`: los grupos de la coincidencia, o
+/// `Unsure` si toca un carácter plegable.
+fn ci_captures(
+    pattern: &'static Pattern,
+    s: &str,
+    groups: usize,
+) -> Result<Option<Vec<String>>, Unsure> {
+    let (mapped, folded) = unfold(s);
+    let Some(caps) = get(pattern)?.captures(&mapped) else {
+        return Ok(None);
+    };
+    if caps.get(0).is_some_and(|m| overlaps(&m, &folded)) {
+        return Err(Unsure);
+    }
+    Ok(Some(
+        (1..=groups).map(|g| group(&caps, g).to_owned()).collect(),
+    ))
+}
+
+/// Primer grupo de `ci_captures`.
+fn ci_first(pattern: &'static Pattern, s: &str) -> Result<Option<String>, Unsure> {
+    Ok(ci_captures(pattern, s, 1)?.and_then(|g| g.into_iter().next()))
+}
+
+/// Un carácter cuya condición de palabra difiere entre `re` y `regex`.
+fn divergent(c: Option<char>) -> Result<bool, Unsure> {
+    match c {
+        Some(c) => is_in(&WORD_DIVERGENT, c),
+        None => Ok(false),
+    }
+}
+
+/// Los `\b` de estas expresiones están antes de una palabra de `before` o
+/// después de una de `after`: discrepan solo si ahí hay un carácter divergente.
+fn edge_near(s: &str, before: &[&str], after: &[&str]) -> Result<bool, Unsure> {
+    let at = |i: usize, w: &str| {
+        s.get(i..i + w.len())
+            .is_some_and(|t| t.eq_ignore_ascii_case(w))
+    };
+    for (i, _) in s.char_indices() {
+        for w in before {
+            if at(i, w) && divergent(s.get(..i).and_then(|h| h.chars().next_back()))? {
+                return Ok(true);
+            }
         }
-        prev = Some(c);
+        for w in after {
+            if at(i, w) && divergent(s.get(i + w.len()..).and_then(|t| t.chars().next()))? {
+                return Ok(true);
+            }
+        }
     }
     Ok(false)
 }
@@ -153,21 +228,28 @@ fn group<'h>(caps: &regex::Captures<'h>, index: usize) -> &'h str {
 
 /// `model_id` (16): identificador de modelo de una etiqueta de pantalla.
 pub fn model_id(label: &str) -> Result<String, Unsure> {
-    if folds(label) || word_edge(label)? || any_in(&DIGIT_DIVERGENT, label)? {
+    const DISPLAY_WORDS: [&str; 6] = ["claude", "opus", "sonnet", "haiku", "fable", "grok"];
+    if any_in(&DIGIT_DIVERGENT, label)? || edge_near(label, &DISPLAY_WORDS, &[])? {
         return Err(Unsure);
     }
-    let matches: Vec<&str> = get(&MODEL_FIND)?
-        .find_iter(label)
-        .map(|m| m.as_str())
-        .collect();
+    let (label, folded) = unfold(label);
+    let found: Vec<regex::Match<'_>> = get(&MODEL_FIND)?.find_iter(&label).collect();
+    if found.iter().any(|m| overlaps(m, &folded)) {
+        return Err(Unsure);
+    }
+    let matches: Vec<&str> = found.iter().map(|m| m.as_str()).collect();
     // Un ID concreto entre paréntesis vale más que el alias que lo precede.
     if matches.iter().any(|m| m.contains('-'))
         && let Some(last) = matches.last()
     {
         return Ok(last.to_lowercase());
     }
-    if let Some(caps) = get(&DISPLAY)?.captures(label) {
-        let suffix = if get(&ONE_M)?.is_match(label) {
+    if let Some(caps) = get(&DISPLAY)?.captures(&label) {
+        if caps.get(0).is_some_and(|m| overlaps(&m, &folded)) {
+            return Err(Unsure);
+        }
+        // `ONE_M` solo decide si casa: el texto cambiado da la misma respuesta.
+        let suffix = if get(&ONE_M)?.is_match(&label) {
             "[1m]"
         } else {
             ""
@@ -178,7 +260,10 @@ pub fn model_id(label: &str) -> Result<String, Unsure> {
             group(&caps, 2).replace('.', "-")
         ));
     }
-    if let Some(caps) = get(&GROK)?.captures(label) {
+    if let Some(caps) = get(&GROK)?.captures(&label) {
+        if caps.get(0).is_some_and(|m| overlaps(&m, &folded)) {
+            return Err(Unsure);
+        }
         return Ok(format!("grok-{}", group(&caps, 1)));
     }
     Ok(matches.last().map(|m| m.to_lowercase()).unwrap_or_default())
@@ -186,6 +271,47 @@ pub fn model_id(label: &str) -> Result<String, Unsure> {
 
 fn text(value: &str) -> Value {
     Value::String(value.to_owned())
+}
+
+/// `[\w-]+` de la línea `┃` de opencode: el agente es la tira sin espacios que
+/// sigue al borde. Incierto solo si contiene un carácter divergente, ninguno
+/// que las dos `\w` rechacen y el resto de la línea casaría.
+fn opencode_token_unsure(line: &str) -> Result<bool, Unsure> {
+    let Some(prefix) = get(&OPENCODE_PREFIX)?.find(line) else {
+        return Ok(false);
+    };
+    let after = line.get(prefix.end()..).unwrap_or("");
+    let end = after.find(is_space).unwrap_or(after.len());
+    let (token, tail) = after.split_at_checked(end).unwrap_or((after, ""));
+    let (mut divergent_char, mut broken) = (false, token.is_empty());
+    for c in token.chars().filter(|&c| c != '-') {
+        if is_in(&WORD_DIVERGENT, c)? {
+            divergent_char = true;
+        } else if !is_in(&WORD, c)? {
+            broken = true;
+        }
+    }
+    Ok(divergent_char && !broken && get(&OPENCODE_TAIL)?.is_match(tail))
+}
+
+/// El `\b` tras la palabra de esfuerzo de una línea `⎿`: incierto si alguna
+/// palabra de `EFFORT` que encaja ahí va seguida de un carácter divergente.
+fn effort_edge_unsure(line: &str) -> Result<bool, Unsure> {
+    let (mapped, _) = unfold(line);
+    let Some(prefix) = get(&CLAUDE_EFFORT_PREFIX)?.find(&mapped) else {
+        return Ok(false);
+    };
+    let rest = mapped.get(prefix.end()..).unwrap_or("");
+    for word in EFFORTS {
+        if rest
+            .get(..word.len())
+            .is_some_and(|t| t.eq_ignore_ascii_case(word))
+            && divergent(rest.get(word.len()..).and_then(|t| t.chars().next()))?
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// `screen_state` (28): estado visible al pie de la pantalla de una TUI.
@@ -200,13 +326,12 @@ pub fn screen_state(harness: &str, screen: &str) -> Result<Obs, Unsure> {
                 if !line.contains(['·', '•']) {
                     continue;
                 }
-                if folds(line) {
-                    return Err(Unsure);
-                }
-                if let Some(hit) = get(&CODEX_FOOTER)?.captures(line) {
+                if let Some(hit) = ci_captures(&CODEX_FOOTER, line, 2)?
+                    && let [model, effort] = hit.as_slice()
+                {
                     out = Obs::new();
-                    out.insert("model".into(), text(&group(&hit, 1).to_lowercase()));
-                    out.insert("effort".into(), text(&group(&hit, 2).to_lowercase()));
+                    out.insert("model".into(), text(&model.to_lowercase()));
+                    out.insert("effort".into(), text(&effort.to_lowercase()));
                     out.insert("kind".into(), text("status"));
                 }
             }
@@ -217,21 +342,21 @@ pub fn screen_state(harness: &str, screen: &str) -> Result<Obs, Unsure> {
                 if !starts_after_space(line, '┃') {
                     continue;
                 }
-                if any_in(&WORD_DIVERGENT, line)? {
+                let next_ok = next.trim_start_matches(is_space).starts_with("╹▀");
+                if next_ok && opencode_token_unsure(line)? {
                     return Err(Unsure);
                 }
                 let Some(caps) = get(&OPENCODE)?.captures(line) else {
                     continue;
                 };
-                if !next.trim_start_matches(is_space).starts_with("╹▀") {
+                if !next_ok {
                     continue;
                 }
                 let rest = group(&caps, 1);
                 let model = model_id(rest)?;
                 if !model.is_empty() {
-                    let effort = get(&OPENCODE_EFFORT)?
-                        .captures(rest)
-                        .map(|c| group(&c, 1).to_lowercase())
+                    let effort = ci_first(&OPENCODE_EFFORT, rest)?
+                        .map(|e| e.to_lowercase())
                         .unwrap_or_default();
                     out = Obs::new();
                     out.insert("model".into(), Value::String(model));
@@ -249,7 +374,10 @@ pub fn screen_state(harness: &str, screen: &str) -> Result<Obs, Unsure> {
                     in_response = true;
                 }
                 if starts_after_space(line, '❯') {
-                    if word_edge(line)? {
+                    // El `\b` solo mira el carácter tras `/model` o `/effort`.
+                    if let Some(m) = get(&CLAUDE_PROMPT_PREFIX)?.find(line)
+                        && divergent(line.get(m.end()..).and_then(|t| t.chars().next()))?
+                    {
                         return Err(Unsure);
                     }
                     if get(&CLAUDE_PROMPT)?.is_match(line) {
@@ -266,37 +394,35 @@ pub fn screen_state(harness: &str, screen: &str) -> Result<Obs, Unsure> {
                         out = Obs::new();
                         out.insert("model".into(), Value::String(model));
                         out.insert("kind".into(), text("confirmation"));
-                        // `model_id` ya comprobó `label` (pliegues y bordes de palabra).
-                        if let Some(combined) = get(&CLAUDE_COMBINED)?.captures(label) {
-                            out.insert("effort".into(), text(&group(&combined, 1).to_lowercase()));
+                        if edge_near(label, &["with", "and"], &["effort"])? {
+                            return Err(Unsure);
+                        }
+                        if let Some(effort) = ci_first(&CLAUDE_COMBINED, label)? {
+                            out.insert("effort".into(), text(&effort.to_lowercase()));
                         }
                     }
                 }
                 if starts_after_space(line, '⎿') {
-                    if folds(line) || word_edge(line)? {
+                    if effort_edge_unsure(line)? {
                         return Err(Unsure);
                     }
-                    if let Some(effort) = get(&CLAUDE_EFFORT)?.captures(line) {
+                    if let Some(effort) = ci_first(&CLAUDE_EFFORT, line)? {
                         let lower = line.to_lowercase();
                         if !lower.contains("but") && !lower.contains("not applied") {
-                            out.insert("effort".into(), text(&group(&effort, 1).to_lowercase()));
+                            out.insert("effort".into(), text(&effort.to_lowercase()));
                             out.insert("kind".into(), text("confirmation"));
                         }
                     }
                 }
             }
             for line in lines.iter().skip(lines.len().saturating_sub(5)) {
-                if !line.contains(['·', '•']) {
+                // Las confirmaciones nativas pueden ser más nuevas que un script de
+                // estado: con `out` ya lleno la búsqueda no cambia nada.
+                if !out.is_empty() || !line.contains(['·', '•']) {
                     continue;
                 }
-                if folds(line) {
-                    return Err(Unsure);
-                }
-                // Las confirmaciones nativas pueden ser más nuevas que un script de estado.
-                if let Some(status) = get(&CLAUDE_STATUS)?.captures(line)
-                    && out.is_empty()
-                {
-                    out.insert("model".into(), text(&group(&status, 1).to_lowercase()));
+                if let Some(model) = ci_first(&CLAUDE_STATUS, line)? {
+                    out.insert("model".into(), text(&model.to_lowercase()));
                     out.insert("kind".into(), text("custom-status"));
                 }
             }
@@ -674,9 +800,16 @@ fn truthy_get<'a>(map: &'a Obs, key: &str) -> Option<&'a Value> {
 
 /// `TranscriptCache` (77): solo `stat` en reposo; tras un cambio lee como mucho
 /// `max_bytes` del final.
+/// `(harness, session_id, str(path))`.
+type TranscriptKey = (String, String, PathBuf);
+
 pub struct TranscriptCache {
-    entries: Lru<(String, String, PathBuf), (Signature, Obs)>,
+    /// La incertidumbre también se guarda con su firma: un transcript incierto y
+    /// sin cambios no se vuelve a leer en cada sondeo.
+    entries: Lru<TranscriptKey, (Signature, Result<Obs, Unsure>)>,
     max_bytes: u64,
+    /// Lecturas de cola hechas (las pruebas comprueban que el acierto no lee).
+    reads: usize,
 }
 
 impl TranscriptCache {
@@ -684,6 +817,7 @@ impl TranscriptCache {
         Self {
             entries: Lru::new(max_entries),
             max_bytes,
+            reads: 0,
         }
     }
 
@@ -703,69 +837,19 @@ impl TranscriptCache {
             && *sig == signature
         {
             self.entries.touch(&key);
-            return Ok(value.clone());
+            return value.clone();
         }
         let start = meta.size().saturating_sub(self.max_bytes);
         let Ok(raw) = read_tail(path, start, self.max_bytes) else {
             return Ok(Obs::new());
         };
+        self.reads += 1;
         let lines = split_byte_lines(&raw);
         let lines = lines.get(usize::from(start > 0)..).unwrap_or(&[]);
-        let mut result = Obs::new();
-        for (index, line) in lines.iter().enumerate() {
-            let Some((row, touched)) = loads_bytes(line)? else {
-                continue;
-            };
-            let Value::Object(row) = row else {
-                continue;
-            };
-            if truthy_get(&row, "isSidechain").is_some()
-                || truthy_get(&row, "parent_session_id").is_some()
-            {
-                continue;
-            }
-            let sid = truthy_get(&row, "sessionId").or_else(|| truthy_get(&row, "session_id"));
-            if let Some(sid) = sid {
-                let equal = sid.as_str() == Some(session_id);
-                // Con un sustituto suelto el Python ve otra cadena distinta.
-                if equal && touched && session_id.contains('\u{fffd}') {
-                    return Err(Unsure);
-                }
-                if !equal {
-                    continue;
-                }
-            }
-            let mut value = extract(harness, &row)?;
-            if value.get("model").is_some_and(|m| !valid_model(m)) {
-                value.shift_remove("model");
-            }
-            if value.get("effort").is_some_and(|e| !valid_effort(e)) {
-                value.shift_remove("effort");
-            }
-            if value.is_empty() {
-                continue;
-            }
-            if let Some(model) = truthy_get(&value, "model")
-                && !python_eq(model, result.get("model").unwrap_or(&Value::Null))
-            {
-                result.shift_remove("effort");
-            }
-            let revision = truthy_get(&row, "uuid")
-                .or_else(|| truthy_get(&row, "timestamp"))
-                .cloned()
-                .unwrap_or_else(|| {
-                    Value::String(format!("{}:{index}", signature_repr(&signature)))
-                });
-            if touched && contains_replacement(&revision) {
-                return Err(Unsure);
-            }
-            for (k, v) in value {
-                result.insert(k, v);
-            }
-            result.insert("revision".into(), revision);
-        }
-        // Una salida enorme de herramienta puede dejar el último estado fuera de la cola.
-        if result.is_empty()
+        let mut result = parse_tail(harness, session_id, lines, &signature);
+        // Una salida enorme de herramienta puede dejar el último estado fuera de la
+        // cola: se conserva el anterior, también si era incierto.
+        if result.as_ref().is_ok_and(Obs::is_empty)
             && let Some((sig, value)) = &previous
             && sig.0 == signature.0
             && sig.1 == signature.1
@@ -774,8 +858,74 @@ impl TranscriptCache {
             result = value.clone();
         }
         self.entries.put(key, (signature, result.clone()));
-        Ok(result)
+        result
     }
+
+    #[cfg(test)]
+    fn reads(&self) -> usize {
+        self.reads
+    }
+}
+
+/// Las filas de la cola en orden (100-137).
+fn parse_tail(
+    harness: &str,
+    session_id: &str,
+    lines: &[&[u8]],
+    signature: &Signature,
+) -> Result<Obs, Unsure> {
+    let mut result = Obs::new();
+    for (index, line) in lines.iter().enumerate() {
+        let Some((row, touched)) = loads_bytes(line)? else {
+            continue;
+        };
+        let Value::Object(row) = row else {
+            continue;
+        };
+        if truthy_get(&row, "isSidechain").is_some()
+            || truthy_get(&row, "parent_session_id").is_some()
+        {
+            continue;
+        }
+        let sid = truthy_get(&row, "sessionId").or_else(|| truthy_get(&row, "session_id"));
+        if let Some(sid) = sid {
+            let equal = sid.as_str() == Some(session_id);
+            // Con un sustituto suelto el Python ve otra cadena distinta.
+            if equal && touched && session_id.contains('\u{fffd}') {
+                return Err(Unsure);
+            }
+            if !equal {
+                continue;
+            }
+        }
+        let mut value = extract(harness, &row)?;
+        if value.get("model").is_some_and(|m| !valid_model(m)) {
+            value.shift_remove("model");
+        }
+        if value.get("effort").is_some_and(|e| !valid_effort(e)) {
+            value.shift_remove("effort");
+        }
+        if value.is_empty() {
+            continue;
+        }
+        if let Some(model) = truthy_get(&value, "model")
+            && !python_eq(model, result.get("model").unwrap_or(&Value::Null))
+        {
+            result.shift_remove("effort");
+        }
+        let revision = truthy_get(&row, "uuid")
+            .or_else(|| truthy_get(&row, "timestamp"))
+            .cloned()
+            .unwrap_or_else(|| Value::String(format!("{}:{index}", signature_repr(signature))));
+        if touched && contains_replacement(&revision) {
+            return Err(Unsure);
+        }
+        for (k, v) in value {
+            result.insert(k, v);
+        }
+        result.insert("revision".into(), revision);
+    }
+    Ok(result)
 }
 
 fn read_tail(path: &Path, start: u64, max_bytes: u64) -> std::io::Result<Vec<u8>> {
@@ -1344,6 +1494,11 @@ mod tests {
             &CLAUDE_COMBINED,
             &CLAUDE_EFFORT,
             &CLAUDE_STATUS,
+            &CLAUDE_PROMPT_PREFIX,
+            &CLAUDE_EFFORT_PREFIX,
+            &OPENCODE_PREFIX,
+            &OPENCODE_TAIL,
+            &WORD,
             &WORD_DIVERGENT,
             &DIGIT_DIVERGENT,
         ] {
@@ -1402,8 +1557,55 @@ mod tests {
     fn folding_letters_are_unsure() {
         assert!(model_id("claude-opus-\u{212a}").is_err());
         assert!(screen_state("codex", "gpt-5 h\u{131}gh · x").is_err());
-        assert!(model_id("Opus\u{301} 5").is_err());
+        assert!(model_id("²Sonnet 5").is_err());
         assert_eq!(model_id("⚠\u{fe0f} Opus 5").unwrap(), "claude-opus-5");
+        // Divergentes donde el Python decide con certeza: no declinan.
+        assert_eq!(model_id("Opus\u{301} 5").unwrap(), "opus");
+        assert_eq!(
+            model_id("Opus 4.6 O(n²) \u{131}lk").unwrap(),
+            "claude-opus-4-6"
+        );
+    }
+
+    #[test]
+    fn word_edges_are_unsure_only_where_the_pattern_looks() {
+        assert!(screen_state("claude", "❯ /model²\n").is_err());
+        assert!(screen_state("claude", "  ⎿  Set effort level to high²").is_err());
+        assert!(screen_state("opencode", "┃  km² · gpt-5\n╹▀\n").is_err());
+        assert!(screen_state("claude", "── · claude · claude-\u{131}pus-5\n").is_err());
+        let ok = |h: &str, t: &str| screen_state(h, t).is_ok();
+        assert!(ok("claude", "❯ /models² x\n  ⎿  Done O(n²) km² e\u{301}\n"));
+        assert!(ok("opencode", "┃  km² · gpt-5\n  sin borde\n"));
+        assert!(ok("opencode", "┃  km²! · gpt-5\n╹▀\n"));
+    }
+
+    #[test]
+    fn unsure_transcript_is_cached_by_signature() {
+        let dir = std::env::temp_dir().join(format!("cmd-tui-cache-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("t.jsonl");
+        let unsure = concat!(
+            r#"{"type":"assistant","uuid":"u"#,
+            r"\ud800",
+            r#"","message":{"model":"claude-opus-5"}}"#,
+            "\n"
+        );
+        fs::write(&path, unsure).unwrap();
+        let mut cache = TranscriptCache::new(128, 4096);
+        assert!(cache.read("claude", "s", &path).is_err());
+        assert!(cache.read("claude", "s", &path).is_err());
+        assert_eq!(cache.reads(), 1);
+        // Crece sin estado nuevo y la fila incierta sale de la cola: el
+        // «resultado anterior» que conserva el Python es desconocido.
+        let mut grown = String::from(unsure);
+        grown.push_str(&"{\"type\":\"event\"}\n".repeat(400));
+        fs::write(&path, grown).unwrap();
+        assert!(cache.read("claude", "s", &path).is_err());
+        assert_eq!(cache.reads(), 2);
+        assert!(cache.read("claude", "s", &path).is_err());
+        assert_eq!(cache.reads(), 2);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

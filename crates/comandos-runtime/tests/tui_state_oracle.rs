@@ -240,6 +240,20 @@ fn cases() -> Vec<Value> {
         {"op":"screen","harness":"claude","text":"● respuesta ✅\n❯ /effort\n  ⎿  Effort level set to low\n"},
         {"op":"screen","harness":"claude","text":"  ⎿  Kept model as Sonnet 4.5\n  ⎿  Set effort level to high but only for this turn\n"},
         {"op":"screen","harness":"gemini","text":"lo que sea"},
+        // Divergentes y plegables donde el Python decide con certeza.
+        {"op":"screen","harness":"codex","text":"• Explicación O(n²) en km² · \u{131}lk \u{130}stanbul\n  gpt-5 high · 40% left\n"},
+        {"op":"screen","harness":"codex","text":"gpt-5 \u{212a}igh · x"},
+        {"op":"screen","harness":"claude","text":"❯ revisa O(n²) y e\u{301}sto · \u{131}lk\n  ⎿  Set effort level to high\n  ⎿  Listo: O(n²) km² \u{130}stanbul \u{131}lk\n· nota · km²\n"},
+        {"op":"screen","harness":"claude","text":"● Respuesta O(n²) km²\n❯ /model\n  ⎿  Set model to Sonnet 4.5 (km²) · \u{131}lk\n"},
+        {"op":"screen","harness":"claude","text":"● hola\n❯ /models² x\n  ⎿  Set effort level to low\n"},
+        {"op":"screen","harness":"claude","text":"x\n── · claude · claude-opus-5 · km² O(n²) \u{131}lk\n"},
+        {"op":"screen","harness":"opencode","text":"┃  e\u{301}dit · Claude Sonnet 5 · high\n  texto\n"},
+        {"op":"screen","harness":"opencode","text":"┃  plan · O(n²) km² gpt-5 · \u{131}lk\n╹▀\n"},
+        {"op":"screen","harness":"opencode","text":"┃  km²! · gpt-5\n╹▀\n"},
+        {"op":"model_id","label":"Opus 4.6 O(n²) \u{131}lk"},
+        {"op":"model_id","label":"km² Sonnet 5"},
+        {"op":"model_id","label":"Opus\u{301} 5"},
+        {"op":"model_id","label":"\u{130}stanbul Grok 4"},
         {"op":"write","name":"claude/s1.jsonl","hex":hex(&raw),"mtime":1_791_115_200_000_000_000u64},
         {"op":"transcript","cache":"a","harness":"claude","sid":"s1","name":"claude/s1.jsonl"},
         {"op":"transcript","cache":"a","harness":"claude","sid":"s1","name":"claude/s1.jsonl"},
@@ -362,7 +376,7 @@ fn transcript_surrogate_in_used_field_is_unsure() {
 
 #[test]
 fn screen_with_folding_letter_is_unsure() {
-    assert!(screen_state("codex", "gpt-5 \u{212a}igh · x").is_err());
+    assert!(screen_state("codex", "gpt-5 h\u{131}gh · x").is_err());
     assert!(screen_state("claude", "  ⎿  Set effort level to h\u{130}gh").is_err());
     // U+001F es `\s` en `re`: se resuelve con certeza (el oráculo lo compara).
     assert!(screen_state("codex", "gpt-5 high\u{1f}· x").is_ok());
