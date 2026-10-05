@@ -172,6 +172,10 @@ pub async fn oracle(home: &TestHome) -> Option<Oracle> {
         .env("XDG_STATE_HOME", home.root.join(".local/state"))
         .env("TMUX_TMPDIR", home.tmux_dir())
         .env("COMANDOS_DASH_DIR", repo.join("dash"))
+        // Codificación de `open()` fija: la del lado Rust (UTF-8).
+        .env("LANG", "C.UTF-8")
+        .env_remove("LC_ALL")
+        .env_remove("LC_CTYPE")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(err)

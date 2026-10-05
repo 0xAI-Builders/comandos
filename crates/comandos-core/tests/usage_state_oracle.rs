@@ -45,11 +45,10 @@ fn run_python(script: &str, input: &str) -> Option<String> {
         eprintln!("python3 no está instalado: se salta la comparación con el oráculo");
         return None;
     }
-    let home = std::env::temp_dir().join(format!(
-        "cmd-usage-state-{}-{}",
-        std::process::id(),
-        input.len()
-    ));
+    // Un HOME propio por llamada: las pruebas corren en paralelo en el mismo proceso.
+    static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let call = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let home = std::env::temp_dir().join(format!("cmd-usage-state-{}-{call}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     std::fs::create_dir_all(&home).unwrap();
     let mut command = Command::new("python3");
@@ -62,6 +61,8 @@ fn run_python(script: &str, input: &str) -> Option<String> {
         .env("HOME", &home)
         .env("TZ", "America/Mexico_City")
         .env("LANG", "C.UTF-8")
+        .env_remove("LC_ALL")
+        .env_remove("LC_CTYPE")
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .env("XDG_RUNTIME_DIR", home.join("xdg-runtime"))
         .env_remove("TMUX");
@@ -190,7 +191,8 @@ fn epochs_match_python_310() {
         "2026-10-04T24:00", "2026-02-30", "2026-10-04T10:00+05:60", "2026-10-04T10:00:00+24:00",
         "2026-10-04T10:00:00+05:30:15.5", "2026-10-04T10:00:00+05:30:15:123456", "2026-10-04x",
         "2026-10-04T10:00:60", "1969-12-31T23:59:59.5", "1969-12-31T23:59:59.5+00:00", "١٢", " 12 ",
-        "1e3", "12abc"]"#,
+        "1e3", "12abc", "2026-10-04T10:00:00+00:00:00.500000", "2026-10-04T10:00:00-00:00:00.999999",
+        "2026-10-04T10:00:00-00:00:01.500000"]"#,
     );
     let zone = mx();
     compare(

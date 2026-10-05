@@ -85,6 +85,8 @@ pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> 
         .env("PATH", &path)
         .env("TZ", TZ)
         .env("LANG", "C.UTF-8")
+        .env_remove("LC_ALL")
+        .env_remove("LC_CTYPE")
         .env("XDG_RUNTIME_DIR", &runtime)
         .env("XDG_STATE_HOME", home.join(".local/state"))
         .env("PYTHONDONTWRITEBYTECODE", "1")

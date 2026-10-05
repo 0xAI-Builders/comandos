@@ -87,6 +87,10 @@ pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> 
         .env("XDG_STATE_HOME", home.join(".local/state"))
         .env("TMUX_TMPDIR", &tmux)
         .env("PYTHONDONTWRITEBYTECODE", "1")
+        // Codificación de `open()` fija: la del lado Rust (UTF-8).
+        .env("LANG", "C.UTF-8")
+        .env_remove("LC_ALL")
+        .env_remove("LC_CTYPE")
         .env_remove("TMUX")
         .env_remove("CLAUDE_CONFIG_DIR")
         .env_remove("CODEX_HOME")

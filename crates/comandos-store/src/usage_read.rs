@@ -378,12 +378,14 @@ pub fn measured_usage(
     now: i64,
     day_start: i64,
 ) -> Result<Option<Value>> {
-    let agg = |since: i64| -> Result<(i64, i64, i64)> {
-        let mut stmt = conn.prepare(
-            "SELECT COUNT(*), COALESCE(SUM(total_tokens),0), MAX(turn_finished_at) \
-             FROM usage_turns WHERE provider=? AND turn_finished_at >= ?",
-        )?;
-        let mut cursor = stmt.query(params![provider, since])?;
+    // Cada consulta se prepara una vez por llamada y se reutiliza (el `prepare_cached`
+    // de rusqlite pide su rasgo `cache` y una dependencia más).
+    let mut window = conn.prepare(
+        "SELECT COUNT(*), COALESCE(SUM(total_tokens),0), MAX(turn_finished_at) \
+         FROM usage_turns WHERE provider=? AND turn_finished_at >= ?",
+    )?;
+    let mut agg = |since: i64| -> Result<(i64, i64, i64)> {
+        let mut cursor = window.query(params![provider, since])?;
         let row = cursor.next()?.ok_or(ReadError::Unsure)?;
         Ok((
             int_or_zero(&column(row, 0)?)?,
@@ -394,13 +396,13 @@ pub fn measured_usage(
     let today = agg(day_start)?;
     let week = agg(now - 7 * 86_400)?;
     let mut daily = Vec::new();
+    let mut day = conn.prepare(
+        "SELECT COALESCE(SUM(total_tokens),0) FROM usage_turns \
+         WHERE provider=? AND turn_finished_at >= ? AND turn_finished_at < ?",
+    )?;
     for d in (0..14).rev() {
         let start = day_start - d * 86_400;
-        let mut stmt = conn.prepare(
-            "SELECT COALESCE(SUM(total_tokens),0) FROM usage_turns \
-             WHERE provider=? AND turn_finished_at >= ? AND turn_finished_at < ?",
-        )?;
-        let mut cursor = stmt.query(params![provider, start, start + 86_400])?;
+        let mut cursor = day.query(params![provider, start, start + 86_400])?;
         let row = cursor.next()?.ok_or(ReadError::Unsure)?;
         let mut item = Object::new();
         item.insert("day".into(), start.into());
@@ -1510,7 +1512,9 @@ pub fn record_quota_snapshots(conn: &Connection, rows: &[Value], now: i64) -> Re
     if keep.is_empty() {
         return Ok(0);
     }
-    let mut stmt = conn.prepare(
+    // `executemany` dentro de `with connect(...)`: una sola transacción.
+    let tx = conn.unchecked_transaction()?;
+    let mut stmt = tx.prepare(
         "insert into usage_quota_snapshots (limit_id, provider, account, win, scope, resets_at, percent, captured_at) \
          values (?,?,?,?,?,?,?,?) on conflict(limit_id, resets_at) do update set \
          percent=excluded.percent, captured_at=excluded.captured_at \
@@ -1519,5 +1523,7 @@ pub fn record_quota_snapshots(conn: &Connection, rows: &[Value], now: i64) -> Re
     for row in &keep {
         stmt.execute(params_from_iter(row.iter()))?;
     }
+    drop(stmt);
+    tx.commit()?;
     Ok(keep.len())
 }

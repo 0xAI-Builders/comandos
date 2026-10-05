@@ -255,6 +255,8 @@ fn run_python(script: &str, home: &Path, now: i64) -> Option<String> {
         .env("HOME", home)
         .env("PATH", path)
         .env("LANG", "C.UTF-8")
+        .env_remove("LC_ALL")
+        .env_remove("LC_CTYPE")
         .env("XDG_RUNTIME_DIR", home.join("xdg-runtime"))
         .env("XDG_STATE_HOME", home.join(".local/state"))
         .env("TMUX_TMPDIR", home.join("tmux"))
