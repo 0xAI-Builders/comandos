@@ -1182,3 +1182,25 @@ consulta el socket de control (preflight R8). Las pruebas de la suite nunca llam
   1 ignorada; `fmt` y `clippy -D warnings` limpios; `xtask parity` con nativo 139 OK, 0 DIFF,
   0 SKIP de 139, con las mismas 8 rutas reenviadas una vez cada una. La sombra y el `poll
   --shadow` se repiten en el paso 1 con el binario de `main` fusionado.
+
+### Ejecutado — 5 de octubre de 2026, 00:43 (release `9f6fa07f26f0`, main `80d718a`)
+
+- Fusión según «Fusión en `main`»: `lib/pane_snapshot.py` idéntico (`cmp`), `checkout --` y merge
+  `a744e4e`; único conflicto el esperado en este documento.
+- Paso 0 sin hallazgos (los dos `grep` vacíos; `systemd-run` en `/usr/bin` con el entorno de la
+  unidad; ambas unidades con `WorkingDirectory=!/home/someguy` y sin `PATH` propio).
+- Sombra en 4782: `xtask parity` 139 OK / 0 DIFF; GET `/state` 4782 vs 4781 igual salvo
+  `observedConfig.source`/`modelSource` (`pane` ↔ `conversation`) en 8 panes de Codex ociosos con
+  el mismo modelo y esfuerzo: el rastreador recién nacido termina su primera observación en
+  `pane` (`StateTracker.observe`), aceptado. `/state` 0,34 s con 241 panes; 0 reenvíos en la traza.
+- `xtask poll --shadow` 10 min: 3390 peticiones, 0 errores, Pss 28,8–28,9 MiB desde el minuto 5,
+  5 hilos; `/state` p50/p95/p99 111/182/250 ms.
+- Nada en vuelo (las dos consultas vacías); `install --stage`, centinela OK, hook OK; reinicio
+  solo de `cc-dash.service` (00:43:30); 200, `NRestarts=0`, `/state` 200 en 0,33 s.
+- Verificación: sin oscilación de `app-tab-models.json` (24 panes, 0 `OSCILA` en 2 min); traza de
+  10 min: **GET `/state` no aparece**; reenviadas `/usage/state` (112), `/commands/catalog` (19),
+  `/chains` (19), `/analytics/week` (10), todas de fases futuras; 0 líneas de carril apagado,
+  0 `GET /state declina`. CPU del heredado ≈ 19 ticks/s tras el cutover.
+- **Pendiente de ligereza**: con la carga real el frente sube a 24 hilos (pool de bloqueo de tokio
+  sin tope) y a ≈ 180–198 MiB de Pss (meseta, sin fuga), frente a ≈ 23 MiB en la 2c. Se corrige en
+  la rama `migration/rust-ligero` antes de la 2e.
