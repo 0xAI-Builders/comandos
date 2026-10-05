@@ -18,6 +18,7 @@ use nix::{errno::Errno, sys::signal, unistd::Pid};
 use std::{
     io::Read,
     process::{Command, Stdio},
+    sync::mpsc,
     thread,
     time::{Duration, Instant},
 };
@@ -128,6 +129,15 @@ pub fn stop_owned_startup(env: &Env, pid: i64, started: &str) -> Result<bool, St
     if pid <= 0 || start(env, pid) != started {
         return Ok(false);
     }
+    // Inicio ilegible: el proceso probablemente ya murió y su pid podría ser
+    // de otro. Desviación (el Python manda `SIGTERM` igual): solo se pregunta
+    // con la señal 0, como `exit_current`.
+    if started.is_empty() {
+        return Ok(matches!(
+            kill(pid, None),
+            Err(KillError::Errno(Errno::ESRCH))
+        ));
+    }
     match kill(pid, Some(signal::Signal::SIGTERM)) {
         Ok(()) => {}
         Err(KillError::Errno(Errno::ESRCH)) => return Ok(true),
@@ -176,7 +186,7 @@ pub fn send_configuration_command(env: &Env, pane: &str, command: &str) -> Resul
 }
 
 /// `repr(str)` de Python para los mensajes de `TimeoutExpired`.
-fn py_repr(text: &str) -> String {
+pub(crate) fn py_repr(text: &str) -> String {
     let quote = if text.contains('\'') && !text.contains('"') {
         '"'
     } else {
@@ -224,14 +234,20 @@ fn run(argv: &[&str], timeout: u64) -> Result<Vec<u8>, String> {
         }
         Err(error) => return Err(crate::session_configuration::io_text(&error)),
     };
+    // Lectores con plazo: un nieto que herede los pipes (un hook de `git`)
+    // no cuelga la operación. Como `subprocess.run`, el plazo cubre la salida
+    // del hijo y el EOF de sus pipes; al vencer se mata el hijo, se abandonan
+    // los lectores y se responde `TimeoutExpired`.
     let reader = |pipe: Option<Box<dyn Read + Send>>| {
+        let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
             let mut buf = Vec::new();
             if let Some(mut pipe) = pipe {
                 let _ = pipe.read_to_end(&mut buf);
             }
-            buf
-        })
+            let _ = tx.send(buf);
+        });
+        rx
     };
     let out = reader(
         child
@@ -246,30 +262,40 @@ fn run(argv: &[&str], timeout: u64) -> Result<Vec<u8>, String> {
             .map(|p| Box::new(p) as Box<dyn Read + Send>),
     );
     let deadline = Instant::now() + Duration::from_secs(timeout);
-    let finished = loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break true,
-            Ok(None) if Instant::now() >= deadline => break false,
-            Ok(None) => thread::sleep(Duration::from_millis(10)),
-            Err(error) => return Err(crate::session_configuration::io_text(&error)),
+    let (mut stdout, mut stderr_done, mut exited) = (None, false, false);
+    while !(exited && stdout.is_some() && stderr_done) {
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            let list = argv
+                .iter()
+                .map(|a| py_repr(a))
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(format!(
+                "Command '[{list}]' timed out after {timeout} seconds"
+            ));
         }
-    };
-    if !finished {
-        let _ = child.kill();
-        let _ = child.wait();
-        let _ = err.join();
-        let _ = out.join();
-        let list = argv
-            .iter()
-            .map(|a| py_repr(a))
-            .collect::<Vec<_>>()
-            .join(", ");
-        return Err(format!(
-            "Command '[{list}]' timed out after {timeout} seconds"
-        ));
+        if !exited {
+            match child.try_wait() {
+                Ok(Some(_)) => exited = true,
+                Ok(None) => {}
+                Err(error) => return Err(crate::session_configuration::io_text(&error)),
+            }
+        }
+        if stdout.is_none() {
+            match out.try_recv() {
+                Ok(buf) => stdout = Some(buf),
+                Err(mpsc::TryRecvError::Disconnected) => stdout = Some(Vec::new()),
+                Err(mpsc::TryRecvError::Empty) => {}
+            }
+        }
+        if !stderr_done && !matches!(err.try_recv(), Err(mpsc::TryRecvError::Empty)) {
+            stderr_done = true;
+        }
+        thread::sleep(Duration::from_millis(10));
     }
-    let _ = err.join();
-    out.join().map_err(|_| String::new())
+    Ok(stdout.unwrap_or_default())
 }
 
 /// `text=True`: UTF-8 estricto y saltos universales (`\r\n` y `\r` → `\n`).
@@ -399,5 +425,10 @@ mod tests {
         );
         let slow = run(&["sleep", "5"], 1).unwrap_err();
         assert_eq!(slow, "Command '['sleep', '5']' timed out after 1 seconds");
+        // Un nieto que hereda los pipes no cuelga la lectura: vence el plazo.
+        let started = Instant::now();
+        let held = run(&["sh", "-c", "sleep 5 & exit 0"], 1).unwrap_err();
+        assert!(held.ends_with("timed out after 1 seconds"), "{held}");
+        assert!(started.elapsed() < Duration::from_secs(3));
     }
 }

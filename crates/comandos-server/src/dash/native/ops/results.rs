@@ -1,10 +1,23 @@
 //! `MOTOR_RESULT` y `motor-results.json` (`bin/cc-dash` 3614–3672): el
 //! progreso y el resultado de cada operación de sesión por `operationKey`
-//! (`sesión|pane`). Dueño único en el frente (O3): un mapa por archivo, con
-//! su candado, cargado una vez como el módulo del Python y reescrito entero
-//! en cada cambio (`write_json_file`).
+//! (`sesión|pane`).
 //!
-//! Bloquea (escribe el archivo): las rutas lo llaman dentro de
+//! Dos escritores (decisión I2 de la ronda 1 de T2): el frente atiende las
+//! operaciones que porta y el Python heredado las que el frente declina, y
+//! cada uno reescribe el archivo entero. El frente fusiona por clave:
+//! - lee el archivo (en caché por `mtime`, tamaño e inodo) y le superpone sus
+//!   propias entradas en memoria; en una misma clave gana el `ts` más nuevo;
+//! - cada escritura suya relee el archivo, fusiona, recorta y lo sustituye de
+//!   forma atómica (`write_json_file`);
+//! - si el heredado pisa el archivo desde su memoria, el frente lo tolera: sus
+//!   lecturas ya fusionan y su siguiente escritura restaura sus claves.
+//!
+//! El mapa fusionado se acota con las reglas de O3 (más de 300 → los 200 más
+//! recientes por `float(ts or 0)`, orden estable; `dict.pop` conserva el
+//! orden del resto). Con un único escritor, el archivo es byte a byte el del
+//! Python (las pruebas lo comparan).
+//!
+//! Bloquea (lee y escribe el archivo): las rutas lo llaman dentro de
 //! `spawn_blocking`; los hilos de operación, directamente.
 use super::super::{NativeOptions, files};
 use comandos_core::text;
@@ -12,6 +25,7 @@ use comandos_runtime::hooks::py::float_value;
 use serde_json::{Map, Value};
 use std::{
     collections::HashMap,
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, OnceLock},
 };
@@ -19,13 +33,19 @@ use std::{
 /// `time.time()`.
 pub type Seconds = Arc<dyn Fn() -> f64 + Send + Sync>;
 
+/// Lo que identifica una versión del archivo sin leerlo.
+type Stamp = (i64, i64, u64, u64);
+
+#[derive(Default)]
 struct State {
-    map: Map<String, Value>,
-    /// El archivo tenía algo que el Python habría cargado y este port no
-    /// reproduce (bytes que no son UTF-8 de forma incierta, sustitutos
-    /// sueltos…), o un recorte que no se pudo calcular con certeza. Mientras
-    /// tanto no se reescribe el archivo: se perdería lo que el Python
-    /// conservaría. Quien inicia operaciones declina (`certain`).
+    /// Las entradas que escribió este proceso (acotadas como el archivo).
+    own: Map<String, Value>,
+    /// El archivo tal como se leyó por última vez.
+    disk: Map<String, Value>,
+    stamp: Option<Stamp>,
+    /// La última lectura no se reprodujo con certeza (bytes que no son UTF-8,
+    /// sustitutos sueltos…): no se reescribe el archivo, se perdería lo que el
+    /// Python conservaría. Quien inicia operaciones declina (`certain`).
     uncertain: bool,
 }
 
@@ -40,27 +60,20 @@ pub struct MotorResults {
 pub struct Uncertain;
 
 impl MotorResults {
-    /// `_motor_result_load()`: cualquier error (o un JSON que no es objeto)
-    /// es `{}`; lo incierto se marca.
     pub fn load(path: &Path) -> Self {
         Self::load_with(path, Arc::new(now))
     }
 
+    /// Sin E/S: el archivo se lee al primer uso.
     pub fn load_with(path: &Path, clock: Seconds) -> Self {
-        let (map, uncertain) = match files::read_json_strict(path) {
-            files::Strict::Missing | files::Strict::Unreadable => (Map::new(), false),
-            files::Strict::Unsure => (Map::new(), true),
-            files::Strict::Value(Value::Object(map)) => (map, false),
-            files::Strict::Value(_) => (Map::new(), false),
-        };
         Self {
             path: path.to_owned(),
             clock,
-            state: Mutex::new(State { map, uncertain }),
+            state: Mutex::new(State::default()),
         }
     }
 
-    /// El dueño de `H/motor-results.json` para todo el proceso.
+    /// El dueño de `H/motor-results.json` para todo el proceso (sin E/S).
     pub fn shared(opts: &NativeOptions) -> Arc<MotorResults> {
         static OWNERS: OnceLock<Mutex<HashMap<PathBuf, Arc<MotorResults>>>> = OnceLock::new();
         let path = opts.hooks.join("motor-results.json");
@@ -81,19 +94,78 @@ impl MotorResults {
         self.state.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    /// ¿Reproduce este mapa el `MOTOR_RESULT` del Python?
-    pub fn certain(&self) -> bool {
-        !self.lock().uncertain
+    /// `_motor_result_load()` cuando el archivo cambió (o siempre con
+    /// `force`): cualquier error o un JSON que no es objeto es `{}`; lo
+    /// incierto conserva la última lectura y se marca.
+    fn refresh(&self, state: &mut State, force: bool) {
+        let stamp = std::fs::metadata(&self.path)
+            .ok()
+            .map(|m| (m.mtime(), m.mtime_nsec(), m.size(), m.ino()));
+        if !force && state.stamp.is_some() && stamp == state.stamp {
+            return;
+        }
+        match files::read_json_strict(&self.path) {
+            files::Strict::Missing | files::Strict::Unreadable => {
+                state.disk = Map::new();
+                state.uncertain = false;
+            }
+            files::Strict::Unsure => state.uncertain = true,
+            files::Strict::Value(Value::Object(map)) => {
+                state.disk = map;
+                state.uncertain = false;
+            }
+            files::Strict::Value(_) => {
+                state.disk = Map::new();
+                state.uncertain = false;
+            }
+        }
+        state.stamp = stamp;
     }
 
-    /// Copia de `MOTOR_RESULT`.
+    /// El archivo con las entradas propias superpuestas (gana el `ts` más
+    /// nuevo; en una clave del archivo, su posición) y el recorte de O3.
+    fn merged(state: &State) -> Result<Map<String, Value>, Uncertain> {
+        let mut map = state.disk.clone();
+        for (key, own) in &state.own {
+            let newer = match map.get(key) {
+                None => true,
+                Some(theirs) => match (sort_key(own), sort_key(theirs)) {
+                    (Some(a), Some(b)) => a >= b,
+                    (Some(_), None) => true,
+                    _ => false,
+                },
+            };
+            if newer {
+                map.insert(key.clone(), own.clone());
+            }
+        }
+        trim(&mut map)?;
+        Ok(map)
+    }
+
+    /// ¿Reproduce la última lectura del archivo lo que cargaría el Python?
+    pub fn certain(&self) -> bool {
+        let mut state = self.lock();
+        self.refresh(&mut state, false);
+        !state.uncertain
+    }
+
+    /// `MOTOR_RESULT` visto desde el frente: el archivo fusionado con lo propio.
     pub fn all(&self) -> Map<String, Value> {
-        self.lock().map.clone()
+        let mut state = self.lock();
+        self.refresh(&mut state, false);
+        Self::merged(&state).unwrap_or_else(|_| {
+            let mut map = state.disk.clone();
+            for (k, v) in &state.own {
+                map.insert(k.clone(), v.clone());
+            }
+            map
+        })
     }
 
     /// `MOTOR_RESULT.get(key)`.
     pub fn get(&self, key: &str) -> Option<Value> {
-        self.lock().map.get(key).cloned()
+        self.all().get(key).cloned()
     }
 
     /// `motor_result_set(key, ok, detail, **fields)`: `detail[:200]`,
@@ -144,42 +216,60 @@ impl MotorResults {
         self.put(key, result)
     }
 
-    /// `_set_motor_result(key, result)`: guarda, recorta a los 200 más
-    /// recientes al pasar de 300 y reescribe el archivo (sus errores se
-    /// tragan, como `_motor_result_write`).
+    /// `_set_motor_result(key, result)` con fusión: relee el archivo, guarda
+    /// la entrada propia, fusiona, recorta y sustituye el archivo (sus errores
+    /// de escritura se tragan, como `_motor_result_write`).
     fn put(&self, key: &str, result: Map<String, Value>) -> Result<(), Uncertain> {
         let mut state = self.lock();
-        state.map.insert(key.to_owned(), Value::Object(result));
-        if state.map.len() > 300 {
-            // `float(pair[1].get("ts") or 0)`: un valor que el Python no
-            // ordena (no es objeto, `ts` no numérico) lanza tras guardar y
-            // antes de escribir; un NaN da un orden que aquí no se repite.
-            let mut keyed = Vec::with_capacity(state.map.len());
-            for (k, v) in &state.map {
-                let Some(ts) = sort_key(v) else {
-                    state.uncertain = true;
-                    return Err(Uncertain);
-                };
-                keyed.push((ts, k.clone()));
-            }
-            // `sorted` estable con `<` (sin NaN: -0.0 y 0.0 empatan).
-            keyed.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-            let drop = keyed.len() - 200;
-            for (_, old) in keyed.into_iter().take(drop) {
-                // `dict.pop`: el resto conserva su orden.
-                state.map.shift_remove(&old);
-            }
+        self.refresh(&mut state, true);
+        let entry = Value::Object(result);
+        // En el archivo la clave conserva su posición; si no, va al final.
+        if state.disk.contains_key(key) {
+            state.disk.insert(key.to_owned(), entry.clone());
         }
+        state.own.insert(key.to_owned(), entry);
+        let _ = trim(&mut state.own);
         if state.uncertain {
             return Err(Uncertain);
         }
-        let snapshot = Value::Object(state.map.clone());
+        let merged = match Self::merged(&state) {
+            Ok(merged) => merged,
+            Err(Uncertain) => {
+                // `float(ts)` lanza en el Python tras guardar y antes de escribir.
+                return Err(Uncertain);
+            }
+        };
+        // Lo propio que el recorte dejó fuera ya no vuelve.
+        state.own.retain(|k, _| merged.contains_key(k));
         if let Some(dir) = self.path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
-        let _ = files::write_json_atomic(&self.path, &snapshot);
+        if files::write_json_atomic(&self.path, &Value::Object(merged.clone())).is_ok() {
+            state.disk = merged;
+            state.stamp = std::fs::metadata(&self.path)
+                .ok()
+                .map(|m| (m.mtime(), m.mtime_nsec(), m.size(), m.ino()));
+        }
         Ok(())
     }
+}
+
+/// Recorte de O3: con más de 300 claves, quedan las 200 de `ts` más reciente
+/// (`sorted` estable con `<`, sin NaN) y el resto conserva su orden.
+fn trim(map: &mut Map<String, Value>) -> Result<(), Uncertain> {
+    if map.len() <= 300 {
+        return Ok(());
+    }
+    let mut keyed = Vec::with_capacity(map.len());
+    for (k, v) in map.iter() {
+        keyed.push((sort_key(v).ok_or(Uncertain)?, k.clone()));
+    }
+    keyed.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    let drop = keyed.len() - 200;
+    for (_, old) in keyed.into_iter().take(drop) {
+        map.shift_remove(&old);
+    }
+    Ok(())
 }
 
 fn now() -> f64 {

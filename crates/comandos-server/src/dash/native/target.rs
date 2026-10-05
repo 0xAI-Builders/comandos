@@ -13,6 +13,7 @@ use super::{
     Answer, Fault, Native, NativeOptions, light, py, reply, states::gather::session_labels,
 };
 use crate::HandlerError;
+use comandos_runtime::session_configuration as sc;
 use comandos_runtime::{
     agent_procs::{
         self, AgentInfo, AgentMaps, AgentProc, PANE_FORMAT, agent_pane_maps, agent_procs,
@@ -483,20 +484,20 @@ pub(crate) async fn cwd_has_live_agent(native: &Native, cwd: &str) -> Result<boo
         .any(|(folder, infos)| folder == cwd && !infos.is_empty()))
 }
 
-/// Los campos de `_pane_identity`, en su orden.
-pub const IDENTITY_FIELDS: [&str; 8] = [
-    "socket_path",
-    "pid",
-    "session_id",
-    "session_name",
-    "pane_id",
-    "pane_pid",
-    "pane_current_command",
-    "pane_current_path",
-];
+/// Los campos de `_pane_identity`, en su orden (los del runtime: una sola
+/// implementación para el frente y las operaciones de sesión).
+pub use comandos_runtime::session_configuration::{IDENTITY_FIELDS, identity_key};
+
+fn identity_fault(fail: sc::Fail) -> TargetError {
+    match fail {
+        sc::Fail::Py(text) => TargetError::Value(text),
+        sc::Fail::Unsure => Fault::Decline.into(),
+    }
+}
 
 /// `_pane_identity(sess, pane)` (6769): las ocho claves de tmux y
-/// `server_start` (campo 22 de `/proc/<pid>/stat`, el 19 tras el último `)`).
+/// `server_start` (campo 22 de `/proc/<pid>/stat`, el 19 tras el último `)`),
+/// con las piezas de `comandos_runtime::session_configuration`.
 pub async fn pane_identity(
     native: &Native,
     sess: &str,
@@ -507,65 +508,25 @@ pub async fn pane_identity(
         Some(false) => return Err(TargetError::Value("se necesita el panel exacto".into())),
         Some(true) => {}
     }
-    let format = IDENTITY_FIELDS
-        .iter()
-        .map(|f| format!("#{{{f}}}"))
-        .collect::<Vec<_>>()
-        .join("\t");
     let opts = native.options();
     let out = opts
         .tmux
-        .run(&["display-message", "-p", "-t", pane, &format])
+        .run(&["display-message", "-p", "-t", pane, &sc::identity_format()])
         .await
         .map_err(|e| Fault::Error(e.uncaught()))?;
-    let parts: Vec<&str> = py::strip(&out.stdout).split('\t').collect();
-    if !out.ok || parts.len() != IDENTITY_FIELDS.len() {
-        return Err(TargetError::Value("el panel ya no existe".into()));
-    }
-    let mut identity = Map::new();
-    for (key, value) in IDENTITY_FIELDS.iter().zip(&parts) {
-        identity.insert((*key).into(), Value::from(*value));
-    }
-    if parts.get(4) != Some(&pane) || parts.get(3) != Some(&sess) {
-        return Err(TargetError::Value(
-            "el panel no pertenece a esa sesión".into(),
-        ));
-    }
-    let stat = opts
-        .proc_root
-        .join(parts.get(1).copied().unwrap_or(""))
-        .join("stat");
-    let read = blocking(move || Ok(std::fs::read(stat))).await?;
-    let start = match read {
-        // `except OSError`: sin inicio del servidor.
-        Err(_) => String::new(),
-        Ok(bytes) => {
-            // `UnicodeDecodeError` o `IndexError` no se capturan en el Python.
-            let text = String::from_utf8(bytes).map_err(|_| Fault::Decline)?;
-            text.rsplit_once(')')
-                .and_then(|(_, rest)| rest.split_whitespace().nth(19))
-                .ok_or(Fault::Decline)?
-                .to_owned()
-        }
-    };
+    let mut identity =
+        sc::identity_from_output(out.ok, &out.stdout, sess, pane).map_err(identity_fault)?;
+    let proc_root = opts.proc_root.clone();
+    let pid = identity
+        .get("pid")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_owned();
+    let start = blocking(move || Ok(sc::server_start(&proc_root, &pid)))
+        .await?
+        .map_err(identity_fault)?;
     identity.insert("server_start".into(), Value::String(start));
     Ok(identity)
-}
-
-/// `_identity_key(identity)` (6789).
-pub fn identity_key(identity: &Map<String, Value>) -> String {
-    [
-        "socket_path",
-        "pid",
-        "server_start",
-        "session_id",
-        "pane_id",
-        "pane_pid",
-    ]
-    .iter()
-    .map(|k| identity.get(*k).and_then(Value::as_str).unwrap_or(""))
-    .collect::<Vec<_>>()
-    .join("|")
 }
 
 /// El preámbulo de `do_POST`: valida `session`, la sustituye por la resuelta

@@ -27,6 +27,7 @@ use ops_lab::{OpsLab, SID, Stub};
 use serde_json::{Value, json};
 use std::{
     ffi::OsStr,
+    os::unix::fs::PermissionsExt,
     path::Path,
     time::{Duration, Instant},
 };
@@ -271,6 +272,12 @@ fn direct_account_round_trip_keeps_conversation_model_and_other_pane() {
             lab.show(&lab.other, "#{pane_pid}\t#{pane_current_command}"),
             before
         );
+        // El traspaso nace 0600 (sin la ventana de `0666 & umask`).
+        let handoff = lab.home.join(format!(
+            ".claude/hooks/session-handoffs/direct-account-{alias}.md"
+        ));
+        let mode = std::fs::metadata(&handoff).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "{}", handoff.display());
     }
 }
 
@@ -467,5 +474,206 @@ fn capture_handoff_matches_python() {
             .unwrap()
             .lines()
             .any(|l| l.starts_with("──────────"))
+    );
+}
+
+/// El traspaso se crea con `O_CREAT|O_EXCL`: un enlace ya puesto en su ruta
+/// no se sigue ni se pisa, y la operación falla con el origen abierto.
+#[test]
+fn handoff_never_follows_a_symlink() {
+    let Some(lab) = OpsLab::start("hlink") else {
+        return;
+    };
+    let original = sc::agent_info_for_pane(&lab.env(), &lab.pane)
+        .unwrap()
+        .unwrap();
+    let dir = lab.home.join(".claude/hooks/session-handoffs");
+    std::fs::create_dir_all(&dir).unwrap();
+    let victim = lab.home.join("victima.txt");
+    std::fs::write(&victim, "intacto").unwrap();
+    let link = dir.join("handoff-link-0001.md");
+    std::os::unix::fs::symlink(&victim, &link).unwrap();
+    let data = account_switch("work", &lab.pane, "handoff-link-0001");
+    let (result, row) = run_rust(&lab, &data, None);
+    assert_eq!(result["ok"], json!(false), "{result}");
+    let error = result["error"].as_str().unwrap();
+    assert_eq!(
+        error,
+        format!("[Errno 17] File exists: '{}'", link.display()),
+        "{result}"
+    );
+    assert_eq!(row["state"], json!("failed"));
+    assert_eq!(std::fs::read_to_string(&victim).unwrap(), "intacto");
+    let after = sc::agent_info_for_pane(&lab.env(), &lab.pane)
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.pid, original.pid, "el origen sigue abierto");
+}
+
+/// Desviación de la ronda 1 (I1): la vuelta al origen no teclea nada
+/// mientras un envoltorio del destino siga en primer plano. El destino corre
+/// bajo `linger` (un binario que ignora Ctrl-C y sigue vivo unos segundos tras
+/// su hijo): el destino muere con `SIGTERM`, pero el pane tarda en volver al
+/// shell. El Python teclearía `stty sane` y el reanudar dentro de `linger`.
+fn linger_recovery(tag: &str, seconds: u32) -> Option<(OpsLab, sc::Env, Result<(), sc::Fail>)> {
+    let lab = OpsLab::start(tag)?;
+    let env = lab.env();
+    let origin = sc::agent_info_for_pane(&env, &lab.pane).unwrap().unwrap();
+    let origin_start = agent_procs::process_start(Path::new("/proc"), origin.pid);
+    let identity = lab.identity();
+    let observed = sc::observe_pane(&env, "audit", &lab.pane, None, None).unwrap();
+    assert!(
+        pane_exit::exit_current(&env, &lab.pane, origin.pid, "codex", Some(&origin_start)).unwrap()
+    );
+    // Envoltorio en C: un script de `sh` lo reportaría tmux como `sh` (shell)
+    // y el pane no tendría agente visible. Ignora SIGINT, espera al hijo y
+    // sigue vivo `argv[1]` segundos más.
+    let linger = lab.home.join("bin/linger");
+    let source = lab.home.join("linger.c");
+    std::fs::write(
+        &source,
+        "#include <signal.h>\n#include <stdlib.h>\n#include <unistd.h>\n#include <sys/wait.h>\n\
+         int main(int c,char**v){signal(SIGINT,SIG_IGN);pid_t p=fork();\
+         if(!p){signal(SIGINT,SIG_DFL);execvp(v[2],v+2);_exit(127);}\
+         int s;waitpid(p,&s,0);sleep(atoi(v[1]));return 0;}\n",
+    )
+    .unwrap();
+    let built = std::process::Command::new("cc")
+        .arg(&source)
+        .arg("-o")
+        .arg(&linger)
+        .output()
+        .unwrap();
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let flags: Vec<String> = ["--sandbox", "read-only", "--ask-for-approval", "untrusted"]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
+    let command = |account: &str| {
+        comandos_runtime::launch_command::configuration_command(
+            &lab.ctx(),
+            "codex",
+            "codex",
+            "gpt-5.5",
+            "high",
+            account,
+            SID,
+            &flags,
+            false,
+        )
+        .unwrap()
+    };
+    let id = "linger-operation-0001";
+    pane_exit::send_shell_line(
+        &env,
+        &lab.pane,
+        &format!(
+            "env COMANDOS_OPERATION_ID={id} {} {seconds} {}",
+            linger.display(),
+            command("work")
+        ),
+    )
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let destination = loop {
+        assert!(
+            Instant::now() < deadline,
+            "el destino no arrancó: {:?} {:?}",
+            sc::agent_info_for_pane(&env, &lab.pane),
+            lab.capture(&lab.pane)
+                .lines()
+                .rev()
+                .take(4)
+                .collect::<Vec<_>>(),
+        );
+        if let Ok(Some(info)) = sc::agent_info_for_pane(&env, &lab.pane)
+            && info.pid != origin.pid
+            && agent_procs::read_environ(Path::new("/proc"), info.pid)
+                .get(b"COMANDOS_OPERATION_ID".as_slice())
+                .is_some_and(|v| v == id.as_bytes())
+        {
+            break info;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    assert_eq!(lab.show(&lab.pane, "#{pane_current_command}"), "linger");
+    let snapshot = json!({
+        "session": "audit",
+        "layout": {},
+        "origin": {
+            "agent": "codex", "agent_pid": origin.pid, "agent_start": origin_start,
+            "identity": identity, "observed": observed, "extensionLaunch": null,
+            "resume_command": command("main"),
+        },
+        "destination": {
+            "to": "codex", "motor": "codex", "model": "gpt-5.5", "effort": "high",
+            "harnessAccount": "work", "motorAccount": "work", "expectedSid": SID,
+        },
+        "destinationProcess": {
+            "pid": destination.pid,
+            "start": agent_procs::process_start(Path::new("/proc"), destination.pid),
+            "conversationId": SID,
+        },
+    });
+    let request = json!({"session": "audit", "pane": lab.pane, "requestId": id});
+    let mut adapter = SessionConfiguration::for_recovery(
+        Kind::Session,
+        request,
+        identity,
+        env.clone(),
+        &snapshot,
+        false,
+    )
+    .unwrap();
+    let result = adapter.recover(&snapshot).map(|_| ());
+    Some((lab, env, result))
+}
+
+#[test]
+fn recovery_refuses_while_a_wrapper_lingers() {
+    let Some((lab, env, result)) = linger_recovery("linger-long", 8) else {
+        return;
+    };
+    assert_eq!(
+        result.unwrap_err(),
+        sc::Fail::Py(
+            "hay un proceso sin identificar en el panel; no se envía la recuperación".into()
+        )
+    );
+    // Cuando `linger` termina, el shell no recibe nada tecleado: ningún
+    // agente vuelve a arrancar.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while lab.show(&lab.pane, "#{pane_current_command}") != "sh" {
+        assert!(Instant::now() < deadline, "linger no terminó");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(sc::agent_info_for_pane(&env, &lab.pane).unwrap().is_none());
+    assert_eq!(lab.show(&lab.pane, "#{pane_current_command}"), "sh");
+}
+
+#[test]
+fn recovery_waits_for_a_briefly_lingering_wrapper() {
+    let Some((lab, env, result)) = linger_recovery("linger-short", 1) else {
+        return;
+    };
+    result.unwrap();
+    // El shell volvió dentro del plazo: se tecleó el reanudar del origen.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let restored = loop {
+        if let Ok(Some(info)) = sc::agent_info_for_pane(&env, &lab.pane) {
+            break info;
+        }
+        assert!(Instant::now() < deadline, "el origen no volvió");
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    assert_eq!(restored.agent, "codex");
+    assert!(
+        !agent_procs::read_environ(Path::new("/proc"), restored.pid)
+            .contains_key(b"COMANDOS_OPERATION_ID".as_slice())
     );
 }

@@ -101,3 +101,105 @@ fn unreadable_file_starts_empty_and_uncertain_file_is_never_rewritten() {
     assert!(results.set("k|%1", true, "ok", &[]).is_err());
     assert_eq!(read(&home), b"{\"a\xff\": 1}");
 }
+
+fn on_disk(home: &TestHome) -> Map<String, Value> {
+    serde_json::from_slice(&read(home)).unwrap()
+}
+
+/// Ronda 1 (I2): el Python heredado reescribe el archivo desde su memoria
+/// (sin las claves de Rust); Rust sigue sirviendo las suyas y las devuelve al
+/// archivo en su siguiente escritura.
+#[test]
+fn legacy_overwrite_keeps_rust_entries_visible() {
+    let home = TestHome::new("motor-legacy-overwrite");
+    let path = home.hooks().join("motor-results.json");
+    let results = MotorResults::load_with(&path, fixed(1.0));
+    results
+        .set_with_ts("rust|%1", true, "mío", &[], 100.0)
+        .unwrap();
+    assert!(on_disk(&home).contains_key("rust|%1"));
+    let Some(_) = oracle::run_dash(
+        &home,
+        "dash.MOTOR_RESULT.clear()\n\
+         dash.time.time = lambda: 200.0\n\
+         dash.motor_result_set('legacy|%2', True, 'py')",
+    ) else {
+        return;
+    };
+    let disk = on_disk(&home);
+    assert!(!disk.contains_key("rust|%1"), "el Python pisó el archivo");
+    let all = results.all();
+    assert_eq!(all["rust|%1"]["detail"], json!("mío"));
+    assert_eq!(all["legacy|%2"]["detail"], json!("py"));
+    assert_eq!(results.get("rust|%1").unwrap()["ts"], json!(100.0));
+    results
+        .set_with_ts("rust|%3", false, "otro", &[], 300.0)
+        .unwrap();
+    let disk = on_disk(&home);
+    for key in ["rust|%1", "legacy|%2", "rust|%3"] {
+        assert!(disk.contains_key(key), "falta {key} en {disk:?}");
+    }
+}
+
+/// Ronda 1 (I2): cada escritura de Rust relee el archivo y conserva lo que
+/// escribió el Python; con la misma clave gana el `ts` más reciente.
+#[test]
+fn rust_writes_keep_legacy_entries_and_newer_ts_wins() {
+    let home = TestHome::new("motor-legacy-merge");
+    let path = home.hooks().join("motor-results.json");
+    let results = MotorResults::load_with(&path, fixed(1.0));
+    results
+        .set_with_ts("shared|%1", true, "rust viejo", &[], 100.0)
+        .unwrap();
+    let Some(_) = oracle::run_dash(
+        &home,
+        "dash.time.time = lambda: 50.0\n\
+         dash.motor_result_set('legacy|%1', True, 'py')\n\
+         dash.time.time = lambda: 300.0\n\
+         dash.motor_result_set('shared|%1', False, 'py nuevo')",
+    ) else {
+        return;
+    };
+    // El Python cargó el archivo al importar: conserva la clave de Rust.
+    assert_eq!(
+        results.get("shared|%1").unwrap()["detail"],
+        json!("py nuevo")
+    );
+    results
+        .set_with_ts("rust|%2", true, "mío", &[], 400.0)
+        .unwrap();
+    let disk = on_disk(&home);
+    assert_eq!(disk["legacy|%1"]["detail"], json!("py"));
+    assert_eq!(disk["shared|%1"]["detail"], json!("py nuevo"));
+    assert_eq!(disk["rust|%2"]["detail"], json!("mío"));
+    results
+        .set_with_ts("shared|%1", true, "rust nuevo", &[], 500.0)
+        .unwrap();
+    assert_eq!(on_disk(&home)["shared|%1"]["detail"], json!("rust nuevo"));
+    assert_eq!(results.all()["legacy|%1"]["ts"], json!(50.0));
+}
+
+/// Ronda 1 (I2): la mezcla de disco y memoria se acota con el recorte de O3
+/// (más de 300 → las 200 de `ts` más reciente).
+#[test]
+fn merged_view_is_trimmed_like_python() {
+    let home = TestHome::new("motor-merge-trim");
+    let path = home.hooks().join("motor-results.json");
+    let results = MotorResults::load_with(&path, fixed(1.0));
+    results
+        .set_with_ts("rust|%0", true, "mío", &[], 10_000.0)
+        .unwrap();
+    let mut seed = Map::new();
+    for i in 0..300 {
+        seed.insert(
+            format!("py{i}|%{i}"),
+            json!({"ok": true, "ts": f64::from(i)}),
+        );
+    }
+    home.write("motor-results.json", &Value::Object(seed).to_string());
+    let all = results.all();
+    assert_eq!(all.len(), 200);
+    assert!(all.contains_key("rust|%0"));
+    assert!(!all.contains_key("py100|%100"));
+    assert!(all.contains_key("py101|%101"));
+}

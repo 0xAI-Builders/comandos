@@ -163,7 +163,10 @@ async fn build_env(native: &Arc<Native>) -> Result<Env, Fault> {
     let opts = native.options();
     let repo = opts.repo_root.clone().ok_or(Fault::Decline)?;
     let (registry, matrix) = super::super::usage::providers::registry_and_matrix(native).await?;
-    let proxy_port = providers::proxy_port(&repo).map_err(decline)?;
+    let proxy_port = {
+        let repo = repo.clone();
+        blocking(move || providers::proxy_port(&repo).map_err(decline)).await?
+    };
     let handle = Handle::current();
     let tmux: TmuxSync = {
         let tmux = opts.tmux.clone();
@@ -536,18 +539,19 @@ pub async fn session_configure(
     if data.get("extensionsOnly").is_some_and(truthy) {
         return Err(Fault::Decline);
     }
-    let opts = native.options();
-    let results = MotorResults::shared(opts);
-    if !results.certain() {
-        return Err(Fault::Decline);
-    }
+    let results = MotorResults::shared(native.options());
     let opkey = format!("{sess}|{pane}");
     let request = Value::Object(data);
     // `store.get` primero.
     let previous = {
         let native = Arc::clone(native);
+        let results = Arc::clone(&results);
         let (id, req, key) = (request_id.clone(), request.clone(), opkey.clone());
         blocking(move || {
+            // Un `motor-results.json` que no se lee con certeza: el heredado.
+            if !results.certain() {
+                return Err(Fault::Decline);
+            }
             let opts = native.options();
             let conn = open_store(opts)?;
             let Some(previous) = with_store(&conn, opts, |s| s.get(&id)).map_err(decline)? else {
@@ -585,11 +589,18 @@ pub async fn session_configure(
                     .map_err(decline)?;
             // Antes del `claim`: lo que el port no reproduce declina.
             adapter.probe().map_err(decline)?;
+            // Nota 2 del controlador: el origen OpenCode lo atiende el heredado
+            // (su `prepare` lo rechaza igual; aquí ni se reclama).
+            if adapter.frm() == "opencode" {
+                return Err(Fault::Decline);
+            }
             let opts = native.options();
             let conn = open_store(opts)?;
             let pane_key = sc::identity_key(&identity);
             match with_store(&conn, opts, |s| s.claim(&id, &pane_key, &req)) {
-                Ok(true) => Ok(Ok(adapter)),
+                // La conexión va al hilo: abrirla allí podría fallar con la fila
+                // ya reclamada.
+                Ok(true) => Ok(Ok((adapter, conn))),
                 Ok(false) => Ok(Err((
                     StatusCode::ACCEPTED,
                     json!({"ok": true, "pending": true, "operationKey": key, "operationId": id}),
@@ -600,8 +611,8 @@ pub async fn session_configure(
         })
         .await?
     };
-    let adapter = match claimed {
-        Ok(adapter) => adapter,
+    let (adapter, conn) = match claimed {
+        Ok(claimed) => claimed,
         Err(answer) => return Ok(answer),
     };
     // Reclamada: desde aquí el Python responde 202 y la operación sigue sola.
@@ -619,36 +630,60 @@ pub async fn session_configure(
         })
         .await;
     }
-    spawn_operation(native, adapter, request_id.clone(), opkey.clone(), results)?;
+    spawn_operation(
+        native,
+        conn,
+        adapter,
+        request_id.clone(),
+        opkey.clone(),
+        results,
+    )?;
     Ok((
         StatusCode::ACCEPTED,
         json!({"ok": true, "pending": true, "queued": true, "operationKey": opkey, "operationId": request_id}),
     ))
 }
 
-/// O1: `threading.Thread(target=run_operation, …)`.
+/// Una fila reclamada cuyo hilo no puede correr no queda huérfana: `failed`
+/// con un error genérico (por el `store` si se puede, si no a mano).
+fn fail_claimed(conn: &Connection, opts: &NativeOptions, request_id: &str) {
+    let result =
+        json!({"ok": false, "error": "no se pudo iniciar la operación; el agente sigue abierto"});
+    let staged = with_store(conn, opts, |s| {
+        s.stage(request_id, "failed", None, Some(&result))
+    });
+    if staged.is_err() {
+        let _ = conn.execute(
+            "UPDATE session_operations SET state='failed',result=?,updated=? WHERE id=?",
+            rusqlite::params![result.to_string(), (opts.clock_seconds)(), request_id],
+        );
+    }
+    eprintln!("comandos dash: la operación {request_id} no pudo iniciarse");
+}
+
+/// O1: `threading.Thread(target=run_operation, …)`, con la conexión al
+/// journal abierta antes del `claim`.
 fn spawn_operation(
     native: &Arc<Native>,
+    conn: Connection,
     mut adapter: SessionConfiguration,
     request_id: String,
     opkey: String,
     results: Arc<MotorResults>,
 ) -> Result<(), Fault> {
-    let native = Arc::clone(native);
+    let thread_native = Arc::clone(native);
     let handle = Handle::current();
-    std::thread::Builder::new()
+    let id = request_id.clone();
+    let spawned = std::thread::Builder::new()
         .name("comandos-op".into())
         .spawn(move || {
+            let native = thread_native;
             let opts = native.options();
-            let Ok(conn) = open_journal(&opts.journal_db) else {
-                eprintln!("comandos dash: journal ilegible; la operación {request_id} no corre");
-                return;
-            };
             let clock = opts.clock_seconds.clone();
             let now = move || clock();
             let me = owner;
             let Ok(store) = OperationStore::new(&conn, &me, &now) else {
-                eprintln!("comandos dash: journal ilegible; la operación {request_id} no corre");
+                fail_claimed(&conn, opts, &request_id);
                 return;
             };
             let route = Rc::new(RefCell::new(Value::Null));
@@ -671,9 +706,16 @@ fn spawn_operation(
                 Ok(())
             };
             let _ = run_operation(&store, &request_id, &mut tap, notify);
-        })
-        .map(|_| ())
-        .map_err(|_| failure())
+        });
+    if spawned.is_err() {
+        // El cierre (con la conexión) ya se soltó: otra conexión.
+        let opts = native.options();
+        if let Ok(conn) = open_journal(&opts.journal_db) {
+            fail_claimed(&conn, opts, &id);
+        }
+        return Err(failure());
+    }
+    Ok(())
 }
 
 // ------------------------------------------------------- session_recover
@@ -687,15 +729,15 @@ pub async fn session_recover(
         return Err(Fault::Decline);
     };
     let operation_id = text_field(&data, "operationId")?;
-    let opts = native.options();
-    let results = MotorResults::shared(opts);
-    if !results.certain() {
-        return Err(Fault::Decline);
-    }
+    let results = MotorResults::shared(native.options());
     let row = {
         let native = Arc::clone(native);
+        let results = Arc::clone(&results);
         let id = operation_id.clone();
         blocking(move || {
+            if !results.certain() {
+                return Err(Fault::Decline);
+            }
             let opts = native.options();
             let conn = open_store(opts)?;
             with_store(&conn, opts, |s| s.get(&id)).map_err(decline)
@@ -742,24 +784,26 @@ pub async fn session_recover(
         ));
     }
     let env = build_env(native).await?;
-    env.dialogs.probe().map_err(decline)?;
+    {
+        let dialogs = Arc::clone(&env.dialogs);
+        blocking(move || dialogs.probe().map_err(decline)).await?;
+    }
     let claimed = {
         let native = Arc::clone(native);
         let id = operation_id.clone();
         blocking(move || {
             let opts = native.options();
             let conn = open_store(opts)?;
-            with_store(&conn, opts, |s| s.claim_recovery(&id)).map_err(|e| match e {
-                ops::Error::Conflict(_) | ops::Error::Persistence(_) | ops::Error::Callback(_) => {
-                    Fault::Decline
-                }
-            })
+            let claimed = with_store(&conn, opts, |s| s.claim_recovery(&id)).map_err(decline)?;
+            // La conexión va al hilo: abrirla allí podría fallar con la fila ya
+            // en `recovering`.
+            Ok(claimed.then_some(conn))
         })
         .await?
     };
-    if !claimed {
+    let Some(conn) = claimed else {
         return Ok(conflict("la recuperación ya está en curso", None));
-    }
+    };
     {
         let results = Arc::clone(&results);
         let (key, id) = (opkey.clone(), operation_id.clone());
@@ -777,11 +821,12 @@ pub async fn session_recover(
     let allow_pending = row.get("state").and_then(Value::as_str) == Some("awaiting_confirmation");
     let (key, id) = (opkey.clone(), operation_id.clone());
     let native_thread = Arc::clone(native);
-    std::thread::Builder::new()
+    let spawned = std::thread::Builder::new()
         .name("comandos-op".into())
         .spawn(move || {
             recover(
                 &native_thread,
+                &conn,
                 env,
                 request,
                 identity,
@@ -791,8 +836,19 @@ pub async fn session_recover(
                 &id,
                 &results,
             );
-        })
-        .map_err(|_| failure())?;
+        });
+    if spawned.is_err() {
+        let opts = native.options();
+        if let Ok(conn) = open_journal(&opts.journal_db) {
+            let result = failed(sc::Fail::Py(
+                "no se pudo iniciar la recuperación; el snapshot se conserva".into(),
+            ));
+            let _ = with_store(&conn, opts, |s| {
+                s.stage(&operation_id, "recovery_required", None, Some(&result))
+            });
+        }
+        return Err(failure());
+    }
     Ok((
         StatusCode::ACCEPTED,
         json!({"ok": true, "pending": true, "operationKey": opkey, "operationId": operation_id}),
@@ -803,6 +859,7 @@ pub async fn session_recover(
 #[allow(clippy::too_many_arguments)]
 fn recover(
     native: &Native,
+    conn: &Connection,
     env: Env,
     request: Value,
     identity: Map<String, Value>,
@@ -813,10 +870,6 @@ fn recover(
     results: &MotorResults,
 ) {
     let opts = native.options();
-    let Ok(conn) = open_journal(&opts.journal_db) else {
-        eprintln!("comandos dash: journal ilegible; la recuperación {operation_id} no corre");
-        return;
-    };
     // El `try` del Python: adaptador, `rollback` y `stage('rolled_back')`.
     let attempt = SessionConfiguration::for_recovery(
         Kind::Session,
@@ -833,7 +886,7 @@ fn recover(
             "observed": observed.map_or(Value::Null, Value::Object),
             "error": "conversación original recuperada; no se aplicó el destino",
         });
-        with_store(&conn, opts, |s| {
+        with_store(conn, opts, |s| {
             s.stage(operation_id, "rolled_back", None, Some(&result))
         })
         .map_err(|e| sc::Fail::Py(e.to_string()))?;
@@ -845,7 +898,7 @@ fn recover(
             let result = failed(fail);
             // Si este `stage` falla, la excepción del `except` mata el hilo
             // antes de `motor_result_set`.
-            if with_store(&conn, opts, |s| {
+            if with_store(conn, opts, |s| {
                 s.stage(operation_id, "recovery_required", None, Some(&result))
             })
             .is_err()

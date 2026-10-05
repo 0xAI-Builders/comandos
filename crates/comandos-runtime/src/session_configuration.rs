@@ -246,6 +246,18 @@ pub(crate) fn io_text(error: &io::Error) -> String {
     }
 }
 
+/// `str(exc)` de un `OSError` con su ruta (`[Errno 17] File exists: '…'`).
+pub(crate) fn io_text_path(error: &io::Error, path: &str) -> String {
+    match error.raw_os_error() {
+        Some(code) => format!(
+            "[Errno {code}] {}: {}",
+            errno_text(code),
+            pane_exit::py_repr(path)
+        ),
+        None => error.to_string(),
+    }
+}
+
 fn errno_text(code: i32) -> String {
     nix::errno::Errno::from_raw(code).desc().to_owned()
 }
@@ -382,8 +394,9 @@ pub fn agent_info_for_pane(env: &Env, pane: &str) -> Result<Option<Proc>, Fail> 
         .map(Proc::from))
 }
 
-/// Los campos de `_pane_identity`, en su orden.
-const IDENTITY_FIELDS: [&str; 8] = [
+/// Los campos de `_pane_identity`, en su orden. Única implementación: GET y
+/// POST del frente (`dash::native::target`) usan estas mismas piezas.
+pub const IDENTITY_FIELDS: [&str; 8] = [
     "socket_path",
     "pid",
     "session_id",
@@ -394,21 +407,25 @@ const IDENTITY_FIELDS: [&str; 8] = [
     "pane_current_path",
 ];
 
-/// `_pane_identity(sess, pane)` (6887).
-pub fn pane_identity(env: &Env, sess: &str, pane: &str) -> Result<Map<String, Value>, Fail> {
-    match pane_re(pane) {
-        Some(true) => {}
-        Some(false) => return Err(py("se necesita el panel exacto")),
-        None => return Err(Fail::Unsure),
-    }
-    let format = IDENTITY_FIELDS
+/// El formato de `display-message -p` de `_pane_identity`.
+pub fn identity_format() -> String {
+    IDENTITY_FIELDS
         .iter()
         .map(|f| format!("#{{{f}}}"))
         .collect::<Vec<_>>()
-        .join("\t");
-    let out = env.tmux(&["display-message", "-p", "-t", pane, &format])?;
-    let parts: Vec<&str> = strip(&out.stdout).split('\t').collect();
-    if out.returncode != 0 || parts.len() != IDENTITY_FIELDS.len() {
+        .join("\t")
+}
+
+/// La identidad a partir de la salida de tmux, sin `server_start`.
+/// `Fail::Py` es el `ValueError` literal del Python.
+pub fn identity_from_output(
+    ok: bool,
+    stdout: &str,
+    sess: &str,
+    pane: &str,
+) -> Result<Map<String, Value>, Fail> {
+    let parts: Vec<&str> = strip(stdout).split('\t').collect();
+    if !ok || parts.len() != IDENTITY_FIELDS.len() {
         return Err(py("el panel ya no existe"));
     }
     let mut identity = Map::new();
@@ -418,19 +435,36 @@ pub fn pane_identity(env: &Env, sess: &str, pane: &str) -> Result<Map<String, Va
     if parts.get(4) != Some(&pane) || parts.get(3) != Some(&sess) {
         return Err(py("el panel no pertenece a esa sesión"));
     }
-    let pid = parts.get(1).copied().unwrap_or("");
-    let start = match fs::read(env.proc_root.join(pid).join("stat")) {
-        // `except OSError`.
-        Err(_) => String::new(),
+    Ok(identity)
+}
+
+/// `_process_start` del servidor tmux de `_pane_identity`: el campo 22 de
+/// `/proc/<pid>/stat`, `""` si no se lee (`except OSError`); lo que el Python
+/// no captura (`UnicodeDecodeError`, `IndexError`) es incierto. Bloquea.
+pub fn server_start(proc_root: &Path, pid: &str) -> Result<String, Fail> {
+    match fs::read(proc_root.join(pid).join("stat")) {
+        Err(_) => Ok(String::new()),
         Ok(bytes) => {
-            // `UnicodeDecodeError` o `IndexError` no se capturan en el Python.
             let text = String::from_utf8(bytes).map_err(|_| Fail::Unsure)?;
-            text.rsplit_once(')')
+            Ok(text
+                .rsplit_once(')')
                 .and_then(|(_, rest)| rest.split_whitespace().nth(19))
                 .ok_or(Fail::Unsure)?
-                .to_owned()
+                .to_owned())
         }
-    };
+    }
+}
+
+/// `_pane_identity(sess, pane)` (6887).
+pub fn pane_identity(env: &Env, sess: &str, pane: &str) -> Result<Map<String, Value>, Fail> {
+    match pane_re(pane) {
+        Some(true) => {}
+        Some(false) => return Err(py("se necesita el panel exacto")),
+        None => return Err(Fail::Unsure),
+    }
+    let out = env.tmux(&["display-message", "-p", "-t", pane, &identity_format()])?;
+    let mut identity = identity_from_output(out.returncode == 0, &out.stdout, sess, pane)?;
+    let start = server_start(&env.proc_root, ident_text(&identity, "pid"))?;
     identity.insert("server_start".into(), s(&start));
     Ok(identity)
 }
@@ -909,9 +943,11 @@ fn copy_tree(source: &Path, target: &Path) -> Result<(), Fail> {
 }
 
 /// `glob(join(target_item, '**', '*'), recursive=True)` en el orden de
-/// `glob`: las entradas (no ocultas) del directorio y después las de cada
-/// subdirectorio en preorden. Un subdirectorio enlazado aparece como
-/// entrada antes de recorrerse y ya hace fallar la validación.
+/// `glob`: las entradas del directorio y después las de cada subdirectorio
+/// en preorden. Un subdirectorio enlazado aparece como entrada antes de
+/// recorrerse y ya hace fallar la validación. Desviación: también los
+/// ocultos, que `glob` omite pero `copytree` sí sobrescribe; así ningún
+/// archivo divergente del destino se pisa sin comparar su prefijo.
 fn existing_tree(target: &Path) -> Result<Vec<PathBuf>, Fail> {
     if !fs::metadata(target).is_ok_and(|m| m.is_dir()) {
         return Ok(Vec::new());
@@ -921,7 +957,7 @@ fn existing_tree(target: &Path) -> Result<Vec<PathBuf>, Fail> {
     // Preorden de `_rlistdir` sin seguir enlaces (un enlace ya es error).
     fn walk(root: &Path, rel: &Path, out: &mut Vec<PathBuf>) {
         for (name, linked) in listdir(&root.join(rel), true) {
-            if hidden(name.as_bytes()) || linked {
+            if linked {
                 continue;
             }
             let child = rel.join(&name);
@@ -934,9 +970,7 @@ fn existing_tree(target: &Path) -> Result<Vec<PathBuf>, Fail> {
     let mut out = Vec::new();
     for dir in dirs {
         for (name, _) in listdir(&target.join(&dir), false) {
-            if !hidden(name.as_bytes()) {
-                out.push(target.join(&dir).join(name));
-            }
+            out.push(target.join(&dir).join(name));
         }
     }
     Ok(out)
@@ -1907,7 +1941,15 @@ impl SessionConfiguration {
         }
         for _ in 0..1350 {
             self.check_identity_inner()?;
-            if !harness_pane_busy(&self.env, &self.sess, &self.pane, &self.frm)? {
+            // Una duda cuenta como «ocupado»: se sigue esperando dentro del tope
+            // de 45 minutos (la fila sigue en `waiting`, cancelable); nunca se
+            // cierra un agente que quizá trabaja. Un error del Python se propaga.
+            let busy = match harness_pane_busy(&self.env, &self.sess, &self.pane, &self.frm) {
+                Ok(busy) => busy,
+                Err(Fail::Unsure) => true,
+                Err(error) => return Err(error),
+            };
+            if !busy {
                 return Ok(());
             }
             self.env.sleep_s(2.0);
@@ -2194,15 +2236,18 @@ impl SessionConfiguration {
                 .recursive(true)
                 .mode(0o700)
                 .create(&dir)
-                .map_err(|e| Fail::Py(io_text(&e)))?;
-            // `open(path, 'x')`, `chmod 0600` y después el texto.
+                .map_err(|e| Fail::Py(io_text_path(&e, &dir.to_string_lossy())))?;
+            // `open(path, 'x')` y `chmod 0600`, sin la ventana del Python: el
+            // archivo nace 0600 (`O_CREAT|O_EXCL` no sigue un enlace ni pisa
+            // nada) y el `chmod` va por descriptor (`fchmod`), no por ruta.
             let mut file = fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
+                .mode(0o600)
                 .open(&path)
-                .map_err(|e| Fail::Py(io_text(&e)))?;
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
-                .map_err(|e| Fail::Py(io_text(&e)))?;
+                .map_err(|e| Fail::Py(io_text_path(&e, &path)))?;
+            file.set_permissions(fs::Permissions::from_mode(0o600))
+                .map_err(|e| Fail::Py(io_text_path(&e, &path)))?;
             let claude = frm == "claude";
             let text = pane_exit::capture_handoff(
                 &self.env,
@@ -3021,6 +3066,10 @@ impl SessionConfiguration {
             out.insert("confirmed".into(), Value::Bool(true));
             return Ok(Some(out));
         }
+        // Desviación (bug del Python): tras cerrar el destino, el pane debe
+        // volver a ser un shell sin agente antes de teclear `stty sane` y el
+        // comando de vuelta; un envoltorio que siga en primer plano lo leería.
+        self.wait_for_shell()?;
         pane_exit::restore_shell_tty(&self.env, &self.pane).map_err(Fail::Py)?;
         let resume = as_text(get(&origin, "resume_command"))?;
         pane_exit::send_configuration_command(&self.env, &self.pane, &resume).map_err(Fail::Py)?;
@@ -3030,6 +3079,30 @@ impl SessionConfiguration {
                 "no se confirmó la reanudación de la conversación original",
             )),
         }
+    }
+
+    /// Antes de teclear la recuperación: misma identidad, ningún agente y un
+    /// shell en primer plano, sondeado hasta 25 × 0,2 s. Lo que no se cumple
+    /// a tiempo (o no se puede leer) no teclea nada.
+    fn wait_for_shell(&self) -> Result<(), Fail> {
+        const UNKNOWN: &str =
+            "hay un proceso sin identificar en el panel; no se envía la recuperación";
+        for attempt in 0..25 {
+            if attempt > 0 {
+                self.env.sleep_s(0.2);
+            }
+            let Ok(current) = pane_identity(&self.env, &self.sess, &self.pane) else {
+                continue;
+            };
+            if identity_key(&current) != identity_key(&self.identity) {
+                return Err(py(UNKNOWN));
+            }
+            let shell = SHELLS.contains(&ident_text(&current, "pane_current_command"));
+            if shell && matches!(agent_info_for_pane(&self.env, &self.pane), Ok(None)) {
+                return Ok(());
+            }
+        }
+        Err(py(UNKNOWN))
     }
 
     /// `adapter.rollback(snapshot)` de `session_recover`.
