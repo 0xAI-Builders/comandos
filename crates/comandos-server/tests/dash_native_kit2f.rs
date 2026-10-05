@@ -244,12 +244,16 @@ fn which_in_looks_only_at_the_given_path() {
 async fn task_tracker_counts_running_tasks_even_if_they_panic() {
     let tracker = TaskTracker::default();
     let (go, wait) = tokio::sync::oneshot::channel::<()>();
-    tracker.spawn(async move {
-        let _ = wait.await;
-    });
-    tracker.spawn(async {
-        panic!("tarea que revienta a propósito");
-    });
+    tracker
+        .spawn(async move {
+            let _ = wait.await;
+        })
+        .unwrap();
+    tracker
+        .spawn(async {
+            panic!("tarea que revienta a propósito");
+        })
+        .unwrap();
     assert_eq!(tracker.len(), 2);
     for _ in 0..20 {
         tokio::task::yield_now().await;
@@ -285,6 +289,52 @@ fn file_lock_acquire_waits_for_the_holder() {
         .permissions()
         .mode();
     assert_eq!(mode & 0o777, 0o600);
+}
+
+#[test]
+fn task_tracker_outside_runtime_is_an_error_not_a_panic() {
+    let tracker = TaskTracker::default();
+    assert!(tracker.spawn(async {}).is_err());
+    assert!(tracker.is_empty());
+}
+
+/// Revisión de T1: N peticiones esperando el mismo candado ocupan a lo sumo UN
+/// hilo de bloqueo; el plazo vence sin abrir otro hilo; al soltarse el dueño
+/// pasan todas en orden.
+#[tokio::test]
+async fn file_lock_waiters_share_one_blocking_thread_and_time_out() {
+    let home = TestHome::new("kit2f-lockq");
+    let target = home.hooks().join("snippets.json");
+    let held = FileLock::try_acquire(&target).unwrap().unwrap();
+    let mut waiters = Vec::new();
+    for _ in 0..8 {
+        let path = target.clone();
+        waiters.push(tokio::spawn(async move {
+            FileLock::acquire_timeout(&path, Duration::from_secs(10))
+                .await
+                .map(drop)
+        }));
+    }
+    let started = Instant::now();
+    while FileLock::blocked_waiters(&target) == 0 && started.elapsed() < Duration::from_secs(3) {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(FileLock::blocked_waiters(&target), 1);
+    let asked = Instant::now();
+    let error = FileLock::acquire_timeout(&target, Duration::from_millis(200))
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+    assert!(asked.elapsed() < Duration::from_secs(2));
+    assert_eq!(FileLock::blocked_waiters(&target), 1);
+    drop(held);
+    for waiter in waiters {
+        waiter.await.unwrap().unwrap();
+    }
+    assert_eq!(FileLock::blocked_waiters(&target), 0);
+    assert!(FileLock::try_acquire(&target).unwrap().is_some());
 }
 
 #[test]
@@ -338,6 +388,12 @@ async fn cuts_off_declines_whole_cut_before_effects() {
     )
     .await;
     assert_eq!(wire.text(), r#"{"legacy": true}"#);
+    assert!(
+        legacy
+            .requests()
+            .iter()
+            .any(|line| line.starts_with("POST /tab-register "))
+    );
     assert!(!home.hooks().join("app-tab-open.json").exists());
     fr.stop().await;
 }

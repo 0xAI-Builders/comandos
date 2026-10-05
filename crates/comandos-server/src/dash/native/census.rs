@@ -28,6 +28,9 @@ pub fn file_name(port: u16) -> String {
 pub struct DeclineCensus {
     since_ms: i64,
     counts: Mutex<Counts>,
+    /// Una escritura a la vez, con la foto tomada DENTRO: la del apagado no
+    /// puede quedar pisada por una periódica más vieja que seguía en curso.
+    writer: Mutex<()>,
 }
 
 #[derive(Default)]
@@ -44,6 +47,7 @@ impl Default for DeclineCensus {
         Self {
             since_ms: super::wall_clock_ms(),
             counts: Mutex::default(),
+            writer: Mutex::default(),
         }
     }
 }
@@ -87,6 +91,7 @@ impl DeclineCensus {
     /// Escribe el censo (temporal + `fsync` + `rename`). Bloquea: desde
     /// `spawn_blocking`.
     pub fn flush(&self, file: &Path) -> io::Result<()> {
+        let _writer = self.writer.lock().unwrap_or_else(|p| p.into_inner());
         let (snapshot, generation) = self.photo();
         let text = serde_json::to_string(&snapshot).map_err(io::Error::other)?;
         write_text_atomic(file, &text)?;

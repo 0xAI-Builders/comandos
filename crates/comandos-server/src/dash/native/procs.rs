@@ -37,6 +37,12 @@ fn command(program: &Program, args: &[OsString]) -> tokio::process::Command {
 /// hijo que escribe mucho antes de leer toda su entrada no se queda trabado
 /// con la tubería llena. Al vencer el plazo se mata al hijo (`kill_on_drop`) y
 /// se devuelve `RunError::Timeout` (el `TimeoutExpired` del Python).
+///
+/// Solo muere el hijo directo, como `process.kill()` en `subprocess.run`: sus
+/// nietos (si el programa lanzó otros) siguen vivos y huérfanos, igual que con
+/// el Python. No se crea un grupo de procesos propio para no cambiar a quién
+/// llegan las señales del frente; la salida no espera a los nietos porque el
+/// futuro que leía las tuberías se suelta con el plazo.
 pub async fn run_program_input(
     program: &Program,
     args: &[&str],
@@ -167,17 +173,20 @@ impl Drop for Running {
 }
 
 impl TaskTracker {
-    /// `tokio::spawn` registrado. Solo en contexto de runtime.
-    pub fn spawn<F>(&self, fut: F)
+    /// `tokio::spawn` registrado. Fuera de un runtime no lanza nada y
+    /// devuelve el error (nunca un pánico).
+    pub fn spawn<F>(&self, fut: F) -> std::io::Result<()>
     where
         F: Future<Output = ()> + Send + 'static,
     {
+        let handle = tokio::runtime::Handle::try_current().map_err(std::io::Error::other)?;
         self.running.fetch_add(1, Ordering::AcqRel);
         let running = Running(Arc::clone(&self.running));
-        tokio::spawn(async move {
+        handle.spawn(async move {
             let _running = running;
             fut.await;
         });
+        Ok(())
     }
 
     pub fn len(&self) -> usize {

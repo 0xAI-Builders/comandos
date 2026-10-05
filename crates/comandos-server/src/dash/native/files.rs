@@ -2,10 +2,16 @@
 use comandos_core::json::{MAX_WORKSPACE_JSON_DEPTH, response_dumps, workspace_loads};
 use serde_json::Value;
 use std::{
+    collections::HashMap,
     fs, io,
     io::Write,
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
-    path::Path,
+    path::{Path, PathBuf},
+    sync::{
+        Arc, Mutex, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
 };
 
 pub enum Strict {
@@ -131,13 +137,77 @@ impl FileLock {
     }
 
     /// `fcntl.flock(fd, LOCK_EX)` con espera: el `file_lock` del Python tal
-    /// cual. Bloquea hasta que el otro dueño (Python, cc-app) lo suelte: solo
-    /// desde `spawn_blocking`, nunca en el hilo del runtime.
+    /// cual. Bloquea hasta que el otro dueño (Python, cc-app) lo suelte, sin
+    /// plazo: solo para hilos propios. Las rutas usan `acquire_timeout`.
     pub fn acquire(path: &Path) -> io::Result<FileLock> {
         let file = lock_file_for(path)?;
         file.lock()?;
         Ok(FileLock { _file: file })
     }
+
+    /// `acquire` desde el runtime, con plazo. Los que esperan la misma ruta
+    /// hacen cola en un `Mutex` asíncrono, así que a lo sumo UN hilo de
+    /// bloqueo espera el `flock` de cada ruta (un dueño colgado no hace crecer
+    /// el `spawn_blocking`). Vencido `limit` devuelve `TimedOut` (quien llama
+    /// declina antes de cualquier efecto); el hilo que ya esperaba sigue en
+    /// cola con su turno y suelta el candado en cuanto lo obtiene.
+    pub async fn acquire_timeout(path: &Path, limit: Duration) -> io::Result<FileLock> {
+        let deadline = tokio::time::Instant::now() + limit;
+        let slot = waiter_slot(path);
+        let turn = tokio::time::timeout_at(deadline, Arc::clone(&slot.turn).lock_owned())
+            .await
+            .map_err(|_| timed_out(path))?;
+        let target = path.to_path_buf();
+        let waiting = Arc::clone(&slot);
+        let blocked = tokio::task::spawn_blocking(move || {
+            // El turno vive en el hilo: mientras este espere el `flock`, nadie
+            // más abre otro hilo para la misma ruta.
+            let _turn = turn;
+            waiting.blocked.fetch_add(1, Ordering::AcqRel);
+            let lock = FileLock::acquire(&target);
+            waiting.blocked.fetch_sub(1, Ordering::AcqRel);
+            lock
+        });
+        match tokio::time::timeout_at(deadline, blocked).await {
+            Ok(Ok(lock)) => lock,
+            Ok(Err(join)) => Err(io::Error::other(join.to_string())),
+            Err(_) => Err(timed_out(path)),
+        }
+    }
+
+    /// Hilos de bloqueo que esperan ahora el `flock` de `path` (0 o 1).
+    pub fn blocked_waiters(path: &Path) -> usize {
+        waiter_slot(path).blocked.load(Ordering::Acquire)
+    }
+}
+
+/// Plazo por omisión de `acquire_timeout` en las rutas: el Python espera sin
+/// plazo, pero un dueño colgado no puede dejar la petición abierta siempre.
+pub const LOCK_WAIT: Duration = Duration::from_secs(30);
+
+/// Cola de espera de una ruta de candado.
+#[derive(Default)]
+struct WaiterSlot {
+    turn: Arc<tokio::sync::Mutex<()>>,
+    blocked: AtomicUsize,
+}
+
+/// Una cola por ruta. Las rutas de candado son unas pocas fijas
+/// (`app-tabs.json`, `snippets.json`…): el mapa no se poda.
+fn waiter_slot(path: &Path) -> Arc<WaiterSlot> {
+    static SLOTS: OnceLock<Mutex<HashMap<PathBuf, Arc<WaiterSlot>>>> = OnceLock::new();
+    let mut slots = SLOTS
+        .get_or_init(Mutex::default)
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    Arc::clone(slots.entry(path.to_path_buf()).or_default())
+}
+
+fn timed_out(path: &Path) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::TimedOut,
+        format!("candado de {} ocupado", path.display()),
+    )
 }
 
 /// `open(path + ".lock", "a+")` con 0600 si es nuevo (y su directorio).
