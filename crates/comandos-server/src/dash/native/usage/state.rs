@@ -97,8 +97,34 @@ struct Live {
 #[derive(Default)]
 pub struct UsageEngine {
     generation: AtomicU64,
-    memo: tokio::sync::Mutex<Option<(MemoKey, Arc<UsageMemo>)>>,
+    /// Vuelo único (`with _usage_state_lock`): quien lo sostiene es el único
+    /// que encola una reconstrucción; los demás esperan y reutilizan.
+    gate: tokio::sync::Mutex<()>,
+    /// El memo. Lo escribe el propio trabajo del carril al terminar, así que una
+    /// reconstrucción abandonada por quien la pidió se guarda igual (M3).
+    slot: Arc<Mutex<MemoSlot>>,
     panes: std::sync::Mutex<PendingPanes>,
+}
+
+#[derive(Default)]
+struct MemoSlot {
+    memo: Option<(MemoKey, Arc<UsageMemo>)>,
+    /// Reconstrucciones empezadas (para las pruebas).
+    builds: u64,
+}
+
+fn slot(slot: &Mutex<MemoSlot>) -> std::sync::MutexGuard<'_, MemoSlot> {
+    slot.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+impl MemoSlot {
+    fn hit(&self, key: &MemoKey) -> Option<Arc<UsageMemo>> {
+        match &self.memo {
+            Some((k, state)) if k == key => Some(state.clone()),
+            _ => None,
+        }
+    }
 }
 
 /// `record_pane` pendiente: solo el último juego de paneles vivos. Mientras el
@@ -274,43 +300,62 @@ impl UsageEngine {
         self.generation.load(Ordering::Acquire)
     }
 
+    /// Cuántas reconstrucciones del memo empezaron (para las pruebas).
+    pub fn builds(&self) -> u64 {
+        slot(&self.slot).builds
+    }
+
     /// Al terminar una importación completa (`_usage_state_generation += 1`).
     pub fn bump(&self) {
         self.generation.fetch_add(1, Ordering::AcqRel);
     }
 
-    /// El estado del memo, o uno nuevo si la clave cambió. El candado se
+    /// El estado del memo, o uno nuevo si la clave cambió. El vuelo único se
     /// sostiene durante el cálculo: los que llegan esperan y reutilizan (el
-    /// `with _usage_state_lock` del Python). Un cliente que se desconecta con
-    /// el candado tomado suelta el futuro y el siguiente calcula (D4 de la 2d).
+    /// `with _usage_state_lock` del Python). Si quien pidió se desconecta, el
+    /// trabajo que ya corre en el carril termina y guarda el memo él mismo (el
+    /// hilo del Python también lo guardaba); uno que aún esperaba en la cola no
+    /// llega a correr. El siguiente encola el suyo, que al empezar mira si el
+    /// anterior lo dejó hecho (D4 de la 2d, M3 de la revisión final).
     async fn state(
         &self,
         native: &Native,
         live: &[Row],
         settings: Row,
     ) -> Result<Arc<UsageMemo>, Fault> {
-        let mut memo = self.memo.lock().await;
-        // La generación se lee con el candado tomado: una importación que
+        let _gate = self.gate.lock().await;
+        // La generación se lee con el vuelo único tomado: una importación que
         // termina mientras otro calcula invalida lo que este guarde después.
         let key = MemoKey::new(self.generation(), live);
-        if let Some((k, state)) = memo.as_ref()
-            && *k == key
         {
-            return Ok(state.clone());
+            let mut held = slot(&self.slot);
+            if let Some(state) = held.hit(&key) {
+                return Ok(state);
+            }
+            // El memo viejo se suelta antes de calcular el nuevo: así el nuevo
+            // no queda por encima de los temporales del cálculo en la arena (las
+            // respuestas en curso guardan su propio `Arc`).
+            held.memo = None;
         }
-        // El memo viejo se suelta antes de calcular el nuevo: así el nuevo no
-        // queda por encima de los temporales del cálculo en la arena (las
-        // respuestas en curso guardan su propio `Arc`).
-        *memo = None;
         // `int(time.time())` de `build_usage_state`.
         let now = (native.options().clock)().div_euclid(1000);
         let live = live.to_vec();
+        let shared = self.slot.clone();
         // Lectura, ensamblado y escritura en el hilo del carril de uso: el pico
         // (≈ 20 MiB con la base real) se queda en una sola arena de glibc, que
         // cada reconstrucción (una por importación, cada 60 s) reutiliza.
-        let built = native
+        native
             .usage
-            .with_retry(move |u| -> Result<UsageMemo, ()> {
+            .with_retry(move |u| -> Result<Arc<UsageMemo>, ()> {
+                // Una reconstrucción anterior, abandonada por quien la pidió,
+                // pudo dejarlo hecho mientras este trabajo esperaba en la cola.
+                {
+                    let mut held = slot(&shared);
+                    if let Some(state) = held.hit(&key) {
+                        return Ok(state);
+                    }
+                    held.builds += 1;
+                }
                 let rows = usage_read::state_rows(&u.conn, now - STATE_WINDOW_S).map_err(|_| ())?;
                 let panes = if live.is_empty() {
                     usage_read::list_panes(&u.conn).map_err(|_| ())?
@@ -329,14 +374,13 @@ impl UsageEngine {
                 drop(rows);
                 let memo = UsageMemo::encode(&state).map_err(|_| ());
                 drop(state);
-                memo
+                let memo = Arc::new(memo?);
+                slot(&shared).memo = Some((key, memo.clone()));
+                Ok(memo)
             })
             .await
             .map_err(no_decline)?
-            .map_err(|_| failure())?;
-        let state = Arc::new(built);
-        *memo = Some((key, state.clone()));
-        Ok(state)
+            .map_err(|_| failure())
     }
 }
 
@@ -775,5 +819,78 @@ mod tests {
         assert_eq!(ids, ["%3"]);
         lane.shutdown().await;
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// M3 de la revisión final: una reconstrucción del memo que ya corre en el
+    /// carril se guarda aunque quien la pidió se haya ido (un cliente que corta
+    /// por plazo). La petición siguiente la reutiliza en vez de reconstruir.
+    #[tokio::test]
+    async fn abandoned_rebuild_is_kept() {
+        let home = std::env::temp_dir().join(format!("2e-memo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        let opts = crate::dash::native::NativeOptions::for_home(&home, home.join("state.sqlite3"));
+        std::fs::create_dir_all(&opts.hooks).unwrap();
+        // Bastantes turnos en la ventana para que la reconstrucción dure.
+        {
+            let mut conn = comandos_store::usage::open_usage_db_at(&opts.usage_db).unwrap();
+            comandos_store::usage::ensure_schema(&conn).unwrap();
+            let now = (opts.clock)().div_euclid(1000);
+            let tx = conn.transaction().unwrap();
+            {
+                let mut insert = tx
+                    .prepare(
+                        "insert into usage_turns(id,provider,agent,tmux_session,tmux_pane,pane_pwd,\
+                         git_root,model,turn_started_at,turn_finished_at,total_tokens,cost_usd,\
+                         source,confidence,harness_account) \
+                         values(?,?,?,?,?,?,?,?,?,?,?,0.001,'test','exact','main')",
+                    )
+                    .unwrap();
+                for i in 0..80_000i64 {
+                    let b = i / 500;
+                    insert
+                        .execute(rusqlite::params![
+                            format!("t-{i:08}"),
+                            ["claude", "codex"][(b % 2) as usize],
+                            "claude",
+                            format!("s-{}", b % 30),
+                            format!("%{}", b % 60),
+                            format!("/r/p-{}", b % 20),
+                            format!("/r/p-{}", b % 20),
+                            format!("m-{}", b % 5),
+                            now - 10 - i * 10,
+                            now - i * 10,
+                            1_000 + i,
+                        ])
+                        .unwrap();
+                }
+            }
+            tx.commit().unwrap();
+        }
+        let native = crate::dash::native::Native::new(opts);
+        let engine = native.usage_engine.clone();
+        {
+            let first = engine.state(&native, &[], Row::new());
+            tokio::pin!(first);
+            loop {
+                tokio::select! {
+                    biased;
+                    done = &mut first => panic!("terminó antes de abandonarla: {:?}", done.is_ok()),
+                    () = tokio::time::sleep(std::time::Duration::from_millis(1)) => {
+                        if engine.builds() == 1 {
+                            break;
+                        }
+                    }
+                }
+            }
+            // `first` se suelta aquí con la reconstrucción en curso en el carril.
+        }
+        assert!(engine.state(&native, &[], Row::new()).await.is_ok());
+        assert_eq!(
+            engine.builds(),
+            1,
+            "la segunda petición reutiliza la abandonada"
+        );
+        native.shutdown().await;
+        let _ = std::fs::remove_dir_all(&home);
     }
 }
