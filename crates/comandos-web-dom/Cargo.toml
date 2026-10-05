@@ -1,0 +1,70 @@
+[package]
+name = "comandos-web-dom"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Utilidades web del tablero en Rust: DOM, eventos, API, almacenamiento, temporizadores, registro de uso y puente de globales con el JS heredado."
+
+[dependencies]
+# Rasgos del workspace a propósito: `preserve_order` conserva el orden de las
+# claves que da `JSON.stringify` (el de JS) y `arbitrary_precision` guarda el
+# texto de cada número tal como lo escribe JS (`String(n)`). Ver `api`.
+serde_json.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.129"
+js-sys = "=0.3.106"
+wasm-bindgen-futures = "=0.4.79"
+web-sys = { version = "=0.3.106", features = [
+    "AddEventListenerOptions",
+    "AudioBuffer",
+    "AudioContext",
+    "AudioDestinationNode",
+    "AudioParam",
+    "BiquadFilterNode",
+    "Blob",
+    "BlobPropertyBag",
+    "BroadcastChannel",
+    "CustomEvent",
+    "Document",
+    "Element",
+    "Event",
+    "EventListenerOptions",
+    "EventSource",
+    "EventTarget",
+    "GainNode",
+    "Headers",
+    "History",
+    "HtmlElement",
+    "HtmlInputElement",
+    "HtmlMetaElement",
+    "HtmlTemplateElement",
+    "IntersectionObserver",
+    "KeyboardEvent",
+    "Location",
+    "MessageEvent",
+    "MouseEvent",
+    "MutationObserver",
+    "Navigator",
+    "Node",
+    "NodeList",
+    "OfflineAudioContext",
+    "OscillatorNode",
+    "Performance",
+    "PointerEvent",
+    "Request",
+    "RequestInit",
+    "ResizeObserver",
+    "Response",
+    "Storage",
+    "Url",
+    "UrlSearchParams",
+    "Window",
+] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.79"
+
+[lints]
+workspace = true
