@@ -1,7 +1,14 @@
 //! `read_states_cached` (7191): TTL de 1,2 s y un solo cómputo en vuelo.
 //! Los que llegan durante un cómputo reciben su resultado o su error (D4: si
-//! el líder se abandona, repiten y uno pasa a líder). Los errores no se
-//! cachean; el instante de la caché se toma al terminar, como el Python.
+//! el líder se abandona, repiten y uno pasa a líder). El instante de la caché
+//! se toma al terminar, como el Python.
+//!
+//! Un `Decline` también se guarda durante el mismo TTL (revisión final, I1):
+//! con una incertidumbre persistente, cada sondeo repetiría el cómputo
+//! entero (≈ 50–70 procesos de tmux contra el servidor de las sesiones vivas)
+//! para acabar reenviando. Reenviar siempre es correcto, así que la salida no
+//! cambia. `Failure` y `Timeout` no se guardan: el Python tampoco cachea sus
+//! excepciones, y cada sondeo responde su 500/504 como él.
 use super::{StateFault, States};
 use std::{
     future::Future,
@@ -21,10 +28,13 @@ enum Flight {
     Abandoned,
 }
 
+/// El último resultado que se puede repetir: un éxito o un `Decline`.
+type Cached = Result<Arc<States>, StateFault>;
+
 #[derive(Default)]
 struct Inner {
     at_ms: i64,
-    items: Option<Arc<States>>,
+    last: Option<Cached>,
     /// Vuelo en curso y su número (el `is flight` del Python).
     flight: Option<(u64, watch::Receiver<Flight>)>,
     next: u64,
@@ -53,7 +63,7 @@ impl Drop for Guard<'_> {
 
 /// Lo que decide la entrada bajo el candado.
 enum Role {
-    Hit(Arc<States>),
+    Hit(Cached),
     Follow(watch::Receiver<Flight>),
     Lead(u64, watch::Sender<Flight>),
 }
@@ -72,10 +82,10 @@ impl StatesCache {
 
     fn enter(&self, now_ms: &NowMs) -> Role {
         let mut inner = self.lock();
-        if let Some(items) = &inner.items
+        if let Some(last) = &inner.last
             && now_ms() - inner.at_ms < TTL_MS
         {
-            return Role::Hit(items.clone());
+            return Role::Hit(last.clone());
         }
         if let Some((_, rx)) = &inner.flight {
             return Role::Follow(rx.clone());
@@ -95,7 +105,7 @@ impl StatesCache {
     {
         loop {
             match self.enter(now_ms) {
-                Role::Hit(items) => return Ok(items),
+                Role::Hit(last) => return last,
                 Role::Follow(mut rx) => {
                     let seen = rx
                         .wait_for(|f| !matches!(f, Flight::Running))
@@ -117,9 +127,9 @@ impl StatesCache {
                     let tx = guard.tx.take();
                     {
                         let mut inner = self.lock();
-                        if let Ok(items) = &result {
+                        if matches!(result, Ok(_) | Err(StateFault::Decline)) {
                             inner.at_ms = now_ms();
-                            inner.items = Some(items.clone());
+                            inner.last = Some(result.clone());
                         }
                         if inner.flight.as_ref().is_some_and(|(f, _)| *f == id) {
                             inner.flight = None;
@@ -131,6 +141,46 @@ impl StatesCache {
                     return result;
                 }
             }
+        }
+    }
+}
+
+/// Como mucho una línea por minuto en el journal con la causa de un `Decline`
+/// de GET `/state` (revisión final, I1): sin ella, un reenvío persistente no
+/// deja rastro. La causa es la fase del cómputo, nunca datos de los panes.
+const DECLINE_LOG_MS: i64 = 60_000;
+
+#[derive(Default)]
+pub struct DeclineLog {
+    /// Instante de la última línea y `Decline`s callados desde entonces.
+    inner: Mutex<Option<(i64, u64)>>,
+}
+
+impl DeclineLog {
+    /// La línea que toca escribir por un `Decline` en `now_ms`, o `None` si ya
+    /// se escribió una en el último minuto (y entonces se cuenta).
+    pub fn line(&self, now_ms: i64, cause: &str) -> Option<String> {
+        let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        match inner.as_mut() {
+            Some((at, quiet)) if (*at..at.saturating_add(DECLINE_LOG_MS)).contains(&now_ms) => {
+                *quiet = quiet.saturating_add(1);
+                None
+            }
+            last => {
+                let quiet = last.map_or(0, |(_, quiet)| *quiet);
+                *inner = Some((now_ms, 0));
+                Some(format!(
+                    "comandos dash: GET /state declina y se reenvía al heredado (fase: {cause}; \
+                     {quiet} más callados desde la línea anterior; como mucho una línea por minuto)"
+                ))
+            }
+        }
+    }
+
+    /// Escribe la línea en stderr si toca.
+    pub fn note(&self, now_ms: i64, cause: &str) {
+        if let Some(line) = self.line(now_ms, cause) {
+            eprintln!("{line}");
         }
     }
 }
@@ -197,5 +247,65 @@ mod tests {
         // Vigente: no recalcula.
         assert_eq!(cache.get(&now, compute).await.unwrap().body, "bien");
         assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn declines_are_cached_for_the_ttl() {
+        // Revisión final, I1: dos sondeos dentro de 1,2 s tras un `Decline`
+        // hacen un solo cómputo; vencido el TTL, se recalcula.
+        let cache = StatesCache::default();
+        let calls = AtomicUsize::new(0);
+        let clock = Arc::new(std::sync::atomic::AtomicI64::new(1_000));
+        let shared = clock.clone();
+        let now = move || shared.load(Ordering::SeqCst);
+        let compute = || async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Err(StateFault::Decline)
+        };
+        assert!(matches!(
+            cache.get(&now, compute).await,
+            Err(StateFault::Decline)
+        ));
+        clock.fetch_add(TTL_MS - 1, Ordering::SeqCst);
+        assert!(matches!(
+            cache.get(&now, compute).await,
+            Err(StateFault::Decline)
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        clock.fetch_add(1, Ordering::SeqCst);
+        assert!(matches!(
+            cache.get(&now, compute).await,
+            Err(StateFault::Decline)
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn failures_are_not_cached() {
+        // Un 500/504 se recalcula en cada sondeo, como el Python.
+        let cache = StatesCache::default();
+        let calls = AtomicUsize::new(0);
+        let now = || 1_000;
+        let compute = || async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Err(StateFault::Failure)
+        };
+        assert!(cache.get(&now, compute).await.is_err());
+        assert!(cache.get(&now, compute).await.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn decline_log_is_throttled_to_one_line_per_minute() {
+        let log = DeclineLog::default();
+        let first = log.line(1_000, "tarjetas").unwrap();
+        assert!(first.contains("fase: tarjetas"), "{first}");
+        assert!(first.contains("0 más callados"), "{first}");
+        assert_eq!(log.line(1_001, "tarjetas"), None);
+        assert_eq!(log.line(1_000 + DECLINE_LOG_MS - 1, "escaneo"), None);
+        let next = log.line(1_000 + DECLINE_LOG_MS, "escaneo").unwrap();
+        assert!(next.contains("fase: escaneo"), "{next}");
+        assert!(next.contains("2 más callados"), "{next}");
+        assert_eq!(log.line(1_000 + DECLINE_LOG_MS + 1, "escaneo"), None);
     }
 }

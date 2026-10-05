@@ -24,6 +24,8 @@ use std::sync::{Arc, Mutex};
 /// rastreador de configuración, el contexto de sugerencias y el vuelo único.
 pub struct Engine {
     pub(crate) cache: cache::StatesCache,
+    /// La línea limitada con la causa de un `Decline` (revisión final, I1).
+    pub(crate) declines: cache::DeclineLog,
     pub(crate) context: context::Context,
     pub(crate) tracker: Mutex<StateTracker>,
     pub(crate) shared: Arc<Mutex<gather::Blocking>>,
@@ -33,6 +35,7 @@ impl Default for Engine {
     fn default() -> Self {
         Self {
             cache: cache::StatesCache::default(),
+            declines: cache::DeclineLog::default(),
             context: context::Context::default(),
             tracker: gather::new_tracker(),
             shared: Arc::default(),

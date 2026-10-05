@@ -85,6 +85,21 @@ pub async fn answer(native: &Arc<Native>, request: &Request) -> Answer {
         );
     }
     let id = raw.as_str().ok_or_else(failure)?.to_owned();
+    // Reclamo, lanzamiento y cierre en su propia tarea: si el cliente se va a
+    // mitad, también con el reclamo en el worker, soltar la petición no deja la
+    // fila en `launching` sin lanzador (el reintento esperaría 15 s y daría 409
+    // hasta que venciera la concesión de 30 s) ni mata el `tmux` del scope. El
+    // hilo del Python también termina aunque el cliente se vaya.
+    let job = tokio::spawn({
+        let native = native.clone();
+        async move { claim_and_launch(&native, id, scope).await }
+    });
+    job.await.map_err(|_| failure())?
+}
+
+/// El bucle de reclamos de `quick_terminal_request` y, con un reclamo
+/// propio, el lanzamiento y el cierre.
+async fn claim_and_launch(native: &Native, id: String, scope: Program) -> Answer {
     let seconds = native.options().clock_seconds.clone();
     let deadline = seconds() + WAIT_SECONDS;
     let terminal = loop {
@@ -114,14 +129,7 @@ pub async fn answer(native: &Arc<Native>, request: &Request) -> Answer {
             Err(_) => return Err(failure()),
         }
     };
-    // Lanzamiento y cierre en su propia tarea: si el cliente se va a mitad,
-    // soltar la petición no mata el `tmux` del scope ni deja la fila en
-    // `launching` (el hilo del Python terminaría igual).
-    let job = tokio::spawn({
-        let native = native.clone();
-        async move { launch_and_finish(&native, id, terminal, scope).await }
-    });
-    job.await.map_err(|_| failure())?
+    launch_and_finish(native, id, terminal, scope).await
 }
 
 /// `launch` + `_finish` + la respuesta, tras un reclamo propio. Aquí ya no se

@@ -563,3 +563,67 @@ async fn suggestion_context_routes_failure_skips_legacy_and_is_remembered() {
     assert_eq!(legacy.requests().len(), 2);
     assert!(!ctx.failing(NOW_MS + 5_001));
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn state_persistent_decline_is_cached_for_the_ttl() {
+    // Revisión final, I1: con una incertidumbre persistente (un registro con
+    // un sustituto suelto), el segundo sondeo dentro de 1,2 s se reenvía sin
+    // repetir el trabajo de tmux; vencido el TTL, se recalcula.
+    let home = TestHome::new("state-decline-cache");
+    let Some(wrapper) = seed_needing_context(&home) else {
+        return;
+    };
+    home.write(
+        "state/c.json",
+        r#"{"session":"s","detail":"\ud800","ts":3}"#,
+    );
+    let legacy = FakeLegacy::start().await;
+    let clock = Arc::new(AtomicI64::new(NOW_MS));
+    let mut opts = home.options();
+    opts.tmux.program.path = wrapper;
+    let shared = clock.clone();
+    opts.clock = Arc::new(move || shared.load(Ordering::SeqCst));
+    let front = front(&home, legacy.port, opts).await;
+    assert_eq!(
+        get(front.port, "/state").await.text(),
+        r#"{"legacy": true}"#
+    );
+    let calls = tmux_calls(&home);
+    assert!(calls > 0, "el primer cómputo no llamó a tmux");
+    clock.fetch_add(1_199, Ordering::SeqCst);
+    assert_eq!(
+        get(front.port, "/state").await.text(),
+        r#"{"legacy": true}"#
+    );
+    assert_eq!(tmux_calls(&home), calls, "el Decline vigente se recalculó");
+    clock.fetch_add(1, Ordering::SeqCst);
+    assert_eq!(
+        get(front.port, "/state").await.text(),
+        r#"{"legacy": true}"#
+    );
+    assert!(tmux_calls(&home) > calls, "vencido el TTL debía recalcular");
+    let forwarded = legacy
+        .requests()
+        .iter()
+        .filter(|l| l.starts_with("GET /state"))
+        .count();
+    assert_eq!(forwarded, 3);
+    assert!(!home.hooks().join("app-tab-models.json").exists());
+    front.stop().await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn suggestion_context_other_status_declines_and_is_remembered() {
+    use comandos_server::dash::native::states::context::Context;
+    // Revisión final, M2: solo el 500 de la excepción de la función es el
+    // `except` del Python; un 404 (o 401, 502…) del heredado declina y se
+    // recuerda como un fallo, sin dar sugerencias distintas en silencio.
+    let home = TestHome::new("state-ctx-404");
+    let legacy = FixedLegacy::start(404, r#"{"error": "No encontrado"}"#).await;
+    let mut opts = home.options();
+    opts.legacy = std::net::SocketAddr::from(([127, 0, 0, 1], legacy.port));
+    let ctx = Context::default();
+    assert!(ctx.get(&opts, &json!({}), NOW_MS).await.is_err());
+    assert!(ctx.failing(NOW_MS + 4_999));
+    assert_eq!(legacy.requests().len(), 2);
+}

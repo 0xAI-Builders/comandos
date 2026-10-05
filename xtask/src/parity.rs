@@ -835,6 +835,9 @@ fn spawn(name: &'static str, mut cmd: Command, e: &SpawnEnv, log: &Path) -> Resu
         .env_remove("COMANDOS_STATE_DB")
         .env_remove("COMANDOS_USAGE_DB")
         .env_remove(NATIVE_ENV_OF_FRONT)
+        // La carpeta de las terminales rápidas tampoco: sin esto,
+        // `d-quick-barra` crearía carpetas en la del desarrollador.
+        .env_remove("COMANDOS_QUICK_TERMINAL_BASE")
         .env("XDG_STATE_HOME", e.home.join(".local/state"))
         .env("XDG_RUNTIME_DIR", e.tmux)
         .env("HOME", e.home)

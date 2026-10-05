@@ -610,3 +610,59 @@ async fn quick_terminal_abandoned_request_still_finishes() {
     assert_eq!(fake_scope_calls(&home).len(), 1);
     native.shutdown().await;
 }
+
+/// Revisión final, M1: un cliente que se va mientras el reclamo espera en el
+/// worker (la base está tomada por otra conexión) no deja la fila en
+/// `launching` sin lanzador: el reclamo, el lanzamiento y el cierre siguen y
+/// la fila pasa a `ready` con una sola shell.
+#[tokio::test(flavor = "current_thread")]
+async fn quick_terminal_abandoned_during_claim_still_finishes() {
+    use comandos_server::{
+        Request,
+        dash::native::{Native, NativeRoute},
+    };
+    if !tmux_available() {
+        eprintln!("tmux no está instalado: se salta");
+        return;
+    }
+    let home = TestHome::new("quick-abandon-claim");
+    let native = Arc::new(Native::new(opts(&home)));
+    // Abre (y migra) la base antes de tomarla.
+    assert!(native.with_state(|_| ()).await.is_ok());
+    let blocker = rusqlite::Connection::open(home.state_db()).unwrap();
+    blocker.execute_batch("BEGIN IMMEDIATE").unwrap();
+    let body = r#"{"requestId":"req-reclamo","place":"sidebar"}"#;
+    let request = Request {
+        method: http::Method::POST,
+        target: "/terminal/quick".into(),
+        peer: "127.0.0.1:12345".parse().unwrap(),
+        headers: vec![],
+        data: Some(serde_json::from_str(body).unwrap()),
+        body: bytes::Bytes::copy_from_slice(body.as_bytes()),
+        internal_producer: false,
+    };
+    let cut = timeout(
+        Duration::from_millis(300),
+        native.dispatch(NativeRoute::QuickTerminal, &request),
+    )
+    .await;
+    assert!(
+        cut.is_err(),
+        "la petición se soltó con el reclamo en espera"
+    );
+    blocker.execute_batch("COMMIT").unwrap();
+    let mut state = None;
+    for _ in 0..100 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        state = rows(&home)
+            .into_iter()
+            .find(|(id, _, _)| id == "req-reclamo")
+            .map(|(_, state, _)| state);
+        if state.as_deref() == Some("ready") {
+            break;
+        }
+    }
+    assert_eq!(state.as_deref(), Some("ready"), "{:?}", rows(&home));
+    assert_eq!(fake_scope_calls(&home).len(), 1, "una sola shell");
+    native.shutdown().await;
+}

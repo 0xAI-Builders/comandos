@@ -200,9 +200,25 @@ fn session_labels(
 }
 
 /// GET `/state` sin caché: los ocho pasos de la tarea, en orden. Nada se
-/// escribe si algo declinó o falló antes del final.
+/// escribe si algo declinó o falló antes del final. Un `Decline` deja una
+/// línea en el journal con la fase en que ocurrió (como mucho una por minuto).
 pub async fn compute(native: &Native) -> Result<States, StateFault> {
+    let mut phase = "inicio";
+    let result = steps(native, &mut phase).await;
+    if matches!(result, Err(StateFault::Decline)) {
+        native
+            .states
+            .declines
+            .note((native.options().clock)(), phase);
+    }
+    result
+}
+
+/// Los pasos de `compute`; `phase` nombra el que está en curso (solo para la
+/// línea del journal: no lleva datos de panes, rutas ni cuentas).
+async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, StateFault> {
     let opts = native.options();
+    *phase = "sin carril de uso o sin raíz del checkout";
     // Sin carril de uso, cada tarjeta con agente acabaría declinando: se
     // reenvía antes de tocar tmux.
     if !native.usage.enabled() || opts.repo_root.is_none() {
@@ -211,11 +227,13 @@ pub async fn compute(native: &Native) -> Result<States, StateFault> {
     // Con un fallo del contexto recordado (R3) el cómputo acabaría declinando
     // si alguna tarjeta lo necesita: se reenvía antes del trabajo de tmux y
     // `/proc`, para que un heredado lento o caído no lo repita en cada sondeo.
+    *phase = "fallo del contexto de sugerencias recordado";
     if native.states.context.failing((opts.clock)()) {
         return Err(StateFault::Decline);
     }
     let now = (opts.clock)() as f64 / 1000.0;
     // 1. `tmux_pane_inventory()`.
+    *phase = "inventario de panes";
     let listed = opts
         .tmux
         .run(&["list-panes", "-a", "-F", PANE_FORMAT])
@@ -227,10 +245,12 @@ pub async fn compute(native: &Native) -> Result<States, StateFault> {
         Vec::new()
     };
     // 2. Escaneo bloqueante.
+    *phase = "escaneo (registro, /proc, registros de estado, motor-results, tiers, pestañas)";
     let shared = native.states.shared.clone();
     let scan_opts = opts.clone();
     let scanned = blocking(move || scan(&scan_opts, panes, &shared)).await?;
     // 3. `session_labels()`: `tmux_sessions()` sin capturar sus excepciones.
+    *phase = "sesiones de tmux";
     let live = light::tmux_sessions(&opts.tmux).await?;
     let labels = session_labels(scanned.tabs, &live, &scanned.history);
     // 4. Tarjetas con los efectos reales.
@@ -252,9 +272,11 @@ pub async fn compute(native: &Native) -> Result<States, StateFault> {
         labels,
         records: scanned.records,
     };
+    *phase = "tarjetas (pantalla, transcripts, cuentas, observación)";
     let mut items = cards::build(&inputs, &effects).await?;
     // 5. Sugerencias: el contexto solo si alguna tarjeta lo consultaría.
     let motor = scanned.motor;
+    *phase = "contexto de sugerencias";
     let context = if suggest::needs_context(&items, &motor)? {
         native
             .states
@@ -264,11 +286,14 @@ pub async fn compute(native: &Native) -> Result<States, StateFault> {
     } else {
         Arc::new(SuggestContext::default())
     };
+    *phase = "sugerencias";
     suggest::annotate_all(&mut items, &context, &motor, now)?;
     // 6. Orden final y proyección de modelos.
+    *phase = "orden y modelos de pestaña";
     cards::sort_items(&mut items)?;
     let models = tab_models::tab_models(&items, &registry, &motor, &scanned.tiers, now)?;
     // 7. Serializar antes de escribir: nada se escribe si algo declinó.
+    *phase = "serialización";
     let items = Value::Array(items);
     let body = response_dumps(&items).map_err(|_| StateFault::Decline)?;
     response_dumps(&models).map_err(|_| StateFault::Decline)?;

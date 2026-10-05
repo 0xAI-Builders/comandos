@@ -74,6 +74,9 @@ async fn start(dash: &Path) -> Server {
     let mut cfg: DashConfig = parse_args(&[], &home, Some("1")).unwrap();
     cfg.dash_dir = dash.to_path_buf();
     cfg.token = b"token-de-prueba".to_vec();
+    // Sin lo nativo, como `dash_boot` y `dash_forward`: con `true` quedarían
+    // cableados el tmux, el ssh y el `systemd-run` reales de `for_home`.
+    cfg.native = false;
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let (stop, shutdown) = watch::channel(false);

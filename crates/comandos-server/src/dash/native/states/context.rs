@@ -3,11 +3,14 @@
 //!
 //! `guard` y la latencia salen del heredado (D1): GET `/usage/guard` es
 //! exactamente `token_guard_with_forecast()` y GET `/usage/analytics?days=7`,
-//! `experiment_analytics(USAGE_DB, 7)`. Un status distinto de 200 es el
-//! `except` del Python (`{}` / tabla vacía). Heredado caído, plazo vencido o
-//! un 200 que no se puede leer como el Python (p. ej. un sustituto suelto): no se sabe qué vería el Python
-//! → declinar, y el fallo se recuerda unos segundos para no repetir la espera
-//! en cada sondeo (R3). Las rutas se calculan en Rust (`selectable_routes`).
+//! `experiment_analytics(USAGE_DB, 7)`. Solo las respuestas que el heredado da
+//! cuando esa función lanza son el `except` del Python (`{}` / tabla vacía):
+//! el 500 y el 504 de `_guard_request` y, en la analítica, el 400 de su
+//! `except ValueError`. Cualquier otro status (401, 403, 404, 502…), heredado
+//! caído, plazo vencido o un 200 que no se puede leer como el Python (p. ej.
+//! un sustituto suelto): no se sabe qué vería el Python → declinar, y el fallo
+//! se recuerda unos segundos para no repetir la espera en cada sondeo (R3).
+//! Las rutas se calculan en Rust (`selectable_routes`).
 use super::{StateFault, suggest::SuggestContext, suggest::latency_from};
 use crate::dash::native::{NativeOptions, subrequest};
 use comandos_core::json::workspace_loads;
@@ -94,8 +97,8 @@ impl Context {
             }
         };
         let (guard, latency) = tokio::join!(
-            legacy_json(opts, "/usage/guard"),
-            legacy_json(opts, "/usage/analytics?days=7"),
+            legacy_json(opts, "/usage/guard", false),
+            legacy_json(opts, "/usage/analytics?days=7", true),
         );
         let (Ok(guard), Ok(latency)) = (guard, latency) else {
             self.remember_failure(now_ms);
@@ -112,16 +115,48 @@ impl Context {
     }
 }
 
-/// `Ok(Some(valor))` con 200 y JSON legible; `Ok(None)` con otro status (el
-/// `except` del Python); `Err` si no hay respuesta o el 200 no se puede leer.
-async fn legacy_json(opts: &NativeOptions, target: &str) -> Result<Option<Value>, ()> {
+/// `Ok(Some(valor))` con 200 y JSON legible; `Ok(None)` con la respuesta de
+/// la excepción de la función (el `except` del Python); `Err` si no hay
+/// respuesta, el 200 no se puede leer o el status no corresponde a esa
+/// excepción. `value_error`: la ruta captura `ValueError` con un 400.
+async fn legacy_json(
+    opts: &NativeOptions,
+    target: &str,
+    value_error: bool,
+) -> Result<Option<Value>, ()> {
     match subrequest::get(opts.legacy, &opts.legacy_token, target, SUBREQUEST_TIMEOUT).await {
         Ok((200, body)) => {
             let text = std::str::from_utf8(&body).map_err(|_| ())?;
             workspace_loads(text).map(Some).map_err(|_| ())
         }
-        Ok(_) => Ok(None),
-        Err(_) => Err(()),
+        Ok((status, body)) if python_except(status, &body, value_error) => Ok(None),
+        Ok(_) | Err(_) => Err(()),
+    }
+}
+
+/// La respuesta del heredado cuando la función de la ruta lanza: `_fail` de
+/// `_guard_request` (`{"error": "Error interno del tablero"}` con 500,
+/// `{"error": "Tiempo de espera agotado"}` con 504, ambos excepciones que el
+/// `except Exception` de `_suggestion_context` captura) o, si la ruta lo
+/// tiene, el 400 `{"error": str(e)}` de su `except ValueError`.
+fn python_except(status: u16, body: &[u8], value_error: bool) -> bool {
+    let Some(Value::Object(map)) = std::str::from_utf8(body)
+        .ok()
+        .and_then(|text| workspace_loads(text).ok())
+    else {
+        return false;
+    };
+    let Some(Value::String(message)) = map.get("error") else {
+        return false;
+    };
+    if map.len() != 1 {
+        return false;
+    }
+    match status {
+        500 => message == "Error interno del tablero",
+        504 => message == "Tiempo de espera agotado",
+        400 => value_error,
+        _ => false,
     }
 }
 
@@ -160,4 +195,35 @@ async fn routes(opts: &NativeOptions, registry: Value) -> Result<BTreeSet<String
     })
     .await
     .map_err(|_| StateFault::Failure)?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::python_except;
+
+    #[test]
+    fn only_the_function_exception_is_the_python_except() {
+        let internal = br#"{"error": "Error interno del tablero"}"#;
+        let timeout = br#"{"error": "Tiempo de espera agotado"}"#;
+        let value = br#"{"error": "invalid literal"}"#;
+        assert!(python_except(500, internal, false));
+        assert!(python_except(504, timeout, false));
+        assert!(python_except(400, value, true));
+        // Otro status u otro cuerpo: no se sabe qué vería el Python.
+        assert!(!python_except(400, value, false));
+        assert!(!python_except(500, timeout, false));
+        assert!(!python_except(
+            500,
+            br#"{"error": "Error interno del tablero", "x": 1}"#,
+            false
+        ));
+        assert!(!python_except(401, internal, true));
+        assert!(!python_except(
+            403,
+            br#"{"error": "Host no permitido"}"#,
+            true
+        ));
+        assert!(!python_except(404, internal, true));
+        assert!(!python_except(502, b"Bad Gateway", true));
+    }
 }

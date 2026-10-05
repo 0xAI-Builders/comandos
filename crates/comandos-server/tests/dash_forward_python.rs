@@ -2,6 +2,7 @@
 //! Pedir al Python directo y pedir al frente debe dar el mismo status,
 //! `Content-Type`, `Content-Length` y cuerpo, con y sin token remoto.
 //! Sin `python3` la prueba se salta con un aviso (no `#[ignore]`).
+mod support;
 use comandos_server::{
     dash::{DashConfig, parse_args, transport_config},
     serve,
@@ -61,7 +62,10 @@ fn repo() -> PathBuf {
 }
 
 /// HOME aislado como `tests/dash_harness.py`: `app-tabs.json` vacío, token
-/// fijo en 0600, `TMUX_TMPDIR` privado y sin `$TMUX`.
+/// fijo en 0600, `TMUX_TMPDIR` privado y sin `$TMUX`. Con el fakebin del
+/// oráculo delante del `PATH` (tmux, `systemctl` y `systemd-run` son `true`,
+/// ssh es `false`), un `XDG_RUNTIME_DIR` propio y sin DBus ni pantalla: el
+/// Python nunca alcanza el tmux, el systemd ni la sesión reales.
 fn launch(port: u16) -> Legacy {
     let home = std::env::temp_dir().join(format!("cmd-dash-py-{}", std::process::id()));
     let _ = fs::remove_dir_all(&home);
@@ -75,6 +79,16 @@ fn launch(port: u16) -> Legacy {
     }
     let tmux = home.join("tmux-tmp");
     fs::create_dir_all(&tmux).unwrap();
+    let fakebin = home.join("fakebin");
+    support::oracle::fake_effects(&fakebin);
+    support::oracle::fake_tmux_true(&fakebin);
+    let runtime = home.join("xdg-runtime");
+    fs::create_dir_all(&runtime).unwrap();
+    let path = format!(
+        "{}:{}",
+        fakebin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
     let stderr = fs::File::create(home.join("cc-dash.err")).unwrap();
     let repo = repo();
     let child = Command::new("python3")
@@ -84,6 +98,15 @@ fn launch(port: u16) -> Legacy {
         .env_remove("TMUX")
         .env_remove("COMANDOS_STATE_DB")
         .env_remove("COMANDOS_USAGE_DB")
+        .env_remove("COMANDOS_QUICK_TERMINAL_BASE")
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("CODEX_HOME")
+        .env_remove("GROK_HOME")
+        .env_remove("DBUS_SESSION_BUS_ADDRESS")
+        .env_remove("DISPLAY")
+        .env_remove("WAYLAND_DISPLAY")
+        .env("PATH", &path)
+        .env("XDG_RUNTIME_DIR", &runtime)
         .env("XDG_STATE_HOME", home.join(".local/state"))
         .env("HOME", &home)
         .env("TMUX_TMPDIR", &tmux)

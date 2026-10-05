@@ -23,6 +23,46 @@ impl Drop for Oracle {
     }
 }
 
+/// Los ejecutables con efectos fuera del HOME de la prueba (terminal web,
+/// tailscale, systemd, sonido, ventanas) como enlaces a `true` en `fakebin`,
+/// igual que `xtask parity`; `ssh -O check` nunca alcanza el ssh real ni sus
+/// sockets de control: falla siempre, como el `/no-existe/ssh` de
+/// `TestHome::options`. El `tmux` lo pone cada llamador.
+pub fn fake_effects(fakebin: &Path) {
+    std::fs::create_dir_all(fakebin).unwrap();
+    for name in [
+        "systemctl",
+        "wmctrl",
+        "cc-webterm",
+        "cc-webterm-attach",
+        "systemd-run",
+        "tailscale",
+        "notify-send",
+        "pw-play",
+        "paplay",
+        "spd-say",
+        "piper",
+        "xdg-open",
+    ] {
+        let link = fakebin.join(name);
+        if !link.exists() {
+            std::os::unix::fs::symlink("/bin/true", &link).unwrap();
+        }
+    }
+    let ssh = fakebin.join("ssh");
+    if !ssh.exists() {
+        std::os::unix::fs::symlink("/bin/false", &ssh).unwrap();
+    }
+}
+
+/// `tmux` como enlace a `true`: el Python nunca alcanza ningún servidor.
+pub fn fake_tmux_true(fakebin: &Path) {
+    let link = fakebin.join("tmux");
+    if !link.exists() {
+        std::os::unix::fs::symlink("/bin/true", &link).unwrap();
+    }
+}
+
 pub async fn oracle(home: &TestHome) -> Option<Oracle> {
     let python = Command::new("python3")
         .args(["-c", "import sys"])
@@ -47,33 +87,8 @@ pub async fn oracle(home: &TestHome) -> Option<Oracle> {
     // oráculo no ve el systemd ni el DBus de la sesión real.
     let fakebin = home.root.join("fakebin");
     let runtime = home.root.join("xdg-runtime");
-    std::fs::create_dir_all(&fakebin).unwrap();
     std::fs::create_dir_all(&runtime).unwrap();
-    for name in [
-        "systemctl",
-        "wmctrl",
-        "cc-webterm",
-        "cc-webterm-attach",
-        "systemd-run",
-        "tailscale",
-        "notify-send",
-        "pw-play",
-        "paplay",
-        "spd-say",
-        "piper",
-        "xdg-open",
-    ] {
-        let link = fakebin.join(name);
-        if !link.exists() {
-            std::os::unix::fs::symlink("/bin/true", &link).unwrap();
-        }
-    }
-    // `ssh -O check` del Python nunca alcanza el ssh real ni sus sockets de
-    // control: falla siempre, como el `/no-existe/ssh` de `TestHome::options`.
-    let ssh = fakebin.join("ssh");
-    if !ssh.exists() {
-        std::os::unix::fs::symlink("/bin/false", &ssh).unwrap();
-    }
+    fake_effects(&fakebin);
     // El `tmux` del oráculo va siempre con `-S` al socket privado de la
     // prueba: solo `TMUX_TMPDIR` no basta (tmux 3.2a cae en el servidor real
     // del usuario si ese directorio desaparece).
@@ -118,6 +133,7 @@ pub async fn oracle(home: &TestHome) -> Option<Oracle> {
         .env_remove("TMUX")
         .env_remove("COMANDOS_STATE_DB")
         .env_remove("COMANDOS_USAGE_DB")
+        .env_remove("COMANDOS_QUICK_TERMINAL_BASE")
         .env_remove("CLAUDE_CONFIG_DIR")
         .env_remove("CODEX_HOME")
         .env_remove("GROK_HOME")
@@ -167,36 +183,11 @@ pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> 
     let fakebin = home.join("fakebin");
     let runtime = home.join("xdg-runtime");
     let tmux = home.join("tmux");
-    for dir in [&fakebin, &runtime, &tmux] {
+    for dir in [&runtime, &tmux] {
         std::fs::create_dir_all(dir).unwrap();
     }
-    for name in [
-        "systemctl",
-        "wmctrl",
-        "cc-webterm",
-        "cc-webterm-attach",
-        "systemd-run",
-        "tailscale",
-        "notify-send",
-        "pw-play",
-        "paplay",
-        "spd-say",
-        "piper",
-        "xdg-open",
-        "tmux",
-        "ssh",
-    ] {
-        let link = fakebin.join(name);
-        if !link.exists() {
-            std::os::unix::fs::symlink("/bin/true", &link).unwrap();
-        }
-    }
-    // `ssh -O check` del Python nunca alcanza el ssh real ni sus sockets de
-    // control: falla siempre, como el `/no-existe/ssh` de `TestHome::options`.
-    let ssh = fakebin.join("ssh");
-    if !ssh.exists() {
-        std::os::unix::fs::symlink("/bin/false", &ssh).unwrap();
-    }
+    fake_effects(&fakebin);
+    fake_tmux_true(&fakebin);
     let path = format!(
         "{}:{}",
         fakebin.display(),
@@ -220,6 +211,7 @@ pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> 
         .env_remove("GROK_HOME")
         .env_remove("COMANDOS_STATE_DB")
         .env_remove("COMANDOS_USAGE_DB")
+        .env_remove("COMANDOS_QUICK_TERMINAL_BASE")
         .env_remove("DBUS_SESSION_BUS_ADDRESS")
         .env_remove("DISPLAY")
         .env_remove("WAYLAND_DISPLAY")
