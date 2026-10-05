@@ -125,6 +125,32 @@ async fn schema_newer_while_live_forwards_once() {
     let _ = fs::remove_dir_all(&base);
 }
 
+/// Un fallo de la puerta que no dice nada del esquema (aquí, la tabla de
+/// versiones ausente un momento; en vivo, un `SQLITE_BUSY`) declina esa
+/// petición sin apagar el conjunto: la siguiente se responde en nativo.
+#[tokio::test]
+async fn transient_gate_error_declines_once_and_native_stays() {
+    let base = root("transient-gate");
+    let native = Native::new(options(&base));
+    assert!(native.ready().await);
+    let db = base.join("state/app-state.sqlite3");
+    let conn = rusqlite::Connection::open(&db).unwrap();
+    conn.execute_batch("ALTER TABLE schema_migrations RENAME TO schema_migrations_aside")
+        .unwrap();
+    assert!(matches!(
+        native.with_state(|_| ()).await,
+        Err(Fault::Decline)
+    ));
+    assert!(native.enabled(), "un fallo pasajero no apaga el conjunto");
+    assert_eq!(native.refusals(), 0, "sin línea de apagado");
+    conn.execute_batch("ALTER TABLE schema_migrations_aside RENAME TO schema_migrations")
+        .unwrap();
+    assert!(matches!(native.with_state(|_| 7).await, Ok(7)));
+    assert!(native.ready().await);
+    native.shutdown().await;
+    let _ = fs::remove_dir_all(&base);
+}
+
 #[tokio::test]
 async fn unopenable_database_disables_native() {
     let base = root("unopen");

@@ -27,6 +27,11 @@ fn failure() -> Fault {
 type StateParts = (Value, Value, (bool, Value));
 
 pub async fn answer(native: &Native) -> Answer {
+    // Con el carril de uso apagado la respuesta acabaría reenviada: se declina
+    // antes de calcular nada en el worker de app-state (cc-app sondea cada 2 s).
+    if !native.usage.enabled() {
+        return Err(Fault::Decline);
+    }
     // La cola no tiene efectos: se lee primero para declinar antes de escribir.
     let queue = focus_queue(&native.options().hooks.join("focus-queue.jsonl"))?;
     let clock = native.options().clock.clone();

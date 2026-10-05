@@ -354,7 +354,8 @@ impl Native {
 
     /// Un trabajo sobre la base. `Err(Fault::Decline)` si el conjunto está
     /// apagado, si la puerta de esquema rechaza ahora o si el worker ya se
-    /// retiró (y en esos dos casos lo apaga). Solo el trabajo que entró en
+    /// retiró. Un esquema más nuevo o desconocido y un worker retirado lo
+    /// apagan; un fallo pasajero de la puerta declina solo esta petición. Solo el trabajo que entró en
     /// pánico responde `HandlerError::Failure`; los demás se reenvían.
     pub async fn with_state<T, F>(&self, job: F) -> Result<T, Fault>
     where
@@ -383,10 +384,17 @@ impl Native {
             .await;
         match called {
             Ok(Ok(value)) => Ok(value),
-            Ok(Err(refusal)) => {
+            // Solo un esquema más nuevo o desconocido apaga el conjunto.
+            Ok(Err(
+                refusal @ (Refusal::Newer { .. } | Refusal::Incompatible(_) | Refusal::Retired),
+            )) => {
                 self.disable(&refusal);
                 Err(Fault::Decline)
             }
+            // Un fallo al consultar las versiones (p. ej. `SQLITE_BUSY`) no
+            // dice nada del esquema: se reenvía esta petición y el conjunto
+            // sigue (`admit` corre antes del trabajo, que no llegó a empezar).
+            Ok(Err(Refusal::Unopened(_))) => Err(Fault::Decline),
             // El trabajo corrió y no respondió: entró en pánico y el worker
             // se retira. Esta petición es la única que recibe el 500.
             Err(error) if started.load(Ordering::Acquire) => {
