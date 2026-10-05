@@ -11,7 +11,7 @@
 //! un sustituto suelto): no se sabe qué vería el Python → declinar, y el fallo
 //! se recuerda unos segundos para no repetir la espera en cada sondeo (R3).
 //! Las rutas se calculan en Rust (`selectable_routes`).
-use super::{StateFault, suggest::SuggestContext, suggest::latency_from};
+use super::{StateFault, serial::Serial, suggest::SuggestContext, suggest::latency_from};
 use crate::dash::native::{NativeOptions, subrequest};
 use comandos_core::json::workspace_loads;
 use comandos_runtime::{accounts, providers};
@@ -74,6 +74,7 @@ impl Context {
     pub async fn get(
         &self,
         opts: &NativeOptions,
+        serial: &Serial,
         registry: &Value,
         now_ms: i64,
     ) -> Result<Arc<SuggestContext>, StateFault> {
@@ -89,7 +90,7 @@ impl Context {
         // Las rutas primero (locales: registro, cuentas y el sondeo de 300 ms
         // del proxy): si fallan, no se pregunta al heredado, y el fallo se
         // recuerda igual que el del heredado.
-        let routes = match routes(opts, registry.clone()).await {
+        let routes = match routes(opts, serial, registry.clone()).await {
             Ok(routes) => routes,
             Err(fault) => {
                 self.remember_failure(now_ms);
@@ -165,11 +166,15 @@ fn python_except(status: u16, body: &[u8], value_error: bool) -> bool {
 /// con `providers::which`, `cc-model-proxy` con `shutil.which` (A5) y el
 /// sondeo del proxy (async, 300 ms). Lo que el frente no puede reproducir
 /// con certeza declina.
-async fn routes(opts: &NativeOptions, registry: Value) -> Result<BTreeSet<String>, StateFault> {
+async fn routes(
+    opts: &NativeOptions,
+    serial: &Serial,
+    registry: Value,
+) -> Result<BTreeSet<String>, StateFault> {
     let repo = opts.repo_root.clone().ok_or(StateFault::Decline)?;
-    let port = tokio::task::spawn_blocking(move || providers::proxy_port(&repo))
-        .await
-        .map_err(|_| StateFault::Failure)??;
+    let port = serial
+        .run(move || Ok(providers::proxy_port(&repo)?))
+        .await?;
     let alive = tokio::time::timeout(
         PROXY_TIMEOUT,
         tokio::net::TcpStream::connect(SocketAddr::from(([127, 0, 0, 1], port))),
@@ -181,20 +186,26 @@ async fn routes(opts: &NativeOptions, registry: Value) -> Result<BTreeSet<String
         opts.cwd.clone(),
         opts.search_path.clone(),
     );
-    tokio::task::spawn_blocking(move || {
-        let Ok(discovered) =
-            accounts::public_accounts(&registry, &accounts::Paths::new(&home, &cwd))
-        else {
-            return Ok(BTreeSet::new());
-        };
-        let available = |name: &str| providers::which(name, search.as_deref(), &home).is_some();
-        let installed = providers::which_path("cc-model-proxy", search.as_deref()).is_some();
-        let facts =
-            providers::runtime_facts(&registry, &discovered, &available, &home, installed, alive)?;
-        Ok(providers::selectable_routes(&registry, &facts)?)
-    })
-    .await
-    .map_err(|_| StateFault::Failure)?
+    serial
+        .run(move || {
+            let Ok(discovered) =
+                accounts::public_accounts(&registry, &accounts::Paths::new(&home, &cwd))
+            else {
+                return Ok(BTreeSet::new());
+            };
+            let available = |name: &str| providers::which(name, search.as_deref(), &home).is_some();
+            let installed = providers::which_path("cc-model-proxy", search.as_deref()).is_some();
+            let facts = providers::runtime_facts(
+                &registry,
+                &discovered,
+                &available,
+                &home,
+                installed,
+                alive,
+            )?;
+            Ok(providers::selectable_routes(&registry, &facts)?)
+        })
+        .await
 }
 
 #[cfg(test)]
