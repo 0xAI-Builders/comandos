@@ -226,14 +226,25 @@ fn dash_children_do_not_inherit_the_front_malloc_tuning() {
     );
     let port = free_port();
     let tunables = comandos_core::malloc_tuning::PRODUCTION_GLIBC_TUNABLES;
-    let mut child = base(&home)
-        .env("GLIBC_TUNABLES", tunables)
-        .env("PATH", path)
-        .args(["dash", &port.to_string(), "--no-open"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
+    // Un fallo a mitad no deja el frente vivo: se mata al soltarlo.
+    struct Front(std::process::Child);
+    impl Drop for Front {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let mut front = Front(
+        base(&home)
+            .env("GLIBC_TUNABLES", tunables)
+            .env("PATH", path)
+            .args(["dash", &port.to_string(), "--no-open"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    let child = &mut front.0;
     let stdout = child.stdout.take().unwrap();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
