@@ -1,12 +1,18 @@
 use comandos_core::{analytics_week as a, json::workspace_loads};
 use serde_json::{Value, json};
-fn week(input: &Value) -> a::WeekInput<'_> {
+fn rows(input: &Value) -> a::WeekRows {
+    a::WeekRows::from_rows(
+        input["turns"].as_array().unwrap(),
+        input["spans"].as_array().unwrap(),
+        comandos_core::focus::float(&input["now"]).unwrap(),
+    )
+}
+fn week<'a>(input: &'a Value, rows: &'a a::WeekRows) -> a::WeekInput<'a> {
     a::WeekInput {
         now: comandos_core::focus::float(&input["now"]).unwrap(),
         offset: input["offset"].as_i64().unwrap(),
         limits: input["limits"].as_array().unwrap(),
-        turns: input["turns"].as_array().unwrap(),
-        spans: input["spans"].as_array().unwrap(),
+        rows,
         snapshots: input["snapshots"].as_array().unwrap(),
         records: input["records"].as_array().unwrap(),
         tz_name: input["tz_name"].as_str().unwrap(),
@@ -56,7 +62,7 @@ fn analytics_fixed_source_reference_preserves_dst_and_account_models() {
     for (case, row) in f.as_array().unwrap().iter().enumerate() {
         let input = &row["input"];
         let result = match row["kind"].as_str().unwrap() {
-            "week" => a::build_week(&week(input)),
+            "week" => a::build_week(&week(input, &rows(input))),
             "sessions" => a::sessions(
                 input["turns"].as_array().unwrap(),
                 input["spans"].as_array().unwrap(),
@@ -90,7 +96,7 @@ fn analytics_fixed_source_reference_preserves_dst_and_account_models() {
 #[test]
 fn empty_week_has_all_observable_model_fields_without_accounts() {
     let input = json!({"now":1790854560.,"offset":0,"limits":[],"turns":[],"spans":[],"snapshots":[],"records":[],"tz_name":a::TZ});
-    let out = a::build_week(&week(&input)).unwrap();
+    let out = a::build_week(&week(&input, &rows(&input))).unwrap();
     assert_eq!(out["days"][0], json!(["2026-10-01", "jue", "1 oct"]));
     assert_eq!(out["week"]["label"], "24 sep – 1 oct");
     for key in ["accounts", "sessions", "waste", "pomodoros"] {
@@ -131,4 +137,68 @@ fn assert_json_close(actual: &Value, expected: &Value, path: &str) {
         }
         _ => assert_eq!(actual, expected, "{path}"),
     }
+}
+#[test]
+fn week_rows_do_not_depend_on_turn_and_span_interleaving() {
+    let turns = vec![
+        json!({"provider":"claude","account":"main","git_root":"/r/a","pane_pwd":"/r/a","started":1790850000,"finished":1790850100,"tokens":10}),
+        json!({"provider":"codex","account":"w","git_root":null,"pane_pwd":"/r/b","started":1790851000,"finished":1790851200,"tokens":20}),
+    ];
+    let spans = vec![
+        json!({"provider":"grok","account":"main","git_root":"/r/c","started":1790849000,"finished":1790849500}),
+        json!({"provider":"claude","account":"main","git_root":"/r/a","started":1790850100,"finished":1790850300}),
+    ];
+    let input = json!({"now":1790854560.,"offset":0,"limits":[],"snapshots":[],"records":[],"tz_name":a::TZ});
+    let ordered = a::WeekRows::from_rows(&turns, &spans, 1790854560.);
+    let mut mixed = a::WeekRows::new(1790854560.);
+    mixed.push_span(&spans[0]);
+    mixed.push_turn(&turns[0]);
+    mixed.push_span(&spans[1]);
+    mixed.push_turn(&turns[1]);
+    let out = a::build_week(&week(&input, &ordered)).unwrap();
+    assert_eq!(out, a::build_week(&week(&input, &mixed)).unwrap());
+    assert_eq!(
+        out["sessions"].as_array().unwrap().len(),
+        a::sessions(&turns, &spans, a::TZ)
+            .unwrap()
+            .iter()
+            .filter(|s| s["d"] == "2026-10-01")
+            .count()
+    );
+}
+#[test]
+fn sidebar_counts_a_new_opencode_account_only_from_the_turn_that_adds_it() {
+    let accounts = vec![json!({"id":"claude:main","provider":"claude","alias":"main"})];
+    // `opencode:w` + alias `main` y `opencode` + alias `w:main` dan la misma cuenta.
+    let turns = vec![
+        json!({"provider":"opencode:w","account":null,"finished":100,"tokens":7}),
+        json!({"provider":"codex","account":"x","finished":100,"tokens":"no es un número"}),
+        json!({"provider":"opencode","account":"w:main","finished":100,"tokens":5,"model":"m"}),
+        json!({"provider":"opencode:w","account":null,"finished":100,"tokens":11}),
+        json!({"provider":"claude","account":"main","finished":100,"tokens":3}),
+    ];
+    let out = a::sidebar_accounts(&accounts, &[], &turns, 100.).unwrap();
+    assert_eq!(out[1]["id"], "opencode:w:main");
+    assert_eq!(out[1]["alias"], "w:main");
+    assert_eq!(
+        out[1]["measured"],
+        json!({"sessions":0,"tokens":16,"costUsd":0.0,"models":["m"]})
+    );
+    assert_eq!(out[0]["measured"]["tokens"], 3);
+    // Un turno contado que lanza gana al de después; uno que no se cuenta, no lanza.
+    let mut bad = turns.clone();
+    bad.push(json!({"provider":"claude","account":"main","finished":"x"}));
+    bad.insert(
+        4,
+        json!({"provider":"claude","account":"main","finished":100,"tokens":[1]}),
+    );
+    let err = a::sidebar_accounts(&accounts, &[], &bad, 100.).unwrap_err();
+    assert_eq!(err.kind, "TypeError");
+    let rows = a::WeekRows::from_rows(&bad, &[], 100.);
+    assert_eq!(
+        a::sidebar_accounts_from(&accounts, &[], &rows)
+            .unwrap_err()
+            .kind,
+        "TypeError"
+    );
 }

@@ -667,3 +667,29 @@ fn undecodable_cells_are_errors() {
         Err(usage_read::ReadError::Undecodable)
     ));
 }
+
+/// `experiment_analytics` agrega las filas según las lee, pero como el Python
+/// (que lee todas antes): una fila no decodificable gana a un error anterior
+/// de la agregación.
+#[test]
+fn experiment_analytics_read_errors_win_over_earlier_aggregation_errors() {
+    let scratch = Scratch::new("analytics-order");
+    let conn = usage::open_usage_db_at(&scratch.0.join("u.sqlite")).unwrap();
+    usage::ensure_schema(&conn).unwrap();
+    let insert = "insert into usage_interactions(id,tmux_session,tmux_pane,finished_at_ms,duration_ms,\
+                  error_class,source,confidence,created_at) values(?,'s','%1',?,?,?,'t','exact',1)";
+    exec(
+        &conn,
+        insert,
+        params!["a", NOW_MS - 1000, "no es un entero", ""],
+    );
+    assert!(matches!(
+        usage_read::experiment_analytics(&conn, 7, "", NOW as f64),
+        Err(usage_read::ReadError::Raises)
+    ));
+    exec(&conn, insert, params!["b", NOW_MS - 500, 10, vec![0xffu8]]);
+    assert!(matches!(
+        usage_read::experiment_analytics(&conn, 7, "", NOW as f64),
+        Err(usage_read::ReadError::Undecodable)
+    ));
+}

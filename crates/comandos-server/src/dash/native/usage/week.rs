@@ -17,12 +17,12 @@ use super::super::{
 };
 use crate::{HandlerError, Reply, Request};
 use comandos_core::{
-    analytics_week::{self, WeekInput},
+    analytics_week::{self, WeekInput, WeekRows},
     focus::policy_v1,
 };
 use comandos_store::{
     focus, pomodoro,
-    usage_read::{self, ReadError},
+    usage_read::{self, ReadError, WeekRow},
 };
 use http::StatusCode;
 use serde_json::Value;
@@ -107,8 +107,9 @@ fn read_fault(error: ReadError) -> Fault {
     }
 }
 
-/// Lo que sale de la base de uso en un trabajo: turnos, tramos y fotos.
-type UsageRows = (Vec<Value>, Vec<Value>, Vec<Value>);
+/// Lo que sale de la base de uso en un trabajo: turnos y tramos ya reducidos
+/// (`WeekRows`) y las fotos de cuota.
+type UsageRows = (WeekRows, Vec<Value>);
 
 async fn payload(native: &Native, offset: i64, sidebar: bool) -> Answer {
     let now = (native.options().clock)() as f64 / 1000.0;
@@ -116,16 +117,23 @@ async fn payload(native: &Native, offset: i64, sidebar: bool) -> Answer {
     // `int(since)` de `quota_snapshots`: trunca hacia cero.
     let snapshots_since = (now - SNAPSHOT_LOOKBACK_S) as i64;
     // El Python vivo lee siempre las columnas anchas (`cost_usd, model,
-    // tmux_session, agent`), con o sin `sidebar`: mismo texto SQL.
+    // tmux_session, agent`), con o sin `sidebar`: mismo texto SQL. Las filas se
+    // reducen al leerlas (no se guardan: la base real tiene decenas de miles de
+    // turnos en la ventana); un error del cálculo queda guardado para `build`,
+    // tras las lecturas, como en el Python.
     let rows = native
         .usage
         .with(move |u| -> Result<UsageRows, ReadError> {
-            let (turns, spans) = usage_read::week_rows(&u.conn, since, true)?;
+            let mut rows = WeekRows::new(now);
+            usage_read::each_week_row(&u.conn, since, true, |kind, row| match kind {
+                WeekRow::Turn => rows.push_turn(row),
+                WeekRow::Span => rows.push_span(row),
+            })?;
             let snapshots = usage_read::quota_snapshots(&u.conn, snapshots_since)?;
-            Ok((turns, spans, snapshots))
+            Ok((rows, snapshots))
         })
         .await?;
-    let (turns, spans, snapshots) = rows.map_err(read_fault)?;
+    let (rows, snapshots) = rows.map_err(read_fault)?;
     // `pomodoro.records(pomodoro_store().conn, int(since * 1000), None)`.
     let from_ms = (since * 1000.0) as i64;
     let clock = native.options().clock.clone();
@@ -154,8 +162,7 @@ async fn payload(native: &Native, offset: i64, sidebar: bool) -> Answer {
                 now,
                 offset,
                 limits: &limits,
-                turns: &turns,
-                spans: &spans,
+                rows: &rows,
                 snapshots: &snapshots,
                 records: &records,
                 tz_name: analytics_week::TZ,
@@ -186,7 +193,7 @@ fn build(input: &WeekInput<'_>, sidebar: bool) -> Answer {
             .get("accounts")
             .and_then(Value::as_array)
             .ok_or_else(failure)?;
-        let side = analytics_week::sidebar_accounts(accounts, input.limits, input.turns, input.now)
+        let side = analytics_week::sidebar_accounts_from(accounts, input.limits, input.rows)
             .map_err(|_| failure())?;
         result
             .as_object_mut()
