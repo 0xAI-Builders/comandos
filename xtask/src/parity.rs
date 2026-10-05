@@ -618,9 +618,24 @@ fn make_fakebin(dir: &Path) -> Result<(), String> {
 /// El guion del `tmux` del fakebin: `-S` al socket de `TMUX_TMPDIR`, o
 /// `exit 1` si falta `TMUX_TMPDIR` o no hay tmux real.
 fn tmux_wrapper(real: Option<&str>, uid: u32) -> String {
+    slow_tmux_wrapper(real, uid, 0)
+}
+
+/// `tmux_wrapper` con `list-panes` retrasado `delay_ms` (tmux lento en
+/// `poll --shadow --slow-tmux-ms`); 0 es el envoltorio de siempre.
+fn slow_tmux_wrapper(real: Option<&str>, uid: u32, delay_ms: u64) -> String {
+    let pause = if delay_ms == 0 {
+        String::new()
+    } else {
+        format!(
+            "case \"$1\" in list-panes) sleep {}.{:03};; esac\n",
+            delay_ms / 1000,
+            delay_ms % 1000
+        )
+    };
     match real {
         Some(real) => format!(
-            "#!/bin/sh\n[ -n \"$TMUX_TMPDIR\" ] || exit 1\n\
+            "#!/bin/sh\n[ -n \"$TMUX_TMPDIR\" ] || exit 1\n{pause}\
              exec {real} -S \"$TMUX_TMPDIR/tmux-{uid}/default\" \"$@\"\n"
         ),
         None => "#!/bin/sh\necho 'xtask: sin tmux real; el envoltorio no corre' >&2\nexit 1\n"
@@ -777,11 +792,6 @@ fn start_tmux_pair(
     ))
 }
 
-/// `tmux` contra el servidor privado de `socket_dir` y solo contra ese: el
-/// socket va explícito con `-S`, no solo por `TMUX_TMPDIR`. tmux 3.2a ignora
-/// en silencio un `TMUX_TMPDIR` cuyo directorio no existe y cae en
-/// `/tmp/tmux-<uid>/default`, el servidor real del usuario; con `-S` un
-/// directorio borrado da «no server running» y nunca un `kill-server` ajeno.
 /// El entorno del cliente tmux que puede arrancar el servidor privado: si lo
 /// arranca, el servidor y todo panel nacen con el HOME de la copia, `PATH`
 /// mínimo y `SHELL=/bin/sh`, sin escritorio, DBus ni el HOME real (un
@@ -796,6 +806,11 @@ fn confined(mut cmd: Command, socket_dir: &Path, home: &Path) -> Command {
     cmd
 }
 
+/// `tmux` contra el servidor privado de `socket_dir` y solo contra ese: el
+/// socket va explícito con `-S`, no solo por `TMUX_TMPDIR`. tmux 3.2a ignora
+/// en silencio un `TMUX_TMPDIR` cuyo directorio no existe y cae en
+/// `/tmp/tmux-<uid>/default`, el servidor real del usuario; con `-S` un
+/// directorio borrado da «no server running» y nunca un `kill-server` ajeno.
 fn private_tmux(socket_dir: &Path) -> Command {
     let socket = socket_dir
         .join(format!("tmux-{}", nix::unistd::getuid().as_raw()))
@@ -1141,6 +1156,26 @@ impl Stack {
         &self._root.path
     }
 
+    /// Retrasa `delay_ms` cada `tmux list-panes` de los hijos (el frente y el
+    /// heredado buscan `tmux` en el PATH, que empieza por el fakebin). El
+    /// envoltorio sigue pasando `-S` al socket privado.
+    pub fn slow_tmux(&self, delay_ms: u64) -> Result<(), String> {
+        let path = self._root.path.join("fakebin").join("tmux");
+        let script = slow_tmux_wrapper(
+            ["/usr/bin/tmux", "/bin/tmux", "/usr/local/bin/tmux"]
+                .into_iter()
+                .find(|p| Path::new(p).is_file()),
+            nix::unistd::getuid().as_raw(),
+            delay_ms,
+        );
+        // Escribir aparte y renombrar: nunca se ejecuta un guion a medias.
+        let staged = path.with_extension("lento");
+        fs::write(&staged, script).map_err(|e| e.to_string())?;
+        fs::set_permissions(&staged, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .map_err(|e| e.to_string())?;
+        fs::rename(&staged, &path).map_err(|e| e.to_string())
+    }
+
     /// Rutas que el frente reenvió al heredado (de su traza), con su cuenta.
     pub fn forwarded_summary(&self) -> Vec<(String, usize)> {
         let text = fs::read_to_string(&self.front_log).unwrap_or_default();
@@ -1480,7 +1515,7 @@ pub fn run(args: &[String]) -> Result<i32, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_clock, parse_args, parse_fixture, tmux_wrapper};
+    use super::{normalize_clock, parse_args, parse_fixture, slow_tmux_wrapper, tmux_wrapper};
 
     const TAB_REGISTER: &str = r#"{"name":"t-tab-register","method":"POST","path":"/tab-register","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"p2f","label":"Proyecto"},"setup":[["new-session","-d","-s","p2f"]],"files":["app-tabs.json","app-tabs-meta.json"],"volatile":[],"expect":"same"}"#;
 
@@ -1539,6 +1574,18 @@ mod tests {
         assert_ne!(
             normalize_clock(r#"{"label": "x"}"#),
             normalize_clock(r#"{"label": "y"}"#)
+        );
+    }
+
+    #[test]
+    fn slow_wrapper_delays_only_list_panes_and_keeps_the_socket() {
+        let slow = slow_tmux_wrapper(Some("/usr/bin/tmux"), 1000, 1500);
+        assert!(slow.contains("case \"$1\" in list-panes) sleep 1.500;; esac"));
+        assert!(slow.contains("[ -n \"$TMUX_TMPDIR\" ] || exit 1"));
+        assert!(slow.contains("exec /usr/bin/tmux -S \"$TMUX_TMPDIR/tmux-1000/default\" \"$@\""));
+        assert_eq!(
+            slow_tmux_wrapper(Some("/usr/bin/tmux"), 1000, 0),
+            tmux_wrapper(Some("/usr/bin/tmux"), 1000)
         );
     }
 

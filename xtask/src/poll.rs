@@ -166,83 +166,114 @@ pub const SHADOW_PANES: usize = 3;
 /// pista de Codex, cuentas y el transcript de Claude), no solo panes `cat`.
 pub const SHADOW_AGENTS: [(&str, &str); 2] = [("poll-claude", "claude"), ("poll-codex", "codex")];
 
-/// Crea las sesiones de `SHADOW_AGENTS` en el tmux privado del frente, la
-/// sesión de Claude (`~/.claude/sessions`) con su transcript y un registro de
-/// estado por agente, todo en el HOME temporal del frente y su heredado.
-fn seed_agents(stack: &crate::parity::Stack) -> Result<(), String> {
+/// Los `count` agentes falsos de `--shadow`: los dos de `SHADOW_AGENTS` y,
+/// con `--agents N`, más sesiones que alternan Claude y Codex
+/// (`poll-claude-2`, `poll-codex-3`, …) para acercarse a la carga real
+/// (decenas de agentes vivos a la vez).
+pub fn shadow_agents(count: usize) -> Vec<(String, &'static str)> {
+    (0..count)
+        .map(|i| match SHADOW_AGENTS.get(i) {
+            Some((session, agent)) => ((*session).to_string(), *agent),
+            None if i % 2 == 0 => (format!("poll-claude-{i}"), "claude"),
+            None => (format!("poll-codex-{i}"), "codex"),
+        })
+        .collect()
+}
+
+/// Crea las sesiones de `agents` en el tmux privado del frente, una sesión de
+/// Claude (`~/.claude/sessions`) con su transcript por cada agente Claude y un
+/// registro de estado por agente, todo en el HOME temporal del frente y su
+/// heredado. `extra_panes` ventanas `cat` se reparten entre esas sesiones.
+fn seed_agents(
+    stack: &crate::parity::Stack,
+    agents: &[(String, &'static str)],
+    extra_panes: usize,
+) -> Result<(), String> {
     let home = stack.front_home()?;
     let home_text = home.to_str().ok_or("HOME temporal no UTF-8")?;
     let bin = stack.root().join("agents");
     std::fs::create_dir_all(&bin).map_err(|e| e.to_string())?;
-    for (session, agent) in SHADOW_AGENTS {
-        let exe = bin.join(agent);
+    for kind in ["claude", "codex"] {
+        let exe = bin.join(kind);
         std::fs::copy("/bin/sleep", &exe).map_err(|e| format!("{}: {e}", exe.display()))?;
+    }
+    for (session, agent) in agents {
         let cmd = format!(
             "env -i HOME={home_text} PATH=/usr/bin:/bin {} 86400",
-            exe.display()
+            bin.join(agent).display()
         );
         stack.front_tmux(&["new-session", "-d", "-s", session, "-c", home_text, &cmd])?;
     }
+    if !agents.is_empty() {
+        for i in 0..extra_panes {
+            let (session, _) = &agents[i % agents.len()];
+            stack.front_tmux(&["new-window", "-d", "-t", &format!("={session}:"), "cat"])?;
+        }
+    }
     thread::sleep(Duration::from_millis(300));
-    let pid = stack.front_tmux_output(&[
-        "display-message",
-        "-p",
-        "-t",
-        &format!("={}:", SHADOW_AGENTS[0].0),
-        "#{pane_pid}",
-    ])?;
-    let pid: i64 = pid
-        .trim()
-        .parse()
-        .map_err(|_| format!("pane_pid ilegible: {pid:?}"))?;
     let write = |path: PathBuf, text: String| -> Result<(), String> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
         std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))
     };
-    write(
-        home.join(".claude/sessions/poll.json"),
-        serde_json::json!({"pid": pid, "sessionId": "poll-conv", "cwd": home_text}).to_string(),
-    )?;
-    write(
-        home.join(".claude/projects/poll/poll-conv.jsonl"),
-        format!(
-            "{}\n",
-            serde_json::json!({
-                "type": "assistant", "uuid": "u1", "sessionId": "poll-conv",
-                "message": {"model": "claude-sonnet-5"},
-            })
-        ),
-    )?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let state = home.join(".claude/hooks/state");
-    write(
-        state.join("poll-claude.json"),
-        serde_json::json!({
-            "session": "poll-claude", "agent": "claude", "status": "working",
-            "detail": "poll", "ts": now,
-        })
-        .to_string(),
-    )?;
-    write(
-        state.join("poll-codex.json"),
-        serde_json::json!({
-            "session": "poll-codex", "agent": "codex", "status": "waiting",
-            "detail": "¿sigo?", "ts": now,
-        })
-        .to_string(),
-    )?;
+    for (session, agent) in agents {
+        if *agent == "claude" {
+            let pid = stack.front_tmux_output(&[
+                "display-message",
+                "-p",
+                "-t",
+                &format!("={session}:0"),
+                "#{pane_pid}",
+            ])?;
+            let pid: i64 = pid
+                .trim()
+                .parse()
+                .map_err(|_| format!("pane_pid ilegible: {pid:?}"))?;
+            // El primero conserva los nombres de siempre (`poll.json`, `poll-conv`).
+            let (file, conv) = if session == SHADOW_AGENTS[0].0 {
+                ("poll".to_string(), "poll-conv".to_string())
+            } else {
+                (session.clone(), format!("{session}-conv"))
+            };
+            write(
+                home.join(format!(".claude/sessions/{file}.json")),
+                serde_json::json!({"pid": pid, "sessionId": conv, "cwd": home_text}).to_string(),
+            )?;
+            write(
+                home.join(format!(".claude/projects/poll/{conv}.jsonl")),
+                format!(
+                    "{}\n",
+                    serde_json::json!({
+                        "type": "assistant", "uuid": "u1", "sessionId": conv,
+                        "message": {"model": "claude-sonnet-5"},
+                    })
+                ),
+            )?;
+        }
+        let (status, detail) = if *agent == "claude" {
+            ("working", "poll")
+        } else {
+            ("waiting", "¿sigo?")
+        };
+        write(
+            state.join(format!("{session}.json")),
+            serde_json::json!({
+                "session": session, "agent": agent, "status": status,
+                "detail": detail, "ts": now,
+            })
+            .to_string(),
+        )?;
+    }
     println!(
-        "poll: agentes falsos en el tmux privado: {}",
-        SHADOW_AGENTS
-            .iter()
-            .map(|(s, a)| format!("{s} ({a})"))
-            .collect::<Vec<_>>()
-            .join(", ")
+        "poll: {} agentes falsos ({} Claude) y {extra_panes} ventanas `cat` extra en el tmux privado",
+        agents.len(),
+        agents.iter().filter(|(_, a)| *a == "claude").count(),
     );
     Ok(())
 }
@@ -340,6 +371,165 @@ fn spawn_pane_mix(
     })
 }
 
+/// Una petición medida: cuenta el envío, el error o el no-2xx y guarda la
+/// latencia bajo `key`.
+fn timed(stats: &Stats, key: &str, addr: &str, method: &str, path: &str, token: &str) {
+    timed_with(stats, key, addr, method, path, token, None);
+}
+
+fn timed_with(
+    stats: &Stats,
+    key: &str,
+    addr: &str,
+    method: &str,
+    path: &str,
+    token: &str,
+    body: Option<&str>,
+) {
+    stats.sent.fetch_add(1, Ordering::Relaxed);
+    let t = Instant::now();
+    let result = http(addr, method, path, token, body, Duration::from_secs(30));
+    let ms = t.elapsed().as_millis().min(u128::from(u32::MAX)) as u32;
+    stats
+        .latency
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .entry(key.to_string())
+        .or_default()
+        .push(ms);
+    match result {
+        Ok((st, _)) if (200..300).contains(&st) => {}
+        Ok(_) => {
+            stats.non_2xx.fetch_add(1, Ordering::Relaxed);
+        }
+        Err(_) => {
+            stats.errors.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+/// Un sondeador extra de GET `/state` a 1 Hz (como el tablero, el remoto y
+/// `cc-app` abiertos a la vez), desfasado `index × 137 ms` para no ir en fase.
+fn spawn_poller(
+    addr: &str,
+    token: &str,
+    minutes: u64,
+    t0: Instant,
+    index: usize,
+    stats: &Arc<Stats>,
+) -> thread::JoinHandle<()> {
+    let (addr, token, stats) = (addr.to_string(), token.to_string(), stats.clone());
+    let offset = (index as u64 * 137) % 1_000;
+    thread::spawn(move || {
+        let total = minutes * 60_000;
+        let mut tick = 0;
+        while offset + tick * 1_000 < total {
+            let due = t0 + Duration::from_millis(offset + tick * 1_000);
+            if let Some(wait) = due.checked_duration_since(Instant::now()) {
+                thread::sleep(wait);
+            }
+            timed(&stats, "GET /state@1Hz", &addr, "GET", "/state", &token);
+            tick += 1;
+        }
+    })
+}
+
+/// Cada 60 s (desde el segundo 5), una ola de `size` refrescos simultáneos de
+/// `term.html`: cada iframe de terminal hace a la vez POST `/terminal-panes`
+/// (`list` de su sesión) y GET `/tab-models?session=…`. Es lo que pasa cuando
+/// `cc-app` vuelve al frente: `visibilitychange` despierta todas sus pestañas
+/// de golpe, y cada `/terminal-panes` ocupa un hilo de bloqueo mientras espera
+/// a tmux.
+fn spawn_burst(
+    addr: &str,
+    token: &str,
+    minutes: u64,
+    t0: Instant,
+    size: usize,
+    sessions: Vec<String>,
+    stats: &Arc<Stats>,
+) -> thread::JoinHandle<()> {
+    let (addr, token, stats) = (addr.to_string(), token.to_string(), stats.clone());
+    thread::spawn(move || {
+        let total = minutes * 60_000;
+        let mut tick = 0;
+        while 5_000 + tick * 60_000 < total {
+            let due = t0 + Duration::from_millis(5_000 + tick * 60_000);
+            if let Some(wait) = due.checked_duration_since(Instant::now()) {
+                thread::sleep(wait);
+            }
+            let mut wave = Vec::new();
+            for i in 0..size {
+                let session = sessions
+                    .get(i % sessions.len().max(1))
+                    .cloned()
+                    .unwrap_or_else(|| "poll".to_string());
+                let (a, t, s) = (addr.clone(), token.clone(), stats.clone());
+                let body = panes_list(&session);
+                wave.push(thread::spawn(move || {
+                    timed_with(
+                        &s,
+                        "POST /terminal-panes (ola)",
+                        &a,
+                        "POST",
+                        "/terminal-panes",
+                        &t,
+                        Some(&body),
+                    );
+                }));
+                let (a, t, s) = (addr.clone(), token.clone(), stats.clone());
+                let path = format!("/tab-models?session={session}");
+                wave.push(thread::spawn(move || {
+                    timed_with(&s, "GET /tab-models (ola)", &a, "GET", &path, &t, None);
+                }));
+            }
+            // Mientras dura la ola, un estático cada 100 ms: si la ola acapara el
+            // pool de bloqueo, su lectura espera detrás.
+            for _ in 0..10 {
+                timed(
+                    &stats,
+                    STATIC_DURING_WAVE,
+                    &addr,
+                    "GET",
+                    "/term.html",
+                    &token,
+                );
+                thread::sleep(Duration::from_millis(100));
+            }
+            for t in wave {
+                let _ = t.join();
+            }
+            tick += 1;
+        }
+    })
+}
+
+/// Clave de latencia de los estáticos pedidos durante la ola.
+pub const STATIC_DURING_WAVE: &str = "GET /term.html (durante la ola)";
+
+/// Fallos de los criterios `--max-threads` y `--max-pss-mib` sobre las
+/// muestras `(minuto, Pss KiB, hilos)`; vacío si se cumplen.
+pub fn bound_failures(
+    samples: &[(u64, u64, Option<usize>)],
+    max_threads: Option<usize>,
+    max_pss_mib: Option<u64>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    for (minute, pss, threads) in samples {
+        if let (Some(max), Some(t)) = (max_threads, threads)
+            && t > &max
+        {
+            out.push(format!("minuto {minute}: {t} hilos > {max}"));
+        }
+        if let Some(max) = max_pss_mib
+            && *pss > max * 1024
+        {
+            out.push(format!("minuto {minute}: Pss {pss} KiB > {max} MiB"));
+        }
+    }
+    out
+}
+
 /// Hilos del proceso (`/proc/<pid>/task`); `None` si ya no existe.
 fn thread_count(pid: u32) -> Option<usize> {
     std::fs::read_dir(format!("/proc/{pid}/task"))
@@ -395,6 +585,22 @@ pub struct Opts {
     usage_db: Option<PathBuf>,
     /// Con `--shadow`: el frente arranca con `--no-native` (A/B contra la 2a).
     no_native: bool,
+    /// Con `--shadow`: agentes falsos (por defecto los dos de `SHADOW_AGENTS`).
+    agents: usize,
+    /// Con `--shadow`: ventanas `cat` extra repartidas entre los agentes.
+    extra_panes: usize,
+    /// Sondeadores extra de GET `/state` a 1 Hz (tablero, remoto y app a la vez).
+    pollers: usize,
+    /// Cada 60 s, una ola de `burst` iframes de terminal que refrescan a la vez.
+    burst: usize,
+    /// Criterio: hilos del frente como mucho esto en cada muestra (falla si no).
+    max_threads: Option<usize>,
+    /// Criterio: Pss del frente como mucho esto (MiB) en cada muestra.
+    max_pss_mib: Option<u64>,
+    /// Con `--shadow`: cada `tmux list-panes` del frente y del heredado tarda esto.
+    slow_tmux_ms: Option<u64>,
+    /// Criterio: p95 de los estáticos pedidos durante la ola como mucho esto (ms).
+    max_static_p95_ms: Option<u32>,
 }
 
 /// Opciones de `poll`; un error aquí es de uso (salida 2).
@@ -402,6 +608,13 @@ pub fn parse(args: &[String]) -> Result<Opts, String> {
     let (mut base, mut token, mut minutes, mut pid, mut out) = (None, None, None, None, None);
     let (mut shadow, mut hooks, mut comandos) = (false, None, None);
     let (mut state_db, mut usage_db, mut no_native) = (None, None, false);
+    let (mut agents, mut extra_panes, mut pollers, mut burst) = (None, None, 0, 0);
+    let (mut max_threads, mut max_pss_mib) = (None, None);
+    let (mut slow_tmux_ms, mut max_static_p95_ms) = (None, None);
+    let count = |a: &str, v: &str| {
+        v.parse::<usize>()
+            .map_err(|_| format!("{a}: {v:?} no es un entero"))
+    };
     let mut it = args.iter();
     while let Some(a) = it.next() {
         if a == "--shadow" {
@@ -423,12 +636,33 @@ pub fn parse(args: &[String]) -> Result<Opts, String> {
             "--comandos" => comandos = Some(PathBuf::from(v)),
             "--state-db" => state_db = Some(PathBuf::from(v)),
             "--usage-db" => usage_db = Some(PathBuf::from(v)),
+            "--agents" => agents = Some(count(a, v)?),
+            "--extra-panes" => extra_panes = Some(count(a, v)?),
+            "--pollers" => pollers = count(a, v)?,
+            "--burst" => burst = count(a, v)?,
+            "--max-threads" => max_threads = Some(count(a, v)?),
+            "--max-pss-mib" => max_pss_mib = Some(count(a, v)? as u64),
+            "--slow-tmux-ms" => slow_tmux_ms = Some(count(a, v)? as u64),
+            "--max-static-p95-ms" => {
+                max_static_p95_ms = Some(u32::try_from(count(a, v)?).unwrap_or(u32::MAX))
+            }
             other => return Err(format!("argumento desconocido: {other}")),
         }
     }
     // Sin pila aislada no hay frente que arrancar: estas opciones no tienen efecto.
-    if !shadow && (state_db.is_some() || usage_db.is_some() || no_native) {
-        return Err("--state-db, --usage-db y --no-native requieren --shadow".into());
+    if !shadow
+        && (state_db.is_some()
+            || usage_db.is_some()
+            || no_native
+            || agents.is_some()
+            || extra_panes.is_some()
+            || slow_tmux_ms.is_some())
+    {
+        return Err(
+            "--state-db, --usage-db, --no-native, --agents, --extra-panes y --slow-tmux-ms \
+             requieren --shadow"
+                .into(),
+        );
     }
     let shadow = if shadow {
         Some((hooks.ok_or("--shadow requiere --hooks")?, comandos))
@@ -453,6 +687,14 @@ pub fn parse(args: &[String]) -> Result<Opts, String> {
         state_db,
         usage_db,
         no_native,
+        agents: agents.unwrap_or(SHADOW_AGENTS.len()),
+        extra_panes: extra_panes.unwrap_or(0),
+        pollers,
+        burst,
+        max_threads,
+        max_pss_mib,
+        slow_tmux_ms,
+        max_static_p95_ms,
     })
 }
 
@@ -604,7 +846,11 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     s.front_tmux(&["split-window", "-d", "-t", session, "cat"])?;
                 }
             }
-            seed_agents(s)?;
+            seed_agents(s, &shadow_agents(o.agents), o.extra_panes)?;
+            if let Some(ms) = o.slow_tmux_ms {
+                s.slow_tmux(ms)?;
+                println!("poll: cada `tmux list-panes` de la pila tarda {ms} ms");
+            }
             SHADOW_SESSIONS[0]
         }
         None => "poll",
@@ -623,6 +869,22 @@ pub fn run(args: &[String]) -> Result<(), String> {
     }
     if stack.is_some() {
         handles.push(spawn_pane_mix(&addr, &token, o.minutes, t0, &stats));
+    }
+    for i in 0..o.pollers {
+        handles.push(spawn_poller(&addr, &token, o.minutes, t0, i, &stats));
+    }
+    if o.burst > 0 {
+        let sessions = if stack.is_some() {
+            shadow_agents(o.agents)
+                .into_iter()
+                .map(|(s, _)| s)
+                .collect()
+        } else {
+            vec!["poll".to_string()]
+        };
+        handles.push(spawn_burst(
+            &addr, &token, o.minutes, t0, o.burst, sessions, &stats,
+        ));
     }
 
     // Muestreo de memoria cada 60 s (y uno inicial en el minuto 0).
@@ -711,6 +973,24 @@ pub fn run(args: &[String]) -> Result<(), String> {
         println!("  {route:<28} {p50:>5} {p95:>5} {p99:>5} {n:>5}");
     }
     drop(table);
+    let samples: Vec<(u64, u64, Option<usize>)> = points
+        .iter()
+        .zip(&thread_points)
+        .map(|((m, pss), (_, t))| (*m, *pss, *t))
+        .collect();
+    let mut failures = bound_failures(&samples, o.max_threads, o.max_pss_mib);
+    if let Some(max) = o.max_static_p95_ms {
+        let mut table = stats.latency.lock().unwrap_or_else(|p| p.into_inner());
+        match table.get_mut(STATIC_DURING_WAVE) {
+            Some(samples) if !samples.is_empty() => {
+                let p95 = percentile(samples, 95.0);
+                if p95 > max {
+                    failures.push(format!("estáticos durante la ola: p95 {p95} ms > {max} ms"));
+                }
+            }
+            _ => failures.push("estáticos durante la ola: sin muestras (¿--burst 0?)".into()),
+        }
+    }
     if let Some(stack) = &stack {
         let forwarded = stack.forwarded_summary();
         println!(
@@ -721,7 +1001,14 @@ pub fn run(args: &[String]) -> Result<(), String> {
             println!("  {n:>4}  {route}");
         }
     }
-    Ok(())
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "criterios de ligereza incumplidos: {}",
+            failures.join("; ")
+        ))
+    }
 }
 
 fn path_only(p: &str) -> String {

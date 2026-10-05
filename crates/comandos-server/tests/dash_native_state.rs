@@ -319,7 +319,7 @@ async fn state_hung_tmux_answers_504_runtime_free() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn suggestion_context_legacy_500_is_empty_and_down_declines() {
-    use comandos_server::dash::native::states::context::Context;
+    use comandos_server::dash::native::states::{context::Context, serial::Serial};
     // Heredado caído → Decline (y el fallo se recuerda 5 s); heredado que
     // responde 500 → guard {} y latencia vacía, cacheado 60 s.
     let home = TestHome::new("state-ctx");
@@ -327,27 +327,46 @@ async fn suggestion_context_legacy_500_is_empty_and_down_declines() {
     opts.legacy = std::net::SocketAddr::from(([127, 0, 0, 1], dead_port()));
     let ctx = Context::default();
     let registry = json!({});
-    assert!(ctx.get(&opts, &registry, NOW_MS).await.is_err());
+    assert!(
+        ctx.get(&opts, &Serial::default(), &registry, NOW_MS)
+            .await
+            .is_err()
+    );
     let failing = FixedLegacy::start(500, r#"{"error": "Error interno del tablero"}"#).await;
     opts.legacy = std::net::SocketAddr::from(([127, 0, 0, 1], failing.port));
     // Dentro de la memoria del fallo: declina sin preguntar.
-    assert!(ctx.get(&opts, &registry, NOW_MS + 4_999).await.is_err());
+    assert!(
+        ctx.get(&opts, &Serial::default(), &registry, NOW_MS + 4_999)
+            .await
+            .is_err()
+    );
     assert!(failing.requests().is_empty());
     let t0 = NOW_MS + 5_000;
-    let got = ctx.get(&opts, &registry, t0).await.unwrap();
+    let got = ctx
+        .get(&opts, &Serial::default(), &registry, t0)
+        .await
+        .unwrap();
     assert_eq!(got.guard, json!({}));
     assert!(got.latency.is_empty());
     assert!(got.routes.is_empty());
     assert_eq!(failing.requests().len(), 2);
     drop(failing);
     // 60 s después sigue siendo el mismo (el heredado ya no existe).
-    assert!(ctx.get(&opts, &registry, t0 + 60_000).await.is_ok());
-    assert!(ctx.get(&opts, &registry, t0 + 60_001).await.is_err());
+    assert!(
+        ctx.get(&opts, &Serial::default(), &registry, t0 + 60_000)
+            .await
+            .is_ok()
+    );
+    assert!(
+        ctx.get(&opts, &Serial::default(), &registry, t0 + 60_001)
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn suggestion_context_unreadable_200_declines() {
-    use comandos_server::dash::native::states::context::Context;
+    use comandos_server::dash::native::states::{context::Context, serial::Serial};
     // C11: un 200 que el frente no puede leer como el Python (un sustituto
     // suelto, que `json` sí acepta) declina; `NaN` sí se lee (`workspace_loads`).
     let home = TestHome::new("state-ctx-unreadable");
@@ -356,7 +375,7 @@ async fn suggestion_context_unreadable_200_declines() {
     opts.legacy = std::net::SocketAddr::from(([127, 0, 0, 1], legacy.port));
     assert!(
         Context::default()
-            .get(&opts, &json!({}), NOW_MS)
+            .get(&opts, &Serial::default(), &json!({}), NOW_MS)
             .await
             .is_err()
     );
@@ -541,7 +560,7 @@ async fn state_tracker_commits_only_emitted_results() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn suggestion_context_routes_failure_skips_legacy_and_is_remembered() {
-    use comandos_server::dash::native::states::context::Context;
+    use comandos_server::dash::native::states::{context::Context, serial::Serial};
     // Revisión de la Tarea 5: las rutas se calculan antes de preguntar al
     // heredado; si fallan no hay subconsultas y el fallo se recuerda 5 s.
     let home = TestHome::new("state-ctx-routes");
@@ -552,14 +571,26 @@ async fn suggestion_context_routes_failure_skips_legacy_and_is_remembered() {
     let ctx = Context::default();
     let registry = json!({});
     assert!(!ctx.failing(NOW_MS));
-    assert!(ctx.get(&opts, &registry, NOW_MS).await.is_err());
+    assert!(
+        ctx.get(&opts, &Serial::default(), &registry, NOW_MS)
+            .await
+            .is_err()
+    );
     assert!(legacy.requests().is_empty());
     assert!(ctx.failing(NOW_MS + 4_999));
     opts.repo_root = repo;
-    assert!(ctx.get(&opts, &registry, NOW_MS + 4_999).await.is_err());
+    assert!(
+        ctx.get(&opts, &Serial::default(), &registry, NOW_MS + 4_999)
+            .await
+            .is_err()
+    );
     assert!(legacy.requests().is_empty());
     assert!(!ctx.failing(NOW_MS + 5_000));
-    assert!(ctx.get(&opts, &registry, NOW_MS + 5_000).await.is_ok());
+    assert!(
+        ctx.get(&opts, &Serial::default(), &registry, NOW_MS + 5_000)
+            .await
+            .is_ok()
+    );
     assert_eq!(legacy.requests().len(), 2);
     assert!(!ctx.failing(NOW_MS + 5_001));
 }
@@ -614,7 +645,7 @@ async fn state_persistent_decline_is_cached_for_the_ttl() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn suggestion_context_other_status_declines_and_is_remembered() {
-    use comandos_server::dash::native::states::context::Context;
+    use comandos_server::dash::native::states::{context::Context, serial::Serial};
     // Revisión final, M2: solo el 500 de la excepción de la función es el
     // `except` del Python; un 404 (o 401, 502…) del heredado declina y se
     // recuerda como un fallo, sin dar sugerencias distintas en silencio.
@@ -623,7 +654,11 @@ async fn suggestion_context_other_status_declines_and_is_remembered() {
     let mut opts = home.options();
     opts.legacy = std::net::SocketAddr::from(([127, 0, 0, 1], legacy.port));
     let ctx = Context::default();
-    assert!(ctx.get(&opts, &json!({}), NOW_MS).await.is_err());
+    assert!(
+        ctx.get(&opts, &Serial::default(), &json!({}), NOW_MS)
+            .await
+            .is_err()
+    );
     assert!(ctx.failing(NOW_MS + 4_999));
     assert_eq!(legacy.requests().len(), 2);
 }
