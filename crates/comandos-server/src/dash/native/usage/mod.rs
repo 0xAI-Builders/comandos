@@ -75,11 +75,18 @@ pub async fn answer(native: &Arc<Native>, route: UsageRoute, request: &Request) 
 /// GET `/usage/state` (bin/cc-dash:8450) con todos sus efectos, de los que quien
 /// responde es dueño (D1): `record_pane` (dentro de `compute`), lanzar la
 /// importación, lanzar el refresco de límites, los bordes de pane,
-/// `pane-models.txt` y los avisos de nivel. El único punto de declinar es el
-/// primer trabajo del carril de uso; antes de él no hay efectos.
+/// `pane-models.txt` y los avisos de nivel. Se declina antes de cualquier
+/// efecto: con la ruta apagada, con el carril de importación retirado (con
+/// efectos de uso) o en el primer trabajo del carril de uso.
 async fn usage_state(native: &Arc<Native>) -> Answer {
     // Ruta apagada (`USAGE_STATE_NATIVE = false`): el Python responde y es dueño.
     if !native.options().usage_state_native {
+        return Err(Fault::Decline);
+    }
+    // Con el carril de importación retirado el frente ya no importaría ni
+    // registraría panes: la vuelta entera es del Python, que sí lo hace. Aún no
+    // hubo ningún efecto (D1). En sombra no hay efectos y la ruta sigue nativa.
+    if native.options().usage_effects && !native.import_lane().enabled() {
         return Err(Fault::Decline);
     }
     let reply = match state::compute(native).await {

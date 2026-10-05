@@ -77,8 +77,9 @@ impl ImportOwner {
     }
 
     /// `refresh_local_usage(False)`: decide y lanza; nunca espera. Con el carril
-    /// de uso o el de importación apagados el Python es dueño de todo (D1, D10);
-    /// sin efectos de uso (sombra) no importa. `cards` son las tarjetas de
+    /// de uso o el de importación apagados el Python es dueño de todo (D1, D10):
+    /// `usage_state` reenvía la vuelta antes de llegar aquí, y esta guarda es
+    /// la segunda línea. Sin efectos de uso (sombra) no importa. `cards` son las tarjetas de
     /// `/state` (`None` si declinó: se omite `ensure_observed_configs`).
     pub fn maybe_start(
         self: &Arc<Self>,

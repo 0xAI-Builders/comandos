@@ -270,6 +270,60 @@ async fn grace_and_interval_gate_imports() {
     native.shutdown().await;
 }
 
+/// I1 de la revisión final: si el carril de importación se retira (un trabajo
+/// entra en pánico), GET /usage/state se reenvía entero al Python, que vuelve a
+/// ser dueño de la importación, de `record_pane` y de los bordes. Sin esto el
+/// frente seguía respondiendo con el uso congelado y nadie importaba.
+#[tokio::test]
+async fn import_lane_retired_forwards_usage_state() {
+    let home = TestHome::new("import-retired");
+    seed_usage(&home, "");
+    claude_line(&home, "m8");
+    let mut opts = home.options();
+    no_tmux(&mut opts);
+    opts.usage_import_grace_ms = 0;
+    let native = Arc::new(Native::new(opts));
+    // Un trabajo que entra en pánico retira el worker del carril de importación.
+    let panicked = native
+        .import_lane()
+        .with(|_| -> () { panic!("retiro de prueba del carril de importación") })
+        .await;
+    assert!(panicked.is_err());
+    assert!(!native.import_lane().enabled(), "el carril quedó retirado");
+    assert_eq!(usage_state(&native).await, None, "se reenvía al Python");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(turns(&home), 0, "el frente no importa");
+    let conn = rusqlite::Connection::open(home.usage_db()).unwrap();
+    let panes: i64 = conn
+        .query_row("select count(*) from usage_panes", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(panes, 0, "ni registra panes");
+    assert!(
+        !home.hooks().join("pane-models.txt").exists(),
+        "ni escribe bordes"
+    );
+    native.shutdown().await;
+}
+
+/// Sin efectos de uso (sombra) el carril de importación no importa: la ruta
+/// sigue siendo nativa aunque esté retirado.
+#[tokio::test]
+async fn import_lane_retired_in_shadow_still_answers() {
+    let home = TestHome::new("import-retired-shadow");
+    seed_usage(&home, "");
+    let mut opts = home.options();
+    no_tmux(&mut opts);
+    opts.usage_effects = false;
+    let native = Arc::new(Native::new(opts));
+    let _ = native
+        .import_lane()
+        .with(|_| -> () { panic!("retiro de prueba del carril de importación") })
+        .await;
+    assert!(!native.import_lane().enabled());
+    assert_eq!(usage_state(&native).await, Some(200));
+    native.shutdown().await;
+}
+
 #[tokio::test]
 async fn import_failure_keeps_generation() {
     let home = TestHome::new("import-failure");

@@ -266,7 +266,7 @@ impl UsageImportBackend {
 }
 
 impl LaneBackend for UsageImportBackend {
-    const ROUTES: &'static str = "la importación de uso de GET /usage/state";
+    const ROUTES: &'static str = "GET /usage/state y su importación de uso";
 
     fn open(path: &Path) -> Result<Self, Refusal> {
         UsageBackend::open(path).map(|b| Self { conn: b.conn })
