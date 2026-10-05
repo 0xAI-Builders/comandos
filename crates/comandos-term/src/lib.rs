@@ -13,5 +13,7 @@
 
 pub mod clock;
 pub mod engine;
+pub mod glyphs;
 pub mod osc;
 pub mod proto;
+pub mod render;
