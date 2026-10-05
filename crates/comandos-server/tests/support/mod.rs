@@ -7,7 +7,7 @@ use comandos_server::dash::{
     DashConfig,
     native::{
         NativeOptions,
-        tmux::{Program, Tmux},
+        tmux::{Program, Tmux, private_socket},
     },
     parse_args, serve_with,
 };
@@ -180,8 +180,12 @@ impl TestHome {
 
 impl Drop for TestHome {
     fn drop(&mut self) {
-        // Nunca el servidor tmux del usuario: el socket vive en tmux_dir.
+        // Nunca el servidor tmux del usuario: socket explícito con `-S`. Solo
+        // `TMUX_TMPDIR` no basta: si el directorio ya no existe, tmux cae en
+        // silencio al `/tmp/tmux-<uid>/default` real y el kill-server es suyo.
         let _ = Command::new("tmux")
+            .arg("-S")
+            .arg(private_socket(&self.tmux_dir()))
             .arg("kill-server")
             .env_remove("TMUX")
             .env("TMUX_TMPDIR", self.tmux_dir())

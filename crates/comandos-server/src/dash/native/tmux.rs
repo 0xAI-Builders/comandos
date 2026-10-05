@@ -6,6 +6,7 @@ use crate::HandlerError;
 use std::{
     ffi::OsString,
     io,
+    os::unix::fs::DirBuilderExt,
     path::{Path, PathBuf},
     process::Stdio,
     time::Duration,
@@ -83,6 +84,14 @@ pub async fn run_program(
     })
 }
 
+/// Ruta del socket que tmux usaría con `TMUX_TMPDIR=socket_dir`
+/// (`<socket_dir>/tmux-<uid>/default`), para pasarla explícita con `-S`.
+pub fn private_socket(socket_dir: &Path) -> PathBuf {
+    socket_dir
+        .join(format!("tmux-{}", nix::unistd::getuid().as_raw()))
+        .join("default")
+}
+
 #[derive(Debug, Clone)]
 pub struct Tmux {
     pub program: Program,
@@ -109,9 +118,27 @@ impl Tmux {
     /// Servidor privado de pruebas: nunca el del usuario. `-f /dev/null`: si esta
     /// llamada arranca el servidor, nace sin `~/.tmux.conf` (que lee
     /// `~/.claude/hooks` y corre `cc-status.sh` en la barra de estado).
+    ///
+    /// El socket va explícito con `-S`, no solo por `TMUX_TMPDIR`: tmux 3.2a
+    /// ignora en silencio un `TMUX_TMPDIR` cuyo directorio no existe y cae en
+    /// `/tmp/tmux-<uid>/default`, el servidor real del usuario. Con `-S` un
+    /// directorio borrado da «no server running», nunca un `kill-server` ajeno.
     pub fn private(socket_dir: &Path) -> Self {
+        let socket = private_socket(socket_dir);
+        if let Some(parent) = socket.parent() {
+            // 0700 como lo crea tmux: con bits de «otros» rechaza el directorio.
+            let _ = std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(parent);
+        }
         let mut program = Program::named("tmux");
-        program.prefix = vec!["-f".into(), "/dev/null".into()];
+        program.prefix = vec![
+            "-f".into(),
+            "/dev/null".into(),
+            "-S".into(),
+            socket.into_os_string(),
+        ];
         program.env.push(("TMUX_TMPDIR".into(), socket_dir.into()));
         program.env_remove.push("TMUX".into());
         Self {

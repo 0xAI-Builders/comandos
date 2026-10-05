@@ -10,7 +10,7 @@ use std::{
     fs,
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
-    os::unix::process::CommandExt,
+    os::unix::{fs::DirBuilderExt, process::CommandExt},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     thread,
@@ -681,10 +681,8 @@ fn tmux_available() -> bool {
 /// la configuración del usuario (sus `run-shell` y plugins nunca corren aquí).
 fn start_tmux(socket_dir: &Path, sessions: &[String]) -> Result<(), String> {
     for name in sessions {
-        let status = Command::new("tmux")
+        let status = private_tmux(socket_dir)
             .args(["-f", "/dev/null", "new-session", "-d", "-s", name, "cat"])
-            .env_remove("TMUX")
-            .env("TMUX_TMPDIR", socket_dir)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
@@ -698,10 +696,8 @@ fn start_tmux(socket_dir: &Path, sessions: &[String]) -> Result<(), String> {
 
 /// `#{session_activity}` (segundos enteros) de cada sesión del servidor privado.
 fn tmux_activity(socket_dir: &Path) -> Result<Vec<String>, String> {
-    let out = Command::new("tmux")
+    let out = private_tmux(socket_dir)
         .args(["list-sessions", "-F", "#{session_activity}"])
-        .env_remove("TMUX")
-        .env("TMUX_TMPDIR", socket_dir)
         .stderr(Stdio::null())
         .output()
         .map_err(|e| format!("tmux: {e}"))?;
@@ -748,11 +744,33 @@ fn start_tmux_pair(a: &Path, b: &Path, sessions: &[String]) -> Result<(), String
     ))
 }
 
-fn kill_tmux(socket_dir: &Path) {
-    let _ = Command::new("tmux")
-        .arg("kill-server")
+/// `tmux` contra el servidor privado de `socket_dir` y solo contra ese: el
+/// socket va explícito con `-S`, no solo por `TMUX_TMPDIR`. tmux 3.2a ignora
+/// en silencio un `TMUX_TMPDIR` cuyo directorio no existe y cae en
+/// `/tmp/tmux-<uid>/default`, el servidor real del usuario; con `-S` un
+/// directorio borrado da «no server running» y nunca un `kill-server` ajeno.
+fn private_tmux(socket_dir: &Path) -> Command {
+    let socket = socket_dir
+        .join(format!("tmux-{}", nix::unistd::getuid().as_raw()))
+        .join("default");
+    if let Some(parent) = socket.parent() {
+        // 0700 como lo crea tmux: con bits de «otros» rechaza el directorio.
+        let _ = fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(parent);
+    }
+    let mut cmd = Command::new("tmux");
+    cmd.arg("-S")
+        .arg(socket)
         .env_remove("TMUX")
-        .env("TMUX_TMPDIR", socket_dir)
+        .env("TMUX_TMPDIR", socket_dir);
+    cmd
+}
+
+fn kill_tmux(socket_dir: &Path) {
+    let _ = private_tmux(socket_dir)
+        .arg("kill-server")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
@@ -975,10 +993,8 @@ impl Stack {
             .get(1)
             .ok_or("la pila no tiene tmux privado del frente")?;
         guard_home(dir)?;
-        let status = Command::new("tmux")
+        let status = private_tmux(dir)
             .args(args)
-            .env_remove("TMUX")
-            .env("TMUX_TMPDIR", dir)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
