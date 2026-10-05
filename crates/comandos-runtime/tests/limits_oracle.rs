@@ -370,3 +370,35 @@ fn oauth_token_shapes() {
     );
     let _ = fs::remove_dir_all(&home);
 }
+
+/// Desviación del Python (`_claude_account_creds` de cc-dash:492 no filtra):
+/// como `claude_accounts()`, los directorios de `~/.claude-accounts` que
+/// empiezan por `-` o `.` no son cuentas (existió uno llamado
+/// `--dangerously-skip-permissions`, creado por un argumento mal pasado).
+#[test]
+fn claude_account_creds_skip_dash_and_dot_dirs() {
+    let home = std::env::temp_dir().join(format!("lane2f-creds-skip-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&home);
+    for name in [
+        "alfa",
+        "--dangerously-skip-permissions",
+        ".oculta",
+        "-x",
+        "b-eta",
+        "z.lock",
+    ] {
+        write(
+            &home
+                .join(".claude-accounts")
+                .join(name)
+                .join(".credentials.json"),
+            "{}",
+        );
+    }
+    let names: Vec<String> = claude_account_creds(&home)
+        .into_iter()
+        .map(|(alias, _)| alias)
+        .collect();
+    assert_eq!(names, ["main", "alfa", "b-eta"]);
+    let _ = fs::remove_dir_all(&home);
+}

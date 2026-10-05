@@ -217,6 +217,10 @@ fn loads(text: &str) -> Result<Option<Value>, Unsure> {
 
 /// `_claude_account_creds` (cc-dash:492): `main` y cada `~/.claude-accounts/<n>`
 /// con `.credentials.json`, en el orden de `sorted(os.listdir)` y sin `*.lock`.
+///
+/// Desviación: como `claude_accounts()` (cc-dash:508), un nombre que empieza
+/// por `-` o `.` no es una cuenta (existió un `--dangerously-skip-permissions`
+/// creado por un argumento mal pasado); el Python de 492 sí lo leería.
 pub fn claude_account_creds(home: &Path) -> Vec<(String, PathBuf)> {
     let mut out = vec![("main".to_owned(), expand(home, ".claude/.credentials.json"))];
     let base = expand(home, ".claude-accounts");
@@ -227,7 +231,11 @@ pub fn claude_account_creds(home: &Path) -> Vec<(String, PathBuf)> {
     names.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
     for name in names {
         let path = base.join(&name).join(".credentials.json");
-        if !name.as_bytes().ends_with(b".lock") && path.is_file() {
+        let bytes = name.as_bytes();
+        if bytes.starts_with(b"-") || bytes.starts_with(b".") {
+            continue;
+        }
+        if !bytes.ends_with(b".lock") && path.is_file() {
             out.push((name.to_string_lossy().into_owned(), path));
         }
     }
