@@ -417,7 +417,10 @@ pub fn parse_toml(text: &str) -> Result<Option<Value>, Unsure> {
 /// Python solo falla con ellas por pasar el resultado por JSON, y entonces un
 /// `config.toml` con una fecha nunca heredaba la confianza (el cambio de
 /// cuenta se quedaba en el diálogo). Lo demás que `tomllib` 3.11 rechaza
-/// (sintaxis 1.1, BOM, hora sin segundos) se sigue rechazando.
+/// (sintaxis 1.1, BOM, hora sin segundos, segundo 60) se sigue rechazando,
+/// salvo el año 0 (`0000-01-01`): `tomllib` no lo admite (no cabe en un
+/// `date`), pero el CLI de Codex (`toml`) lo lee, así que se acepta como las
+/// demás fechas (misma desviación).
 pub(crate) fn parse_trust_toml(text: &str) -> Result<Option<Value>, Unsure> {
     parse_with(text, Dates::Opaque)
 }
@@ -1380,6 +1383,12 @@ mod tests {
             Some(json!({"a": "1979-05-27", "b": "1979-05-27T07:32:00Z", "c": "07:32:00"}))
         );
         assert_eq!(parse_toml("a = 1979-05-27").unwrap(), None);
+        // `0000-01-01`: `tomllib` lo rechaza (no es un `date`), el CLI de
+        // Codex (`toml`) lo lee; se acepta como las demás fechas.
+        assert_eq!(
+            parse_trust_toml("a = 0000-01-01").unwrap(),
+            Some(json!({"a": "0000-01-01"}))
+        );
         for text in [
             "a = 07:32",
             "a = 1979-05-27T07:32",

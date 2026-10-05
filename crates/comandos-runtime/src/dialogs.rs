@@ -98,13 +98,17 @@ struct Entry {
 struct Traits {
     /// Usa `\b \B \w \W`: depende de qué es palabra.
     words: bool,
+    /// Usa `\d \D`: depende de qué es dígito (hay `Nd` posteriores a
+    /// Unicode 13).
+    digits: bool,
     /// Usa `\B`: `re.search(r"\B", "")` no casa en el Python; `regex` sí.
     not_boundary: bool,
     /// Usa `\s \S`: el `\s` de Python incluye U+001C–U+001F.
     spaces: bool,
     /// Tiene `i`/`I` o una clase: bajo `re.I`, Python iguala `İ`/`ı` a `i`.
     letter_i: bool,
-    /// Su propio texto lleva un carácter de clase de palabra discrepante.
+    /// Su propio texto lleva un carácter que la reclasificación cambiaría
+    /// (o uno de los dos sustitutos): reclasificar alteraría el literal.
     odd_literal: bool,
 }
 
@@ -113,7 +117,9 @@ impl Traits {
         let chars: Vec<char> = pattern.chars().collect();
         let mut traits = Self {
             letter_i: chars.iter().any(|c| matches!(c, 'i' | 'I' | '[')),
-            odd_literal: chars.iter().any(|c| word_disagrees(*c)),
+            odd_literal: chars
+                .iter()
+                .any(|c| matches!(c, '\u{E000}' | '\u{2AC}') || reclass(*c) != Some(Reclass::Same)),
             ..Self::default()
         };
         let mut i = 0;
@@ -125,6 +131,7 @@ impl Traits {
                         traits.words = true;
                         traits.not_boundary = true;
                     }
+                    Some('d' | 'D') => traits.digits = true,
                     Some('s' | 'S') => traits.spaces = true,
                     _ => {}
                 }
@@ -144,40 +151,72 @@ fn entry(pattern: &str) -> Entry {
     }
 }
 
-/// ¿Es `c` palabra en un motor y no en el otro? Python 3.10 (`re`, texto):
-/// `c.isalnum() or c == '_'`, es decir letras (`\p{L}`), números (`\p{N}`,
-/// también `²` o `①`) y `_`. `regex` (UTS #18): `Alphabetic`, marcas
-/// (`\p{M}`), `\p{Nd}`, `\p{Pc}` y `Join_Control`. Discrepan las marcas
-/// combinantes, la puntuación conectora distinta de `_`, ZWJ/ZWNJ, los números
-/// que no son `Nd`/`Nl` y los símbolos alfabéticos (`Ⓐ`). Letras y dígitos de
-/// cualquier escritura (griego, CJK, cirílico) coinciden.
-fn word_disagrees(c: char) -> bool {
-    static WORDS: LazyLock<Option<(Regex, Regex)>> = LazyLock::new(|| {
-        Some((
-            Regex::new(r"^\w$").ok()?,
-            Regex::new(r"^[\p{L}\p{N}_]$").ok()?,
-        ))
-    });
+/// Las clases de `regex` (Unicode 16) con las que se modela el `re` de
+/// Python 3.10 (Unicode 13).
+struct Tables {
+    /// `\w` de `regex` (UTS #18): `Alphabetic`, `\p{M}`, `\p{Nd}`, `\p{Pc}`,
+    /// `Join_Control`.
+    rust_word: Regex,
+    /// `c.isalnum() or c == '_'` de Python: `\p{L}`, `\p{N}` y `_`.
+    python_word: Regex,
+    /// Asignado en Unicode 13.0 o antes (`Age` es acumulativo).
+    unicode13: Regex,
+}
+
+static TABLES: LazyLock<Option<Tables>> = LazyLock::new(|| {
+    Some(Tables {
+        rust_word: Regex::new(r"^\w$").ok()?,
+        python_word: Regex::new(r"^[\p{L}\p{N}_]$").ok()?,
+        unicode13: Regex::new(r"^\p{Age=V13_0}$").ok()?,
+    })
+});
+
+/// Cómo ve `re` 3.10 un carácter frente a como lo ve `regex`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Reclass {
+    /// Igual en los dos motores (todo ASCII; letras y dígitos de cualquier
+    /// escritura de Unicode 13).
+    Same,
+    /// Palabra para Python y no para `regex` (`²`, `①`, `Ⓐ`…): se cambia por
+    /// `ʬ` (U+02AC, letra sin mayúsculas).
+    Word,
+    /// No es palabra ni dígito para Python y sí para `regex`: marcas
+    /// combinantes, puntuación conectora distinta de `_`, ZWJ/ZWNJ y todo lo
+    /// asignado después de Unicode 13 (para 3.10 es `Cn`). Se cambia por
+    /// U+E000 (uso privado).
+    Plain,
+}
+
+/// `None` si las tablas no están: quien pregunta no puede decidir.
+fn reclass(c: char) -> Option<Reclass> {
     if c.is_ascii() {
-        return false;
+        return Some(Reclass::Same);
     }
+    let tables = TABLES.as_ref()?;
     let mut buf = [0; 4];
     let text = c.encode_utf8(&mut buf);
-    // Sin las tablas: mejor dudar de todo lo no ASCII.
-    WORDS
-        .as_ref()
-        .is_none_or(|(rust, python)| rust.is_match(text) != python.is_match(text))
+    if !tables.unicode13.is_match(text) {
+        return Some(Reclass::Plain);
+    }
+    let python = tables.python_word.is_match(text);
+    Some(if tables.rust_word.is_match(text) == python {
+        Reclass::Same
+    } else if python {
+        Reclass::Word
+    } else {
+        Reclass::Plain
+    })
 }
 
 /// Una pantalla preparada una vez para todos los patrones.
 struct Screen<'a> {
     text: &'a str,
-    /// La pantalla con cada carácter discrepante cambiado por uno que
-    /// `regex` clasifica como `re` clasifica el original: `ʬ` (U+02AC, letra
-    /// sin mayúsculas) si es palabra en Python, U+E000 (uso privado) si no.
-    /// Ninguno de los dos es espacio ni dígito en ningún motor, y `.` casa
-    /// con ambos. `None` si no hay ninguno.
+    /// La pantalla con cada carácter de `Reclass::Word`/`Plain` cambiado por
+    /// su sustituto. Ninguno de los dos es espacio ni dígito en ningún motor,
+    /// y `.` casa con ambos. `None` si no hay ninguno.
     reclassified: Option<String>,
+    /// Sin tablas y con texto no ASCII: no se sabe qué reclasificar.
+    unknown: bool,
     /// U+001C–U+001F.
     controls: bool,
     /// `İ` o `ı`.
@@ -186,25 +225,33 @@ struct Screen<'a> {
 
 impl<'a> Screen<'a> {
     fn new(text: &'a str) -> Self {
-        static PYTHON_WORD: LazyLock<Option<Regex>> =
-            LazyLock::new(|| Regex::new(r"^[\p{L}\p{N}_]$").ok());
         let mut reclassified = None::<String>;
+        let mut unknown = false;
         for (at, c) in text.char_indices() {
-            if word_disagrees(c) {
-                let out =
-                    reclassified.get_or_insert_with(|| text.get(..at).unwrap_or("").to_owned());
-                let mut buf = [0; 4];
-                let python_word = PYTHON_WORD
-                    .as_ref()
-                    .is_some_and(|re| re.is_match(c.encode_utf8(&mut buf)));
-                out.push(if python_word { '\u{2AC}' } else { '\u{E000}' });
-            } else if let Some(out) = reclassified.as_mut() {
-                out.push(c);
+            let substitute = match reclass(c) {
+                Some(Reclass::Same) => None,
+                Some(Reclass::Word) => Some('\u{2AC}'),
+                Some(Reclass::Plain) => Some('\u{E000}'),
+                None => {
+                    unknown = true;
+                    None
+                }
+            };
+            match (substitute, reclassified.as_mut()) {
+                (Some(sub), Some(out)) => out.push(sub),
+                (Some(sub), None) => {
+                    let mut out = text.get(..at).unwrap_or("").to_owned();
+                    out.push(sub);
+                    reclassified = Some(out);
+                }
+                (None, Some(out)) => out.push(c),
+                (None, None) => {}
             }
         }
         Self {
             text,
             reclassified,
+            unknown,
             controls: text.chars().any(|c| ('\u{1c}'..='\u{1f}').contains(&c)),
             dotted: text.chars().any(|c| matches!(c, '\u{130}' | '\u{131}')),
         }
@@ -218,14 +265,18 @@ impl<'a> Screen<'a> {
         if doubtful {
             return Err(Unsure);
         }
+        // Sin `\w`/`\b`/`\d` la clase de palabra o de dígito no cuenta: `.`,
+        // los literales y las clases ASCII se leen igual en los dos motores.
+        if !(traits.words || traits.digits) {
+            return Ok(regex.is_match(self.text));
+        }
+        if self.unknown {
+            return Err(Unsure);
+        }
         match &self.reclassified {
-            Some(fixed) if traits.words => {
-                if traits.odd_literal {
-                    return Err(Unsure);
-                }
-                Ok(regex.is_match(fixed))
-            }
-            _ => Ok(regex.is_match(self.text)),
+            Some(_) if traits.odd_literal => Err(Unsure),
+            Some(fixed) => Ok(regex.is_match(fixed)),
+            None => Ok(regex.is_match(self.text)),
         }
     }
 }
@@ -556,6 +607,15 @@ mod tests {
         assert_eq!(cache.screen_dialog("/login\u{301} x"), Ok("login"));
         assert_eq!(cache.screen_dialog("/login\u{2082}"), Ok(""));
         assert_eq!(cache.screen_dialog("/login\u{200d}"), Ok("login"));
+        // Asignados después de Unicode 13: para el Python 3.10 son `Cn` (ni
+        // palabra ni dígito), aunque las tablas de `regex` digan palabra.
+        assert_eq!(cache.screen_dialog("/login\u{31350}"), Ok("login"));
+        assert_eq!(cache.screen_dialog("/login\u{870} x"), Ok("login"));
+        assert_eq!(cache.screen_dialog("/login\u{1E4D0}"), Ok("login"));
+        assert_eq!(
+            cache.screen_dialog("estimated cost of max\u{1E030}"),
+            Ok("effort")
+        );
     }
 
     /// Lo que queda incierto: un patrón cuyo propio texto contiene uno de
@@ -590,6 +650,23 @@ mod tests {
         );
         assert_eq!(cache.screen_dialog("ıyi tema"), Ok("onboarding"));
         assert_eq!(cache.screen_dialog("xz"), Ok(""));
+        // Un patrón con uno de los sustitutos en su texto tampoco se
+        // reclasifica (U+E000 y U+02AC no son de Python ni de nadie aquí).
+        std::fs::write(
+            dir.join("config/detectors.json"),
+            "{\"dialogPatterns\": {\"trust\": [\"\\\\bx\\ue000\"], \"login\": [], \"onboarding\": [\"tema\"], \"effort\": [], \"error\": []}}",
+        )
+        .unwrap();
+        let cache = DialogCache::new(&dir);
+        assert_eq!(
+            cache.screen_dialog("x\u{301}"),
+            Err(DialogError::UnreadableScreen)
+        );
+        assert_eq!(
+            cache.screen_dialog("x\u{203f}"),
+            Err(DialogError::UnreadableScreen)
+        );
+        assert_eq!(cache.screen_dialog("xy tema"), Ok("onboarding"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -552,6 +552,10 @@ fn dialogs_match_python() {
         "/login\u{24b6}",
         "estimated cost of high\u{301}",
         "Ⓐ Accessing workspace ①",
+        "/login\u{31350}",
+        "/login\u{870} x",
+        "/login\u{1E4D0}",
+        "estimated cost of max\u{1E030}",
         "",
     ];
     let mut calls = Vec::new();
