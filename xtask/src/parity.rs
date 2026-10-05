@@ -967,6 +967,32 @@ impl Stack {
         })
     }
 
+    /// `tmux <args>` contra el servidor privado del frente (y de su heredado),
+    /// nunca contra el del usuario: `TMUX` fuera y `TMUX_TMPDIR` de la pila.
+    pub fn front_tmux(&self, args: &[&str]) -> Result<(), String> {
+        let dir = self
+            .tmux_dirs
+            .get(1)
+            .ok_or("la pila no tiene tmux privado del frente")?;
+        guard_home(dir)?;
+        let status = Command::new("tmux")
+            .args(args)
+            .env_remove("TMUX")
+            .env("TMUX_TMPDIR", dir)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map_err(|e| format!("tmux: {e}"))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!(
+                "tmux {} falló en el servidor privado",
+                args.join(" ")
+            ))
+        }
+    }
+
     /// Rutas que el frente reenvió al heredado (de su traza), con su cuenta.
     pub fn forwarded_summary(&self) -> Vec<(String, usize)> {
         let text = fs::read_to_string(&self.front_log).unwrap_or_default();

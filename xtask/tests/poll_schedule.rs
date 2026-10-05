@@ -110,3 +110,32 @@ fn shadow_only_options_require_shadow() {
     ]);
     assert!(poll::parse(&shadow).is_ok());
 }
+
+#[test]
+fn pane_targets_read_ids_and_identities_from_the_list_reply() {
+    let body = br#"{"ok": true, "panes": [{"id": "%0", "index": 0, "identity": {"pane_id": "%0"}}, {"id": "%3", "identity": {"pane_id": "%3"}}], "remoteFocus": null}"#;
+    let targets = poll::pane_targets(body);
+    assert_eq!(targets.len(), 2);
+    assert_eq!(targets[0].0, "%0");
+    assert_eq!(targets[1].1["pane_id"], "%3");
+    // Un trozo chunked con su marco: se toma del primer `{` al último `}`.
+    let chunked =
+        b"4a\r\n{\"ok\": true, \"panes\": [{\"id\": \"%1\", \"identity\": {}}]}\r\n0\r\n\r\n";
+    assert_eq!(poll::pane_targets(chunked).len(), 1);
+    assert!(poll::pane_targets(br#"{"error": "sesion invalida"}"#).is_empty());
+    assert!(poll::pane_targets(b"").is_empty());
+}
+
+#[test]
+fn shadow_lists_a_real_private_session() {
+    assert_eq!(
+        poll::SHADOW_SESSIONS[0],
+        "local",
+        "la sesión que crea la pila"
+    );
+    let body: serde_json::Value = serde_json::from_str(&poll::panes_list("local")).unwrap();
+    assert_eq!(
+        body,
+        serde_json::json!({"session": "local", "action": "list"})
+    );
+}

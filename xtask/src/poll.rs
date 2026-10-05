@@ -132,14 +132,131 @@ fn http(
     Ok((status, rest))
 }
 
-fn body_for(path: &str) -> Option<&'static str> {
+/// Cuerpo de las rutas POST del calendario. `/terminal-panes` lista la sesión
+/// `panes`: con `--shadow`, una sesión real con varios panes del tmux privado de
+/// la pila; sin él, `poll` (inexistente: nunca se toca una sesión del usuario).
+fn body_for(path: &str, panes: &str) -> Option<String> {
     match path {
         "/presence" => Some(
-            r#"{"deviceId":"xtask-poll","visible":true,"canPlayAudio":false,"interaction":false}"#,
+            r#"{"deviceId":"xtask-poll","visible":true,"canPlayAudio":false,"interaction":false}"#
+                .to_string(),
         ),
-        "/terminal-panes" => Some(r#"{"session":"poll","action":"list"}"#),
+        "/terminal-panes" => Some(panes_list(panes)),
         _ => None,
     }
+}
+
+/// `{"session":…,"action":"list"}`, como `term.html` (`refresh`).
+pub fn panes_list(session: &str) -> String {
+    serde_json::json!({"session": session, "action": "list"}).to_string()
+}
+
+/// Sesiones del tmux privado de la pila que carga `--shadow`: la del tablero
+/// (`local`, la crea la pila) y la de un segundo iframe remoto.
+pub const SHADOW_SESSIONS: [&str; 2] = ["local", "poll-b"];
+
+/// Panes por sesión en `--shadow` (el inventario hace un `display-message` y
+/// una lectura de `/proc/<pid>/stat` por pane).
+pub const SHADOW_PANES: usize = 3;
+
+/// `(id, identity)` de cada pane de una respuesta de `/terminal-panes`. El cuerpo
+/// puede venir en un solo trozo chunked: se toma del primer `{` al último `}`.
+pub fn pane_targets(body: &[u8]) -> Vec<(String, serde_json::Value)> {
+    let text = String::from_utf8_lossy(body);
+    let (Some(start), Some(end)) = (text.find('{'), text.rfind('}')) else {
+        return Vec::new();
+    };
+    let Some(json) = text.get(start..=end) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    value["panes"]
+        .as_array()
+        .map(|panes| {
+            panes
+                .iter()
+                .filter_map(|p| Some((p["id"].as_str()?.to_string(), p["identity"].clone())))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Mezcla de un panel de terminal abierto (`term.html`), solo con `--shadow`:
+/// un segundo iframe que lista `poll-b` cada 2 s y, sobre `local`, un `resize`
+/// cada 10 s (alternando altura, como arrastrar el borde) y un `select` con
+/// `scope:"client"` cada 20 s (como tocar un pane desde el móvil).
+fn spawn_pane_mix(
+    addr: &str,
+    token: &str,
+    minutes: u64,
+    t0: Instant,
+    stats: &Arc<Stats>,
+) -> thread::JoinHandle<()> {
+    let (addr, token, stats) = (addr.to_string(), token.to_string(), stats.clone());
+    let [board, second] = SHADOW_SESSIONS;
+    thread::spawn(move || {
+        let total = minutes * 60_000;
+        let send = |body: &str| -> Option<Vec<u8>> {
+            stats.sent.fetch_add(1, Ordering::Relaxed);
+            match http(
+                &addr,
+                "POST",
+                "/terminal-panes",
+                &token,
+                Some(body),
+                Duration::from_secs(30),
+            ) {
+                Ok((st, b)) if (200..300).contains(&st) => Some(b),
+                Ok(_) => {
+                    stats.non_2xx.fetch_add(1, Ordering::Relaxed);
+                    None
+                }
+                Err(_) => {
+                    stats.errors.fetch_add(1, Ordering::Relaxed);
+                    None
+                }
+            }
+        };
+        let mut tick: u64 = 0;
+        // Desfase de 1 s respecto al calendario del tablero.
+        while 1_000 + tick * 2_000 < total {
+            let due = t0 + Duration::from_millis(1_000 + tick * 2_000);
+            if let Some(wait) = due.checked_duration_since(Instant::now()) {
+                thread::sleep(wait);
+            }
+            let _ = send(&panes_list(second));
+            let (resize, select) = (tick.is_multiple_of(5), tick % 10 == 3);
+            if resize || select {
+                let targets = send(&panes_list(board))
+                    .map(|b| pane_targets(&b))
+                    .unwrap_or_default();
+                if resize && let Some((id, _)) = targets.first() {
+                    let size = if tick.is_multiple_of(10) { 6 } else { 8 };
+                    let body = serde_json::json!({
+                        "session": board, "action": "resize", "pane": id,
+                        "axis": "y", "size": size,
+                    });
+                    let _ = send(&body.to_string());
+                } else if let Some((id, identity)) = targets.get(1) {
+                    let body = serde_json::json!({
+                        "session": board, "action": "select", "pane": id,
+                        "identity": identity, "scope": "client",
+                    });
+                    let _ = send(&body.to_string());
+                }
+            }
+            tick += 1;
+        }
+    })
+}
+
+/// Hilos del proceso (`/proc/<pid>/task`); `None` si ya no existe.
+fn thread_count(pid: u32) -> Option<usize> {
+    std::fs::read_dir(format!("/proc/{pid}/task"))
+        .ok()
+        .map(|dir| dir.count())
 }
 
 #[derive(Default)]
@@ -246,16 +363,23 @@ pub fn min_max_from(points: &[(u64, u64)], from: u64) -> Option<(u64, u64)> {
     Some((*v.iter().min()?, *v.iter().max()?))
 }
 
+/// Servidor cargado y sesión que lista `/terminal-panes`.
+struct Target<'a> {
+    addr: &'a str,
+    token: &'a str,
+    panes: &'static str,
+}
+
 /// Un cliente completo: su calendario periódico en un hilo y su long-poll en otro.
 fn spawn_client(
-    addr: &str,
-    token: &str,
+    target: &Target,
     client: Client,
     minutes: u64,
     t0: Instant,
     stats: &Arc<Stats>,
     stop: &Arc<AtomicBool>,
 ) -> Vec<thread::JoinHandle<()>> {
+    let (addr, token, panes) = (target.addr, target.token, target.panes);
     let sched = schedule(minutes, client);
     let (a1, t1, s1) = (addr.to_string(), token.to_string(), stats.clone());
     let periodic = thread::spawn(move || {
@@ -270,7 +394,7 @@ fn spawn_client(
                 method,
                 &path,
                 &t1,
-                body_for(&path_only(&path)),
+                body_for(&path_only(&path), panes).as_deref(),
                 Duration::from_secs(30),
             ) {
                 Ok((st, _)) if (200..300).contains(&st) => {}
@@ -358,18 +482,39 @@ pub fn run(args: &[String]) -> Result<(), String> {
         o.minutes,
         out.display()
     );
+    // Con --shadow, `/terminal-panes` carga sesiones reales del tmux PRIVADO de
+    // la pila (`local` la crea ella; `poll-b` se crea aquí), con varios panes.
+    let panes = match &stack {
+        Some(s) => {
+            s.front_tmux(&["new-session", "-d", "-s", SHADOW_SESSIONS[1], "cat"])?;
+            for session in SHADOW_SESSIONS {
+                for _ in 1..SHADOW_PANES {
+                    s.front_tmux(&["split-window", "-d", "-t", session, "cat"])?;
+                }
+            }
+            SHADOW_SESSIONS[0]
+        }
+        None => "poll",
+    };
     let stats = Arc::new(Stats::default());
     let stop = Arc::new(AtomicBool::new(false));
     let t0 = Instant::now();
     let mut handles = Vec::new();
     for client in [Client::Dashboard, Client::App] {
-        handles.extend(spawn_client(
-            &addr, &token, client, o.minutes, t0, &stats, &stop,
-        ));
+        let target = Target {
+            addr: &addr,
+            token: &token,
+            panes,
+        };
+        handles.extend(spawn_client(&target, client, o.minutes, t0, &stats, &stop));
+    }
+    if stack.is_some() {
+        handles.push(spawn_pane_mix(&addr, &token, o.minutes, t0, &stats));
     }
 
     // Muestreo de memoria cada 60 s (y uno inicial en el minuto 0).
     let mut points: Vec<(u64, u64)> = Vec::new();
+    let mut thread_points: Vec<(u64, Option<usize>)> = Vec::new();
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -385,6 +530,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
         let m = crate::rss::sample(pid)?;
         points.push((minute, m.pss_kib_total));
+        let threads = thread_count(pid);
+        thread_points.push((minute, threads));
         let legacy = stack
             .as_ref()
             .and_then(|s| crate::rss::sample(s.pid_legacy).ok())
@@ -395,6 +542,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             "pss_kib": m.pss_kib_total,
             "rss_kib": m.rss_kib_total,
             "legacy_pss_kib": legacy,
+            "threads": threads,
             "pss_exact": m.pss_exact,
             "procs": m.procs,
             "sent": stats.sent.load(Ordering::Relaxed),
@@ -415,6 +563,19 @@ pub fn run(args: &[String]) -> Result<(), String> {
         Some((lo, hi)) => println!("resumen (desde min 5): Pss min {lo} KiB, max {hi} KiB"),
         None => println!("resumen (desde min 5): n/d (la ventana es de menos de 5 min)"),
     }
+    let at = |minute: u64| {
+        thread_points
+            .iter()
+            .find(|(m, _)| *m == minute)
+            .and_then(|(_, t)| *t)
+            .map_or_else(|| "n/d".to_string(), |t| t.to_string())
+    };
+    println!(
+        "hilos del frente: min 1 {}, min {} {}",
+        at(1),
+        o.minutes,
+        at(o.minutes)
+    );
     match slope_kib_per_hour(&points) {
         Some(sl) => println!("pendiente desde min 5: {sl:.0} KiB/h"),
         None => println!("pendiente: n/d (menos de 2 puntos desde el min 5)"),
