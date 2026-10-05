@@ -762,11 +762,12 @@ fn save_chain_matches_python() {
 fn save_chain_declines_before_effects() {
     let dir = home("unsure");
     let d = dir.join("cadenas");
-    // Nombre no ASCII sin slug (NFKD) y slug que es una lista: nada en disco.
+    // Nombre fuera de los tramos de NFKD estable sin slug y slug que es una
+    // lista: nada en disco.
     assert!(
         save_chain(
             &d,
-            Some(&json!("Café")),
+            Some(&json!("Café ☕")),
             Some(&json!([{"kind": "shell", "text": "x"}])),
             None
         )
