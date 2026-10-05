@@ -1228,7 +1228,7 @@ los hilos quedaron en 24 (a los 41 min: 26 hilos, 22 del pool de bloqueo, 256 Mi
   que se va no abre la puerta antes de que el hilo termine.
 - Con eso ningún trabajo del pool espera a otro del pool (los demás candados que se toman
   dentro son `try_lock` de archivo), así que el tope no puede interbloquear: lo que no cabe
-  espera en la cola. Ocho deja sitio a varios tecleos largos de `/terminal/type` sin frenar los
+  espera en la cola. Ocho deja sitio a varios tecleos largos de `/pane/type` sin frenar los
   estáticos. La primera versión (tope 4 y sin puerta) sí podía congelar el pool detrás de una
   ola con tmux lento; ver la tabla.
 - `MALLOC_ARENA_MAX=2` en un drop-in de `cc-dash.service` también contiene la memoria (no los

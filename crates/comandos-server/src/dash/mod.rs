@@ -409,7 +409,7 @@ pub async fn run(cfg: DashConfig, shutdown: watch::Receiver<bool>) -> io::Result
 /// tmux que mueve el hilo del runtime; los candados que se toman dentro son
 /// `try_lock` o, el de `/terminal-panes`, ya serializado por su puerta
 /// asíncrona), así que el tope no puede interbloquear: lo que no cabe espera
-/// en la cola. Ocho deja sitio a varios tecleos largos de `/terminal/type`
+/// en la cola. Ocho deja sitio a varios tecleos largos de `/pane/type`
 /// sin frenar los estáticos.
 pub const MAX_BLOCKING_THREADS: usize = 8;
 
