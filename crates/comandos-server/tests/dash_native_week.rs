@@ -2,10 +2,17 @@
 //! (con y sin `sidebar=1`, las dos semanas, los errores de la consulta y los datos de
 //! ejemplo del mockup).
 mod support;
-use comandos_server::dash::native::{state::StateBackend, wall_clock_ms};
+use comandos_server::{
+    Request,
+    dash::native::{
+        Native, NativeRoute, Outcome, state::StateBackend, usage::UsageRoute, wall_clock_ms,
+    },
+};
 use serde_json::Value;
 use std::{path::Path, sync::Arc, time::Duration};
-use support::{FakeLegacy, TestHome, Wire, dead_port, front, get, oracle::oracle, seed_usage};
+use support::{
+    FakeLegacy, NOW_MS, TestHome, Wire, dead_port, front, get, oracle::oracle, seed_usage,
+};
 
 fn write(path: &Path, text: &str) {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -349,4 +356,60 @@ async fn newer_usage_db_forwards_week() {
         .query_row("pragma user_version", [], |r| r.get(0))
         .unwrap();
     assert_eq!(version, 12);
+}
+
+fn week_request(target: &str) -> Request {
+    Request {
+        method: http::Method::GET,
+        target: target.into(),
+        peer: "127.0.0.1:12345".parse().unwrap(),
+        headers: vec![],
+        data: None,
+        body: bytes::Bytes::new(),
+        internal_producer: false,
+    }
+}
+
+/// Una fila que el Python no podría decodificar (BLOB en `model`) declina antes de
+/// cualquier efecto: el refresco de límites no se lanza. Control: la misma ruta
+/// sin el BLOB sí lo lanza (vencido desde siempre).
+#[tokio::test]
+async fn undecodable_row_declines_without_limits_refresh() {
+    let home = TestHome::new("week-blob");
+    let now = NOW_MS / 1000;
+    seed_usage(
+        &home,
+        &format!(
+            "insert into usage_turns(id,provider,agent,tmux_session,tmux_pane,pane_pwd,git_root,model,\
+             harness_account,turn_started_at,turn_finished_at,total_tokens,cost_usd,source,confidence,raw) values \
+             ('x','claude','claude','s','%1','/r','/r',X'00ff','main',{},{},1,0.0,'hook','exact','{{}}');",
+            now - 100,
+            now - 50
+        ),
+    );
+    let native = Native::new(home.options());
+    let route = NativeRoute::Usage(UsageRoute::Week);
+    let outcome = native
+        .dispatch(route, &week_request("/analytics/week"))
+        .await
+        .unwrap();
+    assert!(matches!(outcome, Outcome::Decline));
+    assert!(
+        !native.limits().refreshing(),
+        "declinar no lanza el refresco"
+    );
+    native.shutdown().await;
+
+    let conn = rusqlite::Connection::open(home.usage_db()).unwrap();
+    conn.execute("update usage_turns set model='claude-fable-5'", [])
+        .unwrap();
+    drop(conn);
+    let native = Native::new(home.options());
+    let outcome = native
+        .dispatch(route, &week_request("/analytics/week"))
+        .await
+        .unwrap();
+    assert!(matches!(outcome, Outcome::Reply(_)));
+    assert!(native.limits().refreshing(), "la respuesta sí lo lanza");
+    native.shutdown().await;
 }
