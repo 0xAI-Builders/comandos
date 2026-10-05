@@ -1605,10 +1605,11 @@ en ese segundo se repite a los 10 s.
 
 La primera importación del frente empieza unos 75 s después del reinicio (la gracia) y, con el
 `seen` vacío, relee todos los transcripts de los últimos 21 días: unos 30–35 s con los datos de
-hoy (ver «Medido antes del cutover»). Cae en las muestras de los minutos 1 y 2. La sonda midió
-+11 MiB de pico transitorio sobre la base con el ajuste de malloc, que se devuelven al terminar;
-sobre los ≈ 45 MiB de régimen deja esas dos muestras cerca de la puerta de 56 MiB. El criterio
-no cambia: una muestra por encima es motivo para revertir. Ese mismo minuto el frente hace sus
+hoy (ver «Medido antes del cutover»). Cae en las muestras de los minutos 1 y 2. Con el descarte
+en flujo de las líneas largas que no usa, la sonda midió un pico de +5–6 MiB sobre la base con el
+ajuste de malloc (antes, +11 MiB): sobre los ≈ 45 MiB de régimen quedan unos 5 MiB de margen
+hasta la puerta de 56 MiB. El criterio no cambia: una muestra por encima es motivo para
+revertir. Ese mismo minuto el frente hace sus
 primeras llamadas OAuth con el cliente compartido: la ruta TLS real se mide aquí por primera vez
 (la pila de `poll --shadow` no tiene DNS).
 
@@ -1782,27 +1783,46 @@ los límites. Esas dos cosas se miden aparte o en vivo:
 
   | Malloc | Caché de páginas | Pared | VmRSS antes | VmHWM | Pico sobre la base | VmRSS después |
   |---|---|---|---|---|---|---|
-  | por omisión | fría (7,8 GB leídos de disco) | 33,3 s | 5 656 KiB | 22 348 KiB | +16 692 KiB | 19 556 KiB |
+  | por omisión | fría (7,8 GiB leídos de disco) | 33,3 s | 5 656 KiB | 22 348 KiB | +16 692 KiB | 19 556 KiB |
   | por omisión | caliente | 32,8 s | 5 652 KiB | 20 984 KiB | +15 332 KiB | 18 684 KiB |
   | `GLIBC_TUNABLES` de producción | caliente | 28,6 s | 5 640 KiB | 16 652 KiB | +11 012 KiB | 9 128 KiB |
   | `GLIBC_TUNABLES` de producción | caliente | 35,2 s | 5 640 KiB | 16 564 KiB | +10 924 KiB | 9 008 KiB |
 
-  El pico es de la fase de Codex (+10,6 MiB con el ajuste, +14,9 MiB sin él): hay rollouts de
-  hoy con líneas de hasta 6,5 MB, que se leen enteras en un búfer de línea y se analizan. Grok
-  sube 7 MiB sobre una base más baja y no pasa el pico; Claude y OpenCode, menos de 1 MiB. Con el
-  ajuste la memoria se devuelve al terminar (8,9 MiB después); sin él se queda (18,2 MiB). En el
-  frente esto se suma a su régimen (≈ 45 MiB con el ajuste): la primera importación, unos 75 s
-  tras el reinicio, puede dejar una o dos muestras del paso 3 cerca de los 56 MiB. Si pasa la
-  puerta en vivo, el arreglo es acotar el búfer de las líneas grandes de Codex: de más de 1 MB
-  hay `response_item` (salidas de herramientas), `compacted` y `event_msg` de tipo
-  `item_completed`, y la importación solo usa `session_meta`, `turn_context`,
-  `token_usage_record` y los `event_msg` `task_complete`; se pueden descartar sin guardarlas
-  mirando el tipo al principio de la línea, con su prueba de oráculo contra el Python.
+  Ese pico era de la fase de Codex (+10,6 MiB con el ajuste, +14,9 MiB sin él): hay rollouts de
+  hoy con líneas de hasta 6,5 MB (`response_item` con salidas de herramientas, `compacted`,
+  `event_msg` de tipo `item_completed`), que se guardaban enteras en el búfer de línea y se
+  analizaban; Grok subía 7 MiB por sus trozos de mensaje. **Arreglado** (`8a8c6ae`): una línea
+  de más de 128 KiB deja de guardarse y se lee en flujo (`comandos-store/src/line_scan.rs`)
+  anotando solo `type` y `payload.type` (Codex), `type` (Claude) o
+  `params.update.sessionUpdate` (Grok), con la última clave repetida ganando como en
+  `json.loads`; si es de un tipo que el Python ignora se salta, y si no se puede probar (escapes
+  en una clave o en el valor) se relee entera. El oráculo `big_lines_skip_matches_python_and_full_read`
+  da las mismas filas con el descarte, sin él y en el Python. La misma sonda tras el arreglo
+  (`COMANDOS_PROBE_BIG_LINES=read` la corre sin él, para comparar en el mismo estado de caché):
+
+  | Malloc | Líneas largas | Caché | Pared | VmRSS antes | VmHWM | Pico sobre la base | VmRSS después |
+  |---|---|---|---|---|---|---|---|
+  | por omisión | descartadas | fría (8,1 GiB de disco) | 29,7 s | 5 632 KiB | 9 452 KiB | +3 820 KiB | 9 452 KiB |
+  | `GLIBC_TUNABLES` de producción | descartadas | caliente | 27,2 s | 5 700 KiB | 11 368 KiB | +5 668 KiB | 9 104 KiB |
+  | `GLIBC_TUNABLES` de producción | enteras (comparación) | caliente | 35,3 s | 5 680 KiB | 17 084 KiB | +11 404 KiB | 9 164 KiB |
+  | `GLIBC_TUNABLES` de producción | descartadas | caliente | 27,7 s | 5 656 KiB | 10 864 KiB | +5 208 KiB | 9 156 KiB |
+
+  Con el ajuste, la fase de Codex sube ahora 2,8–4,0 MiB, Grok ≤ 1 MiB y cada cuenta de Claude
+  1,8–2,5 MiB; unos 3,5 MiB del pico se quedan como caché de SQLite y `seen` (9,1 MiB después),
+  así que lo transitorio es ≈ 2 MiB. Mismas filas (120 803 turnos, 2278 archivos). En el frente
+  (≈ 45 MiB con el ajuste) la primera importación queda hacia los 50–51 MiB, con ≈ 5 MiB de
+  margen a la puerta.
 - **Ruta OAuth/TLS.** Desde la ronda de arreglo el frente comparte un solo cliente `reqwest` entre
   cuentas y vueltas (antes, uno por cuenta cada 60 s), sin conexiones ociosas en el pool. Su
   memoria y sus errores reales se miden por primera vez en vivo, en el paso 3: el refresco del
   arranque sale en el primer segundo y la primera importación unos 75 s después del reinicio,
   ambos dentro de la ventana de vigilancia.
+- **Tras el descarte de líneas largas** (`8a8c6ae`, binario release de ese commit): suite del
+  workspace 1021 pruebas, 0 fallos, 2 ignoradas; `fmt` y `clippy -D warnings` limpios; `xtask
+  parity` 165 OK, 0 DIFF, 0 SKIP. Puerta de ligereza de 5 min con la carga realista: sale 0; Pss
+  21 945 → 42 349 → 43 113 → 44 549 → 43 393 → 43 773 KiB (minutos 0 a 5), 6 hilos, 2815
+  peticiones, 0 errores, 0 no-2xx, ninguna ruta reenviada; GET `/usage/state` 92/438/500 ms, GET
+  `/state` 575/699/734, estáticos en la ola 0/23/32.
 - **Tras la ronda de arreglo** (fusión de `main` `3f0a01a`, I1, I2, M1, M3; binario release de
   `7d75841`): suite del workspace 1017 pruebas, 0 fallos, 2 ignoradas (la herramienta manual de
   RSS y la sonda de importación); `fmt` y `clippy -D warnings` limpios. `xtask parity` 165 OK,
