@@ -381,7 +381,7 @@ pub struct Native {
     /// La revisión de avisos que comparten las esperas de `/notices/watch`.
     pub(crate) notice_feed: notices::RevisionFeed,
     /// Carril de la base de uso (`GET /pomodoro`, `GET /sovereignty`,
-    /// `GET /analytics/week`); `Arc`
+    /// `GET /analytics/week`, `GET /extension-usage`); `Arc`
     /// para las tareas de fondo (D13).
     pub(crate) usage: Arc<lanes::Lane<lanes::UsageBackend>>,
     /// Caché de límites de proveedor (`_limits_cache`).
