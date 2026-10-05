@@ -593,7 +593,9 @@ fn account_envs(
             match accounts::account_environment(registry, id, &alias, &paths) {
                 Ok(env) => envs.push(env),
                 // El Python la escribiría con sustitutos: no se reproduce.
-                Err(e) if e.0 == "ruta de cuenta no es UTF-8" => return Err(Fault::Decline),
+                Err(e) if e.kind() == accounts::ErrorKind::NonUtf8Home => {
+                    return Err(Fault::Decline);
+                }
                 Err(_) => {
                     failed = true;
                     break;

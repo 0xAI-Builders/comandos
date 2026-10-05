@@ -14,8 +14,24 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+/// Lo que quien recibe un `AccountError` necesita distinguir sin comparar
+/// su texto.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorKind {
+    /// Un `AccountError` de `lib/account_registry.py`, con su mensaje.
+    Account,
+    /// La ruta de la cuenta no es UTF-8: el Python la escribiría con
+    /// sustitutos, así que quien la recibe no reproduce su respuesta.
+    NonUtf8Home,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccountError(pub String);
+pub struct AccountError(pub String, pub ErrorKind);
+impl AccountError {
+    pub fn kind(&self) -> ErrorKind {
+        self.1
+    }
+}
 impl std::fmt::Display for AccountError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
@@ -40,7 +56,7 @@ impl Paths {
     }
 }
 fn error(message: impl Into<String>) -> AccountError {
-    AccountError(message.into())
+    AccountError(message.into(), ErrorKind::Account)
 }
 fn account_error(e: &AccountError) -> bool {
     e.0.ends_with(": cuentas no soportadas")
@@ -201,9 +217,12 @@ pub fn account_environment(
     // Native homes retain raw Unix bytes; JSON launch environments require
     // Unicode. Reject this boundary rather than changing the selected path.
     let home = account_home(registry, provider, alias, paths)?;
-    let home = home
-        .to_str()
-        .ok_or_else(|| error("ruta de cuenta no es UTF-8"))?;
+    let home = home.to_str().ok_or_else(|| {
+        AccountError(
+            "ruta de cuenta no es UTF-8".to_owned(),
+            ErrorKind::NonUtf8Home,
+        )
+    })?;
     let mut out = serde_json::Map::new();
     out.insert(
         python_string(&spec["accountEnv"]),

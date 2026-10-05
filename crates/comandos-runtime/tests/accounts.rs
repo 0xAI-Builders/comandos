@@ -398,10 +398,10 @@ fn environment_rejects_non_utf8_symlink_target_without_losing_native_home() {
         a::account_home(&registry, "codex", &json!("work"), &paths).unwrap(),
         native.join("work")
     );
-    assert_eq!(
-        a::account_environment(&registry, "codex", &json!("work"), &paths)
-            .unwrap_err()
-            .0,
-        "ruta de cuenta no es UTF-8"
-    );
+    let err = a::account_environment(&registry, "codex", &json!("work"), &paths).unwrap_err();
+    assert_eq!(err.0, "ruta de cuenta no es UTF-8");
+    // Quien lo recibe lo distingue por su clase, no por el texto.
+    assert_eq!(err.kind(), a::ErrorKind::NonUtf8Home);
+    let other = a::account_environment(&registry, "codex", &json!("../x"), &paths).unwrap_err();
+    assert_eq!(other.kind(), a::ErrorKind::Account);
 }
