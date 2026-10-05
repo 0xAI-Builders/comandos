@@ -70,6 +70,10 @@ class PaneInspector:
         out, i = [], 1
         while i < len(args):
             arg = args[i]
+            if exe == 'codex' and arg in ('--yolo', '--no-daemon'):
+                out.append('--dangerously-bypass-approvals-and-sandbox' if arg == '--yolo' else arg)
+                i += 1
+                continue
             if arg in values and i + 1 < len(args) and not args[i + 1].startswith('-'):
                 out.extend(['--model' if arg == '-m' else arg, args[i + 1]])
                 i += 2

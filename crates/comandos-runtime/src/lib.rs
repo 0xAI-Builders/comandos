@@ -5,15 +5,24 @@ use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub mod accounts;
+pub mod agent_procs;
 pub mod events_cli;
 pub mod hooks;
 pub mod legacy;
 pub mod model_catalog;
+pub mod pane_snapshot;
 pub mod pane_typing;
+pub mod providers;
 pub mod quick_terminal;
 pub mod session_operations;
 pub mod terminal_history;
 pub mod terminal_panes;
+pub mod tui_state;
+
+/// El Python leería algo que este port no reproduce con certeza: quien lo
+/// recibe declina (el frente reenvía al heredado).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unsure;
 
 pub fn state_path(
     explicit: Option<&Path>,

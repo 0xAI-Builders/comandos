@@ -5,9 +5,11 @@
 {"name":"xterm.css","method":"GET","path":"/assets/xterm/xterm.css","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"static-accepted"}
 {"name":"vendor-listing","method":"GET","path":"/vendor/","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
 {"name":"no-existe.css","method":"GET","path":"/no-existe.css","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
-{"name":"state-local","method":"GET","path":"/state","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/generated_at","/panes/*/last_seen"],"expect":"same","forwarded":true}
+{"name":"state-local","method":"GET","path":"/state","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/*/observedConfig/observedAt","/*/observedConfig/evidenceAt"],"expect":"same"}
 {"name":"workmarks-local","method":"GET","path":"/work-marks","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
-{"name":"state-remoto-con-token","method":"GET","path":"/state","headers":{"Host":"x.ts.net","X-Forwarded-For":"100.64.0.9","X-Comandos-Token":"{{token}}"},"body":null,"volatile":["/generated_at","/panes/*/last_seen"],"expect":"same","forwarded":true}
+{"name":"state-remoto-con-token","method":"GET","path":"/state","headers":{"Host":"x.ts.net","X-Forwarded-For":"100.64.0.9","X-Comandos-Token":"{{token}}"},"body":null,"volatile":["/*/observedConfig/observedAt","/*/observedConfig/evidenceAt"],"expect":"same"}
+{"name":"d-state-consulta","method":"GET","path":"/state?x=1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/*/observedConfig/observedAt","/*/observedConfig/evidenceAt"],"expect":"same"}
+{"name":"d-state-prefijo","method":"GET","path":"/states","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/*/observedConfig/observedAt","/*/observedConfig/evidenceAt"],"expect":"same","forwarded":true}
 {"name":"state-remoto-sin-token","method":"GET","path":"/state","headers":{"Host":"x.ts.net","X-Forwarded-For":"100.64.0.9"},"body":null,"volatile":[],"expect":"same"}
 {"name":"state-remoto-token-malo","method":"GET","path":"/state","headers":{"Host":"x.ts.net","X-Forwarded-For":"100.64.0.9","Authorization":"Bearer nope"},"body":null,"volatile":[],"expect":"same"}
 {"name":"post-cuerpo-no-objeto","method":"POST","path":"/pane/type","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":"[1,2]","volatile":[],"expect":"same"}
@@ -27,6 +29,10 @@
 {"name":"d-tmux-mouse-post","method":"POST","path":"/tmux-mouse","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","enabled":true},"volatile":[],"expect":"same"}
 {"name":"d-prefs-set-malo","method":"POST","path":"/prefs-set","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"favorite":{"session":"local","enabled":true}},"volatile":[],"expect":"same"}
 {"name":"d-prefs-set","method":"POST","path":"/prefs-set","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"theme":"neon","font_size":14.7,"nfSnooze":{"x":3}},"volatile":[],"expect":"same"}
+{"name":"d-sort-by-desconocido","method":"POST","path":"/workspace/sort","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"by":"nada"},"volatile":[],"expect":"same"}
+{"name":"d-quick-invalido","method":"POST","path":"/terminal/quick","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"requestId":"-x","place":"sidebar"},"volatile":[],"expect":"same"}
+{"name":"d-quick-barra","method":"POST","path":"/terminal/quick","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"requestId":"parity-1","place":"sidebar"},"volatile":["/cwd","/label"],"expect":"same"}
+{"name":"d-quick-barra-otra-vez","method":"POST","path":"/terminal/quick","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"requestId":"parity-1","place":"sidebar"},"volatile":["/cwd","/label"],"expect":"same"}
 {"name":"d-prefs-tras-set","method":"GET","path":"/prefs","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"d-prefs-remoto-sin-token","method":"GET","path":"/prefs","headers":{"Host":"x.ts.net","X-Forwarded-For":"100.64.0.9"},"body":null,"volatile":[],"expect":"same"}
 # --- 2b · B: eventos y marcas (nativas)

@@ -208,13 +208,7 @@ pub fn project_session_matches(state: &Path, sess: &str) -> Result<bool, Fault> 
             Some(Value::String(p)) => p.as_str(),
             Some(_) => return Err(Fault::Decline),
         };
-        // `session_name`: `re.sub(r"[.:]", "-", project)[:80]`.
-        let derived: String = project
-            .chars()
-            .map(|c| if c == '.' || c == ':' { '-' } else { c })
-            .take(80)
-            .collect();
-        if derived == sess {
+        if super::py::session_name(project) == sess {
             return Ok(true);
         }
     }

@@ -93,7 +93,7 @@ fn call(
             bridge.borrow_mut().undecodable = true;
             None
         }
-        Err(TmuxError::Timeout { .. } | TmuxError::Spawn(_)) => {
+        Err(TmuxError::Timeout { .. } | TmuxError::Spawn(..)) => {
             bridge.borrow_mut().unavailable = true;
             None
         }

@@ -260,6 +260,7 @@ dependencies = [
  "icu_collator",
  "icu_locale_core",
  "nix",
+ "regex",
  "rusqlite",
  "serde_json",
  "sha2",
@@ -271,6 +272,7 @@ name = "comandos-server"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "chrono",
  "comandos-core",
  "comandos-runtime",
  "comandos-store",
@@ -282,6 +284,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "nix",
+ "regex",
  "rusqlite",
  "serde_json",
  "sha2",

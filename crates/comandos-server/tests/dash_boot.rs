@@ -161,6 +161,9 @@ async fn start(tag: &str) -> Server {
     let h = home(tag);
     let mut cfg: DashConfig = parse_args(&[], &h, Some("1")).unwrap();
     cfg.token = b"token-de-prueba".to_vec();
+    // Pruebas de la puerta, no de rutas: con el conjunto nativo, GET /state
+    // correría tmux y `ssh -O check` sobre las sesiones REALES del usuario (B11).
+    cfg.native = false;
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let (stop, shutdown) = watch::channel(false);

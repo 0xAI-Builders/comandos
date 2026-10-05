@@ -7,7 +7,7 @@ use comandos_server::dash::native::{
 };
 use serde_json::{Value, json};
 use std::{
-    process::{Command, Stdio},
+    process::Stdio,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -374,10 +374,8 @@ fn start_private_session(home: &TestHome) -> bool {
         eprintln!("tmux no está instalado: se salta el filtro de terminales vivas");
         return false;
     }
-    Command::new("tmux")
-        .args(["-f", "/dev/null", "new-session", "-d", "-s", "s1"])
-        .env_remove("TMUX")
-        .env("TMUX_TMPDIR", home.tmux_dir())
+    home.tmux_command()
+        .args(["new-session", "-d", "-s", "s1"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
@@ -385,10 +383,9 @@ fn start_private_session(home: &TestHome) -> bool {
 }
 
 fn pane_of_session(home: &TestHome) -> String {
-    let out = Command::new("tmux")
+    let out = home
+        .tmux_command()
         .args(["list-panes", "-t", "s1", "-F", "#{pane_id}"])
-        .env_remove("TMUX")
-        .env("TMUX_TMPDIR", home.tmux_dir())
         .output()
         .unwrap();
     String::from_utf8(out.stdout).unwrap().trim().to_owned()

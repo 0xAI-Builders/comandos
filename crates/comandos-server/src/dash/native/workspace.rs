@@ -6,6 +6,12 @@
 //! `workspace_sync` corre entera en el worker; la identidad de sesión (tmux)
 //! fuera. POST /workspace/close-group sigue en el Python (`close_app_tab`).
 //!
+//! POST /workspace/sort en modo `by` (Fase 2d) calcula `/state` con la caché
+//! del frente ANTES de su trabajo en la base (excepción 3a de los rulings: la
+//! escritura de `app-tab-models.json` es idempotente). El Python sincroniza
+//! antes de leer el estado y lo relee en cada reintento; aquí se lee una vez
+//! (diferencia aceptada, A8 del preflight).
+//!
 //! Sobre declinar: `workspace_sync` puede confirmar una revisión (efecto en un
 //! GET) con el `requestId` determinista del Python (`sync-<rev>-<sha256[:24]>`).
 //! Si tras ella se declina, reenviar es seguro porque esa revisión no depende
@@ -20,6 +26,7 @@ use super::{
     query::Query,
     reply,
     state::StateBackend,
+    states::{PyFloat, py_float},
     tmux::Tmux,
 };
 use crate::{HandlerError, Request};
@@ -27,7 +34,7 @@ use comandos_core::{
     json::{python_eq, truthy, workspace_dumps, workspace_dumps_with_options},
     workspace::{
         close_group_preview, empty_document,
-        layout::restore_order,
+        layout::{restore_order, sort_groups},
         pane_bindings, reconcile,
         snapshot::{Snapshot, check_snapshot},
         validate_document,
@@ -40,6 +47,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry::Vacant},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -351,6 +359,189 @@ fn client_state_exotic(state: &Map<String, Value>, previous: &Value) -> bool {
     })
 }
 
+/// `[g["id"] for g in doc.get("groups", [])]`, fuera del `try`: un grupo
+/// sin `id` es un `KeyError` no capturado (500).
+fn group_ids(document: &Value) -> Result<Vec<Value>, Fault> {
+    match document.get("groups").and_then(Value::as_array) {
+        None => Ok(Vec::new()),
+        Some(groups) => groups
+            .iter()
+            .map(|g| g.get("id").cloned().ok_or_else(failure))
+            .collect(),
+    }
+}
+
+/// `_tab_registry` (6348) dentro del `try` de `workspace_sort`: ausente → vacío;
+/// no-objeto → 400 con su texto. JSON roto u otro `OSError` → 400 con el texto
+/// de Python, que no se reproduce: declina.
+fn sort_registry(hooks: &Path) -> Result<Result<HashMap<String, String>, &'static str>, Fault> {
+    match files::read_json_strict(&hooks.join("app-tabs.json")) {
+        Strict::Missing => Ok(Ok(HashMap::new())),
+        Strict::Value(Value::Object(map)) => Ok(Ok(map
+            .into_iter()
+            .filter_map(|(k, v)| match v {
+                Value::String(s) if !s.is_empty() => Some((k, s)),
+                _ => None,
+            })
+            .collect())),
+        Strict::Value(_) => Ok(Err("app-tabs.json no es un objeto")),
+        Strict::Unreadable | Strict::Unsure => Err(Fault::Decline),
+    }
+}
+
+/// `set((read_prefs() or {}).get("favorites") or [])`. Un `TypeError` (no
+/// iterable, elementos no hashables) es un 400 con texto de Python: declina;
+/// iterar un texto o un objeto también.
+fn sort_favorites(prefs: &Map<String, Value>) -> Result<HashSet<String>, Fault> {
+    match prefs.get("favorites") {
+        Some(v) if truthy(v) => match v {
+            Value::Array(items) => {
+                let mut set = HashSet::new();
+                for item in items {
+                    match item {
+                        Value::String(s) => {
+                            set.insert(s.clone());
+                        }
+                        Value::Array(_) | Value::Object(_) => return Err(Fault::Decline),
+                        // Números, booleanos y None nunca igualan a una pestaña.
+                        _ => {}
+                    }
+                }
+                Ok(set)
+            }
+            _ => Err(Fault::Decline),
+        },
+        _ => Ok(HashSet::new()),
+    }
+}
+
+/// El `info` de `workspace_sort` (6390-6402): `activeAt`/`need` por sesión de
+/// las tarjetas de `/state` y `label`/`fav` por pestaña del documento.
+fn sort_info(
+    items: &[Value],
+    document: &Value,
+    labels: &HashMap<String, String>,
+    favorites: &HashSet<String>,
+) -> Result<Value, Fault> {
+    let mut info: Map<String, Value> = Map::new();
+    for row in items {
+        // Las tarjetas siempre son objetos; otra cosa sería un AttributeError.
+        let row = row.as_object().ok_or(Fault::Decline)?;
+        let Some(sess) = row.get("session").filter(|v| truthy(v)) else {
+            continue;
+        };
+        // `info.setdefault(sess, …)` con una lista u objeto: TypeError (400).
+        if sess.is_array() || sess.is_object() {
+            return Err(Fault::Decline);
+        }
+        // `float(row.get("ts") or 0)`: ValueError/TypeError serían un 400 con
+        // texto de Python (las tarjetas ya traen `ts` validado): declina.
+        let ts = match row.get("ts").filter(|v| truthy(v)) {
+            None => 0.0,
+            Some(v) => match py_float(v) {
+                PyFloat::Value(f) => f,
+                PyFloat::Raises | PyFloat::Unsure => return Err(Fault::Decline),
+            },
+        };
+        let waiting = row.get("status").and_then(Value::as_str) == Some("waiting");
+        // Una sesión numérica nunca coincide con un id de pestaña (texto).
+        let Value::String(sess) = sess else {
+            continue;
+        };
+        let cur = info
+            .entry(sess.clone())
+            .or_insert_with(|| json!({"activeAt": 0, "need": false}))
+            .as_object_mut()
+            .ok_or(Fault::Decline)?;
+        let previous = cur.get("activeAt").and_then(Value::as_f64).unwrap_or(0.0);
+        // `max(cur, ts)`: solo cambia si `ts > cur` (NaN nunca).
+        if ts > previous {
+            let number = serde_json::Number::from_f64(ts).ok_or(Fault::Decline)?;
+            cur.insert("activeAt".into(), Value::Number(number));
+        }
+        if waiting {
+            cur.insert("need".into(), json!(true));
+        }
+    }
+    match document.get("tabs") {
+        None => {}
+        Some(Value::Object(tabs)) => {
+            for tab in tabs.keys() {
+                let cur = info
+                    .entry(tab.clone())
+                    .or_insert_with(|| json!({"activeAt": 0, "need": false}))
+                    .as_object_mut()
+                    .ok_or(Fault::Decline)?;
+                cur.insert("label".into(), json!(labels.get(tab).unwrap_or(tab)));
+                cur.insert("fav".into(), json!(favorites.contains(tab)));
+            }
+        }
+        // Iterar otra cosa: TypeError o claves de Python; no ocurre con un
+        // documento validado.
+        Some(_) => return Err(Fault::Decline),
+    }
+    Ok(Value::Object(info))
+}
+
+/// El resto de `workspace_sort` en modo `by`, dentro del worker.
+fn sort_by(b: &mut StateBackend, hooks: &Path, now_seconds: f64, by: &str, items: &[Value]) -> Job {
+    for _ in 0..3 {
+        let current = sync(b, hooks, now_seconds)?;
+        let store = store(&b.conn)?;
+        let previous = group_ids(&current.document)?;
+        let labels = match sort_registry(hooks)? {
+            Ok(labels) => labels,
+            Err(message) => return Ok((StatusCode::BAD_REQUEST, json!({"error": message}))),
+        };
+        let favorites = sort_favorites(&read_prefs(hooks)?)?;
+        let info = sort_info(items, &current.document, &labels, &favorites)?;
+        let wanted = match sort_groups(&current.document, by, &info) {
+            Ok(w) => w,
+            Err(e) => return Ok((StatusCode::BAD_REQUEST, message_or(e, "Orden inválido"))),
+        };
+        match commit_sorted(&store, &current, &wanted, previous, now_seconds)? {
+            Some(answer) => return Ok(answer),
+            None => continue,
+        }
+    }
+    Ok((
+        StatusCode::CONFLICT,
+        json!({"error": "El acomodo cambió mientras ordenaba; intenta de nuevo"}),
+    ))
+}
+
+/// `store.commit(..., secrets.token_hex(12), reason="user")` de los dos modos
+/// de `workspace_sort`; `None` = `Conflict` (reintentar).
+fn commit_sorted(
+    store: &WorkspaceStore<'_>,
+    current: &WorkspaceState,
+    wanted: &Value,
+    previous: Vec<Value>,
+    now_seconds: f64,
+) -> Result<Option<(StatusCode, Value)>, Fault> {
+    match store.commit(
+        &json!(current.revision),
+        wanted,
+        &token_hex12()?,
+        "user",
+        now_seconds,
+    ) {
+        Ok(saved) => {
+            let mut body = payload(&saved);
+            if let Some(map) = body.as_object_mut() {
+                map.insert("previous".into(), Value::Array(previous));
+            }
+            Ok(Some((StatusCode::OK, body)))
+        }
+        Err(WsError::Conflict { .. }) => Ok(None),
+        Err(WsError::Invalid(m)) => Ok(Some((
+            StatusCode::BAD_REQUEST,
+            message_or(m, "Orden inválido"),
+        ))),
+        Err(_) => Err(failure()),
+    }
+}
+
 type Job = Result<(StatusCode, Value), Fault>;
 
 async fn run(
@@ -469,9 +660,32 @@ pub async fn answer(native: &Native, route: WorkspaceRoute, request: &Request) -
         }
         WorkspaceRoute::Sort => {
             let data = data(request)?;
-            // `by` usa read_states_cached (/state, no portada): al Python.
             let Some(Value::Array(restore)) = data.get("restore") else {
-                return Err(Fault::Decline);
+                // Modo `by`: `data.get("by")` va tal cual a `sort_groups`; sin
+                // él (`None`) es «Orden desconocido». Otro tipo: el texto del
+                // TypeError o la pertenencia a SORTS de Python; se declina.
+                let by = match data.get("by") {
+                    None | Some(Value::Null) => "<sin orden>".to_owned(),
+                    Some(Value::String(s)) => s.clone(),
+                    Some(_) => return Err(Fault::Decline),
+                };
+                // `read_states_cached()` dentro del `try` (A8): el 400 con el
+                // texto de la excepción no se reproduce (declina); el plazo
+                // vencido de tmux no se captura (504).
+                let states = match native.states_cached().await {
+                    Ok(states) => states,
+                    Err(Fault::Error(HandlerError::Timeout)) => {
+                        return Err(Fault::Error(HandlerError::Timeout));
+                    }
+                    Err(_) => return Err(Fault::Decline),
+                };
+                let items: Arc<Vec<Value>> = states.items.clone();
+                // El instante tras `/state`, que puede tardar segundos.
+                let now_seconds = (native.options().clock)() as f64 / 1000.0;
+                return run(native, move |b| {
+                    sort_by(b, &hooks, now_seconds, &by, &items)
+                })
+                .await;
             };
             // `str(x)` de un no-str: repr de Python, se declina.
             let ids: Vec<String> = restore
@@ -483,40 +697,16 @@ pub async fn answer(native: &Native, route: WorkspaceRoute, request: &Request) -
                 for _ in 0..3 {
                     let current = sync(b, &hooks, now_seconds)?;
                     let store = store(&b.conn)?;
-                    // `[g["id"] for g in doc.get("groups", [])]`, fuera del try.
-                    let previous: Vec<Value> =
-                        match current.document.get("groups").and_then(Value::as_array) {
-                            None => Vec::new(),
-                            Some(groups) => groups
-                                .iter()
-                                .map(|g| g.get("id").cloned().ok_or_else(failure))
-                                .collect::<Result<Vec<Value>, Fault>>()?,
-                        };
+                    let previous = group_ids(&current.document)?;
                     let wanted = match restore_order(&current.document, &ids) {
                         Ok(w) => w,
                         Err(e) => {
                             return Ok((StatusCode::BAD_REQUEST, message_or(e, "Orden inválido")));
                         }
                     };
-                    match store.commit(
-                        &json!(current.revision),
-                        &wanted,
-                        &token_hex12()?,
-                        "user",
-                        now_seconds,
-                    ) {
-                        Ok(saved) => {
-                            let mut body = payload(&saved);
-                            if let Some(map) = body.as_object_mut() {
-                                map.insert("previous".into(), Value::Array(previous));
-                            }
-                            return Ok((StatusCode::OK, body));
-                        }
-                        Err(WsError::Conflict { .. }) => continue,
-                        Err(WsError::Invalid(m)) => {
-                            return Ok((StatusCode::BAD_REQUEST, message_or(m, "Orden inválido")));
-                        }
-                        Err(_) => return Err(failure()),
+                    match commit_sorted(&store, &current, &wanted, previous, now_seconds)? {
+                        Some(answer) => return Ok(answer),
+                        None => continue,
                     }
                 }
                 Ok((

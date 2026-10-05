@@ -12,13 +12,8 @@ use support::{
 };
 
 fn tmux(home: &TestHome, args: &[&str]) -> String {
-    let out = std::process::Command::new("tmux")
-        .args(["-f", "/dev/null"])
-        .args(args)
-        .env_remove("TMUX")
-        .env("TMUX_TMPDIR", home.tmux_dir())
-        .output()
-        .unwrap();
+    // `-S` al socket privado: nunca el servidor del usuario.
+    let out = home.tmux_command().args(args).output().unwrap();
     assert!(
         out.status.success(),
         "tmux {args:?}: {}",

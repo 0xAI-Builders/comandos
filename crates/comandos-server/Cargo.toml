@@ -11,6 +11,8 @@ comandos-store = { path = "../comandos-store" }
 comandos-runtime = { path = "../comandos-runtime" }
 rusqlite.workspace = true
 serde_json.workspace = true
+# `datetime.now(ZONE)` de la terminal rápida (`quick_terminal::Options`).
+chrono.workspace = true
 bytes = "=1.12.1"
 http = "=1.5.0"
 http-body = "=1.1.0"
@@ -23,6 +25,8 @@ getrandom.workspace = true
 futures-util = { version = "=0.3.34", default-features = false, features = ["std", "async-await"] }
 # `kill(pid, 0)` como el `os.kill` del Python; misma versión y rasgos que comandos-extensions.
 nix = { version = "0.31", features = ["signal", "process", "user", "fs", "resource"] }
+# Expresiones fijas de `read_states` (pista de Codex, Claude ocupado, modelos caros).
+regex = "=1.13.1"
 
 [dev-dependencies]
 hyper = { version = "=1.11.1", default-features = false, features = ["client", "http1"] }

@@ -58,24 +58,13 @@ pub async fn relay(legacy: SocketAddr, request: Request) -> Result<Reply, Handle
         .split_once('?')
         .map_or(request.target.clone(), |(path, _)| path.to_owned());
     let outgoing = outgoing(request)?;
-    // El semáforo nunca se cierra: `acquire` solo falla si se cerrara.
-    let Ok(slot) = CONNECT_GATE.acquire().await else {
-        return unavailable();
-    };
-    let stream = match TcpStream::connect(legacy).await {
+    let stream = match connect_paced(legacy).await {
         Ok(stream) => stream,
         Err(err) => {
             eprintln!("dash: 502 {method} {target}: sin heredado en {legacy}: {err}");
             return unavailable();
         }
     };
-    // La plaza se libera pasado el ritmo, no al terminar la petición: un long-poll de 25 s
-    // no debe retener conexiones nuevas.
-    tokio::spawn(async move {
-        tokio::time::sleep(CONNECT_PACE).await;
-        drop(slot);
-    });
-    let _ = stream.set_nodelay(true);
     let Ok((mut sender, connection)) = http1::handshake(TokioIo::new(stream)).await else {
         eprintln!("dash: 502 {method} {target}: el heredado no habla HTTP/1.1");
         return unavailable();
@@ -112,6 +101,25 @@ pub async fn relay(legacy: SocketAddr, request: Request) -> Result<Reply, Handle
         headers,
         body,
     })
+}
+
+/// Una conexión nueva al heredado por la puerta de ritmo (`CONNECT_GATE`).
+/// La usan el reenvío y las subconsultas del frente.
+pub(crate) async fn connect_paced(legacy: SocketAddr) -> io::Result<TcpStream> {
+    // El semáforo nunca se cierra: `acquire` solo falla si se cerrara.
+    let slot = CONNECT_GATE
+        .acquire()
+        .await
+        .map_err(|_| io::Error::other("puerta de conexiones cerrada"))?;
+    let stream = TcpStream::connect(legacy).await?;
+    // La plaza se libera pasado el ritmo, no al terminar la petición: un long-poll de 25 s
+    // no debe retener conexiones nuevas.
+    tokio::spawn(async move {
+        tokio::time::sleep(CONNECT_PACE).await;
+        drop(slot);
+    });
+    let _ = stream.set_nodelay(true);
+    Ok(stream)
 }
 
 fn unavailable() -> Result<Reply, HandlerError> {
@@ -216,7 +224,7 @@ async fn pump(mut body: Incoming, tx: mpsc::Sender<io::Result<Bytes>>, _connecti
 }
 
 /// Aborta la tarea de la conexión heredada al soltarse.
-struct AbortOnDrop(JoinHandle<()>);
+pub(crate) struct AbortOnDrop(pub(crate) JoinHandle<()>);
 
 impl Drop for AbortOnDrop {
     fn drop(&mut self) {

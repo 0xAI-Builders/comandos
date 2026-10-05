@@ -22,7 +22,7 @@ mod input;
 mod jq;
 mod notify_http;
 mod opencode;
-mod py;
+pub mod py;
 mod state_file;
 mod text;
 mod transcript;

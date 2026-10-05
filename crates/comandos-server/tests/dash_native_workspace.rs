@@ -2,10 +2,7 @@
 mod support;
 
 use serde_json::{Value, json};
-use std::{
-    process::{Command, Stdio},
-    sync::Arc,
-};
+use std::{process::Stdio, sync::Arc};
 use support::{
     FakeLegacy, TestHome, Wire, dead_port, front, get, oracle::oracle, request_body, tmux_available,
 };
@@ -55,10 +52,8 @@ fn tmux_sessions(home: &TestHome, names: &[&str]) -> bool {
         return false;
     }
     names.iter().all(|name| {
-        Command::new("tmux")
-            .args(["-f", "/dev/null", "new-session", "-d", "-s", name])
-            .env_remove("TMUX")
-            .env("TMUX_TMPDIR", home.tmux_dir())
+        home.tmux_command()
+            .args(["new-session", "-d", "-s", name])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
@@ -184,7 +179,7 @@ async fn sort_restore_and_close_group_preview() {
         .map(String::as_str)
         .collect();
     assert_eq!(keys.last(), Some(&"previous"));
-    // `by` necesita /state: lo responde el heredado.
+    // `by` ya es nativo (Fase 2d): un orden desconocido es el 400 del Python.
     let by = request_body(
         front.port,
         "POST",
@@ -193,7 +188,10 @@ async fn sort_restore_and_close_group_preview() {
         r#"{"by": "name"}"#,
     )
     .await;
-    assert_eq!(by.text(), r#"{"legacy": true}"#);
+    assert_eq!(
+        (by.status, by.text().as_str()),
+        (400, r#"{"error": "Orden desconocido"}"#)
+    );
     let missing = get(front.port, "/workspace/close-group?groupId=nope").await;
     assert_eq!(missing.status, 404);
     let group = &sorted["groups"][0]["id"];
@@ -628,5 +626,104 @@ async fn client_mixed_stamps_forward_to_python_500() {
         .query_row("SELECT COUNT(*) FROM workspace_clients", [], |r| r.get(0))
         .unwrap();
     assert_eq!(clients, 0, "ni el Python ni el frente escriben");
+    front.stop().await;
+}
+
+/// HOME para `by`: dos pestañas, una favorita, un registro de estado en
+/// `waiting` (la tarjeta de `/state` que alimenta `need` y `recent`).
+fn seed_by(home: &TestHome) {
+    home.write("app-tabs.json", r#"{"beta": "Beta", "alfa": "Alfa"}"#);
+    home.write("prefs.json", r#"{"favorites": ["alfa"]}"#);
+    home.write(
+        "state/w.json",
+        r#"{"session":"beta","project":"beta","status":"waiting","ts":5}"#,
+    );
+}
+
+/// POST /workspace/sort `by` contra el oráculo sobre dos HOME gemelos: misma
+/// secuencia de revisiones, así los cuerpos se comparan byte a byte (B12). El
+/// frente reenvía a un puerto muerto: si declinara, respondería 502.
+#[tokio::test(flavor = "current_thread")]
+async fn sort_by_matches_python_oracle() {
+    let (py_home, rs_home) = (TestHome::new("ws-by-py"), TestHome::new("ws-by-rs"));
+    for home in [&py_home, &rs_home] {
+        seed_by(home);
+    }
+    let mut opts = rs_home.options();
+    opts.clock = Arc::new(comandos_server::dash::native::wall_clock_ms);
+    let front = front(&rs_home, dead_port(), opts).await;
+    let Some(py) = oracle(&py_home).await else {
+        front.stop().await;
+        return;
+    };
+    let (a, b) = (
+        get(py.port, "/workspace").await,
+        get(front.port, "/workspace").await,
+    );
+    assert_eq!(seen(&a), seen(&b));
+    let mut orders = Vec::new();
+    for (body, status) in [
+        (r#"{"by": "alpha"}"#, 200),
+        (r#"{"by": "need"}"#, 200),
+        (r#"{"by": "fav"}"#, 200),
+        (r#"{"by": "recent"}"#, 200),
+        (r#"{"by": "alpha", "restore": null}"#, 200),
+        (r#"{"by": "nada"}"#, 400),
+        (r#"{"by": null}"#, 400),
+        (r#"{}"#, 400),
+    ] {
+        let expected = request_body(py.port, "POST", "/workspace/sort", "", body).await;
+        let got = request_body(front.port, "POST", "/workspace/sort", "", body).await;
+        assert_eq!(seen(&got), seen(&expected), "{body}");
+        assert_eq!(got.status, status, "{body}: {}", got.text());
+        if status == 200 {
+            orders.push(parse(&got.text())["groups"].clone());
+        } else {
+            assert_eq!(got.text(), r#"{"error": "Orden desconocido"}"#);
+        }
+    }
+    // alpha (alfa, beta) y need (beta en espera primero) dan órdenes distintos.
+    assert_ne!(orders[0], orders[1], "{orders:?}");
+    // Registro que no es un objeto: el 400 con el texto del Python.
+    for home in [&py_home, &rs_home] {
+        home.write("app-tabs.json", "[1]");
+    }
+    let body = r#"{"by": "alpha"}"#;
+    let expected = request_body(py.port, "POST", "/workspace/sort", "", body).await;
+    let got = request_body(front.port, "POST", "/workspace/sort", "", body).await;
+    assert_eq!(
+        (got.status, got.text()),
+        (
+            400,
+            r#"{"error": "app-tabs.json no es un objeto"}"#.to_owned()
+        )
+    );
+    assert_eq!(seen(&got), seen(&expected));
+    front.stop().await;
+}
+
+/// `by` que no es texto, o un registro ilegible: el texto del Python no se
+/// reproduce; se reenvía sin confirmar ninguna revisión de orden.
+#[tokio::test(flavor = "current_thread")]
+async fn sort_by_non_string_or_unreadable_declines() {
+    let home = TestHome::new("ws-sort-by-dec");
+    let legacy = FakeLegacy::start().await;
+    let front = front(&home, legacy.port, home.options()).await;
+    for body in [r#"{"by": ["alpha"]}"#, r#"{"by": 5}"#] {
+        let got = request_body(front.port, "POST", "/workspace/sort", "", body).await;
+        assert_eq!(got.text(), r#"{"legacy": true}"#, "{body}");
+    }
+    home.write("app-tabs.json", "{roto");
+    let before = revisions(&home);
+    let got = request_body(
+        front.port,
+        "POST",
+        "/workspace/sort",
+        "",
+        r#"{"by": "alpha"}"#,
+    )
+    .await;
+    assert_eq!(got.text(), r#"{"legacy": true}"#);
+    assert_eq!(revisions(&home), before, "declinar no confirma un orden");
     front.stop().await;
 }
