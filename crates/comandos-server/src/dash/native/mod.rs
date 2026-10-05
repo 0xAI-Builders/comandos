@@ -511,6 +511,7 @@ impl Native {
         usage::limits::RefreshDeps {
             opts: self.opts.clone(),
             usage: self.usage.clone(),
+            import_lane: self.import_lane.clone(),
         }
     }
 

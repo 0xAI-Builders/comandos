@@ -5,7 +5,7 @@
 //! no hay refresco: ni red ni escrituras (R4).
 use super::super::{
     NativeOptions,
-    lanes::{Lane, UsageBackend},
+    lanes::{Lane, UsageBackend, UsageImportBackend},
 };
 use comandos_core::json::{truthy, workspace_loads};
 use comandos_runtime::limits::{self as lim, AbortRefresh, Raised};
@@ -76,6 +76,8 @@ pub struct LimitsCache {
 pub struct RefreshDeps {
     pub opts: NativeOptions,
     pub usage: Arc<Lane<UsageBackend>>,
+    /// El carril de escritura: las fotos de cuota no esperan a las lecturas (R3).
+    pub import_lane: Arc<Lane<UsageImportBackend>>,
 }
 
 impl LimitsCache {
@@ -263,11 +265,12 @@ async fn refresh(cache: Arc<LimitsCache>, deps: RefreshDeps) {
     // de las fotos de cuota.
     cache.done.notify_waiters();
     // `try: record_quota_snapshots(...) except: pass`. Va después de publicar la
-    // caché (R3: nadie espera la escritura) y nunca crea la base (A3).
+    // caché, por el carril de escritura (R3: nadie espera la escritura ni la
+    // escritura espera a las lecturas del carril de uso), y nunca crea la base (A3).
     if !done.snapshot.is_empty() && db_exists(&deps.opts.usage_db).await {
         let snapshot = done.snapshot;
         let _ = deps
-            .usage
+            .import_lane
             .with(move |u| usage_read::record_quota_snapshots(&u.conn, &snapshot, at))
             .await;
     }
