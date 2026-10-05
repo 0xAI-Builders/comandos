@@ -277,7 +277,9 @@ async fn scheduler_runs_in_both_modes_but_only_the_owner_migrates() {
         assert!(native.ready().await);
         let runner = background::start(&native);
         assert!(runner.pomodoro());
-        assert_eq!(native.tasks().len(), 1);
+        // Con `front` también el vigilante de modelos y el bucle de límites
+        // (2f-3/T6; esperan 90 s y 300 s antes de su primera vuelta).
+        assert_eq!(native.tasks().len(), if owner { 3 } else { 1 });
         let legacy_records =
             "select count(*) from pomodoro_records where provenance='legacy-planned'";
         if owner {

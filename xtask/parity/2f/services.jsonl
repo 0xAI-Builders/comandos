@@ -16,3 +16,4 @@
 {"name":"s-chains-post-invalida","method":"POST","path":"/chains","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"name":"","steps":[]},"volatile":[],"expect":"same"}
 {"name":"s-commands-catalog","method":"GET","path":"/commands/catalog?session=s1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/versionsAt"],"expect":"same"}
 {"name":"s-opencode-models","method":"GET","path":"/opencode/models","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"s-models-latest","method":"GET","path":"/models/latest","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}

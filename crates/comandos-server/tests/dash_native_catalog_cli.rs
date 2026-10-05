@@ -303,25 +303,24 @@ async fn commands_catalog_without_snapshot_matches_python() {
     assert_eq!(versions(&t.b), 5);
 }
 
-/// `?refresh=1` fuerza un ciclo del vigilante (Tarea 6): hasta entonces el
-/// frente declina antes de leer o ejecutar nada.
+/// `?refresh=1` fuerza un ciclo del vigilante (Tarea 6): ya no declina (el
+/// ciclo forzado se prueba en `dash_native_background.rs`); sin `refresh` la
+/// ruta no corre ningún ciclo.
 #[tokio::test]
-async fn catalog_refresh_declines_until_t6() {
+async fn catalog_without_refresh_runs_no_cycle() {
     let home = TestHome::new("cat-refresh");
     let mut opts = home.options();
     opts.user_bin_dirs = support::twin::home_bin_dirs();
     let legacy = FakeLegacy::start().await;
     let server = front(&home, legacy.port, opts).await;
-    let wire = get(server.port, "/commands/catalog?refresh=1&session=s").await;
-    assert_eq!(wire.text(), r#"{"legacy": true}"#);
-    assert_eq!(
-        legacy.requests(),
-        vec!["GET /commands/catalog?refresh=1&session=s HTTP/1.1".to_owned()]
-    );
-    // Sin `refresh` responde él (sin CLIs en su `PATH`).
     let wire = get(server.port, "/commands/catalog").await;
     assert_eq!(wire.status, 200, "{}", wire.text());
-    assert_eq!(legacy.requests().len(), 1);
+    assert!(legacy.requests().is_empty());
+    assert!(!home.hooks().join("model-watch.json").exists());
+    let wire = get(server.port, "/commands/catalog?refresh=1&session=s").await;
+    assert_eq!(wire.status, 200, "{}", wire.text());
+    assert!(legacy.requests().is_empty());
+    assert!(home.hooks().join("model-watch.json").exists());
     server.stop().await;
 }
 

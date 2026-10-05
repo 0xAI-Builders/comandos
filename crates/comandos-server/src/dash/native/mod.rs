@@ -474,6 +474,9 @@ pub struct NativeOptions {
     /// cc-notifyd (`127.0.0.1:4778`) de los avisos de nivel; las pruebas ponen
     /// uno falso que solo guarda los cuerpos.
     pub notifyd: Arc<dyn usage::pane_models::NotifyPost>,
+    /// Feeds de noticias del vigilante de modelos (`news_watch`): las URLs del
+    /// Python en producción; las pruebas los llevan a un servidor local.
+    pub news_feeds: Arc<background::models::Feeds>,
     /// Falso en la sombra (`--no-usage-effects`): sin refresco de límites (ni red
     /// ni escrituras) ni el resto de efectos de uso de la fase.
     pub usage_effects: bool,
@@ -596,6 +599,7 @@ impl NativeOptions {
             quick_base: quick::default_base(home),
             oauth: Arc::new(usage::limits::ReqwestOauth::default()),
             notifyd: Arc::new(usage::pane_models::HyperNotify::default()),
+            news_feeds: Arc::new(background::models::Feeds::production()),
             usage_effects: true,
             usage_env: Arc::new(usage_env_from_process()),
             zone: Arc::new(chrono::Local),

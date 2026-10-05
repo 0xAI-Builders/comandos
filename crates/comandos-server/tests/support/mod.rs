@@ -281,6 +281,12 @@ impl TestHome {
         opts.oauth = Arc::new(FakeOauth::default());
         // Nunca el cc-notifyd real (127.0.0.1:4778): ningún popup de verdad.
         opts.notifyd = Arc::new(FakeNotify::default());
+        // Nunca los feeds reales de noticias: el puerto 1 no escucha.
+        opts.news_feeds = Arc::new(
+            comandos_server::dash::native::background::models::Feeds::new(
+                comandos_runtime::news_watch::Endpoints::local("http://127.0.0.1:1"),
+            ),
+        );
         opts.zone = Arc::new(chrono_tz::America::Mexico_City);
         opts.usage_env = Arc::default();
         opts.tmux = Tmux::private(&self.tmux_dir());

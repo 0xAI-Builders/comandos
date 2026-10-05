@@ -6,9 +6,10 @@
 //!   providers.json, ventana de 600 s sin snapshot)` y el sondeo de versiones
 //!   de 600 s) más `_DETECT_CACHE` y `_HELP_CACHE`, todo bajo un candado
 //!   asíncrono como el `_CLI_CATALOG_LOCK` del Python. `?refresh=1` fuerza un
-//!   ciclo del vigilante de modelos: hasta la Tarea 6 declina antes de leer
-//!   nada. `--version` (15 s) y `--help` (20 s, `NO_COLOR`, `TERM=dumb`,
-//!   `COLUMNS=100`) se ejecutan como en el Python, uno tras otro.
+//!   ciclo del vigilante de modelos (`background::models::force_cycle`, Tarea
+//!   6) antes de leer el snapshot. `--version` (15 s) y `--help` (20 s,
+//!   `NO_COLOR`, `TERM=dumb`, `COLUMNS=100`) se ejecutan como en el Python, uno
+//!   tras otro.
 //! - GET y POST `/chains` (igualdad cruda): `command_chains` en
 //!   `$XDG_CONFIG_HOME/comandos/cadenas`. El POST corre en su propia tarea
 //!   (`Native::tasks`): si el cliente se va, la escritura termina igual.
@@ -22,7 +23,7 @@
 //! binarios del sondeo de versiones y otro por cada ayuda que interpretar.
 //! Nada bloquea el hilo del runtime.
 use super::{
-    Answer, Entry, Fault, Key, Native, NativeRoute, Verb,
+    Answer, Entry, Fault, Key, Native, NativeRoute, Verb, background,
     files::{Strict, read_json_strict},
     light::{self, data, read_reply},
     procs::which_in,
@@ -107,6 +108,9 @@ const OPENCODE_SECONDS: u64 = 60;
 pub struct CliState {
     catalog: tokio::sync::Mutex<CatalogCache>,
     opencode: Mutex<OpencodeCache>,
+    /// `_MODEL_WATCH_LOCK` y `_model_watch_state` (Tarea 6): un ciclo del
+    /// vigilante a la vez (bucle, `?refresh=1`).
+    pub(crate) watch: tokio::sync::Mutex<background::models::WatchState>,
 }
 
 /// La llave de `derived`: `(checkedAt, mtime_ns, ventana)`.
@@ -212,10 +216,6 @@ async fn blocking<T: Send + 'static>(
 
 async fn catalog(native: &Arc<Native>, request: &Request) -> Answer {
     let query = Query::parse(&request.target)?;
-    // `refresh=1` fuerza `_force_model_watch_cycle` (Tarea 6).
-    if query.first("refresh") == Some("1") {
-        return Err(Fault::Decline);
-    }
     let session = take_chars(query.first("session").unwrap_or(""), 80);
     let pane = query.first("pane").unwrap_or("").to_owned();
     let info = match is_pane(&pane) {
@@ -223,6 +223,13 @@ async fn catalog(native: &Arc<Native>, request: &Request) -> Answer {
         Some(true) => target::agent_info_for_pane(native, &pane).await?,
         Some(false) => None,
     };
+    // `cli_catalog_payload(refresh=True)`: `_force_model_watch_cycle()` y
+    // después la vista. Si la vista declina tras el ciclo, el heredado repite
+    // el suyo: idempotente (el segundo ve el snapshot del primero y no avisa
+    // de nada), solo cuesta otra ronda de sondeos.
+    if query.first("refresh") == Some("1") {
+        background::models::force_cycle(native).await;
+    }
     let (view, at) = payload(native).await?;
     let at = serde_json::Number::from_f64(at).ok_or(Fault::Decline)?;
     read_reply(&json!({
@@ -565,6 +572,59 @@ async fn payload(native: &Arc<Native>) -> Result<(Value, f64), Fault> {
     )
     .map_err(view_fault)?;
     Ok((view, derived.at))
+}
+
+/// El calentamiento del vigilante (`_model_watch_cycle_locked`, 710-720):
+/// bajo `_CLI_CATALOG_LOCK`, el catálogo, `detected_commands` y `help_for` de
+/// cada CLI, para que la primera petición no lea cientos de MB. Todo error se
+/// traga (`except Exception: pass`); lo incierto deja la caché como esté.
+pub(crate) async fn warm(native: &Arc<Native>) {
+    let mut cache = native.cli.catalog.lock().await;
+    if cache.catalog.is_none() {
+        let Some(repo) = native.options().repo_root.clone() else {
+            return;
+        };
+        match blocking(move || load_catalog(&repo)).await {
+            Ok(catalog) => cache.catalog = Some(Arc::new(catalog)),
+            Err(_) => return,
+        }
+    }
+    let Some(catalog) = cache.catalog.clone() else {
+        return;
+    };
+    let Ok(clis) = cli_ids(&catalog) else {
+        return;
+    };
+    let binaries = clis.iter().map(|(_, b)| b.clone()).collect();
+    let Ok(exes) = blocking(which_all(native, binaries)).await else {
+        return;
+    };
+    let mut detect = cache.detect.clone();
+    let job = {
+        let (catalog, clis, exes) = (Arc::clone(&catalog), clis.clone(), exes.clone());
+        move || {
+            let found = detected_commands(&catalog, &clis, &exes, &mut detect);
+            let keys: Vec<Option<FileKey>> = exes
+                .iter()
+                .map(|e| e.as_deref().and_then(file_key))
+                .collect();
+            Ok((found.is_ok(), detect, keys))
+        }
+    };
+    let Ok((detected, detect, keys)) = blocking(job).await else {
+        return;
+    };
+    cache.detect = detect;
+    if !detected {
+        return;
+    }
+    for (((_, binary), exe), key) in clis.iter().zip(exes).zip(keys) {
+        let (Some(exe), Some(key)) = (exe, key) else {
+            continue;
+        };
+        // Una ayuda incierta queda recordada como tal; el resto sigue.
+        let _ = help_for(native, &mut cache, binary, &exe, key).await;
+    }
 }
 
 /// Las cuentas que no son `main` de cada CLI con su entorno; un error en

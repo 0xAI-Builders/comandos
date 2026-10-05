@@ -13,6 +13,8 @@
 //!   `popup: false` sin red; encendido DECLINA antes del POST a cc-notifyd
 //!   hasta que `NotifyPost` devuelva el resultado (R4 del preflight).
 //! - POST `/test`: el reproductor o la voz de una notificación real.
+//! - GET `/models/latest` (prefijo, 8534): `_read_json_quiet(MODEL_WATCH_FILE)
+//!   or {}` tal cual (el snapshot del vigilante de modelos, Tarea 6).
 //!
 //! Ligereza: cada ruta hace un solo salto al pool de bloqueo (dos en
 //! `/conf-set`: la cola del candado de `FileLock::acquire_timeout` y la
@@ -21,7 +23,7 @@
 use super::{
     Answer, Entry, Fault, Key, Native, NativeOptions, NativeRoute, Verb,
     files::{FileLock, LOCK_WAIT, write_text_atomic},
-    light::{data, error, read_reply},
+    light::{data, error, load, read_reply},
     procs::{gui_env_for, spawn_detached, which_in},
     py::{int, str_scalar, take_chars},
     query::Query,
@@ -61,6 +63,7 @@ pub enum SettingsRoute {
     OpenUrl,
     NotifyPopup,
     Test,
+    ModelsLatest,
 }
 
 pub const ROUTES: &[Entry] = &[
@@ -108,6 +111,11 @@ pub const ROUTES: &[Entry] = &[
         verb: Verb::Post,
         key: Key::Raw("/test"),
         route: NativeRoute::Settings(SettingsRoute::Test),
+    },
+    Entry {
+        verb: Verb::Get,
+        key: Key::Prefix("/models/latest"),
+        route: NativeRoute::Settings(SettingsRoute::ModelsLatest),
     },
 ];
 
@@ -157,7 +165,19 @@ pub async fn answer(native: &Arc<Native>, route: SettingsRoute, request: &Reques
         SettingsRoute::OpenUrl => open_url_route(native, data(request)?).await,
         SettingsRoute::NotifyPopup => notify_popup(opts, data(request)?).await,
         SettingsRoute::Test => test(native, data(request)?).await,
+        SettingsRoute::ModelsLatest => models_latest(opts).await,
     }
+}
+
+/// GET `/models/latest`: el snapshot del vigilante, o `{}` si falta, no se
+/// lee o es falso. Lo que el port no lee con certeza declina.
+async fn models_latest(opts: &NativeOptions) -> Answer {
+    let path = opts.hooks.join("model-watch.json");
+    let data = blocking(move || load(&path)).await??;
+    let data = data
+        .filter(truthy)
+        .unwrap_or_else(|| Value::Object(Map::new()));
+    read_reply(&data)
 }
 
 fn failure() -> Fault {
