@@ -188,6 +188,10 @@ impl TestHome {
     pub fn options(&self) -> NativeOptions {
         let mut opts = NativeOptions::for_home(&self.root, self.state_db());
         opts.clock = Arc::new(|| NOW_MS);
+        // Nunca la red real: OAuth falso sin guion (toda petición es un error).
+        opts.oauth = Arc::new(FakeOauth::default());
+        opts.zone = Arc::new(chrono_tz::America::Mexico_City);
+        opts.usage_env = Arc::default();
         opts.tmux = Tmux::private(&self.tmux_dir());
         // Sin fc-list en las pruebas salvo que una prueba lo fije.
         opts.fc_list = Program::named("/no-existe/fc-list");
@@ -461,4 +465,60 @@ impl Drop for FixedLegacy {
     fn drop(&mut self) {
         self.task.abort();
     }
+}
+
+/// OAuth falso: respuestas programadas por token; cuenta las llamadas.
+#[derive(Default)]
+pub struct FakeOauth {
+    pub script: Mutex<std::collections::HashMap<String, FakeAnswer>>,
+    pub calls: std::sync::atomic::AtomicUsize,
+}
+
+#[derive(Clone)]
+pub enum FakeAnswer {
+    Json(serde_json::Value),
+    Error(String),
+    /// Nunca responde (la tarea de refresco queda colgada).
+    Hang,
+}
+
+impl FakeOauth {
+    pub fn calls(&self) -> usize {
+        self.calls.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    pub fn set(&self, token: &str, answer: FakeAnswer) {
+        self.script.lock().unwrap().insert(token.to_owned(), answer);
+    }
+}
+
+impl comandos_server::dash::native::usage::limits::OauthHttp for FakeOauth {
+    fn get_json(
+        &self,
+        _url: &'static str,
+        token: String,
+        _timeout: Duration,
+    ) -> comandos_server::dash::native::usage::limits::HttpFuture {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let answer = self
+            .script
+            .lock()
+            .unwrap()
+            .get(&token)
+            .cloned()
+            .unwrap_or(FakeAnswer::Error("sin guion".into()));
+        Box::pin(async move {
+            match answer {
+                FakeAnswer::Json(v) => Ok(v),
+                FakeAnswer::Error(e) => Err(e),
+                FakeAnswer::Hang => std::future::pending().await,
+            }
+        })
+    }
+}
+
+/// Crea la base de uso del HOME con su esquema y ejecuta `sql`.
+pub fn seed_usage(home: &TestHome, sql: &str) {
+    let conn = comandos_store::usage::open_usage_db_at(&home.usage_db()).unwrap();
+    comandos_store::usage::ensure_schema(&conn).unwrap();
+    conn.execute_batch(sql).unwrap();
 }

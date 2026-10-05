@@ -9,6 +9,7 @@ pub mod agent_procs;
 pub mod events_cli;
 pub mod hooks;
 pub mod legacy;
+pub mod limits;
 pub mod model_catalog;
 pub mod pane_snapshot;
 pub mod pane_typing;
