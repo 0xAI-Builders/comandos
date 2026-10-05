@@ -26,17 +26,16 @@ use comandos_runtime::{
     },
     hooks::py::float_value,
     model_catalog::catalog_paths,
+    pane_observe::{acp_state, claude_conversation, codex_conversation, grok_home_for},
     pane_snapshot::{PaneInspector, PaneRef},
     providers::{self, RegistryCache},
-    tui_state::{GrokMetadataCache, Obs, StateTracker, TranscriptCache, screen_state},
+    tui_state::{GrokMetadataCache, StateTracker, TranscriptCache, screen_state},
 };
 use rusqlite::{Connection, types::ValueRef};
 use serde_json::{Map, Value};
 use std::{
     collections::{HashMap, HashSet},
-    ffi::OsStr,
     fs,
-    os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
     process::Stdio,
     sync::{Arc, Mutex, MutexGuard},
@@ -492,59 +491,6 @@ fn latest_session_config(
     Ok(Some(out))
 }
 
-/// `grok_metadata_for_pid` (1495): `GROK_HOME` del `environ` (o `~/.grok`),
-/// `expanduser` con el `HOME` del frente y `realpath`.
-fn grok_home_for(proc_root: &Path, home: &Path, pid: i64) -> Result<PathBuf, StateFault> {
-    let env = agent_procs::read_environ(proc_root, pid);
-    let raw = env
-        .get(b"GROK_HOME".as_slice())
-        .map(|v| String::from_utf8_lossy(v).into_owned())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| "~/.grok".to_owned());
-    let expanded = expanduser(&raw, home)?;
-    Ok(PathBuf::from(OsStr::from_bytes(&agent_procs::realpath(
-        expanded.as_bytes(),
-    ))))
-}
-
-/// `os.path.expanduser` con `HOME` = `home`; `~usuario` no se reproduce.
-fn expanduser(raw: &str, home: &Path) -> Result<String, StateFault> {
-    if raw != "~" && !raw.starts_with("~/") {
-        if raw.starts_with('~') {
-            return Err(StateFault::Decline);
-        }
-        return Ok(raw.to_owned());
-    }
-    let home = home.to_str().ok_or(StateFault::Decline)?;
-    let tail = raw.get(1..).unwrap_or("");
-    let joined = format!("{}{tail}", home.trim_end_matches('/'));
-    Ok(if joined.is_empty() {
-        "/".into()
-    } else {
-        joined
-    })
-}
-
-/// `glob.has_magic`.
-fn has_magic(text: &str) -> bool {
-    text.contains(['*', '?', '['])
-}
-
-/// `acp_state_for_pane` (1904): `{}` ante cualquier excepción; un valor
-/// verdadero que no es objeto llega a `observe_pane` y su `.get` lanza.
-fn acp_state(hooks: &Path, pane: &str) -> Result<Obs, StateFault> {
-    match files::read_json_strict(&hooks.join("acp-panes.json")) {
-        Strict::Unsure => Err(StateFault::Decline),
-        Strict::Missing | Strict::Unreadable => Ok(Map::new()),
-        Strict::Value(Value::Object(data)) => match data.get(pane).filter(|v| truthy(v)) {
-            None => Ok(Map::new()),
-            Some(Value::Object(state)) => Ok(state.clone()),
-            Some(_) => Err(StateFault::Failure),
-        },
-        Strict::Value(_) => Ok(Map::new()),
-    }
-}
-
 /// Lo que `_pane_identity` sacó de tmux.
 struct Identity {
     fields: Vec<String>,
@@ -699,78 +645,6 @@ fn gather_evidence(
     })))
 }
 
-/// El rollout raíz que tiene abierto ESTE proceso: `fd` de `/proc/<pid>/fd/*`
-/// que acaban en `<id>.jsonl`, en el orden de `read_dir`, hasta uno con modelo.
-fn codex_conversation(
-    transcripts: &mut TranscriptCache,
-    proc_root: &Path,
-    pid: i64,
-    id: &str,
-) -> Result<Obs, StateFault> {
-    let mut conversation = Map::new();
-    let suffix = format!("{id}.jsonl");
-    let Ok(listing) = fs::read_dir(proc_root.join(pid.to_string()).join("fd")) else {
-        return Ok(conversation);
-    };
-    for entry in listing.flatten() {
-        if entry.file_name().as_bytes().first() == Some(&b'.') {
-            continue;
-        }
-        let fd = entry.path();
-        let Ok(target) = fs::read_link(&fd) else {
-            continue;
-        };
-        if !target.as_os_str().as_bytes().ends_with(suffix.as_bytes()) {
-            continue;
-        }
-        let context = transcripts.read("codex", id, &fd).map_err(unsure)?;
-        if context.get("model").is_some_and(truthy) {
-            conversation = context;
-        }
-        if conversation.get("model").is_some_and(truthy) {
-            break;
-        }
-    }
-    Ok(conversation)
-}
-
-/// `glob(<config>/projects/*/<id>.jsonl)`: exactamente una → su transcript.
-fn claude_conversation(
-    transcripts: &mut TranscriptCache,
-    root: &Path,
-    id: &str,
-) -> Result<Obs, StateFault> {
-    let root_text = root.to_str().ok_or(StateFault::Decline)?;
-    // Comodines en la ruta o el id harían otro patrón; un `/` en el id, otra ruta.
-    if has_magic(root_text) || has_magic(id) || id.contains('/') {
-        return Err(StateFault::Decline);
-    }
-    let projects = root.join("projects");
-    let name = format!("{id}.jsonl");
-    let mut found = Vec::new();
-    if let Ok(listing) = fs::read_dir(&projects) {
-        for entry in listing.flatten() {
-            if entry.file_name().as_bytes().first() == Some(&b'.') {
-                continue;
-            }
-            // `_iterdir(..., dironly=True)`: `entry.is_dir()` sigue enlaces.
-            let dir = entry.path();
-            if !fs::metadata(&dir).is_ok_and(|m| m.is_dir()) {
-                continue;
-            }
-            let candidate = dir.join(&name);
-            // `_glob0`: `os.path.lexists`.
-            if fs::symlink_metadata(&candidate).is_ok() {
-                found.push(candidate);
-            }
-        }
-    }
-    match found.as_slice() {
-        [only] => transcripts.read("claude", id, only).map_err(unsure),
-        _ => Ok(Map::new()),
-    }
-}
-
 impl RealEffects<'_> {
     /// `observe_pane` dentro del `try` de `reconcile_card_config` (6884):
     /// identidad por tmux, evidencia en un hilo de bloqueo, pantalla y el
@@ -856,17 +730,6 @@ pub fn new_tracker() -> Mutex<StateTracker> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn expanduser_like_python() {
-        let home = Path::new("/home/u/");
-        assert_eq!(expanduser("~/.grok", home).unwrap(), "/home/u/.grok");
-        assert_eq!(expanduser("~", home).unwrap(), "/home/u");
-        assert_eq!(expanduser("/x/y", home).unwrap(), "/x/y");
-        assert_eq!(expanduser("rel", home).unwrap(), "rel");
-        assert_eq!(expanduser("~otro/x", home), Err(StateFault::Decline));
-        assert_eq!(expanduser("~/x", Path::new("/")).unwrap(), "/x");
-    }
 
     #[test]
     fn session_labels_fill_from_live_history() {

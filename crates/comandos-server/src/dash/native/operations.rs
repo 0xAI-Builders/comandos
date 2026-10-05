@@ -72,7 +72,7 @@ pub async fn answer(native: &Native, request: &crate::Request) -> Answer {
 /// (`PermissionError`) o éxito → vivo. 0 es el propio grupo de procesos y un
 /// negativo es un grupo, igual que en el Python. Cualquier otro error haría
 /// subir una excepción en el Python (500): se reenvía sin escribir.
-fn alive(pid: i64) -> ops::Result<bool> {
+pub(crate) fn alive(pid: i64) -> ops::Result<bool> {
     use nix::{errno::Errno, sys::signal::kill, unistd::Pid};
     // Fuera de `pid_t` el Python lanza `OverflowError`: `recovery_is_certain`
     // ya lo declinó; si una fila nueva cuela entre medias, «vivo» no escribe.
@@ -89,7 +89,7 @@ fn alive(pid: i64) -> ops::Result<bool> {
 /// Antes de recuperar: ningún dueño pendiente puede salirse de lo que
 /// `os.kill` acepta como pid (un no entero da `TypeError`; fuera de `pid_t`,
 /// `OverflowError`: el Python respondería 500). Si no, se declina sin escribir.
-fn recovery_is_certain(conn: &Connection) -> Result<bool, rusqlite::Error> {
+pub(crate) fn recovery_is_certain(conn: &Connection) -> Result<bool, rusqlite::Error> {
     let unusual: Option<i64> = conn
         .query_row(
             "SELECT 1 FROM session_operations WHERE state NOT IN \

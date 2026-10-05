@@ -466,6 +466,13 @@ pub trait Adapter {
     fn pending_confirmation(&mut self, _plan: &Value, _snapshot: &Value) -> Result<Option<Value>> {
         Ok(None)
     }
+    /// El `dict` del snapshot tal como lo dejó el adaptador. En el Python es
+    /// el mismo objeto que `snapshot` devolvió y que `_verify` anota después
+    /// (`destinationProcess`); aquí los valores no se comparten, así que el
+    /// adaptador que lo anote lo devuelve y `awaiting_confirmation` lo guarda.
+    fn snapshot_record(&self) -> Option<Value> {
+        None
+    }
 }
 fn stage_notify(
     store: &impl Journal,
@@ -537,11 +544,12 @@ pub fn run_operation(
         if let Some(pending) = adapter.pending_confirmation(&plan, saved)?.filter(truthy) {
             let mut result = json!({"ok":true,"pending":true,"confirmed":false,"recoveryAllowed":true,"observed":pending,"message":"el destino sigue abierto; revisa su terminal para confirmar o recuperar el origen"});
             continuity(&mut result, &plan)?;
+            let record = adapter.snapshot_record();
             stage_notify(
                 store,
                 id,
                 "awaiting_confirmation",
-                Some(saved),
+                Some(record.as_ref().unwrap_or(saved)),
                 Some(&result),
                 &mut notify,
             )?;
