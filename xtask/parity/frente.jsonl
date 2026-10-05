@@ -125,6 +125,8 @@
 # --- 2c · F3: catálogos de solo lectura (nativas)
 {"name":"f-model-tiers","method":"GET","path":"/model-tiers","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"f-sovereignty","method":"GET","path":"/sovereignty","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/generatedAt","/stores/*/mtime"],"expect":"same"}
+# --- 2e · uso: calentar la caché de límites del frente (el arranque ya no refresca; el refresco corre mientras pasan los casos de G y H)
+{"name":"u-week-calentar","method":"GET","path":"/analytics/week","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"status-only"}
 # --- 2c · G1: paneles e historial (nativas; close se reenvía). tmux privado por copia: identidades distintas
 {"name":"g-terminal-panes","method":"POST","path":"/terminal-panes","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local"},"volatile":["/panes/*/identity"],"expect":"same"}
 {"name":"g-terminal-panes-mala","method":"POST","path":"/terminal-panes","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"a b"},"volatile":[],"expect":"same"}
@@ -148,3 +150,12 @@
 {"name":"h-model-status-id","method":"GET","path":"/model/status?operationKey=local&operationId=%24%24","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"h-model-status-ajena","method":"GET","path":"/model/status?operationKey=local&operationId=no-existe","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"h-model-status-sin-registro","method":"GET","path":"/model/status?operationKey=sin-registro-paridad","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
+# --- 2e · uso y analítica (nativas; leen la base de uso y la caché de límites calentada arriba)
+{"name":"u-week","method":"GET","path":"/analytics/week","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/week/now","/week/measuredAt"],"expect":"same"}
+{"name":"u-week-sidebar","method":"GET","path":"/analytics/week?offset=0&sidebar=1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/week/now","/week/measuredAt"],"expect":"same"}
+{"name":"u-week-prev","method":"GET","path":"/analytics/week?offset=-1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/week/measuredAt"],"expect":"same"}
+{"name":"u-week-offset-malo","method":"GET","path":"/analytics/week?offset=x","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"u-week-offset-fuera","method":"GET","path":"/analytics/week?offset=3","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"u-week-demo","method":"GET","path":"/analytics/week?demo=normal","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"u-week-demo-nada","method":"GET","path":"/analytics/week?demo=zz9","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"u-week-prefijo","method":"GET","path":"/analytics/weekly","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/week/now","/week/measuredAt"],"expect":"same","forwarded":true}

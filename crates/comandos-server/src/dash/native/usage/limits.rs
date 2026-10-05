@@ -127,6 +127,17 @@ impl LimitsCache {
         }
     }
 
+    /// La copia actual, sin lanzar refresco: una ruta calcula con ella y llama a
+    /// `get` (el efecto) solo cuando ya no puede declinar. Son las mismas filas
+    /// que `get` devolvería: el refresco que lanza corre en otra tarea.
+    pub fn current(&self) -> Limits {
+        let st = self.lock();
+        Limits {
+            rows: st.rows.clone(),
+            health: st.health.clone(),
+        }
+    }
+
     /// D5: `attach_token_counts` sobre las filas cacheadas, como el Python (que
     /// muta las mismas `dict` que guarda): el primer valor se queda.
     pub fn attach_tokens(&self, windows: &Value) -> Vec<Map<String, Value>> {

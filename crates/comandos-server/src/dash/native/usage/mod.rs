@@ -1,3 +1,24 @@
-//! Uso, cuotas y analítica (Fase 2e). En esta tarea solo la caché de límites de
-//! proveedor; las rutas llegan en las siguientes.
+//! Uso, cuotas y analítica (Fase 2e): la caché de límites de proveedor y las
+//! rutas de este dominio. Todas declinan con el carril de uso apagado (D10).
 pub mod limits;
+pub mod week;
+
+use super::{Answer, Entry, Key, Native, NativeRoute, Verb};
+use crate::Request;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UsageRoute {
+    Week,
+}
+
+pub const ROUTES: &[Entry] = &[Entry {
+    verb: Verb::Get,
+    key: Key::Path("/analytics/week"),
+    route: NativeRoute::Usage(UsageRoute::Week),
+}];
+
+pub async fn answer(native: &Native, route: UsageRoute, request: &Request) -> Answer {
+    match route {
+        UsageRoute::Week => week::answer(native, request).await,
+    }
+}

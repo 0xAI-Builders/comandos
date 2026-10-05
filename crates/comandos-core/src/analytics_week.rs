@@ -614,8 +614,14 @@ fn build_accounts_in(input: &AccountsInput<'_>, tz: chrono_tz::Tz) -> Result<Vec
                 hours += numeric(required(s, "en")?)? - numeric(required(s, "st")?)?;
                 tokens += numeric(required(s, "tok")?)?;
             }
+            // `sum(...)` sin elementos es el entero 0 del Python, no `0.0`.
+            let hours = if rows.is_empty() {
+                json!(0)
+            } else {
+                number(hours)
+            };
             Ok(object([
-                ("h", number(hours)),
+                ("h", hours),
                 (
                     "tok",
                     if daily {
@@ -642,10 +648,35 @@ fn build_accounts_in(input: &AccountsInput<'_>, tz: chrono_tz::Tz) -> Result<Vec
         } else {
             Value::Null
         };
-        let mut item = json!({"id":acc,"provider":p,"cli":CLI[idx],"alias":alias,"color":color,"week":week,"h5":slot.h5.map(|r|round_value(&r["percent"])).transpose()?.unwrap_or(Value::Null),"reset":reset(slot.week,tz)?,"left":left(slot.week,input.now)?,"h5Reset":reset(slot.h5,tz)?,"h5Left":left(slot.h5,input.now)?,"weekUsed":if input.past{used_at(input.snapshots,&acc,input.window_end,input.now)?}else{week}});
-        item["model"] = model;
-        item["hoy"] = stats(&today, true)?;
-        item["sem"] = stats(&mine, false)?;
+        // El orden de claves del `dict` del Python (`weekUsed` se añade al final).
+        let week_used = if input.past {
+            used_at(input.snapshots, &acc, input.window_end, input.now)?
+        } else {
+            week.clone()
+        };
+        let item = object([
+            ("id", json!(acc)),
+            ("provider", json!(p)),
+            ("cli", json!(CLI[idx])),
+            ("alias", json!(alias)),
+            ("color", json!(color)),
+            ("week", week),
+            ("model", model),
+            (
+                "h5",
+                slot.h5
+                    .map(|r| round_value(&r["percent"]))
+                    .transpose()?
+                    .unwrap_or(Value::Null),
+            ),
+            ("reset", reset(slot.week, tz)?),
+            ("left", left(slot.week, input.now)?),
+            ("h5Reset", reset(slot.h5, tz)?),
+            ("h5Left", left(slot.h5, input.now)?),
+            ("hoy", stats(&today, true)?),
+            ("sem", stats(&mine, false)?),
+            ("weekUsed", week_used),
+        ]);
         out.push(item);
     }
     Ok(out)
@@ -803,7 +834,14 @@ fn pomodoros_in(records: &[Value], days: &[String], tz: chrono_tz::Tz) -> Result
             numeric_add(start_ms, active)?
         };
         let target = default(&r["targetMs"], default(&r["plannedMs"], &zero));
-        out.push(json!({"d":day,"st":number(st),"en":number(pymin(24.,st+divide_number(&numeric_sub(&ended,start_ms)?,3600000)?)),"plan":round_int(divide_number(target,60000)?)?,"act":round_int(divide_number(default(&r["activeMs"],&zero),60000)?)?,"pause":0,"status":if r["status"]=="completed"{"completed"}else{"cancelled"},"proj":pomodoro_project(&r["project"])?}));
+        // `min(24, x)`: con `x >= 24` devuelve el primer argumento, el entero 24.
+        let until = st + divide_number(&numeric_sub(&ended, start_ms)?, 3600000)?;
+        let en = if until < 24. {
+            number(until)
+        } else {
+            json!(24)
+        };
+        out.push(json!({"d":day,"st":number(st),"en":en,"plan":round_int(divide_number(target,60000)?)?,"act":round_int(divide_number(default(&r["activeMs"],&zero),60000)?)?,"pause":0,"status":if r["status"]=="completed"{"completed"}else{"cancelled"},"proj":pomodoro_project(&r["project"])?}));
     }
     out.sort_by(|a, b| {
         a["d"].as_str().cmp(&b["d"].as_str()).then_with(|| {
@@ -844,8 +882,9 @@ pub fn build_week(input: &WeekInput<'_>) -> Result<Value> {
             sess.push(s.clone())
         }
         if prev_iso.contains(day) {
-            *last.entry(string(&s["proj"])?.into()).or_default() +=
-                numeric(&s["en"])? - numeric(&s["st"])?;
+            // `last.get(p, 0) + s["en"] - s["st"]`: suma y resta en ese orden.
+            let acc = last.entry(string(&s["proj"])?.into()).or_default();
+            *acc = (*acc + numeric(&s["en"])?) - numeric(&s["st"])?;
         }
     }
     let window_end = local_midnight(
@@ -879,7 +918,18 @@ pub fn build_week(input: &WeekInput<'_>) -> Result<Value> {
         .map(|(k, v)| (k, number(v)))
         .collect::<serde_json::Map<_, _>>();
     let waste = waste(input.snapshots, &accounts, input.now)?;
-    let mut result = json!({"week":{"offset":input.offset,"label":week_label(&dates)? ,"start":dates[7].to_string(),"end":dates[0].to_string(),"today":today,"now":if input.offset==0{number(local.hour()as f64+local.minute()as f64/60.)}else{Value::Null},"measuredAt":format!("{:02}:{:02}",local.hour(),local.minute())},"days":days,"sessions":sess,"lastWeek":last,"waste":waste,"pomodoros":pomodoros_in(input.records,&iso.into_iter().collect::<Vec<_>>(),tz)?});
-    result["accounts"] = Value::Array(accounts);
-    Ok(result)
+    let pomodoros = pomodoros_in(input.records, &iso.into_iter().collect::<Vec<_>>(), tz)?;
+    // El orden de claves del `dict` del Python: `accounts` va tras `days`.
+    Ok(object([
+        (
+            "week",
+            json!({"offset":input.offset,"label":week_label(&dates)? ,"start":dates[7].to_string(),"end":dates[0].to_string(),"today":today,"now":if input.offset==0{number(local.hour()as f64+local.minute()as f64/60.)}else{Value::Null},"measuredAt":format!("{:02}:{:02}",local.hour(),local.minute())}),
+        ),
+        ("days", Value::Array(days)),
+        ("accounts", Value::Array(accounts)),
+        ("sessions", Value::Array(sess)),
+        ("lastWeek", Value::Object(last)),
+        ("waste", Value::Array(waste)),
+        ("pomodoros", Value::Array(pomodoros)),
+    ]))
 }
