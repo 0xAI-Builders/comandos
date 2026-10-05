@@ -16,6 +16,7 @@ pub struct ProcSpec {
     pub args: Vec<OsString>,
     pub stdin: Option<Vec<u8>>,
     pub env: Vec<(String, OsString)>,
+    pub clear_env: bool,
     pub env_remove: Vec<String>,
     pub cwd: Option<PathBuf>,
     pub timeout: Duration,
@@ -83,6 +84,9 @@ pub fn run(spec: &ProcSpec) -> Result<ProcOutput, ProcError> {
         })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if spec.clear_env {
+        cmd.env_clear();
+    }
     for key in &spec.env_remove {
         cmd.env_remove(key);
     }

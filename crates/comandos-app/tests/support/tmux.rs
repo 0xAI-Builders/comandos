@@ -37,6 +37,14 @@ impl TestTmux {
     /// `t` con `TMUX_TMPDIR=<dir>/tt`, socket `<dir>/tt/tmux-<uid>/t`.
     /// `None` (la prueba se salta) si no hay tmux.
     pub fn for_mode(mode: RunMode) -> Option<Fixture> {
+        Self::build(mode, true)
+    }
+
+    pub fn cold_for_mode(mode: RunMode) -> Option<Fixture> {
+        Self::build(mode, false)
+    }
+
+    fn build(mode: RunMode, anchor: bool) -> Option<Fixture> {
         if !have_tmux() {
             eprintln!("tmux no está instalado: prueba saltada");
             return None;
@@ -101,7 +109,9 @@ impl TestTmux {
         }
         let tmux = TestTmux { dir, socket };
         // Sesión ancla para que el servidor no se apague al cerrar la última de la prueba.
-        tmux.new_session("__keep", 80, 24);
+        if anchor {
+            tmux.new_session("__keep", 80, 24);
+        }
         Some(Fixture {
             tmux,
             config,

@@ -375,3 +375,141 @@ fn placeholder_cannot_claim_an_existing_session() {
             .ok()
     );
 }
+
+#[test]
+fn cold_sandbox_child() {
+    let Some(marker) = std::env::var_os("COMANDOS_COLD_MARKER") else {
+        return;
+    };
+    let f = TestTmux::cold_for_mode(RunMode::Sandbox).unwrap();
+    assert!(
+        f.ctl
+            .mutate(&["new-session", "-d", "-s", "cold"])
+            .unwrap()
+            .ok()
+    );
+    std::thread::sleep(std::time::Duration::from_millis(150));
+    assert!(
+        !std::path::Path::new(&marker).exists(),
+        "se cargó la configuración personal sintética"
+    );
+    let home = f.ctl.read(&["show-environment", "-g", "HOME"]).unwrap();
+    assert_eq!(
+        home.stdout.trim(),
+        format!(
+            "HOME={}",
+            f.config.sandbox_root().unwrap().join("home").display()
+        )
+    );
+    assert!(
+        !f.ctl
+            .read(&["show-environment", "-g", "PERSONAL_SECRET"])
+            .unwrap()
+            .ok()
+    );
+    let shell = f
+        .ctl
+        .read(&[
+            "display-message",
+            "-p",
+            "-t",
+            "=cold:",
+            "#{pane_current_command}",
+        ])
+        .unwrap();
+    assert_eq!(shell.stdout.trim(), "sh");
+}
+
+#[test]
+fn first_sandbox_server_does_not_load_personal_config_or_environment() {
+    let outer = TestTmux::for_mode(RunMode::Sandbox).unwrap();
+    let marker = outer.config.home().join("config-was-loaded");
+    std::fs::write(
+        outer.config.home().join(".tmux.conf"),
+        format!("run-shell 'touch {}'\n", marker.display()),
+    )
+    .unwrap();
+    let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "cold_sandbox_child", "--nocapture"])
+        .env_clear()
+        .env("HOME", outer.config.home())
+        .env("SHELL", "/bin/sh")
+        .env("PATH", "/usr/bin:/bin")
+        .env("TERM", "xterm-256color")
+        .env("PERSONAL_SECRET", "fake-value-never-inherited")
+        .env("COMANDOS_COLD_MARKER", &marker)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn placeholder_identity_is_from_creation_even_if_replaced_by_hook() {
+    let f = TestTmux::for_mode(RunMode::Sandbox).unwrap();
+    let hook = "set-hook -gu after-new-session; kill-session -t =ph; new-session -d -s ph sleep 30";
+    let configured = f.tmux.raw(&["set-hook", "-g", "after-new-session", hook]);
+    assert!(configured.status.success());
+    let (out, token) = f
+        .ctl
+        .new_placeholder_session(&[
+            "new-session",
+            "-d",
+            "-P",
+            "-F",
+            "#{pane_id}",
+            "-s",
+            "ph",
+            "sleep",
+            "30",
+        ])
+        .unwrap();
+    assert!(out.ok());
+    assert!(
+        out.stdout.trim().starts_with('%'),
+        "se conserva el formato del llamador"
+    );
+    assert!(
+        f.ctl.kill_owned_session(token.unwrap()).is_err(),
+        "el token no puede reclamar la sustituta"
+    );
+    assert!(f.ctl.read(&["has-session", "-t", "=ph"]).unwrap().ok());
+}
+
+#[test]
+fn placeholder_keeps_the_callers_print_contract() {
+    let f = TestTmux::for_mode(RunMode::Sandbox).unwrap();
+    for (name, print, format, expected) in [
+        ("silent", false, None, ""),
+        ("default", true, None, "default:\n"),
+        (
+            "custom",
+            true,
+            Some("#{session_name}|#{pane_id}"),
+            "custom|",
+        ),
+    ] {
+        let mut args = vec!["new-session", "-d", "-s", name];
+        if print {
+            args.push("-P");
+        }
+        if let Some(format) = format {
+            args.extend(["-F", format]);
+        }
+        args.extend(["sleep", "30"]);
+        let (out, owned) = f.ctl.new_placeholder_session(&args).unwrap();
+        if format.is_some() {
+            assert!(out.stdout.starts_with(expected));
+        } else {
+            assert_eq!(out.stdout, expected);
+        }
+        assert!(f.ctl.kill_owned_session(owned.unwrap()).unwrap().ok());
+    }
+    let argv = f.ctl.attach_argv("__keep");
+    assert!(argv[2].contains("env -i HOME="));
+    assert!(argv[2].contains("-f /dev/null attach"));
+}

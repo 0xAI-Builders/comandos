@@ -87,6 +87,7 @@ pub struct OwnedSession {
 pub struct TmuxCtl {
     mode: RunMode,
     socket: PathBuf,
+    sandbox_home: Option<PathBuf>,
 }
 
 fn valid_session_name(name: &str) -> bool {
@@ -224,6 +225,7 @@ impl TmuxCtl {
         Ok(TmuxCtl {
             mode: cfg.mode(),
             socket,
+            sandbox_home: cfg.sandbox_root().map(|root| root.join("home")),
         })
     }
 
@@ -238,19 +240,40 @@ impl TmuxCtl {
     /// Crea `<raíz>/tmux` (0700, como tmux exige) en sandbox; en otro modo no hace nada.
     pub fn prepare_socket_dir(&self, guard: &WriteGuard) -> Result<(), GuardError> {
         match (self.mode, self.socket.parent()) {
-            (RunMode::Sandbox, Some(dir)) => guard.create_dir_all(dir, 0o700),
+            (RunMode::Sandbox, Some(dir)) => {
+                guard.create_dir_all(dir, 0o700)?;
+                if let Some(home) = &self.sandbox_home {
+                    guard.create_dir_all(home, 0o700)?;
+                }
+                Ok(())
+            }
             _ => Ok(()),
         }
     }
 
     fn exec(&self, args: &[&str], stdin: Option<&[u8]>) -> Result<TmuxOut, TmuxError> {
         let mut argv: Vec<OsString> = vec!["-S".into(), self.socket.clone().into_os_string()];
+        if self.mode == RunMode::Sandbox {
+            argv.extend(["-f".into(), "/dev/null".into()]);
+        }
         argv.extend(args.iter().map(OsString::from));
         let spec = ProcSpec {
             program: "tmux".into(),
             args: argv,
             stdin: stdin.map(<[u8]>::to_vec),
-            env: Vec::new(),
+            env: self.sandbox_home.as_ref().map_or_else(Vec::new, |home| {
+                vec![
+                    ("HOME".into(), home.clone().into_os_string()),
+                    ("PATH".into(), "/usr/bin:/bin".into()),
+                    ("SHELL".into(), "/bin/sh".into()),
+                    ("TERM".into(), "xterm-256color".into()),
+                    (
+                        "XDG_CONFIG_HOME".into(),
+                        home.join(".config").into_os_string(),
+                    ),
+                ]
+            }),
+            clear_env: self.mode == RunMode::Sandbox,
             env_remove: vec!["TMUX".into(), "TMUX_PANE".into()],
             cwd: None,
             timeout: TMUX_TIMEOUT,
@@ -354,12 +377,24 @@ impl TmuxCtl {
                 "new_placeholder_session solo crea sesiones".into(),
             ));
         }
-        // Nunca aceptar -A: devuelve éxito para una sesión que ya existía.
+        self.check_mutate(args)?;
+        // -P/-F internos capturan identidad en la misma creación. Nunca buscar
+        // por nombre después: un hook puede reemplazar la sesión antes de volver.
         let mut options = args.iter().skip(1);
         let mut session = None;
+        let mut caller_print = false;
+        let mut internal_format_added = false;
+        let mut caller_format = "#{session_name}:";
+        let mut argv: Vec<String> = vec!["new-session".into()];
         while let Some(arg) = options.next() {
             match *arg {
-                "-d" | "-P" | "-E" => {}
+                "-P" => caller_print = true,
+                "-F" => {
+                    caller_format = options
+                        .next()
+                        .ok_or_else(|| TmuxError::BadArgs("-F sin valor".into()))?
+                }
+                "-d" | "-E" => argv.push((*arg).into()),
                 "-s" => {
                     let name = options
                         .next()
@@ -368,24 +403,71 @@ impl TmuxCtl {
                     if session.replace((*name).to_string()).is_some() {
                         return Err(TmuxError::BadArgs("-s duplicado".into()));
                     }
+                    argv.extend([(*arg).to_string(), (*name).to_string()]);
                 }
-                "-x" | "-y" | "-F" | "-n" | "-c" | "-e" => {
-                    options
+                "-x" | "-y" | "-n" | "-c" | "-e" => {
+                    let value = options
                         .next()
                         .ok_or_else(|| TmuxError::BadArgs(format!("{arg} sin valor")))?;
+                    argv.extend([(*arg).to_string(), (*value).to_string()]);
                 }
                 other if other.starts_with('-') => {
                     return Err(TmuxError::BadArgs(format!(
                         "opción no permitida de placeholder: {other}"
                     )));
                 }
-                _ => break,
+                _ => {
+                    // Las opciones internas van antes del programa y sus argumentos.
+                    argv.extend([
+                        "-P".into(),
+                        "-F".into(),
+                        format!("#{{pid}}:#{{session_id}}|{caller_format}"),
+                    ]);
+                    internal_format_added = true;
+                    argv.push((*arg).into());
+                    argv.extend(options.map(|value| (*value).to_string()));
+                    break;
+                }
             }
         }
+        if !internal_format_added {
+            argv.extend([
+                "-P".into(),
+                "-F".into(),
+                format!("#{{pid}}:#{{session_id}}|{caller_format}"),
+            ]);
+        }
         let name = session.ok_or_else(|| TmuxError::BadArgs("new-session sin -s válido".into()))?;
-        let out = self.mutate(args)?;
+        let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
+        let mut out = self.exec(&refs, None)?;
         let owned = if out.ok() {
-            Some(self.owned(&name, false)?)
+            let (identity, requested) = out.stdout.split_once('|').ok_or_else(|| {
+                TmuxError::BadArgs(format!(
+                    "new-session no entregó identidad: {:?}",
+                    out.stdout
+                ))
+            })?;
+            let valid = identity.split_once(':').is_some_and(|(pid, id)| {
+                !pid.is_empty()
+                    && pid.bytes().all(|b| b.is_ascii_digit())
+                    && id.starts_with('$')
+                    && valid_target(id)
+            });
+            if !valid {
+                return Err(TmuxError::BadArgs("identidad de creación inválida".into()));
+            }
+            let token = OwnedSession {
+                name,
+                socket: self.socket.clone(),
+                identity: identity.into(),
+                idle: false,
+            };
+            out.stdout = if caller_print {
+                requested.to_string()
+            } else {
+                String::new()
+            };
+            Some(token)
         } else {
             None
         };
@@ -428,8 +510,17 @@ impl TmuxCtl {
         } else {
             ""
         };
+        let sandbox_prefix = self.sandbox_home.as_ref().map_or_else(String::new, |home| format!(
+            "env -i HOME={} PATH=/usr/bin:/bin SHELL=/bin/sh TERM=xterm-256color XDG_CONFIG_HOME={} ",
+            quote(&home.display().to_string()), quote(&home.join(".config").display().to_string())
+        ));
+        let isolated_config = if self.mode == RunMode::Sandbox {
+            "-f /dev/null "
+        } else {
+            ""
+        };
         let attach = format!(
-            "tmux -S {} attach {flags}-t {} || {{ echo '[sesion terminada — cierra esta pestana con la x]'; exec cat; }}",
+            "{sandbox_prefix}tmux -S {} {isolated_config}attach {flags}-t {} || {{ echo '[sesion terminada — cierra esta pestana con la x]'; exec cat; }}",
             quote(&self.socket.display().to_string()),
             quote(&format!("={session}")),
         );

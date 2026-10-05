@@ -14,6 +14,7 @@ fn spec(program: &str, args: &[&str], timeout_ms: u64) -> ProcSpec {
         args: args.iter().map(Into::into).collect(),
         stdin: None,
         env: Vec::new(),
+        clear_env: false,
         env_remove: Vec::new(),
         cwd: None,
         timeout: Duration::from_millis(timeout_ms),
