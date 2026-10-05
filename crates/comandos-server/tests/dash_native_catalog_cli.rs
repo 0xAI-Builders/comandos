@@ -370,6 +370,30 @@ async fn chains_routes_match_python() {
     same(&t, "/chains").await;
 }
 
+/// M5: nombres con acentos se sirven en el frente (NFKD en `slugify`): el
+/// archivo, la respuesta (`\u00f3` por `ensure_ascii`) y el listado son los
+/// del Python.
+#[tokio::test]
+async fn chains_with_accents_match_python() {
+    let Some(t) = Twin::start_with("chains-acc", |_| {}, opts()).await else {
+        return;
+    };
+    let body =
+        r#"{"name": "Revisión diaria", "steps": [{"kind": "pane", "text": "git status · ñ"}]}"#;
+    for _ in 0..2 {
+        let run = t.post("/chains", body).await;
+        assert_eq!(run.front.status, 200, "{}", run.front.text());
+        assert_eq!(run.front.text(), run.oracle.text());
+    }
+    t.files_equal(&[
+        "~/.config/comandos/cadenas/revision-diaria.md",
+        "~/.config/comandos/cadenas/revision-diaria-2.md",
+    ])
+    .unwrap();
+    let listed = same(&t, "/chains").await;
+    assert!(listed.contains("Revisi\\u00f3n diaria"), "{listed}");
+}
+
 /// Un archivo en lugar del directorio de cadenas: `FileExistsError` (500).
 #[tokio::test]
 async fn chains_post_os_error_matches_python() {

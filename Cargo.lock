@@ -327,6 +327,7 @@ dependencies = [
  "hyper-util",
  "icu_collator",
  "icu_locale_core",
+ "icu_normalizer",
  "nix",
  "regex",
  "rusqlite",

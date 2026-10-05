@@ -4,9 +4,11 @@
 //!
 //! `save_chain` valida todo lo que no depende del disco antes de crear nada:
 //! lo que el port no reproduce con certeza (un `repr` o un `str()` de un valor
-//! raro, `slugify` de un nombre no ASCII) es `Unsure` sin efectos.
+//! raro, `slugify` de un carácter fuera de los tramos de NFKD estable) es
+//! `Unsure` sin efectos.
 use crate::{Unsure, cli_catalog::py_str, cli_help::regex_safe};
 use comandos_core::text::{is_space, splitlines, strip};
+use icu_normalizer::DecomposingNormalizerBorrowed;
 use regex::Regex;
 use serde_json::{Map, Value, json};
 use std::{
@@ -49,12 +51,23 @@ pub fn slug_valid(slug: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
 }
 
-/// `slugify(name)` para un texto ASCII (la normalización NFKD solo cambia
-/// texto no ASCII: ese caso es `Unsure`).
+/// Tramos donde la descomposición NFKD es la misma con la base de Unicode del
+/// Python (`unicodedata` 13.0 de 3.10) y con la de ICU: latín, IPA,
+/// modificadores, marcas combinantes y puntuación general, todos asignados
+/// desde Unicode 6.3 (U+2065 no lo está en ninguna); la política de
+/// estabilidad de la normalización garantiza que no cambian.
+fn stable_nfkd(c: char) -> bool {
+    matches!(u32::from(c), 0..=0x036F | 0x2000..=0x206F)
+}
+
+/// `slugify(name)`: NFKD, sin lo que no es ASCII, en minúsculas y con guiones.
+/// Un carácter fuera de los tramos estables (emoji, CJK…) es `Unsure`.
 pub fn slugify(name: &str) -> Result<String, Unsure> {
-    if !name.is_ascii() {
+    if !name.chars().all(stable_nfkd) {
         return Err(Unsure);
     }
+    let decomposed = DecomposingNormalizerBorrowed::new_nfkd().normalize(name);
+    let name: String = decomposed.chars().filter(char::is_ascii).collect();
     let lower = name.to_ascii_lowercase();
     let mut out = String::new();
     let mut gap = false;
@@ -428,7 +441,8 @@ mod tests {
         assert_eq!(slugify("***").unwrap(), "cadena");
         assert_eq!(slugify("").unwrap(), "cadena");
         assert_eq!(slugify(&"a".repeat(70)).unwrap(), "a".repeat(60));
-        assert!(slugify("café").is_err());
+        assert_eq!(slugify("Revisión diaria").unwrap(), "revision-diaria");
+        assert!(slugify("café ☕").is_err());
     }
 
     #[test]

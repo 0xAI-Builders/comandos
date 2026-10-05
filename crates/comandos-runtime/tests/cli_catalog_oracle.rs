@@ -593,7 +593,7 @@ fn catalog_view_matches_python() {
 #[test]
 fn slugify_matches_python() {
     let dir = home("slug");
-    let names = [
+    let mut names: Vec<String> = [
         "Mi Cadena",
         "  ",
         "a--b__c",
@@ -601,7 +601,24 @@ fn slugify_matches_python() {
         "-x-",
         &"z".repeat(80),
         "a b c d",
-    ];
+        // M5: nombres en español y otros latinos (NFKD + `ascii` ignorado).
+        "Revisión diaria",
+        "Año nuevo: ¡Despliegue!",
+        "Ærø Œuvre straße ĳssel ŀl ŉ ſ",
+        "café — “citas” … ½ ²",
+        "çà-et-là",
+    ]
+    .iter()
+    .map(|n| (*n).to_owned())
+    .collect();
+    // Cada carácter de los tramos cubiertos, solo y entre letras.
+    for c in (0x80u32..0x370)
+        .chain(0x2000..0x2070)
+        .filter_map(char::from_u32)
+    {
+        names.push(c.to_string());
+        names.push(format!("a{c}b"));
+    }
     let file = dir.join("n.json");
     std::fs::write(&file, json!(names).to_string()).unwrap();
     let script = format!(
@@ -617,6 +634,15 @@ fn slugify_matches_python() {
         return;
     };
     assert_eq!(dumps(&Value::Array(rust)), expected.trim_end());
+}
+
+/// Fuera de los tramos latinos (emoji, CJK, compatibilidad nueva) la versión
+/// de Unicode del Python puede no ser la de ICU: se declina.
+#[test]
+fn slugify_declines_outside_the_stable_ranges() {
+    for name in ["deploy 🚀", "日本", "🄫", "\u{1F16A}", "x\u{0378}"] {
+        assert!(slugify(name).is_err(), "{name}");
+    }
 }
 
 /// El directorio de cadenas sembrado igual para los dos lados.
