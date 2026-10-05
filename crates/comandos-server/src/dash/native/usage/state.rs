@@ -19,10 +19,10 @@ use super::super::{
     states::{StateFault, gather},
     tmux::{self, Program},
 };
-use crate::HandlerError;
+use crate::{HandlerError, Reply, ReplyBody};
 use comandos_core::{
     allocation,
-    json::{join_response_entries, response_dumps_entry},
+    json::response_dumps_entry_chunks,
     text,
     usage_state::{self, UsageError},
 };
@@ -76,7 +76,7 @@ fn no_decline(fault: Fault) -> Fault {
 /// la 2d declinó y `live_panes` va vacía sin serlo: esa vuelta no escribe
 /// bordes (D1; con la lista vacía los quitaría de todos los panes).
 pub struct UsageStateReply {
-    pub body: bytes::Bytes,
+    pub body: UsageBody,
     pub state: Arc<UsageMemo>,
     pub live_panes: Vec<Row>,
     pub live_declined: bool,
@@ -117,7 +117,7 @@ struct PendingPanes {
 /// `panes` (las filas de los bordes) y `windows` (las cuentas de tokens de los
 /// límites) se guardan también como valores: son las únicas que se leen.
 pub struct UsageMemo {
-    entries: Vec<(String, String)>,
+    entries: Vec<(String, Vec<bytes::Bytes>)>,
     pub panes: Value,
     windows: Value,
 }
@@ -135,7 +135,11 @@ impl UsageMemo {
         };
         let mut entries = Vec::with_capacity(map.len());
         for (key, value) in map {
-            entries.push((key.clone(), response_dumps_entry(key, value)?));
+            let chunks = response_dumps_entry_chunks(key, value, BODY_CHUNK)?;
+            entries.push((
+                key.clone(),
+                chunks.into_iter().map(bytes::Bytes::from).collect(),
+            ));
         }
         let field = |key: &str| map.get(key).cloned().unwrap_or(Value::Null);
         Ok(Self {
@@ -147,30 +151,90 @@ impl UsageMemo {
 
     /// El cuerpo de `dict(memo)` con `over` asignadas encima: las claves del
     /// memo en su sitio y las nuevas al final, en el orden en que se pusieron.
-    fn body(&self, over: &[(&str, Value)]) -> Result<String, String> {
-        let mut fresh: Vec<Option<String>> = Vec::with_capacity(over.len());
+    fn body(&self, over: &[(&str, Value)]) -> Result<UsageBody, String> {
+        let mut fresh: Vec<Vec<bytes::Bytes>> = Vec::with_capacity(over.len());
         for (key, value) in over {
-            fresh.push(Some(response_dumps_entry(key, value)?));
+            let chunks = response_dumps_entry_chunks(key, value, BODY_CHUNK)?;
+            fresh.push(chunks.into_iter().map(bytes::Bytes::from).collect());
         }
         let pick = |key: &str| over.iter().position(|(k, _)| *k == key);
-        let mut parts: Vec<&str> = Vec::with_capacity(self.entries.len() + over.len());
-        for (key, entry) in &self.entries {
-            match pick(key)
-                .and_then(|i| fresh.get(i))
-                .and_then(Option::as_deref)
-            {
-                Some(new) => parts.push(new),
-                None => parts.push(entry),
+        let mut body = UsageBody::default();
+        body.push(bytes::Bytes::from_static(b"{"));
+        let mut first = true;
+        let mut entry = |body: &mut UsageBody, parts: &[bytes::Bytes]| {
+            if !std::mem::take(&mut first) {
+                body.push(bytes::Bytes::from_static(b", "));
+            }
+            for part in parts {
+                body.push(part.clone());
+            }
+        };
+        for (key, parts) in &self.entries {
+            match pick(key).and_then(|i| fresh.get(i)) {
+                Some(new) => entry(&mut body, new),
+                None => entry(&mut body, parts),
             }
         }
         for ((key, _), new) in over.iter().zip(&fresh) {
-            if !self.entries.iter().any(|(k, _)| k == key)
-                && let Some(new) = new
-            {
-                parts.push(new);
+            if !self.entries.iter().any(|(k, _)| k == key) {
+                entry(&mut body, new);
             }
         }
-        Ok(join_response_entries(parts.iter().copied()))
+        body.push(bytes::Bytes::from_static(b"}"));
+        Ok(body)
+    }
+}
+
+/// Trozos del memo y del cuerpo: 32 KiB, bajo el umbral de `mmap` de glibc
+/// (128 KiB). Un cuerpo de 1 MB en una sola asignación lo sirve glibc con
+/// `mmap` y, al soltarlo, sube el umbral de `mmap` y el de recorte; desde
+/// entonces las arenas no devuelven memoria.
+const BODY_CHUNK: usize = 32 * 1024;
+
+/// El cuerpo de GET `/usage/state` en trozos compartidos con el memo (sin
+/// copiarlos): se envía con su longitud, como un cuerpo de un solo bloque.
+#[derive(Default)]
+pub struct UsageBody {
+    parts: Vec<bytes::Bytes>,
+    len: usize,
+}
+
+impl UsageBody {
+    fn push(&mut self, part: bytes::Bytes) {
+        self.len += part.len();
+        self.parts.push(part);
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// El cuerpo entero en un bloque (para las pruebas).
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.parts.concat()
+    }
+
+    /// La respuesta `200 application/json` con `Content-Length`.
+    pub fn into_reply(self) -> Reply {
+        let mut reply = Reply::bytes(
+            http::StatusCode::OK,
+            "application/json",
+            bytes::Bytes::new(),
+        );
+        let (tx, receiver) = tokio::sync::mpsc::channel(self.parts.len().max(1));
+        for part in self.parts {
+            // Hay sitio para todos: el canal se creó con su número.
+            let _ = tx.try_send(Ok(part));
+        }
+        reply.body = ReplyBody::SizedStream {
+            length: self.len as u64,
+            receiver,
+        };
+        reply
     }
 }
 
@@ -644,7 +708,7 @@ pub async fn compute(native: &Native) -> Result<UsageStateReply, Fault> {
     // 9. Cuerpo.
     let body = memo.body(&over).map_err(|_| failure())?;
     Ok(UsageStateReply {
-        body: bytes::Bytes::from(body),
+        body,
         state: memo,
         live_panes: live,
         live_declined: !record,

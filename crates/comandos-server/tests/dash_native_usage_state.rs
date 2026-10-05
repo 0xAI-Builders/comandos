@@ -153,10 +153,10 @@ async fn usage_state_body_matches_python_without_live_panes() {
     let ours = state::compute(&native).await.ok().unwrap();
     let theirs = get(py.port, "/usage/state").await;
     assert_eq!(theirs.status, 200, "{}", theirs.text());
-    assert_same_body(&ours.body, &theirs.text(), &[]);
+    assert_same_body(&ours.body.to_vec(), &theirs.text(), &[]);
     assert!(ours.live_panes.is_empty());
     assert!(ours.tmux_panes.is_none(), "list-panes falló: no se sabe");
-    let body: serde_json::Value = serde_json::from_slice(&ours.body).unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&ours.body.to_vec()).unwrap();
     let codex = body["limits"]
         .as_array()
         .unwrap()
@@ -336,7 +336,7 @@ async fn usage_state_live_pane_records_and_git_root() {
         opts.usage_effects = effects;
         let native = Native::new(opts);
         let reply = state::compute(&native).await.ok().unwrap();
-        let body: serde_json::Value = serde_json::from_slice(&reply.body).unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&reply.body.to_vec()).unwrap();
         let panes = body["panes"].as_array().unwrap();
         assert_eq!(panes.len(), 1, "{body}");
         assert_eq!(panes[0]["git_root"], repo.display().to_string());
@@ -382,9 +382,10 @@ async fn usage_state_live_pane_matches_python() {
     let ours = state::compute(&native).await.ok().unwrap();
     let theirs = get(py.port, "/usage/state").await;
     assert_eq!(theirs.status, 200, "{}", theirs.text());
-    let text = std::str::from_utf8(&ours.body).unwrap();
+    let bytes = ours.body.to_vec();
+    let text = std::str::from_utf8(&bytes).unwrap();
     assert!(text.contains("\"cx\""), "{text}");
-    assert_same_body(&ours.body, &theirs.text(), &["cx"]);
+    assert_same_body(&bytes, &theirs.text(), &["cx"]);
 }
 
 /// Tiempos de un cómputo con 5000 turnos en la ventana: sin memo (un salto de

@@ -14,8 +14,7 @@ pub mod state;
 pub mod week;
 
 use super::{Answer, Entry, Fault, Key, Native, NativeRoute, Verb};
-use crate::{HandlerError, Reply, Request};
-use http::StatusCode;
+use crate::{HandlerError, Request};
 use pane_models::PaneOutcome;
 use std::sync::Arc;
 
@@ -132,7 +131,7 @@ async fn usage_state(native: &Arc<Native>) -> Answer {
             }
         }
     }
-    Ok(Reply::bytes(StatusCode::OK, "application/json", reply.body))
+    Ok(reply.body.into_reply())
 }
 
 /// Los avisos de nivel salen en su propia tarea (los hilos del Python): la

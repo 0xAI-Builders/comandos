@@ -105,6 +105,73 @@ pub fn float_repr(value: f64) -> String {
     }
 }
 
+/// Donde escribe el codificador: un `String` o trozos acotados.
+trait Out {
+    fn push_str(&mut self, s: &str);
+    fn push(&mut self, ch: char) {
+        self.push_str(ch.encode_utf8(&mut [0; 4]));
+    }
+}
+
+impl Out for String {
+    fn push_str(&mut self, s: &str) {
+        String::push_str(self, s);
+    }
+    fn push(&mut self, ch: char) {
+        String::push(self, ch);
+    }
+}
+
+/// Trozos de como mucho `cap` bytes (más el último pedazo, que es corto: el
+/// codificador escribe de a poco). Ninguno crece al doble ni pasa el umbral
+/// de `mmap` de glibc: soltarlos no lo sube.
+struct Chunks {
+    cap: usize,
+    done: Vec<String>,
+    cur: String,
+}
+
+impl Out for Chunks {
+    fn push_str(&mut self, s: &str) {
+        if !self.cur.is_empty() && self.cur.len() + s.len() > self.cap {
+            let full = std::mem::replace(&mut self.cur, String::with_capacity(self.cap));
+            self.done.push(full);
+        }
+        self.cur.push_str(s);
+    }
+}
+
+/// `response_dumps_entry` escrita en trozos de como mucho `cap` bytes (los
+/// trozos unidos son la entrada).
+pub fn response_dumps_entry_chunks(
+    key: &str,
+    value: &Value,
+    cap: usize,
+) -> Result<Vec<String>, String> {
+    validate_workspace_depth(value, 1)?;
+    let cap = cap.max(1);
+    let mut out = Chunks {
+        cap,
+        done: Vec::new(),
+        cur: String::with_capacity(cap),
+    };
+    encode_into(
+        &Value::String(key.to_owned()),
+        true,
+        false,
+        false,
+        Policy::Workspace,
+        &mut out,
+    )?;
+    out.push_str(": ");
+    encode_into(value, true, false, false, Policy::Workspace, &mut out)?;
+    let Chunks { mut done, cur, .. } = out;
+    if !cur.is_empty() {
+        done.push(cur);
+    }
+    Ok(done)
+}
+
 fn encode(
     value: &Value,
     ascii: bool,
@@ -112,6 +179,19 @@ fn encode(
     sorted: bool,
     policy: Policy,
 ) -> Result<String, String> {
+    let mut out = String::new();
+    encode_into(value, ascii, compact, sorted, policy, &mut out)?;
+    Ok(out)
+}
+
+fn encode_into<O: Out>(
+    value: &Value,
+    ascii: bool,
+    compact: bool,
+    sorted: bool,
+    policy: Policy,
+    out: &mut O,
+) -> Result<(), String> {
     enum Frame<'a> {
         Value(&'a Value, usize),
         Array(std::iter::Enumerate<std::slice::Iter<'a, Value>>, usize),
@@ -122,7 +202,6 @@ fn encode(
     }
     let comma = if compact { "," } else { ", " };
     let colon = if compact { ":" } else { ": " };
-    let mut out = String::new();
     let mut frames = vec![Frame::Value(value, 0)];
     while let Some(frame) = frames.pop() {
         match frame {
@@ -133,7 +212,7 @@ fn encode(
                 match value {
                     Value::Null => out.push_str("null"),
                     Value::Bool(value) => out.push_str(if *value { "true" } else { "false" }),
-                    Value::String(value) => quoted(value, ascii, &mut out),
+                    Value::String(value) => quoted(value, ascii, out),
                     Value::Number(number) => {
                         let raw = number.as_str();
                         if matches!(raw, "NaN" | "Infinity" | "-Infinity") {
@@ -175,7 +254,7 @@ fn encode(
                     if index != 0 {
                         out.push_str(comma);
                     }
-                    quoted(key, ascii, &mut out);
+                    quoted(key, ascii, out);
                     out.push_str(colon);
                     frames.push(Frame::Object(entries, depth));
                     frames.push(Frame::Value(value, depth));
@@ -185,10 +264,10 @@ fn encode(
             }
         }
     }
-    Ok(out)
+    Ok(())
 }
 
-fn quoted(value: &str, ascii: bool, out: &mut String) {
+fn quoted<O: Out>(value: &str, ascii: bool, out: &mut O) {
     out.push('"');
     for ch in value.chars() {
         match ch {
@@ -201,7 +280,9 @@ fn quoted(value: &str, ascii: bool, out: &mut String) {
             '\t' => out.push_str("\\t"),
             ch if ch < '\u{20}' || (ascii && ch >= '\u{7f}') => {
                 for unit in ch.encode_utf16(&mut [0; 2]) {
-                    let _ = write!(out, "\\u{unit:04x}");
+                    let mut escape = String::with_capacity(6);
+                    let _ = write!(escape, "\\u{unit:04x}");
+                    out.push_str(&escape);
                 }
             }
             ch => out.push(ch),
@@ -283,7 +364,10 @@ fn python_float(value: f64, policy: Policy) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{dumps, response_dumps, response_dumps_entries};
+    use super::{
+        dumps, response_dumps, response_dumps_entries, response_dumps_entry,
+        response_dumps_entry_chunks,
+    };
     use serde_json::{Value, json};
 
     #[test]
@@ -297,6 +381,17 @@ mod tests {
             response_dumps(&value).unwrap()
         );
         assert_eq!(response_dumps_entries([]).unwrap(), "{}");
+        let big = json!({"filas": (0..2000).map(|i| json!({"n": i, "t": "é\u{1f600}", "x": 0.1 * f64::from(i)})).collect::<Vec<_>>()});
+        for cap in [1, 7, 4096] {
+            let chunks = response_dumps_entry_chunks("clave", &big, cap).unwrap();
+            // Un trozo pasa del tope solo por un pedazo indivisible (un número).
+            assert!(chunks.iter().all(|c| c.len() <= cap.max(32)), "{cap}");
+            assert_eq!(
+                chunks.concat(),
+                response_dumps_entry("clave", &big).unwrap()
+            );
+        }
+
         let mut deep = Value::Null;
         for _ in 0..999 {
             deep = Value::Array(vec![deep]);
@@ -304,6 +399,10 @@ mod tests {
         let whole = json!({"k": deep.clone()});
         assert_eq!(
             response_dumps_entries([("k", &deep)]).is_err(),
+            response_dumps(&whole).is_err()
+        );
+        assert_eq!(
+            response_dumps_entry_chunks("k", &deep, 64).is_err(),
             response_dumps(&whole).is_err()
         );
     }
