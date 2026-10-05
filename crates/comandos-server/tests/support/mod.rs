@@ -7,6 +7,7 @@ pub mod ops;
 pub mod oracle;
 pub mod services;
 pub mod tabs;
+pub mod twin;
 use comandos_server::dash::{
     DashConfig,
     native::{
@@ -145,7 +146,24 @@ pub struct TestHome {
 
 impl TestHome {
     pub fn new(tag: &str) -> Self {
-        let root = std::env::temp_dir().join(format!("cmd-native-{tag}-{}", std::process::id()));
+        Self::new_in(&std::env::temp_dir(), tag)
+    }
+
+    /// Como `new`, bajo un directorio temporal corto: el socket
+    /// `<root>/tmux/tmux-<uid>/default` debe caber en los 107 bytes de
+    /// `sun_path` aunque el `TMPDIR` del desarrollador sea largo.
+    pub fn new_short(tag: &str) -> Self {
+        let tmp = std::env::temp_dir();
+        let base = if tmp.as_os_str().len() <= 24 {
+            tmp
+        } else {
+            PathBuf::from("/tmp")
+        };
+        Self::new_in(&base, tag)
+    }
+
+    fn new_in(base: &Path, tag: &str) -> Self {
+        let root = base.join(format!("cmd-native-{tag}-{}", std::process::id()));
         // Un resto de una corrida anterior: primero se para SU servidor (por
         // `-S`, nunca el del usuario) y solo después se borra el directorio.
         let stale = private_socket(&root.join("tmux"));
@@ -162,6 +180,17 @@ impl TestHome {
         std::fs::create_dir_all(root.join("bin")).unwrap();
         std::fs::write(root.join(".claude/hooks/dash-token"), TOKEN).unwrap();
         std::fs::write(root.join(".claude/hooks/app-tabs.json"), "{}").unwrap();
+        // El directorio del socket privado (0700) existe desde el principio:
+        // `-S` nunca apunta a un directorio ausente.
+        drop(Tmux::private(&root.join("tmux")));
+        for dir in ["tmp", "xdg-runtime"] {
+            use std::os::unix::fs::DirBuilderExt;
+            std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(root.join(dir))
+                .unwrap();
+        }
         Self { root }
     }
     pub fn hooks(&self) -> PathBuf {
@@ -174,8 +203,56 @@ impl TestHome {
     /// privado de esta prueba. Es la ÚNICA forma de llamar a tmux a mano en las
     /// pruebas: con `-S` explícito un directorio ausente da «no server running»
     /// y nunca alcanza el `/tmp/tmux-<uid>/default` del usuario.
+    ///
+    /// El cliente corre con `env_clear` + `confined_env`: si esta llamada
+    /// arranca el servidor, el servidor y sus paneles nacen con el HOME
+    /// temporal, sin `DISPLAY`/DBus y sin el `PATH` del desarrollador.
     pub fn tmux_command(&self) -> Command {
-        private_tmux_command(&self.tmux_dir())
+        let socket = private_socket(&self.tmux_dir());
+        assert!(
+            socket.parent().is_some_and(Path::is_dir),
+            "socket tmux privado sin directorio: se negaría a caer en el servidor real"
+        );
+        let real = oracle::real_program("tmux").unwrap_or_else(|| PathBuf::from("tmux"));
+        let mut cmd = Command::new(real);
+        cmd.args(["-f", "/dev/null", "-S"])
+            .arg(socket)
+            .env_clear()
+            .envs(self.confined_env());
+        cmd
+    }
+
+    /// Entorno de todo lo que este HOME lanza (tmux, paneles, oráculo
+    /// confinado): HOME temporal, `SHELL=/bin/bash`, `TMPDIR` corto, XDG bajo el
+    /// HOME, `LANG=C.UTF-8`, sin escritorio ni DBus. `PATH` = solo el `fakebin`
+    /// si está confinado (`oracle::confined_fakebin`); si no, `/usr/bin:/bin`.
+    pub fn confined_env(&self) -> Vec<(String, String)> {
+        let at = |rel: &str| self.root.join(rel).display().to_string();
+        let home = self.root.display().to_string();
+        let fakebin = self.root.join("fakebin");
+        let path = if fakebin.join(".confined").exists() {
+            fakebin.display().to_string()
+        } else {
+            "/usr/bin:/bin".to_owned()
+        };
+        let mut env = vec![
+            ("HOME".to_owned(), home),
+            ("PATH".to_owned(), path),
+            ("SHELL".to_owned(), "/bin/bash".to_owned()),
+            ("TMPDIR".to_owned(), at("tmp")),
+            ("LANG".to_owned(), "C.UTF-8".to_owned()),
+            ("XDG_RUNTIME_DIR".to_owned(), at("xdg-runtime")),
+            ("XDG_STATE_HOME".to_owned(), at(".local/state")),
+            ("XDG_CONFIG_HOME".to_owned(), at(".config")),
+            ("XDG_DATA_HOME".to_owned(), at(".local/share")),
+            ("XDG_CACHE_HOME".to_owned(), at(".cache")),
+            ("TMUX_TMPDIR".to_owned(), at("tmux")),
+        ];
+        if let Ok(user) = std::env::var("USER") {
+            env.push(("USER".to_owned(), user.clone()));
+            env.push(("LOGNAME".to_owned(), user));
+        }
+        env
     }
     pub fn state_db(&self) -> PathBuf {
         self.root.join(".local/state/comandos/app-state.sqlite3")
@@ -224,6 +301,38 @@ impl TestHome {
         opts.census_path = None;
         opts
     }
+}
+
+/// `tmux <args>` en el servidor privado de `home` (`tmux_command`); la prueba
+/// falla si tmux falla. Devuelve la salida estándar.
+pub fn run_tmux(home: &TestHome, args: &[&str]) -> String {
+    let out = home.tmux_command().args(args).output().unwrap();
+    assert!(
+        out.status.success(),
+        "tmux {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8(out.stdout).unwrap()
+}
+
+/// Opciones del frente que solo pueden tocar un tmux privado: si su programa
+/// es un tmux que existe (el real, el guardián o un envoltorio llamado
+/// `tmux`), el prefijo lleva `-S <socket>`. Los dobles que no son tmux
+/// (`sh -c …`, `tail`, `/no-existe/tmux`) no alcanzan ningún servidor.
+pub fn assert_private_tmux(opts: &NativeOptions) {
+    let program = &opts.tmux.program;
+    let socket = program
+        .prefix
+        .windows(2)
+        .any(|w| w.first().is_some_and(|a| a == "-S") && w.get(1).is_some_and(|s| !s.is_empty()));
+    let named_tmux = program.path.file_name().is_some_and(|n| n == "tmux");
+    let reaches_tmux =
+        named_tmux && (program.path.is_file() || program.path.components().count() == 1);
+    assert!(
+        socket || !reaches_tmux,
+        "opts.tmux ({}) sin -S: alcanzaría el servidor tmux del usuario",
+        program.path.display()
+    );
 }
 
 /// `systemd-run` falso en `<home>/fakescope/systemd-run`: anota su argv (una
@@ -361,6 +470,7 @@ pub fn config(home: &TestHome, legacy_port: u16) -> DashConfig {
 pub async fn front(home: &TestHome, legacy_port: u16, opts: NativeOptions) -> Front {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
+    assert_private_tmux(&opts);
     let (stop, shutdown) = watch::channel(false);
     let cfg = config(home, legacy_port);
     let task = tokio::spawn(serve_with(listener, cfg, Some(opts), shutdown));

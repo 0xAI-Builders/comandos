@@ -2733,6 +2733,7 @@ version = "0.0.0"
 dependencies = [
  "comandos-core",
  "nix",
+ "regex",
  "rusqlite",
  "serde_json",
 ]

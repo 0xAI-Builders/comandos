@@ -5,8 +5,10 @@ privadas de `~/.claude/hooks`.
 
 ```
 cargo build -p comandos-cli
-cargo run -p xtask -- parity --fixture xtask/parity/frente.jsonl --hooks ~/.claude/hooks [--keep] [--comandos RUTA] [--state-db RUTA] [--usage-db RUTA] [--no-native]
+cargo run -p xtask -- parity --fixture xtask/parity/frente.jsonl [--fixture xtask/parity/2f/tabs.jsonl …] --hooks ~/.claude/hooks [--keep] [--comandos RUTA] [--state-db RUTA] [--usage-db RUTA] [--no-native]
 ```
+
+- `--fixture <ruta>` es repetible: las líneas se ejecutan en el orden de los archivos.
 
 - `--state-db <ruta>`: copia de solo lectura (backup de SQLite) de la base de estado a los dos
   HOME; usar con `~/.local/state/comandos/app-state.sqlite3`.
@@ -49,6 +51,15 @@ archivo temporal (usar `--out` para añadir a `docs/verification/rss.jsonl`).
 | `expect` | `same` (estado + todos los valores de `content-type`/`content-length`/`cache-control`/`connection` + cuerpo), `static-accepted` (estado + cuerpo), `status-only` (solo estado), `skip` |
 | `forwarded` | `true` si el frente la reenvía: solo si responde 502 «Servidor heredado no disponible» → `SKIP` |
 | `reason` | texto para `skip` |
+| `setup` | lista de órdenes de tmux (sin `tmux`), p. ej. `[["new-session","-d","-s","p2f"]]`: antes de la línea, cada una corre en los **dos** servidores tmux privados (`-f /dev/null -S <socket de la copia>`, HOME de la copia, sin `DISPLAY` ni DBus). Una orden `kill-*` (o vacía) es un error al cargar el fixture: el arnés nunca mata servidores ni sesiones por fixture. Si una orden falla, la línea cuenta como `DIFF`. |
+| `files` | archivos que se comparan entre las dos copias tras la respuesta (solo si la respuesta ya dio `OK`): relativos a `~/.claude/hooks`, o al HOME de la copia si empiezan por `~/`. Ambos se normalizan como el gemelo de las pruebas (`term-r<n>`, `ts`/`closedAt`/`updated`/`at`/`heartbeatAt` numéricos y nombres `<19 dígitos>-<hex>.json`); ausente en las dos cuenta como igual. Una diferencia es `DIFF` con el nombre del archivo. |
+
+Ejemplo de línea que muta (registrar una pestaña sobre una sesión que el `setup` crea en los dos
+servidores y comparar los archivos que escribe):
+
+```json
+{"name":"t-tab-register","method":"POST","path":"/tab-register","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"p2f","label":"Proyecto"},"setup":[["new-session","-d","-s","p2f"]],"files":["app-tabs.json","app-tabs-meta.json"],"volatile":[],"expect":"same"}
+```
 
 Cuerpos: **sin `volatile` se comparan los bytes crudos** (el orden de claves, el espaciado y el
 formato de números cuentan). Con `volatile` se parsean ambos, se sustituyen los punteros y se

@@ -13,13 +13,7 @@ use support::{
 
 fn tmux(home: &TestHome, args: &[&str]) -> String {
     // `-S` al socket privado: nunca el servidor del usuario.
-    let out = home.tmux_command().args(args).output().unwrap();
-    assert!(
-        out.status.success(),
-        "tmux {args:?}: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    String::from_utf8(out.stdout).unwrap()
+    support::run_tmux(home, args)
 }
 
 fn seen(wire: &Wire) -> (u16, Option<String>, String) {
