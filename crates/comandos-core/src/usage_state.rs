@@ -765,7 +765,7 @@ pub enum TurnCell<'a> {
 
 /// Los turnos de 14 días de `build_usage_state` sin guardar cada fila como objeto
 /// JSON (decenas de miles con la base real): las columnas de texto se repiten mucho
-/// (sesión, pane, carpeta, agente, modelo) y se internan; cada turno ocupa ~80 B.
+/// (sesión, pane, carpeta, agente, modelo) y se internan; cada turno ocupa 64 B.
 /// El orden de los turnos es el de lectura.
 #[derive(Default)]
 pub struct StateTurns {
