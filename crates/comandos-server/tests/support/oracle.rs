@@ -10,7 +10,7 @@ use std::{
     process::{Child, Command, Stdio},
     time::{Duration, Instant},
 };
-use tokio::{net::TcpStream, time::sleep};
+use tokio::time::sleep;
 
 pub struct Oracle {
     pub port: u16,
@@ -120,7 +120,6 @@ pub async fn oracle(home: &TestHome) -> Option<Oracle> {
         !home.hooks().join("webterm-enabled").exists(),
         "webterm-enabled antes de arrancar el oráculo tocaría el terminal web real"
     );
-    let port = super::dead_port();
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     // Igual que `xtask parity`: los ejecutables con efectos fuera del HOME temporal
     // (terminal web, tailscale, systemd, sonido, ventanas) son enlaces a `true`, y el
@@ -154,57 +153,127 @@ pub async fn oracle(home: &TestHome) -> Option<Oracle> {
         fakebin.display(),
         std::env::var("PATH").unwrap_or_default()
     );
-    let err = std::fs::File::create(home.root.join("oracle.err")).unwrap();
-    let mut command = Command::new("python3");
-    for key in D7_KEYS {
-        command.env_remove(key);
+    for attempt in 0..ORACLE_ATTEMPTS {
+        let port = oracle_port(attempt);
+        let err = std::fs::File::create(home.root.join("oracle.err")).unwrap();
+        let mut command = Command::new("python3");
+        for key in D7_KEYS {
+            command.env_remove(key);
+        }
+        let child = command
+            .arg(repo.join("bin/cc-dash"))
+            .arg(port.to_string())
+            .arg("--no-open")
+            .env_remove("TMUX")
+            .env_remove("COMANDOS_STATE_DB")
+            .env_remove("COMANDOS_USAGE_DB")
+            .env_remove("COMANDOS_QUICK_TERMINAL_BASE")
+            .env_remove("CLAUDE_CONFIG_DIR")
+            .env_remove("CODEX_HOME")
+            .env_remove("GROK_HOME")
+            .env_remove("DBUS_SESSION_BUS_ADDRESS")
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .env("HOME", &home.root)
+            .env("PATH", &path)
+            .env("XDG_RUNTIME_DIR", &runtime)
+            .env("XDG_STATE_HOME", home.root.join(".local/state"))
+            .env("TMUX_TMPDIR", home.tmux_dir())
+            .env("COMANDOS_DASH_DIR", repo.join("dash"))
+            // Codificación de `open()` fija: la del lado Rust (UTF-8).
+            .env("LANG", "C.UTF-8")
+            .env_remove("LC_ALL")
+            .env_remove("LC_CTYPE")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(err)
+            .spawn()
+            .unwrap();
+        let mut oracle = Oracle {
+            port,
+            child,
+            group: false,
+        };
+        match wait_ready(&mut oracle, &home.root.join("oracle.err"), "cc-dash").await {
+            Start::Ready => return Some(oracle),
+            Start::Retry => continue,
+        }
     }
-    let mut child = command
-        .arg(repo.join("bin/cc-dash"))
-        .arg(port.to_string())
-        .arg("--no-open")
-        .env_remove("TMUX")
-        .env_remove("COMANDOS_STATE_DB")
-        .env_remove("COMANDOS_USAGE_DB")
-        .env_remove("COMANDOS_QUICK_TERMINAL_BASE")
-        .env_remove("CLAUDE_CONFIG_DIR")
-        .env_remove("CODEX_HOME")
-        .env_remove("GROK_HOME")
-        .env_remove("DBUS_SESSION_BUS_ADDRESS")
-        .env_remove("DISPLAY")
-        .env_remove("WAYLAND_DISPLAY")
-        .env("HOME", &home.root)
-        .env("PATH", &path)
-        .env("XDG_RUNTIME_DIR", &runtime)
-        .env("XDG_STATE_HOME", home.root.join(".local/state"))
-        .env("TMUX_TMPDIR", home.tmux_dir())
-        .env("COMANDOS_DASH_DIR", repo.join("dash"))
-        // Codificación de `open()` fija: la del lado Rust (UTF-8).
-        .env("LANG", "C.UTF-8")
-        .env_remove("LC_ALL")
-        .env_remove("LC_CTYPE")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(err)
-        .spawn()
-        .unwrap();
+    panic!("cc-dash: {ORACLE_ATTEMPTS} puertos ocupados seguidos");
+}
+
+/// Intentos de arranque del oráculo con otro puerto si el suyo estaba tomado.
+const ORACLE_ATTEMPTS: u32 = 8;
+
+/// Puerto de un oráculo: al azar en 20000–29999, fuera del rango efímero
+/// (32768–60999) del que salen `dead_port()` y los puertos del frente, así un
+/// oráculo nunca ocupa el puerto «muerto» de otra prueba. Dos oráculos que
+/// eligen el mismo: el segundo no puede escuchar y `wait_ready` pide otro.
+fn oracle_port(attempt: u32) -> u16 {
+    let mut seed = [0u8; 2];
+    if getrandom::fill(&mut seed).is_err() {
+        seed = (std::process::id() as u16 ^ attempt as u16).to_le_bytes();
+    }
+    20_000 + u16::from_le_bytes(seed) % 10_000
+}
+
+/// Si `pid` es quien escucha en `127.0.0.1:port`: un socket en LISTEN de
+/// `/proc/net/tcp` con ese puerto cuyo inodo es uno de los descriptores de
+/// `pid`. Sin conectar a nada: un servicio ajeno en el puerto no recibe ni
+/// un byte y nunca se toma por el oráculo.
+pub fn listens_on(pid: u32, port: u16) -> bool {
+    let Ok(table) = std::fs::read_to_string("/proc/net/tcp") else {
+        return false;
+    };
+    let wanted = format!(":{port:04X}");
+    let inodes: Vec<String> = table
+        .lines()
+        .skip(1)
+        .filter_map(|line| {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            let (local, state, inode) = (fields.get(1)?, fields.get(3)?, fields.get(9)?);
+            (local.ends_with(&wanted) && *state == "0A").then(|| format!("socket:[{inode}]"))
+        })
+        .collect();
+    if inodes.is_empty() {
+        return false;
+    }
+    let Ok(fds) = std::fs::read_dir(format!("/proc/{pid}/fd")) else {
+        return false;
+    };
+    fds.flatten().any(|fd| {
+        std::fs::read_link(fd.path())
+            .is_ok_and(|target| inodes.iter().any(|i| target.as_os_str() == i.as_str()))
+    })
+}
+
+pub enum Start {
+    Ready,
+    /// El puerto ya era de otro: reintentar con otro.
+    Retry,
+}
+
+/// Espera a que el propio hijo del oráculo escuche en su puerto (no basta
+/// con que algo acepte conexiones: podría ser el oráculo de otra prueba).
+async fn wait_ready(oracle: &mut Oracle, err_path: &Path, what: &str) -> Start {
     let started = Instant::now();
-    while TcpStream::connect(("127.0.0.1", port)).await.is_err() {
-        if let Ok(Some(status)) = child.try_wait() {
-            let log = std::fs::read_to_string(home.root.join("oracle.err")).unwrap_or_default();
-            panic!("cc-dash salió con {status}: {log}");
+    loop {
+        if listens_on(oracle.child.id(), oracle.port) {
+            return Start::Ready;
+        }
+        if let Ok(Some(status)) = oracle.child.try_wait() {
+            let log = std::fs::read_to_string(err_path).unwrap_or_default();
+            if log.contains("Address already in use") {
+                return Start::Retry;
+            }
+            panic!("{what} salió con {status}: {log}");
         }
         assert!(
             started.elapsed() < Duration::from_secs(20),
-            "cc-dash no arrancó"
+            "{what} no arrancó"
         );
-        sleep(Duration::from_millis(100)).await;
+        sleep(Duration::from_millis(50)).await;
     }
-    Some(Oracle {
-        port,
-        child,
-        group: false,
-    })
 }
 
 /// `python3 -c <guion> <repo> <args…>` sobre el HOME temporal `home`; `None`
@@ -823,40 +892,34 @@ pub async fn oracle_with(home: &TestHome, opts: OracleOpts) -> Option<Oracle> {
         !home.hooks().join("webterm-enabled").exists(),
         "webterm-enabled antes de arrancar el oráculo tocaría el terminal web"
     );
-    let port = super::dead_port();
     let script = format!("{}\ndash.main()\n", opts.python_prelude);
     let err_path = home.root.join("oracle.err");
-    let err = std::fs::File::create(&err_path).unwrap();
-    let child = confined_python(
-        home,
-        &script,
-        &[port.to_string(), "--no-open".into()],
-        &opts,
-    )
-    .stdout(Stdio::null())
-    .stderr(err)
-    .process_group(0)
-    .spawn()
-    .unwrap();
-    let mut oracle = Oracle {
-        port,
-        child,
-        group: true,
-    };
-    // `oracle` ya es dueño del hijo: si el arranque falla, su `Drop` mata el grupo.
-    let started = Instant::now();
-    while TcpStream::connect(("127.0.0.1", port)).await.is_err() {
-        if let Ok(Some(status)) = oracle.child.try_wait() {
-            let log = std::fs::read_to_string(&err_path).unwrap_or_default();
-            panic!("cc-dash confinado salió con {status}: {log}");
+    for attempt in 0..ORACLE_ATTEMPTS {
+        let port = oracle_port(attempt);
+        let err = std::fs::File::create(&err_path).unwrap();
+        let child = confined_python(
+            home,
+            &script,
+            &[port.to_string(), "--no-open".into()],
+            &opts,
+        )
+        .stdout(Stdio::null())
+        .stderr(err)
+        .process_group(0)
+        .spawn()
+        .unwrap();
+        let mut oracle = Oracle {
+            port,
+            child,
+            group: true,
+        };
+        // `oracle` ya es dueño del hijo: si el arranque falla, su `Drop` mata el grupo.
+        match wait_ready(&mut oracle, &err_path, "cc-dash confinado").await {
+            Start::Ready => return Some(oracle),
+            Start::Retry => continue,
         }
-        assert!(
-            started.elapsed() < Duration::from_secs(20),
-            "cc-dash confinado no arrancó"
-        );
-        sleep(Duration::from_millis(100)).await;
     }
-    Some(oracle)
+    panic!("cc-dash confinado: {ORACLE_ATTEMPTS} puertos ocupados seguidos");
 }
 
 /// Código Python con `dash` = `bin/cc-dash` cargado, en el entorno confinado de

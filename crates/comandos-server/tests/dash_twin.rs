@@ -683,3 +683,26 @@ fn canary_unlisted_names_resolve_nowhere_real() {
         assert_eq!(row[2], rust[1], "acp.which: {row:?}");
     }
 }
+
+/// Ronda 1 de la 2f-1/T2: un oráculo solo está «listo» cuando su PROPIO
+/// proceso escucha en el puerto (`/proc/net/tcp` contra sus descriptores),
+/// nunca porque algo acepte conexiones ahí (el oráculo de otra prueba).
+#[tokio::test]
+async fn oracle_ready_means_its_own_listener() {
+    use support::oracle::{listens_on, oracle};
+    let home = TestHome::new_short("oracle-own");
+    let Some(py) = oracle(&home).await else {
+        return;
+    };
+    assert!(listens_on(py.pid(), py.port));
+    assert!(!listens_on(std::process::id(), py.port));
+    // Puerto de los oráculos: fuera del rango efímero de `dead_port()`.
+    assert!((20_000..30_000).contains(&py.port), "{}", py.port);
+    let mine = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = mine.local_addr().unwrap().port();
+    assert!(listens_on(std::process::id(), port));
+    assert!(
+        !listens_on(py.pid(), port),
+        "otro proceso en el puerto no es el oráculo"
+    );
+}
