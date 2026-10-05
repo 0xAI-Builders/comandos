@@ -135,12 +135,27 @@ async fn detached_children_are_reaped() {
         spawn_detached(&Program::named(SH), &echo_args(&mark), &[]).unwrap();
     }
     spawn_detached(&Program::named(SLEEP), &[OsString::from("30")], &[]).unwrap();
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let children = own_children();
+        let finished = std::fs::read_to_string(&mark).is_ok_and(|text| text.lines().count() == 20);
+        if finished && children.len() == 1 && cmdline(children[0]).starts_with(SLEEP) {
+            break;
+        }
+        if Instant::now() >= deadline {
+            kill_own_sleeps(&children);
+            panic!("los veinte hijos no terminaron: {children:?}");
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
     let children = own_children();
     let zombies: Vec<i32> = children.iter().copied().filter(|p| is_zombie(*p)).collect();
     // Solo el `sleep 30` sigue vivo y no retiene el runtime: la prueba ya
     // terminó de esperar con él corriendo.
     let alive = children.len();
+    // /proc/<pid>/cmdline queda vacío al morir. Capturar identidad antes de
+    // SIGKILL; comprobarla después dependía de ganar la carrera al kernel.
+    let remaining_is_sleep = cmdline(children[0]).starts_with(SLEEP);
     kill_own_sleeps(&children);
     assert_eq!(
         zombies,
@@ -148,12 +163,14 @@ async fn detached_children_are_reaped() {
         "hijos sin recoger: {children:?}"
     );
     assert_eq!(alive, 1, "hijos vivos: {children:?}");
-    assert!(cmdline(children[0]).starts_with(SLEEP));
+    assert!(remaining_is_sleep);
     let lines = std::fs::read_to_string(&mark).unwrap().lines().count();
     assert_eq!(lines, 20);
     // El `sleep` muerto también se recoge (no queda zombi del propio kill).
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    assert!(own_children().iter().all(|p| !is_zombie(*p)));
+    while !own_children().is_empty() {
+        assert!(Instant::now() < deadline, "hijo muerto sin recoger");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
 }
 
 /// Desde un hilo de sistema (sin contexto de runtime) se lanza con el
@@ -170,8 +187,12 @@ async fn detached_from_a_system_thread_uses_the_runtime() {
             spawn_detached_blocking(&handle, &Program::named(SH), &echo_args(&thread_mark), &[])
                 .unwrap();
         }
-        // El runtime (hilo de la prueba) recoge mientras este hilo espera.
-        std::thread::sleep(Duration::from_millis(500));
+        // El runtime recoge mientras este hilo espera su condición real.
+        // Mantener vivo el hilo conserva la atribución en thread-self/children.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !own_children().is_empty() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
         let children = own_children();
         let zombies = children.iter().filter(|p| is_zombie(**p)).count();
         let _ = done.send((children.len(), zombies));
@@ -209,7 +230,11 @@ fn detached_env_is_passed_to_the_child() {
             &[(OsString::from("KIT2F"), OsString::from("sí"))],
         )
         .unwrap();
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !own_children().is_empty() {
+            assert!(Instant::now() < deadline, "hijo de entorno sin recoger");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
     });
     assert_eq!(std::fs::read_to_string(&mark).unwrap(), "sí");
 }
