@@ -94,6 +94,9 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -126,11 +129,15 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
       "post_messages": [],
       "message_types": [
+        "split",
         "tab"
       ],
       "intervals_ms": [],
@@ -170,6 +177,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "term-area",
         "tabbar"
@@ -211,6 +221,9 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [
         "/terminal/quick"
@@ -245,6 +258,9 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [
         "/chains",
@@ -282,6 +298,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [
         "/chains"
@@ -318,6 +337,9 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [
@@ -365,6 +387,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "settings"
       ],
@@ -424,6 +449,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "settings"
       ],
@@ -471,6 +499,9 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [
         "/webterm-token"
@@ -747,6 +778,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "limits-strip",
         "btn-usage",
@@ -1021,6 +1055,19 @@
         "termFallbackNotified"
       ],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [
+        "WheelEvent",
+        "__comandosOwnsTouchGestures",
+        "__comandosScrollWired",
+        "__comandosSwitchWired",
+        "addEventListener",
+        "document"
+      ],
+      "child_writes": [
+        "__comandosScrollWired",
+        "__comandosSwitchWired"
+      ],
       "dom_ids": [
         "panes",
         "view-panel",
@@ -1096,6 +1143,9 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -1147,7 +1197,6 @@
         "sidebarTermAction",
         "sidebarTermFocused",
         "sidebarQuickTerm",
-        "quickTerminal",
         "commandSidebar",
         "chainBuilder"
       ],
@@ -1165,7 +1214,6 @@
         "mountCommandSidebar": "function",
         "openTabAnywhere": "function",
         "quickTermEntries": "function",
-        "quickTerminal": "window",
         "quickTerminalInstance": "function",
         "refreshCommandSidebar": "function",
         "sbNativeMsg": "let",
@@ -1202,6 +1250,7 @@
         "openTerm",
         "openTerms",
         "pickSel",
+        "quickTerminal",
         "resolveTermBase",
         "sidebarActiveTab",
         "tabsPollTs",
@@ -1211,9 +1260,15 @@
         "webtermAccessToken"
       ],
       "mutates_globals": [
+        "quickTerminal",
         "tabsPollTs"
       ],
       "parent_refs": [],
+      "patches": [
+        "quickTerminal"
+      ],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "command-sidebar",
         "servers-panel",
@@ -1286,6 +1341,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "n-waiting",
         "n-done",
@@ -1318,6 +1376,9 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -1363,6 +1424,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "notif-panel",
         "pomo-panel",
@@ -1420,6 +1484,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "toasts",
         "btn-notif"
@@ -1469,6 +1536,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [
         "/state"
@@ -1531,6 +1601,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "sw-ov",
         "sw-in",
@@ -1579,6 +1652,9 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -1644,6 +1720,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "btn-theme",
         "button-style-gallery",
@@ -1699,6 +1778,9 @@
         "favoriteReadAt"
       ],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [
         "/prefs"
@@ -1749,6 +1831,9 @@
         "tabRowsHold"
       ],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "tabbar",
         "tab-rows",
@@ -1797,6 +1882,9 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -1833,6 +1921,9 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -1872,6 +1963,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "pf-font-family",
         "pf-font-size",
@@ -1951,6 +2045,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "remote-status",
         "btn-remote",
@@ -2036,6 +2133,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "srv-form",
         "srv-form-title",
@@ -2128,6 +2228,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "vol",
         "vol-top",
@@ -2176,6 +2279,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "btn-pomo",
         "btn-sov",
@@ -2251,6 +2357,9 @@
         "LABEL"
       ],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "btn-settings",
         "settings",
@@ -2328,6 +2437,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "dlg-snippets",
         "snip-items",
@@ -2399,6 +2511,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "poll",
         "sw-notif",
@@ -2435,7 +2550,6 @@
         "analytics",
         "openAnalytics",
         "openAnalyticsTab",
-        "setSplitLeft",
         "reloadDashboard",
         "focusVisibleTerm"
       ],
@@ -2447,8 +2561,7 @@
         "focusVisibleTerm": "window",
         "openAnalytics": "function",
         "openAnalyticsTab": "window",
-        "reloadDashboard": "window",
-        "setSplitLeft": "window"
+        "reloadDashboard": "window"
       },
       "uses_globals": [
         "$",
@@ -2460,10 +2573,18 @@
         "openSnippets",
         "openTerms",
         "restoreSplitLeft",
+        "setSplitLeft",
         "snipDlg"
       ],
-      "mutates_globals": [],
+      "mutates_globals": [
+        "setSplitLeft"
+      ],
       "parent_refs": [],
+      "patches": [
+        "setSplitLeft"
+      ],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "an-root",
         "usage"
@@ -2508,6 +2629,9 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -2542,6 +2666,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -2574,6 +2701,9 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "template-name",
         "pane-extensions-frame",
@@ -2590,7 +2720,10 @@
         "*/comandos-extensions-close",
         "webkit.centro:*/extensions"
       ],
-      "message_types": [],
+      "message_types": [
+        "comandos-extensions-close",
+        "pointercancel"
+      ],
       "intervals_ms": [],
       "strings": 386,
       "warnings": []
@@ -2656,6 +2789,9 @@
         "PROVIDERS"
       ],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "session-workspace-modal",
         "ns-cwd",
@@ -2709,6 +2845,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "tabbar"
       ],
@@ -2747,6 +2886,9 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -2793,6 +2935,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "btn-pomo",
         "pomo-panel"
@@ -2839,6 +2984,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "term-area",
         "panes",
@@ -2860,6 +3008,7 @@
         "h",
         "img",
         "li",
+        "link_open",
         "quote",
         "text"
       ],
@@ -2890,6 +3039,9 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "push-settings",
         "push-status",
@@ -2934,6 +3086,9 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "panes",
         "notice-settings"
@@ -2985,6 +3140,12 @@
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [
+        "document",
+        "location"
+      ],
+      "child_writes": [],
       "dom_ids": [
         "panes",
         "notif-badge",
@@ -3000,7 +3161,9 @@
         "comandos/select-pane",
         "webkit.centro:{headerAction=notices}"
       ],
-      "message_types": [],
+      "message_types": [
+        "user-interaction"
+      ],
       "intervals_ms": [],
       "strings": 32,
       "warnings": []
@@ -3028,6 +3191,9 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],
@@ -3053,19 +3219,20 @@
       "line_start": 288,
       "defines": [
         "__comandosTerm",
-        "background",
         "__comandosOwnsTouchGestures"
       ],
       "define_kinds": {
         "__comandosOwnsTouchGestures": "window",
-        "__comandosTerm": "window",
-        "background": "window"
+        "__comandosTerm": "window"
       },
       "uses_globals": [
         "ComandosDeviceDrafts"
       ],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "dbg",
         "err",
@@ -3151,6 +3318,9 @@
         "openPaneExtensions",
         "openTerms"
       ],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [
         "pane-chrome",
         "term"
@@ -3196,6 +3366,9 @@
       "uses_globals": [],
       "mutates_globals": [],
       "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
       "dom_ids": [],
       "routes": [],
       "storage_keys": [],

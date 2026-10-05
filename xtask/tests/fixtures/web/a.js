@@ -10,3 +10,8 @@ function paint(items){
 }
 function local(){ const esc = s => s; return esc("sombra"); }
 counter = 5;
+window.shared = 1;
+window.addEventListener('message', e => {
+  if (e.data?.type !== 'ping') return;
+  if ('pong' === e.data.type) {}
+});

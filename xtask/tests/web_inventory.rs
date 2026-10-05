@@ -172,7 +172,10 @@ fn iframe_page_is_its_own_realm_and_parent_calls_are_captured() {
         "esc de c.js, cargado por term.html"
     );
     assert_eq!(term.parent_refs, ["S", "openPane"]);
-    assert_eq!(term.post_messages, ["comandos-term/ready"]);
+    assert_eq!(
+        term.post_messages,
+        ["comandos-term/ready", "comandos-term/ping"]
+    );
     assert_eq!(term.message_types, ["theme"]);
     let helpers = unit(&units, "region:helpers");
     // esc de helpers no lo usa term.html (otro reino): solo render y a.js.
@@ -265,6 +268,79 @@ fn port_order_puts_leaves_first() {
     assert!(pos("script:c.js") < pos("term:main"));
 }
 
+#[test]
+fn window_assignment_over_a_foreign_global_is_a_patch_not_a_definition() {
+    // Review I1: `window.setSplitLeft = (orig => …)(setSplitLeft)` y `window.quickTerminal` en dos regiones.
+    let units = scan(Path::new(FIX));
+    let b = unit(&units, "script:b.js");
+    assert!(
+        !has(&b.defines, "render"),
+        "b.js parchea render, no lo define"
+    );
+    assert_eq!(b.patches, ["render"]);
+    assert!(has(&b.uses_globals, "render") && has(&b.mutates_globals, "render"));
+    let helpers = unit(&units, "region:helpers");
+    assert_eq!(
+        helpers.patches,
+        ["shared"],
+        "a.js lo crea antes (orden de carga)"
+    );
+    let ix = interop(&units, Path::new(FIX));
+    assert_eq!(ix["render"]["defined_by"], json!(["region:render"]));
+    assert_eq!(ix["render"]["patched_by"], json!(["script:b.js"]));
+    assert!(
+        ix["render"]["risks"].to_string().contains("parcheado"),
+        "{}",
+        ix["render"]
+    );
+    assert_eq!(ix["shared"]["defined_by"], json!(["script:a.js"]));
+    assert_eq!(ix["shared"]["patched_by"], json!(["region:helpers"]));
+    assert!(ix["shared"]["risks"].to_string().contains("parcheado"));
+    // Mismo nombre en dos páginas distintas no es colisión.
+    assert!(
+        !ix["esc"]["risks"].to_string().contains("definido en"),
+        "{}",
+        ix["esc"]["risks"]
+    );
+}
+
+#[test]
+fn message_handlers_with_optional_chaining_negation_and_switch() {
+    // Review I2: `event.data?.type === …`, `d.type !== "user-interaction"`, `switch (d.type)`.
+    let units = scan(Path::new(FIX));
+    assert_eq!(unit(&units, "script:a.js").message_types, ["ping", "pong"]);
+    assert_eq!(unit(&units, "term:tail").message_types, ["resize", "zoom"]);
+    let ix = interop(&units, Path::new(FIX));
+    assert_eq!(
+        ix["@messages"]["comandos-term/ping"]["handled_by"],
+        json!(["script:a.js"])
+    );
+}
+
+#[test]
+fn parent_to_iframe_access_is_an_explicit_contract() {
+    // Review I3: `const win = frame.contentWindow; win.__comandosOwnsTouchGestures`, `win.X = true`.
+    let units = scan(Path::new(FIX));
+    let render = unit(&units, "region:render");
+    assert_eq!(render.child_refs, ["__direct", "__owns", "document"]);
+    assert_eq!(render.child_writes, ["__wired"]);
+    let ix = interop(&units, Path::new(FIX));
+    let c = &ix["@frame_contract"];
+    assert_eq!(c["__owns"]["read_by"], json!(["region:render"]));
+    assert_eq!(c["__owns"]["defined_by"], json!(["term:main"]));
+    assert_eq!(c["__wired"]["written_by"], json!(["region:render"]));
+    assert_eq!(ix["__owns"]["called_by"], json!(["parent:index.html"]));
+}
+
+#[test]
+fn local_root_is_not_window() {
+    // Review minor 2: `const root = document.documentElement.style; root.background = …`.
+    let units = scan(Path::new(FIX));
+    let term = unit(&units, "term:main");
+    assert!(!has(&term.defines, "background"), "{:?}", term.defines);
+    assert!(has(&term.defines, "__owns"));
+}
+
 // ---------- web-port ----------
 
 struct Tmp(PathBuf);
@@ -341,6 +417,10 @@ fn check_reports_ok_then_drift_with_diff_and_pin_clears_it() {
     let diff = ea.diff.as_deref().unwrap();
     assert!(
         diff.contains("-setInterval(tick, 2000);") && diff.contains("+setInterval(tick, 5000);"),
+        "{diff}"
+    );
+    assert!(
+        diff.contains("--- portado/a\n") && diff.contains("+++ actual/a\n"),
         "{diff}"
     );
     assert_eq!(
@@ -422,4 +502,60 @@ fn per_component_files_are_read_and_pin_creates_entries_from_the_inventory() {
         web_port::pin(&o, "no-existe"),
         Err(PortError::UnknownId(_))
     ));
+}
+
+#[test]
+fn pin_by_unit_id_is_idempotent_with_a_list_registry() {
+    // Review I4: `pin region:red` dos veces dejaba dos entradas `red`.
+    let t = tmp("idempotente");
+    let o = opts(&t);
+    let a = fs::read_to_string(o.repo.join("a.js")).unwrap();
+    let reg = json!([{"id": "a", "kind": "script", "source": "a.js", "sha256": sha(&a), "exports": [], "deps": []}]);
+    fs::write(&o.registry, reg.to_string()).unwrap();
+    web_port::pin(&o, "region:red").unwrap();
+    web_port::pin(&o, "region:red").unwrap();
+    web_port::pin(&o, "red").unwrap();
+    web_port::pin(&o, "script:a.js").unwrap();
+    let reg: Value = serde_json::from_str(&fs::read_to_string(&o.registry).unwrap()).unwrap();
+    let ids: Vec<&str> = reg
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["id"].as_str())
+        .collect();
+    assert_eq!(ids, ["a", "red"]);
+    assert_eq!(web_port::check(&o).unwrap().len(), 2);
+}
+
+#[test]
+fn doc_lists_patches_in_risks_and_the_frame_contract() {
+    let repo = Path::new(FIX);
+    let units = scan(repo);
+    let inv = xtask::web_inventory::inventory_json(&units, repo);
+    let ix = interop(&units, repo);
+    let doc = xtask::web_inventory::doc::render(&units, &inv, &ix);
+    let risks = doc
+        .split("## Globales de riesgo")
+        .nth(1)
+        .unwrap()
+        .split("\n## ")
+        .next()
+        .unwrap();
+    assert!(
+        risks.contains("`render`") && risks.contains("parcheado"),
+        "{risks}"
+    );
+    assert!(risks.contains("`shared`"), "{risks}");
+    let contract = doc
+        .split("## Contrato padre → iframe")
+        .nth(1)
+        .unwrap()
+        .split("\n## ")
+        .next()
+        .unwrap();
+    assert!(
+        contract.contains("| `__owns` | `region:render` | — | `term:main` |"),
+        "{contract}"
+    );
+    assert!(doc.contains("`switch (x.type)`"), "límites al día");
 }

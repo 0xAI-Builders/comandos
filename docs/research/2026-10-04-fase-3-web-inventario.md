@@ -12,12 +12,12 @@ El origen tenía cambios sin comitear en: `?? dash/prototypes/prototype-analytic
 | Scripts `dash/*.js` | 18 |
 | Regiones de scripts en línea | 32 |
 | Líneas de JS | 12315 |
-| Globales definidos (nombres distintos) | 380 |
-| Globales con consumidores fuera de su unidad (`interop.json`) | 131 |
+| Globales definidos (nombres distintos) | 379 |
+| Globales con consumidores fuera de su unidad (`interop.json`) | 134 |
 | Dependencias entre unidades (aristas) | 192 |
 | Llamadas del host a la página | 13 |
 | …de ellas sin JS literal (dinámicas) | 1 |
-| Globales con riesgo anotado | 9 |
+| Globales con riesgo anotado | 11 |
 
 ## Páginas y orden de carga
 
@@ -44,7 +44,7 @@ El origen tenía cambios sin comitear en: `?? dash/prototypes/prototype-analytic
 | `region:helpers` | 1978 | 1078 | `LABEL`, `agoTxt`, `shortPath`, `mdEsc`, `attrEsc`, `mdInline` (+104) | `$`, `ComandosNotices`, `ICON`, `ONLY_PANEL`, `S`, `SessionConfig` (+15) | — | `/open-path`, `/model-tiers`, `/providers`, `/optimization/plans` (+20) | `cc-model-news`, `cc-notif-read`, `cc-nf-dismiss`, `cc-nf-snooze` (+1) | 120000, 1000, 450 | `nsOpen`, `notifRender`, `nsOpenForPane` |
 | `region:app-combinada` | 3056 | 1014 | `openTerms`, `activeTerm`, `activeTermTs`, `remotePaneFocus`, `rememberRemotePaneFocus`, `sidebarActiveTab` (+67) | `$`, `ACTIVE_TAB`, `ComandosQuickTerminal`, `S`, `TERM_BASE`, `TERM_FALLBACK_BASE` (+17) | `termFallbackNotified` | `${}/token`, `/remote-state`, `/tmux-mouse`, `/workspace/sort` (+6) | `cc-split-left`, `comandos.deviceId` | — | `openTerms` |
 | `region:identidad-de-fila` | 4070 | 3 | `rowKey` | — | — | — | — | — | — |
-| `region:barra-de-comandos` | 4073 | 299 | `isQuickTermSession`, `SBT`, `selectSidebarTerm`, `sidebarTermTarget`, `sbTermFrames`, `sbNativeMsg` (+24) | `$`, `ComandosChainBuilder`, `ComandosCommandSidebar`, `ComandosQuickTerminal`, `ONLY_PANEL`, `S` (+19) | `tabsPollTs` | `/kill`, `/account/switch`, `/analytics/week`, `/commands/catalog` (+1) | `cc-sb-limits3`, `cc-sb-limits`, `cc-sb-limits2` | 60000 | `sidebarTermAction`, `sidebarTermFocused`, `commandSidebar` |
+| `region:barra-de-comandos` | 4073 | 299 | `isQuickTermSession`, `SBT`, `selectSidebarTerm`, `sidebarTermTarget`, `sbTermFrames`, `sbNativeMsg` (+23) | `$`, `ComandosChainBuilder`, `ComandosCommandSidebar`, `ComandosQuickTerminal`, `ONLY_PANEL`, `S` (+20) | `quickTerminal`, `tabsPollTs` | `/kill`, `/account/switch`, `/analytics/week`, `/commands/catalog` (+1) | `cc-sb-limits3`, `cc-sb-limits`, `cc-sb-limits2` | 60000 | `sidebarTermAction`, `sidebarTermFocused`, `commandSidebar` |
 | `region:render` | 4372 | 58 | `render`, `notify`, `favColor`, `favicon` | `$`, `S`, `alertClear`, `inApp`, `notifBadge`, `refreshDesktopTabs` (+5) | — | — | — | — | — |
 | `region:toasts` | 4430 | 1 | — | — | — | — | — | — | — |
 | `region:registro-local-de-uso` | 4431 | 52 | `ULOG`, `ulog`, `ulogFlush`, `ulogNameOf`, `ulogScreenStart`, `ulogScreenEnd` | `activePaneTarget`, `inApp` | — | `/ui-log` | — | 5000 | — |
@@ -65,7 +65,7 @@ El origen tenía cambios sin comitear en: `?? dash/prototypes/prototype-analytic
 | `region:ui-general` | 5415 | 127 | `vol`, `bindSwitch`, `poll` | `$`, `L`, `LABEL`, `S`, `api`, `applyI18n` (+17) | `L`, `LABEL` | `/conf-set`, `/test`, `/conf` | — | 1000 | — |
 | `region:snippets` | 5542 | 251 | `snipDlg`, `snipState`, `snipSessions`, `pickDefaultSession`, `filterSnippets`, `renderSnipList` (+4) | `api`, `toast` | — | `/paste`, `/snippets/delete`, `/snippets/update`, `/snippets` (+1) | `snippet-last-session` | — | — |
 | `region:funciones-de-ui-globales` | 5793 | 23 | `opFavorite`, `setPollSeconds`, `setBrowserNotifications`, `nfDismiss`, `nfPin`, `nfUnpin` (+4) | `$`, `closeModelMenus`, `nsOpen`, `setSessionFavorite`, `swOpen` | — | — | — | — | — |
-| `region:analytics` | 5816 | 46 | `ANALYTICS_DEMO`, `analyticsView`, `analyticsPhone`, `analytics`, `openAnalytics`, `openAnalyticsTab` (+3) | `$`, `Analytics`, `activeTerm`, `api`, `applyAppLayout`, `closeSnippets` (+4) | — | `/analytics/week` | `cc-analytics-tab`, `cc-split-left` | 60000 | — |
+| `region:analytics` | 5816 | 46 | `ANALYTICS_DEMO`, `analyticsView`, `analyticsPhone`, `analytics`, `openAnalytics`, `openAnalyticsTab` (+2) | `$`, `Analytics`, `activeTerm`, `api`, `applyAppLayout`, `closeSnippets` (+5) | `setSplitLeft` | `/analytics/week` | `cc-analytics-tab`, `cc-split-left` | 60000 | — |
 | `script:analytics-render.js` | 1 | 195 | `AnalyticsRender` | — | — | — | — | — | — |
 | `script:analytics.js` | 1 | 135 | `Analytics` | `AnalyticsRender` | — | — | — | — | — |
 | `script:extensions.js` | 1 | 284 | `openPaneExtensions` | — | — | — | `cc_token`, `cc_pane_shelf_height` | — | `openPaneExtensions` |
@@ -78,7 +78,7 @@ El origen tenía cambios sin comitear en: `?? dash/prototypes/prototype-analytic
 | `script:notifications.js` | 1 | 851 | `ComandosNotices` | `uiSounds` | — | — | — | — | — |
 | `region:tail` | 5877 | 79 | `selectPaneInFrame` | `$`, `ComandosNotices`, `DESKTOP_POPUPS`, `NewsReader`, `ONLY_PANEL`, `S` (+9) | — | `/terminal-panes`, `/focus` | — | — | — |
 | `script:device-drafts.js` | 1 | 93 | `ComandosDeviceDrafts` | — | — | — | — | — | — |
-| `term:main` | 288 | 1712 | `__comandosTerm`, `background`, `__comandosOwnsTouchGestures` | `ComandosDeviceDrafts` | — | `/tmux-scroll`, `/workspace/client`, `/terminal-history`, `/terminal-panes` | `comandos.deviceId` | — | — |
+| `term:main` | 288 | 1712 | `__comandosTerm`, `__comandosOwnsTouchGestures` | `ComandosDeviceDrafts` | — | `/tmux-scroll`, `/workspace/client`, `/terminal-history`, `/terminal-panes` | `comandos.deviceId` | — | `__comandosOwnsTouchGestures` |
 | `term:tail` | 2003 | 336 | — | `__comandosTerm` | — | `/terminal-panes`, `/accounts`, `/account/add`, `/model/status` (+2) | — | 100, 2000 | — |
 | `script:sw.js` | 1 | 80 | `SHELL`, `eventIdFrom` | — | — | — | — | — | — |
 
@@ -86,7 +86,7 @@ El origen tenía cambios sin comitear en: `?? dash/prototypes/prototype-analytic
 
 | Unidad | Depende de | Globales |
 |---|---|---|
-| `region:analytics` | `region:app-combinada` | `activeTerm`, `applyAppLayout`, `openTerms`, `restoreSplitLeft` |
+| `region:analytics` | `region:app-combinada` | `activeTerm`, `applyAppLayout`, `openTerms`, `restoreSplitLeft`, `setSplitLeft` |
 | `region:analytics` | `region:prelude` | `$` |
 | `region:analytics` | `region:red` | `api` |
 | `region:analytics` | `region:snippets` | `closeSnippets`, `openSnippets`, `snipDlg` |
@@ -118,7 +118,7 @@ El origen tenía cambios sin comitear en: `?? dash/prototypes/prototype-analytic
 | `region:avisos-de-eventos` | `region:prelude` | `$` |
 | `region:avisos-de-eventos` | `script:notifications.js` | `ComandosNotices` |
 | `region:barra-de-comandos` | `region:analytics` | `openAnalytics` |
-| `region:barra-de-comandos` | `region:app-combinada` | `openTerm`, `openTerms`, `resolveTermBase`, `sidebarActiveTab`, `tabsPollTs` |
+| `region:barra-de-comandos` | `region:app-combinada` | `openTerm`, `openTerms`, `quickTerminal`, `resolveTermBase`, `sidebarActiveTab`, `tabsPollTs` |
 | `region:barra-de-comandos` | `region:app-nativa` | `ONLY_PANEL`, `inApp`, `openInApp` |
 | `region:barra-de-comandos` | `region:avisos-de-eventos` | `toast` |
 | `region:barra-de-comandos` | `region:helpers` | `TERM_BASE`, `WEBTERM`, `pickSel` |
@@ -317,6 +317,27 @@ Manejadores `messageHandlers`:
 | `centro` | `bin/cc-app`, `bin/cc-app-mac` | `region:app-nativa`, `region:barra-de-comandos`, `region:tema`, `region:servidores`, `region:modales-en-medio`, `region:ui-general`, `script:extensions.js`, `region:tail` |
 | `extensions` | `bin/cc-app` | `script:extensions.js` |
 
+## Parches entre unidades (`window.X =` sobre un global ajeno)
+
+| Global | Lo define | Lo parchea |
+|---|---|---|
+| `quickTerminal` | `region:app-combinada` | `region:barra-de-comandos` |
+| `setSplitLeft` | `region:app-combinada` | `region:analytics` |
+
+## Contrato padre → iframe
+
+Lo que el tablero lee o escribe en el `window` de un iframe (`frame.contentWindow.X`, `const win = frame.contentWindow; win.X`, `contentDocument` como `document`, `frames[…]`). El port del iframe (A9/A10) debe conservar estos nombres.
+
+| Propiedad | Lee | Escribe | Definida en el iframe por |
+|---|---|---|---|
+| `WheelEvent` | `region:app-combinada` | — | — |
+| `__comandosOwnsTouchGestures` | `region:app-combinada` | — | `term:main` |
+| `__comandosScrollWired` | `region:app-combinada` | `region:app-combinada` | — |
+| `__comandosSwitchWired` | `region:app-combinada` | `region:app-combinada` | — |
+| `addEventListener` | `region:app-combinada` | — | — |
+| `document` | `region:app-combinada`, `region:tail` | — | — |
+| `location` | `region:tail` | — | — |
+
 ## Iframes y mensajes
 
 Llamadas directas `parent.X` desde un iframe (solo ven propiedades de `window`, no `let`/`const` de nivel superior):
@@ -325,13 +346,13 @@ Llamadas directas `parent.X` desde un iframe (solo ven propiedades de `window`, 
 
 | Mensaje (`source/type`) | Lo envía | Lo atiende (`.type ===`) |
 |---|---|---|
-| `*/comandos-extensions-close` | `script:extensions.js` | — |
+| `*/comandos-extensions-close` | `script:extensions.js` | `script:extensions.js` |
 | `*/comandos:open-event` | `script:sw.js` | `script:push-settings.js` |
 | `?` | `script:news-reader.js` | — |
 | `comandos-term/interaction-request` | `term:main` | `region:app-combinada` |
 | `comandos-term/pane-selected` | `term:main` | `region:app-combinada` |
 | `comandos-term/ready` | `term:main` | `region:app-combinada` |
-| `comandos-term/user-interaction` | `term:main` | — |
+| `comandos-term/user-interaction` | `term:main` | `region:tail` |
 | `comandos/button-style` | `region:tema` | `term:main` |
 | `comandos/interaction-state` | `region:app-combinada` | `term:main` |
 | `comandos/select-pane` | `region:tail` | `term:main` |
@@ -345,7 +366,9 @@ Llamadas directas `parent.X` desde un iframe (solo ven propiedades de `window`, 
 - `PROVIDERS` (`region:helpers`): mutado desde otra unidad y declarado con let/const: no es propiedad de window, el puente global_set no lo alcanza
 - `appLeftPanel` (—): nadie lo define: la llamada falla o depende de algo fuera del inventario
 - `favoriteReadAt` (`region:helpers`): mutado desde otra unidad y declarado con let/const: no es propiedad de window, el puente global_set no lo alcanza
-- `openTerms` (`region:app-combinada`): leído como propiedad (window.openTerms/parent.openTerms) pero declarado con let/const/class: por esa vía es undefined
+- `openTerms` (`region:app-combinada`): leído como propiedad (window.openTerms/parent.openTerms) pero declarado con let/const/class: por esa vía vale undefined, sin excepción; el lector sigue con su valor por defecto
+- `quickTerminal` (`region:app-combinada`): parcheado con window.quickTerminal = desde region:barra-de-comandos: portar el definidor sin seguir exportando quickTerminal por window rompe el parche, y portar el parche exige que el definidor ya lo haya creado; mutado desde otra unidad: debe seguir siendo propiedad de window mientras ambos lados vivan
+- `setSplitLeft` (`region:app-combinada`): parcheado con window.setSplitLeft = desde region:analytics: portar el definidor sin seguir exportando setSplitLeft por window rompe el parche, y portar el parche exige que el definidor ya lo haya creado; mutado desde otra unidad: debe seguir siendo propiedad de window mientras ambos lados vivan
 - `tabRowsHold` (`region:app-combinada`): mutado desde otra unidad y declarado con let/const: no es propiedad de window, el puente global_set no lo alcanza
 - `tabsPollTs` (`region:app-combinada`): mutado desde otra unidad y declarado con let/const: no es propiedad de window, el puente global_set no lo alcanza
 - `termFallbackNotified` (`region:helpers`): mutado desde otra unidad y declarado con let/const: no es propiedad de window, el puente global_set no lo alcanza
@@ -363,13 +386,15 @@ Nivel 0 = no toma globales de ninguna otra unidad. Un grupo con varias unidades 
 ## Límites del inventario léxico
 
 - No ejecuta JS: un tokenizador separa cadenas, plantillas, comentarios y expresiones regulares del código; `/` es regex o división según el token anterior, y un `}` seguido de `/regex/` en otra línea se leería como división.
-- Ámbitos aproximados: bloques `{}`; parámetros de funciones, flechas, métodos y `catch` se declaran en el cuerpo; `var` se trata como `let` (no se eleva a la función) y los parámetros de una flecha sin llaves valen para todo el bloque que la contiene. Un nombre declarado en un bloque tapa el global en ese bloque y sus hijos.
-- Globales: `function`, `class`, `const`/`let`/`var` fuera de todo paréntesis, corchete o llave, y `window.X =`, `root.X =`, `globalThis.X =`, `self.X =` en cualquier sitio. No ve `Object.assign(window, …)`, `window["X"] =` ni `defineProperty`.
-- Usos: identificadores libres (no tras `.`, no claves de objeto, no nombres de método) y `window.X`/`root.X`; se cruzan solo con unidades de la misma página. Un nombre usado y además declarado localmente en otro bloque cuenta como uso si alguna aparición queda libre.
+- Ámbitos aproximados: bloques `{}`; parámetros de funciones, métodos y `catch` se declaran en su cuerpo; los de una flecha sin llaves, solo en la expresión del cuerpo; la cabecera de un `for` y su cuerpo forman un ámbito. `var` se trata como `let` (no se eleva a la función). Un nombre declarado en un ámbito tapa el global en ese ámbito y sus hijos.
+- Globales: `function`, `class`, `const`/`let`/`var` fuera de todo paréntesis, corchete o llave, y `window.X =`, `globalThis.X =`, `self.X =` en cualquier sitio; `root.X =` solo si `root` es un parámetro (envoltura UMD), no un `root` local. Un `window.X =` sobre un global que otra unidad de la misma página ya define (con declaración propia o antes en el orden de carga) es un parche, no una definición. No ve `Object.assign(window, …)`, `window["X"] =` ni `defineProperty` (hoy no hay ninguno en `dash/`).
+- Usos: identificadores libres (no tras `.`, no claves de objeto, no nombres de método) y `window.X`/`root.X`; se cruzan solo con unidades de la misma página. No ve llamadas `window["X"]()` ni manejadores en línea (`onclick="X()"` en el marcado o en plantillas): hoy no hay ninguno.
+- Páginas: solo `index.html` y `term.html`. `extensions.html` (que `cc-app` carga sola, `bin/cc-app:5583`, y que va también en un iframe) y `prototype-*.html` no se modelan; `extensions.js` figura solo en el ámbito de `index.html`.
 - Rutas: primer argumento literal (o `const` de la unidad) de `api(`, `fetch(`, `sendBeacon(` y `new EventSource(`, sin la consulta; los huecos de plantilla quedan como `${}`. Las rutas construidas en variables o pasadas por parámetro no se ven.
 - `localStorage`: `getItem/setItem/removeItem` con literal o `const`, `localStorage.clave` y `localStorage["clave"]`; las claves de `sessionStorage` llevan `session:`. Una clave guardada en una propiedad (`storage.getItem(this.key)`) no se resuelve.
 - Intervalos: segundo argumento de `setInterval` si es número, `const` numérica o producto/suma de ellos.
-- Mensajes: `postMessage` con objeto literal (`source/type`) o `JSON.stringify({…})`; los tipos atendidos salen de comparaciones `.type === "…"`, que también recogen tipos de eventos del DOM.
-- Host: tokenizador mínimo de Python. Los envoltorios se descubren cuando un `def` pasa su parámetro a `run_javascript`/`evaluateJavaScript` u otro envoltorio; un argumento variable se resuelve por su última asignación en el mismo `def`; código leído de archivo o de red queda como dinámico. Los huecos `{expr}` de las f-strings se sustituyen por `__py__`.
+- Mensajes: `postMessage` con objeto literal (`source/type`) o `JSON.stringify({…})`. Los tipos atendidos salen de `x.type`/`x?.type` comparados con `===`, `==`, `!==` o `!=` (en cualquier orden) y de los `case` de un `switch (x.type)`; también recogen tipos de eventos del DOM, y un manejador que compara el tipo guardado en otra variable no se ve.
+- Padre → iframe: `….contentWindow.X`, `win.X` cuando `win` se asignó desde `….contentWindow`, `contentDocument` y `frames[…]`. No sigue el `window` del iframe si pasa por una función o un objeto.
+- Host: tokenizador mínimo de Python. Los envoltorios se descubren cuando un `def` pasa su parámetro a `run_javascript`/`evaluateJavaScript` u otro envoltorio; un argumento variable se resuelve por su última asignación en el mismo `def`; código leído de archivo o de red queda como dinámico. Los huecos `{expr}` de las f-strings se sustituyen por `__py__`. No lee las 19 llamadas `ui_call(…)` de `lib/operator_catalog.py`: eran del chat de CommandOS, retirado (`bin/cc-dash` responde 410 en `/operator*`).
 - Regiones: marcadores `// ---------- … ----------` en columna 0 del primer script en línea; los marcadores sangrados son subsecciones y no cortan. El hash de una región es el del texto desde `marker_start` hasta `marker_end` (excluido), igual que el corte del compositor (B2). Un marcador repetido dentro del script se avisa en la tabla.
 - El DOM que construye el JS (plantillas, `innerHTML`) no se inventaría: para eso está `shots dom-dump` (B4).

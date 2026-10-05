@@ -6,7 +6,7 @@
 //! de funciones, flechas y `catch` se declaran en el bloque del cuerpo; `var`
 //! se trata como `let` (no se eleva a la función).
 use super::js_lex::{Kind, Token, lex};
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 /// Cómo nace un global: decide si es propiedad de `window`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -52,6 +52,8 @@ pub struct Facts {
     pub uses: Vec<Use>,
     pub assigns: Vec<String>,
     pub parent_refs: Vec<String>,
+    pub child_refs: Vec<String>,
+    pub child_writes: Vec<String>,
     pub dom_ids: Vec<String>,
     pub routes: Vec<String>,
     pub storage_keys: Vec<String>,
@@ -136,7 +138,8 @@ fn push_unique<T: PartialEq>(v: &mut Vec<T>, x: T) {
 
 struct Scope {
     parent: Option<usize>,
-    decls: HashSet<String>,
+    /// Nombre → `true` si es un parámetro.
+    decls: HashMap<String, bool>,
 }
 
 struct Pass<'a> {
@@ -146,6 +149,8 @@ struct Pass<'a> {
     scopes: Vec<Scope>,
     /// Tokens que nombran algo (declaración, clave, método): no son lecturas.
     naming: Vec<bool>,
+    /// Variables que guardan el `window` de un iframe.
+    child_windows_cache: BTreeSet<String>,
     facts: Facts,
 }
 
@@ -156,11 +161,13 @@ pub fn analyze(src: &str) -> Facts {
         scope_of: vec![0; tokens.len()],
         scopes: vec![Scope {
             parent: None,
-            decls: HashSet::new(),
+            decls: HashMap::new(),
         }],
         naming: vec![false; tokens.len()],
+        child_windows_cache: BTreeSet::new(),
         facts: Facts::default(),
     };
+    p.child_windows_cache = p.child_windows();
     p.declarations();
     p.references();
     p.literals();
@@ -189,8 +196,54 @@ impl Pass<'_> {
 
     fn declare(&mut self, scope: usize, name: &str) {
         if let Some(s) = self.scopes.get_mut(scope) {
-            s.decls.insert(name.to_string());
+            s.decls.entry(name.to_string()).or_insert(false);
         }
+    }
+
+    fn declare_param(&mut self, scope: usize, name: &str) {
+        if let Some(s) = self.scopes.get_mut(scope) {
+            s.decls.insert(name.to_string(), true);
+        }
+    }
+
+    fn new_scope(&mut self, parent: usize) -> usize {
+        self.scopes.push(Scope {
+            parent: Some(parent),
+            decls: HashMap::new(),
+        });
+        self.scopes.len() - 1
+    }
+
+    /// Último índice de la expresión que empieza en `k` (cuerpo de una
+    /// flecha sin llaves, sentencia de un `for` sin bloque).
+    fn expr_end(&self, start: usize) -> usize {
+        let mut depth = 0usize;
+        let mut k = start;
+        while let Some(t) = self.tok(k) {
+            if t.kind == Kind::Punct {
+                match t.text.as_str() {
+                    "(" | "[" | "{" | "${" => depth += 1,
+                    ")" | "]" | "}" | "}$" => {
+                        if depth == 0 {
+                            return k.saturating_sub(1).max(start);
+                        }
+                        depth -= 1;
+                    }
+                    "," | ";" if depth == 0 => return k.saturating_sub(1).max(start),
+                    _ => {}
+                }
+            }
+            if depth == 0
+                && let Some(next) = self.tok(k + 1)
+                && next.line > t.line
+                && !ends_expression_open(t)
+                && !starts_continuation(next)
+            {
+                return k;
+            }
+            k += 1;
+        }
+        k.saturating_sub(1).max(start)
     }
 
     /// Índice del cierre que empareja la apertura en `open`.
@@ -256,13 +309,33 @@ impl Pass<'_> {
     /// Primer pase: árbol de ámbitos y declaraciones.
     fn declarations(&mut self) {
         let n = self.t.len();
-        let mut stack: Vec<usize> = vec![0];
+        // Ámbitos abiertos: (id, último índice si es un ámbito por tramo).
+        let mut stack: Vec<(usize, Option<usize>)> = vec![(0, None)];
         let mut brackets: Vec<&str> = Vec::new();
         // Parámetros a declarar en el `{` que está en ese índice.
         let mut pending: HashMap<usize, Vec<usize>> = HashMap::new();
+        // Ámbitos por tramo que empiezan en ese índice: (fin, parámetros).
+        let mut ranges: HashMap<usize, (usize, Vec<usize>)> = HashMap::new();
         let mut i = 0;
         while i < n {
-            let cur = stack.last().copied().unwrap_or(0);
+            while let Some(&(_, Some(end))) = stack.last() {
+                if i > end {
+                    stack.pop();
+                } else {
+                    break;
+                }
+            }
+            if let Some((end, params)) = ranges.remove(&i) {
+                let parent = stack.last().map(|s| s.0).unwrap_or(0);
+                let id = self.new_scope(parent);
+                for k in params {
+                    if let Some(name) = self.tok(k).map(|t| t.text.clone()) {
+                        self.declare_param(id, &name);
+                    }
+                }
+                stack.push((id, Some(end)));
+            }
+            let cur = stack.last().map(|s| s.0).unwrap_or(0);
             if let Some(s) = self.scope_of.get_mut(i) {
                 *s = cur;
             }
@@ -270,32 +343,34 @@ impl Pass<'_> {
             if t.kind == Kind::Punct {
                 match t.text.as_str() {
                     "{" => {
-                        let id = self.scopes.len();
-                        self.scopes.push(Scope {
-                            parent: Some(cur),
-                            decls: HashSet::new(),
-                        });
+                        let id = self.new_scope(cur);
                         if let Some(ps) = pending.remove(&i) {
                             for k in ps {
                                 if let Some(name) = self.tok(k).map(|t| t.text.clone()) {
-                                    self.declare(id, &name);
+                                    self.declare_param(id, &name);
                                 }
                             }
                         }
-                        stack.push(id);
+                        stack.push((id, None));
                         brackets.push("{");
                         if let Some(s) = self.scope_of.get_mut(i) {
                             *s = id;
                         }
                     }
                     "(" => {
-                        self.param_group(i, cur, &mut pending);
+                        self.param_group(i, &mut pending, &mut ranges);
                         brackets.push("(");
                     }
                     "[" | "${" => brackets.push("["),
                     "}" => {
-                        if brackets.pop() == Some("{") && stack.len() > 1 {
-                            stack.pop();
+                        // Cierra el bloque y cualquier tramo mal medido encima.
+                        if brackets.pop() == Some("{") {
+                            while stack.len() > 1 {
+                                match stack.pop() {
+                                    Some((_, None)) | None => break,
+                                    Some(_) => {}
+                                }
+                            }
                         }
                     }
                     ")" | "]" | "}$" => {
@@ -308,13 +383,31 @@ impl Pass<'_> {
                             .is_some_and(|p| p.kind == Kind::Ident && !is_keyword(&p.text)) =>
                     {
                         self.mark(i - 1);
-                        self.bind_params(i + 1, cur, vec![i - 1], &mut pending);
+                        self.bind_params(i + 1, vec![i - 1], &mut pending, &mut ranges);
                     }
                     _ => {}
                 }
             } else if t.kind == Kind::Ident && !self.after_dot(i) {
                 let top = brackets.is_empty();
                 match t.text.as_str() {
+                    // La cabecera de un `for` y su cuerpo forman un ámbito.
+                    "for" => {
+                        let open = if self.tok(i + 1).is_some_and(|x| x.is_ident("await")) {
+                            i + 2
+                        } else {
+                            i + 1
+                        };
+                        if self.punct_at(open, "(")
+                            && let Some(close) = self.matching(open)
+                        {
+                            let end = if self.punct_at(close + 1, "{") {
+                                self.matching(close + 1).unwrap_or(close)
+                            } else {
+                                self.expr_end(close + 1)
+                            };
+                            ranges.entry(open).or_insert((end, Vec::new()));
+                        }
+                    }
                     "const" | "let" | "var" => {
                         let b = match t.text.as_str() {
                             "const" => Binding::Const,
@@ -363,7 +456,12 @@ impl Pass<'_> {
 
     /// Una lista entre paréntesis que va seguida de `=>` o de un cuerpo `{`
     /// de función, método o `catch` declara parámetros en ese cuerpo.
-    fn param_group(&mut self, open: usize, cur: usize, pending: &mut HashMap<usize, Vec<usize>>) {
+    fn param_group(
+        &mut self,
+        open: usize,
+        pending: &mut HashMap<usize, Vec<usize>>,
+        ranges: &mut HashMap<usize, (usize, Vec<usize>)>,
+    ) {
         let Some(close) = self.matching(open) else {
             return;
         };
@@ -394,28 +492,30 @@ impl Pass<'_> {
         }
         let body = if is_arrow { close + 2 } else { close + 1 };
         if is_arrow {
-            self.bind_params(body, cur, names, pending);
+            self.bind_params(body, names, pending, ranges);
         } else {
             pending.insert(body, names);
         }
     }
 
-    /// Parámetros de una flecha: al bloque si lo hay, si no al ámbito actual.
+    /// Parámetros de una flecha: a su bloque, o a un ámbito que cubre solo
+    /// la expresión del cuerpo.
     fn bind_params(
         &mut self,
         body: usize,
-        cur: usize,
         names: Vec<usize>,
         pending: &mut HashMap<usize, Vec<usize>>,
+        ranges: &mut HashMap<usize, (usize, Vec<usize>)>,
     ) {
         if self.punct_at(body, "{") {
             pending.entry(body).or_default().extend(names);
         } else {
-            for k in names {
-                if let Some(name) = self.tok(k).map(|t| t.text.clone()) {
-                    self.declare(cur, &name);
-                }
-            }
+            let end = self.expr_end(body);
+            ranges
+                .entry(body)
+                .or_insert((end, Vec::new()))
+                .1
+                .extend(names);
         }
     }
 
@@ -492,18 +592,21 @@ impl Pass<'_> {
         None
     }
 
-    fn shadowed(&self, i: usize, name: &str) -> bool {
+    /// Declaración más cercana visible desde el token `i`: `Some(es_parámetro)`.
+    fn nearest_decl(&self, i: usize, name: &str) -> Option<bool> {
         let mut s = self.scope_of.get(i).copied();
         while let Some(id) = s {
-            let Some(scope) = self.scopes.get(id) else {
-                return false;
-            };
-            if scope.decls.contains(name) {
-                return true;
+            let scope = self.scopes.get(id)?;
+            if let Some(&param) = scope.decls.get(name) {
+                return Some(param);
             }
             s = scope.parent;
         }
-        false
+        None
+    }
+
+    fn shadowed(&self, i: usize, name: &str) -> bool {
+        self.nearest_decl(i, name).is_some()
     }
 
     fn is_assign_target(&self, i: usize) -> bool {
@@ -561,8 +664,11 @@ impl Pass<'_> {
             return;
         }
         let base_name = base.text.clone();
-        // `root` es el parámetro de la envoltura UMD: siempre `window`.
-        let local = base_name != "root" && self.shadowed(base_i, &base_name);
+        // `root` como parámetro (envoltura UMD) es `window`; un `root` local no.
+        let local = match self.nearest_decl(base_i, &base_name) {
+            None => false,
+            Some(param) => base_name != "root" || !param,
+        };
         if local {
             return;
         }
@@ -665,16 +771,26 @@ impl Pass<'_> {
             if matches!(t.kind, Kind::Str | Kind::Template) {
                 f.strings += 1;
             }
+            if let Some(ty) = self.type_comparison(i) {
+                push_unique(&mut f.message_types, ty);
+            }
             if t.kind != Kind::Ident {
-                if t.is_punct(".") && self.tok(i + 1).is_some_and(|x| x.is_ident("type")) {
-                    // `x.type === "y"`
-                    if (self.punct_at(i + 2, "===") || self.punct_at(i + 2, "=="))
-                        && let Some(v) = self.tok(i + 3).filter(|v| v.kind == Kind::Str)
-                    {
-                        push_unique(&mut f.message_types, v.text.clone());
-                    }
-                }
                 continue;
+            }
+            if t.is_ident("switch") {
+                for ty in self.switch_on_type(i) {
+                    push_unique(&mut f.message_types, ty);
+                }
+            }
+            if let Some((prop, write)) = self.child_access(i) {
+                push_unique(
+                    if write {
+                        &mut f.child_writes
+                    } else {
+                        &mut f.child_refs
+                    },
+                    prop,
+                );
             }
             let name = t.text.as_str();
             let call = self.punct_at(i + 1, "(");
@@ -736,6 +852,142 @@ impl Pass<'_> {
         }
         f.message_types.sort();
         self.facts = f;
+    }
+
+    fn is_member_dot(&self, i: usize) -> bool {
+        self.punct_at(i, ".") || self.punct_at(i, "?.")
+    }
+
+    /// Valor comparado con un `….type` en `x.type === "y"`, `x?.type !== "y"`
+    /// o `"y" == x.type` (el token `i` es la comparación).
+    fn type_comparison(&self, i: usize) -> Option<String> {
+        let t = self.tok(i)?;
+        if t.kind != Kind::Punct || !matches!(t.text.as_str(), "===" | "==" | "!==" | "!=") {
+            return None;
+        }
+        let is_type_before = i >= 2
+            && self.tok(i - 1).is_some_and(|x| x.is_ident("type"))
+            && self.is_member_dot(i - 2);
+        if is_type_before && let Some(v) = self.tok(i + 1).filter(|v| v.kind == Kind::Str) {
+            return Some(v.text.clone());
+        }
+        // `"y" === a.b?.type` (la cadena delante).
+        let lit = i
+            .checked_sub(1)
+            .and_then(|k| self.tok(k))
+            .filter(|v| v.kind == Kind::Str)?;
+        let mut k = i + 1;
+        if !self.tok(k).is_some_and(|x| x.kind == Kind::Ident) {
+            return None;
+        }
+        while self.is_member_dot(k + 1) && self.tok(k + 2).is_some_and(|x| x.kind == Kind::Ident) {
+            k += 2;
+        }
+        let ends_in_type = k > i + 1 && self.tok(k).is_some_and(|x| x.is_ident("type"));
+        let continues =
+            self.is_member_dot(k + 1) || self.punct_at(k + 1, "(") || self.punct_at(k + 1, "[");
+        (ends_in_type && !continues).then(|| lit.text.clone())
+    }
+
+    /// `switch (x.type) { case "a": … }` → los `case` de primer nivel.
+    fn switch_on_type(&self, i: usize) -> Vec<String> {
+        let mut out = Vec::new();
+        let open = i + 1;
+        let Some(close) = self
+            .punct_at(open, "(")
+            .then(|| self.matching(open))
+            .flatten()
+        else {
+            return out;
+        };
+        let on_type = close >= 2
+            && self.tok(close - 1).is_some_and(|x| x.is_ident("type"))
+            && self.is_member_dot(close - 2);
+        if !on_type || !self.punct_at(close + 1, "{") {
+            return out;
+        }
+        let Some(end) = self.matching(close + 1) else {
+            return out;
+        };
+        let mut depth = 0usize;
+        for k in close + 2..end {
+            let Some(t) = self.tok(k) else { break };
+            match t.text.as_str() {
+                "(" | "[" | "{" | "${" if t.kind == Kind::Punct => depth += 1,
+                ")" | "]" | "}" | "}$" if t.kind == Kind::Punct => depth = depth.saturating_sub(1),
+                "case" if t.kind == Kind::Ident && depth == 0 => {
+                    if let Some(v) = self.tok(k + 1).filter(|v| v.kind == Kind::Str) {
+                        out.push(v.text.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// Nombres que guardan el `window` de un iframe: `const w = f.contentWindow`.
+    fn child_windows(&self) -> BTreeSet<String> {
+        let mut out = BTreeSet::new();
+        for k in 0..self.t.len() {
+            let is_cw = self.tok(k).is_some_and(|t| t.is_ident("contentWindow"))
+                && k > 0
+                && self.is_member_dot(k - 1);
+            let ends = self.tok(k + 1).is_none_or(|n| {
+                !(n.kind == Kind::Punct && matches!(n.text.as_str(), "." | "?." | "[" | "("))
+            });
+            if !is_cw || !ends {
+                continue;
+            }
+            // Retrocede por la cadena `a.b.contentWindow` hasta su comienzo.
+            let mut start = k;
+            while start >= 2
+                && self.is_member_dot(start - 1)
+                && self.tok(start - 2).is_some_and(|t| t.kind == Kind::Ident)
+            {
+                start -= 2;
+            }
+            if start >= 2
+                && self.punct_at(start - 1, "=")
+                && let Some(n) = self
+                    .tok(start - 2)
+                    .filter(|t| t.kind == Kind::Ident && !is_keyword(&t.text))
+            {
+                out.insert(n.text.clone());
+            }
+        }
+        out
+    }
+
+    /// Acceso del padre al iframe que nombra el token `i`:
+    /// `….contentWindow.X`, `w.X` (con `w` de `child_windows`),
+    /// `contentDocument` (→ `document`) o `frames[…]` (→ `frames[]`).
+    fn child_access(&self, i: usize) -> Option<(String, bool)> {
+        let t = self.tok(i)?;
+        let prop_at = |k: usize| -> Option<(String, bool)> {
+            if !self.is_member_dot(k) {
+                return None;
+            }
+            let p = self.tok(k + 1).filter(|p| p.kind == Kind::Ident)?;
+            if p.text == "postMessage" {
+                return None; // ya está en los mensajes
+            }
+            let write = self
+                .tok(k + 2)
+                .is_some_and(|n| n.kind == Kind::Punct && ASSIGN_OPS.contains(&n.text.as_str()));
+            Some((p.text.clone(), write))
+        };
+        match t.text.as_str() {
+            "contentWindow" if self.after_dot(i) => prop_at(i + 1),
+            "contentDocument" if self.after_dot(i) => Some(("document".to_string(), false)),
+            "frames"
+                if self.punct_at(i + 1, "[") && (!self.after_dot(i) || self.window_member(i)) =>
+            {
+                Some(("frames[]".to_string(), false))
+            }
+            name if !self.after_dot(i) && self.child_windows_cache.contains(name) => prop_at(i + 1),
+            _ => None,
+        }
     }
 
     fn window_member(&self, i: usize) -> bool {
@@ -1043,6 +1295,29 @@ mod tests {
         assert_eq!(uses, ["esc2", "ok", "obj", "boot2"]);
         assert!(f.uses.iter().any(|u| u.name == "boot2" && u.member));
         assert!(f.defines.contains(&("boot".to_string(), Binding::Window)));
+    }
+
+    #[test]
+    fn concise_arrow_params_and_for_headers_have_their_own_scope() {
+        // Review minor 1: el parámetro `t` y el `const S` del for no tapan los globales después.
+        let f = analyze(
+            "function f(){ xs.map(t => t.id); return t(\"x\"); }\nfunction g(q){ for (const S of q) { S.y } return S.x }",
+        );
+        let uses: Vec<&str> = f
+            .uses
+            .iter()
+            .filter(|u| !u.member)
+            .map(|u| u.name.as_str())
+            .collect();
+        assert_eq!(uses, ["xs", "t", "S"]);
+    }
+
+    #[test]
+    fn local_root_is_not_an_alias_of_window() {
+        let f = analyze(
+            "const root = document.documentElement.style;\nroot.background = 1;\n(function (root) { root.Lib = 1 })(window)",
+        );
+        assert_eq!(names(&f.defines), ["root", "Lib"]);
     }
 
     #[test]

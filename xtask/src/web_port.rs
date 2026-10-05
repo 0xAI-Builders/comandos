@@ -190,27 +190,41 @@ fn file_id(id: &str) -> String {
         .collect()
 }
 
+/// Directorio temporal propio: `create_dir` falla si ya existe (no sigue
+/// enlaces plantados por otro en el `temp_dir` compartido).
+fn private_tmp_dir() -> Option<PathBuf> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    (0..16u32).find_map(|n| {
+        let d = std::env::temp_dir().join(format!("web-port-{}-{nanos}-{n}", std::process::id()));
+        std::fs::create_dir(&d).ok().map(|_| d)
+    })
+}
+
+/// `git diff --no-index` con cabeceras `portado/<id>` y `actual/<id>`.
 fn diff(ported: &Path, current: &str, id: &str) -> Option<String> {
-    if !ported.is_file() {
-        return None;
-    }
-    let tmp = std::env::temp_dir().join(format!(
-        "web-port-{}-{}.txt",
-        std::process::id(),
-        file_id(id)
-    ));
-    std::fs::write(&tmp, current).ok()?;
-    let out = Command::new("git")
-        .args(["diff", "--no-index", "--no-color", "--"])
-        .arg(ported)
-        .arg(&tmp)
-        .output();
-    let _ = std::fs::remove_file(&tmp);
-    let out = out.ok()?;
-    let text = String::from_utf8_lossy(&out.stdout)
-        .replace(&ported.display().to_string(), &format!("portado/{id}"))
-        .replace(&tmp.display().to_string(), &format!("actual/{id}"));
-    Some(text)
+    let old = std::fs::read(ported).ok()?;
+    let dir = private_tmp_dir()?;
+    let name = file_id(id);
+    let run = || -> Option<String> {
+        for (sub, bytes) in [("portado", old.as_slice()), ("actual", current.as_bytes())] {
+            std::fs::create_dir(dir.join(sub)).ok()?;
+            std::fs::write(dir.join(sub).join(&name), bytes).ok()?;
+        }
+        let out = Command::new("git")
+            .current_dir(&dir)
+            .args(["diff", "--no-index", "--no-color", "--no-prefix", "--"])
+            .arg(format!("portado/{name}"))
+            .arg(format!("actual/{name}"))
+            .output()
+            .ok()?;
+        Some(String::from_utf8_lossy(&out.stdout).into_owned())
+    };
+    let text = run();
+    let _ = std::fs::remove_dir_all(&dir);
+    text
 }
 
 pub fn check(o: &PortOptions) -> Result<Vec<CheckEntry>, PortError> {
@@ -286,6 +300,16 @@ fn inventory(o: &PortOptions) -> Result<(Vec<Value>, Value), PortError> {
     }
 }
 
+/// Componente de una unidad del inventario (`region:red` → `red`).
+fn component_of(o: &PortOptions, id: &str) -> Result<Option<String>, PortError> {
+    let (units, _) = inventory(o)?;
+    Ok(units
+        .iter()
+        .find(|u| u["id"] == id || u["component"] == id)
+        .and_then(|u| u["component"].as_str())
+        .map(str::to_string))
+}
+
 /// Entrada nueva desde el inventario: exporta los globales suyos que otra
 /// unidad, el host o un iframe consumen.
 fn new_entry(o: &PortOptions, id: &str) -> Result<Map<String, Value>, PortError> {
@@ -332,11 +356,18 @@ fn new_entry(o: &PortOptions, id: &str) -> Result<Map<String, Value>, PortError>
 
 pub fn pin(o: &PortOptions, id: &str) -> Result<Pinned, PortError> {
     let reg = load(&o.registry)?;
-    let found = reg
-        .entries
-        .iter()
-        .find(|(_, e)| field(e, "id") == Some(id))
-        .cloned();
+    let by_id = |want: &str| {
+        reg.entries
+            .iter()
+            .find(|(_, e)| field(e, "id") == Some(want))
+            .cloned()
+    };
+    // Un id de unidad (`region:red`) se normaliza a su componente (`red`)
+    // antes de buscar: fijar dos veces actualiza, nunca duplica.
+    let found = match by_id(id) {
+        Some(x) => Some(x),
+        None => component_of(o, id)?.and_then(|c| by_id(&c)),
+    };
     let (slot, mut entry) = match found {
         Some(x) => x,
         None => {

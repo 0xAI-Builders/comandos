@@ -9,4 +9,5 @@
   setInterval(() => render(), 60 * 1000);
   window.webkit.messageHandlers.extensions.postMessage('close');
   document.getElementById("b-panel");
+  window.render = ((orig) => function () { return orig(); })(render);
 })(window);

@@ -14,12 +14,19 @@ async function api(path){ return fetch("/webterm-token") }
 function esc(s){return s}
 let counter = 0;
 const $ = s => document.querySelector(s);
+window.shared = 2;
 // ---------- render ----------
 function render(){
   $("#board").textContent = esc(`fila ${counter}`);
   // api("/comentario") no es una ruta
   const note = "api('/cadena') tampoco";
   return note;
+}
+function wire(frame){
+  const win = frame.contentWindow;
+  if (win.__owns) return;
+  win.__wired = true;
+  return frame.contentWindow?.__direct || frame.contentDocument;
 }
 </script>
 <script src="b.js"></script>

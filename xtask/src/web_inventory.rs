@@ -65,6 +65,13 @@ pub struct Unit {
     pub mutates_globals: Vec<String>,
     /// `parent.X` desde un iframe (preflight B3: llamadas directas al tablero).
     pub parent_refs: Vec<String>,
+    /// Globales de otra unidad que reasigna con `window.X =` (parche, no definición).
+    pub patches: Vec<String>,
+    /// Lo que lee del iframe: `contentWindow.X`, `win.X` con `win = ….contentWindow`,
+    /// `contentDocument` (como `document`), `frames[…]`.
+    pub child_refs: Vec<String>,
+    /// Propiedades que escribe en el `window` de un iframe.
+    pub child_writes: Vec<String>,
     pub dom_ids: Vec<String>,
     pub routes: Vec<String>,
     pub storage_keys: Vec<String>,
@@ -404,6 +411,9 @@ fn draft(
         uses_globals: Vec::new(),
         mutates_globals: Vec::new(),
         parent_refs: sorted(facts.parent_refs.clone()),
+        patches: Vec::new(),
+        child_refs: sorted(facts.child_refs.clone()),
+        child_writes: sorted(facts.child_writes.clone()),
         dom_ids: facts.dom_ids.clone(),
         routes: facts.routes.clone(),
         storage_keys: facts.storage_keys.clone(),
@@ -557,6 +567,32 @@ pub fn same_realm(u: &Unit, v: &Unit) -> bool {
 
 /// Usos y mutaciones entre unidades de la misma página.
 fn resolve(drafts: &mut [Draft]) {
+    // Parches: `window.X =` sobre un global que ya define otra unidad de la
+    // misma página (con declaración propia, o antes en el orden de carga).
+    let before: Vec<Unit> = drafts.iter().map(|d| d.unit.clone()).collect();
+    for (i, d) in drafts.iter_mut().enumerate() {
+        let Some(me) = before.get(i) else { continue };
+        let patched: Vec<String> = me
+            .defines
+            .iter()
+            .filter(|n| me.define_kinds.get(*n).is_some_and(|k| k == "window"))
+            .filter(|n| {
+                before.iter().enumerate().any(|(j, v)| {
+                    j != i
+                        && same_realm(me, v)
+                        && v.define_kinds
+                            .get(*n)
+                            .is_some_and(|k| k != "window" || j < i)
+                })
+            })
+            .cloned()
+            .collect();
+        d.unit.defines.retain(|n| !patched.contains(n));
+        for n in &patched {
+            d.unit.define_kinds.remove(n);
+        }
+        d.unit.patches = patched;
+    }
     let units: Vec<Unit> = drafts.iter().map(|d| d.unit.clone()).collect();
     for i in 0..drafts.len() {
         let Some(me) = units.get(i) else { continue };
@@ -580,6 +616,7 @@ fn resolve(drafts: &mut [Draft]) {
             .facts
             .assigns
             .iter()
+            .chain(&me.patches)
             .filter(|n| foreign.contains(n) && !own.contains(*n))
             .cloned()
             .collect();
@@ -856,12 +893,88 @@ pub fn interop(units: &[Unit], repo: &Path) -> Value {
             kinds.dedup();
             m.insert("defined_by".into(), json!(by));
             m.insert("binding".into(), json!(kinds));
-            for k in ["used_by", "mutated_by", "called_by", "host_calls", "risks"] {
+            for k in [
+                "patched_by",
+                "used_by",
+                "mutated_by",
+                "called_by",
+                "host_calls",
+                "risks",
+            ] {
                 m.insert(k.into(), json!([]));
             }
             m
         });
     };
+    // Parches y colisiones dentro de una página: siempre en el inventario.
+    for u in units {
+        for n in &u.patches {
+            entry(&mut g, n);
+            if let Some(m) = g.get_mut(n) {
+                push_str(m, "patched_by", &u.id);
+            }
+        }
+    }
+    for (name, by) in &defined {
+        let collide = by
+            .iter()
+            .enumerate()
+            .any(|(a, u)| by.iter().skip(a + 1).any(|v| same_realm(u, v)));
+        if collide {
+            entry(&mut g, name);
+            if let Some(m) = g.get_mut(*name) {
+                m.insert("collides".into(), json!(true));
+            }
+        }
+    }
+    // Contrato padre → iframe: lo que el tablero lee o escribe en el
+    // `window` de un iframe.
+    let mut frame: BTreeMap<String, Map<String, Value>> = BTreeMap::new();
+    for u in units {
+        for (props, key) in [(&u.child_refs, "read_by"), (&u.child_writes, "written_by")] {
+            for p in props {
+                push_str(frame.entry(p.clone()).or_default(), key, &u.id);
+            }
+        }
+    }
+    for (p, m) in frame.iter_mut() {
+        // Definido en otra página (el iframe), no en la del lector.
+        let readers: Vec<&Unit> = units
+            .iter()
+            .filter(|u| u.child_refs.contains(p) || u.child_writes.contains(p))
+            .collect();
+        let defs: Vec<&Unit> = defined
+            .get(p.as_str())
+            .map(|v| {
+                v.iter()
+                    .filter(|d| readers.iter().all(|r| !same_realm(r, d)))
+                    .copied()
+                    .collect()
+            })
+            .unwrap_or_default();
+        m.insert(
+            "defined_by".into(),
+            json!(defs.iter().map(|d| d.id.as_str()).collect::<Vec<_>>()),
+        );
+        for k in ["read_by", "written_by"] {
+            m.entry(k).or_insert_with(|| json!([]));
+        }
+        if defs.is_empty() {
+            continue;
+        }
+        let pages: BTreeSet<String> = units
+            .iter()
+            .filter(|u| u.child_refs.contains(p))
+            .flat_map(|u| u.pages.iter().map(|pg| format!("parent:{pg}")))
+            .collect();
+        entry(&mut g, p);
+        if let Some(gm) = g.get_mut(p) {
+            for pg in &pages {
+                push_str(gm, "called_by", pg);
+                push_str(gm, "member_access", &format!("{pg} (contentWindow.{p})"));
+            }
+        }
+    }
     // Entre unidades.
     for u in units {
         for n in &u.uses_globals {
@@ -1021,9 +1134,25 @@ pub fn interop(units: &[Unit], repo: &Path) -> Value {
                     .to_string(),
             );
         }
-        if by > 1 {
+        if m.get("collides").is_some_and(|c| c == true) {
             risks.push(format!(
-                "definido en {by} unidades: gana la última que carga la página"
+                "definido en {by} unidades de la misma página: gana la última que carga"
+            ));
+        }
+        let patchers: Vec<String> = m
+            .get("patched_by")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !patchers.is_empty() {
+            risks.push(format!(
+                "parcheado con window.{name} = desde {}: portar el definidor sin seguir exportando {name} por window rompe el parche, y portar el parche exige que el definidor ya lo haya creado",
+                patchers.join(", ")
             ));
         }
         if mutated {
@@ -1035,22 +1164,25 @@ pub fn interop(units: &[Unit], repo: &Path) -> Value {
         }
         if member && lexical {
             risks.push(format!(
-                "leído como propiedad (window.{name}/parent.{name}) pero declarado con let/const/class: por esa vía es undefined"
+                "leído como propiedad (window.{name}/parent.{name}) pero declarado con let/const/class: por esa vía vale undefined, sin excepción; el lector sigue con su valor por defecto"
             ));
         }
         m.insert("risks".into(), json!(risks));
     }
     let mut top = Map::new();
     for (name, m) in g {
-        let external = ["used_by", "mutated_by", "called_by"].iter().any(|k| {
-            m.get(*k)
-                .and_then(Value::as_array)
-                .is_some_and(|a| !a.is_empty())
-        });
+        let external = ["patched_by", "used_by", "mutated_by", "called_by"]
+            .iter()
+            .any(|k| {
+                m.get(*k)
+                    .and_then(Value::as_array)
+                    .is_some_and(|a| !a.is_empty())
+            });
         if external {
             top.insert(name, Value::Object(m));
         }
     }
+    special.insert("@frame_contract".into(), section(frame));
     special.insert("@dom_ids".into(), section(dom));
     special.insert("@messages".into(), section(messages));
     special.insert("@host_handlers".into(), section(handlers));
@@ -1111,6 +1243,9 @@ pub fn unit_json(u: &Unit) -> Value {
         "uses_globals": u.uses_globals,
         "mutates_globals": u.mutates_globals,
         "parent_refs": u.parent_refs,
+        "patches": u.patches,
+        "child_refs": u.child_refs,
+        "child_writes": u.child_writes,
         "dom_ids": u.dom_ids,
         "routes": u.routes,
         "storage_keys": u.storage_keys,
