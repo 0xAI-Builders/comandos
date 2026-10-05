@@ -387,7 +387,7 @@ async fn undecodable_row_declines_without_limits_refresh() {
             now - 50
         ),
     );
-    let native = Native::new(home.options());
+    let native = Arc::new(Native::new(home.options()));
     let route = NativeRoute::Usage(UsageRoute::Week);
     let outcome = native
         .dispatch(route, &week_request("/analytics/week"))
@@ -404,7 +404,7 @@ async fn undecodable_row_declines_without_limits_refresh() {
     conn.execute("update usage_turns set model='claude-fable-5'", [])
         .unwrap();
     drop(conn);
-    let native = Native::new(home.options());
+    let native = Arc::new(Native::new(home.options()));
     let outcome = native
         .dispatch(route, &week_request("/analytics/week"))
         .await
