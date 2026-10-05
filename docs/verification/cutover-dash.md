@@ -730,6 +730,7 @@ la rama con los arreglos de la revisión final.
   22 877 (min 20), 23 029 (min 30); hilos 3–7 (los de `spawn_blocking` van y vuelven). Con la
   traza activada el minuto 10 marcó 25 165 KiB: el registro de cada reenvío infla el montón.
   Crecimiento tras el calentamiento ≈ 0,5 MiB/h: se vuelve a medir al cerrar la 2d.
+
 ## 2d: `/state` nativo y terminal rápida
 
 Procedimiento para el controlador, como el de la 2c. El frente está en 4777 y el Python heredado
