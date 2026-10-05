@@ -113,25 +113,23 @@ pub struct UsageMemo {
 impl UsageMemo {
     /// Escribe el estado. Lo que `response_dumps` no puede escribir (no es un
     /// objeto o pasa la profundidad) es el error que el Python daría al
-    /// responder.
-    fn encode(state: Value) -> Result<Self, String> {
+    /// responder. `panes` y `windows` se copian en vez de moverse: lo que queda
+    /// del memo se asigna después de soltar las filas, en sus huecos, y no entre
+    /// los nodos del árbol, que se suelta entero y deja la cima de la arena
+    /// libre para que glibc la recorte.
+    fn encode(state: &Value) -> Result<Self, String> {
         let Value::Object(map) = state else {
             return Err("el estado no es un objeto".into());
         };
         let mut entries = Vec::with_capacity(map.len());
-        let (mut panes, mut windows) = (Value::Null, Value::Null);
         for (key, value) in map {
-            entries.push((key.clone(), response_dumps_entry(&key, &value)?));
-            match key.as_str() {
-                "panes" => panes = value,
-                "windows" => windows = value,
-                _ => {}
-            }
+            entries.push((key.clone(), response_dumps_entry(key, value)?));
         }
+        let field = |key: &str| map.get(key).cloned().unwrap_or(Value::Null);
         Ok(Self {
             entries,
-            panes,
-            windows,
+            panes: field("panes"),
+            windows: field("windows"),
         })
     }
 
@@ -224,6 +222,10 @@ impl UsageEngine {
         {
             return Ok(state.clone());
         }
+        // El memo viejo se suelta antes de calcular el nuevo: así el nuevo no
+        // queda por encima de los temporales del cálculo en la arena (las
+        // respuestas en curso guardan su propio `Arc`).
+        *memo = None;
         // `int(time.time())` de `build_usage_state`.
         let now = (native.options().clock)().div_euclid(1000);
         let live = live.to_vec();
@@ -249,7 +251,9 @@ impl UsageEngine {
                 )
                 .map_err(|_| ())?;
                 drop(rows);
-                UsageMemo::encode(state).map_err(|_| ())
+                let memo = UsageMemo::encode(&state).map_err(|_| ());
+                drop(state);
+                memo
             })
             .await
             .map_err(no_decline)?
