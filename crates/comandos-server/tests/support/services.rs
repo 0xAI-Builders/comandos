@@ -78,3 +78,87 @@ pub fn mode(path: &Path) -> String {
         .map(|m| format!("{:o}", m.permissions().mode() & 0o7777))
         .unwrap_or_else(|_| "-".into())
 }
+
+// ---------------------------------------------------------------------------
+// Remoto y terminal web (Tarea 2)
+// ---------------------------------------------------------------------------
+
+/// `tailscale` falso de los dos lados del gemelo (el real nunca corre). Anota
+/// cada llamada en `<HOME>/tailscale.log` (formato de `oracle::calls_in`) y
+/// responde según el guion de `<HOME>/tailscale/`:
+/// - `status.json`: salida de `status --json` (sin archivo → rc 1);
+/// - `self.txt`: salida de `status --self --json` (rc 0 siempre);
+/// - `logged-in`: `status` con rc 0 (sin él, «Logged out.» y rc 1);
+/// - `serve.txt`: salida de `serve status`; un `serve … <destino>` que
+///   funciona le añade `|-- proxy <destino>` y `off`/`reset` lo vacían;
+/// - `serve-fail`: todo `serve` que no sea `status`/`off`/`reset` escribe su
+///   contenido en stderr y sale con 1.
+pub const TAILSCALE: &str = r#"#!/bin/sh
+printf '%s\0' tailscale "$@" "$(printf '\036')" >> "$HOME/tailscale.log"
+d="$HOME/tailscale"
+case "$*" in
+  "status --json")
+    [ -f "$d/status.json" ] || exit 1
+    cat "$d/status.json"; exit 0 ;;
+  "status --self --json")
+    [ -f "$d/self.txt" ] && cat "$d/self.txt"; exit 0 ;;
+  "status")
+    [ -f "$d/logged-in" ] && exit 0
+    echo "Logged out." >&2; exit 1 ;;
+  "serve status")
+    [ -f "$d/serve.txt" ] && cat "$d/serve.txt"; exit 0 ;;
+  "serve reset"|"serve --https=443 off"|"serve --https=8443 off")
+    : > "$d/serve.txt"; exit 0 ;;
+  serve\ *)
+    if [ -f "$d/serve-fail" ]; then cat "$d/serve-fail" >&2; exit 1; fi
+    for a in "$@"; do last=$a; done
+    printf '|-- proxy %s\n' "$last" >> "$d/serve.txt"; exit 0 ;;
+esac
+echo "tailscale falso: orden desconocida: $*" >&2
+exit 2
+"#;
+
+/// `cc-webterm` falso: anota en `<HOME>/fakebin.log` como los demás falsos y,
+/// si existe `<HOME>/webterm-fail`, escribe su contenido en stderr y sale con 3.
+pub const CC_WEBTERM: &str = r#"#!/bin/sh
+printf '%s\0' cc-webterm "$@" "$(printf '\036')" >> "$HOME/fakebin.log"
+if [ -f "$HOME/webterm-fail" ]; then cat "$HOME/webterm-fail" >&2; exit 3; fi
+exit 0
+"#;
+
+/// Ejecutables extra del gemelo del remoto (los dos lados).
+pub fn remote_fakes() -> Vec<(String, String)> {
+    vec![
+        ("tailscale".into(), TAILSCALE.into()),
+        ("cc-webterm".into(), CC_WEBTERM.into()),
+    ]
+}
+
+/// Escribe (o borra, con `None`) un archivo del guion de `tailscale` de un HOME.
+pub fn tailscale_set(home: &TestHome, name: &str, text: Option<&str>) {
+    let dir = home.root.join("tailscale");
+    std::fs::create_dir_all(&dir).unwrap();
+    match text {
+        Some(text) => std::fs::write(dir.join(name), text).unwrap(),
+        None => {
+            let _ = std::fs::remove_file(dir.join(name));
+        }
+    }
+}
+
+/// Llamadas al `tailscale` falso de un HOME (solo los argumentos).
+pub fn tailscale_log(home: &TestHome) -> Vec<Vec<String>> {
+    super::oracle::calls_in(&home.root.join("tailscale.log"))
+        .into_iter()
+        .map(|call| call.args)
+        .collect()
+}
+
+/// Llamadas a un falso del `fakebin` de un HOME (solo los argumentos).
+pub fn calls_of(home: &TestHome, name: &str) -> Vec<Vec<String>> {
+    calls(home)
+        .into_iter()
+        .filter(|(n, _)| n == name)
+        .map(|(_, args)| args)
+        .collect()
+}

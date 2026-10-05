@@ -629,6 +629,8 @@ pub struct Native {
     pub(crate) census: Arc<census::DeclineCensus>,
     /// Tareas largas del frente (D12).
     pub(crate) tasks: Arc<procs::TaskTracker>,
+    /// Foto de `/remote-state` (`_remote_state_cache`, 2f-3/T2).
+    pub(crate) remote: remote::RemoteCache,
 }
 
 impl Native {
@@ -651,6 +653,7 @@ impl Native {
             states: states::Engine::default(),
             census: Arc::default(),
             tasks: Arc::default(),
+            remote: remote::RemoteCache::default(),
         }
     }
 
