@@ -42,6 +42,32 @@ pub fn response_dumps(value: &Value) -> Result<String, String> {
     encode(value, true, false, false, Policy::Workspace)
 }
 
+/// `response_dumps` de un objeto dado por sus entradas prestadas, en orden:
+/// igual que `response_dumps(&Value::Object(..))` sin construir el mapa (una
+/// copia superficial de un `dict` grande del Python sale gratis; en Rust no).
+pub fn response_dumps_entries<'a>(
+    entries: impl IntoIterator<Item = (&'a str, &'a Value)>,
+) -> Result<String, String> {
+    let mut out = String::from("{");
+    for (index, (key, value)) in entries.into_iter().enumerate() {
+        if index > 0 {
+            out.push_str(", ");
+        }
+        validate_workspace_depth(value, 1)?;
+        out.push_str(&encode(
+            &Value::String(key.to_owned()),
+            true,
+            false,
+            false,
+            Policy::Workspace,
+        )?);
+        out.push_str(": ");
+        out.push_str(&encode(value, true, false, false, Policy::Workspace)?);
+    }
+    out.push('}');
+    Ok(out)
+}
+
 /// `json.dumps(value, ensure_ascii=False)` del Python: orden de inserción,
 /// separadores `", "`/`": "` y UTF-8 sin escapar (líneas de registros JSONL).
 pub fn response_dumps_unicode(value: &Value) -> Result<String, String> {
@@ -238,8 +264,30 @@ fn python_float(value: f64, policy: Policy) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::dumps;
+    use super::{dumps, response_dumps, response_dumps_entries};
     use serde_json::{Value, json};
+
+    #[test]
+    fn borrowed_entries_encode_like_the_whole_object() {
+        let value = json!({"b": {"x": [1.5, "é"]}, "a": null, "c": [], "d": {}});
+        let Value::Object(map) = &value else {
+            panic!("objeto");
+        };
+        assert_eq!(
+            response_dumps_entries(map.iter().map(|(k, v)| (k.as_str(), v))).unwrap(),
+            response_dumps(&value).unwrap()
+        );
+        assert_eq!(response_dumps_entries([]).unwrap(), "{}");
+        let mut deep = Value::Null;
+        for _ in 0..999 {
+            deep = Value::Array(vec![deep]);
+        }
+        let whole = json!({"k": deep.clone()});
+        assert_eq!(
+            response_dumps_entries([("k", &deep)]).is_err(),
+            response_dumps(&whole).is_err()
+        );
+    }
 
     #[test]
     fn persisted_float_spelling_preserves_integer_precision() {

@@ -20,7 +20,7 @@ use super::super::{
 use crate::HandlerError;
 use comandos_core::{
     allocation,
-    json::response_dumps,
+    json::response_dumps_entries,
     text,
     usage_state::{self, UsageError},
 };
@@ -490,10 +490,16 @@ pub async fn compute(native: &Native) -> Result<UsageStateReply, Fault> {
         .usage_engine
         .state(native, &live, env.clone())
         .await?;
-    // 7. La respuesta parte de una copia superficial del memo.
-    let mut state = memo.as_object().cloned().ok_or_else(failure)?;
+    // 7. La respuesta parte de una copia superficial del memo: en Rust se
+    // escribe el memo prestado con estas claves encima, sin clonarlo entero.
+    let base = memo.as_object().ok_or_else(failure)?;
+    let mut over: Vec<(&str, Value)> = Vec::new();
+    let mut put = |key: &'static str, value: Value| match over.iter_mut().find(|(k, _)| *k == key) {
+        Some(slot) => slot.1 = value,
+        None => over.push((key, value)),
+    };
     let rows: Vec<Value> = limits.rows.into_iter().map(Value::Object).collect();
-    state.insert("limits".into(), Value::Array(rows));
+    put("limits", Value::Array(rows));
     let mut health = match usage_state::credential_health(&env) {
         Value::Object(map) => map,
         _ => return Err(failure()),
@@ -501,27 +507,43 @@ pub async fn compute(native: &Native) -> Result<UsageStateReply, Fault> {
     for (key, value) in limits.health {
         health.insert(key, value);
     }
-    state.insert("credential_health".into(), Value::Object(health));
-    state.insert(
-        "alerts".into(),
+    put("credential_health", Value::Object(health));
+    put(
+        "alerts",
         Value::Array(alerts.into_iter().map(Value::Object).collect()),
     );
     // D5: `attach_token_counts` sobre las filas cacheadas, y `enrich_limits`.
-    let windows = state.get("windows").cloned().unwrap_or(Value::Null);
+    // `windows` sale del memo: ninguna clave de encima la toca.
+    let windows = base.get("windows").unwrap_or(&Value::Null);
     let attached: Vec<Value> = native
         .limits
-        .attach_tokens(&windows)
+        .attach_tokens(windows)
         .into_iter()
         .map(Value::Object)
         .collect();
     let lang = lang_of(conf.cc_lang()?.as_deref(), &opts.usage_env);
     let enriched = allocation::enrich_limits(&attached, (opts.clock)() as f64 / 1000.0, lang)
         .map_err(|_| failure())?;
-    state.insert("limits".into(), Value::Array(enriched));
+    put("limits", Value::Array(enriched));
     let last = recent.into_iter().next().map_or(Value::Null, Value::Object);
-    state.insert("lastInteraction".into(), last);
-    // 9. Cuerpo.
-    let body = response_dumps(&Value::Object(state)).map_err(|_| failure())?;
+    put("lastInteraction", last);
+    // 9. Cuerpo: el orden de un `dict` del Python (las claves del memo en su
+    // sitio, las nuevas al final en el orden en que se pusieron).
+    let entries = base
+        .iter()
+        .map(|(key, value)| {
+            let value = over
+                .iter()
+                .find(|(k, _)| *k == key.as_str())
+                .map_or(value, |(_, v)| v);
+            (key.as_str(), value)
+        })
+        .chain(
+            over.iter()
+                .filter(|(k, _)| !base.contains_key(*k))
+                .map(|(k, v)| (*k, v)),
+        );
+    let body = response_dumps_entries(entries).map_err(|_| failure())?;
     Ok(UsageStateReply {
         body: bytes::Bytes::from(body),
         state: memo,

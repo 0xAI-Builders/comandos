@@ -11,8 +11,8 @@ mod parser;
 pub use parser::{object_fields, parse_slice, parse_unique_value, parse_value};
 mod python;
 pub use python::{
-    dumps, float_repr, response_dumps, response_dumps_unicode, workspace_dumps,
-    workspace_dumps_with_options,
+    dumps, float_repr, response_dumps, response_dumps_entries, response_dumps_unicode,
+    workspace_dumps, workspace_dumps_with_options,
 };
 
 // Legacy JSON semantics at the compatibility boundary (null, false, 0 and ""
