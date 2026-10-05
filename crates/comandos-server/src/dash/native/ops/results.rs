@@ -223,10 +223,8 @@ impl MotorResults {
         let mut state = self.lock();
         self.refresh(&mut state, true);
         let entry = Value::Object(result);
-        // En el archivo la clave conserva su posición; si no, va al final.
-        if state.disk.contains_key(key) {
-            state.disk.insert(key.to_owned(), entry.clone());
-        }
+        // `merged` decide por timestamp y conserva la posición del disco.
+        // Sustituir aquí la entrada del disco perdería el resultado más nuevo.
         state.own.insert(key.to_owned(), entry);
         let _ = trim(&mut state.own);
         if state.uncertain {
@@ -246,9 +244,10 @@ impl MotorResults {
         }
         if files::write_json_atomic(&self.path, &Value::Object(merged.clone())).is_ok() {
             state.disk = merged;
-            state.stamp = std::fs::metadata(&self.path)
-                .ok()
-                .map(|m| (m.mtime(), m.mtime_nsec(), m.size(), m.ino()));
+            // El heredado puede reemplazar el archivo después del rename.
+            // Su metadata no identifica `merged`: la siguiente lectura debe
+            // recargar antes de asociar contenido y sello.
+            state.stamp = None;
         }
         Ok(())
     }

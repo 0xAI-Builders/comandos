@@ -179,6 +179,22 @@ fn rust_writes_keep_legacy_entries_and_newer_ts_wins() {
     assert_eq!(results.all()["legacy|%1"]["ts"], json!(50.0));
 }
 
+#[test]
+fn late_rust_write_preserves_newer_legacy_result_for_same_operation() {
+    let home = TestHome::new("motor-older-write");
+    let path = home.hooks().join("motor-results.json");
+    let results = MotorResults::load_with(&path, fixed(1.0));
+    home.write(
+        "motor-results.json",
+        r#"{"shared|%1":{"ok":true,"detail":"legacy nuevo","ts":300.0}}"#,
+    );
+    results
+        .set_with_ts("shared|%1", false, "rust atrasado", &[], 200.0)
+        .unwrap();
+    assert_eq!(on_disk(&home)["shared|%1"]["detail"], json!("legacy nuevo"));
+    assert_eq!(results.get("shared|%1").unwrap()["ts"], json!(300.0));
+}
+
 /// Ronda 1 (I2): la mezcla de disco y memoria se acota con el recorte de O3
 /// (más de 300 → las 200 de `ts` más reciente).
 #[test]
