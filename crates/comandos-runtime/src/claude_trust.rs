@@ -11,8 +11,9 @@
 //! Efectos (los del Python): `os.makedirs` del directorio del archivo,
 //! `<archivo>.lock` abierto en modo `a+` (0666 menos la umask si es nuevo) con
 //! `flock` exclusivo, `<archivo>.tmp` escrito con `json.dump(indent=2)` y un
-//! salto de línea, y `os.replace` sobre el archivo (que queda con el modo del
-//! temporal).
+//! salto de línea, y `os.replace` sobre el archivo. Desviación deliberada:
+//! el archivo reemplazado conserva su modo original (el Python le deja el del
+//! temporal, y un `~/.claude.json` 0600 pasaba a 0644).
 use crate::Unsure;
 use crate::agent_procs::{dirname, normpath, realpath};
 use comandos_core::json::{MAX_WORKSPACE_JSON_DEPTH, indent_dumps, truthy, workspace_loads};
@@ -20,7 +21,7 @@ use serde_json::{Map, Value};
 use std::{
     fs, io,
     io::Write,
-    os::unix::ffi::OsStrExt,
+    os::unix::{ffi::OsStrExt, fs::PermissionsExt},
     path::{Path, PathBuf},
 };
 
@@ -211,10 +212,28 @@ fn stamp_locked(path: &Path, cwd: &str) -> Result<bool, Stamp> {
     body.push('\n');
     let mut tmp = path.as_os_str().to_owned();
     tmp.push(".tmp");
-    // `open(tmp, "w")` (0666 menos la umask si es nuevo) y `os.replace`.
-    let written = fs::File::create(&tmp)
+    // `open(tmp, "w")` y `os.replace`. Desviación deliberada (seguridad): el
+    // Python deja el archivo con el modo del temporal (0666 menos la umask, o
+    // el de un `.tmp` viejo), así un `~/.claude.json` 0600 acababa legible por
+    // todos. Aquí el temporal nace de cero y toma el modo del archivo original
+    // antes del `rename`; un archivo nuevo nace como en el Python.
+    let original = fs::metadata(path)
+        .ok()
+        .map(|meta| meta.permissions().mode() & 0o7777);
+    let _ = fs::remove_file(&tmp);
+    let written = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)
         .and_then(|mut file| file.write_all(body.as_bytes()))
+        .and_then(|()| match original {
+            Some(mode) => fs::set_permissions(&tmp, fs::Permissions::from_mode(mode)),
+            None => Ok(()),
+        })
         .and_then(|()| fs::rename(&tmp, path));
+    if written.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
     written.map_err(|_| Stamp::Raised)?;
     Ok(true)
 }

@@ -32,9 +32,11 @@
 //! `settings.json` de Claude bajo su candado, la sesión, la pestaña y el
 //! `send-keys` del login. Todo bajo `ACCOUNT_ADD_LOCK` (`_ACCOUNT_ADD_LOCK`).
 //!
-//! Pendiente para Jesús (no se corrige aquí, se porta tal cual): el alias de
-//! una cuenta Claude se valida pero `claude-as` crea carpetas de cuenta falsas
-//! (p. ej. `--dangerously-skip-permissions`) que luego aparecen en el menú.
+//! Pendiente para Jesús (no se corrige aquí, se porta tal cual): `claude-as`
+//! crea carpetas de cuenta falsas (p. ej. `--dangerously-skip-permissions`).
+//! No llegan al menú: `list_accounts` descarta los nombres que no empiezan por
+//! letra o dígito y los `*.lock`; solo cuentan para `cuenta-N` si se llamaran
+//! así (`account_home(...).exists()`).
 use super::{
     super::{
         files::{self, FileLock, LOCK_WAIT, Strict},
@@ -659,6 +661,25 @@ struct AgentSpec<'a> {
     danger: bool,
 }
 
+/// El 400 de Grok sobre `catalog = {m["id"]: m for m in grok_state.models(home)}`:
+/// con ids repetidos gana el ÚLTIMO, como en el `dict` del Python. `None`: el
+/// modelo (y el esfuerzo, si hay) valen.
+fn grok_refusal(catalog: &[Value], model: &str, effort: &str) -> Result<Option<String>, Fault> {
+    let Some(found) = catalog.iter().rev().find(|m| m["id"] == json!(model)) else {
+        return Ok(Some(format!("modelo Grok no disponible: {model}")));
+    };
+    if effort.is_empty() {
+        return Ok(None);
+    }
+    // `effort not in (catalog[model].get("efforts") or [])`.
+    let known = match &found["efforts"] {
+        Value::Array(list) => list.iter().any(|e| e.as_str() == Some(effort)),
+        v if !truthy(v) => false,
+        _ => return Err(Fault::Decline),
+    };
+    Ok((!known).then(|| format!("esfuerzo no válido para {model}")))
+}
+
 /// El comando de `/session-new` por agente (la tabla del Python). Bloquea.
 fn agent_command(
     opts: &NativeOptions,
@@ -715,24 +736,11 @@ fn agent_command(
             let mut cmd = format!("{prefix}grok");
             if !model.is_empty() {
                 let catalog = grok_models(&home).map_err(decline)?;
-                let Some(found) = catalog.iter().find(|m| m["id"] == json!(model)) else {
+                if let Some(error) = grok_refusal(&catalog, model, effort)? {
                     return Ok(Launch::Kill(
                         StatusCode::BAD_REQUEST,
-                        json!({"error": format!("modelo Grok no disponible: {model}")}),
+                        json!({"error": error}),
                     ));
-                };
-                if !effort.is_empty() {
-                    let known = match &found["efforts"] {
-                        Value::Array(list) => list.iter().any(|e| e.as_str() == Some(effort)),
-                        v if !truthy(v) => false,
-                        _ => return Err(Fault::Decline),
-                    };
-                    if !known {
-                        return Ok(Launch::Kill(
-                            StatusCode::BAD_REQUEST,
-                            json!({"error": format!("esfuerzo no válido para {model}")}),
-                        ));
-                    }
                 }
                 cmd += &format!(" --model {}", shlex_quote(model));
                 if !effort.is_empty() {
@@ -1196,6 +1204,24 @@ fn pick_alias(
     }
 }
 
+/// `cwd if os.path.isdir(cwd) else ~` del login. El directorio de trabajo del
+/// Python es el HOME (la unidad `cc-dash-legacy` no fija `WorkingDirectory`:
+/// systemd usa el HOME en las unidades de usuario; `/proc/<pid>/cwd` lo
+/// confirma), así que un `cwd` relativo se mira contra el HOME y no contra el
+/// directorio del frente. Si no es carpeta ahí cae al HOME, como el Python; si
+/// lo es, el Python pasaría la ruta relativa a `tmux -c`, cuya resolución
+/// depende del directorio del cliente tmux: ambiguo, se declina antes de nada.
+async fn account_cwd(opts: &NativeOptions, cwd: String, home: String) -> Result<String, Fault> {
+    if cwd.starts_with('/') {
+        return Ok(if is_dir(opts, &cwd).await? { cwd } else { home });
+    }
+    let under_home = opts.home.join(&cwd);
+    if blocking(move || Ok(under_home.is_dir())).await? {
+        return Err(Fault::Decline);
+    }
+    Ok(home)
+}
+
 /// Lo que `/account/add` decide antes de cualquier efecto.
 struct AccountPlan {
     alias: String,
@@ -1274,7 +1300,7 @@ pub(super) async fn account_add(native: &Native, data: &Map<String, Value>) -> A
         Some(v) if truthy(v) => str_of(v)?,
         _ => home.clone(),
     };
-    let cwd = if is_dir(opts, &cwd).await? { cwd } else { home };
+    let cwd = account_cwd(opts, cwd, home).await?;
     registry_preflight(native, PATH, false).await?;
     server_running(opts).await?;
 
@@ -1290,6 +1316,10 @@ pub(super) async fn account_add(native: &Native, data: &Map<String, Value>) -> A
     })
     .await?;
     if let Some(seed) = plan.seed {
+        // Desviación deliberada: el `file_lock` del Python espera sin plazo; aquí
+        // `LOCK_WAIT` (30 s). Con un candado retenido más tiempo la cuenta queda
+        // sin sembrar (como si la siembra fallara, que el Python traga) y la
+        // petición sigue: acotado es mejor que colgar el login.
         match FileLock::acquire_timeout(&seed.path, LOCK_WAIT).await {
             Ok(lock) => {
                 let _ = blocking(move || {
@@ -1337,8 +1367,10 @@ pub(super) async fn account_add(native: &Native, data: &Map<String, Value>) -> A
 #[cfg(test)]
 mod tests {
     use super::{
-        Fault, NativeOptions, fnmatch, include_files, make_worktree, motor_lock, worktree_plan,
+        Fault, NativeOptions, fnmatch, grok_refusal, include_files, make_worktree, motor_lock,
+        worktree_plan,
     };
+    use serde_json::json;
     use std::{fs, path::PathBuf, process::Command};
 
     /// Un directorio temporal propio (se borra al soltarlo).
@@ -1463,6 +1495,30 @@ mod tests {
         assert!(fnmatch("", "*"));
         assert!(!fnmatch("A", "a"));
         assert!(fnmatch("abcabd", "*abd"));
+    }
+
+    #[test]
+    fn grok_duplicate_ids_last_one_wins() {
+        let catalog = [
+            json!({"id": "g", "efforts": ["low"]}),
+            json!({"id": "otro", "efforts": []}),
+            json!({"id": "g", "efforts": ["high"]}),
+        ];
+        let check = |model: &str, effort: &str| grok_refusal(&catalog, model, effort).ok();
+        assert_eq!(check("g", "high"), Some(None));
+        assert_eq!(
+            check("g", "low"),
+            Some(Some("esfuerzo no válido para g".into()))
+        );
+        assert_eq!(check("g", ""), Some(None));
+        assert_eq!(
+            check("nada", ""),
+            Some(Some("modelo Grok no disponible: nada".into()))
+        );
+        assert_eq!(
+            check("otro", "x"),
+            Some(Some("esfuerzo no válido para otro".into()))
+        );
     }
 
     #[test]

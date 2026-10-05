@@ -72,7 +72,10 @@ fn assert_confined(t: &Twin) {
         let socket = comandos_server::dash::native::tmux::private_socket(&home.tmux_dir());
         let guard = std::fs::read_to_string(fakebin.join("tmux")).unwrap();
         assert!(
-            guard.contains(&format!("-S '{}'", socket.display())),
+            guard.contains(&format!(
+                "-S {}",
+                support::oracle::sh_quote(&socket.display().to_string())
+            )),
             "guardián sin -S privado: {guard}"
         );
         assert!(guard.contains(" -i "), "guardián sin env -i: {guard}");
@@ -1098,4 +1101,111 @@ async fn without_tmux_server_both_decline_before_effects() {
     assert!(!socket.exists(), "nació un servidor tmux");
     assert!(!home.root.join(".grok-accounts").exists(), "ninguna cuenta");
     assert!(!support::tabs::exists(&home, "app-tab-open.json"));
+}
+
+/// Un HOME con espacio y comilla simple: las rutas de cuenta tecleadas van
+/// con `shlex.quote` y el comando es el mismo byte a byte que el del Python.
+#[tokio::test]
+async fn hostile_home_path_is_quoted_like_python() {
+    let Some(t) = Twin::start("snew q'a b", |h| {
+        seed_registry(h);
+        support::tabs::seed_accounts(h);
+    })
+    .await
+    else {
+        return;
+    };
+    assert_confined(&t);
+    assert!(t.a.root.display().to_string().contains("q'a b"));
+    let mut commands = Vec::new();
+    for (path, body, want) in [
+        (
+            "/session-new",
+            r#"{"cwd":"~/codebase/p2f","routeId":"claude:claude","harnessAccount":"relotto"}"#,
+            200,
+        ),
+        ("/account/add", r#"{"provider":"codex"}"#, 200),
+        (
+            "/account/add",
+            r#"{"provider":"claude","alias":"nueva"}"#,
+            200,
+        ),
+    ] {
+        let (status, log) = same_typed(&t, path, body).await;
+        assert_eq!(status, want, "{path} {body}");
+        commands.extend(typed(&log));
+    }
+    let has = |needle: &str| commands.iter().any(|c| c.contains(needle));
+    assert!(
+        has("CLAUDE_CONFIG_DIR='~/.claude-accounts/relotto' claude"),
+        "{commands:#?}"
+    );
+    assert!(
+        has("CODEX_HOME='~/.codex-accounts/cuenta-2' codex -c"),
+        "{commands:#?}"
+    );
+    assert!(has(
+        "CLAUDE_CONFIG_DIR='~/.claude-accounts/nueva' claude auth login"
+    ));
+    for table in ["usage_session_configs", "usage_changes"] {
+        assert_eq!(usage_rows(&t.a, table), usage_rows(&t.b, table), "{table}");
+    }
+    let trust = home_file(&t.a, ".claude-accounts/relotto/.claude.json")
+        .unwrap()
+        .0;
+    assert!(trust.contains("~/codebase/p2f"), "{trust}");
+}
+
+/// `/account/add` con `cwd` relativo. El Python lo mira con `os.path.isdir`
+/// desde su directorio de trabajo, que en producción es el HOME (la unidad
+/// `cc-dash-legacy` no fija `WorkingDirectory`): si no es carpeta ahí, cae al
+/// HOME (el frente igual); si lo es, `tmux -c` recibiría una ruta relativa
+/// cuya resolución depende del cliente tmux: el frente declina antes de nada.
+#[tokio::test]
+async fn account_add_relative_cwd_resolves_against_home_or_declines() {
+    if !support::tmux_available() {
+        return;
+    }
+    let home = TestHome::new_short("acct-rel");
+    seed_registry(&home);
+    support::tabs::seed_accounts(&home);
+    let legacy = FakeLegacy::start().await;
+    let mut opts = options_for(&home);
+    // El directorio de trabajo del frente NO es el HOME: el relativo se mira
+    // contra el HOME igual.
+    opts.cwd = home.root.join("codebase");
+    let fr = front(&home, legacy.port, opts).await;
+    let wire = request_body(
+        fr.port,
+        "POST",
+        "/account/add",
+        "",
+        r#"{"provider":"grok","alias":"g1","cwd":"codebase/p2f"}"#,
+    )
+    .await;
+    assert_eq!(wire.text(), r#"{"legacy": true}"#);
+    assert!(!home.root.join(".grok-accounts").exists(), "ninguna cuenta");
+    // `p2f` existe bajo `opts.cwd`, no bajo el HOME: cae al HOME.
+    let wire = request_body(
+        fr.port,
+        "POST",
+        "/account/add",
+        "",
+        r#"{"provider":"grok","alias":"g2","cwd":"p2f"}"#,
+    )
+    .await;
+    assert_eq!(wire.status, 200, "{}", wire.text());
+    fr.stop().await;
+    assert_eq!(legacy.requests().len(), 1);
+    let log = support::tabs::TmuxLog(&home).read();
+    let created: Vec<&Vec<String>> = log
+        .iter()
+        .filter(|args| args.first().is_some_and(|v| v == "new-session"))
+        .filter(|args| args.iter().any(|a| a.starts_with("term-r")))
+        .collect();
+    assert_eq!(created.len(), 1, "{log:?}");
+    assert_eq!(
+        created[0].last().map(String::as_str),
+        Some(home.root.display().to_string().as_str())
+    );
 }

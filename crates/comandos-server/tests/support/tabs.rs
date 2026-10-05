@@ -97,7 +97,14 @@ pub fn normalize_home(home: &TestHome, text: &str) -> String {
     let mut out = text.to_owned();
     let canonical = std::fs::canonicalize(&home.root).unwrap_or_else(|_| home.root.clone());
     for root in [canonical, home.root.clone()] {
-        out = out.replace(&root.display().to_string(), "~");
+        let root = root.display().to_string();
+        // La raíz dentro de un argumento con `shlex.quote` (una comilla simple
+        // en la ruta queda como `'"'"'`).
+        let quoted = root.replace('\'', "'\"'\"'");
+        if quoted != root {
+            out = out.replace(&quoted, "~");
+        }
+        out = out.replace(&root, "~");
     }
     out
 }

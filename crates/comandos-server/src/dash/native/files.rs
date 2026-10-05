@@ -158,7 +158,7 @@ impl FileLock {
             .await
             .map_err(|_| timed_out(path))?;
         let target = path.to_path_buf();
-        let waiting = Arc::clone(&slot);
+        let waiting = slot.clone();
         let blocked = tokio::task::spawn_blocking(move || {
             // El turno vive en el hilo: mientras este espere el `flock`, nadie
             // más abre otro hilo para la misma ruta.
@@ -192,8 +192,10 @@ struct WaiterSlot {
     blocked: AtomicUsize,
 }
 
-/// Una cola por ruta. Las rutas de candado son unas pocas fijas
-/// (`app-tabs.json`, `snippets.json`…): el mapa no se poda.
+/// Una cola por ruta, solo mientras alguien la usa: cada `SlotRef` que se
+/// suelta quita la entrada si ya nadie más la tiene (el mapa queda acotado
+/// por las esperas en curso, no por las rutas vistas: las de `settings.json`
+/// de cada cuenta de `/account/add` también pasan por aquí).
 ///
 /// La clave es la ruta tal como llega, sin canonizar: dos grafías de un mismo
 /// archivo (`a/../b`, un enlace) tendrían dos colas y podrían esperar en dos
@@ -202,13 +204,67 @@ struct WaiterSlot {
 /// el mismo archivo, así que la exclusión no se pierde, solo el tope de hilos.
 /// No se canoniza a propósito: `canonicalize` toca el disco y falla si el
 /// archivo aún no existe.
-fn waiter_slot(path: &Path) -> Arc<WaiterSlot> {
+fn slots() -> std::sync::MutexGuard<'static, HashMap<PathBuf, Arc<WaiterSlot>>> {
     static SLOTS: OnceLock<Mutex<HashMap<PathBuf, Arc<WaiterSlot>>>> = OnceLock::new();
-    let mut slots = SLOTS
+    SLOTS
         .get_or_init(Mutex::default)
         .lock()
-        .unwrap_or_else(|p| p.into_inner());
-    Arc::clone(slots.entry(path.to_path_buf()).or_default())
+        .unwrap_or_else(|p| p.into_inner())
+}
+
+/// Una referencia a la cola de una ruta; al soltar la última (aparte del
+/// mapa) la entrada se borra. Todo dueño de un turno tiene una.
+struct SlotRef {
+    path: PathBuf,
+    slot: Arc<WaiterSlot>,
+}
+
+impl std::ops::Deref for SlotRef {
+    type Target = WaiterSlot;
+    fn deref(&self) -> &WaiterSlot {
+        &self.slot
+    }
+}
+
+impl Clone for SlotRef {
+    fn clone(&self) -> Self {
+        // Bajo el candado del mapa, para que el recuento que mira `drop` sea
+        // coherente con las altas de `waiter_slot`.
+        let _map = slots();
+        SlotRef {
+            path: self.path.clone(),
+            slot: Arc::clone(&self.slot),
+        }
+    }
+}
+
+impl Drop for SlotRef {
+    fn drop(&mut self) {
+        let mut map = slots();
+        let only_map_and_us = Arc::strong_count(&self.slot) == 2;
+        if only_map_and_us
+            && map
+                .get(&self.path)
+                .is_some_and(|kept| Arc::ptr_eq(kept, &self.slot))
+        {
+            map.remove(&self.path);
+        }
+    }
+}
+
+fn waiter_slot(path: &Path) -> SlotRef {
+    let mut map = slots();
+    let slot = Arc::clone(map.entry(path.to_path_buf()).or_default());
+    SlotRef {
+        path: path.to_path_buf(),
+        slot,
+    }
+}
+
+/// ¿Tiene `path` una cola en el mapa ahora? (pruebas).
+#[cfg(test)]
+fn queued(path: &Path) -> bool {
+    slots().contains_key(path)
 }
 
 fn timed_out(path: &Path) -> io::Error {
@@ -233,4 +289,41 @@ fn lock_file_for(path: &Path) -> io::Result<fs::File> {
         .truncate(false)
         .mode(0o600)
         .open(&lock)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FileLock, queued};
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn lock_queues_are_pruned_when_empty() {
+        let dir = std::env::temp_dir().join(format!("cmd-files-queue-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let paths: Vec<_> = (0..40).map(|i| dir.join(format!("c{i}.json"))).collect();
+        for path in &paths {
+            let lock = FileLock::acquire_timeout(path, Duration::from_secs(5))
+                .await
+                .unwrap();
+            drop(lock);
+            assert!(!queued(path), "{} sigue en el mapa", path.display());
+            assert_eq!(FileLock::blocked_waiters(path), 0);
+            assert!(!queued(path));
+        }
+        // Con un dueño que no suelta, la espera vence y la cola se vacía igual
+        // cuando el hilo que esperaba obtiene el candado.
+        let held = FileLock::acquire(&paths[0]).unwrap();
+        let late = FileLock::acquire_timeout(&paths[0], Duration::from_millis(50)).await;
+        assert!(late.is_err());
+        assert!(queued(&paths[0]), "el hilo sigue esperando su turno");
+        drop(held);
+        for _ in 0..200 {
+            if !queued(&paths[0]) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(!queued(&paths[0]));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

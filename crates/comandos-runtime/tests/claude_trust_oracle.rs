@@ -239,3 +239,43 @@ fn switch_only_between_distinct_claude_accounts() {
         format!("trust heredado main -> rel en {cwd}")
     );
 }
+
+/// Desviación deliberada del Python (que deja el `.claude.json` con el modo
+/// de su temporal, 0666 menos la umask): heredar la confianza conserva el
+/// modo original, así un `~/.claude.json` 0600 sigue 0600 (y el de la cuenta
+/// destino también). Un archivo nuevo nace como en el Python.
+#[test]
+fn stamping_keeps_the_original_mode() {
+    let h = Home::new("trust-mode");
+    let cwd = h.0.join("codebase/r/sub");
+    fs::create_dir_all(h.0.join("codebase/r/.git")).unwrap();
+    fs::create_dir_all(&cwd).unwrap();
+    h.put(
+        ".claude.json",
+        &format!(
+            "{{\"projects\": {{\"{}\": {{\"hasTrustDialogAccepted\": true}}}}}}",
+            h.0.join("codebase/r").display()
+        ),
+    );
+    h.put(".claude-accounts/rel/.claude.json", "{\"x\": 1}");
+    // Un temporal viejo y abierto a todos no debe contagiar su modo.
+    h.put(".claude.json.tmp", "resto");
+    let set = |rel: &str, mode: u32| {
+        fs::set_permissions(h.0.join(rel), fs::Permissions::from_mode(mode)).unwrap();
+    };
+    set(".claude.json", 0o600);
+    set(".claude.json.tmp", 0o666);
+    set(".claude-accounts/rel/.claude.json", 0o640);
+    let dest = h.0.join(".claude-accounts/rel").display().to_string();
+    let got = claude_trust::inherit_cwd_trust(&cwd.display().to_string(), None, &dest, &h.s());
+    assert_eq!(got, Ok(Some(true)));
+    let mode = |rel: &str| fs::metadata(h.0.join(rel)).unwrap().permissions().mode() & 0o7777;
+    let home_json = fs::read_to_string(h.0.join(".claude.json")).unwrap();
+    assert!(
+        home_json.contains(&cwd.display().to_string()),
+        "{home_json}"
+    );
+    assert_eq!(mode(".claude.json"), 0o600);
+    assert_eq!(mode(".claude-accounts/rel/.claude.json"), 0o640);
+    assert!(!h.0.join(".claude.json.tmp").exists());
+}
