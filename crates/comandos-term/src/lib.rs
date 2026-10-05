@@ -18,3 +18,4 @@ pub mod input;
 pub mod osc;
 pub mod proto;
 pub mod render;
+pub mod select;
