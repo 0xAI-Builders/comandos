@@ -888,9 +888,15 @@ mod tests {
                 cwd: "/c".into(),
                 agent: "grok".into(),
             },
+            AgentProc {
+                pid: 14,
+                cwd: "/d".into(),
+                agent: "grok".into(),
+            },
         ];
-        // 10 → 5 → 1 (externo); 11 → 10 (envoltorio, no); 12 en un pane; 13 → 13 (ciclo).
-        let parents: HashMap<i64, i64> = [(10, 5), (5, 1), (11, 10), (13, 13)].into();
+        // 10 → 5 → 1 (externo); 11 → 10 (envoltorio, no); 12 en un pane; 13 → 13 (ciclo);
+        // 14 → 5 → 1 (externo, con el padre de 5 ya en la caché).
+        let parents: HashMap<i64, i64> = [(10, 5), (5, 1), (11, 10), (13, 13), (14, 5)].into();
         let owners: HashMap<i64, (usize, usize)> = [(12, (0, 0))].into();
         let mut calls = 0;
         let mut parent = |pid: i64| {
@@ -898,6 +904,14 @@ mod tests {
             parents.get(&pid).copied().unwrap_or(0)
         };
         let got = external_agents(&procs, &owners, &mut parent);
-        assert_eq!(got, HashSet::from([("/a".to_owned(), "claude".to_owned())]));
+        assert_eq!(
+            got,
+            HashSet::from([
+                ("/a".to_owned(), "claude".to_owned()),
+                ("/d".to_owned(), "grok".to_owned()),
+            ])
+        );
+        // 10, 5, 11, 13 y 14: el padre de 5 se pregunta una sola vez.
+        assert_eq!(calls, 5);
     }
 }

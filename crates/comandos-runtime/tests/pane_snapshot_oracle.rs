@@ -289,6 +289,87 @@ fn inspector_declines_where_python_raises() {
 }
 
 #[test]
+fn lone_surrogates_only_decline_when_emitted() {
+    let root = scratch("insp-surr");
+    let (home, proc) = (root.join("home"), root.join("proc"));
+    fs::create_dir_all(home.join(".claude/sessions")).unwrap();
+    fs::create_dir_all(home.join(".claude/hooks")).unwrap();
+    fs::create_dir_all(home.join(".grok")).unwrap();
+    // Sustitutos sueltos en campos que nunca llegan a la salida.
+    fs::write(
+        home.join(".claude/sessions/a.json"),
+        r#"{"pid": 101, "sessionId": "s-main", "cwd": "/w/\udc00"}"#,
+    )
+    .unwrap();
+    fs::write(
+        home.join(".grok/active_sessions.json"),
+        r#"[{"pid": 104, "session_id": "g-1", "x": "\ud800"}]"#,
+    )
+    .unwrap();
+    fs::write(
+        home.join(".claude/hooks/acp-panes.json"),
+        r#"{"%9": {"pid": 401, "agent": "codex", "note": "\udfff"}, "%7": {"pid": 402, "model": "m\ud800"}}"#,
+    )
+    .unwrap();
+    process(&proc, 101, 1, &["claude"], &[]);
+    process(&proc, 104, 1, &["grok"], &[]);
+    process(&proc, 400, 1, &["cc-acp"], &[]);
+    process(&proc, 401, 400, &["codex-acp"], &[]);
+    process(&proc, 410, 1, &["cc-acp"], &[]);
+    process(&proc, 402, 410, &["codex-acp"], &[]);
+    let panes = json!([
+        {"id":"%1","pid":101,"command":"claude"},
+        {"id":"%11","pid":104,"command":"grok"},
+        {"id":"%9","pid":400,"command":"cc-acp"}
+    ]);
+    let file = root.join("panes.json");
+    fs::write(&file, panes.to_string()).unwrap();
+    let Some(expected) = run_python(
+        INSPECTOR,
+        &[home.as_os_str(), proc.as_os_str(), file.as_os_str()],
+        &home,
+    ) else {
+        return;
+    };
+    let inspector = PaneInspector::new(&home, &proc).unwrap();
+    let got: Vec<Value> = panes
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            Value::Object(
+                inspector
+                    .inspect(&PaneRef {
+                        id: p["id"].as_str().unwrap(),
+                        pid: p["pid"].as_i64().unwrap(),
+                        command: p["command"].as_str().unwrap(),
+                    })
+                    .unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        response_dumps(&Value::Array(got)).unwrap(),
+        expected.trim_end()
+    );
+    // El modelo de `%7` sí se emitiría con su sustituto: declina ese pane.
+    let emitted = PaneRef {
+        id: "%7",
+        pid: 410,
+        command: "cc-acp",
+    };
+    assert!(inspector.inspect(&emitted).is_err());
+    // Un `sessionId` con sustituto sería el `resume_id` de la tarjeta.
+    fs::write(
+        home.join(".claude/sessions/b.json"),
+        r#"{"pid": 102, "sessionId": "s\udc00"}"#,
+    )
+    .unwrap();
+    assert!(PaneInspector::new(&home, &proc).is_err());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn agent_pane_maps_match_python_oracle() {
     let root = scratch("maps");
     // Copia del caso de tests/test_live_pane_inventory.py, con un envoltorio node → codex.

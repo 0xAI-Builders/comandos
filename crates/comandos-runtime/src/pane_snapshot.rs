@@ -13,7 +13,7 @@ use comandos_core::json::{python_eq, truthy};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
@@ -69,6 +69,8 @@ pub struct PaneInspector {
     claude: HashMap<i64, Obs>,
     grok: HashMap<i64, Obs>,
     acp: Value,
+    /// `acp-panes.json` tenía sustitutos sueltos (se mira al emitir).
+    acp_touched: bool,
 }
 
 /// Clave de un `dict` de Python para un `pid` leído de JSON.
@@ -137,17 +139,36 @@ fn pathlib_name(text: &str) -> &str {
 }
 
 /// `_json(path, default)`: `None` es el `default` (`OSError`/`ValueError`).
-fn load_json(path: &Path) -> Result<Option<Value>, Unsure> {
+/// El segundo campo dice si se cambió un sustituto suelto por U+FFFD: quien
+/// emite un valor del documento lo comprueba con [`emitted`].
+fn load_json(path: &Path) -> Result<Option<(Value, bool)>, Unsure> {
     let Ok(raw) = fs::read(path) else {
         return Ok(None);
     };
     let Ok(text) = String::from_utf8(raw) else {
         return Ok(None);
     };
-    match loads_text(&text)? {
-        Some((_, true)) => Err(Unsure),
-        Some((value, false)) => Ok(Some(value)),
-        None => Ok(None),
+    loads_text(&text)
+}
+
+fn contains_replacement(value: &Value) -> bool {
+    match value {
+        Value::String(s) => s.contains('\u{fffd}'),
+        Value::Array(items) => items.iter().any(contains_replacement),
+        Value::Object(map) => map
+            .iter()
+            .any(|(k, v)| k.contains('\u{fffd}') || contains_replacement(v)),
+        _ => false,
+    }
+}
+
+/// Un valor que llega a la salida: si su documento tenía sustitutos sueltos y
+/// el valor lleva U+FFFD, el Python emitiría el sustituto (`\udXXX`).
+fn emitted(value: &Value, touched: bool) -> Result<Value, Unsure> {
+    if touched && contains_replacement(value) {
+        Err(Unsure)
+    } else {
+        Ok(value.clone())
     }
 }
 
@@ -228,17 +249,31 @@ fn antigravity_sid(target: &[u8]) -> Option<String> {
 
 /// Primera línea del rollout como la lee `fd.open().readline(262144)`.
 fn first_line(path: &Path) -> Option<String> {
+    first_line_from(fs::File::open(path).ok()?)
+}
+
+/// Lee en bloques de 8 KiB (los del `TextIOWrapper`) solo hasta el primer
+/// salto, con el mismo tope de bytes: un rollout de varios MiB con una
+/// primera línea corta cuesta un bloque, no el tope entero.
+fn first_line_from(reader: impl Read) -> Option<String> {
+    let limit = (ROLLOUT_LINE_CHARS as u64) * 4 + 4;
+    let mut reader = BufReader::with_capacity(8192, reader.take(limit));
     let mut raw = Vec::new();
-    let file = fs::File::open(path).ok()?;
-    file.take((ROLLOUT_LINE_CHARS as u64) * 4 + 4)
-        .read_to_end(&mut raw)
-        .ok()?;
-    // Saltos universales del modo texto: `\n`, `\r` o `\r\n` cierran la línea.
-    let end = raw
-        .iter()
-        .position(|b| matches!(b, b'\n' | b'\r'))
-        .unwrap_or(raw.len());
-    let line = std::str::from_utf8(raw.get(..end)?).ok()?;
+    loop {
+        let chunk = reader.fill_buf().ok()?;
+        if chunk.is_empty() {
+            break;
+        }
+        // Saltos universales del modo texto: `\n`, `\r` o `\r\n` cierran la línea.
+        if let Some(end) = chunk.iter().position(|b| matches!(b, b'\n' | b'\r')) {
+            raw.extend_from_slice(chunk.get(..end).unwrap_or(&[]));
+            break;
+        }
+        let used = chunk.len();
+        raw.extend_from_slice(chunk);
+        reader.consume(used);
+    }
+    let line = std::str::from_utf8(&raw).ok()?;
     Some(line.chars().take(ROLLOUT_LINE_CHARS).collect())
 }
 
@@ -273,7 +308,7 @@ impl PaneInspector {
                 if !file.as_os_str().as_bytes().ends_with(b".json") {
                     continue;
                 }
-                let Some(Value::Object(d)) = load_json(&file)? else {
+                let Some((Value::Object(d), touched)) = load_json(&file)? else {
                     continue;
                 };
                 let (Some(pid), Some(sid)) = (
@@ -290,7 +325,7 @@ impl PaneInspector {
                             pid,
                             obs([
                                 ("agent", Value::from("claude")),
-                                ("resume_id", sid.clone()),
+                                ("resume_id", emitted(sid, touched)?),
                                 ("claude_config_dir", Value::from(pathlib_str(cfg)?)),
                             ]),
                         );
@@ -302,7 +337,9 @@ impl PaneInspector {
         let mut configs = vec![home.join(".grok")];
         configs.extend(entries(&home.join(".grok-accounts")));
         for cfg in &configs {
-            let Some(Value::Array(records)) = load_json(&cfg.join("active_sessions.json"))? else {
+            let Some((Value::Array(records), touched)) =
+                load_json(&cfg.join("active_sessions.json"))?
+            else {
                 continue;
             };
             for record in &records {
@@ -323,7 +360,7 @@ impl PaneInspector {
                             pid,
                             obs([
                                 ("agent", Value::from("grok")),
-                                ("resume_id", sid.clone()),
+                                ("resume_id", emitted(sid, touched)?),
                                 ("grok_home", Value::from(pathlib_str(cfg)?)),
                             ]),
                         );
@@ -331,8 +368,8 @@ impl PaneInspector {
                 }
             }
         }
-        let acp = load_json(&home.join(".claude/hooks/acp-panes.json"))?
-            .unwrap_or_else(|| Value::Object(Map::new()));
+        let (acp, acp_touched) = load_json(&home.join(".claude/hooks/acp-panes.json"))?
+            .unwrap_or_else(|| (Value::Object(Map::new()), false));
         Ok(Self {
             home: home.to_path_buf(),
             proc: proc_root.to_path_buf(),
@@ -340,6 +377,7 @@ impl PaneInspector {
             claude,
             grok,
             acp,
+            acp_touched,
         })
     }
 
@@ -408,7 +446,7 @@ impl PaneInspector {
             Ok(m) if m.len() <= 16384 => {}
             _ => return empty,
         }
-        let Some(Value::Object(data)) = load_json(&path)? else {
+        let Some((Value::Object(data), touched)) = load_json(&path)? else {
             return empty;
         };
         let get = |k: &str| data.get(k).cloned().unwrap_or(Value::Null);
@@ -427,10 +465,11 @@ impl PaneInspector {
         if !is_ident(&sid_text) || truthy(&get("parentId")) {
             return empty;
         }
-        Ok(["sessionId", "model", "effort", "busy", "updatedAt"]
-            .into_iter()
-            .map(|k| (k.to_owned(), get(k)))
-            .collect())
+        let mut out = Map::new();
+        for key in ["sessionId", "model", "effort", "busy", "updatedAt"] {
+            out.insert(key.to_owned(), emitted(&get(key), touched)?);
+        }
+        Ok(out)
     }
 
     /// `PaneInspector.__call__(pane)`.
@@ -513,15 +552,11 @@ impl PaneInspector {
         if !inside {
             return Ok(obs([("agent", Value::from("acp"))]));
         }
-        let details: Obs = ["agent", "model", "effort", "account", "sessionId"]
-            .into_iter()
-            .map(|k| {
-                (
-                    k.to_owned(),
-                    record.get(k).cloned().unwrap_or_else(|| Value::from("")),
-                )
-            })
-            .collect();
+        let mut details = Map::new();
+        for key in ["agent", "model", "effort", "account", "sessionId"] {
+            let value = record.get(key).cloned().unwrap_or_else(|| Value::from(""));
+            details.insert(key.to_owned(), emitted(&value, self.acp_touched)?);
+        }
         Ok(obs([
             ("agent", Value::from("acp")),
             ("flags", Value::from(self.flags_for(&str_of(&pid)))),
@@ -720,6 +755,46 @@ mod tests {
         assert_eq!(pathlib_name("/usr/bin/claude"), "claude");
         assert_eq!(pathlib_str(Path::new("/h//./x/")).unwrap(), "/h/x");
         assert_eq!(pathlib_str(Path::new("//h")).unwrap(), "//h");
+    }
+
+    /// Cuenta los bytes que se piden al archivo.
+    struct Counting<R> {
+        inner: R,
+        read: std::rc::Rc<std::cell::Cell<usize>>,
+    }
+
+    impl<R: Read> Read for Counting<R> {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let n = self.inner.read(buf)?;
+            self.read.set(self.read.get() + n);
+            Ok(n)
+        }
+    }
+
+    #[test]
+    fn first_line_reads_one_block_of_a_large_rollout() {
+        let mut data = b"{\"type\":\"session_meta\"}\n".to_vec();
+        data.resize(3 * 1024 * 1024, b'x');
+        let read = std::rc::Rc::new(std::cell::Cell::new(0));
+        let reader = Counting {
+            inner: std::io::Cursor::new(data),
+            read: read.clone(),
+        };
+        assert_eq!(
+            first_line_from(reader).as_deref(),
+            Some("{\"type\":\"session_meta\"}")
+        );
+        assert!(read.get() <= 8192, "leídos {} bytes", read.get());
+        // Una línea más larga que un bloque se sigue leyendo entera; `\r` también corta.
+        let mut long = vec![b'a'; 20_000];
+        long.extend_from_slice(b"\rrest");
+        assert_eq!(first_line_from(&long[..]).map(|l| l.len()), Some(20_000));
+        // Sin salto: hasta el tope de caracteres.
+        let huge = vec![b'b'; 300_000];
+        assert_eq!(
+            first_line_from(&huge[..]).map(|l| l.len()),
+            Some(ROLLOUT_LINE_CHARS)
+        );
     }
 
     #[test]
