@@ -252,9 +252,9 @@ Orden y paralelismo (dependencias entre paréntesis):
 
 ## 4a — Cimientos y app mínima
 
-### Task 1: crate `comandos-app`, versiones fijadas, despacho y modos  ✔ `e63a6af`, `6a1a466`
+### Task 1: crate `comandos-app`, versiones fijadas, despacho y modos  ✔ `e63a6af`, `6a1a466`, `84f5684`
 
-**Depende de:** nada. **Paralelizable:** no (las demás lo necesitan). **Estado:** implementada en `migration/rust-fase4` (`e63a6af` y la ronda 1 de revisión `6a1a466`). Esta sección describe lo construido y aplica F03, F10, F18, F19, F20, F21 y el ruling «sandbox siempre con socket propio».
+**Depende de:** nada. **Paralelizable:** no (las demás lo necesitan). **Estado:** implementada en `migration/rust-fase4` (`e63a6af` y las rondas de revisión `6a1a466` y `84f5684`). Esta sección describe lo construido y aplica F03, F10, F18, F19, F20, F21 y el ruling «sandbox siempre con socket propio».
 
 **Files:**
 - Modify: `Cargo.toml` (miembro `crates/comandos-app`)
@@ -270,10 +270,11 @@ Orden y paralelismo (dependencias entre paréntesis):
   - `enum TmuxServer<'a> { User, Private(&'a SocketLabel) }`.
   - `struct AppConfig` con campos privados y un `enum Mode` privado `{ Sandbox { socket: SocketLabel, root: PathBuf }, Shadow { socket: Option<SocketLabel> }, Live { socket: Option<SocketLabel> } }`: **un sandbox sin socket propio no es representable**. Accesores: `mode() -> RunMode`, `tmux_server() -> TmuxServer<'_>`, `tmux_socket() -> Option<&str>`, `sandbox_root() -> Option<&Path>`, `home()`, `hooks_dir()`, `dash_url() -> Option<&str>` (`None` en sandbox sin `--dash-url`), `web_data_dir()`, `web_cache_dir()`, `runtime_dir()`, `repo_root() -> Option<&Path>`, `writes_allowed() -> bool` (falso solo en sombra), `lock_file_name(display: &str) -> String`, `wm_class() -> &'static str`, `title() -> &'static str`, `layout_dump_path() -> PathBuf`.
   - `fn parse_args(args: &[String], default_live: bool, env: &dyn Fn(&str) -> Option<String>) -> Result<AppConfig, String>`; opciones `--mode sandbox|shadow|live`, `--tmux-socket NOMBRE`, `--hooks-dir DIR`, `--dash-url http://127.0.0.1:PUERTO`, `--repo DIR`.
+  - `sandbox_temp(&self) -> Option<&Path>` (`84f5684`).
   - `fn ui_lang(hooks_dir: &Path, lang_env: Option<&str>) -> &'static str`.
 - Comportamiento fijado:
   - `lock_file_name`: `DISPLAY` vacío → `x`; `/` → `_`; se quitan los `:` (F19, igual que `bin/cc-app:43`); live `cc-app-<d>.lock`, sombra `sombra-app-rs-<d>.lock`, sandbox `comandos-app-sbx-<d>.lock`.
-  - Sandbox: raíz `$XDG_RUNTIME_DIR/comandos-app-sbx` (o `/tmp/comandos-<uid>/comandos-app-sbx`), socket por omisión `comandos-app-sbx` (la etiqueta no empieza por `.` ni `-`), hooks en `<raíz>/hooks`, datos WebKit en `<raíz>/{data,cache}`. **Lista de permitidos** (`6a1a466`): la raíz, `--hooks-dir` y los datos y la caché web se resuelven (`canonicalize` del ancestro existente más profundo + cola léxica) y tienen que quedar bajo `sandbox_root()` o bajo `TMPDIR` (por omisión `/tmp`); se rechazan `..` en la parte que no existe, enlaces colgantes y enlaces que salen; una raíz que sea `/` o contenga el `HOME` no cuenta (F10). `--dash-url` solo en la banda 7200–7399 (F20).
+  - Sandbox: raíz `resolve($XDG_RUNTIME_DIR)/comandos-app-sbx` (o bajo `/tmp/comandos-<uid>`), socket por omisión `comandos-app-sbx` (la etiqueta no empieza por `.` ni `-`), hooks en `<raíz>/hooks`, datos WebKit en `<raíz>/{data,cache}`. **`parse_args` toca el disco en sandbox** (`84f5684`): crea con `mkdir` 0700 (un nivel) el `runtime_dir`, la raíz y, si hace falta, `<raíz>/tmp`, y comprueba con `lstat` que son directorios reales del `getuid()` sin escritura de grupo ni otros; los errores de argumentos salen antes de tocar nada. Por eso las pruebas del sandbox usan `HOME`, `XDG_RUNTIME_DIR` y `TMPDIR` de fixture. **Lista de permitidos** (`6a1a466`, `84f5684`): la raíz, `--hooks-dir` y los datos y la caché web se resuelven (`canonicalize` del ancestro existente más profundo + cola léxica) y tienen que quedar bajo `sandbox_root()` o `sandbox_temp()`; se rechazan `..` en la parte que no existe, enlaces colgantes y enlaces que salen. Ninguna ancla (raíz o `TMPDIR`) puede ser, contener ni estar dentro de `~/.claude`, `~/.claude-accounts`, `$CLAUDE_CONFIG_DIR`, `~/.codex`, `~/.config/comandos`, `~/.local/share/comandos`, `~/.cache/comandos`, `~/.local/state` ni `~/.ssh`, ni contener una casa (con el `HOME` del entorno y el de passwd). Un `TMPDIR` rechazado se sustituye por `<raíz>/tmp` privado, nunca `/tmp`. `sandbox_temp()` devuelve ese temporal validado: **los temporales del sandbox van ahí, nunca a `std::env::temp_dir()`** (F10). `--dash-url` solo en la banda 7200–7399 (F20).
   - Sombra: `writes_allowed()` es `false`: la sombra no escribe estado (archivos de hooks, tmux, tablero). Live: WebKit en `~/.local/share/comandos` y `~/.cache/comandos`; sombra en `$XDG_RUNTIME_DIR/comandos-app-shadow/{data,cache}` (rutas que T7 **no** usa: la sombra corre WebKit efímero).
   - Sombra y live: `--dash-url` o `COMANDOS_DASH_URL` (vacío cuenta como no definido, como `os.environ.get(...) or DEFAULT` en `bin/cc-app:86`), por omisión `http://127.0.0.1:4777`; solo `http://127.0.0.1:PUERTO`. `hooks_dir` es absoluto en todos los modos.
   - `layout_dump_path()`: live `<runtime>/comandos-app-layout.json`, sombra `<runtime>/comandos-app-shadow-layout.json`, sandbox `sandbox_root()/layout.json`.
@@ -285,15 +286,15 @@ Orden y paralelismo (dependencias entre paréntesis):
 
 `src/main.rs`: `--version` imprime `comandos-app <versión>`; `Entry::App` y `Entry::Notifyd` salen con 2 y un aviso hasta que T7 y T19 sustituyen cada brazo. `src/lib.rs`: `pub mod config;`. `tests/gtk_smoke.rs`: enlaza GTK (lee `gtk::major_version()…` sin inicializar) y, si falta `COMANDOS_GTK_TEST_DISPLAY`, imprime el aviso y pasa.
 
-- [x] **Step 1: pruebas que fallan** — `tests/config.rs`: `entry_follows_argv0`, `bare_comandos_app_is_sandbox`, `cc_app_defaults_to_live_with_real_paths`, `shadow_never_looks_like_the_real_app` (título y `WM_CLASS` sin `comandos`), `dash_url_must_be_loopback`, `unknown_flag_is_usage_error`, `lock_file_name_matches_python` (diferencial contra `python3 -c` con `DISPLAY=":0/x"`), `sandbox_dash_url_stays_in_devhost_band`, `sandbox_always_carries_a_private_socket` (`--tmux-socket default` es error; sin la opción, `tmux_server()` es `Private("comandos-app-sbx")`), `sandbox_refuses_real_hooks_dir` (también vía `..` y enlace simbólico), `ui_lang_reads_conf_then_lang`; añadidas en `6a1a466`: `sandbox_writes_only_inside_its_roots` (fixtures, nunca el `~/.claude` real: hooks reales con `HOME` en otro sitio, subdirectorio inexistente tras un enlace, `link/../x`, `~/.claude`, `~`, `~/.config/comandos`, enlace colgante, `TMPDIR` que contiene el `HOME`), `only_shadow_forbids_writes`, `dash_env_rules`, `missing_home_and_dash_led_socket_are_errors`.
+- [x] **Step 1: pruebas que fallan** — `tests/config.rs`: `entry_follows_argv0`, `bare_comandos_app_is_sandbox`, `cc_app_defaults_to_live_with_real_paths`, `shadow_never_looks_like_the_real_app` (título y `WM_CLASS` sin `comandos`), `dash_url_must_be_loopback`, `unknown_flag_is_usage_error`, `lock_file_name_matches_python` (diferencial contra `python3 -c` con `DISPLAY=":0/x"`), `sandbox_dash_url_stays_in_devhost_band`, `sandbox_always_carries_a_private_socket` (`--tmux-socket default` es error; sin la opción, `tmux_server()` es `Private("comandos-app-sbx")`), `sandbox_refuses_real_hooks_dir` (también vía `..` y enlace simbólico), `ui_lang_reads_conf_then_lang`; añadidas en `6a1a466`: `sandbox_writes_only_inside_its_roots` (fixtures, nunca el `~/.claude` real: hooks reales con `HOME` en otro sitio, subdirectorio inexistente tras un enlace, `link/../x`, `~/.claude`, `~`, `~/.config/comandos`, enlace colgante, `TMPDIR` que contiene el `HOME`), `only_shadow_forbids_writes`, `dash_env_rules`, `missing_home_and_dash_led_socket_are_errors`; en `84f5684`: raíz enlazada (a estado del fixture y a otro sitio), raíz con modo 0770/0775/0757/1777, raíz que es archivo, runtime con 0770, runtime dentro de estado, `TMPDIR` sobre estado (igual, dentro, contiene, enlace, `CLAUDE_CONFIG_DIR`, casa, `/`), `HOME` falso con la casa de passwd y otro dueño con metadatos inyectados (`private_dir_verdict`).
 - [x] **Step 2: correrlas** — `$C test -p comandos-app --test config` → FAIL (no existe el crate).
 - [x] **Step 3: implementar** `Cargo.toml` del workspace, `crates/comandos-app/{Cargo.toml, src/main.rs, src/lib.rs, src/config.rs, tests/gtk_smoke.rs}` como se describe arriba.
 - [x] **Step 4: pruebas** — `$C test -p comandos-app` → 15 PASS en `config`, `gtk_smoke` pasa con aviso; `$C clippy -p comandos-app --all-targets -- -D warnings` limpio.
-- [x] **Step 5: commits** — `e63a6af` `feat(app): crate comandos-app con modos sandbox/sombra/live y despacho por argv[0]`; `6a1a466` `fix(app): el sandbox solo escribe dentro de su raíz o del temporal (lista de permitidos)`.
+- [x] **Step 5: commits** — `e63a6af` `feat(app): crate comandos-app con modos sandbox/sombra/live y despacho por argv[0]`; `6a1a466` `fix(app): el sandbox solo escribe dentro de su raíz o del temporal (lista de permitidos)`; `84f5684` `fix(app): las anclas del sandbox se validan aparte y nunca pisan estado real`.
 
 Pendiente de T1 que se asigna a otras tareas, sin reabrirla:
-- **T3**: el tmux del sandbox usa `-S <sandbox_root()>/tmux/<etiqueta>`; `TmuxCtl::from_config` es el único constructor y lee solo accesores. `WriteGuard` vuelve a resolver la ruta **en el momento de escribir** (recorrido `openat` con `O_NOFOLLOW` desde la raíz permitida, creación con `O_EXCL`, `renameat` dentro del mismo descriptor de directorio) para cerrar la ventana TOCTOU entre `parse_args` y la escritura; T3 añade a `AppConfig` el accesor `write_roots()` con las raíces ya resueltas.
-- **T7**: crea la raíz del sandbox con modo 0700 y comprueba que es del usuario; el candado del sandbox vive dentro de la raíz; la sombra usa un `WebsiteDataManager` **efímero** (nada persiste: ni `localStorage` ni caché).
+- **T3**: el tmux del sandbox usa `-S <sandbox_root()>/tmux/<etiqueta>`; `TmuxCtl::from_config` es el único constructor y lee solo accesores. `WriteGuard` toma sus raíces de los accesores (`sandbox_root()` y `sandbox_temp()` en sandbox) y vuelve a resolver la ruta **en el momento de escribir** (recorrido `openat` con `O_NOFOLLOW` desde la raíz permitida, archivo final con `O_NOFOLLOW | O_EXCL` en un temporal y `renameat` dentro del mismo descriptor de directorio) para cerrar la ventana TOCTOU entre `parse_args` y la escritura. Los temporales del sandbox van a `sandbox_temp()`, nunca a `std::env::temp_dir()`.
+- **T7**: vuelve a comprobar la raíz del sandbox (0700, del usuario, `lstat`) justo antes de usarla, porque `parse_args` la creó en otro momento; el candado del sandbox vive dentro de la raíz (`sandbox_root()/<lock_file_name>`); la sombra usa un `WebsiteDataManager` **efímero** (nada persiste: ni `localStorage` ni caché) y no usa `web_data_dir()`/`web_cache_dir()`.
 - **T8**: el `DashClient` de la sombra solo envía `GET`.
 - **T19**: `Entry::Notifyd` deja de ser «pendiente» y pasa a rechazo explícito.
 
@@ -395,14 +396,13 @@ Aplica F05, F07, F08, F09, F10, F11, F12, F13, F14, F38, R9 y los rulings de tmu
 
 **Files:**
 - Create: `crates/comandos-app/clippy.toml`, `crates/comandos-app/src/{tmux,guard,proc,jobs}.rs`
-- Modify: `crates/comandos-app/src/lib.rs` (módulos y `deny` de clippy), `crates/comandos-app/src/config.rs` (accesor `write_roots`)
+- Modify: `crates/comandos-app/src/lib.rs` (módulos y `deny` de clippy)
 - Create: `crates/comandos-app/tests/support/{mod,oracle,tmux}.rs`
 - Test: `crates/comandos-app/tests/{tmux_guard,write_guard,proc_jobs}.rs`
 
 **Interfaces:**
 - Consumes: `config::{AppConfig, RunMode, TmuxServer}` (solo accesores).
 - Produces:
-  - `config::AppConfig::write_roots(&self) -> Vec<(PathBuf, PathBuf)>`: pares (ruta configurada, ruta canónica) donde la app puede escribir. Sandbox: las raíces ya resueltas por `parse_args` (`sandbox_root()` y `TMPDIR`). Live: `(hooks_dir, canonicalize(hooks_dir))` y `(runtime_dir, canonicalize(runtime_dir))`. Sombra: vacío.
   - `proc::{ProcSpec, ProcOutput, ProcError, run(spec: &ProcSpec) -> Result<ProcOutput, ProcError>, spawn_detached(program: &str, args: &[OsString]) -> Result<(), ProcError>, OUTPUT_CAP}`; `ProcSpec { program: String, args: Vec<OsString>, stdin: Option<Vec<u8>>, env: Vec<(String, OsString)>, env_remove: Vec<String>, cwd: Option<PathBuf>, timeout: Duration }`; `ProcOutput { code: Option<i32>, stdout: Vec<u8>, stderr: Vec<u8>, timed_out: bool, truncated: bool }`.
   - `tmux::{TmuxCtl, TmuxError, TmuxOut, OwnedSession, READ_VERBS, MUTATE_VERBS, TMUX_TIMEOUT, check_read_args(args: &[&str]) -> Result<(), TmuxError>}`:
     - `TmuxCtl::from_config(cfg: &AppConfig, env: &dyn Fn(&str) -> Option<String>) -> Result<TmuxCtl, TmuxError>` (único constructor).
@@ -411,7 +411,7 @@ Aplica F05, F07, F08, F09, F10, F11, F12, F13, F14, F38, R9 y los rulings de tmu
     - `idle_scratch(&self, session: &str) -> Result<Option<OwnedSession>, TmuxError>`, `new_placeholder_session(&self, args: &[&str]) -> Result<(TmuxOut, Option<OwnedSession>), TmuxError>`, `kill_owned_session(&self, owned: OwnedSession) -> Result<TmuxOut, TmuxError>`.
     - `attach_argv(&self, session: &str) -> Vec<String>`, `window_size(&self, session: &str) -> Option<(u16, u16)>`, `prepare_socket_dir(&self, guard: &WriteGuard) -> Result<(), GuardError>`.
     - `TmuxOut { code: i32, stdout: String, stderr: String }` con `ok()`; `TmuxError { ShadowRefused(String), Forbidden(String), BadArgs(String), Spawn(String), Timeout(String) }`.
-  - `guard::{WriteGuard, GuardError}`: `WriteGuard::from_config(cfg: &AppConfig, display: &str) -> WriteGuard`; `write_atomic(&self, path: &Path, bytes: &[u8], tmp_prefix: &str) -> Result<(), GuardError>`; `append_if_exists(&self, path: &Path, bytes: &[u8]) -> Result<bool, GuardError>`; `remove_file(&self, path: &Path) -> Result<(), GuardError>`; `create_dir_all(&self, path: &Path, mode: u32) -> Result<(), GuardError>`; `open_lock(&self, path: &Path) -> Result<std::fs::File, GuardError>`; `check(&self, path: &Path) -> Result<(), GuardError>`. `GuardError { Shadow(PathBuf), Outside(PathBuf), Escape(PathBuf), Io(PathBuf, String) }`.
+  - `guard::{WriteGuard, GuardError}`: `WriteGuard::from_config(cfg: &AppConfig, display: &str) -> WriteGuard` (raíces por accesores: sandbox `sandbox_root()` y `sandbox_temp()`, ya resueltas por `parse_args`; live `hooks_dir()` y `runtime_dir()` con su ruta canónica; sombra ninguna); `write_atomic(&self, path: &Path, bytes: &[u8], tmp_prefix: &str) -> Result<(), GuardError>`; `append_if_exists(&self, path: &Path, bytes: &[u8]) -> Result<bool, GuardError>`; `remove_file(&self, path: &Path) -> Result<(), GuardError>`; `create_dir_all(&self, path: &Path, mode: u32) -> Result<(), GuardError>`; `open_lock(&self, path: &Path) -> Result<std::fs::File, GuardError>`; `check(&self, path: &Path) -> Result<(), GuardError>`. `GuardError { Shadow(PathBuf), Outside(PathBuf), Escape(PathBuf), Io(PathBuf, String) }`.
   - `jobs::Jobs`: `Jobs::new(workers: usize, name: &str) -> Jobs`; `spawn<T: Send + 'static>(&self, work: impl FnOnce() -> T + Send + 'static, done: impl FnOnce(T) + 'static)`; `spawn_loop(name: &str, body: impl FnOnce() + Send + 'static) -> std::io::Result<()>`; `to_main<T: Send + 'static>(done: impl FnOnce(T) + 'static) -> async_channel::Sender<T>`.
   - Constantes: `TMUX_TIMEOUT = 5 s` (`tmuxc`, línea 414), `OUTPUT_CAP = 16 MiB`.
   - Test support: `support::tmux::TestTmux::{for_mode(mode: RunMode) -> Option<Fixture>, new_session(&self, name: &str, cols: u16, rows: u16), session_size(&self, name: &str) -> (u16, u16), raw(&self, args: &[&str]) -> std::process::Output, socket(&self) -> &Path}`; `Fixture { tmux: TestTmux, config: AppConfig, ctl: TmuxCtl, guard: WriteGuard, env: Vec<(String, String)> }`; `support::oracle::{cc_app_path() -> PathBuf, python_eval(prelude_defs: &[&str], expr: &str) -> String}`.
@@ -954,49 +954,7 @@ pub mod proc;
 pub mod tmux;
 ```
 
-- [ ] **Step 5: `write_roots` en `config.rs`**
-
-En `config.rs`, `Mode::Sandbox` guarda las raíces ya resueltas (`roots: Vec<PathBuf>`) que hoy calcula `sandbox_write_roots` dentro de `parse_args`, y se añade:
-```rust
-    /// Pares (ruta como la ven los llamadores, ruta canónica) donde la app puede
-    /// escribir. La sombra no tiene ninguno; `guard::WriteGuard` añade aparte su
-    /// candado y su volcado de diseño.
-    pub fn write_roots(&self) -> Vec<(PathBuf, PathBuf)> {
-        match &self.mode {
-            Mode::Sandbox { roots, .. } => roots.iter().map(|r| (r.clone(), r.clone())).collect(),
-            Mode::Shadow { .. } => Vec::new(),
-            Mode::Live { .. } => [&self.hooks_dir, &self.runtime_dir]
-                .into_iter()
-                .filter_map(|p| std::fs::canonicalize(p).ok().map(|c| (p.clone(), c)))
-                .collect(),
-        }
-    }
-```
-En el brazo `RunMode::Sandbox` de `parse_args`: `(Mode::Sandbox { socket, root, roots }, …)`. Prueba añadida a `tests/config.rs`:
-```rust
-#[test]
-fn write_roots_follow_the_mode() {
-    let base = scratch("roots");
-    let env = env_owned(vec![
-        ("HOME", p(&base.join("home"))),
-        ("XDG_RUNTIME_DIR", p(&base.join("run"))),
-        ("TMPDIR", p(&base.join("tmp"))),
-    ]);
-    std::fs::create_dir_all(base.join("home/.claude/hooks")).unwrap();
-    std::fs::create_dir_all(base.join("run")).unwrap();
-    std::fs::create_dir_all(base.join("tmp")).unwrap();
-    let sbx = parse_args(&args(&["--mode", "sandbox"]), false, &env).unwrap();
-    let roots: Vec<_> = sbx.write_roots().into_iter().map(|(_, c)| c).collect();
-    assert!(roots.iter().any(|r| r.ends_with("comandos-app-sbx")));
-    assert!(roots.iter().all(|r| !r.starts_with(base.join("home"))));
-    let shadow = parse_args(&args(&["--mode", "shadow"]), false, &env).unwrap();
-    assert!(shadow.write_roots().is_empty());
-    let live = parse_args(&args(&["--mode", "live"]), false, &env).unwrap();
-    assert_eq!(live.write_roots().len(), 2);
-}
-```
-
-- [ ] **Step 6: implementar `proc.rs`**
+- [ ] **Step 5: implementar `proc.rs`**
 
 ```rust
 //! Único sitio donde se lanzan procesos (clippy `disallowed-methods`). Lee stdout
@@ -1136,7 +1094,7 @@ pub fn spawn_detached(program: &str, args: &[OsString]) -> Result<(), ProcError>
 }
 ```
 
-- [ ] **Step 7: implementar `tmux.rs`**
+- [ ] **Step 6: implementar `tmux.rs`**
 
 ```rust
 //! Toda llamada a tmux de la app pasa por aquí, siempre con `-S <socket>`
@@ -1432,7 +1390,7 @@ impl TmuxCtl {
 }
 ```
 
-- [ ] **Step 8: implementar `guard.rs`**
+- [ ] **Step 7: implementar `guard.rs`**
 
 ```rust
 //! Toda escritura de archivos de la app. La ruta se vuelve a resolver en el
@@ -1512,7 +1470,20 @@ impl WriteGuard {
             }
             RunMode::Sandbox => {}
         }
-        WriteGuard { mode: cfg.mode(), roots: cfg.write_roots(), files }
+        let roots = match cfg.mode() {
+            // Ya resueltas y validadas por parse_args (0700, del usuario, fuera de estado real).
+            RunMode::Sandbox => [cfg.sandbox_root(), cfg.sandbox_temp()]
+                .into_iter()
+                .flatten()
+                .map(|p| (p.to_path_buf(), p.to_path_buf()))
+                .collect(),
+            RunMode::Shadow => Vec::new(),
+            RunMode::Live => [cfg.hooks_dir(), cfg.runtime_dir()]
+                .into_iter()
+                .filter_map(|p| std::fs::canonicalize(p).ok().map(|c| (p.to_path_buf(), c)))
+                .collect(),
+        };
+        WriteGuard { mode: cfg.mode(), roots, files }
     }
 
     /// (descriptor del directorio padre, nombre final) tras recorrer sin enlaces.
@@ -1624,7 +1595,7 @@ pub fn plain_name(name: &OsStr) -> bool {
 ```
 `getrandom` entra como dependencia del crate (`getrandom.workspace = true` en `crates/comandos-app/Cargo.toml`).
 
-- [ ] **Step 9: implementar `jobs.rs`**
+- [ ] **Step 8: implementar `jobs.rs`**
 
 ```rust
 //! Trabajo fuera del hilo de GTK. `Jobs` es un grupo de hilos fijos para tareas
@@ -1694,19 +1665,19 @@ pub fn spawn_loop(name: &str, body: impl FnOnce() + Send + 'static) -> std::io::
 }
 ```
 
-- [ ] **Step 10: pruebas**
+- [ ] **Step 9: pruebas**
 
-Run: `$C test -p comandos-app --test tmux_guard --test write_guard --test proc_jobs --test config`
+Run: `$C test -p comandos-app --test tmux_guard --test write_guard --test proc_jobs`
 Expected: PASS (las de tmux se saltan con aviso si `tmux` no está; en esta máquina está). Después `$C clippy -p comandos-app --all-targets -j 6 -- -D warnings`: limpio, y `grep -rn "Command::new" crates/comandos-app/src` solo devuelve `proc.rs`.
 
-- [ ] **Step 11: commit**
+- [ ] **Step 10: commit**
 
 ```bash
 git add crates/comandos-app/clippy.toml crates/comandos-app/Cargo.toml crates/comandos-app/src/lib.rs \
-  crates/comandos-app/src/config.rs crates/comandos-app/src/tmux.rs crates/comandos-app/src/guard.rs \
+  crates/comandos-app/src/tmux.rs crates/comandos-app/src/guard.rs \
   crates/comandos-app/src/proc.rs crates/comandos-app/src/jobs.rs crates/comandos-app/tests/support \
   crates/comandos-app/tests/tmux_guard.rs crates/comandos-app/tests/write_guard.rs \
-  crates/comandos-app/tests/proc_jobs.rs crates/comandos-app/tests/config.rs
+  crates/comandos-app/tests/proc_jobs.rs
 git commit -m "feat(app): tmux con -S y lista blanca, escrituras que se resuelven al escribir, procesos con plazo y trabajos a GLib
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
