@@ -164,8 +164,14 @@ pub fn dash_dir(home: &Path, override_dir: Option<&str>) -> Result<PathBuf, Stri
     }
 }
 
-/// Regla compartida con `comandos-notifyd` (vive en `comandos-core`).
-pub use comandos_core::repo::repo_root;
+/// `COMANDOS_DASH_REPO` si está; si no, el destino canónico de
+/// `<dash_dir>/index.html` dos niveles arriba. La regla es la de
+/// `comandos-core` (compartida con `comandos-notifyd`); aquí se resuelve el
+/// enlace, que es I/O.
+pub fn repo_root(dash_dir: &Path, override_dir: Option<&str>) -> Option<PathBuf> {
+    let index = std::fs::canonicalize(dash_dir.join("index.html")).ok();
+    comandos_core::repo::repo_root_from(index.as_deref(), override_dir)
+}
 
 /// `os.path.normpath` léxico: quita `.` y resuelve `..` sin tocar el disco.
 fn normalize(path: &Path) -> PathBuf {

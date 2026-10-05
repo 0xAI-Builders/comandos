@@ -1,6 +1,8 @@
 //! Binario `comandos-notifyd`: `POST 127.0.0.1:<puerto>/notify` y los popups.
 use comandos_notifyd::actions::{self, Effects, Target, TmuxRunner};
-use comandos_notifyd::dash::{DashClient, PrefsCache, PrefsSource, resolve_repo_root};
+use comandos_notifyd::dash::{
+    CheckoutFiles, DashClient, PrefsCache, PrefsSource, resolve_repo_root,
+};
 use comandos_notifyd::http::serve;
 use comandos_notifyd::notice::{Lang, Notice, ui_lang};
 use comandos_notifyd::popup::{self, Context};
@@ -25,13 +27,15 @@ struct Options {
 }
 
 fn parse_options() -> Result<Options, String> {
+    // `~/.claude/hooks` por omisión; sin `HOME` no hay omisión posible (nunca
+    // una ruta relativa al directorio de trabajo) y hace falta `--hooks-dir`.
+    let mut hooks = std::env::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        .map(|home| PathBuf::from(home).join(".claude/hooks"));
     let mut options = Options {
         headless: false,
         port: 4778,
-        hooks: std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_default()
-            .join(".claude/hooks"),
+        hooks: PathBuf::new(),
         dash: DashClient::parse("http://127.0.0.1:4777").ok_or("URL del tablero")?,
         repo_root: None,
         tmux_socket: None,
@@ -48,7 +52,7 @@ fn parse_options() -> Result<Options, String> {
                     .ok_or("--port necesita un número")?;
             }
             Some("--hooks-dir") => {
-                options.hooks = args.next().ok_or("--hooks-dir necesita una ruta")?.into();
+                hooks = Some(args.next().ok_or("--hooks-dir necesita una ruta")?.into());
             }
             Some("--dash-url") => {
                 let value = args.next().ok_or("--dash-url necesita una URL")?;
@@ -68,12 +72,14 @@ fn parse_options() -> Result<Options, String> {
             _ => return Err(format!("opción desconocida: {}", arg.to_string_lossy())),
         }
     }
+    options.hooks = hooks.ok_or("HOME no está definido: hace falta --hooks-dir")?;
     Ok(options)
 }
 
-/// El checkout (`resolve_repo_root`); avisa si no tiene `config/themes.json`
-/// (los popups saldrían con el tema base y la viñeta `•` de icono).
-fn repo_root(options: &Options) -> PathBuf {
+/// Archivos del checkout (`resolve_repo_root`); avisa si no se encontró o no
+/// tiene `config/themes.json` (los popups saldrían con el tema base y la
+/// viñeta `•` de icono).
+fn checkout_files(options: &Options) -> CheckoutFiles {
     let env_repo = std::env::var(comandos_core::repo::REPO_ENV).ok();
     let exe = std::env::current_exe().ok();
     let repo = resolve_repo_root(
@@ -81,17 +87,20 @@ fn repo_root(options: &Options) -> PathBuf {
         env_repo.as_deref(),
         &options.hooks,
         exe.as_deref(),
-    )
-    .unwrap_or_default();
-    let themes = repo.join("config/themes.json");
-    if !themes.is_file() {
+    );
+    let files = CheckoutFiles::new(repo.as_deref());
+    let missing = match &files.themes_file {
+        None => Some("no se encontró el checkout".to_string()),
+        Some(themes) if !themes.is_file() => Some(format!("no existe {}", themes.display())),
+        Some(_) => None,
+    };
+    if let Some(missing) = missing {
         eprintln!(
-            "comandos-notifyd: aviso: no existe {} (tema base e iconos «•»); usa --repo-root o {}",
-            themes.display(),
+            "comandos-notifyd: aviso: {missing} (tema base e iconos «•»); usa --repo-root o {}",
             comandos_core::repo::REPO_ENV
         );
     }
-    repo
+    files
 }
 
 /// «Abrir» (`open_session`): tablero y, si no responde, tmux + `wmctrl`, en
@@ -188,11 +197,11 @@ fn run_gtk(options: Options, lang: Lang, listener: TcpListener, port: u16) -> Ex
         eprintln!("comandos-notifyd: GTK no pudo arrancar (¿sin pantalla?): {err}");
         return ExitCode::FAILURE;
     }
-    let repo = repo_root(&options);
+    let files = checkout_files(&options);
     let cache = Arc::new(Mutex::new(PrefsCache::default()));
     let source = PrefsSource {
         dash: options.dash.clone(),
-        themes_file: repo.join("config/themes.json"),
+        themes_file: files.themes_file,
     };
     // Como `apply_theme_css()` al principio de `main()`: el tema antes del bucle.
     source.refresh(&cache);
@@ -200,7 +209,7 @@ fn run_gtk(options: Options, lang: Lang, listener: TcpListener, port: u16) -> Ex
     popup::install(
         Context {
             lang,
-            icons_dir: repo.join("dash/icons"),
+            icons_dir: files.icons_dir,
             pos_file: pos_file.clone(),
             prefs: Arc::clone(&cache),
             prefs_source: source.clone(),

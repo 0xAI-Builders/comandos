@@ -862,6 +862,50 @@ fn dash_client_get_and_post() {
     assert_eq!(DashClient::parse("http://h:1/ruta"), None);
 }
 
+/// El tablero responde y deja la conexión abierta: el POST decide por el
+/// estado y el GET lee `Content-Length` bytes, sin esperar al cierre (como
+/// `urlopen`). Antes ambos agotaban el plazo y la caída a tmux repetía la acción.
+#[test]
+fn dash_client_does_not_wait_for_close() {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (done, release) = std::sync::mpsc::channel::<()>();
+    let server = std::thread::spawn(move || {
+        let mut held = Vec::new();
+        for reply in [
+            "HTTP/1.0 200 OK\r\nContent-Type: application/json\r\n\r\n",
+            "HTTP/1.0 200 OK\r\ncontent-length: 14\r\n\r\n{\"theme\": \"x\"}",
+            "HTTP/1.0 503 Busy\r\n\r\n",
+        ] {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).unwrap();
+            stream.write_all(reply.as_bytes()).unwrap();
+            held.push(stream);
+        }
+        // Las conexiones siguen abiertas hasta que la prueba termina.
+        let _ = release.recv_timeout(Duration::from_secs(10));
+        drop(held);
+    });
+    let dash = DashClient::parse(&format!("http://127.0.0.1:{port}")).unwrap();
+    let timeout = Duration::from_secs(2);
+    let started = std::time::Instant::now();
+    assert!(dash.post_json("/focus", &json!({"session": "s"}), timeout));
+    assert_eq!(
+        dash.get_json("/prefs", timeout),
+        Some(json!({"theme": "x"}))
+    );
+    assert!(!dash.post_json("/focus", &json!({"session": "s"}), timeout));
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "esperó al cierre: {:?}",
+        started.elapsed()
+    );
+    done.send(()).unwrap();
+    server.join().unwrap();
+}
+
 #[test]
 fn close_all_label_and_texts() {
     use comandos_notifyd::model::close_all_label;
@@ -963,6 +1007,74 @@ fn repo_root_follows_dash_rule() {
         Some(std::fs::canonicalize(tmp.path().join("share/comandos")).unwrap())
     );
     assert_eq!(resolve_repo_root(None, None, &bare, None), None);
+}
+
+/// Sin checkout no hay rutas relativas al directorio de trabajo: tema base e
+/// iconos «•» (antes `""` daba `config/themes.json` relativo a `$HOME`).
+#[test]
+fn checkout_files_without_checkout_are_none() {
+    use comandos_notifyd::dash::{CheckoutFiles, compute_tokens};
+    let none = CheckoutFiles::new(None);
+    assert_eq!(none.themes_file, None);
+    assert_eq!(none.icons_dir, None);
+    let repo = PathBuf::from("/checkout");
+    let some = CheckoutFiles::new(Some(&repo));
+    assert_eq!(
+        some.themes_file,
+        Some(PathBuf::from("/checkout/config/themes.json"))
+    );
+    assert_eq!(some.icons_dir, Some(PathBuf::from("/checkout/dash/icons")));
+    // Sin archivo de temas, el tema base (lo mismo que un archivo ilegible).
+    let base = compute_tokens(None, None);
+    assert!(base.is_some());
+    assert_eq!(
+        base,
+        compute_tokens(Some(Path::new("/no/existe.json")), None)
+    );
+}
+
+/// Sin `HOME` (o vacía) y sin `--hooks-dir`, el binario no arranca: nunca un
+/// `.claude/hooks` relativo al directorio de trabajo.
+#[test]
+fn missing_home_needs_hooks_dir() {
+    for home in [None, Some("")] {
+        let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_comandos-notifyd"));
+        cmd.args([
+            "--headless",
+            "--port",
+            "0",
+            "--dash-url",
+            "http://127.0.0.1:9",
+        ])
+        .env_clear()
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped());
+        if let Some(home) = home {
+            cmd.env("HOME", home);
+        }
+        let mut child = cmd.spawn().unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break Some(status);
+            }
+            if std::time::Instant::now() > deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        let mut stderr = String::new();
+        std::io::Read::read_to_string(&mut child.stderr.take().unwrap(), &mut stderr).unwrap();
+        assert_eq!(
+            status.and_then(|s| s.code()),
+            Some(2),
+            "HOME={home:?}: {stderr}"
+        );
+        assert!(stderr.contains("--hooks-dir"), "{stderr}");
+    }
 }
 
 /// Un solo escritor de `notifyd-pos.json`: gana la última posición.
