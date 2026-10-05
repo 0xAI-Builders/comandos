@@ -1341,6 +1341,42 @@ impl Inner {
         }
     }
 
+    fn proposed_size(&mut self) -> Option<GridSize> {
+        if self.dpr() != self.metrics.dpr {
+            let _ = self.remeasure();
+        }
+        let style = self.window.get_computed_style(&self.host).ok().flatten();
+        let prop = |name: &str| {
+            style
+                .as_ref()
+                .and_then(|s| s.get_property_value(name).ok())
+                .map(|v| metrics::parse_css_int(&v))
+                .unwrap_or(f64::NAN)
+        };
+        // `Math.max(0, NaN)` es NaN: `f64::max` daría 0.
+        let width = prop("width");
+        let width = if width.is_nan() {
+            width
+        } else {
+            width.max(0.0)
+        };
+        let height = prop("height");
+        // El elemento `.xterm` no tiene relleno propio (xterm.css).
+        let scrollbar = if self.opts.scrollback == 0 {
+            0.0
+        } else {
+            self.scrollbar_w
+        };
+        let current = (self.size.cols, self.size.rows);
+        let Some((cols, rows)) = metrics::fit(width, height, scrollbar, &self.metrics, current)
+        else {
+            // Sin celda medida o sin tamaño numérico FitAddon no toca
+            // la terminal.
+            return None;
+        };
+        Some(GridSize { cols, rows })
+    }
+
     fn remeasure(&mut self) -> Result<bool, JsValue> {
         let m = self.measure()?;
         if !m.is_valid() || m == self.metrics {
@@ -1752,39 +1788,9 @@ impl WebTerm {
     /// devuelve `{cols, rows}`.
     pub fn resize_to_fit(&mut self) -> JsValue {
         let size = self.dispatch(|i| {
-            if i.dpr() != i.metrics.dpr {
-                let _ = i.remeasure();
-            }
-            let style = i.window.get_computed_style(&i.host).ok().flatten();
-            let prop = |name: &str| {
-                style
-                    .as_ref()
-                    .and_then(|s| s.get_property_value(name).ok())
-                    .map(|v| metrics::parse_css_int(&v))
-                    .unwrap_or(f64::NAN)
-            };
-            // `Math.max(0, NaN)` es NaN: `f64::max` daría 0.
-            let width = prop("width");
-            let width = if width.is_nan() {
-                width
-            } else {
-                width.max(0.0)
-            };
-            let height = prop("height");
-            // El elemento `.xterm` no tiene relleno propio (xterm.css).
-            let scrollbar = if i.opts.scrollback == 0 {
-                0.0
-            } else {
-                i.scrollbar_w
-            };
-            let current = (i.size.cols, i.size.rows);
-            let Some((cols, rows)) = metrics::fit(width, height, scrollbar, &i.metrics, current)
-            else {
-                // Sin celda medida o sin tamaño numérico FitAddon no toca
-                // la terminal.
+            let Some(size) = i.proposed_size() else {
                 return i.size;
             };
-            let size = GridSize { cols, rows };
             if size != i.size || i.painter_needs_layout() {
                 i.relayout(size);
             } else {

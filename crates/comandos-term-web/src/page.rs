@@ -33,7 +33,7 @@ pub struct Page {
     down: bool,
     resizing: bool,
     disposed: bool,
-    fit_pending: bool,
+    fit_timer: Option<timers::Handle>,
     last_size: Option<(u16, u16)>,
     last_interaction: f64,
     ctrl: bool,
@@ -221,20 +221,54 @@ pub fn send_with_ack(data: &[u8], timeout_ms: u32) -> Promise {
     })
 }
 fn schedule_fit(page: &Rc<RefCell<Page>>) {
-    {
-        let mut p = page.borrow_mut();
-        if p.disposed || p.fit_pending {
-            return;
-        }
-        p.fit_pending = true;
+    let mut p = page.borrow_mut();
+    p.fit_timer.take();
+    if p.disposed {
+        return;
     }
+    let Some(t) = p.term.clone() else { return };
+    let Ok(t) = t.try_borrow() else {
+        let weak = Rc::downgrade(page);
+        p.fit_timer = Some(timers::timeout(0, move || {
+            if let Some(page) = weak.upgrade() {
+                schedule_fit(&page);
+            }
+        }));
+        return;
+    };
+    if t.has_selection() {
+        return;
+    }
+    let Some((next, current)) = t.with(|i| (i.proposed_size(), i.size)) else {
+        return;
+    };
+    let Some(next) = next else { return };
+    if next == current {
+        return;
+    }
+    let columns = next.cols != current.cols;
+    drop(t);
     let weak = Rc::downgrade(page);
-    timers::timeout_detached(120, move || {
-        if let Some(page) = weak.upgrade() {
-            page.borrow_mut().fit_pending = false;
-            fit(&page);
-        }
-    });
+    p.fit_timer = Some(timers::timeout(
+        if columns { 180 } else { 120 },
+        move || {
+            if let Some(page) = weak.upgrade() {
+                page.borrow_mut().fit_timer.take();
+                // Recheck dimensions: a delayed height fit must not reload columns.
+                let changed_columns = term(&page)
+                    .and_then(|t| {
+                        t.borrow()
+                            .with(|i| i.proposed_size().map(|next| next.cols != i.size.cols))
+                    })
+                    .flatten();
+                if changed_columns.is_some_and(|value| value != columns) {
+                    schedule_fit(&page);
+                } else {
+                    fit(&page);
+                }
+            }
+        },
+    ));
 }
 fn fit(page: &Rc<RefCell<Page>>) {
     if page.borrow().disposed {
@@ -663,6 +697,7 @@ fn dispose(page: &Rc<RefCell<Page>>) {
         observer.disconnect();
     }
     p.ack_timers.clear();
+    p.fit_timer.take();
     let ids = p.acks.expire(f64::INFINITY);
     settle(&mut p, ids, false);
     if let Some(t) = p.term.take() {
@@ -886,7 +921,7 @@ fn attach() -> Result<(), JsValue> {
         down: false,
         resizing: false,
         disposed: false,
-        fit_pending: false,
+        fit_timer: None,
         last_size: None,
         last_interaction: f64::NEG_INFINITY,
         ctrl: false,

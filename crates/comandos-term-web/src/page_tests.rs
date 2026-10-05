@@ -253,5 +253,73 @@ async fn page_transport_parent_ack_and_disposal() {
     assert_eq!(socket_count(), count + 1);
     let attached = PAGE.with(|s| s.borrow().clone().unwrap());
     assert!(attached.borrow().term.is_some());
+    open_socket(count, "comandos.term.v1");
+    let rendered = term(&attached).unwrap();
+    rendered
+        .borrow_mut()
+        .write(&b"preserved during drag\r\n".repeat(60));
+    let history = rendered.borrow().with(|i| i.engine.history_len());
+    assert!(history.is_some_and(|n| n > 0));
+    let pending = send_with_ack(b"draft during drag", 2000);
+    for width in [600, 560, 520, 480] {
+        element("term")
+            .unwrap()
+            .style()
+            .set_property("width", &format!("{width}px"))
+            .unwrap();
+        schedule_fit(&attached);
+        delay(80).await;
+        assert_eq!(
+            socket_count(),
+            count + 1,
+            "continuous width changes must not reconnect"
+        );
+        assert_eq!(
+            rendered.borrow().with(|i| i.engine.history_len()),
+            history,
+            "drag must preserve history until quiet"
+        );
+        assert_eq!(
+            attached.borrow().ack_callbacks.len(),
+            1,
+            "drag must leave draft acknowledgement pending"
+        );
+    }
+    delay(60).await; // 140 ms since the final width change, still below 180.
+    assert_eq!(socket_count(), count + 1);
+    delay(90).await;
+    assert_eq!(
+        socket_count(),
+        count + 2,
+        "one reconnection follows 180 ms of quiet"
+    );
+    assert_eq!(JsFuture::from(pending).await.unwrap(), JsValue::FALSE);
+    open_socket(count + 1, "comandos.term.v1");
+    let frames = info(count + 1)["sent"].as_array().unwrap().len();
+    let rows = rendered.borrow().with(|i| i.size.rows);
+    for height in [340, 380, 420] {
+        element("term")
+            .unwrap()
+            .style()
+            .set_property("height", &format!("{height}px"))
+            .unwrap();
+        schedule_fit(&attached);
+        delay(80).await;
+        assert_eq!(
+            info(count + 1)["sent"].as_array().unwrap().len(),
+            frames,
+            "height events reset their 120 ms debounce"
+        );
+        assert_eq!(rendered.borrow().with(|i| i.size.rows), rows);
+    }
+    delay(20).await;
+    assert_eq!(info(count + 1)["sent"].as_array().unwrap().len(), frames);
+    delay(80).await;
+    assert_eq!(
+        info(count + 1)["sent"].as_array().unwrap().len(),
+        frames + 1
+    );
+    assert_eq!(socket_count(), count + 2);
+    drop(rendered);
     dispose(&attached);
 }
