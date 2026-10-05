@@ -429,3 +429,200 @@ conexiones del frente al heredado: 0–1 por segundo (solo `/state`, `/terminal-
 
 Reversión disponible: `COMANDOS_DASH_NATIVE=0` (env o drop-in) + reinicio, o
 `~/.local/share/comandos/bin/comandos install --rollback-release` (vuelve a `17aa1bea2309`) + reinicio.
+
+## 2c: dominios nativos II
+
+Procedimiento para el controlador, como el de la 2b. El frente ya está en 4777 (release
+`2bae7f9cd7d6`) y el Python heredado en 4781; la 2c solo cambia el binario del frente. Ni el
+Python ni las unidades ni tmux se tocan.
+
+### Qué cambia
+
+El frente responde 12 rutas más. Detalle, líneas del Python y razones de lo que sigue reenviado
+en `docs/superpowers/plans/2026-10-04-fase-2c-dominios-nativos-ii.md` («Mapa de rutas nativas»).
+
+| Dominio | Rutas nativas |
+|---|---|
+| F · snippets, uso, Pomodoro, catálogos (8) | GET `/snippets`, `/pomodoro`, `/model-tiers`, `/sovereignty`; POST `/snippets`, `/snippets/update`, `/snippets/delete`, `/ui-log` |
+| G · terminal (3) | POST `/terminal-panes` (salvo `action:"close"`), `/terminal-history`, `/pane/type` |
+| H · operaciones (1) | GET `/model/status` |
+
+Siguen en el Python: POST `/pomodoro` (despierta su scheduler en memoria), GET `/analytics/week`
+(límites de proveedor en memoria, red), `/providers`, `/optimization/plans`, `/accounts`,
+`/opencode/models`, `/session-profiles`, `/extension-usage`, POST `/terminal/quick`, `/state`,
+`/usage/*` y todo lo no listado. Dentro de las nativas se reenvían: `/terminal-panes` con
+`close`, `/model/status` sin registro en el journal o esperando confirmación, `/pane/type` cuando
+un estado de `~/.claude/hooks/state` nombra la sesión, y cualquier escritura con el `flock` de
+`snippets.json`/`ui-events.jsonl` tomado.
+
+Bases nuevas, cada una con su hilo y su apagado propio (no global):
+
+- `~/.claude/hooks/comandos-usage.sqlite` (la base de uso que usa `cc-dash`, que **no** honra
+  `COMANDOS_USAGE_DB`): si un Python más nuevo la migra por encima de `user_version` 11, una
+  línea `comandos dash: …comandos-usage.sqlite: tiene esquema N…; GET /pomodoro y GET /sovereignty
+  se reenvían al heredado` y solo esas dos se reenvían hasta reiniciar.
+- `~/.claude/hooks/session-operations.sqlite3`: si `session_operations` cambia de columnas, una
+  línea análoga y solo GET `/model/status` se reenvía. El primer sondeo espera hasta 15 s si la
+  base está ocupada (el `timeout=15` del Python), así un `SQLITE_BUSY` pasajero no apaga el
+  carril.
+
+`/model-tiers` lee `config/model-tiers.json` del checkout del heredado (`REPO_ROOT` del Python):
+`COMANDOS_DASH_REPO` si está definida; si no, el destino canónico de
+`~/.claude/hooks/dash/index.html` dos niveles arriba. Sin raíz o sin archivo legible, la ruta se
+reenvía. Es la única ruta que usa esa raíz (`/sovereignty` solo lee `~/.claude/hooks`). Comprobar
+en el paso 0 que es el mismo checkout que ejecuta `cc-dash-legacy.service`.
+
+### Diferencias y comportamientos aceptados (2c)
+
+- GET `/pomodoro` registra una vez por proceso la política de foco (idempotente) y puede crear la
+  base de uso si faltara, como ya hacía el Python. GET `/model/status` marca como fallidas las
+  operaciones de dueños muertos (`recover_abandoned`), como el Python: la vida del dueño es la
+  misma llamada `kill(pid, 0)` y `updated`/`at` son el `double` de `time.time()`. Un dueño que el
+  `os.kill` del Python no aceptaría (no entero, fuera de `pid_t`) hace que se reenvíe sin escribir.
+- `/pane/type`: la caché de 256 respuestas por `requestId` es del frente; un `requestId` que el
+  frente declinó se declina siempre, así un reintento nunca teclea dos veces. Caché y marcas viven
+  en memoria: un reinicio del frente las pierde. El reintento de un `requestId` que tecleó el
+  Python lo teclearía Rust solo si, tras el reinicio, ningún estado de hooks nombra ya esa sesión;
+  el único llamador (la barra de comandos) no reintenta.
+- Candados separados. El frente y el Python no comparten candado de proceso para `/pane/type`
+  (candado por pane) ni para `/terminal-panes` (el `_LOCK` de `lib/terminal_panes.py` contra el de
+  Rust; el `close`, reenviado, toma el del Python). Es seguro porque ninguno de los dos candados
+  cubría tampoco a cc-app ni a un segundo proceso, y lo que protege a los panes está en tmux:
+  `select`, `split` y `close` van en un `if-shell` que comprueba la identidad del pane (y, para
+  `close`, que no sea el último) en la cola de tmux, y un `resize` de un pane ya cerrado falla
+  con el 400 del Python. En `/pane/type` un pane se resuelve siempre al mismo lado mientras el
+  estado de hooks no cambie; dos tecleos cruzados al mismo pane equivalen a dos clientes
+  tecleando a la vez.
+- Una escritura de snippets o de `ui-log` con el candado tomado se reenvía (el Python sí espera).
+
+### 0. Previos
+
+```sh
+cd ~/codebase/0xJesus/ComandOS && git log -1 --oneline        # main con la Fase 2c fusionada
+CARGO_TARGET_DIR=$PWD/.build/target nice -n 10 cargo build --release -p comandos-cli -j 6
+CARGO_TARGET_DIR=$PWD/.build/target nice -n 10 cargo build -p xtask -j 6
+NEW=$HOME/codebase/0xJesus/ComandOS/.build/target/release/comandos
+XT=$HOME/codebase/0xJesus/ComandOS/.build/target/debug/xtask
+grep -qa COMANDOS_DASH_REPO "$NEW" || echo "BINARIO SIN 2c: no seguir"
+systemctl --user is-active cc-dash.service cc-dash-legacy.service    # active active
+~/.local/share/comandos/bin/comandos install --releases              # anotar la actual ('*': 2bae7f9cd7d6)
+readlink -f ~/.claude/hooks/dash/index.html                          # …/codebase/0xJesus/ComandOS/dash/index.html
+ss -ltn 'sport = :4782'                                               # libre
+```
+
+### 1. Sombra en 4782 con nativo, contra el heredado 4781
+
+Igual que en la 2b: la sombra usa las bases reales (sus rutas nativas escriben lo mismo que el
+tablero: snippets, `ui-events.jsonl`, `recover_abandoned`); nunca `xtask poll` contra 4777/4781/4782.
+
+```sh
+COMANDOS_DASH_TRACE_FORWARD=1 "$NEW" dash 4782 --legacy-port 4781 2> /tmp/sombra-2c.log
+```
+
+Desde otra terminal, en `~/codebase/0xJesus/ComandOS`:
+
+```sh
+"$XT" parity --fixture xtask/parity/frente.jsonl --hooks ~/.claude/hooks \
+  --state-db ~/.local/state/comandos/app-state.sqlite3 \
+  --usage-db ~/.claude/hooks/comandos-usage.sqlite --comandos "$NEW"        # 0 DIFF
+"$XT" poll --shadow --minutes 10 --hooks ~/.claude/hooks \
+  --state-db ~/.local/state/comandos/app-state.sqlite3 \
+  --usage-db ~/.claude/hooks/comandos-usage.sqlite --comandos "$NEW"        # Pss plano
+for r in /snippets /model-tiers /pomodoro; do
+  cmp -s <(curl -s 127.0.0.1:4782$r | sed 's/"serverNowMs": [0-9]*//') \
+         <(curl -s 127.0.0.1:4781$r | sed 's/"serverNowMs": [0-9]*//') && echo "igual $r" || echo "DISTINTO $r"
+done
+S=$(tmux list-sessions -F '#{session_name}' | head -1)
+for p in /terminal-panes /terminal-history; do
+  B="{\"session\":\"$S\"}"
+  cmp -s <(curl -s -H 'Content-Type: application/json' -d "$B" 127.0.0.1:4782$p) \
+         <(curl -s -H 'Content-Type: application/json' -d "$B" 127.0.0.1:4781$p) && echo "igual $p" || echo "DISTINTO $p"
+done                                    # el historial puede cambiar entre las dos lecturas: repetir
+```
+
+Navegación manual en `http://127.0.0.1:4782` con `chrome-bg` (vía `cc-browser-expose start 4782`):
+crear, editar y borrar un snippet; abrir el Pomodoro; abrir «Soberanía»; en una pestaña remota
+partir un pane, redimensionarlo y seleccionar otro; teclear un comando desde la barra de comandos
+(sin Enter). Luego:
+
+```sh
+grep -c 'se reenvían al heredado\|rutas nativas desactivadas' /tmp/sombra-2c.log   # 0
+grep 'reenvío' /tmp/sombra-2c.log | sed 's/.*reenvío //' | sort | uniq -c | sort -rn
+```
+
+No deben aparecer las rutas de «Qué cambia» salvo los casos reenviados descritos arriba. Ctrl+C.
+
+### 2. Cutover
+
+```sh
+"$NEW" install --stage
+grep -qa COMANDOS_DASH_REPO "$(readlink -f ~/.local/share/comandos/bin/comandos)" || echo "STAGE MALO: ~/.local/share/comandos/bin/comandos install --rollback-release"
+~/.local/share/comandos/bin/comandos hook claude-status >/dev/null && echo "hooks OK con la release nueva"
+systemctl --user restart cc-dash.service
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4777/        # 200
+journalctl --user -u cc-dash.service --since -2min --no-pager | grep -c 'se reenvían al heredado\|rutas nativas desactivadas'   # 0
+```
+
+Sin operaciones de sesión en vuelo (`/model/status` pendiente en el tablero) en el momento del
+reinicio. El tablero queda sin respuesta unos 3 s; cc-app reintenta solo.
+
+### 3. Verificación por dominio
+
+```sh
+systemctl --user set-environment COMANDOS_DASH_TRACE_FORWARD=1 && systemctl --user restart cc-dash.service
+sleep 600
+journalctl --user -u cc-dash.service --since -11min --no-pager | grep 'reenvío' \
+  | sed 's/.*reenvío //' | sort | uniq -c | sort -rn
+systemctl --user unset-environment COMANDOS_DASH_TRACE_FORWARD && systemctl --user restart cc-dash.service
+```
+
+- **F**: no aparecen `/snippets*`, `/ui-log`, GET `/pomodoro`, `/model-tiers`, `/sovereignty`. Un snippet creado en el tablero aparece en cc-app y viceversa; POST `/pomodoro` (iniciar/pausar) sí aparece.
+- **G**: POST `/terminal-panes` solo aparece al cerrar un pane; `/terminal-history` y `/pane/type` no aparecen. Con dos iframes remotos abiertos, `/terminal-panes` cada 2 s no se acumula en la traza.
+- **H**: GET `/model/status` solo aparece en un cambio de cuenta que espera confirmación o sin operación registrada; el resto del cambio se sigue desde Rust.
+- `/state`, `/usage/state` y `/analytics/week` siguen apareciendo: es lo esperado.
+- Memoria: `grep Pss /proc/$(systemctl --user show -p MainPID --value cc-dash.service)/smaps_rollup` al minuto 1 y al 10: plano (± 1 MiB).
+
+### 4. Reversión
+
+Igual que en la 2b. A/B sin cambiar binario:
+
+```sh
+systemctl --user set-environment COMANDOS_DASH_NATIVE=0 && systemctl --user restart cc-dash.service
+# persistente: drop-in ~/.config/systemd/user/cc-dash.service.d/no-native.conf con
+# [Service]\nEnvironment=COMANDOS_DASH_NATIVE=0, daemon-reload y restart (deshacer: rm + daemon-reload + restart)
+```
+
+Volver a la release anterior (`2bae7f9cd7d6`, la 2b):
+
+```sh
+~/.local/share/comandos/bin/comandos install --releases
+~/.local/share/comandos/bin/comandos install --rollback-release
+systemctl --user restart cc-dash.service
+grep -qa COMANDOS_DASH_REPO "$(readlink -f ~/.local/share/comandos/bin/comandos)" && echo "SIGUE LA 2c"
+```
+
+Las escrituras nativas (snippets, `ui-events.jsonl`, journal, política de foco) están en los mismos
+archivos y bases que usa el Python, con el mismo formato: revertir no necesita limpiar nada.
+Revertir pierde la caché de `/pane/type` del frente (ver «Diferencias»).
+
+### Medido antes del cutover (rama `migration/rust-fase2c`, `76d8e46`)
+
+Arnés en namespace de red privado, copia de `~/.claude/hooks`, copias de solo lectura de
+`app-state.sqlite3` (`--state-db`) y de `comandos-usage.sqlite` (`--usage-db`), binario release de
+la rama.
+
+- Suite del workspace: 727 pruebas, 0 fallos, 1 ignorada (herramienta manual de RSS); `fmt` y
+  `clippy -D warnings` limpios.
+- `xtask parity` con nativo: 133 OK, 0 DIFF, 0 SKIP de 133. Reenviadas al heredado, 8 rutas
+  distintas: GET `/state` (2), GET `/operator`, GET `/no-existe.css`, GET `/vendor/`,
+  POST `/workspace/close-group` (las 5 de la 2b) y, por diseño, POST `/terminal-panes`
+  (`g-terminal-panes-close`), GET `/model/status` (`h-model-status-sin-registro`) y GET `/pomodoro`
+  (`f-pomodoro-consulta`, con consulta: llave `Raw`).
+- `xtask poll --shadow --minutes 10` (con nativo): 2910 peticiones, 0 errores de transporte,
+  300 no-2xx (tantas como POST `/terminal-panes` a la sesión inexistente `poll`, que ahora responde
+  el frente con el 400 del Python). Pss del frente 15,1 MiB al minuto 0, 20,8 MiB al minuto 1
+  (21 337 KiB) y 20,9 MiB al minuto 10 (21 425 KiB, +88 KiB); desde el minuto 5,
+  21 369–21 549 KiB, pendiente 405 KiB/h: plano. Reenviadas, 3 rutas distintas: GET `/state`
+  (500), GET `/usage/state` (60), GET `/analytics/week` (10). Respecto de la 2b dejan de llegar al
+  heredado POST `/terminal-panes` (300) y GET `/pomodoro` (40). El Python de la pila aislada pasó
+  de 45 a 224 MiB en el mismo tiempo.
