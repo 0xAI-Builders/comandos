@@ -52,8 +52,11 @@ fn main() {
         Some("png-diff") => exit(web::png_diff(&args[1..])),
         Some("dom-diff") => exit(web::dom_diff(&args[1..])),
         Some("fixtures") => exit(web::fixtures(&args[1..])),
+        Some("web-build") => exit(xtask::web_build::main(&args[1..])),
         _ => {
-            eprintln!("subcomandos: rss, parity, poll, shots, png-diff, dom-diff, fixtures");
+            eprintln!(
+                "subcomandos: rss, parity, poll, shots, png-diff, dom-diff, fixtures, web-build"
+            );
             exit(2);
         }
     }

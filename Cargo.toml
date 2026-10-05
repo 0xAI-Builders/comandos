@@ -21,6 +21,15 @@ lto = "thin"
 codegen-units = 1
 strip = "symbols"
 
+# WASM de la Fase 3 (`cargo run -p xtask -- web-build`): tamaño ante todo.
+[profile.release-wasm]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

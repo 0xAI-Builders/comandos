@@ -9,6 +9,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Directorio de artefactos web que `--stage` copia a la release (T4).
+const WEB_SOURCE_ENV: &str = "COMANDOS_WEB_SOURCE";
 const HOOK_NAMES: &[&str] = &["cc-notify.sh", "cc-status.sh", "cc-usage-tool.sh"];
 const USAGE: &str = "uso: comandos install [--home DIR] (--stage | --link NOMBRE | --rollback NOMBRE | --rollback-release | --releases)";
 
@@ -31,7 +33,8 @@ pub fn run(args: &[String]) -> Result<i32, String> {
         Action::Stage => {
             let me = std::env::current_exe()
                 .map_err(|e| format!("no se pudo ubicar el ejecutable: {e}"))?;
-            release::stage_release(&home, &me)?;
+            let web = web_source(&me)?;
+            release::stage_release(&home, &me, web.as_deref())?;
         }
         Action::RollbackRelease => {
             let r = release::rollback_release(&home)?;
@@ -75,6 +78,32 @@ fn parse(args: &[String]) -> Option<(PathBuf, Action)> {
         }
     }
     Some((home?, action?))
+}
+
+/// Origen de `web/` para `--stage` (T4): `COMANDOS_WEB_SOURCE` si está (vacío =
+/// sin web; una ruta que no existe es un error, no una release sin web en
+/// silencio); si no, `web/` junto al ejecutable real (re-instalar desde una release
+/// conserva la suya) o `../web` (`target/release/comandos` → `target/web`, la salida
+/// de `xtask web-build`). Sin ninguno, la release no lleva `web/`.
+fn web_source(exe: &Path) -> Result<Option<PathBuf>, String> {
+    if let Some(v) = std::env::var_os(WEB_SOURCE_ENV) {
+        if v.is_empty() {
+            return Ok(None);
+        }
+        let p = PathBuf::from(v);
+        return match p.symlink_metadata() {
+            Ok(_) => Ok(Some(p)),
+            Err(e) => Err(format!("{WEB_SOURCE_ENV}={}: {e}", p.display())),
+        };
+    }
+    let Some(dir) = exe.parent() else {
+        return Ok(None);
+    };
+    let candidates = [Some(dir.join("web")), dir.parent().map(|d| d.join("web"))];
+    Ok(candidates
+        .into_iter()
+        .flatten()
+        .find(|p| p.symlink_metadata().is_ok()))
 }
 
 fn valid(name: &str) -> Result<&str, String> {

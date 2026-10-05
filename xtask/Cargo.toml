@@ -22,3 +22,6 @@ http-body-util = "=0.1.5"
 hyper = { version = "=1.11.1", default-features = false, features = ["server", "http1"] }
 hyper-util = { version = "=0.1.21", default-features = false, features = ["tokio"] }
 tokio = { version = "=1.53.1", default-features = false, features = ["rt", "net", "macros", "sync", "time"] }
+# `web-build` (T4): hash de contenido y medida gzip del presupuesto.
+sha2.workspace = true
+flate2 = "=1.1.10"

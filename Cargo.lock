@@ -3279,6 +3279,7 @@ dependencies = [
  "bytes",
  "comandos-core",
  "comandos-domdiff",
+ "flate2",
  "http-body-util",
  "hyper",
  "hyper-util",
@@ -3286,6 +3287,7 @@ dependencies = [
  "png",
  "rusqlite",
  "serde_json",
+ "sha2",
  "tokio",
 ]
 

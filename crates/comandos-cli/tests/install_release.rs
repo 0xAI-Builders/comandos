@@ -16,6 +16,8 @@ fn run(home: &Path, args: &[&str]) -> std::process::Output {
         .arg("--home")
         .arg(home)
         .args(args)
+        // Sin `web/`: el id es el sha12 del binario aunque exista `target/web`.
+        .env("COMANDOS_WEB_SOURCE", "")
         .output()
         .unwrap()
 }
