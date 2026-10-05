@@ -707,3 +707,26 @@ la rama con los arreglos de la revisión final.
 - Corrida anterior (`76d8e46`, `/terminal-panes` contra la sesión inexistente `poll`, solo el
   400 tras un `list-panes`): 2910 peticiones, 300 no-2xx, Pss 21 337 KiB al minuto 1 y
   21 425 KiB al minuto 10.
+
+### Ejecutado (4 de octubre de 2026, 19:08, release `4200180ce8ab`)
+
+- Paso 0: main en `0aa4ae1` (fusión FF de `migration/rust-fase2c`); unidades `active active`;
+  release previa `2bae7f9cd7d6`; el `grep` del diff sucio solo mostró la línea esperada de
+  `dash/session-controls.js`.
+- Paso 1, sombra en 4782: paridad 133 OK, 0 DIFF, 0 SKIP (bases reales copiadas); la sombra
+  respondió igual byte a byte que el Python vivo en `/snippets`, `/model-tiers`, `/pomodoro`,
+  `/terminal-panes` y `/terminal-history`; `xtask poll --shadow` 10 min: 3390 peticiones, 0 errores,
+  0 no-2xx, Pss del frente 18 065 → 18 197 KiB (min 1 → 10), 4 hilos constantes. Sin `chrome-bg`
+  (servidor MCP desconectado): el recorrido manual se sustituyó por HTTP sobre la sombra (crear,
+  editar y borrar un snippet, visto al instante por el Python y sin restos; `/sovereignty`;
+  `/ui-log`). La parte de terminal del recorrido no se hizo: sin navegador no hay pestaña «+».
+  0 apagados en el registro de la sombra.
+- Paso 2: journal sin operaciones en vuelo, 0 tecleos ni cambios en los 3 min previos; stage,
+  hooks OK, reinicio; tablero 200, `NRestarts=0`, las 4 rutas en 0,3–6 ms; 0 apagados.
+- Paso 3, traza 10 min: reenviadas solo `/state` (781), `/usage/state` (72) y rutas de fases
+  futuras (`/commands/catalog`, `/chains`, `/conf`, `/analytics/week`, `/ssh`, `/remote-state`,
+  `/remote-qr.png`, `/providers`, `/models/latest`); ninguna de las 12 rutas de la 2c; 0 avisos.
+- Memoria en vivo sin traza (reinicio 19:19): Pss 21 437 KiB (min 1), 22 841 (min 10),
+  22 877 (min 20), 23 029 (min 30); hilos 3–7 (los de `spawn_blocking` van y vuelven). Con la
+  traza activada el minuto 10 marcó 25 165 KiB: el registro de cada reenvío infla el montón.
+  Crecimiento tras el calentamiento ≈ 0,5 MiB/h: se vuelve a medir al cerrar la 2d.
