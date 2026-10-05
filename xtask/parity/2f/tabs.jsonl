@@ -18,3 +18,4 @@
 {"name":"t-key-no-permitida","method":"POST","path":"/key","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"p2f-in","key":"F1"},"volatile":[],"expect":"same"}
 {"name":"t-kill-interna","method":"POST","path":"/kill","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"hub"},"volatile":[],"expect":"same"}
 {"name":"t-export-formato","method":"POST","path":"/export","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"p2f-in","format":"doc"},"volatile":[],"expect":"same"}
+{"name":"t-terminal-panes-close-identidad","method":"POST","path":"/terminal-panes","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"pc2f","action":"close","pane":"%0","identity":"falsa"},"setup":[["new-session","-d","-s","pc2f","cat"],["split-window","-t","=pc2f:","cat"]],"volatile":[],"expect":"same"}

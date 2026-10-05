@@ -281,8 +281,10 @@ async fn terminal_panes_mutations_match_python_oracle() {
     );
     front.stop().await;
 }
+/// `close` es nativo desde la 2f-1 (T7, `dash_native_pane_close.rs`): sin
+/// sesión responde el 400 del Python y no se reenvía.
 #[tokio::test]
-async fn terminal_panes_close_declines() {
+async fn terminal_panes_close_is_native() {
     let home = TestHome::new("term-close");
     let legacy = FakeLegacy::start().await;
     let front = front(&home, legacy.port, home.options()).await;
@@ -291,12 +293,9 @@ async fn terminal_panes_close_declines() {
         request_body(front.port, "POST", "/terminal-panes", "", body)
             .await
             .text(),
-        r#"{"legacy": true}"#
+        r#"{"error": "No se encuentra la sesi\u00f3n"}"#
     );
-    assert_eq!(
-        legacy.requests(),
-        vec!["POST /terminal-panes HTTP/1.1".to_owned()]
-    );
+    assert!(legacy.requests().is_empty());
     front.stop().await;
 }
 
