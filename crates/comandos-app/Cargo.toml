@@ -1,0 +1,39 @@
+[package]
+name = "comandos-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "comandos-app"
+path = "src/main.rs"
+
+[[test]]
+name = "gtk_smoke"
+harness = false
+
+# Solo lo que usan T1–T6. `webkit2gtk = "=2.0.2"` (features v2_40) y
+# `javascriptcore-rs = "=1.1.2"` entran en la Tarea 7, su primer consumidor
+# (necesitan `libwebkit2gtk-4.1-dev`).
+[dependencies]
+comandos-core = { path = "../comandos-core" }
+comandos-runtime = { path = "../comandos-runtime" }
+serde_json.workspace = true
+sha2.workspace = true
+gtk = { version = "=0.18.2", features = ["v3_24"] }
+gdk = "=0.18.2"
+glib = "=0.18.5"
+gio = "=0.18.4"
+cairo-rs = "=0.18.5"
+pango = "=0.18.3"
+pangocairo = "=0.18.0"
+gdk-pixbuf = "=0.18.5"
+pty-process = "=0.5.3"
+async-channel = "=2.5.0"
+ureq = { version = "=3.4.2", default-features = false }
+regex = "=1.13.1"
+nix = { version = "=0.31.3", default-features = false, features = ["fs", "signal", "process", "user"] }
