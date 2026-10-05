@@ -466,7 +466,14 @@ fn parse_iso(s: &str) -> Option<IsoParts> {
         return None;
     }
     let [h, m, sec, us] = zone.map(i64::from);
-    parts.offset_us = Some(sign * ((h * 3600 + m * 60 + sec) * 1_000_000 + us));
+    let seconds = h * 3600 + m * 60 + sec;
+    // `tzinfo_from_isoformat_results`: con 0 segundos de desfase el C devuelve UTC
+    // e ignora los microsegundos (`+00:00:00.5` es `+00:00`).
+    parts.offset_us = Some(if seconds == 0 {
+        0
+    } else {
+        sign * (seconds * 1_000_000 + us)
+    });
     Some(parts)
 }
 
@@ -673,8 +680,9 @@ impl<K: PyKey, V> PyDict<K, V> {
 struct FloatSum(Option<f64>);
 
 impl FloatSum {
+    /// `sum()` de Python empieza en el entero 0: `0 + -0.0` es `0.0`.
     fn add(&mut self, x: f64) {
-        self.0 = Some(self.0.map_or(x, |s| s + x));
+        self.0 = Some(self.0.map_or(0.0 + x, |s| s + x));
     }
     fn gt_zero(self) -> bool {
         self.0.is_some_and(|x| x > 0.0)
@@ -1359,4 +1367,30 @@ pub fn wilson_interval(successes: i64, total: i64) -> (f64, f64) {
         if low > 0.0 { low } else { 0.0 },
         if high < 1.0 { high } else { 1.0 },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn float_sum_starts_at_integer_zero() {
+        let mut sum = FloatSum(None);
+        sum.add(-0.0);
+        assert_eq!(
+            crate::json::response_dumps(&sum.rounded()).as_deref(),
+            Ok("0.0")
+        );
+        let mut sum = FloatSum(None);
+        sum.add(-0.0);
+        sum.add(-0.0);
+        assert_eq!(
+            crate::json::response_dumps(&sum.rounded()).as_deref(),
+            Ok("0.0")
+        );
+        assert_eq!(
+            crate::json::response_dumps(&FloatSum(None).rounded()).as_deref(),
+            Ok("0")
+        );
+    }
 }
