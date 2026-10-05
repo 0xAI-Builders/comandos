@@ -953,13 +953,14 @@ mod scaffold_tests {
     fn every_route_has_a_cut() {
         assert_eq!(NativeRoute::Retired.cut(), Cut::Base);
         assert_eq!(NativeRoute::PaneType.cut(), Cut::Base);
-        // Toda entrada de 2b–2e pertenece a la base: ningún corte la apaga.
-        assert!(
-            TABLES
-                .iter()
-                .flat_map(|table| table.iter())
-                .all(|entry| entry.route.cut() == Cut::Base)
-        );
+        // Toda entrada de 2b–2e pertenece a la base (ningún corte la apaga) y
+        // ninguna de las 11 tablas de la 2f (las últimas) es de la base.
+        let base_tables = TABLES.len() - 11;
+        for (i, table) in TABLES.iter().enumerate() {
+            for entry in table.iter() {
+                assert_eq!(entry.route.cut() == Cut::Base, i < base_tables);
+            }
+        }
     }
 
     #[test]

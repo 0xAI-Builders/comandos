@@ -1,0 +1,3 @@
+{"name":"s-ssh-lista","method":"GET","path":"/ssh","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"s-ssh-add-invalido","method":"POST","path":"/ssh-add","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"host":"srv","hostname":"10.0.0.5\nProxyCommand touch /tmp/pwn"},"files":["~/.ssh/config"],"volatile":[],"expect":"same"}
+{"name":"s-ssh-del-inexistente","method":"POST","path":"/ssh-del","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"host":"no-existe"},"files":["~/.ssh/config"],"volatile":[],"expect":"same"}
