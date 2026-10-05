@@ -571,6 +571,9 @@ async fn guard_declines_until_main_reads_once_then_keeps_stale_rows() {
     assert_eq!(got["forecasts"].as_array().unwrap().len(), 2);
     let ok = ctx.get(&native, &registry, NOW_MS + 181_000).await.unwrap();
     assert_eq!(ok.guard["forecasts"].as_array().unwrap().len(), 2);
+    // El refresco termina tras escribir las fotos de cuota por el carril de
+    // escritura (que aquí se abre por primera vez): hasta entonces sigue en vuelo.
+    settle(native.limits()).await;
 
     // Un 429 posterior conserva las últimas filas buenas: sigue calculando.
     oauth.set(
