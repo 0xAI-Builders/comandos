@@ -158,7 +158,10 @@ fn stage_with_web_copies_it_into_the_release_and_prints_the_source() {
     let id = current(&home);
     assert_eq!(
         out.trim(),
-        format!("release {id} (web: {}, 2 archivos)", web.display())
+        format!(
+            "release {id} (web: {}, 2 archivos)",
+            fs::canonicalize(&web).unwrap().display()
+        )
     );
     let rel = releases(&home).join(&id);
     assert_eq!(
@@ -438,4 +441,56 @@ fn stage_prunes_abandoned_staging_and_half_releases() {
     assert!(!rel.join("0123456789ab").exists());
     assert!(rel.join(".web-stage.88888").exists());
     assert!(rel.join("ba9876543210").exists());
+}
+
+#[test]
+fn a_reused_half_release_with_a_tampered_web_is_never_linked() {
+    // `<id>/` a medias (sin `comandos`) que dejó un `--stage` cortado, con su `web/`
+    // alterado después: el siguiente `--stage` del mismo contenido no la enlaza.
+    let src = scratch("half-src");
+    let exe = source(&src);
+    let web = src.join("web");
+    write_web(&web, "// boot\n");
+    let first = scratch("half-a");
+    ok(&stage(&exe, &first, Some(&web)));
+    let id = current(&first);
+    let home = scratch("half-b");
+    let half = releases(&home).join(&id);
+    fs::create_dir_all(half.join("web/abc")).unwrap();
+    for f in ["manifest.json", "abc/boot.js"] {
+        fs::copy(
+            releases(&first).join(&id).join("web").join(f),
+            half.join("web").join(f),
+        )
+        .unwrap();
+    }
+    fs::write(half.join("web/abc/boot.js"), "// alterado\n").unwrap();
+    let err = fails(&stage(&exe, &home, Some(&web)));
+    assert!(err.contains(&id), "{err}");
+    assert!(!bin(&home).exists());
+}
+
+#[test]
+fn repeated_web_flag_is_a_usage_error_and_the_printed_path_is_canonical() {
+    let src = scratch("rep-src");
+    let home = scratch("rep-home");
+    let exe = source(&src);
+    let web = src.join("web");
+    write_web(&web, "// boot\n");
+    let out = stage_with(
+        &exe,
+        &home,
+        &[Path::new("--web"), &web, Path::new("--web"), &web],
+        None,
+    );
+    assert_eq!(out.status.code(), Some(2));
+    assert!(!bin(&home).exists());
+    // Ruta con `..`: se imprime la canónica.
+    let twisted = src.join("bin/../web");
+    let out = ok(&stage(&exe, &home, Some(&twisted)));
+    let canon = fs::canonicalize(&web).unwrap();
+    assert!(
+        out.contains(&format!("(web: {}, 2 archivos)", canon.display())),
+        "{out}"
+    );
 }

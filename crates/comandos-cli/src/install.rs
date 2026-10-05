@@ -39,7 +39,11 @@ pub fn run(args: &[String]) -> Result<i32, String> {
                 (
                     release::WebSource::Explicit(p) | release::WebSource::OwnRelease { dir: p, .. },
                     Some(n),
-                ) => println!("release {} (web: {}, {n} archivos)", r.id, p.display()),
+                ) => {
+                    // Ruta canónica: el operador ve exactamente qué se instaló.
+                    let shown = fs::canonicalize(p).unwrap_or_else(|_| p.clone());
+                    println!("release {} (web: {}, {n} archivos)", r.id, shown.display())
+                }
                 _ => println!("release {} (sin web)", r.id),
             }
         }
@@ -75,7 +79,10 @@ fn parse(args: &[String]) -> Option<(PathBuf, Action)> {
                 continue;
             }
             "--web" => {
-                web = Some(PathBuf::from(it.next()?));
+                // Repetido es un error de uso: no gana el último en silencio.
+                if web.replace(PathBuf::from(it.next()?)).is_some() {
+                    return None;
+                }
                 continue;
             }
             "--stage" => Action::Stage(None),

@@ -187,6 +187,19 @@ fn scratch(tag: &str) -> PathBuf {
     d
 }
 
+/// Directorio temporal bajo el de compilación del fixture: mismo sistema de
+/// archivos que `<target>/web-build/`, como `<target>/web` en producción, para que
+/// el `rename` final de `web-build` no cruce dispositivos (`/tmp` puede ser tmpfs).
+fn scratch_in_target(tag: &str) -> PathBuf {
+    let d = web_build::target_dir()
+        .unwrap()
+        .join("xtask-wasm-fixture/tests")
+        .join(format!("cmd-t4-{tag}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&d);
+    fs::create_dir_all(&d).unwrap();
+    d
+}
+
 /// Herramientas wasm o `None` con un aviso: las pruebas que compilan de verdad se
 /// saltan (no fallan) en una máquina sin `wasm-bindgen 0.2.129`, `wasm-opt 116` o
 /// el target `wasm32-unknown-unknown`.
@@ -257,7 +270,7 @@ fn builds_a_fixture_crate_end_to_end() {
     let Some(tools) = wasm_tools_or_skip("builds_a_fixture_crate_end_to_end") else {
         return;
     };
-    let root = scratch("e2e");
+    let root = scratch_in_target("e2e");
     let out = root.join("web");
     let opts = fixture_opts(&out, tools);
     let m = web_build::build(&opts).unwrap();
@@ -335,7 +348,7 @@ fn a_failed_first_build_leaves_no_output_dir() {
     let Some(tools) = wasm_tools_or_skip("a_failed_first_build_leaves_no_output_dir") else {
         return;
     };
-    let root = scratch("fail");
+    let root = scratch_in_target("fail");
     let out = root.join("web");
     let mut opts = fixture_opts(&out, tools);
     opts.crates = vec![WasmCrate::new("no-existe", BindgenTarget::Web, 600 * 1024)];

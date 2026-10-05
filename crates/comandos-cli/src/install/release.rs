@@ -84,36 +84,48 @@ pub fn stage_release(home: &Path, exe: &Path, web: &WebSource) -> Result<Release
         stage_web(src, &staging.join("web"), &mut hasher)
     });
     let id = hex12(hasher.finalize().as_slice());
-    let placed = match staged {
+    let dir = releases.join(&id);
+    // Todo lo que puede rechazar el `web/` ocurre antes de tocar `releases/<id>`.
+    let checked = match staged {
         None => Ok(None),
         Some(Err(e)) => Err(e),
         Some(Ok(_)) if expected.is_some_and(|x| x != id) => Err(format!(
             "la release {} no coincide con su contenido (id recalculado {id}): no se re-instala",
             expected.unwrap_or_default()
         )),
-        Some(Ok(n)) => place_web(&releases.join(&id), &staging.join("web")).map(|()| Some(n)),
+        Some(Ok(n)) => Ok(Some(n)),
+    };
+    let web_files = match checked {
+        Ok(n) => n,
+        Err(e) => {
+            let _ = fs::remove_dir_all(&staging);
+            return Err(e);
+        }
+    };
+    let has_web = web_files.is_some();
+    let existed = dir.symlink_metadata().is_ok();
+    // Candado del id mientras se completa y se enlaza: `prune` de otro `--stage` no
+    // borra un `<id>/` con candado. Se suelta al salir de la función.
+    let lock = lock_release_dir(&dir);
+    let completed = match &lock {
+        Ok(_) => complete_release(&dir, &id, &binary, has_web.then(|| staging.join("web"))),
+        Err(e) => Err(e.clone()),
     };
     if src.is_some() {
         let _ = fs::remove_dir_all(&staging);
     }
-    let web_files = placed?;
-    let dir = releases.join(&id);
-    fs::create_dir_all(&dir).map_err(|e| format!("no se pudo crear {}: {e}", dir.display()))?;
-    let target = dir.join("comandos");
-    // 1) La release nueva queda completa antes de tocar `bin/comandos`.
-    if !target.is_file() {
-        // Se escriben los bytes ya leídos (los del hash), con 0755; rename deja la
-        // release completa o ausente.
-        let tmp = dir.join(format!("comandos.tmp.{}", std::process::id()));
-        fs::write(&tmp, &binary)
-            .and_then(|()| fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755)))
-            .map_err(|e| {
-                let _ = fs::remove_file(&tmp);
-                format!("no se pudo copiar a {}: {e}", tmp.display())
-            })?;
-        fs::rename(&tmp, &target)
-            .map_err(|e| format!("no se pudo instalar {}: {e}", target.display()))?;
+    if let Err(e) = completed {
+        // Lo que creó esta ejecución y quedó a medias se borra con el candado aún
+        // tomado, para no pisar a otro `--stage` que espere este id.
+        if !existed && dir.join("comandos").symlink_metadata().is_err() {
+            let _ = fs::remove_dir_all(&dir);
+        }
+        drop(lock);
+        return Err(e);
     }
+    // 1) La release está completa (`complete_release`); el candado sigue hasta enlazar.
+    let _lock = lock;
+    let target = dir.join("comandos");
     // 2) Una instalación de la Fase 1 (archivo regular) pasa a ser la release anterior,
     //    con hard link (mismo inodo) para que `bin/comandos` nunca deje de existir.
     let previous = match bin.symlink_metadata() {
@@ -132,7 +144,10 @@ pub fn stage_release(home: &Path, exe: &Path, web: &WebSource) -> Result<Release
         Err(e) if e.kind() == io::ErrorKind::NotFound => None,
         Err(e) => return Err(format!("no se pudo leer {}: {e}", bin.display())),
     };
-    // 3) El swap del symlink temporal sobre `bin` es atómico.
+    // 3) Justo antes de enlazar: la release sigue entera en disco (binario y, si hay,
+    //    `web/` con su manifiesto) y su contenido da su id.
+    verify_release(&dir, &id, has_web)?;
+    //    El swap del symlink temporal sobre `bin` es atómico.
     if previous.as_deref() != Some(id.as_str())
         && let Some(p) = &previous
     {
@@ -255,6 +270,41 @@ fn sha12(path: &Path) -> Result<String, String> {
 /// Primeros 12 dígitos hexadecimales de un digest.
 fn hex12(digest: &[u8]) -> String {
     digest.iter().take(6).map(|b| format!("{b:02x}")).collect()
+}
+
+/// Completa `<id>/` con el candado tomado: coloca el `web/` preparado (si lo hay),
+/// comprueba un `web/` reutilizado contra los bytes del binario y escribe
+/// `comandos` si falta (bytes del hash, 0755, `rename`: completa o ausente).
+fn complete_release(
+    dir: &Path,
+    id: &str,
+    binary: &[u8],
+    staged_web: Option<PathBuf>,
+) -> Result<(), String> {
+    if let Some(staged) = &staged_web {
+        place_web(dir, staged)?;
+        // Un `web/` reutilizado de un `<id>/` a medias pudo alterarse.
+        let got = release_hash(binary, Some(&dir.join("web")))?;
+        if got != id {
+            return Err(format!(
+                "{} no coincide con su id {id} (recalculado {got}): no se completa ni se enlaza",
+                dir.display()
+            ));
+        }
+    }
+    let target = dir.join("comandos");
+    if !target.is_file() {
+        let tmp = dir.join(format!("comandos.tmp.{}", std::process::id()));
+        fs::write(&tmp, binary)
+            .and_then(|()| fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755)))
+            .map_err(|e| {
+                let _ = fs::remove_file(&tmp);
+                format!("no se pudo copiar a {}: {e}", tmp.display())
+            })?;
+        fs::rename(&tmp, &target)
+            .map_err(|e| format!("no se pudo instalar {}: {e}", target.display()))?;
+    }
+    Ok(())
 }
 
 /// Deja en `dir/web` el `web/` preparado en `staged`. El id fija el contenido, así
@@ -388,19 +438,28 @@ fn web_tree(root: &Path) -> Result<Vec<WebEntry>, String> {
 /// archivo se lee una vez, así el hash es exactamente de lo copiado. Devuelve el
 /// número de archivos.
 fn copy_web(src: &Path, dest: &Path, hasher: &mut Sha256) -> Result<usize, String> {
+    walk_web(src, Some(dest), hasher)
+}
+
+/// Recorre `src` alimentando `hasher` con el marco de `copy_web`; con `dest`, copia.
+fn walk_web(src: &Path, dest: Option<&Path>, hasher: &mut Sha256) -> Result<usize, String> {
     let entries = web_tree(src)?;
-    make_dir(dest)?;
+    if let Some(dest) = dest {
+        make_dir(dest)?;
+    }
     // Marcador de raíz: un `web/` vacío no da el mismo id que «sin web».
     hasher.update(b"web\0");
     let mut files = 0;
     for e in entries {
-        let to = dest.join(&e.rel);
+        let to = dest.map(|d| d.join(&e.rel));
         let rel = e.rel.as_os_str().as_bytes();
         if e.dir {
             hasher.update(b"d");
             hasher.update(rel);
             hasher.update([0]);
-            make_dir(&to)?;
+            if let Some(to) = &to {
+                make_dir(to)?;
+            }
             continue;
         }
         let from = src.join(&e.rel);
@@ -411,11 +470,88 @@ fn copy_web(src: &Path, dest: &Path, hasher: &mut Sha256) -> Result<usize, Strin
         hasher.update([0]);
         hasher.update((bytes.len() as u64).to_le_bytes());
         hasher.update(&bytes);
+        let Some(to) = to else {
+            continue;
+        };
         fs::write(&to, &bytes).map_err(|e| format!("no se pudo escribir {}: {e}", to.display()))?;
         fs::set_permissions(&to, fs::Permissions::from_mode(0o644))
             .map_err(|e| format!("no se pudo ajustar {}: {e}", to.display()))?;
     }
     Ok(files)
+}
+
+/// Id de una release: `sha12(binario)` sin web, `sha12(binario ‖ "web\0" ‖ árbol)`
+/// con web (el mismo marco que `copy_web`).
+fn release_hash(binary: &[u8], web: Option<&Path>) -> Result<String, String> {
+    let mut hasher = Sha256::new();
+    hasher.update(binary);
+    if let Some(web) = web {
+        walk_web(web, None, &mut hasher)?;
+    }
+    Ok(hex12(hasher.finalize().as_slice()))
+}
+
+/// La release `dir` está entera: `comandos` es un archivo regular, con web su
+/// `manifest.json` también, y el contenido recalculado da `id`.
+fn verify_release(dir: &Path, id: &str, has_web: bool) -> Result<(), String> {
+    let bin = dir.join("comandos");
+    if !bin.symlink_metadata().is_ok_and(|m| m.is_file()) {
+        return Err(format!(
+            "{} falta: la release {id} no se enlaza",
+            bin.display()
+        ));
+    }
+    let web = dir.join("web");
+    if has_web {
+        let manifest = web.join(MANIFEST_FILE);
+        if !manifest.symlink_metadata().is_ok_and(|m| m.is_file()) {
+            return Err(format!(
+                "{} falta: la release {id} no se enlaza",
+                manifest.display()
+            ));
+        }
+    }
+    let binary = fs::read(&bin).map_err(|e| format!("no se pudo leer {}: {e}", bin.display()))?;
+    let got = release_hash(&binary, has_web.then_some(web.as_path()))?;
+    if got != id {
+        return Err(format!(
+            "{} no coincide con su id {id} (recalculado {got}): no se enlaza",
+            dir.display()
+        ));
+    }
+    Ok(())
+}
+
+/// Crea `dir` y toma su candado exclusivo (`flock`), esperando si otro `--stage` lo
+/// tiene. Si `prune` borró el directorio entre crearlo y bloquearlo, se reintenta.
+fn lock_release_dir(dir: &Path) -> Result<fs::File, String> {
+    let err = |e: io::Error| format!("no se pudo bloquear {}: {e}", dir.display());
+    for _ in 0..10 {
+        fs::create_dir_all(dir).map_err(|e| format!("no se pudo crear {}: {e}", dir.display()))?;
+        let file = fs::File::open(dir).map_err(err)?;
+        file.lock().map_err(err)?;
+        let held = file.metadata().map_err(err)?;
+        let same = dir
+            .symlink_metadata()
+            .is_ok_and(|m| (m.dev(), m.ino()) == (held.dev(), held.ino()));
+        if same {
+            return Ok(file);
+        }
+    }
+    Err(format!("{} desaparece mientras se bloquea", dir.display()))
+}
+
+/// Borra `dir` solo si nadie tiene su candado (el que tenga un `--stage` en curso).
+fn remove_unlocked(dir: &Path) -> io::Result<bool> {
+    let file = fs::File::open(dir)?;
+    match file.try_lock() {
+        Ok(()) => {
+            fs::remove_dir_all(dir)?;
+            Ok(true)
+        }
+        Err(fs::TryLockError::WouldBlock) => Ok(false),
+        Err(fs::TryLockError::Error(e)) => Err(e),
+    }
 }
 
 /// Lee `path` solo si al abrirlo sigue siendo el archivo regular `inode` que vio el
@@ -450,17 +586,17 @@ fn prune(releases: &Path, current: &str) -> Result<(), String> {
             continue;
         }
         let dir = releases.join(id);
-        fs::remove_dir_all(&dir)
-            .map_err(|e| format!("no se pudo borrar {}: {e}", dir.display()))?;
+        remove_unlocked(&dir).map_err(|e| format!("no se pudo borrar {}: {e}", dir.display()))?;
     }
-    prune_abandoned(releases, SystemTime::now());
+    prune_abandoned(releases, current, SystemTime::now());
     Ok(())
 }
 
 /// Borra preparaciones `.web-stage.*` y directorios `<sha12>/` sin `comandos` más
 /// viejos que `ABANDONED` (restos de un `--stage` cortado). Los recientes pueden ser
-/// de otro `--stage` en curso y se respetan. Mejor esfuerzo: un fallo no aborta.
-fn prune_abandoned(releases: &Path, now: SystemTime) {
+/// de otro `--stage` en curso y se respetan, igual que el id que se prepara ahora
+/// (`current`) y cualquier `<id>/` con candado. Mejor esfuerzo: un fallo no aborta.
+fn prune_abandoned(releases: &Path, current: &str, now: SystemTime) {
     let Ok(rd) = fs::read_dir(releases) else {
         return;
     };
@@ -478,8 +614,13 @@ fn prune_abandoned(releases: &Path, now: SystemTime) {
             .ok()
             .and_then(|m| now.duration_since(m).ok())
             .is_some_and(|age| age > ABANDONED);
-        if meta.is_dir() && leftover && old {
+        if !meta.is_dir() || !leftover || !old || name == current {
+            continue;
+        }
+        if name.starts_with(".web-stage.") {
             let _ = fs::remove_dir_all(&path);
+        } else {
+            let _ = remove_unlocked(&path);
         }
     }
 }
@@ -534,5 +675,84 @@ mod tests {
             hex12(without.finalize().as_slice())
         );
         let _ = fs::remove_dir_all(&root);
+    }
+}
+
+#[cfg(test)]
+mod round2 {
+    use super::*;
+
+    fn scratch(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("cmd-rel-r2-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn age(p: &Path) {
+        let old = SystemTime::now() - Duration::from_secs(3 * 3600);
+        fs::File::open(p).unwrap().set_modified(old).unwrap();
+    }
+
+    #[test]
+    fn prune_never_removes_a_locked_or_current_half_release() {
+        let rel = scratch("lock");
+        for id in ["0123456789ab", "ba9876543210", "cccccccccccc"] {
+            fs::create_dir_all(rel.join(id).join("web")).unwrap();
+            age(&rel.join(id));
+        }
+        // Otro `--stage` tiene el candado de este id.
+        let held = lock_release_dir(&rel.join("0123456789ab")).unwrap();
+        age(&rel.join("0123456789ab"));
+        prune_abandoned(&rel, "cccccccccccc", SystemTime::now());
+        assert!(rel.join("0123456789ab").exists(), "con candado: se respeta");
+        assert!(
+            rel.join("cccccccccccc").exists(),
+            "el id en curso: se respeta"
+        );
+        assert!(!rel.join("ba9876543210").exists(), "abandonado: se borra");
+        drop(held);
+        prune_abandoned(&rel, "cccccccccccc", SystemTime::now());
+        assert!(!rel.join("0123456789ab").exists(), "sin candado: se borra");
+        let _ = fs::remove_dir_all(&rel);
+    }
+
+    #[test]
+    fn verify_release_recomputes_the_id_from_disk() {
+        let rel = scratch("verify");
+        let web = rel.join("src");
+        fs::create_dir_all(web.join("abc")).unwrap();
+        fs::write(web.join("abc/boot.js"), "// boot\n").unwrap();
+        fs::write(
+            web.join("manifest.json"),
+            r#"{"files":{"x_boot.js":"abc/boot.js"}}"#,
+        )
+        .unwrap();
+        let mut h = Sha256::new();
+        h.update(b"bin");
+        let dir = rel.join("release");
+        fs::create_dir_all(&dir).unwrap();
+        stage_web(&web, &dir.join("web"), &mut h).unwrap();
+        let id = hex12(h.finalize().as_slice());
+        fs::write(dir.join("comandos"), b"bin").unwrap();
+        verify_release(&dir, &id, true).unwrap();
+        // Binario alterado.
+        fs::write(dir.join("comandos"), b"BIN").unwrap();
+        assert!(verify_release(&dir, &id, true).unwrap_err().contains(&id));
+        fs::write(dir.join("comandos"), b"bin").unwrap();
+        // Web alterado.
+        fs::write(dir.join("web/abc/boot.js"), "// otro\n").unwrap();
+        assert!(verify_release(&dir, &id, true).is_err());
+        // Manifiesto ausente.
+        fs::write(dir.join("web/abc/boot.js"), "// boot\n").unwrap();
+        fs::remove_file(dir.join("web/manifest.json")).unwrap();
+        let err = verify_release(&dir, &id, true).unwrap_err();
+        assert!(err.contains("manifest.json"), "{err}");
+        // Sin web: solo el binario.
+        let plain = hex12(Sha256::digest(b"bin").as_slice());
+        verify_release(&dir, &plain, false).unwrap();
+        fs::remove_file(dir.join("comandos")).unwrap();
+        assert!(verify_release(&dir, &plain, false).is_err());
+        let _ = fs::remove_dir_all(&rel);
     }
 }
