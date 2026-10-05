@@ -83,7 +83,11 @@ impl DashClient {
 
     /// `dash(path, payload)`: POST JSON; `true` si respondió sin error (< 400).
     pub fn post_json(&self, path: &str, payload: &Value, timeout: Duration) -> bool {
-        let body = payload.to_string();
+        self.post_body(path, &payload.to_string(), timeout)
+    }
+
+    /// POST de un cuerpo JSON ya serializado; `true` si respondió sin error (< 400).
+    pub fn post_body(&self, path: &str, body: &str, timeout: Duration) -> bool {
         let request = format!(
             "POST {path} HTTP/1.0\r\nHost: {}:{}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
             self.host,

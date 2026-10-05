@@ -1,10 +1,11 @@
 //! Binario `comandos-notifyd`: `POST 127.0.0.1:<puerto>/notify` y los popups.
-use comandos_notifyd::dash::{DashClient, POST_TIMEOUT, PrefsCache, PrefsSource};
+use comandos_notifyd::actions::{self, Effects, Target, TmuxRunner};
+use comandos_notifyd::dash::{DashClient, PrefsCache, PrefsSource};
 use comandos_notifyd::http::serve;
 use comandos_notifyd::notice::{Lang, Notice, ui_lang};
 use comandos_notifyd::popup::{self, Context};
 use comandos_notifyd::position::load_anchor;
-use comandos_notifyd::stack::valid_pane;
+use comandos_notifyd::sweep;
 use gtk::glib;
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -18,6 +19,9 @@ struct Options {
     hooks: PathBuf,
     dash: DashClient,
     repo_root: Option<PathBuf>,
+    /// `--tmux-socket`: la caída a tmux usa `tmux -S <ruta>` (pruebas); sin
+    /// él, `tmux` a secas como el Python.
+    tmux_socket: Option<PathBuf>,
 }
 
 fn parse_options() -> Result<Options, String> {
@@ -30,6 +34,7 @@ fn parse_options() -> Result<Options, String> {
             .join(".claude/hooks"),
         dash: DashClient::parse("http://127.0.0.1:4777").ok_or("URL del tablero")?,
         repo_root: None,
+        tmux_socket: None,
     };
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
@@ -56,6 +61,10 @@ fn parse_options() -> Result<Options, String> {
                 options.repo_root =
                     Some(args.next().ok_or("--repo-root necesita una ruta")?.into());
             }
+            Some("--tmux-socket") => {
+                options.tmux_socket =
+                    Some(args.next().ok_or("--tmux-socket necesita una ruta")?.into());
+            }
             _ => return Err(format!("opción desconocida: {}", arg.to_string_lossy())),
         }
     }
@@ -68,36 +77,50 @@ fn default_repo_root() -> Option<PathBuf> {
     Some(exe.parent()?.parent()?.to_path_buf())
 }
 
-/// `SESSION_RE = ^[A-Za-z0-9._-]{1,80}$` con `match` (el `$` admite un `\n` final).
-fn session_ok(session: &str) -> bool {
-    let core = session.strip_suffix('\n').unwrap_or(session);
-    (1..=80).contains(&core.len())
-        && core
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+/// «Abrir» (`open_session`): tablero y, si no responde, tmux + `wmctrl`, en
+/// un hilo propio para no bloquear el de GTK.
+fn open_action(effects: Effects) -> popup::OpenAction {
+    Box::new(move |session: &str, pane: &str| {
+        let effects = effects.clone();
+        let target = Target {
+            session: session.to_string(),
+            pane: pane.to_string(),
+        };
+        actions::in_background("notifyd-open", move || {
+            actions::open_session(&effects, &target);
+        });
+    })
 }
 
-/// «Abrir»: `dash("/focus", …)` fuera del hilo de GTK. La caída a tmux
-/// (`switch-client` + `wmctrl`) es de la Tarea 3 (`actions.rs`), que sustituye
-/// esta función por `actions::open_session`.
-fn open_via_dash(dash: DashClient) -> popup::OpenAction {
-    Box::new(move |session: &str, pane: &str| {
-        if !session_ok(session) {
-            return;
-        }
-        let mut payload = serde_json::json!({"session": session});
-        if valid_pane(pane) {
-            payload["pane"] = serde_json::Value::String(pane.to_string());
-        }
-        let dash = dash.clone();
-        let _ = std::thread::Builder::new()
-            .name("notifyd-open".into())
-            .spawn(move || {
-                if !dash.post_json("/focus", &payload, POST_TIMEOUT) {
-                    eprintln!("comandos-notifyd: el tablero no respondió a /focus");
-                }
-            });
-    })
+/// Lanza el barrido de «te espera»: pregunta a la pila por el canal del hilo
+/// de GTK y le devuelve `/state` con `idle_add_once`.
+fn start_sweep(dash: DashClient) {
+    let spawned = std::thread::Builder::new()
+        .name("notifyd-sweep".into())
+        .spawn(move || {
+            sweep::run(
+                &dash,
+                |every| {
+                    std::thread::sleep(every);
+                    true
+                },
+                || {
+                    let (tx, rx) = mpsc::sync_channel(1);
+                    // Siempre como fuente del bucle de GTK (`invoke` podría
+                    // ejecutarla en este hilo, que no tiene la pila).
+                    glib::idle_add_once(move || {
+                        let _ = tx.send(popup::has_waiting());
+                    });
+                    rx.recv_timeout(sweep::SWEEP_EVERY).unwrap_or(false)
+                },
+                |state| {
+                    glib::idle_add_once(move || popup::close_stale(&state));
+                },
+            );
+        });
+    if let Err(err) = spawned {
+        eprintln!("comandos-notifyd: no se pudo arrancar el barrido de esperas: {err}");
+    }
 }
 
 fn listen(port: u16) -> Option<TcpListener> {
@@ -168,7 +191,14 @@ fn run_gtk(options: Options, lang: Lang, listener: TcpListener, port: u16) -> Ex
             pos_file: pos_file.clone(),
             prefs: Arc::clone(&cache),
             prefs_source: source.clone(),
-            on_open: open_via_dash(options.dash.clone()),
+            on_open: open_action(Effects {
+                dash: options.dash.clone(),
+                tmux: options
+                    .tmux_socket
+                    .clone()
+                    .map_or_else(TmuxRunner::system, TmuxRunner::with_socket),
+                wmctrl: "wmctrl".into(),
+            }),
         },
         load_anchor(&pos_file),
     );
@@ -191,6 +221,7 @@ fn run_gtk(options: Options, lang: Lang, listener: TcpListener, port: u16) -> Ex
         eprintln!("comandos-notifyd: no se pudo arrancar el puente a GTK: {err}");
         return ExitCode::FAILURE;
     }
+    start_sweep(options.dash.clone());
     println!("comandos-notifyd listo en 127.0.0.1:{port} (popups propios v3)");
     gtk::main();
     // Solo se llega aquí si el servidor terminó.

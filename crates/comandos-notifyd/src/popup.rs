@@ -22,6 +22,7 @@ use crate::stack::{
     AUTO_CLOSE_SECS, CLEAR_ALL_MIN, PopupMeta, STACK_MAX, WIDTH, evict_candidate, popup_key,
     valid_pane,
 };
+use crate::sweep::stale_waiting;
 use crate::theme::{build_css, open_button_css};
 use gtk::prelude::*;
 use gtk::{gdk, gdk_pixbuf, glib, pango};
@@ -118,7 +119,38 @@ pub fn with_stack(f: impl FnOnce(&Shared)) {
     }
 }
 
-/// `native_notify` → `make_popup` (N2: sin `libnotify`, siempre popup propio).
+/// ¿Hay algún popup «te espera»? (`any(w._kind == "waiting" …)` del barrido).
+pub fn has_waiting() -> bool {
+    let mut out = false;
+    with_stack(|shared| {
+        out = shared
+            .try_borrow()
+            .is_ok_and(|s| s.popups.iter().any(|p| p.meta.kind == "waiting"));
+    });
+    out
+}
+
+/// `_close_stale(state)`: cierra los «te espera» que `/state` ya no respalda.
+pub fn close_stale(state: &serde_json::Value) {
+    with_stack(|shared| {
+        let ids: Vec<u64> = match shared.try_borrow() {
+            Ok(stack) => {
+                let metas: Vec<PopupMeta> = stack.popups.iter().map(|p| p.meta.clone()).collect();
+                stale_waiting(&metas, state, now_secs())
+                    .into_iter()
+                    .filter_map(|i| stack.popups.get(i).map(|p| p.id))
+                    .collect()
+            }
+            Err(_) => return,
+        };
+        for id in ids {
+            close_popup(shared, id);
+        }
+    });
+}
+
+/// `native_notify` → `make_popup` (N2: sin `libnotify`, siempre popup propio;
+/// `NATIVE_NOTIFY=1` da lo mismo que el Python cuando `HAVE_NOTIFY` es falso).
 pub fn show(notice: Notice) {
     with_stack(|shared| make_popup(shared, &notice, false));
 }
