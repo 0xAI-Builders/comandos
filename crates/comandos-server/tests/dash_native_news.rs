@@ -188,3 +188,46 @@ async fn media_rejects_traversal() {
     assert!(legacy.requests().is_empty(), "{:?}", legacy.requests());
     f.stop().await;
 }
+
+/// Revisión de la Tarea 1: `news-editions.json` convertido en FIFO no detiene
+/// el worker de app-state (la configuración se lee en el pool de bloqueo,
+/// sin bloquear al abrir) y la ruta responde «sin configurar». El Python se
+/// quedaría colgado en el `open`; el frente sigue sirviendo el resto.
+#[tokio::test]
+async fn editions_config_fifo_does_not_stall_state() {
+    let home = TestHome::new("news-fifo");
+    seed_editions(&home);
+    let config = home.hooks().join("news-editions.json");
+    std::fs::remove_file(&config).unwrap();
+    nix::unistd::mkfifo(
+        &config,
+        nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
+    )
+    .unwrap();
+    let legacy = FakeLegacy::start().await;
+    let f = front(&home, legacy.port, home.options()).await;
+    let wait = std::time::Duration::from_secs(10);
+    let Ok(wire) = tokio::time::timeout(wait, get(f.port, "/news/editions")).await else {
+        // Se suelta al lector colgado (O_RDWR no espera pareja en Linux) para
+        // que el frente pueda apagarse y la prueba falle en vez de colgarse.
+        let _release = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&config);
+        panic!("/news/editions se quedó colgada en el FIFO");
+    };
+    assert_eq!(wire.status, 200, "{}", wire.text());
+    assert!(
+        wire.text()
+            .starts_with(r#"{"configured": false, "reason": "sin configurar", "latest": "#),
+        "{}",
+        wire.text()
+    );
+    // El worker de la base sigue libre para otra ruta.
+    let saved = tokio::time::timeout(wait, get(f.port, "/news/saved"))
+        .await
+        .expect("/news/saved esperó al FIFO");
+    assert_eq!(saved.status, 200);
+    assert!(legacy.requests().is_empty(), "{:?}", legacy.requests());
+    f.stop().await;
+}

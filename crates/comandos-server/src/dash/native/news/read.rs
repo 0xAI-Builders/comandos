@@ -85,8 +85,18 @@ fn respond(done: Payload) -> Answer {
         Ok((status, value)) => Reply::json(status, &value).map_err(|_| Fault::Decline),
         // El Python lanzaría sin capturar: el 500 genérico del tablero.
         Err(news::Fault::Raise(_)) => Err(Fault::Error(HandlerError::Failure)),
-        Err(news::Fault::Unsure(_) | news::Fault::Sql(_)) => Err(Fault::Decline),
+        Err(fault @ (news::Fault::Unsure(_) | news::Fault::Sql(_))) => {
+            trace_decline(&fault);
+            Err(Fault::Decline)
+        }
     }
+}
+
+/// Una línea en stderr por cada lectura que se reenvía por duda o por un
+/// fallo de SQLite: un worker roto no pasa en silencio. Solo el tipo de
+/// fallo (el texto de SQLite o la duda), nunca datos de la petición.
+pub(super) fn trace_decline(fault: &news::Fault) {
+    eprintln!("comandos dash news: se reenvía al heredado ({fault})");
 }
 
 fn not_found(message: &str) -> Payload {
@@ -205,13 +215,43 @@ fn step_label(step: &Map<String, Value>) -> Result<String, news::Fault> {
     Ok(format!("{}:{}", text(who)?, text(&model)?))
 }
 
+/// `load_config(HOOKS/news-editions.json)` sin bloquear: se abre con
+/// `O_NONBLOCK` y solo un archivo regular se lee. Un FIFO, un dispositivo o
+/// un directorio cuentan como `OSError` (`None`); el Python se quedaría
+/// colgado en el FIFO (desviación aceptada: el frente no se cuelga).
+pub(super) fn read_config(path: &Path) -> news::Result<Option<Map<String, Value>>> {
+    let Ok(file) = OpenOptions::new()
+        .read(true)
+        .custom_flags(nix::fcntl::OFlag::O_NONBLOCK.bits())
+        .open(path)
+    else {
+        return Ok(None);
+    };
+    if !file.metadata().is_ok_and(|m| m.is_file()) {
+        return Ok(None);
+    }
+    let mut bytes = Vec::new();
+    if (&file).read_to_end(&mut bytes).is_err() {
+        return Ok(None);
+    }
+    news::config_from_bytes(&bytes)
+}
+
 async fn editions(native: &Arc<Native>) -> Answer {
     let opts: &NativeOptions = native.options();
     let path = opts.hooks.join("news-editions.json");
     let env = env_check(opts.child_env.clone());
     let now_ms = (opts.clock)();
+    // La configuración se lee antes, en el pool de bloqueo: nunca en el
+    // worker de la base (un FIFO lo dejaría parado para todas las rutas).
+    let config = tokio::task::spawn_blocking(move || read_config(&path))
+        .await
+        .map_err(|_| Fault::Decline)?;
+    let config = match config {
+        Ok(config) => config,
+        Err(fault) => return respond(Err(fault)),
+    };
     on_state(native, move |conn| {
-        let config = news::load_config(&path)?;
         let mut out = match news::config_status(config.as_ref(), &env) {
             Value::Object(status) => status,
             _ => Map::new(),
@@ -431,11 +471,7 @@ fn open_media(dir: &Path, name: &str) -> Media {
     if real == root || !real.starts_with(&root) {
         return Media::Missing;
     }
-    let Ok(file) = OpenOptions::new()
-        .read(true)
-        .custom_flags(nix::fcntl::OFlag::O_NONBLOCK.bits())
-        .open(&real)
-    else {
+    let Ok(file) = open_confined(&real) else {
         return Media::Missing;
     };
     let Ok(meta) = file.metadata() else {
@@ -453,6 +489,17 @@ fn open_media(dir: &Path, name: &str) -> Media {
         Ok(_) if !body.is_empty() => Media::Small(body),
         _ => Media::Missing,
     }
+}
+
+/// Abre la ruta ya resuelta sin bloquear en un FIFO y sin seguir un enlace
+/// final: si entre el `canonicalize` y el `open` alguien cambió el archivo
+/// por un enlace simbólico, la apertura falla (`ELOOP`) en vez de salir de la
+/// carpeta.
+fn open_confined(real: &Path) -> io::Result<File> {
+    OpenOptions::new()
+        .read(true)
+        .custom_flags((nix::fcntl::OFlag::O_NONBLOCK | nix::fcntl::OFlag::O_NOFOLLOW).bits())
+        .open(real)
 }
 
 async fn media(native: &Arc<Native>, request: &Request) -> Answer {
@@ -533,6 +580,23 @@ mod tests {
         assert_eq!(media_type(&format!("{hex}.png\n")), None);
         assert_eq!(media_type("nada.png"), None);
         assert_eq!(media_type(""), None);
+    }
+
+    /// Revisión de la Tarea 1: entre el `canonicalize` y el `open`, el último
+    /// componente pudo cambiarse por un enlace; `O_NOFOLLOW` lo rechaza.
+    #[test]
+    fn media_open_refuses_a_final_symlink() {
+        let dir = std::env::temp_dir().join(format!("laneB-nofollow-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let real = dir.join("real.png");
+        std::fs::write(&real, b"x").unwrap();
+        let link = dir.join("enlace.png");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        assert!(open_confined(&real).is_ok());
+        let refused = open_confined(&link);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(refused.is_err(), "se siguió el enlace final");
     }
 
     #[test]

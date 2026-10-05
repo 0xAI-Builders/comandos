@@ -722,15 +722,21 @@ pub fn translation(conn: &Connection, source_id: i64, lang: &str) -> Result<Opti
 // ---------------------------------------------------------------- configuración
 
 /// `load_config(path)`: el objeto de `news-editions.json` o `None`
-/// (`OSError`/`ValueError` o algo que no es objeto).
+/// (`OSError`/`ValueError` o algo que no es objeto). Bloquea si la ruta es
+/// un FIFO, como el Python: el frente lee el archivo con su propio lector no
+/// bloqueante y pasa los bytes a `config_from_bytes`.
 pub fn load_config(path: &Path) -> Result<Option<Map<String, Value>>> {
-    let bytes = match std::fs::read(path) {
-        Ok(bytes) => bytes,
+    match std::fs::read(path) {
+        Ok(bytes) => config_from_bytes(&bytes),
         // Todo `OSError` (ausente, directorio, permisos) → `None`.
-        Err(_) => return Ok(None),
-    };
+        Err(_) => Ok(None),
+    }
+}
+
+/// La mitad de `load_config` que sigue a la lectura: `json.load` del texto.
+pub fn config_from_bytes(bytes: &[u8]) -> Result<Option<Map<String, Value>>> {
     // `open()` en modo texto: lo que no es UTF-8 depende del locale.
-    let Ok(text) = std::str::from_utf8(&bytes) else {
+    let Ok(text) = std::str::from_utf8(bytes) else {
         return unsure("configuración que no es UTF-8");
     };
     Ok(match py_loads(text)? {
