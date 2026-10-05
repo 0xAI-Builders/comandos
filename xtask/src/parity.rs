@@ -596,6 +596,27 @@ fn make_fakebin(dir: &Path) -> Result<(), String> {
         fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755))
             .map_err(|e| e.to_string())?;
     }
+    // Los hijos (oráculo, heredado y el frente, cuyo `Tmux::system()` busca
+    // `tmux` en el PATH) llaman a tmux con `-S` al socket de SU `TMUX_TMPDIR`:
+    // tmux 3.2a ignora un `TMUX_TMPDIR` que no existe y caería en el servidor
+    // real del usuario. Sin `TMUX_TMPDIR` el envoltorio se niega a correr.
+    if let Some(real) = ["/usr/bin/tmux", "/bin/tmux", "/usr/local/bin/tmux"]
+        .into_iter()
+        .find(|p| Path::new(p).is_file())
+    {
+        let uid = nix::unistd::getuid().as_raw();
+        let p = dir.join("tmux");
+        fs::write(
+            &p,
+            format!(
+                "#!/bin/sh\n[ -n \"$TMUX_TMPDIR\" ] || exit 1\n\
+                 exec {real} -S \"$TMUX_TMPDIR/tmux-{uid}/default\" \"$@\"\n"
+            ),
+        )
+        .map_err(|e| e.to_string())?;
+        fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
