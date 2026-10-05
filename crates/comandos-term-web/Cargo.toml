@@ -15,25 +15,46 @@ comandos-term = { path = "../comandos-term" }
 wasm-bindgen = "=0.2.129"
 js-sys = "=0.3.106"
 web-sys = { version = "=0.3.106", features = [
+    "AddEventListenerOptions",
     "CanvasPattern",
     "CanvasRenderingContext2d",
+    "Clipboard",
+    "ClipboardEvent",
+    "CompositionEvent",
     "CssStyleDeclaration",
+    "DataTransfer",
     "Document",
     "DomRect",
+    "DomTokenList",
     "Element",
+    "Event",
     "EventTarget",
+    "FocusOptions",
     "FontFace",
+    "FontFaceLoadStatus",
     "FontFaceSet",
+    "HtmlAnchorElement",
     "HtmlCanvasElement",
+    "HtmlDocument",
     "HtmlElement",
+    "HtmlTextAreaElement",
     "ImageData",
+    "InputEvent",
+    "KeyboardEvent",
+    "MouseEvent",
     "Navigator",
+    "Node",
     "Path2d",
     "Performance",
     "ResizeObserver",
     "ResizeObserverBoxOptions",
     "ResizeObserverOptions",
     "TextMetrics",
+    "Touch",
+    "TouchEvent",
+    "TouchList",
+    "UiEvent",
+    "WheelEvent",
     "Window",
 ] }
 
@@ -43,6 +64,15 @@ serde_json.workspace = true
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "=0.3.79"
 wasm-bindgen-futures = "=0.4.79"
+# Solo para construir eventos en las pruebas de navegador.
+web-sys = { version = "=0.3.106", features = [
+    "ClipboardEventInit",
+    "CompositionEventInit",
+    "InputEventInit",
+    "KeyboardEventInit",
+    "MouseEventInit",
+    "WheelEventInit",
+] }
 
 [lints]
 workspace = true

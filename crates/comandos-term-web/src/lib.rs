@@ -15,28 +15,46 @@
 //! como xterm.js) o para vencer una actualización sincronizada. Los
 //! búferes, cadenas de color y glifos se reutilizan entre cuadros.
 //!
-//! ## Puntos de enganche para A7/A8
+//! ## Entrada, selección y enlaces
 //!
-//! El teclado y el ratón (A7) llaman a [`WebTerm::set_focus`],
-//! [`WebTerm::scroll_lines`] y leen [`WebTerm::dimensions`]; los enlaces
-//! (A8) usarán el elemento [`WebTerm::screen`].
+//! [`keyboard`] (el `<textarea>` oculto, IME, GBoard, pegado), [`mouse`]
+//! (informes de ratón, rueda, barra de desplazamiento, dedo y selección) y
+//! [`links`] (enlaces bajo el ratón) traducen los eventos del DOM con las
+//! funciones puras de `comandos_term::{input, select}`; [`overlay`] pinta
+//! la selección, el subrayado del enlace y las ligaduras en capas encima del
+//! texto. Los bytes para el PTY salen por la función de
+//! [`WebTerm::set_on_data`] (un `Uint8Array`: el ratón X10 no es UTF-8),
+//! siempre después de soltar el estado (la página puede volver a llamar a la
+//! terminal desde ella).
+//!
+//! **OSC 52** (la aplicación pide copiar al portapapeles) no llega nunca al
+//! portapapeles del sistema: `dash/term.html` lo ignora (xterm.js 5.5 sin
+//! `ClipboardAddon`) y aquí igual. [`WebTerm::take_clipboard`] lo deja a la
+//! página, que tendría que pedir un gesto del usuario antes de escribir.
 pub mod canvas;
+pub mod keyboard;
+pub mod links;
 pub mod metrics;
+pub mod mouse;
+pub mod overlay;
 pub mod paint;
 pub mod theme;
 
 use canvas::{Canvas2d, CanvasTheme};
+use comandos_term::select::{Selection, UrlSpan, selected_text};
 use comandos_term::{
     engine::{ClipboardTarget, Engine, GridSize, Palette},
     render::RenderOpts,
 };
 use metrics::CellMetrics;
 use paint::{Blink, CursorInput, Painter, Scheduler};
+use std::rc::Weak;
 use std::{cell::RefCell, fmt::Write as _, rc::Rc};
 use theme::{ANSI_NAMES, Theme};
 use wasm_bindgen::{JsCast, JsValue, closure::Closure, prelude::wasm_bindgen};
 use web_sys::{
-    Document, HtmlElement, Performance, ResizeObserver, ResizeObserverBoxOptions,
+    AddEventListenerOptions, Document, Event, EventTarget, FontFace, HtmlElement,
+    HtmlTextAreaElement, Performance, ResizeObserver, ResizeObserverBoxOptions,
     ResizeObserverOptions, Window,
 };
 
@@ -67,6 +85,10 @@ pub struct Options {
     pub draw_bold_text_in_bright_colors: bool,
     pub minimum_contrast_ratio: f32,
     pub theme: Theme,
+    /// Ligaduras de escritorio; `None` = como `term.html` (sin táctil).
+    pub ligatures: Option<bool>,
+    /// Fuente de las ligaduras (relativa a la página).
+    pub ligature_font_url: String,
 }
 
 impl Default for Options {
@@ -81,6 +103,8 @@ impl Default for Options {
             draw_bold_text_in_bright_colors: true,
             minimum_contrast_ratio: 1.0,
             theme: Theme::default(),
+            ligatures: None,
+            ligature_font_url: overlay::LIGA_FONT_URL.to_string(),
         }
     }
 }
@@ -162,7 +186,18 @@ pub fn read_options(obj: &JsValue) -> Options {
         theme: get(obj, "theme")
             .map(|t| read_theme(&t))
             .unwrap_or_default(),
+        ligatures: get(obj, "ligatures").and_then(|v| v.as_bool()),
+        ligature_font_url: get(obj, "ligatureFontUrl")
+            .and_then(|v| v.as_string())
+            .unwrap_or(d.ligature_font_url),
     }
+}
+
+/// Color de la capa de selección: `selectionBackground` opaco al 30 %, o
+/// blanco al 30 % sin él (`ThemeService`).
+pub fn selection_css(theme: &Theme) -> String {
+    let [r, g, b] = theme.selection.unwrap_or([255, 255, 255]);
+    format!("rgba({r}, {g}, {b}, 0.3)")
 }
 
 fn canvas_theme(p: &Palette) -> CanvasTheme {
@@ -180,6 +215,18 @@ struct Dom {
     viewport: HtmlElement,
     scroll_area: HtmlElement,
     screen: HtmlElement,
+    /// `<textarea>` oculto que recibe el teclado (`.xterm-helper-textarea`).
+    textarea: HtmlTextAreaElement,
+    /// Texto en composición del IME (`.composition-view`).
+    composition: HtmlElement,
+}
+
+/// Estilo propio de un elemento (la página nueva no carga `xterm.css`).
+fn set_styles(el: &HtmlElement, styles: &[(&str, &str)]) {
+    let style = el.style();
+    for (name, value) in styles {
+        let _ = style.set_property(name, value);
+    }
 }
 
 impl Dom {
@@ -194,15 +241,71 @@ impl Dom {
         let viewport = div("xterm-viewport")?;
         let scroll_area = div("xterm-scroll-area")?;
         let screen = div("xterm-screen")?;
+        // Las capas (`overlay`) se colocan encima del canvas del texto.
+        set_styles(&screen, &[("position", "relative")]);
+        // `.xterm-helpers` con el `<textarea>` y la vista de composición,
+        // como xterm.js (mismos atributos y estilos que `xterm.css`).
+        let helpers = div("xterm-helpers")?;
+        set_styles(
+            &helpers,
+            &[("position", "absolute"), ("top", "0"), ("z-index", "5")],
+        );
+        let textarea: HtmlTextAreaElement = document.create_element("textarea")?.dyn_into()?;
+        textarea.set_class_name("xterm-helper-textarea");
+        for (name, value) in [
+            ("aria-label", "Entrada de la terminal"),
+            ("aria-multiline", "false"),
+            ("autocorrect", "off"),
+            ("autocapitalize", "off"),
+            ("spellcheck", "false"),
+        ] {
+            textarea.set_attribute(name, value)?;
+        }
+        textarea.set_tab_index(0);
+        set_styles(
+            &textarea,
+            &[
+                ("padding", "0"),
+                ("border", "0"),
+                ("margin", "0"),
+                ("position", "absolute"),
+                ("opacity", "0"),
+                ("left", "-9999em"),
+                ("top", "0"),
+                ("width", "0"),
+                ("height", "0"),
+                ("z-index", "-5"),
+                ("white-space", "nowrap"),
+                ("overflow", "hidden"),
+                ("resize", "none"),
+            ],
+        );
+        let composition = div("composition-view")?;
+        set_styles(
+            &composition,
+            &[
+                ("background", "#000"),
+                ("color", "#FFF"),
+                ("display", "none"),
+                ("position", "absolute"),
+                ("white-space", "nowrap"),
+                ("z-index", "1"),
+            ],
+        );
+        helpers.append_child(&textarea)?;
+        helpers.append_child(&composition)?;
         viewport.append_child(&scroll_area)?;
         root.append_child(&viewport)?;
         root.append_child(&screen)?;
+        root.append_child(&helpers)?;
         host.append_child(&root)?;
         Ok(Dom {
             root,
             viewport,
             scroll_area,
             screen,
+            textarea,
+            composition,
         })
     }
 }
@@ -255,6 +358,266 @@ struct Inner {
     bell: bool,
     clipboard: Option<(ClipboardTarget, String)>,
     scroll_sync: ScrollSync,
+    // --- entrada, selección y enlaces (A7/A8) ---
+    /// Lo que sale de un evento; se entrega al soltar el estado.
+    outbox: Outbox,
+    on_data: Option<js_sys::Function>,
+    on_selection: Option<js_sys::Function>,
+    /// Escuchas permanentes del DOM (se quitan al soltar la terminal).
+    listeners: Vec<Listener>,
+    keys: keyboard::Keys,
+    /// Composición del IME en curso (el `<textarea>` no se mueve).
+    composing: bool,
+    /// Celda y tamaño CSS donde quedó el `<textarea>` (`_syncTextArea`).
+    textarea_at: Option<(u16, usize, u32, u32)>,
+    reporter: mouse::MouseReporter,
+    wheel: mouse::Wheel,
+    select: mouse::SelectModel,
+    /// Selección comunicada a la página por última vez.
+    reported_selection: Option<Selection>,
+    /// Arrastre en curso (con sus escuchas en `document`).
+    drag: Option<Drag>,
+    /// El próximo `scroll` de la barra lo provocó `sync_scroll_area`.
+    ignore_scroll: bool,
+    /// Último punto del dedo (desplazamiento táctil de xterm.js).
+    touch_y: Option<f64>,
+    links: links::LinkCache,
+    /// Sube con cada cambio de la rejilla (caché de enlaces).
+    link_gen: u64,
+    /// Enlace bajo el ratón.
+    hover: Option<UrlSpan>,
+    /// Enlace pulsado con Ctrl (se abre al soltar sobre él).
+    link_down: Option<UrlSpan>,
+    overlay: overlay::Overlay,
+    /// Color de la selección (`rgba`), según el tema.
+    selection_color: String,
+    ligatures: Option<overlay::Ligatures>,
+    liga_face: Option<FontFace>,
+    liga_cb: Option<Closure<dyn FnMut()>>,
+    /// Toca repintar las ligaduras en el próximo cuadro.
+    liga_due: bool,
+    /// `Engine::scrolled_up` ya aplicado a la selección.
+    scrolled_seen: u64,
+    alt_seen: bool,
+    /// `navigator.platform` contiene `Linux` (`isLinux` de xterm.js).
+    is_linux: bool,
+    /// El propio estado, para las escuchas que se instalan más tarde.
+    weak: Weak<RefCell<Inner>>,
+}
+
+/// Qué hace el `<textarea>` cuando el estado ya está libre (dar el foco
+/// dispara `focus` en el acto, y ese evento también necesita el estado).
+#[derive(Debug)]
+enum Focus {
+    /// `focus({preventScroll: true})`.
+    Plain,
+    /// Foco, el texto dentro y seleccionado (menú contextual y selección
+    /// primaria de Linux, como xterm.js).
+    Select(String),
+}
+
+/// Arrastre con el botón pulsado.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DragKind {
+    /// Informes de ratón para la aplicación.
+    Report,
+    /// Selección.
+    Select,
+}
+
+struct Drag {
+    kind: DragKind,
+    /// Líneas por paso de 50 ms con el ratón fuera de la terminal.
+    scroll: i32,
+    window: Window,
+    interval: Option<i32>,
+    _interval_cb: Option<Closure<dyn FnMut()>>,
+    _listeners: Vec<Listener>,
+}
+
+impl Drop for Drag {
+    fn drop(&mut self) {
+        if let Some(id) = self.interval.take() {
+            self.window.clear_interval_with_handle(id);
+        }
+    }
+}
+
+/// Lo que produce un evento y se entrega cuando el estado ya está libre.
+#[derive(Debug, Default)]
+struct Outbox {
+    data: Vec<Vec<u8>>,
+    focus: Option<Focus>,
+    copy: Option<String>,
+    open: Option<String>,
+}
+
+impl Outbox {
+    fn is_empty(&self) -> bool {
+        self.data.is_empty() && self.focus.is_none() && self.copy.is_none() && self.open.is_none()
+    }
+}
+
+/// Destino, evento, `passive` y manejador de una escucha.
+type Handler<'a> = (
+    &'a EventTarget,
+    &'static str,
+    Option<bool>,
+    fn(&mut Inner, &Event),
+);
+
+/// Una escucha del DOM que se quita al soltarla.
+struct Listener {
+    target: EventTarget,
+    kind: &'static str,
+    capture: bool,
+    cb: Closure<dyn FnMut(Event)>,
+}
+
+impl Drop for Listener {
+    fn drop(&mut self) {
+        let _ = self.target.remove_event_listener_with_callback_and_bool(
+            self.kind,
+            self.cb.as_ref().unchecked_ref(),
+            self.capture,
+        );
+    }
+}
+
+/// Instala `handler` para `kind` en `target`; `passive: Some(false)` para
+/// poder cancelar la rueda y el dedo.
+fn listen(
+    weak: &Weak<RefCell<Inner>>,
+    target: &EventTarget,
+    kind: &'static str,
+    passive: Option<bool>,
+    handler: fn(&mut Inner, &Event),
+) -> Option<Listener> {
+    let weak = weak.clone();
+    let cb = Closure::<dyn FnMut(Event)>::new(move |e: Event| {
+        dispatch(&weak, |i| handler(i, &e));
+    });
+    let opts = AddEventListenerOptions::new();
+    if let Some(p) = passive {
+        opts.set_passive(p);
+    }
+    target
+        .add_event_listener_with_callback_and_add_event_listener_options(
+            kind,
+            cb.as_ref().unchecked_ref(),
+            &opts,
+        )
+        .ok()?;
+    Some(Listener {
+        target: target.clone(),
+        kind,
+        capture: false,
+        cb,
+    })
+}
+
+/// Ejecuta `f` sobre el estado y después, ya suelto, entrega lo que dejó:
+/// bytes a `onData`, aviso de selección, copia y enlace que abrir. Así la
+/// página puede volver a llamar a la terminal desde sus funciones.
+fn dispatch<T>(weak: &Weak<RefCell<Inner>>, f: impl FnOnce(&mut Inner) -> T) -> Option<T> {
+    let rc = weak.upgrade()?;
+    let (out, delivery) = {
+        let mut i = rc.try_borrow_mut().ok()?;
+        let out = f(&mut i);
+        (out, i.take_delivery())
+    };
+    if let Some(d) = delivery {
+        d.deliver();
+    }
+    Some(out)
+}
+
+/// Lo que [`dispatch`] entrega fuera del préstamo.
+struct Delivery {
+    outbox: Outbox,
+    selection_changed: bool,
+    on_data: Option<js_sys::Function>,
+    on_selection: Option<js_sys::Function>,
+    document: Document,
+    textarea: HtmlTextAreaElement,
+    window: Window,
+}
+
+impl Delivery {
+    fn deliver(self) {
+        if let Some(f) = &self.on_data {
+            for chunk in &self.outbox.data {
+                let bytes = js_sys::Uint8Array::from(chunk.as_slice());
+                let _ = f.call1(&JsValue::NULL, &bytes);
+            }
+        }
+        if self.selection_changed
+            && let Some(f) = &self.on_selection
+        {
+            let _ = f.call0(&JsValue::NULL);
+        }
+        match self.outbox.focus {
+            Some(Focus::Plain) => focus_quietly(&self.textarea),
+            Some(Focus::Select(text)) => {
+                let _ = self.textarea.focus();
+                self.textarea.set_value(&text);
+                self.textarea.select();
+            }
+            None => {}
+        }
+        if let Some(text) = self.outbox.copy {
+            write_clipboard(&self.window, &self.document, &self.textarea, text);
+        }
+        if let Some(url) = self.outbox.open {
+            links::open_web_link(&self.document, &url);
+        }
+    }
+}
+
+/// `textarea.focus({preventScroll: true})`.
+fn focus_quietly(textarea: &HtmlTextAreaElement) {
+    let opts = web_sys::FocusOptions::new();
+    opts.set_prevent_scroll(true);
+    let _ = textarea.focus_with_options(&opts);
+}
+
+/// `navigator.clipboard.writeText`; sin él (contexto no seguro) o si lo
+/// rechaza, `execCommand('copy')` desde el `<textarea>`, como `term.html`.
+fn write_clipboard(
+    window: &Window,
+    document: &Document,
+    textarea: &HtmlTextAreaElement,
+    text: String,
+) {
+    let fallback = {
+        let (document, textarea, text) = (document.clone(), textarea.clone(), text.clone());
+        move || {
+            textarea.set_value(&text);
+            textarea.select();
+            if let Ok(doc) = document.dyn_into::<web_sys::HtmlDocument>() {
+                let _ = doc.exec_command("copy");
+            }
+        }
+    };
+    let navigator = window.navigator();
+    let has_api =
+        js_sys::Reflect::get(&navigator, &"clipboard".into()).is_ok_and(|c| c.is_object());
+    if !has_api {
+        fallback();
+        return;
+    }
+    let promise = navigator.clipboard().write_text(&text);
+    // Un solo cierre para los dos casos (la promesa llama a uno y
+    // `once_into_js` se libera al llamarlo): `writeText` se cumple con
+    // `undefined` y se rechaza con un error.
+    let settle = Closure::<dyn FnMut(JsValue)>::once_into_js(move |v: JsValue| {
+        if !v.is_undefined() {
+            fallback();
+        }
+    });
+    promise
+        .unchecked_ref::<PromiseThen>()
+        .then2(&settle, &settle);
 }
 
 impl Inner {
@@ -309,6 +672,300 @@ impl Inner {
         self.blink_on = true;
     }
 
+    /// Lo que [`dispatch`] entrega fuera del préstamo; `None` si no hay nada.
+    fn take_delivery(&mut self) -> Option<Delivery> {
+        // Durante un arrastre de selección la página se entera al soltar
+        // (`_fireEventIfSelectionChanged` de xterm.js).
+        let dragging = self
+            .drag
+            .as_ref()
+            .is_some_and(|d| d.kind == DragKind::Select);
+        let current = self.selection();
+        let selection_changed = !dragging && current != self.reported_selection;
+        if selection_changed {
+            self.reported_selection = current;
+        }
+        if !selection_changed && self.outbox.is_empty() {
+            return None;
+        }
+        Some(Delivery {
+            outbox: std::mem::take(&mut self.outbox),
+            selection_changed,
+            on_data: self.on_data.clone(),
+            on_selection: self.on_selection.clone(),
+            document: self.document.clone(),
+            textarea: self.dom.textarea.clone(),
+            window: self.window.clone(),
+        })
+    }
+
+    /// Selección actual para `comandos_term::select`.
+    fn selection(&self) -> Option<Selection> {
+        self.select.selection(self.size.cols)
+    }
+
+    fn has_selection(&self) -> bool {
+        self.selection().is_some()
+    }
+
+    /// Texto seleccionado como lo copia xterm.js.
+    fn selection_text(&self) -> String {
+        self.selection()
+            .map(|s| selected_text(&self.engine, &s))
+            .unwrap_or_default()
+    }
+
+    fn clear_selection(&mut self) {
+        if self.select.is_started() {
+            self.select.clear();
+            self.overlay.dirty = true;
+            self.request_frame();
+        }
+    }
+
+    /// Bytes para el PTY. Lo que escribe el usuario (`wasUserInput` de
+    /// xterm.js) baja la vista al final y quita la selección.
+    fn send(&mut self, bytes: Vec<u8>, user: bool) {
+        if bytes.is_empty() {
+            return;
+        }
+        if user {
+            let offset = self.engine.display_offset();
+            if offset != 0 {
+                self.scroll_lines(-i32::try_from(offset).unwrap_or(i32::MAX));
+            }
+            self.clear_selection();
+        }
+        self.outbox.data.push(bytes);
+    }
+
+    /// Desplaza la vista (positivo = hacia atrás en la historia).
+    fn scroll_lines(&mut self, lines: i32) {
+        if lines == 0 {
+            return;
+        }
+        self.engine.scroll_display(lines);
+        // `handleGridChanged` al repintar las filas.
+        let now = self.now();
+        self.restart_blink(now);
+        if self.select.is_started() {
+            self.overlay.dirty = true;
+        }
+        self.drop_hover();
+        self.schedule_ligatures();
+        self.touch();
+    }
+
+    /// Fila superior de la vista contando desde lo más antiguo (`ydisp`) y
+    /// la mayor posible (`ybase`).
+    fn ydisp(&self) -> (usize, usize) {
+        let history = self.engine.history_len();
+        (
+            history.saturating_sub(self.engine.display_offset()),
+            history,
+        )
+    }
+
+    /// Alto de fila del área de desplazamiento (`_currentRowHeight`).
+    fn row_h(&self) -> f64 {
+        f64::from(self.metrics.dev_h) / self.metrics.dpr
+    }
+
+    /// Foco del `<textarea>`: parpadeo, contorno del cursor, clase `focus` e
+    /// informe de foco si la aplicación lo pidió.
+    fn set_focused(&mut self, focused: bool) {
+        if self.focused == focused {
+            return;
+        }
+        self.focused = focused;
+        let now = self.now();
+        self.restart_blink(now);
+        self.touch_cursor();
+        let _ = self
+            .dom
+            .root
+            .class_list()
+            .toggle_with_force("focus", focused);
+        if let Some(report) = comandos_term::input::focus(focused, &self.engine.modes()) {
+            self.send(report.to_vec(), false);
+        }
+    }
+
+    /// Tras escribir en el motor: la selección sigue a su texto (o se va con
+    /// la pantalla alternativa, como `_handleBufferActivate`), y los enlaces
+    /// calculados ya no valen.
+    fn after_output(&mut self) {
+        self.link_gen = self.link_gen.wrapping_add(1);
+        self.drop_hover();
+        let scrolled = self.engine.scrolled_up();
+        let lines = scrolled.wrapping_sub(self.scrolled_seen);
+        self.scrolled_seen = scrolled;
+        let alt = self.engine.modes().alt_screen;
+        if alt != self.alt_seen {
+            self.alt_seen = alt;
+            self.clear_selection();
+        } else if lines > 0 && self.select.is_started() {
+            // La misma selección en otras filas no es un cambio para la
+            // página (xterm.js no avisa al recortar la historia).
+            let reported = self.reported_selection == self.selection();
+            let first = -i32::try_from(self.engine.history_len()).unwrap_or(i32::MAX);
+            self.select.shift_up(lines, first);
+            if reported && self.select.is_started() {
+                self.reported_selection = self.selection();
+            }
+            self.overlay.dirty = true;
+        }
+        // `onRender` del addon de ligaduras.
+        self.schedule_ligatures();
+    }
+
+    /// Quita el enlace bajo el ratón (su subrayado y el puntero).
+    fn drop_hover(&mut self) {
+        if self.hover.take().is_some() {
+            self.overlay.dirty = true;
+            self.set_pointer(false);
+        }
+        self.link_down = None;
+    }
+
+    /// Puntero de enlace (`xterm-cursor-pointer`).
+    fn set_pointer(&self, on: bool) {
+        let _ = self
+            .dom
+            .root
+            .class_list()
+            .toggle_with_force("xterm-cursor-pointer", on);
+        let _ = self
+            .dom
+            .screen
+            .style()
+            .set_property("cursor", if on { "pointer" } else { "" });
+    }
+
+    /// Repinta la capa de selección y enlace.
+    fn paint_overlay(&mut self) {
+        let offset = self.engine.display_offset();
+        let (rows, cols) = (self.size.rows, self.size.cols);
+        let rects = self
+            .selection()
+            .and_then(|s| comandos_term::select::selection_bounds(&self.engine, &s))
+            .map(|(lo, hi)| {
+                overlay::selection_rects(lo, (hi.0, hi.1.saturating_add(1)), offset, rows, cols)
+            })
+            .unwrap_or_default();
+        let lines = self
+            .hover
+            .as_ref()
+            .map(|span| links::underline_rects(span, offset, rows, cols))
+            .unwrap_or_default();
+        let link_color = canvas::hex(self.palette.fg);
+        self.overlay.paint(
+            self.painter.element(),
+            &self.metrics,
+            (&rects, &self.selection_color),
+            (&lines, &link_color),
+        );
+    }
+
+    /// Repinta las ligaduras de toda la vista.
+    fn paint_ligatures(&mut self) {
+        if self.ligatures.is_none() {
+            return;
+        }
+        let (rows, cols) = (self.size.rows, self.size.cols);
+        let offset = i32::try_from(self.engine.display_offset()).unwrap_or(i32::MAX);
+        let spans: Vec<Vec<(usize, &'static str)>> = (0..i32::from(rows))
+            .map(|y| {
+                let row = y - offset;
+                let whole = Selection {
+                    anchor: (row, 0),
+                    head: (row, cols.saturating_sub(1)),
+                    mode: comandos_term::select::SelectMode::Simple,
+                };
+                overlay::liga_spans(&selected_text(&self.engine, &whole))
+            })
+            .collect();
+        let css = self.metrics.css_canvas(cols, rows);
+        let (bg, fg) = (canvas::hex(self.palette.bg), canvas::hex(self.palette.fg));
+        if let Some(liga) = self.ligatures.as_mut() {
+            liga.paint(
+                self.painter.element(),
+                css,
+                (cols, rows),
+                self.opts.font_size,
+                (&bg, &fg),
+                &spans,
+            );
+        }
+    }
+
+    /// Repinta las ligaduras 90 ms después del último cambio (escritura,
+    /// desplazamiento), como el addon con `onRender`; el parpadeo del cursor
+    /// no cuenta.
+    fn schedule_ligatures(&mut self) {
+        // Sin la cara cargada no hay nada que pintar (se pinta al cargar).
+        let Some(liga) = self.ligatures.as_mut().filter(|l| l.loaded) else {
+            return;
+        };
+        if let Some(id) = liga.timer.take() {
+            self.window.clear_timeout_with_handle(id);
+        }
+        let Some(cb) = self.liga_cb.as_ref() else {
+            return;
+        };
+        if let Ok(id) = self
+            .window
+            .set_timeout_with_callback_and_timeout_and_arguments_0(
+                cb.as_ref().unchecked_ref(),
+                overlay::LIGA_DEBOUNCE_MS,
+            )
+        {
+            liga.timer = Some(id);
+        }
+    }
+
+    fn on_liga_timer(&mut self) {
+        if let Some(liga) = self.ligatures.as_mut() {
+            liga.timer = None;
+        }
+        self.liga_due = true;
+        self.request_frame();
+    }
+
+    /// `_syncTextArea`: el `<textarea>` sobre la celda del cursor, para que
+    /// el IME ponga sus candidatos junto a él.
+    fn sync_textarea(&mut self) {
+        if self.composing {
+            return;
+        }
+        let c = comandos_term::render::cursor(&self.engine);
+        if c.line >= usize::from(self.size.rows) {
+            return;
+        }
+        let Some((cw, ch)) = self.metrics.css_cell(self.size.cols, self.size.rows) else {
+            return;
+        };
+        let col = c.col.min(self.size.cols.saturating_sub(1));
+        let key = (col, c.line, (cw * 1000.0) as u32, (ch * 1000.0) as u32);
+        if self.textarea_at == Some(key) {
+            return;
+        }
+        self.textarea_at = Some(key);
+        let width = if c.wide { 2.0 } else { 1.0 };
+        let px = |v: f64| format!("{v}px");
+        set_styles(
+            &self.dom.textarea,
+            &[
+                ("left", &px(f64::from(col) * cw)),
+                ("top", &px(c.line as f64 * ch)),
+                ("width", &px(cw * width)),
+                ("height", &px(ch)),
+                ("line-height", &px(ch)),
+                ("z-index", "-5"),
+            ],
+        );
+    }
+
     /// Junta lo que dejó el motor (respuestas, título, campana…).
     fn drain_engine(&mut self) {
         let d = self.engine.drain();
@@ -345,7 +1002,12 @@ impl Inner {
     }
 
     fn request_frame(&mut self) {
-        if !self.scheduler.wants_frame() {
+        if self.frame_id.is_some() {
+            // Ya viene un cuadro: pinta todo lo pendiente.
+            return;
+        }
+        let rows = self.scheduler.wants_frame();
+        if !rows && !self.overlay.dirty && !self.liga_due {
             return;
         }
         let Some(cb) = self.frame_cb.as_ref() else {
@@ -374,6 +1036,13 @@ impl Inner {
             &mut self.painter,
         );
         self.sync_scroll_area();
+        if self.overlay.dirty {
+            self.paint_overlay();
+        }
+        if std::mem::take(&mut self.liga_due) {
+            self.paint_ligatures();
+        }
+        self.sync_textarea();
         self.arm_timer(now);
     }
 
@@ -474,7 +1143,12 @@ impl Inner {
                 .style()
                 .set_property("height", &self.css_buf);
         }
-        self.dom.viewport.set_scroll_top(scroll_top.round() as i32);
+        let top = scroll_top.round() as i32;
+        if self.dom.viewport.scroll_top() != top {
+            // Como `_ignoreNextScrollEvent`: ese `scroll` no es del usuario.
+            self.ignore_scroll = true;
+            self.dom.viewport.set_scroll_top(top);
+        }
         self.scroll_sync = next;
     }
 
@@ -482,7 +1156,14 @@ impl Inner {
     fn relayout(&mut self, size: GridSize) {
         let changed = size != self.size;
         self.size = size;
+        self.overlay.dirty = true;
+        self.liga_due = true;
+        self.textarea_at = None;
         if changed {
+            // alacritty reajusta las filas al cambiar de tamaño: la
+            // selección no sobreviviría intacta.
+            self.select.clear();
+            self.drop_hover();
             let (cw, ch) = self
                 .metrics
                 .css_cell(size.cols, size.rows)
@@ -492,6 +1173,7 @@ impl Inner {
                 metrics::js_round(ch).clamp(0.0, 65535.0) as u16,
             );
             self.engine.resize(size, cell);
+            self.scrolled_seen = self.engine.scrolled_up();
         }
         self.painter.resize(size.cols, size.rows, &self.metrics);
         self.scheduler.resize(size.rows);
@@ -573,6 +1255,12 @@ impl Drop for Inner {
         if let Some((id, _)) = self.timer.take() {
             self.window.clear_timeout_with_handle(id);
         }
+        if let Some(id) = self.ligatures.as_mut().and_then(|l| l.timer.take()) {
+            self.window.clear_timeout_with_handle(id);
+        }
+        // Las escuchas y el arrastre se quitan al soltarse los campos.
+        self.drag = None;
+        self.listeners.clear();
         self.dom.root.remove();
     }
 }
@@ -627,6 +1315,21 @@ impl WebTerm {
             m,
         )?;
         dom.screen.append_child(painter.element())?;
+        let overlay = overlay::Overlay::new(&document)?;
+        dom.screen.append_child(overlay.element())?;
+        // Ligaduras solo sin táctil, como `term.html` (`IS_TOUCH`).
+        let ligatures = if opts.ligatures.unwrap_or(!is_touch(&window)) {
+            let liga = overlay::Ligatures::new(&document)?;
+            dom.screen.append_child(liga.element())?;
+            Some(liga)
+        } else {
+            None
+        };
+        let is_linux = window
+            .navigator()
+            .platform()
+            .is_ok_and(|p| p.contains("Linux"));
+        let selection_color = selection_css(&opts.theme);
         let scrollbar_w = metrics::scrollbar_width(&dom.viewport, &dom.scroll_area);
         let engine =
             Engine::with_cursor_blink(size, opts.scrollback, palette.clone(), opts.cursor_blink);
@@ -667,6 +1370,34 @@ impl WebTerm {
             bell: false,
             clipboard: None,
             scroll_sync: ScrollSync::default(),
+            outbox: Outbox::default(),
+            on_data: None,
+            on_selection: None,
+            listeners: Vec::new(),
+            keys: keyboard::Keys::default(),
+            composing: false,
+            textarea_at: None,
+            reporter: mouse::MouseReporter::default(),
+            wheel: mouse::Wheel::default(),
+            select: mouse::SelectModel::default(),
+            reported_selection: None,
+            drag: None,
+            ignore_scroll: false,
+            touch_y: None,
+            links: links::LinkCache::default(),
+            link_gen: 0,
+            hover: None,
+            link_down: None,
+            overlay,
+            selection_color,
+            ligatures,
+            liga_face: None,
+            liga_cb: None,
+            liga_due: false,
+            scrolled_seen: 0,
+            alt_seen: false,
+            is_linux,
+            weak: Weak::new(),
         }));
         let weak = Rc::downgrade(&inner);
         let frame_cb = Closure::<dyn FnMut(f64)>::new(move |_t: f64| {
@@ -676,23 +1407,76 @@ impl WebTerm {
         let timer_cb = Closure::<dyn FnMut()>::new(move || {
             with_weak(&weak, Inner::on_timer);
         });
+        let weak = Rc::downgrade(&inner);
+        let liga_cb = Closure::<dyn FnMut()>::new(move || {
+            dispatch(&weak, Inner::on_liga_timer);
+        });
         {
             let mut i = inner
                 .try_borrow_mut()
                 .map_err(|_| JsValue::from_str("estado ocupado"))?;
+            i.weak = Rc::downgrade(&inner);
             i.frame_cb = Some(frame_cb);
             i.timer_cb = Some(timer_cb);
+            i.liga_cb = Some(liga_cb);
             i.relayout(size);
+            i.install_listeners();
         }
         let term = WebTerm { inner };
         term.watch_font();
         term.observe_device_pixels();
         term.watch_context();
+        term.load_ligature_font();
         Ok(term)
     }
 
     fn with<T>(&self, f: impl FnOnce(&mut Inner) -> T) -> Option<T> {
         self.inner.try_borrow_mut().ok().map(|mut i| f(&mut i))
+    }
+
+    /// Como [`WebTerm::with`], entregando después lo que haya salido
+    /// (bytes, aviso de selección…).
+    fn dispatch<T>(&self, f: impl FnOnce(&mut Inner) -> T) -> Option<T> {
+        dispatch(&Rc::downgrade(&self.inner), f)
+    }
+
+    /// Carga la cara `comandos-liga` (como `opentype.load` del addon) y
+    /// pinta las ligaduras cuando esté.
+    fn load_ligature_font(&self) {
+        let Some(Some(face)) = self.with(|i| {
+            i.ligatures.as_ref()?;
+            let face = FontFace::new_with_str(
+                overlay::LIGA_FAMILY,
+                &format!("url({})", i.opts.ligature_font_url),
+            )
+            .ok()?;
+            let _ = i.document.fonts().add(&face);
+            i.liga_face = Some(face.clone());
+            Some(face)
+        }) else {
+            return;
+        };
+        let Ok(promise) = face.load() else {
+            return;
+        };
+        let weak = Rc::downgrade(&self.inner);
+        // Un solo cierre para cumplir y rechazar (ver `watch_font`).
+        let settle = Closure::<dyn FnMut(JsValue)>::once_into_js(move |_v: JsValue| {
+            dispatch(&weak, |i| {
+                let loaded = i
+                    .liga_face
+                    .as_ref()
+                    .is_some_and(|f| f.status() == web_sys::FontFaceLoadStatus::Loaded);
+                if let Some(liga) = i.ligatures.as_mut() {
+                    liga.loaded = loaded;
+                }
+                i.liga_due = true;
+                i.request_frame();
+            });
+        });
+        promise
+            .unchecked_ref::<PromiseThen>()
+            .then2(&settle, &settle);
     }
 
     /// Cuando la fuente termine de cargar (`document.fonts.load`), vuelve a
@@ -778,10 +1562,11 @@ impl WebTerm {
 
     /// Bytes del PTY.
     pub fn write(&mut self, bytes: &[u8]) {
-        self.with(|i| {
+        self.dispatch(|i| {
             let now = i.now();
             i.engine.advance(bytes, now);
             i.drain_engine();
+            i.after_output();
             // `handleGridChanged`: cada cambio deja el cursor visible.
             i.restart_blink(now);
             i.touch();
@@ -791,7 +1576,7 @@ impl WebTerm {
     /// Ajusta filas y columnas al contenedor como `FitAddon.fit()` y
     /// devuelve `{cols, rows}`.
     pub fn resize_to_fit(&mut self) -> JsValue {
-        let size = self.with(|i| {
+        let size = self.dispatch(|i| {
             if i.dpr() != i.metrics.dpr {
                 let _ = i.remeasure();
             }
@@ -843,6 +1628,7 @@ impl WebTerm {
     pub fn set_theme(&mut self, theme: JsValue) {
         self.with(|i| {
             let parsed = read_theme(&theme);
+            i.selection_color = selection_css(&parsed);
             i.opts.theme = parsed;
             i.palette = i.opts.theme.palette();
             i.engine.set_palette(i.palette.clone());
@@ -900,28 +1686,116 @@ impl WebTerm {
             .flatten()
     }
 
-    /// Foco de la terminal (lo da el teclado, A7): con foco el cursor
-    /// parpadea; sin foco se dibuja su contorno.
+    /// Estado de foco de la terminal. Normalmente lo marcan los eventos
+    /// `focus`/`blur` del `<textarea>`; con foco el cursor parpadea y sin él
+    /// se dibuja su contorno.
     pub fn set_focus(&mut self, focused: bool) {
-        self.with(|i| {
-            if i.focused != focused {
-                i.focused = focused;
-                let now = i.now();
-                i.restart_blink(now);
-                i.touch_cursor();
+        self.dispatch(|i| i.set_focused(focused));
+    }
+
+    /// Da el foco al `<textarea>` de la terminal (`term.focus()`).
+    pub fn focus(&self) {
+        if let Ok(i) = self.inner.try_borrow() {
+            let textarea = i.dom.textarea.clone();
+            drop(i);
+            focus_quietly(&textarea);
+        }
+    }
+
+    /// Quita el foco (`term.blur()`).
+    pub fn blur(&self) {
+        if let Ok(i) = self.inner.try_borrow() {
+            let textarea = i.dom.textarea.clone();
+            drop(i);
+            let _ = textarea.blur();
+        }
+    }
+
+    /// El `<textarea>` que recibe el teclado (`term.textarea`).
+    pub fn textarea(&self) -> Option<HtmlTextAreaElement> {
+        self.inner.try_borrow().ok().map(|i| i.dom.textarea.clone())
+    }
+
+    /// Función que recibe los bytes para el PTY (`Uint8Array`), como
+    /// `term.onData` + `term.onBinary`; `null` la quita.
+    pub fn set_on_data(&mut self, f: Option<js_sys::Function>) {
+        self.with(|i| i.on_data = f);
+    }
+
+    /// Función que se llama cuando cambia la selección
+    /// (`term.onSelectionChange`).
+    pub fn set_on_selection_change(&mut self, f: Option<js_sys::Function>) {
+        self.with(|i| i.on_selection = f);
+    }
+
+    /// Pega texto como si viniera del portapapeles (`term.paste`).
+    pub fn paste(&mut self, text: &str) {
+        self.dispatch(|i| i.paste(text));
+    }
+
+    /// Hay texto seleccionado (`term.hasSelection()`).
+    pub fn has_selection(&self) -> bool {
+        self.inner.try_borrow().is_ok_and(|i| i.has_selection())
+    }
+
+    /// Texto seleccionado (`term.getSelection()`).
+    pub fn get_selection(&self) -> String {
+        self.inner
+            .try_borrow()
+            .map(|i| i.selection_text())
+            .unwrap_or_default()
+    }
+
+    /// Quita la selección (`term.clearSelection()`).
+    pub fn clear_selection(&mut self) {
+        self.dispatch(Inner::clear_selection);
+    }
+
+    /// Copia la selección al portapapeles (el botón «Copiar» de la barra).
+    /// `false` si no hay selección.
+    pub fn copy_selection(&mut self) -> bool {
+        self.dispatch(|i| {
+            let has = i.has_selection();
+            if has {
+                i.outbox.copy = Some(i.selection_text());
             }
-        });
+            has
+        })
+        .unwrap_or(false)
+    }
+
+    /// Modos que la página necesita, con los nombres de `term.modes` de
+    /// xterm.js (`bracketedPasteMode`, `mouseTrackingMode`…).
+    pub fn modes(&self) -> JsValue {
+        let Ok(i) = self.inner.try_borrow() else {
+            return JsValue::NULL;
+        };
+        let m = i.engine.modes();
+        let obj = js_sys::Object::new();
+        let tracking = match m.mouse {
+            comandos_term::engine::MouseMode::Off => "none",
+            comandos_term::engine::MouseMode::Click => "vt200",
+            comandos_term::engine::MouseMode::Drag => "drag",
+            comandos_term::engine::MouseMode::Motion => "any",
+        };
+        for (key, value) in [
+            (
+                "applicationCursorKeysMode",
+                JsValue::from_bool(m.app_cursor),
+            ),
+            ("applicationKeypadMode", JsValue::from_bool(m.app_keypad)),
+            ("bracketedPasteMode", JsValue::from_bool(m.bracketed_paste)),
+            ("mouseTrackingMode", JsValue::from_str(tracking)),
+            ("sendFocusMode", JsValue::from_bool(m.focus_events)),
+        ] {
+            let _ = js_sys::Reflect::set(&obj, &key.into(), &value);
+        }
+        obj.into()
     }
 
     /// Desplaza la vista por la historia (positivo = hacia atrás).
     pub fn scroll_lines(&mut self, lines: i32) {
-        self.with(|i| {
-            i.engine.scroll_display(lines);
-            // `handleGridChanged` al repintar las filas.
-            let now = i.now();
-            i.restart_blink(now);
-            i.touch();
-        });
+        self.dispatch(|i| i.scroll_lines(lines));
     }
 
     /// Elemento `.xterm-screen` (para la entrada y los enlaces).
@@ -971,12 +1845,66 @@ impl WebTerm {
 }
 
 impl Inner {
+    /// Escuchas del teclado, el ratón, la rueda y el dedo.
+    fn install_listeners(&mut self) {
+        let weak = self.weak.clone();
+        let textarea: EventTarget = self.dom.textarea.clone().into();
+        let root: EventTarget = self.dom.root.clone().into();
+        let screen: EventTarget = self.dom.screen.clone().into();
+        let viewport: EventTarget = self.dom.viewport.clone().into();
+        let table: [Handler<'_>; 21] = [
+            (&textarea, "keydown", None, Inner::on_keydown),
+            (
+                &textarea,
+                "compositionstart",
+                None,
+                Inner::on_composition_start,
+            ),
+            (
+                &textarea,
+                "compositionupdate",
+                None,
+                Inner::on_composition_update,
+            ),
+            (&textarea, "compositionend", None, Inner::on_composition_end),
+            (&textarea, "beforeinput", None, Inner::on_before_input),
+            (&textarea, "input", None, Inner::on_input),
+            (&textarea, "paste", None, Inner::on_paste),
+            (&textarea, "focus", None, Inner::on_focus),
+            (&textarea, "blur", None, Inner::on_blur),
+            (&root, "paste", None, Inner::on_paste),
+            (&root, "copy", None, Inner::on_copy),
+            (&root, "contextmenu", None, Inner::on_context_menu),
+            (&root, "auxclick", None, Inner::on_aux_click),
+            (&root, "wheel", Some(false), Inner::on_wheel),
+            (&root, "touchstart", Some(true), Inner::on_touch_start),
+            (&root, "touchmove", Some(false), Inner::on_touch_move),
+            (&screen, "mousedown", None, Inner::on_mouse_down),
+            (&screen, "mousemove", None, Inner::on_mouse_move),
+            (&screen, "mouseup", None, Inner::on_mouse_up),
+            (&screen, "mouseleave", None, Inner::on_mouse_leave),
+            (&viewport, "scroll", None, Inner::on_viewport_scroll),
+        ];
+        for (target, kind, passive, handler) in table {
+            if let Some(l) = listen(&weak, target, kind, passive, handler) {
+                self.listeners.push(l);
+            }
+        }
+    }
+
     /// El canvas aún no tiene tamaño (primer ajuste tras medir).
     fn painter_needs_layout(&self) -> bool {
         let (w, h) = self.metrics.device_canvas(self.size.cols, self.size.rows);
         let canvas = self.painter.element();
         canvas.width() != w || canvas.height() != h
     }
+}
+
+/// `('ontouchstart' in window) || navigator.maxTouchPoints > 0`, el
+/// `IS_TOUCH` de `term.html`.
+fn is_touch(window: &Window) -> bool {
+    js_sys::Reflect::has(window, &"ontouchstart".into()).unwrap_or(false)
+        || window.navigator().max_touch_points() > 0
 }
 
 fn size_object(cols: u16, rows: u16) -> JsValue {
@@ -1005,6 +1933,21 @@ mod tests {
         let p = Palette::xterm_default([1; 3], [2; 3], [3; 3], [4; 3], [5; 3]);
         let t = canvas_theme(&p);
         assert_eq!((t.bg, t.cursor, t.cursor_accent), ([2; 3], [3; 3], [4; 3]));
+    }
+
+    #[test]
+    fn selection_layer_is_the_theme_color_at_30_percent() {
+        let mut t = Theme::default();
+        assert_eq!(selection_css(&t), "rgba(255, 255, 255, 0.3)");
+        t.selection = Some([0x2E, 0x38, 0x52]);
+        assert_eq!(selection_css(&t), "rgba(46, 56, 82, 0.3)");
+    }
+
+    #[test]
+    fn ligatures_default_to_auto_with_the_addon_font() {
+        let o = Options::default();
+        assert_eq!(o.ligatures, None);
+        assert_eq!(o.ligature_font_url, overlay::LIGA_FONT_URL);
     }
 
     #[test]

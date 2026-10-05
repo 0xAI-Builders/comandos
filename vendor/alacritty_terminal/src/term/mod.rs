@@ -274,6 +274,13 @@ pub struct Term<T> {
 
     pub selection: Option<Selection>,
 
+    /// COMANDOS: líneas que han subido desde la fila superior de la pantalla
+    /// normal (región de desplazamiento que empieza arriba): todo el
+    /// contenido por encima del final de la región baja de fila absoluta.
+    /// Lo usa `comandos-term` para que una selección siga a su texto, como
+    /// las coordenadas de búfer de xterm.js. Contador que da la vuelta.
+    scrolled_up: u64,
+
     /// Currently active grid.
     ///
     /// Tracks the screen buffer currently in use. While the alternate screen buffer is active,
@@ -439,6 +446,7 @@ impl<T> Term<T> {
             title_stack: Default::default(),
             is_focused: Default::default(),
             selection: Default::default(),
+            scrolled_up: 0,
             title: Default::default(),
             mode: Default::default(),
         }
@@ -704,6 +712,12 @@ impl<T> Term<T> {
         self.damage.resize(num_cols, num_lines);
     }
 
+    /// COMANDOS: ver el campo `scrolled_up`.
+    #[inline]
+    pub fn scrolled_up(&self) -> u64 {
+        self.scrolled_up
+    }
+
     /// Active terminal modes.
     #[inline]
     pub fn mode(&self) -> &TermMode {
@@ -776,6 +790,12 @@ impl<T> Term<T> {
 
         // Scroll selection.
         self.selection = self.selection.take().and_then(|s| s.rotate(self, &region, lines as i32));
+
+        // COMANDOS: con la región pegada arriba en la pantalla normal, las
+        // líneas pasan a la historia y todo lo de encima sube de fila.
+        if region.start == Line(0) && !self.mode.contains(TermMode::ALT_SCREEN) {
+            self.scrolled_up = self.scrolled_up.wrapping_add(lines as u64);
+        }
 
         self.grid.scroll_up(&region, lines);
 

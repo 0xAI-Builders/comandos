@@ -497,6 +497,17 @@ impl Engine {
         self.term.grid().history_size()
     }
 
+    /// Líneas que han subido a la historia desde la fila superior de la
+    /// pantalla normal (contador que da la vuelta). Cada una baja una fila
+    /// absoluta todo lo que había por encima del final de la región: la
+    /// capa web lo usa para que una selección siga a su texto, como las
+    /// coordenadas de búfer de xterm.js. Ni la pantalla alternativa ni una
+    /// región que no empieza arriba cuentan (xterm.js tampoco mueve ahí sus
+    /// coordenadas).
+    pub fn scrolled_up(&self) -> u64 {
+        self.term.scrolled_up()
+    }
+
     /// Acceso de lectura para el render y la selección.
     pub fn term(&self) -> &Term<Collector> {
         &self.term

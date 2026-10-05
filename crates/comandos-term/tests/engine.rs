@@ -361,3 +361,23 @@ fn take_damage_into_reuses_the_buffer_and_matches_take_damage() {
     e.advance(b"\x1b[2;1Hy", 0.0);
     assert!(matches!(e.take_damage(), Damage::Lines(l) if l.contains(&1)));
 }
+
+/// Las líneas que suben a la historia desplazan las filas absolutas (lo usa
+/// la selección web para seguir a su texto); la pantalla alternativa y una
+/// región que no empieza arriba no cuentan.
+#[test]
+fn scrolled_up_counts_lines_pushed_into_history() {
+    let mut e = engine(10, 3);
+    assert_eq!(e.scrolled_up(), 0);
+    e.advance(b"a\r\nb\r\nc\r\nd\r\ne", 0.0);
+    assert_eq!(e.scrolled_up(), 2);
+    e.advance(b"\x1b[?1049h\r\n\r\n\r\n\r\n\x1b[?1049l", 0.0);
+    assert_eq!(e.scrolled_up(), 2, "pantalla alternativa");
+    e.advance(b"\x1b[2;3r\x1b[3;1H\n\n", 0.0);
+    assert_eq!(e.scrolled_up(), 2, "región que no empieza arriba");
+    e.advance(b"\x1b[r\x1b[3;1H\n", 0.0);
+    assert_eq!(e.scrolled_up(), 3);
+    // Desplazar la vista no mueve el contenido.
+    e.scroll_display(1);
+    assert_eq!(e.scrolled_up(), 3);
+}
