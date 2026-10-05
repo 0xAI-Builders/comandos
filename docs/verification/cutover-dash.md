@@ -707,3 +707,308 @@ la rama con los arreglos de la revisión final.
 - Corrida anterior (`76d8e46`, `/terminal-panes` contra la sesión inexistente `poll`, solo el
   400 tras un `list-panes`): 2910 peticiones, 300 no-2xx, Pss 21 337 KiB al minuto 1 y
   21 425 KiB al minuto 10.
+
+## 2d: `/state` nativo y terminal rápida
+
+Procedimiento para el controlador, como el de la 2c. El frente está en 4777 y el Python heredado
+en 4781; la 2d solo cambia el binario del frente. Ni el Python ni las unidades ni tmux se tocan.
+
+La release se construye desde `main` **después** de fusionar la rama `migration/rust-fase2d`, así
+que también lleva lo que entró en `main` mientras tanto y la rama no tiene: el arreglo del broker
+de extensiones (`969c3a0`, `f95ac83`, `c87973f`), `/analytics/week?sidebar=1` y `/accounts` del
+Python confirmados (`cf193ba`) y las pruebas con tmux privado por `-S` (`accab21`). La paridad y la
+sombra del paso 1 se repiten con ese binario, no con el de la rama.
+
+### Qué cambia
+
+| Ruta | Nativa | Sigue en el Python |
+|---|---|---|
+| GET `/state` (y `/state?…`) | sí | cuando algo es incierto (abajo); `/states` y `/state/…` |
+| POST `/workspace/sort` | `restore` (2b) y `by` | `by` que no es cadena; `app-tabs.json` ilegible; `/state` que declina |
+| POST `/terminal/quick` | `place: "sidebar"` | el resto (registra pestaña: candado de proceso del Python); sin `systemd-run` en el `PATH` del frente |
+| POST `/workspace/close-group` | no | todo (`close_app_tab`) |
+
+GET `/state` escribe `~/.claude/hooks/app-tab-models.json` como el Python, solo cuando la respuesta
+es nativa. Se reenvía entero (sin escribir) si un `~/.claude/hooks/state/*.json` no se lee con
+certeza, si `motor-results.json` está ilegible, si el registro de proveedores no valida, si el
+contexto de sugerencias está vencido y el heredado no responde, o por los demás casos de la
+decisión D2 del plan `docs/superpowers/plans/2026-10-04-fase-2d-state-nativo.md`. También se
+reenvía siempre que el carril de la base de uso esté apagado (la línea `…; GET /pomodoro, GET
+/sovereignty y GET /state se reenvían al heredado`) o que el frente no tenga raíz del checkout
+(`COMANDOS_DASH_REPO` o el destino de `~/.claude/hooks/dash/index.html`, como en la 2c).
+
+La terminal rápida de la barra nace dentro de un scope del gestor de **usuario**
+(`systemd-run --user --scope --collect --quiet tmux new-session …`, el `scope_cmd` del Python).
+Sin `systemd-run` en el `PATH` del frente se reenvía: un servidor tmux que naciera en el cgroup de
+`cc-dash.service` moriría en el siguiente `restart` con todas las sesiones.
+
+### Diferencias y comportamientos aceptados (2d)
+
+- El rastreador de configuración (`StateTracker`) es del frente: tras reiniciar el frente, la
+  primera observación de cada pane equivale a un reinicio del Python («la evidencia que cambió
+  gana» empieza de cero). Un cálculo de `/state` que declina o falla no deja rastro en él; solo
+  los que responden.
+- `guard` y `latency` de las sugerencias los da el heredado (GET `/usage/guard`, GET
+  `/usage/analytics?days=7`) cada 60 s y solo cuando alguna tarjeta los necesita; `routes` lo
+  calcula el frente. Los dos procesos refrescan su contexto en instantes distintos. Cada
+  subconsulta tiene 2 s de plazo; si el heredado no responde (o responde un 200 que el frente no
+  puede leer como el Python), el fallo se recuerda 5 s y durante ese tiempo `/state` se reenvía
+  entero sin tocar tmux. Medido en vivo contra 4781 (5 lecturas GET, 4 de octubre, 23:50):
+  `/usage/guard` 21–70 ms, `/usage/analytics?days=7` 143–310 ms, muy por debajo de los 2 s. Esta
+  dependencia desaparece en la 2e, que porta `token_guard_report` y `experiment_analytics`.
+- El Python sigue escribiendo `app-tab-models.json` cuando otra de sus rutas llama a
+  `read_states_cached` (cambio de modelo, ordenar con `by` reenviado): escritura atómica, gana la
+  última, las dos son proyección del mismo estado vivo.
+- `motor-results.json` es el espejo en disco del `MOTOR_RESULT` del Python, que lo reescribe en
+  cada cambio. Si una escritura suya falla (su `except: pass`), el frente ve el valor anterior
+  hasta la siguiente.
+- POST `/workspace/sort` con `by` lee `/state` una vez antes de sincronizar el workspace; el Python
+  sincroniza primero (puede confirmar una revisión `auto`) y relee `/state` en cada reintento. La
+  sincronización es idempotente y la hace el siguiente GET `/workspace`. Una excepción de
+  `read_states_cached` dentro de ese `try` (el 400 con `str(exc)`) se reenvía en vez de reproducir
+  su texto.
+- Textos de error del Python que el frente no reproduce letra a letra:
+  - `/terminal/quick`: una salida no UTF-8 de tmux tras reservar la carpeta responde
+    `No se pudo abrir la terminal: UnicodeDecodeError` (el Python daría el texto del códec).
+  - `/terminal/quick`: si `os.makedirs` falla, el Python nombra el componente que falló; el frente
+    nombra la carpeta entera (`[Errno 13] Permission denied: '/…/Terminal/…'`).
+  - `/terminal/quick`: en esos textos, una ruta con caracteres Unicode no imprimibles va sin
+    escapar (el `repr` de Python los escaparía).
+  - Un `OSError` al arrancar tmux sin `errno` (no ocurre al lanzar un ejecutable) sale como
+    `OSError`; con `errno` es el `[Errno N] …: 'tmux'` del Python.
+- `/terminal/quick` en la barra: tras reservar la carpeta ya no se reenvía nunca. Si el cliente se
+  desconecta a mitad, el lanzamiento y el cierre de la fila terminan igual (como el hilo del
+  Python); si el cierre falla, responde 500.
+
+### 0. Previos
+
+```sh
+cd ~/codebase/0xJesus/ComandOS && git log -1 --oneline        # main con la Fase 2d fusionada
+CARGO_TARGET_DIR=$PWD/.build/target nice -n 10 cargo build --release -p comandos-cli -j 6
+CARGO_TARGET_DIR=$PWD/.build/target nice -n 10 cargo build -p xtask -j 6
+NEW=$HOME/codebase/0xJesus/ComandOS/.build/target/release/comandos
+XT=$HOME/codebase/0xJesus/ComandOS/.build/target/debug/xtask
+grep -qa 'GET /pomodoro, GET /sovereignty y GET /state' "$NEW" || echo "BINARIO SIN 2d: no seguir"
+systemctl --user is-active cc-dash.service cc-dash-legacy.service    # active active
+~/.local/share/comandos/bin/comandos install --releases              # anotar la actual ('*')
+for u in cc-dash.service cc-dash-legacy.service; do
+  echo "== $u"
+  systemctl --user show -p WorkingDirectory "$u"
+  systemctl --user show -p Environment "$u" | tr ' ' '\n' \
+    | grep -E '^(Environment=)?(PATH|COMANDOS_QUICK_TERMINAL_BASE|CODEX_HOME|GROK_HOME)='
+done
+ss -ltn 'sport = :4782'                                               # libre
+git status --short -- lib/pane_snapshot.py lib/tui_state.py lib/providers.py lib/quick_terminal.py bin/cc-dash
+```
+
+Las dos unidades deben tener el mismo `WorkingDirectory` y el mismo `PATH` (o ninguno de los dos
+lo fija), y `COMANDOS_QUICK_TERMINAL_BASE`, `CODEX_HOME`, `GROK_HOME` iguales o ausentes. El
+frente resuelve una vez al arrancar `systemd-run`, `cc-model-proxy` y los binarios de los agentes
+con su `PATH`: una entrada vacía o relativa del `PATH` se resuelve contra el `WorkingDirectory`
+de la unidad, así que dos unidades con el mismo `PATH` y distinto directorio ven binarios
+distintos. Con el `PATH` y el directorio del frente, `systemd-run` tiene que existir:
+
+```sh
+P=$(systemctl --user show -p Environment cc-dash.service | tr ' ' '\n' | sed -n 's/^\(Environment=\)\{0,1\}PATH=//p')
+D=$(systemctl --user show -p WorkingDirectory --value cc-dash.service)
+(cd "${D:-$HOME}" && PATH="${P:-$PATH}" command -v systemd-run)     # una ruta absoluta
+```
+
+Sin ella, `/terminal/quick` de la barra se reenvía siempre (correcto, pero sin la 2d).
+
+El `git status` de los archivos del oráculo debe salir vacío tras la fusión: `lib/pane_snapshot.py`
+estaba sin confirmar en `main` y la rama trae la misma versión que ejecuta `cc-dash-legacy`
+(`codex --yolo` como `--dangerously-bypass-approvals-and-sandbox`). Si sigue modificado, comparar
+con `git diff` antes de seguir: un cambio ahí cambia las tarjetas de los panes de Codex.
+
+### 1. Sombra en 4782 con nativo, contra el heredado 4781
+
+La sombra usa los archivos reales: su GET `/state` escribe `app-tab-models.json` (lo mismo que
+escribiría el Python) y su `/terminal/quick` abre una terminal de verdad (probarla solo a mano).
+**Nunca** `xtask poll` contra la sombra, 4777 ni 4781: la carga va siempre con `--shadow`.
+
+```sh
+COMANDOS_DASH_TRACE_FORWARD=1 "$NEW" dash 4782 --legacy-port 4781 2> /tmp/sombra-2d.log
+```
+
+Desde otra terminal, en `~/codebase/0xJesus/ComandOS`:
+
+```sh
+"$XT" parity --fixture xtask/parity/frente.jsonl --hooks ~/.claude/hooks \
+  --state-db ~/.local/state/comandos/app-state.sqlite3 \
+  --usage-db ~/.claude/hooks/comandos-usage.sqlite --comandos "$NEW"        # 0 DIFF
+"$XT" poll --shadow --minutes 10 --hooks ~/.claude/hooks \
+  --state-db ~/.local/state/comandos/app-state.sqlite3 \
+  --usage-db ~/.claude/hooks/comandos-usage.sqlite --comandos "$NEW"        # criterios de abajo
+T=$(cat ~/.claude/hooks/dash-token)
+norm() { python3 -c 'import json,sys
+v=json.load(sys.stdin)
+for i in v:
+    o=i.get("observedConfig") or {}
+    for k in ("observedAt","evidenceAt"):
+        if k in o: o[k]="<volátil>"
+print(json.dumps(v))'; }
+for i in 1 2 3; do
+  A=$(curl -s -H "X-Comandos-Token: $T" 127.0.0.1:4782/state | norm)
+  B=$(curl -s -H "X-Comandos-Token: $T" 127.0.0.1:4781/state | norm)
+  [ "$A" = "$B" ] && echo "igual /state" || echo "DISTINTO /state (repetir: un turno pudo cambiar entre lecturas)"
+  sleep 2
+done
+for r in /state /prefs; do
+  curl -s -o /dev/null -w "$r %{time_total}s\n" -H "X-Comandos-Token: $T" 127.0.0.1:4782$r
+done
+```
+
+`norm` es una línea de inspección en la terminal del controlador, no código del repositorio. Las
+primeras lecturas pueden diferir en `observedConfig` (el rastreador de la sombra empieza vacío,
+ver «Diferencias»); a partir de la segunda vuelta tienen que coincidir.
+
+Navegación manual en `http://127.0.0.1:4782` con `chrome-bg` (vía `cc-browser-expose start 4782`):
+el tablero muestra las mismas tarjetas que en 4777 (modelos, cuentas, sugerencias, estado
+waiting/working de un turno en curso); «Ordenar» por nombre, recientes y pendientes, y Deshacer;
+abrir una terminal rápida desde la barra de comandos dos veces seguidas con el mismo clic doble
+(se abre una sola). Cerrarla al terminar. Luego:
+
+```sh
+grep -c 'se reenvían al heredado\|rutas nativas desactivadas' /tmp/sombra-2d.log   # 0
+grep 'reenvío' /tmp/sombra-2d.log | sed 's/.*reenvío //' | sort | uniq -c | sort -rn
+```
+
+`GET /state` no debe aparecer (o solo de forma aislada, con un registro incierto en ese momento).
+Ctrl+C.
+
+### 2. Cutover
+
+Antes de reiniciar, nada en vuelo: ni un cambio de cuenta o de modelo, ni un tecleo de la barra
+de comandos, ni una terminal rápida abriéndose. Las dos bases se miran en solo lectura; una fila
+reciente en un estado no final es algo en curso (las `awaiting_confirmation` y
+`recovery_required` antiguas son residuo y no cuentan):
+
+```sh
+sqlite3 "file:$HOME/.claude/hooks/session-operations.sqlite3?mode=ro" \
+  "SELECT id, state, datetime(updated, 'unixepoch', 'localtime') FROM session_operations
+   WHERE state NOT IN ('confirmed', 'failed', 'rolled_back')
+     AND updated > strftime('%s', 'now') - 900"                       # vacío
+sqlite3 "file:$HOME/.local/state/comandos/app-state.sqlite3?mode=ro" \
+  "SELECT request_id, datetime(updated_at, 'unixepoch', 'localtime') FROM quick_terminal_requests
+   WHERE state = 'launching' AND lease_until > strftime('%s', 'now')"  # vacío
+```
+
+`/pane/type` no deja rastro: la comprobación es no usar la barra de comandos durante el reinicio y
+que no quede un envío suyo pendiente en pantalla.
+
+```sh
+"$NEW" install --stage
+grep -qa 'GET /pomodoro, GET /sovereignty y GET /state' "$(readlink -f ~/.local/share/comandos/bin/comandos)" || echo "STAGE MALO: ~/.local/share/comandos/bin/comandos install --rollback-release"
+~/.local/share/comandos/bin/comandos hook claude-status >/dev/null && echo "hooks OK con la release nueva"
+systemctl --user restart cc-dash.service
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4777/        # 200
+systemctl --user show -p NRestarts --value cc-dash.service           # 0
+curl -s -o /dev/null -w '/state %{http_code} %{time_total}s\n' \
+  -H "X-Comandos-Token: $(cat ~/.claude/hooks/dash-token)" 127.0.0.1:4777/state   # 200
+journalctl --user -u cc-dash.service --since -2min --no-pager | grep -c 'se reenvían al heredado\|rutas nativas desactivadas'   # 0
+```
+
+El tablero queda sin respuesta unos 3 s; cc-app y cc-notifyd reintentan solos. Una línea
+`apertura fallida (…); se reenvía esta petición` no es un apagado: el carril reintenta en la
+siguiente petición.
+
+### 3. Verificación
+
+```sh
+systemctl --user set-environment COMANDOS_DASH_TRACE_FORWARD=1 && systemctl --user restart cc-dash.service
+sleep 600
+journalctl --user -u cc-dash.service --since -11min --no-pager | grep 'reenvío' \
+  | sed 's/.*reenvío //' | sort | uniq -c | sort -rn
+journalctl --user -u cc-dash.service --since -11min --no-pager \
+  | grep -c 'GET /pomodoro, GET /sovereignty y GET /state se reenvían'   # 0: carril de uso vivo
+systemctl --user unset-environment COMANDOS_DASH_TRACE_FORWARD && systemctl --user restart cc-dash.service
+P=$(systemctl --user show -p MainPID --value cc-dash.service)
+L=$(systemctl --user show -p MainPID --value cc-dash-legacy.service)
+grep Pss /proc/$P/smaps_rollup; ls /proc/$P/task | wc -l; grep Pss /proc/$L/smaps_rollup   # al minuto 1 y al 10
+```
+
+- `GET /state` no aparece en la traza (o menos de 1 de cada 100 sondeos); `GET /usage/guard` y
+  `GET /usage/analytics` aparecen como mucho una vez por minuto cada una. POST `/terminal/quick`
+  solo aparece al abrir una terminal fuera de la barra (botón «+»).
+- Pss del frente plano (± 1 MiB entre el minuto 1 y el 10) e hilos sin crecer tras el minuto 2;
+  el heredado crece menos que antes del cutover en el mismo intervalo.
+- Una pestaña nueva, un turno que pasa a «esperando» y un cambio de modelo se reflejan en el
+  tablero y en cc-app en ≤ 3 s; las popups de cc-notifyd siguen llegando. Una terminal rápida de
+  la barra se abre una vez y aparece en el tablero.
+
+### 4. Reversión
+
+Igual que en la 2c. A/B sin cambiar binario:
+
+```sh
+systemctl --user set-environment COMANDOS_DASH_NATIVE=0 && systemctl --user restart cc-dash.service
+# deshacer: systemctl --user unset-environment COMANDOS_DASH_NATIVE && systemctl --user restart cc-dash.service
+```
+
+Lo anterior vive solo en la memoria del gestor de usuario (se pierde al reiniciar o reloguear).
+Para que sobreviva, drop-in persistente:
+
+```sh
+mkdir -p ~/.config/systemd/user/cc-dash.service.d
+cat > ~/.config/systemd/user/cc-dash.service.d/no-native.conf <<'EOF'
+[Service]
+Environment=COMANDOS_DASH_NATIVE=0
+EOF
+systemctl --user daemon-reload && systemctl --user restart cc-dash.service
+systemctl --user show -p Environment cc-dash.service | grep -o 'COMANDOS_DASH_NATIVE=0'
+```
+
+Deshacer el drop-in:
+
+```sh
+rm ~/.config/systemd/user/cc-dash.service.d/no-native.conf
+systemctl --user daemon-reload && systemctl --user restart cc-dash.service
+```
+
+Volver a la release anterior (la 2c):
+
+```sh
+~/.local/share/comandos/bin/comandos install --releases
+~/.local/share/comandos/bin/comandos install --rollback-release
+systemctl --user restart cc-dash.service
+grep -qa 'GET /pomodoro, GET /sovereignty y GET /state' "$(readlink -f ~/.local/share/comandos/bin/comandos)" && echo "SIGUE LA 2d"
+```
+
+`app-tab-models.json`, las filas de `quick_terminal_requests` y el orden del workspace tienen el
+mismo formato que escribe el Python: revertir no necesita limpiar nada.
+
+### Medido antes del cutover (rama `migration/rust-fase2d`; binario de `1ccb496`, `xtask` de este commit)
+
+Arnés en namespace de red privado, copias de `~/.claude/hooks`, `app-state.sqlite3`
+(`--state-db`) y `comandos-usage.sqlite` (`--usage-db`), binario release de la rama con las
+revisiones de las Tareas 5 y 6. Las dos partes de la pila leen el `/proc` real (no está
+aislado) y, si `app-tabs.json` nombra sesiones `ssh-*`, ejecutan el `ssh -O check` real, que solo
+consulta el socket de control (preflight R8). Las pruebas de la suite nunca llaman al `ssh` real.
+
+- Suite del workspace: 821 pruebas, 0 fallos, 1 ignorada (herramienta manual de RSS); `fmt` y
+  `clippy -D warnings` limpios.
+- `xtask parity` con nativo: 139 OK, 0 DIFF, 0 SKIP de 139. Reenviadas al heredado, 8 rutas
+  distintas, una vez cada una y todas por diseño: GET `/states`, `/operator`, `/no-existe.css`,
+  `/vendor/`, `/model/status` (sin registro), `/pomodoro` (con consulta) y POST
+  `/workspace/close-group`, `/terminal-panes` (`close`). GET `/state` ya no aparece.
+- `xtask poll --shadow --minutes 10` con nativo. Además de las sesiones `cat` de la 2c, la pila
+  crea dos agentes falsos en su tmux privado (`poll-claude` y `poll-codex`: `/bin/sleep` copiado
+  con ese nombre, sesión de Claude en `~/.claude/sessions`, transcript con modelo y un registro de
+  estado `working`/`waiting` cada uno), así GET `/state` recorre la observación completa
+  (`display-message`, `capture-pane -S -45`, la pista de Codex de 2 s, cuentas, transcript) y el
+  contexto de sugerencias contra el heredado. 3390 peticiones, 0 errores de transporte, 0 no-2xx.
+  Pss del frente 17 865 KiB al minuto 0, 32 057 al minuto 1 y 34 665 al minuto 10; desde el
+  minuto 5, 34 645–34 681 KiB (36 KiB de banda) y pendiente de 192 KiB/h. Hilos del frente: 3 al
+  minuto 0, 4 al minuto 1 y 5 del minuto 2 al 10 (estable). Heredado de
+  la pila: 161 420 KiB al minuto 1 y 184 658 al minuto 10 (+23 238 KiB; oscila con su recolector,
+  máximo 230 718 al minuto 8). Reenviadas: solo GET `/usage/state` (60) y GET `/analytics/week`
+  (10). Latencia de GET `/state` (500 sondeos): p50 112 ms, p95 207 ms, p99 253 ms.
+- Lo mismo con `--no-native` (todo reenviado, la 2a): 3390 peticiones, 0 errores, 0 no-2xx;
+  heredado 168 097 KiB al minuto 1 y 288 480 al minuto 10 (+120 383 KiB). Latencia de GET `/state`
+  (500 sondeos, cada uno un `read_states_cached` del Python): p50 171 ms, p95 276 ms, p99 534 ms.
+- Criterios: frente plano, sí (36 KiB ≤ 1 MiB y 192 ≤ 1024 KiB/h); heredado ≤ 50 % del
+  crecimiento sin nativo, sí (23 238 / 120 383 = 19 %); p95 nativo ≤ p95 sin nativo, sí
+  (207 ≤ 276 ms), y p99 nativo ≤ 1000 ms, sí (253 ms).
+- Contexto de sugerencias en vivo (heredado de 4781, 5 lecturas GET): `/usage/guard` 21–70 ms y
+  `/usage/analytics?days=7` 143–310 ms, contra el plazo de 2 s por subconsulta.

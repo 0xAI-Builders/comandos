@@ -4,11 +4,12 @@
 //! Herramienta de desarrollo. Cliente HTTP a mano sobre `TcpStream`.
 
 use std::{
+    collections::BTreeMap,
     io::{Read, Write},
     net::TcpStream,
     path::PathBuf,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread,
@@ -159,6 +160,93 @@ pub const SHADOW_SESSIONS: [&str; 2] = ["local", "poll-b"];
 /// una lectura de `/proc/<pid>/stat` por pane).
 pub const SHADOW_PANES: usize = 3;
 
+/// Agentes falsos de `--shadow` (preflight B15): una sesión por agente cuyo
+/// proceso es `/bin/sleep` copiado con ese nombre, para que GET `/state`
+/// recorra la observación cara (`display-message`, `capture-pane -S -45`, la
+/// pista de Codex, cuentas y el transcript de Claude), no solo panes `cat`.
+pub const SHADOW_AGENTS: [(&str, &str); 2] = [("poll-claude", "claude"), ("poll-codex", "codex")];
+
+/// Crea las sesiones de `SHADOW_AGENTS` en el tmux privado del frente, la
+/// sesión de Claude (`~/.claude/sessions`) con su transcript y un registro de
+/// estado por agente, todo en el HOME temporal del frente y su heredado.
+fn seed_agents(stack: &crate::parity::Stack) -> Result<(), String> {
+    let home = stack.front_home()?;
+    let home_text = home.to_str().ok_or("HOME temporal no UTF-8")?;
+    let bin = stack.root().join("agents");
+    std::fs::create_dir_all(&bin).map_err(|e| e.to_string())?;
+    for (session, agent) in SHADOW_AGENTS {
+        let exe = bin.join(agent);
+        std::fs::copy("/bin/sleep", &exe).map_err(|e| format!("{}: {e}", exe.display()))?;
+        let cmd = format!(
+            "env -i HOME={home_text} PATH=/usr/bin:/bin {} 86400",
+            exe.display()
+        );
+        stack.front_tmux(&["new-session", "-d", "-s", session, "-c", home_text, &cmd])?;
+    }
+    thread::sleep(Duration::from_millis(300));
+    let pid = stack.front_tmux_output(&[
+        "display-message",
+        "-p",
+        "-t",
+        &format!("={}:", SHADOW_AGENTS[0].0),
+        "#{pane_pid}",
+    ])?;
+    let pid: i64 = pid
+        .trim()
+        .parse()
+        .map_err(|_| format!("pane_pid ilegible: {pid:?}"))?;
+    let write = |path: PathBuf, text: String| -> Result<(), String> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))
+    };
+    write(
+        home.join(".claude/sessions/poll.json"),
+        serde_json::json!({"pid": pid, "sessionId": "poll-conv", "cwd": home_text}).to_string(),
+    )?;
+    write(
+        home.join(".claude/projects/poll/poll-conv.jsonl"),
+        format!(
+            "{}\n",
+            serde_json::json!({
+                "type": "assistant", "uuid": "u1", "sessionId": "poll-conv",
+                "message": {"model": "claude-sonnet-5"},
+            })
+        ),
+    )?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let state = home.join(".claude/hooks/state");
+    write(
+        state.join("poll-claude.json"),
+        serde_json::json!({
+            "session": "poll-claude", "agent": "claude", "status": "working",
+            "detail": "poll", "ts": now,
+        })
+        .to_string(),
+    )?;
+    write(
+        state.join("poll-codex.json"),
+        serde_json::json!({
+            "session": "poll-codex", "agent": "codex", "status": "waiting",
+            "detail": "¿sigo?", "ts": now,
+        })
+        .to_string(),
+    )?;
+    println!(
+        "poll: agentes falsos en el tmux privado: {}",
+        SHADOW_AGENTS
+            .iter()
+            .map(|(s, a)| format!("{s} ({a})"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    Ok(())
+}
+
 /// `(id, identity)` de cada pane de una respuesta de `/terminal-panes`. El cuerpo
 /// puede venir en un solo trozo chunked: se toma del primer `{` al último `}`.
 pub fn pane_targets(body: &[u8]) -> Vec<(String, serde_json::Value)> {
@@ -264,6 +352,21 @@ struct Stats {
     sent: AtomicU64,
     errors: AtomicU64,
     non_2xx: AtomicU64,
+    /// Milisegundos de cada petición periódica por `"<método> <ruta>"`.
+    latency: Mutex<BTreeMap<String, Vec<u32>>>,
+}
+
+/// Percentil por rango más cercano (ms); 0 sin muestras.
+pub fn percentile(samples: &mut [u32], p: f64) -> u32 {
+    if samples.is_empty() {
+        return 0;
+    }
+    samples.sort_unstable();
+    let rank = ((p / 100.0) * samples.len() as f64).ceil() as usize;
+    samples
+        .get(rank.saturating_sub(1).min(samples.len() - 1))
+        .copied()
+        .unwrap_or(0)
 }
 
 fn extract_rev(body: &[u8]) -> String {
@@ -389,14 +492,23 @@ fn spawn_client(
                 thread::sleep(wait);
             }
             s1.sent.fetch_add(1, Ordering::Relaxed);
-            match http(
+            let t = Instant::now();
+            let result = http(
                 &a1,
                 method,
                 &path,
                 &t1,
                 body_for(&path_only(&path), panes).as_deref(),
                 Duration::from_secs(30),
-            ) {
+            );
+            let ms = t.elapsed().as_millis().min(u128::from(u32::MAX)) as u32;
+            s1.latency
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .entry(format!("{method} {}", path_only(&path)))
+                .or_default()
+                .push(ms);
+            match result {
                 Ok((st, _)) if (200..300).contains(&st) => {}
                 Ok(_) => {
                     s1.non_2xx.fetch_add(1, Ordering::Relaxed);
@@ -492,6 +604,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     s.front_tmux(&["split-window", "-d", "-t", session, "cat"])?;
                 }
             }
+            seed_agents(s)?;
             SHADOW_SESSIONS[0]
         }
         None => "poll",
@@ -586,6 +699,18 @@ pub fn run(args: &[String]) -> Result<(), String> {
         stats.errors.load(Ordering::Relaxed),
         stats.non_2xx.load(Ordering::Relaxed)
     );
+    println!("\nlatencia por ruta (ms): p50 p95 p99 n");
+    let mut table = stats.latency.lock().unwrap_or_else(|p| p.into_inner());
+    for (route, samples) in table.iter_mut() {
+        let n = samples.len();
+        let (p50, p95, p99) = (
+            percentile(samples, 50.0),
+            percentile(samples, 95.0),
+            percentile(samples, 99.0),
+        );
+        println!("  {route:<28} {p50:>5} {p95:>5} {p99:>5} {n:>5}");
+    }
+    drop(table);
     if let Some(stack) = &stack {
         let forwarded = stack.forwarded_summary();
         println!(
@@ -601,4 +726,17 @@ pub fn run(args: &[String]) -> Result<(), String> {
 
 fn path_only(p: &str) -> String {
     p.split('?').next().unwrap_or(p).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percentile_nearest_rank() {
+        let mut v = vec![50, 10, 40, 20, 30];
+        assert_eq!(percentile(&mut v, 50.0), 30);
+        assert_eq!(percentile(&mut v, 95.0), 50);
+        assert_eq!(percentile(&mut Vec::new(), 95.0), 0);
+    }
 }

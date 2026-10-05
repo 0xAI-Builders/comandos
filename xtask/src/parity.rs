@@ -1038,6 +1038,40 @@ impl Stack {
         }
     }
 
+    /// Salida de `tmux <args>` contra el servidor privado del frente (`-S`).
+    pub fn front_tmux_output(&self, args: &[&str]) -> Result<String, String> {
+        let dir = self
+            .tmux_dirs
+            .get(1)
+            .ok_or("la pila no tiene tmux privado del frente")?;
+        guard_home(dir)?;
+        let out = private_tmux(dir)
+            .args(args)
+            .stderr(Stdio::null())
+            .output()
+            .map_err(|e| format!("tmux: {e}"))?;
+        if out.status.success() {
+            Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+        } else {
+            Err(format!(
+                "tmux {} falló en el servidor privado",
+                args.join(" ")
+            ))
+        }
+    }
+
+    /// HOME del frente y de su heredado (la copia 2), siempre bajo el temporal.
+    pub fn front_home(&self) -> Result<PathBuf, String> {
+        let home = self._root.path.join("home2");
+        guard_home(&home)?;
+        Ok(home)
+    }
+
+    /// Raíz temporal de la pila (para ejecutables falsos de `poll --shadow`).
+    pub fn root(&self) -> &Path {
+        &self._root.path
+    }
+
     /// Rutas que el frente reenvió al heredado (de su traza), con su cuenta.
     pub fn forwarded_summary(&self) -> Vec<(String, usize)> {
         let text = fs::read_to_string(&self.front_log).unwrap_or_default();
