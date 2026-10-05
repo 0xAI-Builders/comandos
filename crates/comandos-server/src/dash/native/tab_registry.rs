@@ -687,3 +687,180 @@ async fn sync_after_close(native: &Native, sess: &str) {
         }
     }
 }
+
+/// Las mismas funciones sin `spawn_blocking`, para el trabajo del worker de
+/// app-state de POST `/workspace/close-group` (2f-1/T2): `close_group` necesita
+/// la conexión y llama a `close_app_tab` en medio, así que todo corre en un
+/// trabajo del worker. tmux va por `Tmux::run_blocking` (lo conduce el hilo del
+/// runtime, como en `terminal.rs`); la sincronización del workspace, sobre el
+/// mismo `StateBackend`.
+///
+/// Candados desde el hilo del worker: el `flock` de `<archivo>.lock` con
+/// sondeo y plazo (`LOCK_WAIT`, como las rutas: un dueño colgado no retiene la
+/// base para siempre) y `meta_lock` con `blocking_lock`. Sin ciclo posible:
+/// ningún camino asíncrono retiene un `flock` o `meta_lock` mientras espera
+/// al worker (los trabajos de bloqueo los sueltan al terminar y
+/// `sync_after_close` corre sin ninguno).
+pub mod blocking {
+    use super::{
+        CloseReads, RegistryError, TAB_HISTORY_FILE, TABS_FILE, TABS_META_FILE, close_label,
+        close_reads, cwd_args, ephemeral_reads, history_item, hook, meta_lock, remember_locked,
+        unmeta_locked, unmirror_locked, write_close_event,
+    };
+    use crate::HandlerError;
+    use crate::dash::native::{
+        Fault, NativeOptions,
+        files::{FileLock, LOCK_WAIT},
+        py,
+        state::StateBackend,
+        tmux::{Output, TmuxError},
+        workspace,
+    };
+    use std::{
+        collections::HashSet,
+        io,
+        path::Path,
+        time::{Duration, Instant},
+    };
+    use tokio::runtime::Handle;
+
+    /// Por qué un cierre dentro de `close_group` no terminó.
+    pub enum Failure {
+        /// Una excepción que `close_app_tab` lanza en el Python y que
+        /// `close_group` captura (`error = str(exc)`): su texto.
+        Caught(String),
+        /// Lo que el frente no reproduce (ruling 2): la ruta responde 500/504.
+        Registry(RegistryError),
+    }
+
+    impl From<RegistryError> for Failure {
+        fn from(error: RegistryError) -> Self {
+            Failure::Registry(error)
+        }
+    }
+
+    impl From<Fault> for Failure {
+        fn from(fault: Fault) -> Self {
+            Failure::Registry(RegistryError::Fault(fault))
+        }
+    }
+
+    /// `with file_lock(path)` desde un hilo propio: sondeo con espera
+    /// creciente hasta `LOCK_WAIT`.
+    fn with_lock<T>(
+        path: &Path,
+        job: impl FnOnce() -> Result<T, RegistryError>,
+    ) -> Result<T, RegistryError> {
+        let deadline = Instant::now() + LOCK_WAIT;
+        let mut pause = Duration::from_millis(2);
+        let lock = loop {
+            if let Some(lock) = FileLock::try_acquire(path).map_err(RegistryError::Io)? {
+                break lock;
+            }
+            if Instant::now() >= deadline {
+                return Err(RegistryError::Io(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!("candado de {} ocupado", path.display()),
+                )));
+            }
+            std::thread::sleep(pause);
+            pause = (pause * 2).min(Duration::from_millis(50));
+        };
+        let out = job();
+        drop(lock);
+        out
+    }
+
+    /// `remember_tab` (5223).
+    pub fn remember_tab(
+        opts: &NativeOptions,
+        sess: &str,
+        label: Option<&str>,
+        cwd: &str,
+        agent: &str,
+        reason: &str,
+    ) -> Result<(), RegistryError> {
+        let Some(item) = history_item(opts, sess, label, cwd, agent, reason) else {
+            return Ok(());
+        };
+        let path = hook(opts, TAB_HISTORY_FILE);
+        with_lock(&path, || remember_locked(&opts.hooks, &path, sess, item))
+    }
+
+    /// `remove_tab_metadata` (5289).
+    pub fn remove_tab_metadata(opts: &NativeOptions, sess: &str) -> Result<(), RegistryError> {
+        let _guard = meta_lock().blocking_lock();
+        unmeta_locked(&hook(opts, TABS_META_FILE), sess)
+    }
+
+    /// `tmux(...)` del Python desde el worker: `TimeoutExpired` y
+    /// `FileNotFoundError` con el texto que `close_group` guardaría; lo demás
+    /// no se reproduce.
+    fn tmux(opts: &NativeOptions, handle: &Handle, args: &[&str]) -> Result<Output, Failure> {
+        opts.tmux
+            .run_blocking(handle, args)
+            .map_err(|error: TmuxError| match error.python_message() {
+                Some(message) => Failure::Caught(message),
+                None => Fault::Error(error.uncaught()).into(),
+            })
+    }
+
+    /// `close_app_tab(sess, ephemeral)` (5350), igual que la asíncrona: mismas
+    /// lecturas antes de escribir, mismas órdenes de tmux en el mismo orden.
+    pub fn close_app_tab(
+        backend: &StateBackend,
+        opts: &NativeOptions,
+        handle: &Handle,
+        sess: &str,
+        ephemeral: bool,
+    ) -> Result<Option<String>, Failure> {
+        if sess == "local" {
+            return Ok(Some("La pestaña local permanece abierta".into()));
+        }
+        if ephemeral && !sess.starts_with("comandos-e2e-") {
+            return Ok(Some("ephemeral requiere comandos-e2e-".into()));
+        }
+        if ephemeral {
+            ephemeral_reads(opts)?;
+        } else {
+            let reads: CloseReads = close_reads(opts, sess)?;
+            let agent = reads.agent.clone();
+            // `tmux_sessions()` de `session_labels()`.
+            let listed = tmux(opts, handle, &["list-sessions", "-F", "#{session_name}"])?;
+            let live: HashSet<String> = if listed.ok {
+                py::splitlines(&listed.stdout)
+                    .into_iter()
+                    .filter(|l| !l.is_empty())
+                    .map(str::to_owned)
+                    .collect()
+            } else {
+                HashSet::new()
+            };
+            let label = close_label(reads, &live, sess);
+            let args = cwd_args(sess);
+            let args: Vec<&str> = args.iter().map(String::as_str).collect();
+            let out = tmux(opts, handle, &args)?;
+            let cwd = if out.ok {
+                py::strip(&out.stdout).to_owned()
+            } else {
+                String::new()
+            };
+            remember_tab(opts, sess, Some(&label), &cwd, &agent, "closed")?;
+        }
+        let path = hook(opts, TABS_FILE);
+        with_lock(&path, || unmirror_locked(&path, sess))?;
+        remove_tab_metadata(opts, sess)?;
+        // `workspace_sync(reason="user")` con `except Exception: print`.
+        let now_seconds = (opts.clock)() as f64 / 1000.0;
+        if let Err(fault) = workspace::sync_with_reason(backend, &opts.hooks, now_seconds, "user") {
+            let what = match fault {
+                Fault::Decline => "no reproducible en el frente",
+                Fault::Error(HandlerError::Timeout) => "tiempo agotado",
+                Fault::Error(_) => "error interno",
+            };
+            eprintln!("workspace close {sess}: {what}");
+        }
+        write_close_event(opts, sess);
+        Ok(None)
+    }
+}

@@ -961,12 +961,48 @@ mod scaffold_tests {
     fn every_route_has_a_cut() {
         assert_eq!(NativeRoute::Retired.cut(), Cut::Base);
         assert_eq!(NativeRoute::PaneType.cut(), Cut::Base);
-        // Toda entrada de 2b–2e pertenece a la base: ningún corte la apaga.
+        // Toda entrada de las tablas de 2b–2e pertenece a la base (ningún corte
+        // la apaga) y toda entrada de las tablas de la 2f, a su corte.
+        let base: [&[Entry]; 15] = [
+            light::ROUTES,
+            events::ROUTES,
+            notices::ROUTES,
+            workspace::ROUTES,
+            snippets::ROUTES,
+            ui_log::ROUTES,
+            pomodoro::ROUTES,
+            catalogs::ROUTES,
+            terminal::ROUTES,
+            typing::ROUTES,
+            operations::ROUTES,
+            states::ROUTES,
+            quick::ROUTES,
+            usage::ROUTES,
+            retired::ROUTES,
+        ];
+        assert_eq!(base.len() + 11, TABLES.len());
         assert!(
-            TABLES
-                .iter()
+            base.iter()
                 .flat_map(|table| table.iter())
                 .all(|entry| entry.route.cut() == Cut::Base)
+        );
+        let cuts: [&[Entry]; 11] = [
+            tabs::ROUTES,
+            sessions::ROUTES,
+            input::ROUTES,
+            ops::ROUTES,
+            remote::ROUTES,
+            ssh::ROUTES,
+            settings::ROUTES,
+            catalog_cli::ROUTES,
+            push::ROUTES,
+            news::ROUTES,
+            residue::ROUTES,
+        ];
+        assert!(
+            cuts.iter()
+                .flat_map(|table| table.iter())
+                .all(|entry| entry.route.cut() != Cut::Base)
         );
     }
 
