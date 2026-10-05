@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/comandos-core", "crates/comandos-store", "crates/comandos-runtime", "crates/comandos-extensions", "crates/comandos-server", "crates/comandos-cli", "crates/comandos-notifyd", "crates/comandos-term", "xtask"]
+members = ["crates/comandos-core", "crates/comandos-store", "crates/comandos-runtime", "crates/comandos-extensions", "crates/comandos-server", "crates/comandos-cli", "crates/comandos-notifyd", "crates/comandos-term", "crates/comandos-domdiff", "xtask"]
 resolver = "3"
 
 [workspace.package]
@@ -19,6 +19,15 @@ chrono-tz = { version = "=0.10.4", default-features = false, features = ["std"] 
 [profile.release]
 lto = "thin"
 codegen-units = 1
+strip = "symbols"
+
+# WASM de la Fase 3 (`cargo run -p xtask -- web-build`): tamaño ante todo.
+[profile.release-wasm]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
 strip = "symbols"
 
 [workspace.lints.rust]

@@ -1,0 +1,25 @@
+# Fixture de prueba de `xtask web-build` (T4): un cdylib mínimo con su propio
+# workspace. No es un crate del producto; A6/B1/B9 aportan los reales.
+[package]
+name = "fixture-web"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+wasm-bindgen = "=0.2.129"
+
+# Copia del perfil del workspace raíz: un workspace propio no lo hereda.
+[profile.release-wasm]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+[workspace]

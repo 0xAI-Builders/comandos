@@ -268,7 +268,7 @@ pub fn compose(page: &[u8], reg: &Resolved, sel: &Selection, shadow: bool, asset
     let ids: Vec<&str> = active.iter().map(|e| e.id.as_str()).collect();
     let head = format!(
         "<meta name=\"comandos-web\" content=\"{}\">\n<script type=\"module\" async src=\"/web/{}\" data-k=\"{nonce}\"></script>\n<script src=\"/web/gate.js?k={nonce}\"></script>\n",
-        ids.join(" "), assets.path("boot.js"));
+        ids.join(" "), assets.path("comandos_web_boot.js"));
     let html = match text.split_once("<meta charset=\"utf-8\">\n") {
         Some((before, after)) => format!("{before}<meta charset=\"utf-8\">\n{head}{after}"),
         None => format!("{head}{text}"),
@@ -744,7 +744,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Depende de:** B14, A11.
 
 **Files:**
-- Create: `crates/comandos-server/src/dash/web/embed.rs`, `crates/comandos-server/build.rs` (incluye `target/web/manifest.json` y los artefactos si existen; si no, compila sin embebidos y sigue sirviendo del disco)
+- Create: `crates/comandos-server/src/dash/web/embed.rs`, `crates/comandos-server/build.rs` (incluye `<target>/web/manifest.json` y los artefactos si existen; si no, compila sin embebidos y sigue sirviendo del disco. `<target>/web` se resuelve con `comandos_core::web_assets::out_dir_from` (`CARGO_TARGET_DIR` o `<workspace>/target`, como `xtask::web_build::out_dir()`), con `rerun-if-changed`/`rerun-if-env-changed=CARGO_TARGET_DIR`, y el manifiesto se valida con `Manifest::check_paths`)
 - Modify: `crates/comandos-server/src/dash/statics.rs` (orden: embebido → disco), `docs/verification/cutover-web.md` (sección final), `xtask/src/web_bench.rs`
 - Test: `crates/comandos-server/tests/web_embed.rs`
 
@@ -768,7 +768,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ````markdown
 ## Release final de la Fase 3
 ```sh
-"$NEW" install --stage
+"$NEW" install --stage --web "<CARGO_TARGET_DIR del build>/web"   # origen explícito (T4, I2); imprime «release <id> (web: …)»
 systemctl --user restart cc-dash.service
 ~/.local/share/comandos/bin/comandos web status          # todos "on", ninguno "drift"
 ```

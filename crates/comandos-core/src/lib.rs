@@ -25,3 +25,5 @@ pub mod dashboard_access;
 
 pub mod repo;
 pub mod text;
+
+pub mod web_assets;
