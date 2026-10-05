@@ -110,7 +110,7 @@ pub struct CliState {
     opencode: Mutex<OpencodeCache>,
     /// `_MODEL_WATCH_LOCK` y `_model_watch_state` (Tarea 6): un ciclo del
     /// vigilante a la vez (bucle, `?refresh=1`).
-    pub(crate) watch: tokio::sync::Mutex<background::models::WatchState>,
+    pub(crate) watch: Arc<tokio::sync::Mutex<background::models::WatchState>>,
 }
 
 /// La llave de `derived`: `(checkedAt, mtime_ns, ventana)`.

@@ -820,20 +820,33 @@ pub fn watch_models(host: &dyn Host, at: &WatchPaths, now: i64) -> Result<Watch>
     })
 }
 
-/// `open(path + ".tmp", "w")` + `json.dump(snap, fh, indent=1)` +
-/// `os.replace`: cualquier error lanza.
+/// `json.dump(snap, fh, indent=1)` + `os.replace`: cualquier error lanza.
+/// El temporal es exclusivo de esta escritura; el heredado sigue usando
+/// `path + ".tmp"` mientras ambos procesos conviven.
 pub fn write_tmp_replace(path: &Path, value: &Value) -> Result<()> {
     let text = indent_dumps(value, 1, true).map_err(|_| Fault::Unsure)?;
     let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
+    tmp.push(format!(
+        ".{}.tmp",
+        crate::fresh_id("rust").map_err(|_| Fault::Raises)?
+    ));
     let tmp = PathBuf::from(tmp);
+    // Abrir fuera del bloque de limpieza: si la creación exclusiva falla,
+    // no somos dueños de ese nombre y no debemos borrarlo.
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)
+        .map_err(|_| Fault::Raises)?;
     let written = (|| -> io::Result<()> {
-        let mut file = fs::File::create(&tmp)?;
         file.write_all(text.as_bytes())?;
         file.flush()?;
         drop(file);
         fs::rename(&tmp, path)
     })();
+    if written.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
     written.map_err(|_| Fault::Raises)
 }
 

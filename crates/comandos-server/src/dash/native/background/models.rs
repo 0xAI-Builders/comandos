@@ -69,7 +69,7 @@ pub struct WatchState {
 }
 
 /// El candado del vigilante (`_MODEL_WATCH_LOCK`) de este frente.
-pub fn lock(native: &Native) -> &tokio::sync::Mutex<WatchState> {
+pub fn lock(native: &Native) -> &Arc<tokio::sync::Mutex<WatchState>> {
     &native.cli.watch
 }
 
@@ -262,19 +262,33 @@ fn now_int(opts: &NativeOptions) -> i64 {
 
 /// `_model_watch_cycle(force)`: espera el candado y corre una vuelta.
 pub async fn cycle(native: &Arc<Native>, force: bool) -> Option<Watch> {
-    let mut state = lock(native).lock().await;
-    cycle_locked(native, &mut state, force).await
+    run_owned_cycle(native, force, None).await
 }
 
 /// `_force_model_watch_cycle()`: una vuelta completa salvo que otra termine
 /// su escaneo mientras se espera el candado (coalesce por finalización).
 pub async fn force_cycle(native: &Arc<Native>) {
     let started = (native.options().clock_seconds)();
-    let mut state = lock(native).lock().await;
-    if state.last_full >= started {
-        return;
+    run_owned_cycle(native, true, Some(started)).await;
+}
+
+/// Esperar el candado no produce efectos. Una vez adquirido, la tarea
+/// registrada conserva la guardia y termina escrituras y avisos aunque el
+/// cliente se vaya o venza su plazo HTTP. No se crean tareas por los clientes
+/// que cancelan mientras esperan otro ciclo.
+async fn run_owned_cycle(native: &Arc<Native>, force: bool, started: Option<f64>) -> Option<Watch> {
+    let mut state = Arc::clone(lock(native)).lock_owned().await;
+    if started.is_some_and(|at| state.last_full >= at) {
+        return None;
     }
-    cycle_locked(native, &mut state, true).await;
+    let job = native
+        .tasks()
+        .spawn_handle({
+            let native = Arc::clone(native);
+            async move { cycle_locked(&native, &mut state, force).await }
+        })
+        .ok()?;
+    job.await.ok().flatten()
 }
 
 async fn blocking<T: Send + 'static>(job: impl FnOnce() -> T + Send + 'static) -> Option<T> {

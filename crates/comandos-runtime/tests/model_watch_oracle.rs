@@ -43,6 +43,40 @@ fn write(path: &Path, text: &str) {
     fs::write(path, text).unwrap();
 }
 
+#[test]
+fn snapshot_write_leaves_legacy_pending_file_untouched() {
+    let root = home("pending-snapshot");
+    let path = root.join("model-watch.json");
+    let pending = root.join("model-watch.json.tmp");
+    let legacy = r#"{"checkedAt":123,"owner":"legacy"}"#;
+    write(&pending, legacy);
+    model_watch::write_tmp_replace(&path, &json!({"checkedAt": 124})).unwrap();
+    assert_eq!(fs::read_to_string(&pending).unwrap(), legacy);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&fs::read(&path).unwrap()).unwrap(),
+        json!({"checkedAt": 124})
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn failed_snapshot_publish_removes_only_its_temporary_file() {
+    let root = home("failed-snapshot");
+    let path = root.join("news-watch.json");
+    fs::create_dir(&path).unwrap();
+    let pending = root.join("news-watch.json.tmp");
+    write(&pending, "legacy pending");
+    assert!(model_watch::write_tmp_replace(&path, &json!({"checkedAt": 124})).is_err());
+    assert_eq!(fs::read_to_string(&pending).unwrap(), "legacy pending");
+    let leftovers: Vec<_> = fs::read_dir(&root)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .filter(|name| name.to_string_lossy().contains(".tmp"))
+        .collect();
+    assert_eq!(leftovers, vec![pending.file_name().unwrap()]);
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn script(path: &Path, text: &str) {
     write(path, text);
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();

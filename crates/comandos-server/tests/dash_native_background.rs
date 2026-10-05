@@ -401,6 +401,67 @@ fn versions_calls(home: &TestHome) -> usize {
         .count()
 }
 
+#[derive(Default)]
+struct GatedNotify {
+    entered: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+    delivered: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl comandos_server::dash::native::usage::pane_models::NotifyPost for GatedNotify {
+    fn post(
+        &self,
+        _body: String,
+    ) -> comandos_server::dash::native::usage::pane_models::NotifyFuture {
+        let entered = Arc::clone(&self.entered);
+        let release = Arc::clone(&self.release);
+        let delivered = Arc::clone(&self.delivered);
+        Box::pin(async move {
+            entered.notify_one();
+            release.notified().await;
+            delivered.fetch_add(1, Ordering::SeqCst);
+        })
+    }
+}
+
+#[tokio::test]
+async fn cancelled_refresh_finishes_its_notice_and_keeps_cycle_exclusive() {
+    let home = TestHome::new_short("mw-cancel");
+    for (name, text) in fakes() {
+        support::oracle::write_executable(&home.root.join("bin").join(name), &text);
+    }
+    let notify = Arc::new(GatedNotify::default());
+    let mut opts = home.options();
+    opts.user_bin_dirs = support::twin::home_bin_dirs();
+    opts.notifyd = notify.clone();
+    let native = Arc::new(Native::new(opts));
+    assert!(native.ready().await);
+    let caller = tokio::spawn({
+        let native = Arc::clone(&native);
+        async move { models::force_cycle(&native).await }
+    });
+    tokio::time::timeout(Duration::from_secs(10), notify.entered.notified())
+        .await
+        .expect("el ciclo debe llegar al aviso");
+    caller.abort();
+    assert!(caller.await.unwrap_err().is_cancelled());
+    let still_exclusive = models::lock(&native).try_lock().is_err();
+    // Liberar antes de afirmar, para no dejar tareas detenidas si falla.
+    notify.release.notify_one();
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !native.tasks().is_empty() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(still_exclusive, "cancelar HTTP no libera el ciclo en curso");
+    assert_eq!(notify.delivered.load(Ordering::SeqCst), 1);
+    let snapshot: Value = serde_json::from_str(&read(&home, "model-watch.json")).unwrap();
+    assert!(snapshot.get("heartbeatAt").is_some());
+    native.shutdown().await;
+}
+
 /// Dos `force_cycle` a la vez: un solo escaneo (el segundo coalesce porque el
 /// primero terminó después de que él llegara).
 #[tokio::test]

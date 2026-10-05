@@ -284,10 +284,33 @@ fn urlencode(pairs: &[(&str, &str)]) -> String {
 
 /// `urllib.parse.urljoin(base, loc)` para lo que manda un `Location`:
 /// absoluta, sin esquema (`//host/…`), de raíz (`/ruta`) o relativa sin
-/// segmentos `.`/`..` (esos no se reproducen).
+/// segmentos `.`/`..` (esos no se reproducen), consulta o fragmento.
 fn urljoin(base: &str, loc: &str) -> Q<String> {
     let scheme_end = base.find("://").ok_or(Exc::Unsure)?;
     let scheme = base.get(..scheme_end).unwrap_or_default();
+    if loc.is_empty() {
+        return Ok(base.to_owned());
+    }
+    if loc.starts_with(['?', '#']) {
+        let (reference, fragment) = loc.split_once('#').unwrap_or((loc, ""));
+        let base_without_fragment = base.split('#').next().unwrap_or(base);
+        let query = reference.strip_prefix('?').unwrap_or("");
+        let mut target = if query.is_empty() {
+            // urllib hereda también la consulta cuando `Location` es "?".
+            base_without_fragment.to_owned()
+        } else {
+            let resource = base_without_fragment
+                .split('?')
+                .next()
+                .unwrap_or(base_without_fragment);
+            format!("{resource}?{query}")
+        };
+        if !fragment.is_empty() {
+            target.push('#');
+            target.push_str(fragment);
+        }
+        return Ok(target);
+    }
     if loc.contains("://") && loc.split("://").next().is_some_and(|s| !s.contains('/')) {
         return Ok(loc.to_owned());
     }
@@ -304,7 +327,6 @@ fn urljoin(base: &str, loc: &str) -> Q<String> {
         .split(['?', '#'])
         .next()
         .is_some_and(|p| p.split('/').any(|seg| seg == "." || seg == ".."))
-        || loc.is_empty()
     {
         return Err(Exc::Unsure);
     }
@@ -1241,5 +1263,27 @@ mod tests {
         );
         assert_eq!(urljoin(base, "w").unwrap(), "https://a.example/x/w");
         assert!(urljoin(base, "../w").is_err());
+    }
+
+    #[test]
+    fn redirect_query_and_fragment_keep_the_original_resource() {
+        // Resultados de urllib.parse.urljoin, también con consulta vacía.
+        let base = "https://feed.test/api/listings?page=1#old";
+        for (location, expected) in [
+            ("?page=2", "https://feed.test/api/listings?page=2"),
+            ("#new", "https://feed.test/api/listings?page=1#new"),
+            ("?page=2#new", "https://feed.test/api/listings?page=2#new"),
+            ("?", "https://feed.test/api/listings?page=1"),
+            ("#", "https://feed.test/api/listings?page=1"),
+            ("?#new", "https://feed.test/api/listings?page=1#new"),
+            ("?#", "https://feed.test/api/listings?page=1"),
+            ("", base),
+        ] {
+            assert_eq!(urljoin(base, location).unwrap(), expected, "{location:?}");
+        }
+        assert_eq!(
+            urljoin("https://feed.test?page=1", "?page=2").unwrap(),
+            "https://feed.test?page=2"
+        );
     }
 }
