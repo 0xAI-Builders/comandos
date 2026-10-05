@@ -15,8 +15,16 @@ mod support;
 
 use comandos_runtime::providers;
 use serde_json::{Value, json};
+use std::{
+    os::unix::fs::PermissionsExt,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
 use support::{
-    FakeLegacy, TestHome, front, get,
+    FakeLegacy, Front, TestHome, front, get,
     oracle::{OracleOpts, run_dash_with},
     twin::{Twin, TwinOpts},
 };
@@ -420,6 +428,96 @@ async fn opencode_models_empty_output_matches_python() {
     // El `opencode` que anota del `fakebin` no imprime nada: `[]`.
     let body = same(&t, "/opencode/models").await;
     assert_eq!(body, r#"{"providers": []}"#);
+}
+
+// ---------------------------------------------------------------------------
+// Frente solo: lo incierto se recuerda (revisión de la Tarea 4)
+// ---------------------------------------------------------------------------
+
+/// Reloj del frente en segundos (bits de `f64`), movible desde la prueba.
+struct Clock(Arc<AtomicU64>);
+
+impl Clock {
+    fn at(seconds: f64) -> Self {
+        Self(Arc::new(AtomicU64::new(seconds.to_bits())))
+    }
+
+    fn set(&self, seconds: f64) {
+        self.0.store(seconds.to_bits(), Ordering::SeqCst);
+    }
+}
+
+/// Un frente solo (sin oráculo): su `PATH` es `<HOME>/bin` con los guiones
+/// dados y `sh`; los CLIs anotan en `<HOME>/cli.log`. Lo que declina va al
+/// heredado falso (`{"legacy": true}`).
+async fn lone_front(
+    home: &TestHome,
+    scripts: &[(&str, String)],
+    clock: &Clock,
+    repo: Option<std::path::PathBuf>,
+) -> (FakeLegacy, Front) {
+    let bin = home.root.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    for (name, text) in scripts {
+        let path = bin.join(name);
+        std::fs::write(&path, text).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    std::os::unix::fs::symlink("/bin/sh", bin.join("sh")).unwrap();
+    let mut opts = home.options();
+    opts.user_bin_dirs = support::twin::home_bin_dirs();
+    if repo.is_some() {
+        opts.repo_root = repo;
+    }
+    let clock = Arc::clone(&clock.0);
+    opts.clock_seconds = Arc::new(move || f64::from_bits(clock.load(Ordering::SeqCst)));
+    let legacy = FakeLegacy::start().await;
+    let server = front(home, legacy.port, opts).await;
+    (legacy, server)
+}
+
+/// Líneas de `<HOME>/cli.log` que empiezan por `prefix` (tras dejar terminar
+/// cualquier tarea lanzada en segundo plano).
+async fn calls(home: &TestHome, prefix: &str) -> usize {
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    std::fs::read_to_string(home.root.join("cli.log"))
+        .unwrap_or_default()
+        .lines()
+        .filter(|l| l.starts_with(prefix))
+        .count()
+}
+
+const LEGACY: &str = r#"{"legacy": true}"#;
+const T0: f64 = 1_759_680_000.0;
+
+/// I1: una salida de `opencode models` que el port no reproduce (`NaN`)
+/// declina, y las peticiones siguientes declinan sin relanzar el refresco
+/// (que reescribe la caché de proveedores de opencode) hasta que vence la
+/// frescura de 900 s; entonces se sondea una vez más.
+#[tokio::test]
+async fn opencode_models_unsure_declines_without_relaunching() {
+    let home = TestHome::new("oc-unsure");
+    seed_providers_env(&home);
+    let clock = Clock::at(T0);
+    let nan = "models) echo '{\"id\": \"x\", \"providerID\": \"p\", \"n\": NaN}';;\n";
+    let (legacy, server) = lone_front(
+        &home,
+        &[("opencode", fake_cli("1.0.0", "", nan))],
+        &clock,
+        None,
+    )
+    .await;
+    for _ in 0..4 {
+        assert_eq!(get(server.port, "/opencode/models").await.text(), LEGACY);
+    }
+    assert_eq!(calls(&home, "opencode models").await, 1);
+    clock.set(T0 + 901.0);
+    for _ in 0..3 {
+        assert_eq!(get(server.port, "/opencode/models").await.text(), LEGACY);
+    }
+    assert_eq!(calls(&home, "opencode models").await, 2);
+    assert_eq!(legacy.requests().len(), 7);
+    server.stop().await;
 }
 
 #[test]

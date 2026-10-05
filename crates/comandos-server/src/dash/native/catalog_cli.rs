@@ -152,9 +152,11 @@ struct OpencodeCache {
     at: f64,
     data: Vec<Value>,
     refresh: Option<watch::Receiver<bool>>,
-    /// El último refresco leyó algo que el port no reproduce con certeza: la
-    /// ruta declina hasta que otro refresco lo aclare.
-    unsure: bool,
+    /// Cuándo un refresco leyó por última vez algo que el port no reproduce
+    /// con certeza (lo que el Python tiene en su caché es desconocido). Hasta
+    /// que pase `OPENCODE_FRESH` la ruta declina sin lanzar nada; después se
+    /// sondea una vez, como en frío.
+    unsure_at: Option<f64>,
 }
 
 pub async fn answer(native: &Arc<Native>, route: CliRoute, request: &Request) -> Answer {
@@ -732,8 +734,19 @@ async fn opencode_models(native: &Arc<Native>) -> Answer {
     let now = (native.options().clock_seconds)();
     let (data, mut done) = {
         let mut cache = native.cli.opencode.lock().map_err(|_| failure())?;
-        let data = cache.data.clone();
-        if !cache.unsure && !data.is_empty() && now - cache.at < OPENCODE_FRESH {
+        // Lo último leído no se reproduce: se declina antes de cualquier
+        // efecto (el refresco reescribe la caché de proveedores de opencode).
+        if cache.unsure_at.is_some_and(|t| now - t < OPENCODE_FRESH) {
+            return Err(Fault::Decline);
+        }
+        // Vencida la incertidumbre, los datos viejos no son los del Python:
+        // se espera el sondeo como en frío.
+        let data = if cache.unsure_at.is_some() {
+            Vec::new()
+        } else {
+            cache.data.clone()
+        };
+        if !data.is_empty() && now - cache.at < OPENCODE_FRESH {
             return models_reply(data);
         }
         let done = match &cache.refresh {
@@ -748,11 +761,6 @@ async fn opencode_models(native: &Arc<Native>) -> Answer {
                 rx
             }
         };
-        // Lo último leído no se reproduce: el Python responde (el refresco
-        // ya lanzado puede aclararlo para la próxima).
-        if cache.unsure {
-            return Err(Fault::Decline);
-        }
         (data, done)
     };
     if !data.is_empty() {
@@ -760,24 +768,31 @@ async fn opencode_models(native: &Arc<Native>) -> Answer {
     }
     let _ = tokio::time::timeout(OPENCODE_WAIT, done.wait_for(|finished| *finished)).await;
     let cache = native.cli.opencode.lock().map_err(|_| failure())?;
-    if cache.unsure {
+    if cache.unsure_at.is_some() {
         return Err(Fault::Decline);
     }
     models_reply(cache.data.clone())
 }
 
-/// `_opencode_models_refresh`: solo una lista no vacía se guarda.
+/// `_opencode_models_refresh`: solo una lista no vacía se guarda. Lo incierto
+/// queda fechado; una lista vacía tras lo incierto no lo aclara (el Python
+/// conserva lo que tenía) y vuelve a fechar la incertidumbre.
 async fn refresh_opencode(native: Arc<Native>, done: watch::Sender<bool>) {
     let result = fetch_opencode(&native).await;
     if let Ok(mut cache) = native.cli.opencode.lock() {
+        let now = (native.options().clock_seconds)();
         match result {
             Ok(data) if !data.is_empty() => {
-                cache.at = (native.options().clock_seconds)();
+                cache.at = now;
                 cache.data = data;
-                cache.unsure = false;
+                cache.unsure_at = None;
             }
-            Ok(_) => {}
-            Err(Unsure) => cache.unsure = true,
+            Ok(_) => {
+                if cache.unsure_at.is_some() {
+                    cache.unsure_at = Some(now);
+                }
+            }
+            Err(Unsure) => cache.unsure_at = Some(now),
         }
         cache.refresh = None;
     }
