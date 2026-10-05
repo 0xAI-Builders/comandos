@@ -22,6 +22,8 @@ pub mod limits;
 pub mod model_catalog;
 pub mod model_watch;
 pub mod news_agents;
+pub mod news_editions;
+pub mod news_radar;
 pub mod news_watch;
 pub mod pane_snapshot;
 pub mod pane_typing;
