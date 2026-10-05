@@ -1,0 +1,4 @@
+{"name":"o-configure-pane-invalido","method":"POST","path":"/session/configure","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"s","pane":"0"},"volatile":[],"expect":"same"}
+{"name":"o-configure-requestid-invalido","method":"POST","path":"/session/configure","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"s","pane":"%0","requestId":"x"},"volatile":[],"expect":"same"}
+{"name":"o-account-switch-sin-pane","method":"POST","path":"/account/switch","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"s","alias":"work"},"volatile":[],"expect":"same"}
+{"name":"o-model-status-sin-fila","method":"GET","path":"/model/status?operationKey=nadie%7C%250","headers":{"Host":"127.0.0.1"},"volatile":[],"expect":"same"}

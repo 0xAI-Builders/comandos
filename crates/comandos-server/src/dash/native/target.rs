@@ -31,12 +31,7 @@ use std::{
 };
 
 /// Rutas de configuración: el Python NO sustituye la sesión por la resuelta.
-pub const CONFIG_ROUTES: [&str; 4] = [
-    "/session/configure",
-    "/account/switch",
-    "/harness/switch",
-    "/model/switch",
-];
+pub const CONFIG_ROUTES: [&str; 3] = ["/session/configure", "/account/switch", "/model/switch"];
 
 /// `sess`, `target` (`=<sess>`), `pane` (`=<sess>:` o el pane exacto vivo) y
 /// lo que devolvió `resolve_project_session`.
