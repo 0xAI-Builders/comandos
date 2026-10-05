@@ -289,9 +289,11 @@ dependencies = [
 name = "comandos-cli"
 version = "0.1.0"
 dependencies = [
+ "comandos-core",
  "comandos-extensions",
  "comandos-runtime",
  "comandos-server",
+ "serde_json",
  "sha2",
 ]
 

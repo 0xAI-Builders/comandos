@@ -2,7 +2,8 @@
 //! perfil `release-wasm`, pasa `wasm-bindgen` y `wasm-opt -Oz`, nombra cada crate
 //! por el hash de su contenido (`<out>/<hash>/…`) y escribe `<out>/manifest.json`.
 //! `<out>` es `<directorio de compilación>/web`, resuelto como cargo (preflight R6),
-//! y es lo que `comandos install --stage` copia a la release.
+//! y se instala con `comandos install --stage --web <out>` (origen explícito). Solo
+//! se reemplaza entero y al final: un build fallido no crea ni toca `<out>`.
 use flate2::{Compression, write::GzEncoder};
 use sha2::{Digest, Sha256};
 use std::ffi::OsString;
@@ -152,7 +153,7 @@ impl Tools {
         let opt = version(&self.wasm_opt);
         if opt
             .as_deref()
-            .map(|v| !v.contains(WASM_OPT_VERSION))
+            .map(|v| !wasm_opt_version_ok(v))
             .unwrap_or(true)
         {
             return Err(format!(
@@ -162,6 +163,15 @@ impl Tools {
         }
         Ok(())
     }
+}
+
+/// `wasm-opt version 116 (version_116)`: la palabra que sigue a `version` es
+/// exactamente `116`.
+pub fn wasm_opt_version_ok(line: &str) -> bool {
+    line.split_whitespace()
+        .skip_while(|w| *w != "version")
+        .nth(1)
+        == Some(WASM_OPT_VERSION)
 }
 
 /// Primera línea de `<tool> --version`, o `None` si no se pudo ejecutar.
@@ -197,8 +207,8 @@ pub fn target_dir() -> Result<PathBuf, String> {
     ))
 }
 
-/// `<directorio de compilación>/web`: lo que escribe `web-build` y lee
-/// `install --stage` (y, más adelante, el `build.rs` de B15).
+/// `<directorio de compilación>/web`: lo que escribe `web-build`, lo que se pasa a
+/// `install --stage --web` y lo que leerá el `build.rs` de B15.
 pub fn out_dir() -> Result<PathBuf, String> {
     target_dir().map(|t| t.join("web"))
 }
@@ -346,77 +356,113 @@ fn build_one(opts: &Options, c: &WasmCrate) -> Result<Built, String> {
     })
 }
 
-/// Deja `<out>/<hash>/` completo: se escribe aparte y entra con un `rename`. Un
-/// `<hash>/` existente tiene el mismo contenido y se conserva.
-fn place(out: &Path, b: &Built) -> Result<(), String> {
-    let dest = out.join(&b.hash);
-    if dest.is_dir() {
-        return Ok(());
-    }
-    let tmp = out.join(format!(".{}.tmp.{}", b.hash, std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
-    fs::create_dir_all(&tmp).map_err(|e| format!("no se pudo crear {}: {e}", tmp.display()))?;
-    for (_, physical, bytes) in &b.files {
-        let p = tmp.join(physical);
-        fs::write(&p, bytes).map_err(|e| format!("no se pudo escribir {}: {e}", p.display()))?;
-    }
-    fs::rename(&tmp, &dest).map_err(|e| {
-        let _ = fs::remove_dir_all(&tmp);
-        format!("no se pudo instalar {}: {e}", dest.display())
-    })
-}
-
 /// Un nombre de directorio de hash: 12 dígitos hexadecimales en minúscula.
 fn is_hash_dir(name: &str) -> bool {
-    name.len() == 12
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    name.len() == 12 && name.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-/// Une `new` sobre `old` (compilar un crate conserva las entradas de los demás) y
-/// borra de `out` los directorios de hash que ya nadie referencia. Lo que no tenga
-/// forma de hash se respeta.
-pub fn merge_and_prune(out: &Path, old: Manifest, new: Manifest) -> Result<Manifest, String> {
-    let mut merged = old;
-    merged.files.extend(new.files);
-    let live: std::collections::BTreeSet<&str> = merged
-        .files
-        .values()
-        .filter_map(|v| v.split('/').next())
-        .collect();
-    let rd = fs::read_dir(out).map_err(|e| format!("no se pudo leer {}: {e}", out.display()))?;
+/// Escribe los archivos de un crate en `<next>/<hash>/`.
+fn write_built(next: &Path, b: &Built) -> Result<(), String> {
+    let dir = next.join(&b.hash);
+    fs::create_dir_all(&dir).map_err(|e| format!("no se pudo crear {}: {e}", dir.display()))?;
+    for (_, physical, bytes) in &b.files {
+        let p = dir.join(physical);
+        fs::write(&p, bytes).map_err(|e| format!("no se pudo escribir {}: {e}", p.display()))?;
+    }
+    Ok(())
+}
+
+/// Copia (sin subir) los archivos regulares de `from` a `to`, que se crea.
+fn copy_flat(from: &Path, to: &Path) -> Result<(), String> {
+    fs::create_dir_all(to).map_err(|e| format!("no se pudo crear {}: {e}", to.display()))?;
+    let rd = fs::read_dir(from).map_err(|e| format!("no se pudo leer {}: {e}", from.display()))?;
     for entry in rd {
-        let entry = entry.map_err(|e| format!("no se pudo leer {}: {e}", out.display()))?;
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else {
-            continue;
-        };
-        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
-        if is_dir && is_hash_dir(name) && !live.contains(name) {
-            let p = entry.path();
-            fs::remove_dir_all(&p)
-                .map_err(|e| format!("no se pudo borrar {}: {e}", p.display()))?;
+        let entry = entry.map_err(|e| format!("no se pudo leer {}: {e}", from.display()))?;
+        if entry.file_type().is_ok_and(|t| t.is_file()) {
+            let dest = to.join(entry.file_name());
+            fs::copy(entry.path(), &dest)
+                .map_err(|e| format!("no se pudo copiar a {}: {e}", dest.display()))?;
         }
     }
+    Ok(())
+}
+
+/// Completa en `next` (que ya tiene los directorios de hash de `fresh`) la salida
+/// nueva: une `fresh` sobre `old` (compilar un crate conserva los demás), copia de
+/// `out` los directorios de hash de `old` que siguen vivos y escribe
+/// `next/manifest.json`. Una entrada vieja cuyo directorio falta se descarta con
+/// aviso. `out` no se toca: la salida es solo de `web-build`, así que lo que el
+/// manifiesto no referencia no pasa a la nueva.
+pub fn assemble(
+    out: &Path,
+    next: &Path,
+    old: Manifest,
+    fresh: Manifest,
+) -> Result<Manifest, String> {
+    let mut merged = Manifest::default();
+    for (logical, path) in old.files {
+        if fresh.files.contains_key(&logical) {
+            continue;
+        }
+        let Some(hash) = path.split('/').next().filter(|h| is_hash_dir(h)) else {
+            eprintln!("aviso: {logical} → {path} no tiene forma <hash>/…; se descarta");
+            continue;
+        };
+        let have = next.join(hash);
+        if !have.is_dir() {
+            let from = out.join(hash);
+            if !from.is_dir() {
+                eprintln!(
+                    "aviso: {logical} → {path} falta en {}; se descarta",
+                    out.display()
+                );
+                continue;
+            }
+            copy_flat(&from, &have)?;
+        }
+        merged.files.insert(logical, path);
+    }
+    merged.files.extend(fresh.files);
+    let text = serde_json::to_string_pretty(&merged).map_err(|e| e.to_string())?;
+    let path = next.join(MANIFEST_FILE);
+    fs::write(&path, format!("{text}\n"))
+        .map_err(|e| format!("no se pudo escribir {}: {e}", path.display()))?;
     Ok(merged)
 }
 
-/// Compila los crates de `opts`, actualiza `<out>/manifest.json` y lo devuelve.
-pub fn build(opts: &Options) -> Result<Manifest, String> {
-    opts.tools.check()?;
-    fs::create_dir_all(&opts.out)
-        .map_err(|e| format!("no se pudo crear {}: {e}", opts.out.display()))?;
-    let mut fresh = Manifest::default();
-    for c in &opts.crates {
-        let b = build_one(opts, c)?;
-        place(&opts.out, &b)?;
-        for (logical, physical, _) in &b.files {
-            fresh
-                .files
-                .insert(logical.clone(), format!("{}/{physical}", b.hash));
+/// Pone `next` en el lugar de `out`. Si `out` existe, `renameat2(RENAME_EXCHANGE)`
+/// los intercambia de una vez y la salida vieja acaba en `trash`, que se borra; si el
+/// sistema de archivos no lo admite, dos `rename` (con una ventana sin `out`).
+pub fn swap_into_place(next: &Path, out: &Path, trash: &Path) -> Result<(), String> {
+    use nix::fcntl::{AT_FDCWD, RenameFlags, renameat2};
+    let err = |e: &dyn std::fmt::Display| format!("no se pudo instalar {}: {e}", out.display());
+    if out.symlink_metadata().is_err() {
+        return fs::rename(next, out).map_err(|e| err(&e));
+    }
+    let _ = fs::remove_dir_all(trash);
+    match renameat2(AT_FDCWD, next, AT_FDCWD, out, RenameFlags::RENAME_EXCHANGE) {
+        // Tras el intercambio, `next` es la salida vieja.
+        Ok(()) => fs::rename(next, trash).map_err(|e| err(&e))?,
+        Err(_) => {
+            fs::rename(out, trash).map_err(|e| err(&e))?;
+            fs::rename(next, out).map_err(|e| err(&e))?;
         }
     }
+    let _ = fs::remove_dir_all(trash);
+    Ok(())
+}
+
+/// Compila los crates de `opts` y, solo si todo salió bien, sustituye `<out>` por
+/// la salida nueva con su `manifest.json`. Un fallo (cargo, bindgen, wasm-opt o
+/// presupuesto) no crea ni toca `<out>`. Los temporales viven en
+/// `<target>/web-build/`, fuera de `<out>`.
+pub fn build(opts: &Options) -> Result<Manifest, String> {
+    opts.tools.check()?;
+    let built = opts
+        .crates
+        .iter()
+        .map(|c| build_one(opts, c))
+        .collect::<Result<Vec<_>, _>>()?;
     let path = opts.out.join(MANIFEST_FILE);
     let old = match fs::read(&path) {
         Ok(bytes) => serde_json::from_slice(&bytes)
@@ -424,18 +470,34 @@ pub fn build(opts: &Options) -> Result<Manifest, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Manifest::default(),
         Err(e) => return Err(format!("no se pudo leer {}: {e}", path.display())),
     };
-    let merged = merge_and_prune(&opts.out, old, fresh)?;
-    let text = serde_json::to_string_pretty(&merged).map_err(|e| e.to_string())?;
-    let tmp = opts
-        .out
-        .join(format!(".{MANIFEST_FILE}.tmp.{}", std::process::id()));
-    fs::write(&tmp, format!("{text}\n"))
-        .and_then(|()| fs::rename(&tmp, &path))
-        .map_err(|e| {
-            let _ = fs::remove_file(&tmp);
-            format!("no se pudo escribir {}: {e}", path.display())
-        })?;
-    Ok(merged)
+    let work = opts.target_dir.join("web-build");
+    let pid = std::process::id();
+    let next = work.join(format!("out.{pid}"));
+    let _ = fs::remove_dir_all(&next);
+    let result = (|| {
+        fs::create_dir_all(&next)
+            .map_err(|e| format!("no se pudo crear {}: {e}", next.display()))?;
+        let mut fresh = Manifest::default();
+        for b in &built {
+            write_built(&next, b)?;
+            for (logical, physical, _) in &b.files {
+                fresh
+                    .files
+                    .insert(logical.clone(), format!("{}/{physical}", b.hash));
+            }
+        }
+        let merged = assemble(&opts.out, &next, old, fresh)?;
+        if let Some(parent) = opts.out.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("no se pudo crear {}: {e}", parent.display()))?;
+        }
+        swap_into_place(&next, &opts.out, &work.join(format!("old.{pid}")))?;
+        Ok(merged)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_dir_all(&next);
+    }
+    result
 }
 
 /// `(--crate elegido o None = todos, --check-budget)`.

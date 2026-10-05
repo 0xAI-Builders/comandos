@@ -187,22 +187,79 @@ fn scratch(tag: &str) -> PathBuf {
     d
 }
 
+/// Herramientas wasm o `None` con un aviso: las pruebas que compilan de verdad se
+/// saltan (no fallan) en una máquina sin `wasm-bindgen 0.2.129`, `wasm-opt 116` o
+/// el target `wasm32-unknown-unknown`.
+fn wasm_tools_or_skip(test: &str) -> Option<Tools> {
+    let tools = Tools::from_env();
+    if let Err(e) = tools.check() {
+        eprintln!("SKIP {test}: {e}");
+        return None;
+    }
+    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into());
+    let sysroot = Command::new(rustc)
+        .args(["--print", "sysroot"])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    let has_target = sysroot.is_some_and(|s| {
+        Path::new(&s)
+            .join("lib/rustlib/wasm32-unknown-unknown")
+            .is_dir()
+    });
+    if !has_target {
+        eprintln!("SKIP {test}: falta el target (rustup target add wasm32-unknown-unknown)");
+        return None;
+    }
+    Some(tools)
+}
+
+fn fixture_opts(out: &Path, tools: Tools) -> Options {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/wasm-fixture");
+    Options {
+        manifest_path: fixture.join("Cargo.toml"),
+        target_dir: web_build::target_dir().unwrap().join("xtask-wasm-fixture"),
+        out: out.to_path_buf(),
+        crates: vec![WasmCrate::new(
+            "fixture-web",
+            BindgenTarget::Web,
+            600 * 1024,
+        )],
+        check_budget: true,
+        tools,
+    }
+}
+
+/// Lista recursiva (ruta relativa, bytes) de un árbol.
+fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+    let mut out = Vec::new();
+    let mut todo = vec![root.to_path_buf()];
+    while let Some(d) = todo.pop() {
+        for e in fs::read_dir(&d).unwrap() {
+            let p = e.unwrap().path();
+            let rel = p.strip_prefix(root).unwrap().to_path_buf();
+            if p.is_dir() {
+                out.push((rel, Vec::new()));
+                todo.push(p);
+            } else {
+                out.push((rel, fs::read(&p).unwrap()));
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 /// Compila de verdad un cdylib mínimo (fixture de prueba, no producto) con la
 /// cadena completa: cargo → wasm-bindgen → wasm-opt → hash → manifest.
 #[test]
 fn builds_a_fixture_crate_end_to_end() {
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/wasm-fixture");
-    let target = web_build::target_dir().unwrap().join("xtask-wasm-fixture");
-    let out = scratch("out");
-    let spec = WasmCrate::new("fixture-web", BindgenTarget::Web, 600 * 1024);
-    let opts = Options {
-        manifest_path: fixture.join("Cargo.toml"),
-        target_dir: target.clone(),
-        out: out.clone(),
-        crates: vec![spec.clone()],
-        check_budget: true,
-        tools: Tools::from_env(),
+    let Some(tools) = wasm_tools_or_skip("builds_a_fixture_crate_end_to_end") else {
+        return;
     };
+    let root = scratch("e2e");
+    let out = root.join("web");
+    let opts = fixture_opts(&out, tools);
     let m = web_build::build(&opts).unwrap();
     let wasm_rel = m.path("fixture_web_bg.wasm").unwrap().to_string();
     let (hash, name) = wasm_rel.split_once('/').unwrap();
@@ -223,40 +280,85 @@ fn builds_a_fixture_crate_end_to_end() {
         boot,
         render_boot("./fixture_web.js", "./fixture_web_bg.wasm")
     );
-    // El manifiesto en disco es el devuelto.
+    // El manifiesto en disco es el devuelto; la salida solo tiene lo que referencia.
     let disk: Manifest =
         serde_json::from_slice(&fs::read(out.join("manifest.json")).unwrap()).unwrap();
     assert_eq!(disk, m);
+    let mut top: Vec<String> = fs::read_dir(&out)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    top.sort();
+    assert_eq!(top, [hash.to_string(), "manifest.json".to_string()]);
     // wasm-opt -Oz encoge la salida de wasm-bindgen.
-    let raw = target.join("wasm32-unknown-unknown/release-wasm/fixture_web.wasm");
+    let raw = opts
+        .target_dir
+        .join("wasm32-unknown-unknown/release-wasm/fixture_web.wasm");
     assert!(wasm.len() < fs::metadata(raw).unwrap().len() as usize);
 
-    // Determinista: otra pasada da el mismo hash y no deja directorios sobrantes.
-    fs::create_dir_all(out.join("deadbeef0000")).unwrap(); // hash viejo
-    fs::create_dir_all(out.join("no-es-hash")).unwrap(); // ajeno: se respeta
+    // Determinista: otra pasada da el mismo hash; la salida es solo de web-build, así
+    // que lo no referenciado (hash viejo o ajeno) desaparece.
+    fs::create_dir_all(out.join("deadbeef0000")).unwrap();
+    fs::create_dir_all(out.join("no-es-hash")).unwrap();
     let again = web_build::build(&opts).unwrap();
     assert_eq!(again, m);
     assert!(!out.join("deadbeef0000").exists());
-    assert!(out.join("no-es-hash").exists());
+    assert!(!out.join("no-es-hash").exists());
 
-    // Presupuesto mínimo: falla con --check-budget y pasa sin él.
+    // Presupuesto mínimo: falla con --check-budget sin tocar la salida, y pasa sin él.
+    let before = snapshot(&out);
     let tight = Options {
         crates: vec![WasmCrate::new("fixture-web", BindgenTarget::Web, 16)],
         ..opts.clone()
     };
     let err = web_build::build(&tight).unwrap_err();
     assert!(err.contains("presupuesto"), "{err}");
+    assert_eq!(snapshot(&out), before, "un build fallido no toca la salida");
     let lax = Options {
         check_budget: false,
         ..tight
     };
     assert!(web_build::build(&lax).is_ok());
-    let _ = fs::remove_dir_all(&out);
+    // Ningún temporal en la salida ni restos en la zona de trabajo.
+    let work = opts.target_dir.join("web-build");
+    let stray: Vec<_> = fs::read_dir(&work)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("out.") || n.starts_with("old."))
+        .collect();
+    assert!(stray.is_empty(), "{stray:?}");
+    let _ = fs::remove_dir_all(&root);
 }
 
 #[test]
-fn building_one_crate_keeps_the_other_entries() {
-    let out = scratch("merge");
+fn a_failed_first_build_leaves_no_output_dir() {
+    let Some(tools) = wasm_tools_or_skip("a_failed_first_build_leaves_no_output_dir") else {
+        return;
+    };
+    let root = scratch("fail");
+    let out = root.join("web");
+    let mut opts = fixture_opts(&out, tools);
+    opts.crates = vec![WasmCrate::new("no-existe", BindgenTarget::Web, 600 * 1024)];
+    let err = web_build::build(&opts).unwrap_err();
+    assert!(err.contains("no-existe"), "{err}");
+    assert!(!out.exists(), "sin <target>/web tras un build fallido");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn assembling_one_crate_keeps_the_other_entries_and_swaps_atomically() {
+    let root = scratch("merge");
+    let out = root.join("web");
+    let next = root.join("next");
+    // Salida vieja: sw vivo, web viejo, y algo ajeno.
+    for (dir, file) in [
+        ("0123456789ab", "comandos_web_sw.js"),
+        ("aaaaaaaaaaaa", "comandos_web.js"),
+        ("no-es-hash", "x"),
+    ] {
+        fs::create_dir_all(out.join(dir)).unwrap();
+        fs::write(out.join(dir).join(file), dir).unwrap();
+    }
     let mut old = Manifest::default();
     old.files.insert(
         "comandos_web_sw.js".into(),
@@ -266,15 +368,15 @@ fn building_one_crate_keeps_the_other_entries() {
         "comandos_web.js".into(),
         "aaaaaaaaaaaa/comandos_web.js".into(),
     );
-    fs::create_dir_all(out.join("0123456789ab")).unwrap();
-    fs::create_dir_all(out.join("aaaaaaaaaaaa")).unwrap();
-    let mut new = Manifest::default();
-    new.files.insert(
+    // Lo recién compilado ya está en `next`.
+    fs::create_dir_all(next.join("bbbbbbbbbbbb")).unwrap();
+    fs::write(next.join("bbbbbbbbbbbb/comandos_web.js"), "nuevo").unwrap();
+    let mut fresh = Manifest::default();
+    fresh.files.insert(
         "comandos_web.js".into(),
         "bbbbbbbbbbbb/comandos_web.js".into(),
     );
-    fs::create_dir_all(out.join("bbbbbbbbbbbb")).unwrap();
-    let merged = web_build::merge_and_prune(&out, old, new).unwrap();
+    let merged = web_build::assemble(&out, &next, old, fresh).unwrap();
     assert_eq!(
         merged.path("comandos_web.js"),
         Some("bbbbbbbbbbbb/comandos_web.js")
@@ -283,10 +385,46 @@ fn building_one_crate_keeps_the_other_entries() {
         merged.path("comandos_web_sw.js"),
         Some("0123456789ab/comandos_web_sw.js")
     );
-    assert!(out.join("0123456789ab").exists());
-    assert!(out.join("bbbbbbbbbbbb").exists());
+    // La salida vieja sigue intacta hasta el cambio.
+    assert!(out.join("aaaaaaaaaaaa").exists());
+    web_build::swap_into_place(&next, &out, &root.join("trash")).unwrap();
+    assert!(!next.exists());
+    assert!(!root.join("trash").exists());
+    assert_eq!(
+        fs::read_to_string(out.join("0123456789ab/comandos_web_sw.js")).unwrap(),
+        "0123456789ab"
+    );
+    assert_eq!(
+        fs::read_to_string(out.join("bbbbbbbbbbbb/comandos_web.js")).unwrap(),
+        "nuevo"
+    );
     assert!(!out.join("aaaaaaaaaaaa").exists());
-    let _ = fs::remove_dir_all(&out);
+    assert!(!out.join("no-es-hash").exists());
+    let disk: Manifest =
+        serde_json::from_slice(&fs::read(out.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(disk, merged);
+    // Sin salida previa, el cambio es un rename simple.
+    let next2 = root.join("next2");
+    fs::create_dir_all(&next2).unwrap();
+    let fresh_out = root.join("web2");
+    web_build::swap_into_place(&next2, &fresh_out, &root.join("trash2")).unwrap();
+    assert!(fresh_out.is_dir());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn wasm_opt_version_must_be_exactly_116() {
+    assert!(web_build::wasm_opt_version_ok(
+        "wasm-opt version 116 (version_116)"
+    ));
+    assert!(web_build::wasm_opt_version_ok("wasm-opt version 116"));
+    assert!(!web_build::wasm_opt_version_ok(
+        "wasm-opt version 1160 (version_1160)"
+    ));
+    assert!(!web_build::wasm_opt_version_ok(
+        "wasm-opt version 117 (version_116)"
+    ));
+    assert!(!web_build::wasm_opt_version_ok("wasm-opt 116"));
 }
 
 #[test]

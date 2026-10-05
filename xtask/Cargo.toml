@@ -11,7 +11,7 @@ path = "src/lib.rs"
 serde_json.workspace = true
 rusqlite.workspace = true
 comandos-core = { path = "../crates/comandos-core" }
-nix = { version = "0.31", features = ["signal", "process", "user"] }
+nix = { version = "0.31", features = ["signal", "process", "user", "fs"] }
 # Arnés de paridad visual y de DOM (shots, png-diff, dom-diff, fixtures).
 comandos-domdiff = { path = "../crates/comandos-domdiff" }
 png = "=0.18.1"

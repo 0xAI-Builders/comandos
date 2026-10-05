@@ -48,3 +48,32 @@ fn out_dir_follows_cargo_target_dir_rules() {
         Path::new("/cwd/.build/t/web")
     );
 }
+
+#[test]
+fn manifest_paths_must_be_plain_relative_paths() {
+    let with = |v: &str| {
+        let mut m = Manifest::default();
+        m.files.insert("x.js".into(), v.into());
+        m.check_paths()
+    };
+    assert!(with("0123456789ab/x.js").is_ok());
+    assert!(with("x.js").is_ok());
+    for bad in [
+        "",
+        "/etc/passwd",
+        "../x.js",
+        "a/../../x.js",
+        "./x.js",
+        "a//x.js",
+        "a/",
+        "a\\x.js",
+        "a/\0.js",
+    ] {
+        let err = with(bad).unwrap_err();
+        assert!(err.contains("x.js"), "{bad:?}: {err}");
+    }
+    // Un nombre lógico vacío tampoco vale.
+    let mut m = Manifest::default();
+    m.files.insert(String::new(), "a/x.js".into());
+    assert!(m.check_paths().is_err());
+}

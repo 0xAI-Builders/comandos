@@ -3,28 +3,49 @@
 //! inodo; `--rollback-release` intercambia la release actual con `releases/previous`.
 //!
 //! Con artefactos web (T4) la release es `releases/<id>/{comandos,web/}` y el id es
-//! `sha12(binario ‖ árbol de web/)`, que incluye `manifest.json` (preflight R14): un
-//! `web/` distinto con el mismo binario nunca reutiliza una release. Sin `web/` el id
-//! sigue siendo `sha12(binario)`, así las releases ya instaladas y su rollback valen.
+//! `sha12(binario ‖ "web\0" ‖ árbol de web/)`, que incluye `manifest.json` (preflight
+//! R14): un `web/` distinto con el mismo binario nunca reutiliza una release, y un
+//! `web/` vacío no equivale a «sin web». Sin `web/` el id sigue siendo
+//! `sha12(binario)`, así las releases ya instaladas y su rollback valen. Un `web/` sin
+//! `manifest.json` válido se rechaza.
+use comandos_core::web_assets::{MANIFEST_FILE, Manifest};
 use sha2::{Digest, Sha256};
 use std::{
-    fs, io,
+    fs,
+    io::{self, Read},
     os::unix::{
         ffi::OsStrExt,
-        fs::{PermissionsExt, symlink},
+        fs::{MetadataExt, PermissionsExt, symlink},
     },
     path::{Path, PathBuf},
-    time::SystemTime,
+    time::{Duration, SystemTime},
 };
 
 pub struct Release {
     pub id: String,
     pub path: PathBuf,
     pub current: bool,
+    /// Archivos de `web/` instalados con esta operación (`None`: sin web).
+    pub web_files: Option<usize>,
+}
+
+/// De dónde sale el `web/` de una release.
+pub enum WebSource {
+    /// Sin artefactos web.
+    None,
+    /// `--web DIR` o `COMANDOS_WEB_SOURCE`.
+    Explicit(PathBuf),
+    /// El `web/` de la release instalada que se re-instala (`releases/<id>/web`): el
+    /// id recalculado tiene que ser `id`, si no la release fue alterada.
+    OwnRelease { dir: PathBuf, id: String },
 }
 
 /// Releases recientes que se conservan (la actual y `previous` siempre se conservan).
 const KEEP: usize = 5;
+
+/// Edad a partir de la cual una preparación o una release sin `comandos` se da por
+/// abandonada (un `--stage` dura segundos).
+const ABANDONED: Duration = Duration::from_secs(3600);
 
 struct Layout {
     releases: PathBuf,
@@ -39,8 +60,8 @@ fn layout(home: &Path) -> Layout {
     }
 }
 
-/// Instala `exe` (y `web`, si se da) como release y apunta `bin/comandos` a ella.
-pub fn stage_release(home: &Path, exe: &Path, web: Option<&Path>) -> Result<Release, String> {
+/// Instala `exe` (y su `web/`, si lo hay) como release y apunta `bin/comandos` a ella.
+pub fn stage_release(home: &Path, exe: &Path, web: &WebSource) -> Result<Release, String> {
     let Layout { releases, bin } = layout(home);
     let bin_dir = bin.parent().ok_or("ruta de destino sin directorio")?;
     for dir in [&releases, bin_dir] {
@@ -52,26 +73,32 @@ pub fn stage_release(home: &Path, exe: &Path, web: Option<&Path>) -> Result<Rele
     // `web/` se copia a una preparación mientras se calcula el id; luego entra con un
     // `rename` atómico, antes que el binario (la release está completa cuando existe
     // `comandos`).
-    let staged_web = match web {
-        Some(src) => {
-            let staging = releases.join(format!(".web-stage.{}", std::process::id()));
-            let _ = fs::remove_dir_all(&staging);
-            let copied = copy_web(src, &staging.join("web"), &mut hasher);
-            if let Err(e) = copied {
-                let _ = fs::remove_dir_all(&staging);
-                return Err(e);
-            }
-            Some(staging)
-        }
-        None => None,
+    let (src, expected) = match web {
+        WebSource::None => (None, None),
+        WebSource::Explicit(p) => (Some(p.as_path()), None),
+        WebSource::OwnRelease { dir, id } => (Some(dir.as_path()), Some(id.as_str())),
     };
+    let staging = releases.join(format!(".web-stage.{}", std::process::id()));
+    let staged = src.map(|src| {
+        let _ = fs::remove_dir_all(&staging);
+        stage_web(src, &staging.join("web"), &mut hasher)
+    });
     let id = hex12(hasher.finalize().as_slice());
-    let dir = releases.join(&id);
-    let placed = place_web(&dir, staged_web.as_deref());
-    if let Some(staging) = &staged_web {
-        let _ = fs::remove_dir_all(staging);
+    let placed = match staged {
+        None => Ok(None),
+        Some(Err(e)) => Err(e),
+        Some(Ok(_)) if expected.is_some_and(|x| x != id) => Err(format!(
+            "la release {} no coincide con su contenido (id recalculado {id}): no se re-instala",
+            expected.unwrap_or_default()
+        )),
+        Some(Ok(n)) => place_web(&releases.join(&id), &staging.join("web")).map(|()| Some(n)),
+    };
+    if src.is_some() {
+        let _ = fs::remove_dir_all(&staging);
     }
-    placed?;
+    let web_files = placed?;
+    let dir = releases.join(&id);
+    fs::create_dir_all(&dir).map_err(|e| format!("no se pudo crear {}: {e}", dir.display()))?;
     let target = dir.join("comandos");
     // 1) La release nueva queda completa antes de tocar `bin/comandos`.
     if !target.is_file() {
@@ -119,6 +146,7 @@ pub fn stage_release(home: &Path, exe: &Path, web: Option<&Path>) -> Result<Rele
         id,
         path: target,
         current: true,
+        web_files,
     })
 }
 
@@ -137,6 +165,7 @@ pub fn rollback_release(home: &Path) -> Result<Release, String> {
         path: releases.join(&prev).join("comandos"),
         id: prev,
         current: true,
+        web_files: None,
     })
 }
 
@@ -152,6 +181,7 @@ pub fn list_releases(home: &Path) -> Result<Vec<Release>, String> {
             current: current.as_deref() == Some(id.as_str()),
             path: releases.join(&id).join("comandos"),
             id,
+            web_files: None,
         })
         .collect();
     out.sort_by_key(|r| !r.current); // estable: conserva el orden por mtime
@@ -227,25 +257,65 @@ fn hex12(digest: &[u8]) -> String {
     digest.iter().take(6).map(|b| format!("{b:02x}")).collect()
 }
 
-/// Crea `dir` y deja en `dir/web` el `web/` preparado, si lo hay y aún no está. El
-/// id incluye el contenido de `web/`, así que un `dir/web` existente es idéntico.
-fn place_web(dir: &Path, staging: Option<&Path>) -> Result<(), String> {
-    fs::create_dir_all(dir).map_err(|e| format!("no se pudo crear {}: {e}", dir.display()))?;
-    let Some(staging) = staging else {
-        return Ok(());
-    };
+/// Deja en `dir/web` el `web/` preparado en `staged`. El id fija el contenido, así
+/// que un `dir/web` existente es idéntico. Nunca se mueve nada dentro de una release
+/// completa (con `comandos`) que no tenga ya su `web/`: esa release es otra cosa.
+fn place_web(dir: &Path, staged: &Path) -> Result<(), String> {
     let dest = dir.join("web");
     if dest.symlink_metadata().is_ok() {
         return Ok(());
     }
-    let from = staging.join("web");
-    fs::rename(&from, &dest).map_err(|e| format!("no se pudo instalar {}: {e}", dest.display()))
+    if dir.join("comandos").symlink_metadata().is_ok() {
+        return Err(format!(
+            "{} ya es una release completa sin web/: no se modifica",
+            dir.display()
+        ));
+    }
+    fs::create_dir_all(dir).map_err(|e| format!("no se pudo crear {}: {e}", dir.display()))?;
+    fs::rename(staged, &dest).map_err(|e| format!("no se pudo instalar {}: {e}", dest.display()))
 }
 
-/// Entrada del árbol de `web/`: ruta relativa y si es directorio.
+/// Copia `src` a `dest` (ver `copy_web`) y valida la copia: `manifest.json` regular,
+/// legible como `Manifest`, con rutas llanas que existen como archivos. Devuelve el
+/// número de archivos copiados.
+fn stage_web(src: &Path, dest: &Path, hasher: &mut Sha256) -> Result<usize, String> {
+    let n = copy_web(src, dest, hasher)?;
+    let shown = src.join(MANIFEST_FILE);
+    let path = dest.join(MANIFEST_FILE);
+    let bytes = match path.symlink_metadata() {
+        Ok(m) if m.is_file() => {
+            fs::read(&path).map_err(|e| format!("no se pudo leer {}: {e}", shown.display()))?
+        }
+        _ => {
+            return Err(format!(
+                "{} no existe: web/ necesita su manifiesto (¿falló `xtask web-build`?)",
+                shown.display()
+            ));
+        }
+    };
+    let manifest: Manifest = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("{} no es un manifiesto válido: {e}", shown.display()))?;
+    manifest
+        .check_paths()
+        .map_err(|e| format!("{}: {e}", shown.display()))?;
+    for rel in manifest.files.values() {
+        if !dest.join(rel).symlink_metadata().is_ok_and(|m| m.is_file()) {
+            return Err(format!(
+                "{}: {rel} no está en {}",
+                shown.display(),
+                src.display()
+            ));
+        }
+    }
+    Ok(n)
+}
+
+/// Entrada del árbol de `web/`: ruta relativa, si es directorio y su inodo (para
+/// comprobar al leer que sigue siendo el mismo archivo).
 struct WebEntry {
     rel: PathBuf,
     dir: bool,
+    inode: (u64, u64),
 }
 
 /// Recorre `root` sin seguir enlaces simbólicos: un enlace simbólico (o un fifo,
@@ -273,6 +343,11 @@ fn web_tree(root: &Path) -> Result<Vec<WebEntry>, String> {
                 .file_type()
                 .map_err(|e| format!("no se pudo leer {}: {e}", entry.path().display()))?;
             let child = rel.join(entry.file_name());
+            // `DirEntry::metadata` no sigue enlaces simbólicos.
+            let meta = entry
+                .metadata()
+                .map_err(|e| format!("no se pudo leer {}: {e}", entry.path().display()))?;
+            let inode = (meta.dev(), meta.ino());
             if kind.is_symlink() {
                 return Err(format!(
                     "{} es un enlace simbólico: web/ solo admite archivos y directorios",
@@ -283,11 +358,13 @@ fn web_tree(root: &Path) -> Result<Vec<WebEntry>, String> {
                 out.push(WebEntry {
                     rel: child,
                     dir: true,
+                    inode,
                 });
             } else if kind.is_file() {
                 out.push(WebEntry {
                     rel: child,
                     dir: false,
+                    inode,
                 });
             } else {
                 return Err(format!(
@@ -306,12 +383,16 @@ fn web_tree(root: &Path) -> Result<Vec<WebEntry>, String> {
     Ok(out)
 }
 
-/// Copia `src` a `dest` (nuevo) con permisos 0644/0755 y alimenta `hasher` con cada
-/// entrada: tipo, ruta relativa, longitud y contenido. Cada archivo se lee una vez,
-/// así el hash es exactamente de lo copiado.
-fn copy_web(src: &Path, dest: &Path, hasher: &mut Sha256) -> Result<(), String> {
+/// Copia `src` a `dest` (nuevo) con permisos 0644/0755 y alimenta `hasher` con un
+/// marcador de raíz y cada entrada: tipo, ruta relativa, longitud y contenido. Cada
+/// archivo se lee una vez, así el hash es exactamente de lo copiado. Devuelve el
+/// número de archivos.
+fn copy_web(src: &Path, dest: &Path, hasher: &mut Sha256) -> Result<usize, String> {
     let entries = web_tree(src)?;
     make_dir(dest)?;
+    // Marcador de raíz: un `web/` vacío no da el mismo id que «sin web».
+    hasher.update(b"web\0");
+    let mut files = 0;
     for e in entries {
         let to = dest.join(&e.rel);
         let rel = e.rel.as_os_str().as_bytes();
@@ -323,8 +404,8 @@ fn copy_web(src: &Path, dest: &Path, hasher: &mut Sha256) -> Result<(), String> 
             continue;
         }
         let from = src.join(&e.rel);
-        let bytes =
-            fs::read(&from).map_err(|e| format!("no se pudo leer {}: {e}", from.display()))?;
+        let bytes = read_same(&from, e.inode)?;
+        files += 1;
         hasher.update(b"f");
         hasher.update(rel);
         hasher.update([0]);
@@ -334,7 +415,21 @@ fn copy_web(src: &Path, dest: &Path, hasher: &mut Sha256) -> Result<(), String> 
         fs::set_permissions(&to, fs::Permissions::from_mode(0o644))
             .map_err(|e| format!("no se pudo ajustar {}: {e}", to.display()))?;
     }
-    Ok(())
+    Ok(files)
+}
+
+/// Lee `path` solo si al abrirlo sigue siendo el archivo regular `inode` que vio el
+/// recorrido: un cambio por un enlace simbólico entre recorrer y leer es un error.
+fn read_same(path: &Path, inode: (u64, u64)) -> Result<Vec<u8>, String> {
+    let err = |e: io::Error| format!("no se pudo leer {}: {e}", path.display());
+    let mut file = fs::File::open(path).map_err(err)?;
+    let meta = file.metadata().map_err(err)?;
+    if !meta.is_file() || (meta.dev(), meta.ino()) != inode {
+        return Err(format!("{} cambió durante la copia", path.display()));
+    }
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).map_err(err)?;
+    Ok(bytes)
 }
 
 fn make_dir(dir: &Path) -> Result<(), String> {
@@ -358,5 +453,86 @@ fn prune(releases: &Path, current: &str) -> Result<(), String> {
         fs::remove_dir_all(&dir)
             .map_err(|e| format!("no se pudo borrar {}: {e}", dir.display()))?;
     }
+    prune_abandoned(releases, SystemTime::now());
     Ok(())
+}
+
+/// Borra preparaciones `.web-stage.*` y directorios `<sha12>/` sin `comandos` más
+/// viejos que `ABANDONED` (restos de un `--stage` cortado). Los recientes pueden ser
+/// de otro `--stage` en curso y se respetan. Mejor esfuerzo: un fallo no aborta.
+fn prune_abandoned(releases: &Path, now: SystemTime) {
+    let Ok(rd) = fs::read_dir(releases) else {
+        return;
+    };
+    for entry in rd.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let path = entry.path();
+        let Ok(meta) = entry.metadata() else {
+            continue;
+        };
+        let leftover = name.starts_with(".web-stage.")
+            || (is_sha12(&name) && path.join("comandos").symlink_metadata().is_err());
+        let old = meta
+            .modified()
+            .ok()
+            .and_then(|m| now.duration_since(m).ok())
+            .is_some_and(|age| age > ABANDONED);
+        if meta.is_dir() && leftover && old {
+            let _ = fs::remove_dir_all(&path);
+        }
+    }
+}
+
+fn is_sha12(name: &str) -> bool {
+    name.len() == 12 && name.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("cmd-rel-unit-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn place_web_never_moves_into_a_complete_release() {
+        let root = scratch("place");
+        let release = root.join("0123456789ab");
+        fs::create_dir_all(&release).unwrap();
+        fs::write(release.join("comandos"), b"bin").unwrap();
+        let staged = root.join("stage/web");
+        fs::create_dir_all(&staged).unwrap();
+        fs::write(staged.join("manifest.json"), b"{\"files\":{}}").unwrap();
+        let err = place_web(&release, &staged).unwrap_err();
+        assert!(err.contains("release completa"), "{err}");
+        assert!(!release.join("web").exists());
+        assert!(staged.join("manifest.json").exists());
+        // Una release a medias (sin `comandos`) sí lo recibe.
+        let half = root.join("ba9876543210");
+        place_web(&half, &staged).unwrap();
+        assert!(half.join("web/manifest.json").is_file());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_empty_web_never_hashes_like_no_web() {
+        let root = scratch("marker");
+        let empty = root.join("empty");
+        fs::create_dir_all(&empty).unwrap();
+        let mut with = Sha256::new();
+        with.update(b"bin");
+        assert_eq!(copy_web(&empty, &root.join("copy"), &mut with).unwrap(), 0);
+        let mut without = Sha256::new();
+        without.update(b"bin");
+        assert_ne!(
+            hex12(with.finalize().as_slice()),
+            hex12(without.finalize().as_slice())
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
 }

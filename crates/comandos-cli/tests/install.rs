@@ -20,6 +20,8 @@ fn install(home: &Path, args: &[&str]) -> ExitStatus {
     Command::new(env!("CARGO_BIN_EXE_comandos"))
         .args(["install", "--home", home.to_str().unwrap()])
         .args(args)
+        // Herméticas: sin `web/` de ningún entorno.
+        .env_remove("COMANDOS_WEB_SOURCE")
         .status()
         .unwrap()
 }
