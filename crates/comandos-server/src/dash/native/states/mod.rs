@@ -7,6 +7,7 @@ pub mod context;
 pub mod gather;
 pub mod observe;
 pub mod records;
+pub mod serial;
 pub mod suggest;
 pub mod tab_models;
 
@@ -29,6 +30,8 @@ pub struct Engine {
     pub(crate) context: context::Context,
     pub(crate) tracker: Mutex<StateTracker>,
     pub(crate) shared: Arc<Mutex<gather::Blocking>>,
+    /// El hilo de los saltos de bloqueo de la recolección.
+    pub(crate) serial: serial::Serial,
 }
 
 impl Default for Engine {
@@ -39,6 +42,7 @@ impl Default for Engine {
             context: context::Context::default(),
             tracker: gather::new_tracker(),
             shared: Arc::default(),
+            serial: serial::Serial::default(),
         }
     }
 }

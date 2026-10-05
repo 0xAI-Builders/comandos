@@ -139,3 +139,77 @@ fn shadow_lists_a_real_private_session() {
         serde_json::json!({"session": "local", "action": "list"})
     );
 }
+
+#[test]
+fn shadow_agents_keep_the_two_defaults_and_alternate_after() {
+    let two = poll::shadow_agents(2);
+    assert_eq!(
+        two,
+        vec![
+            ("poll-claude".to_string(), "claude"),
+            ("poll-codex".to_string(), "codex")
+        ]
+    );
+    let many = poll::shadow_agents(5);
+    assert_eq!(many.len(), 5);
+    assert_eq!(many[2], ("poll-claude-2".to_string(), "claude"));
+    assert_eq!(many[3], ("poll-codex-3".to_string(), "codex"));
+    let mut names: Vec<_> = many.iter().map(|(s, _)| s.clone()).collect();
+    names.dedup();
+    assert_eq!(names.len(), 5, "una sesión por agente");
+    assert!(poll::shadow_agents(0).is_empty());
+}
+
+#[test]
+fn load_options_parse_and_agents_require_shadow() {
+    let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let base = [
+        "--base",
+        "http://127.0.0.1:1",
+        "--minutes",
+        "1",
+        "--pid",
+        "1",
+    ];
+    for extra in [
+        &["--pollers", "3"][..],
+        &["--burst", "17"][..],
+        &["--max-threads", "8", "--max-pss-mib", "64"][..],
+        &["--max-static-p95-ms", "100"][..],
+    ] {
+        let mut v = args(&base);
+        v.extend(args(extra));
+        assert!(poll::parse(&v).is_ok(), "{extra:?}");
+    }
+    for extra in [
+        &["--agents", "48"][..],
+        &["--extra-panes", "190"][..],
+        &["--slow-tmux-ms", "1500"][..],
+    ] {
+        let mut v = args(&base);
+        v.extend(args(extra));
+        let error = poll::parse(&v).err().unwrap_or_default();
+        assert!(error.contains("requieren --shadow"), "{extra:?}: {error}");
+    }
+    let mut bad = args(&base);
+    bad.extend(args(&["--pollers", "x"]));
+    assert!(poll::parse(&bad).is_err());
+}
+
+#[test]
+fn bound_failures_flag_threads_and_pss_over_the_limits() {
+    let samples = [
+        (0, 17_000, Some(3)),
+        (1, 45_000, Some(7)),
+        (10, 46_000, None),
+    ];
+    assert!(poll::bound_failures(&samples, Some(8), Some(64)).is_empty());
+    assert!(poll::bound_failures(&samples, None, None).is_empty());
+    let over = poll::bound_failures(&samples, Some(6), Some(43));
+    assert_eq!(over.len(), 3, "{over:?}");
+    assert!(over[0].contains("minuto 1") && over[0].contains("7 hilos"));
+    assert!(
+        over.iter()
+            .any(|f| f.contains("minuto 10") && f.contains("Pss"))
+    );
+}

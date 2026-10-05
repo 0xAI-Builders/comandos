@@ -927,6 +927,7 @@ impl Native {
         }
         self.usage.shutdown().await;
         self.journal.shutdown().await;
+        self.states.serial.shutdown().await;
     }
 }
 

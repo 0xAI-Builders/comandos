@@ -1,6 +1,7 @@
 //! La recolección real de `read_states` (7035) y `write_app_tab_models`
 //! (6714): tmux por `tokio::process` en el orden del Python, los escaneos de
-//! `/proc`, registros, transcripts y cuentas en `spawn_blocking`, la base de
+//! `/proc`, registros, transcripts y cuentas en el hilo propio de `/state`
+//! (`serial`), la base de
 //! uso por su carril y `app-tab-models.json` escrito solo si nada declinó.
 use super::{
     StateFault, States,
@@ -76,17 +77,6 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 fn unsure(_: Unsure) -> StateFault {
     StateFault::Decline
-}
-
-/// Un trabajo bloqueante; su pánico es la excepción sin capturar (500).
-async fn blocking<T, F>(job: F) -> Result<T, StateFault>
-where
-    F: FnOnce() -> Result<T, StateFault> + Send + 'static,
-    T: Send + 'static,
-{
-    tokio::task::spawn_blocking(job)
-        .await
-        .map_err(|_| StateFault::Failure)?
 }
 
 /// Lo que el escaneo bloqueante entrega al bucle de tarjetas.
@@ -248,7 +238,11 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
     *phase = "escaneo (registro, /proc, registros de estado, motor-results, tiers, pestañas)";
     let shared = native.states.shared.clone();
     let scan_opts = opts.clone();
-    let scanned = blocking(move || scan(&scan_opts, panes, &shared)).await?;
+    let scanned = native
+        .states
+        .serial
+        .run(move || scan(&scan_opts, panes, &shared))
+        .await?;
     // 3. `session_labels()`: `tmux_sessions()` sin capturar sus excepciones.
     *phase = "sesiones de tmux";
     let live = light::tmux_sessions(&opts.tmux).await?;
@@ -281,7 +275,7 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
         native
             .states
             .context
-            .get(opts, &registry, (opts.clock)())
+            .get(opts, &native.states.serial, &registry, (opts.clock)())
             .await?
     } else {
         Arc::new(SuggestContext::default())
@@ -305,6 +299,9 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
         .unwrap_or_else(|p| p.into_inner());
     // 8. `write_app_tab_models`: un fallo se ignora, como su `except`.
     let path = opts.hooks.join("app-tab-models.json");
+    // En el pool y no en `serial`: un trabajo de `serial` en cola se descarta si
+    // el cómputo se abandona, y esta escritura, como la del Python, se completa
+    // aunque el cliente se vaya.
     let _ = tokio::task::spawn_blocking(move || files::write_json_atomic(&path, &models)).await;
     let Value::Array(items) = items else {
         return Err(StateFault::Failure);
@@ -356,7 +353,7 @@ impl CardEffects for RealEffects<'_> {
             self.opts().proc_root.clone(),
         );
         let agent = agent.to_owned();
-        blocking(move || {
+        self.native.states.serial.run(move || {
             lock(&shared)
                 .accounts
                 .account_for_pid(&home, &proc_root, pid, &agent)
@@ -373,7 +370,7 @@ impl CardEffects for RealEffects<'_> {
             self.opts().home.clone(),
             self.opts().proc_root.clone(),
         );
-        blocking(move || {
+        self.native.states.serial.run(move || {
             let grok_home = grok_home_for(&proc_root, &home, pid)?;
             lock(&shared).grok.read(pid, &grok_home).map_err(unsure)
         })
@@ -798,8 +795,12 @@ impl RealEffects<'_> {
         };
         let (inspector, shared, registry) =
             (self.inspector.clone(), self.shared(), self.registry.clone());
-        let gathered =
-            blocking(move || gather_evidence(&probe, &inspector, &shared, &registry)).await?;
+        let gathered = self
+            .native
+            .states
+            .serial
+            .run(move || gather_evidence(&probe, &inspector, &shared, &registry))
+            .await?;
         let mut evidence = match gathered {
             Gathered::Seen(evidence) => evidence,
             Gathered::Unconfirmed => return Ok(Observed::Unconfirmed),

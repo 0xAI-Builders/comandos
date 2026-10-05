@@ -23,7 +23,15 @@ use std::{
     cell::RefCell,
     path::{Path, PathBuf},
 };
-use tokio::runtime::Handle;
+use tokio::{runtime::Handle, sync::Semaphore};
+
+/// Un solo `/terminal-panes` en un hilo de bloqueo a la vez. La librería ya
+/// serializa todo el proceso con su `SERIAL` (el `RLock` del Python), pero lo
+/// toma dentro del hilo: sin esta puerta, una ola de iframes de `term.html`
+/// ocuparía todo el pool con hilos aparcados en ese candado, y los estáticos y
+/// el resto de saltos esperarían detrás (con tmux lento, 5 s × 17 seguidos).
+/// Aquí la espera es asíncrona y la ola ocupa como mucho un hilo.
+static PANES_GATE: Semaphore = Semaphore::const_new(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalRoute {
@@ -176,9 +184,17 @@ async fn panes(native: &Native, data: Value) -> Answer {
         clock_seconds: native.options().clock_seconds.clone(),
     };
     let handle = Handle::current();
-    // La copia corre dentro de `execute`, en el mismo hilo de bloqueo y bajo
-    // el `SERIAL` de la librería, como el resto de acciones.
+    // El permiso viaja con el trabajo: si el cliente se va a mitad, la puerta
+    // sigue cerrada hasta que el hilo termine de verdad. La copia de `close`
+    // corre dentro de `execute`, en el mismo hilo, bajo el mismo permiso y el
+    // `SERIAL` de la librería, como el resto de acciones (el Python la hace
+    // bajo su `RLock`); su duración la acota cada `tmux` (5 s) y el
+    // `capture-pane -S -2000`, igual que en el Python.
+    let Ok(permit) = PANES_GATE.acquire().await else {
+        return error(StatusCode::SERVICE_UNAVAILABLE, PANES_UNAVAILABLE);
+    };
     let joined = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
         let bridge = RefCell::new(Bridge::default());
         let result = terminal_panes::execute(
             |args| {
