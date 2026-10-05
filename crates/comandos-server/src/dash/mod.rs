@@ -52,6 +52,9 @@ pub struct DashConfig {
     /// Raíz de estáticos; sus entradas suelen ser symlinks al repositorio.
     pub dash_dir: PathBuf,
     pub token: Vec<u8>,
+    /// `~/.claude/hooks/dash-token`: la puerta lo relee en cada petición (solo
+    /// lo fija `from_env`; con `None` vale `token`, como en las pruebas).
+    pub token_file: Option<PathBuf>,
     /// Falso con `--no-native` o `COMANDOS_DASH_NATIVE=0`: todo se reenvía (2a).
     pub native: bool,
     /// `app-state.sqlite3`, resuelto como `lib/app_state.py`.
@@ -81,6 +84,7 @@ impl fmt::Debug for DashConfig {
             .field("home", &self.home)
             .field("dash_dir", &self.dash_dir)
             .field("token", &"<oculto>")
+            .field("token_file", &self.token_file)
             .field("native", &self.native)
             .field("state_db", &self.state_db)
             .field("trace_forward", &self.trace_forward)
@@ -181,6 +185,7 @@ pub fn parse_args_env(
         home: home.to_path_buf(),
         dash_dir: default_dash_dir(home),
         token: Vec::new(),
+        token_file: None,
         native,
         state_db: home.join(".local/state/comandos/app-state.sqlite3"),
         trace_forward: false,
@@ -322,6 +327,7 @@ pub fn from_env(args: &[String]) -> Result<DashConfig, StartError> {
     cfg.token = load_token(&home).map_err(|e| {
         StartError::Config(format!("dash-token ({}): {e}", token_path(&home).display()))
     })?;
+    cfg.token_file = Some(token_path(&home));
     Ok(cfg)
 }
 
@@ -470,6 +476,7 @@ pub fn build(
     });
     let config = Config {
         token,
+        token_file: state.config.token_file.clone(),
         asset_exists,
         handler: handler(state),
         limits: limits(),

@@ -54,6 +54,7 @@ use super::{
 };
 use crate::{HandlerError, Request};
 use comandos_core::json::{response_dumps, truthy};
+use comandos_core::text::shlex_quote;
 use comandos_runtime::{model_catalog::catalog_paths, providers, ssh_config};
 use http::StatusCode;
 use serde_json::{Map, Value, json};
@@ -432,18 +433,6 @@ async fn new_session_with(
         .await?;
     }
     Ok(out)
-}
-
-/// `shlex.quote(text)`.
-fn shlex_quote(text: &str) -> String {
-    if text.is_empty() {
-        return "''".into();
-    }
-    let safe = |c: char| c.is_ascii_alphanumeric() || "@%+=:,./_-".contains(c);
-    if text.chars().all(safe) {
-        return text.to_owned();
-    }
-    format!("'{}'", text.replace('\'', "'\"'\"'"))
 }
 
 /// `str.split()` sin argumentos.

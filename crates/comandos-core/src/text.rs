@@ -136,3 +136,43 @@ pub fn float(text: &str) -> Result<f64, NumError> {
     }
     clean.parse::<f64>().map_err(|_| NumError::Invalid)
 }
+
+/// `shlex.quote(s)` (R7 del pre-flight 2f): vacío → `''`; solo
+/// `[A-Za-z0-9_@%+=:,./-]` (el `\w` ASCII del Python) → tal cual; si no, entre
+/// comillas simples con cada `'` cambiada por `'"'"'`.
+pub fn shlex_quote(s: &str) -> String {
+    if s.is_empty() {
+        return "''".to_owned();
+    }
+    let safe = s.bytes().all(|b| {
+        b.is_ascii_alphanumeric()
+            || matches!(
+                b,
+                b'_' | b'@' | b'%' | b'+' | b'=' | b':' | b',' | b'.' | b'/' | b'-'
+            )
+    });
+    if safe {
+        return s.to_owned();
+    }
+    format!("'{}'", s.replace('\'', "'\"'\"'"))
+}
+
+#[cfg(test)]
+mod shlex_tests {
+    use super::shlex_quote;
+
+    #[test]
+    fn quote_matches_python() {
+        assert_eq!(shlex_quote(""), "''");
+        assert_eq!(shlex_quote("srv-1.a_b"), "srv-1.a_b");
+        assert_eq!(
+            shlex_quote("/h/.ssh/id_ed25519.pub"),
+            "/h/.ssh/id_ed25519.pub"
+        );
+        assert_eq!(shlex_quote("a b"), "'a b'");
+        assert_eq!(shlex_quote("it's"), "'it'\"'\"'s'");
+        // `\w` con `re.ASCII`: una letra no ASCII se cita.
+        assert_eq!(shlex_quote("año"), "'año'");
+        assert_eq!(shlex_quote("~x"), "'~x'");
+    }
+}

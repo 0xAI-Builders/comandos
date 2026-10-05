@@ -66,6 +66,19 @@ pub fn scope_program(path: impl Into<PathBuf>) -> Program {
     program
 }
 
+/// `scope_cmd(["tmux", …])`: `systemd-run --user --scope --collect --quiet
+/// <tmux> <prefijo de tmux> …`. El entorno de tmux (el socket privado en las
+/// pruebas) pasa al programa del scope. Lo usan `/terminal/quick` y
+/// `/ssh-key-setup`.
+pub fn scoped_tmux(scope: &Program, tmux: &Program) -> Program {
+    let mut program = scope.clone();
+    program.prefix.push(tmux.path.clone().into_os_string());
+    program.prefix.extend(tmux.prefix.iter().cloned());
+    program.env.extend(tmux.env.iter().cloned());
+    program.env_remove.extend(tmux.env_remove.iter().cloned());
+    program
+}
+
 /// `shutil.which("systemd-run")` sobre el `PATH` del frente (A5): solo `PATH`,
 /// sin los bins de usuario de `provider_registry.which`.
 pub fn find_scope(search_path: Option<&OsStr>) -> Option<Program> {
@@ -226,18 +239,7 @@ async fn launch(native: &Native, t: &Terminal, scope: &Program) -> Result<(), St
     if exists.ok {
         return Ok(());
     }
-    // `scope_cmd(["tmux", "new-session", …])`: `systemd-run --user --scope
-    // --collect --quiet <tmux> <prefijo de tmux> new-session …`. El entorno de
-    // tmux (el socket privado en las pruebas) pasa al programa del scope.
-    let mut program = scope.clone();
-    program
-        .prefix
-        .push(tmux.program.path.clone().into_os_string());
-    program.prefix.extend(tmux.program.prefix.iter().cloned());
-    program.env.extend(tmux.program.env.iter().cloned());
-    program
-        .env_remove
-        .extend(tmux.program.env_remove.iter().cloned());
+    let program = scoped_tmux(scope, &tmux.program);
     let args = [
         "new-session",
         "-d",

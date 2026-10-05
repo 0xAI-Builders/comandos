@@ -1,6 +1,7 @@
 //! Native persistence adapters. Callers own connections and transactions.
 pub mod intake;
 pub mod marks;
+pub mod news;
 #[path = "state_db/mod.rs"]
 pub mod state;
 use comandos_core::event;

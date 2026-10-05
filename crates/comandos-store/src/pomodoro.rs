@@ -307,7 +307,8 @@ impl<'a> PomodoroStore<'a> {
                     rid,
                     digest,
                     revision,
-                    codec::dumps(&out, true, false).map_err(validation)?,
+                    // `json.dumps(out)`: orden de inserción (la repetición lo devuelve tal cual).
+                    codec::response_dumps(&out).map_err(validation)?,
                     now
                 ],
             )?;

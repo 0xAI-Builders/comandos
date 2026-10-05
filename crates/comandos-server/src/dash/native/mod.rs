@@ -297,6 +297,11 @@ const TABLES: &[&[Entry]] = &[
     residue::ROUTES,
 ];
 
+/// Cuántas tablas de `TABLES` son de la base (2b–2e): las primeras, antes de
+/// las de los cortes de la 2f. Quien añada una tabla de base lo sube aquí.
+#[cfg(test)]
+const BASE_TABLES: usize = 15;
+
 pub fn route(method: &Method, target: &str) -> Option<NativeRoute> {
     let verb = if *method == Method::GET {
         Verb::Get
@@ -632,6 +637,8 @@ pub struct Native {
     pub(crate) census: Arc<census::DeclineCensus>,
     /// Tareas largas del frente (D12).
     pub(crate) tasks: Arc<procs::TaskTracker>,
+    /// Foto de `/remote-state` (`_remote_state_cache`, 2f-3/T2).
+    pub(crate) remote: remote::RemoteCache,
 }
 
 impl Native {
@@ -654,6 +661,7 @@ impl Native {
             states: states::Engine::default(),
             census: Arc::default(),
             tasks: Arc::default(),
+            remote: remote::RemoteCache::default(),
         }
     }
 
@@ -950,11 +958,14 @@ mod scaffold_tests {
         assert_eq!(route(&Method::HEAD, "/state"), None);
         assert_eq!(route(&Method::HEAD, "/"), None);
         assert_eq!(route(&Method::PUT, "/state"), None);
+        // DELETE: solo `/push/subscription` (2f-3/T5), el único `do_DELETE`.
         assert!(
             TABLES
                 .iter()
                 .flat_map(|table| table.iter())
-                .all(|entry| entry.verb != Verb::Head && entry.verb != Verb::Delete)
+                .all(|entry| entry.verb != Verb::Head
+                    && (entry.verb != Verb::Delete
+                        || matches!(entry.key, Key::Raw("/push/subscription"))))
         );
     }
 
@@ -963,7 +974,9 @@ mod scaffold_tests {
         assert_eq!(NativeRoute::Retired.cut(), Cut::Base);
         assert_eq!(NativeRoute::PaneType.cut(), Cut::Base);
         // Toda entrada de las tablas de 2b–2e pertenece a la base (ningún corte
-        // la apaga) y toda entrada de las tablas de la 2f, a su corte.
+        // la apaga) y toda entrada de las tablas de la 2f, a su corte. La lista
+        // explícita cubre las tablas de ambos carriles (2f-1 y 2f-3/2f-4); el
+        // recuento debe igualar `TABLES.len()`.
         let base: [&[Entry]; 15] = [
             light::ROUTES,
             events::ROUTES,
@@ -981,12 +994,6 @@ mod scaffold_tests {
             usage::ROUTES,
             retired::ROUTES,
         ];
-        assert_eq!(base.len() + 11, TABLES.len());
-        assert!(
-            base.iter()
-                .flat_map(|table| table.iter())
-                .all(|entry| entry.route.cut() == Cut::Base)
-        );
         let cuts: [&[Entry]; 11] = [
             tabs::ROUTES,
             sessions::ROUTES,
@@ -1000,11 +1007,25 @@ mod scaffold_tests {
             news::ROUTES,
             residue::ROUTES,
         ];
+        assert_eq!(base.len(), BASE_TABLES);
+        assert_eq!(base.len() + cuts.len(), TABLES.len());
+        assert!(
+            base.iter()
+                .flat_map(|table| table.iter())
+                .all(|entry| entry.route.cut() == Cut::Base)
+        );
         assert!(
             cuts.iter()
                 .flat_map(|table| table.iter())
                 .all(|entry| entry.route.cut() != Cut::Base)
         );
+        // Y por posición: ninguna de las tablas que siguen a `BASE_TABLES` es
+        // de la base. Un `BASE_TABLES` corto o largo falla aquí.
+        for (i, table) in TABLES.iter().enumerate() {
+            for entry in table.iter() {
+                assert_eq!(entry.route.cut() == Cut::Base, i < BASE_TABLES);
+            }
+        }
     }
 
     #[test]
