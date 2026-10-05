@@ -50,10 +50,12 @@ use tokio::sync::OnceCell;
 /// Trabajos en cola del worker de la base (sin contar el que corre).
 pub const WORKER_CAPACITY: usize = 64;
 
-/// Refresco de límites al arrancar el frente (D3): con GET `/usage/state`
-/// nativo (Tarea 8) la barra lateral no pierde los % de cuota hasta 60 s tras
-/// cada reinicio. Sin efectos de uso (sombra) `LimitsCache::get` no refresca.
-pub const STARTUP_LIMITS_REFRESH: bool = true;
+/// GET `/usage/state` nativo con todos sus efectos (Tarea 8, D1). Apagado: la
+/// puerta de ligereza (`xtask poll --shadow` realista, `--max-pss-mib 56`) no
+/// pasa con la ruta nativa (≈ 67–76 MiB: el memo se reconstruye tras cada
+/// importación y sus ≈ 22 MiB de trabajo quedan en las arenas de glibc). El
+/// frente la declina sin efectos y el Python sigue siendo dueño de todo.
+pub const USAGE_STATE_NATIVE: bool = false;
 
 /// Gracia de la primera importación de uso del frente tras arrancar (D1 c): un
 /// hilo de importación del Python que estuviera en curso termina antes.
@@ -292,6 +294,10 @@ pub struct NativeOptions {
     pub zone: Arc<dyn LocalZone + Send + Sync>,
     /// Milisegundos desde el arranque antes de la primera importación de uso.
     pub usage_import_grace_ms: i64,
+    /// `USAGE_STATE_NATIVE` en producción; las pruebas lo encienden. Apagado,
+    /// GET `/usage/state` declina antes de cualquier efecto y no hay refresco
+    /// de límites al arrancar.
+    pub usage_state_native: bool,
 }
 
 /// `USAGE_IMPORT_GRACE_ENV` si es un entero ≥ 0; si no, la de omisión.
@@ -380,6 +386,7 @@ impl NativeOptions {
             usage_env: Arc::new(usage_env_from_process()),
             zone: Arc::new(chrono::Local),
             usage_import_grace_ms: usage_import_grace_from_env(),
+            usage_state_native: USAGE_STATE_NATIVE,
         }
     }
 }
@@ -508,10 +515,13 @@ impl Native {
     }
 
     /// El refresco de arranque de D3 (el `_limits_snapshot_loop` del Python lee
-    /// los límites al arrancar; `STARTUP_LIMITS_REFRESH`). No repite cada 300 s:
-    /// el heredado conserva su bucle. Sin efectos de uso (sombra) no hace nada.
+    /// los límites al arrancar): va con GET `/usage/state` nativo, para que la
+    /// barra lateral no pierda los % de cuota hasta 60 s tras cada reinicio;
+    /// mientras el Python atiende la ruta, el dueño es su bucle. No repite cada
+    /// 300 s: el heredado conserva su bucle. Sin efectos de uso (sombra) no
+    /// hace nada.
     pub fn start_background(&self) {
-        if STARTUP_LIMITS_REFRESH && self.enabled() {
+        if self.opts.usage_state_native && self.enabled() {
             let _ = self.limits.get(&self.refresh_deps());
         }
     }

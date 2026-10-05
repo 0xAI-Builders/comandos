@@ -79,6 +79,10 @@ pub async fn answer(native: &Arc<Native>, route: UsageRoute, request: &Request) 
 /// `pane-models.txt` y los avisos de nivel. El único punto de declinar es el
 /// primer trabajo del carril de uso; antes de él no hay efectos.
 async fn usage_state(native: &Arc<Native>) -> Answer {
+    // Ruta apagada (`USAGE_STATE_NATIVE`): el Python responde y es dueño.
+    if !native.options().usage_state_native {
+        return Err(Fault::Decline);
+    }
     let reply = match state::compute(native).await {
         Ok(reply) => reply,
         Err(Fault::Decline) => {

@@ -155,6 +155,37 @@ async fn import_lock_contended_skips_cycle() {
     front.stop().await;
 }
 
+/// Producción (`USAGE_STATE_NATIVE` apagado): GET /usage/state va al Python y
+/// el frente no hace ninguno de sus efectos (ni importa ni registra panes; el
+/// refresco de límites al arrancar lo cubre `dash_native_limits`).
+#[tokio::test]
+async fn usage_state_off_in_production_forwards_without_effects() {
+    let home = TestHome::new("import-off");
+    seed_usage(&home, "");
+    claude_line(&home, "m0");
+    let mut opts = home.options();
+    assert!(
+        !NativeOptions::for_home(&home.root, home.state_db()).usage_state_native,
+        "apagado en producción"
+    );
+    opts.usage_state_native = false;
+    opts.usage_import_grace_ms = 0;
+    let legacy = FakeLegacy::start().await;
+    let front = front(&home, legacy.port, opts).await;
+    assert_eq!(
+        get(front.port, "/usage/state").await.text(),
+        r#"{"legacy": true}"#
+    );
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(turns(&home), 0, "sin importación del frente");
+    let conn = rusqlite::Connection::open(home.usage_db()).unwrap();
+    let panes: i64 = conn
+        .query_row("select count(*) from usage_panes", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(panes, 0, "sin record_pane");
+    front.stop().await;
+}
+
 #[tokio::test]
 async fn usage_lane_down_hands_effects_back() {
     let home = TestHome::new("import-handover");

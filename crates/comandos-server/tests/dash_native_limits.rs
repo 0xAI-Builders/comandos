@@ -174,16 +174,16 @@ async fn refresh_never_creates_the_usage_db() {
     native.shutdown().await;
 }
 
-/// Arrancar el frente lee los límites una vez (D3, `STARTUP_LIMITS_REFRESH`
-/// desde la Tarea 8: la barra lateral no pierde los % de cuota tras un
-/// reinicio); sin efectos de uso (sombra), ninguna llamada.
+/// Arrancar el frente lee los límites una vez (D3, con GET `/usage/state`
+/// nativo: la barra lateral no pierde los % de cuota tras un reinicio); sin
+/// efectos de uso (sombra) o con la ruta en el Python, ninguna llamada.
 #[tokio::test]
 async fn boot_refreshes_limits_once_only_with_usage_effects() {
-    for effects in [true, false] {
-        let home = TestHome::new(if effects {
-            "limits-boot"
-        } else {
-            "limits-boot-shadow"
+    for (effects, native) in [(true, true), (false, true), (true, false)] {
+        let home = TestHome::new(match (effects, native) {
+            (true, true) => "limits-boot",
+            (false, _) => "limits-boot-shadow",
+            (true, false) => "limits-boot-legacy",
         });
         creds(&home, ".claude/.credentials.json", "tok-main");
         let oauth = Arc::new(FakeOauth::default());
@@ -191,14 +191,15 @@ async fn boot_refreshes_limits_once_only_with_usage_effects() {
         let mut opts = home.options();
         opts.oauth = oauth.clone();
         opts.usage_effects = effects;
+        opts.usage_state_native = native;
         let front = support::front(&home, support::dead_port(), opts).await;
         // Una ruta nativa cualquiera: el frente ya atendió y abrió la base.
         let _ = support::get(front.port, "/prefs").await;
         tokio::time::sleep(Duration::from_millis(300)).await;
         assert_eq!(
             oauth.calls(),
-            usize::from(effects),
-            "efectos de uso: {effects}"
+            usize::from(effects && native),
+            "efectos de uso: {effects}; ruta nativa: {native}"
         );
         front.stop().await;
     }
