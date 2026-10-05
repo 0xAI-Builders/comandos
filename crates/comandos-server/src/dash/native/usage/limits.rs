@@ -230,7 +230,7 @@ struct Collected {
 }
 
 async fn refresh(cache: Arc<LimitsCache>, deps: RefreshDeps) {
-    let _reset = Reset(cache.clone());
+    let reset = Reset(cache.clone());
     let mut networked = false;
     // `AbortRefresh`: el hilo del Python moría y la caché no cambiaba. Si ya
     // hubo red, se fija `at` igualmente (las filas y la salud no cambian): sin
@@ -261,9 +261,10 @@ async fn refresh(cache: Arc<LimitsCache>, deps: RefreshDeps) {
         st.rows = done.rows;
         st.health = done.health;
     }
-    // Quien espera la primera lectura (`get_loaded`) no espera la escritura
-    // de las fotos de cuota.
-    cache.done.notify_waiters();
+    // El refresco termina aquí: quien espera la primera lectura (`get_loaded`)
+    // no espera la escritura de las fotos de cuota, y un `get` posterior puede
+    // lanzar el siguiente mientras se escriben.
+    drop(reset);
     // `try: record_quota_snapshots(...) except: pass`. Va después de publicar la
     // caché, por el carril de escritura (R3: nadie espera la escritura ni la
     // escritura espera a las lecturas del carril de uso), y nunca crea la base (A3).
