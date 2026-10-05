@@ -21,7 +21,10 @@ use serde_json::{Map, Value};
 use std::{
     fs, io,
     io::Write,
-    os::unix::{ffi::OsStrExt, fs::PermissionsExt},
+    os::unix::{
+        ffi::OsStrExt,
+        fs::{OpenOptionsExt, PermissionsExt},
+    },
     path::{Path, PathBuf},
 };
 
@@ -215,27 +218,38 @@ fn stamp_locked(path: &Path, cwd: &str) -> Result<bool, Stamp> {
     // `open(tmp, "w")` y `os.replace`. Desviación deliberada (seguridad): el
     // Python deja el archivo con el modo del temporal (0666 menos la umask, o
     // el de un `.tmp` viejo), así un `~/.claude.json` 0600 acababa legible por
-    // todos. Aquí el temporal nace de cero y toma el modo del archivo original
-    // antes del `rename`; un archivo nuevo nace como en el Python.
+    // todos. Aquí el temporal nace de cero (`open_temp`) ya con el modo del
+    // archivo original; un archivo nuevo nace como en el Python.
     let original = fs::metadata(path)
         .ok()
         .map(|meta| meta.permissions().mode() & 0o7777);
     let _ = fs::remove_file(&tmp);
-    let written = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&tmp)
+    let tmp = PathBuf::from(tmp);
+    let written = open_temp(&tmp, original)
         .and_then(|mut file| file.write_all(body.as_bytes()))
-        .and_then(|()| match original {
-            Some(mode) => fs::set_permissions(&tmp, fs::Permissions::from_mode(mode)),
-            None => Ok(()),
-        })
         .and_then(|()| fs::rename(&tmp, path));
     if written.is_err() {
         let _ = fs::remove_file(&tmp);
     }
     written.map_err(|_| Stamp::Raised)?;
     Ok(true)
+}
+
+/// El temporal de `_stamp_locked`, creado en exclusiva y YA con su modo: el del
+/// archivo original (`original`), sin ventana en la que otro lo lea con el modo
+/// por omisión; sin original, el de `open(tmp, "w")` (0666 menos la umask).
+/// La umask puede quitar bits al crear: se devuelven sobre el descriptor antes
+/// de escribir nada, y nunca queda más abierto que el original.
+fn open_temp(tmp: &Path, original: Option<u32>) -> io::Result<fs::File> {
+    let file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(original.unwrap_or(0o666))
+        .open(tmp)?;
+    if let Some(mode) = original {
+        file.set_permissions(fs::Permissions::from_mode(mode))?;
+    }
+    Ok(file)
 }
 
 /// `_ancestors_until_git(cwd, home)`.
@@ -352,4 +366,43 @@ pub fn probe(
         read_json(Path::new(&file))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::open_temp;
+    use std::{fs, os::unix::fs::PermissionsExt, path::PathBuf};
+
+    struct Dir(PathBuf);
+    impl Drop for Dir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn mode(path: &std::path::Path) -> u32 {
+        fs::metadata(path).unwrap().permissions().mode() & 0o7777
+    }
+
+    /// El temporal nace YA con el modo del original (ni un instante 0644
+    /// antes de escribir); sin original, con el de `open(tmp, "w")`.
+    #[test]
+    fn temp_is_born_with_the_original_mode() {
+        let dir = Dir(std::env::temp_dir().join(crate::fresh_id("trust-tmp").unwrap()));
+        fs::create_dir_all(&dir.0).unwrap();
+        for original in [0o600, 0o640, 0o400] {
+            let tmp = dir.0.join(format!("{original:o}.tmp"));
+            let file = open_temp(&tmp, Some(original)).unwrap();
+            assert_eq!(mode(&tmp), original, "recién creado, antes de escribir");
+            drop(file);
+        }
+        // Sin original: lo que daría `open(tmp, "w")` con la misma umask.
+        let reference = dir.0.join("referencia");
+        drop(fs::File::create(&reference).unwrap());
+        let tmp = dir.0.join("nuevo.tmp");
+        drop(open_temp(&tmp, None).unwrap());
+        assert_eq!(mode(&tmp), mode(&reference));
+        // Un temporal que ya existe no se reutiliza (creación exclusiva).
+        assert!(open_temp(&tmp, Some(0o600)).is_err());
+    }
 }
