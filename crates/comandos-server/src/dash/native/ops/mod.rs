@@ -1,5 +1,6 @@
 //! Corte ops: configuración del pane exacto y resultados durables.
 pub mod configure;
+pub mod profiles;
 pub mod results;
 
 use super::{Answer, Cut, Entry, Fault, Key, Native, NativeRoute, Verb, light, py, reply, target};
@@ -13,6 +14,9 @@ pub enum OpsRoute {
     SessionConfigure,
     AccountSwitch,
     ModelSwitch,
+    ProfilesGet,
+    ProfilesPost,
+    ProfileApply,
 }
 impl OpsRoute {
     pub const fn path(self) -> &'static str {
@@ -20,6 +24,8 @@ impl OpsRoute {
             Self::SessionConfigure => "/session/configure",
             Self::AccountSwitch => "/account/switch",
             Self::ModelSwitch => "/model/switch",
+            Self::ProfilesGet | Self::ProfilesPost => "/session-profiles",
+            Self::ProfileApply => "/session-profile-apply",
         }
     }
 }
@@ -34,6 +40,21 @@ pub const ROUTES: &[Entry] = &[
     entry(OpsRoute::SessionConfigure),
     entry(OpsRoute::AccountSwitch),
     entry(OpsRoute::ModelSwitch),
+    Entry {
+        verb: Verb::Get,
+        key: Key::Prefix("/session-profiles"),
+        route: NativeRoute::Ops(OpsRoute::ProfilesGet),
+    },
+    Entry {
+        verb: Verb::Post,
+        key: Key::Raw("/session-profiles"),
+        route: NativeRoute::Ops(OpsRoute::ProfilesPost),
+    },
+    Entry {
+        verb: Verb::Post,
+        key: Key::Raw("/session-profile-apply"),
+        route: NativeRoute::Ops(OpsRoute::ProfileApply),
+    },
 ];
 
 /// `str(value or fallback)`: valores que no convertimos con certeza declinan
@@ -72,6 +93,12 @@ fn configuration(
 }
 
 pub async fn answer(native: &Arc<Native>, route: OpsRoute, request: &Request) -> Answer {
+    if matches!(
+        route,
+        OpsRoute::ProfilesGet | OpsRoute::ProfilesPost | OpsRoute::ProfileApply
+    ) {
+        return profiles::answer(native, route, request).await;
+    }
     let data = light::data(request)?.clone();
     // El task guard mantiene vivo el trabajo si el cliente cierra la conexión.
     let native_job = Arc::clone(native);

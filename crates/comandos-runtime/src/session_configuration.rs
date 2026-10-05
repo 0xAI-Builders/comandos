@@ -1085,7 +1085,17 @@ fn resolve_route_selection(
     data: &Map<String, Value>,
     scope: &str,
 ) -> Result<(Obs, Obs), Fail> {
-    let registry = &env.registry;
+    resolve_profile_route(&env.registry, &env.matrix, &env.paths(), data, scope)
+}
+
+/// Resolve a launch draft using the same route and account checks as pane configuration.
+pub fn resolve_profile_route(
+    registry: &Value,
+    matrix: &[Value],
+    paths: &accounts::Paths,
+    data: &Map<String, Value>,
+    scope: &str,
+) -> Result<(Obs, Obs), Fail> {
     let mut route_id = text_or(get(data, "routeId"), "")?;
     if route_id.is_empty() {
         route_id = match text_or(get(data, "agent"), "")?.as_str() {
@@ -1101,7 +1111,7 @@ fn resolve_route_selection(
     let mut model = text_or(get(data, "model"), "")?;
     let mut effort = text_or(get(data, "effort"), "")?;
     let mut route = None;
-    for cell in &env.matrix {
+    for cell in matrix {
         let cell = cell.as_object().ok_or(Fail::Unsure)?;
         if is(get(cell, "id"), &route_id) {
             route = Some(cell.clone());
@@ -1151,7 +1161,7 @@ fn resolve_route_selection(
         };
     }
     let selection = json!({"routeId": route_id, "model": model, "effort": effort});
-    match providers::validate_selection(registry, &env.matrix, &selection, scope)? {
+    match providers::validate_selection(registry, matrix, &selection, scope)? {
         Ok(_) => {}
         Err(code) if code.contains(" object has no attribute ") => return Err(Fail::Unsure),
         Err(code) => return Err(Fail::Py(code)),
@@ -1181,7 +1191,7 @@ fn resolve_route_selection(
     };
     let selectable = |provider: &Value, alias: &str| -> Result<bool, Fail> {
         let provider = provider.as_str().ok_or(Fail::Unsure)?;
-        match accounts::list_accounts(registry, provider, &env.paths()) {
+        match accounts::list_accounts(registry, provider, paths) {
             Ok(list) => Ok(list
                 .iter()
                 .find(|a| is(&a["alias"], alias))

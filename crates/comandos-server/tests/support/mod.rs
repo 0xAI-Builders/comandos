@@ -283,6 +283,7 @@ impl TestHome {
         opts.notifyd = Arc::new(FakeNotify::default());
         opts.zone = Arc::new(chrono_tz::America::Mexico_City);
         opts.usage_env = Arc::default();
+        opts.extension_env = Arc::default();
         opts.tmux = Tmux::private(&self.tmux_dir());
         // Sin fc-list en las pruebas salvo que una prueba lo fije.
         opts.fc_list = Program::named("/no-existe/fc-list");

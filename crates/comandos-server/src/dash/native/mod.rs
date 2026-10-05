@@ -480,6 +480,8 @@ pub struct NativeOptions {
     /// Las claves de entorno que el Python de uso lee (D7), tomadas al arrancar.
     /// De `OPENAI_ADMIN_KEY`/`ANTHROPIC_ADMIN_KEY` solo la presencia (R6).
     pub usage_env: Arc<BTreeMap<String, String>>,
+    /// Explicit environment snapshot for read-only extension inventories.
+    pub extension_env: Arc<BTreeMap<String, String>>,
     /// Zona de `datetime.fromtimestamp` (la del proceso: `TZ` o `/etc/localtime`).
     pub zone: Arc<dyn LocalZone + Send + Sync>,
     /// Qué hilos de fondo arranca el frente (D6); `legacy` en toda la 2f.
@@ -598,6 +600,12 @@ impl NativeOptions {
             notifyd: Arc::new(usage::pane_models::HyperNotify::default()),
             usage_effects: true,
             usage_env: Arc::new(usage_env_from_process()),
+            extension_env: Arc::new(
+                ["XDG_CONFIG_HOME", "OPENCODE_CONFIG", "OPENCODE_CONFIG_DIR"]
+                    .into_iter()
+                    .filter_map(|k| std::env::var(k).ok().map(|v| (k.into(), v)))
+                    .collect(),
+            ),
             zone: Arc::new(chrono::Local),
             background: Background::legacy(),
             cuts_off: BTreeSet::new(),
