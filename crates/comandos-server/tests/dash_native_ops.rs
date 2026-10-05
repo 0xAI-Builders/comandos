@@ -242,3 +242,153 @@ async fn resume_queue_only_when_front_owns_ops() {
         }
     }
 }
+
+/// Bloquea states_cached (primer await del registro posterior a confirmar),
+/// cancela la GET exterior y verifica que se complete el registro de uso.
+#[tokio::test]
+async fn cancelled_status_still_records_the_confirmed_configuration() {
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    };
+    use support::twin::TwinOpts;
+    let Some(t) = Twin::start_with(
+        "ops-status-cancel",
+        support::ops::seed_fake_codex,
+        TwinOpts {
+            fakebin_extra: vec![(
+                "codex".into(),
+                "#!/bin/sh\nexec \"$HOME/bin/codex\" \"$@\"\n".into(),
+            )],
+            ..Default::default()
+        },
+    )
+    .await
+    else {
+        return;
+    };
+    let initial = t
+        .post_front(
+            "/session/configure",
+            r#"{"session":"audit","pane":"%0","effort":"low","requestId":"req-cancel-status"}"#,
+        )
+        .await;
+    assert_eq!(initial.status, 202);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        if support::ops::journal_summary(&t.a)[0]["state"] == "confirmed" {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline);
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    // Esperar el registro inicial antes de borrarlo: el estado confirmed se
+    // escribe antes de que termine el hilo y registre configuración.
+    let usage = rusqlite::Connection::open(t.a.usage_db()).unwrap();
+    loop {
+        let count: i64 = usage
+            .query_row("SELECT count(*) FROM usage_session_configs", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        if count > 0 {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline);
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    usage
+        .execute("DELETE FROM usage_session_configs", [])
+        .unwrap();
+    let journal = rusqlite::Connection::open(t.a.journal_db()).unwrap();
+    journal.execute("UPDATE session_operations SET state='awaiting_confirmation' WHERE id='req-cancel-status'",[]).unwrap();
+    let armed = Arc::new(AtomicBool::new(false));
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+    let entered_tx = Arc::new(Mutex::new(Some(entered_tx)));
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let release_rx = Arc::new(Mutex::new(release_rx));
+    let mut opts = t.front_options.clone();
+    let path = t.a.journal_db();
+    let gate = Arc::clone(&armed);
+    opts.clock = Arc::new(move || {
+        if gate.load(Ordering::SeqCst) {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            let state: String = conn
+                .query_row(
+                    "SELECT state FROM session_operations WHERE id='req-cancel-status'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            if state == "confirmed" && gate.swap(false, Ordering::SeqCst) {
+                entered_tx.lock().unwrap().take().unwrap().send(()).unwrap();
+                release_rx
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(std::time::Duration::from_secs(10))
+                    .unwrap();
+            }
+        }
+        support::NOW_MS
+    });
+    let native = Arc::new(Native::new(opts));
+    armed.store(true, Ordering::SeqCst);
+    let request = comandos_server::Request {
+        method: http::Method::GET,
+        target: "/model/status?operationKey=audit%7C%250".into(),
+        peer: "127.0.0.1:1234".parse().unwrap(),
+        headers: vec![],
+        data: None,
+        body: bytes::Bytes::new(),
+        internal_producer: false,
+    };
+    let n = Arc::clone(&native);
+    let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
+    // Runtime en otro hilo: el reloj puede bloquear sin bloquear al cliente.
+    let worker = std::thread::spawn(move || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async move {
+                let work = Arc::clone(&n);
+                let caller =
+                    tokio::spawn(
+                        async move { work.dispatch(NativeRoute::ModelStatus, &request).await },
+                    );
+                abort_tx.send(caller.abort_handle()).unwrap();
+                let cancelled = caller.await.err().is_some_and(|e| e.is_cancelled());
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+                while !n.tasks().is_empty() {
+                    assert!(std::time::Instant::now() < deadline);
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+                cancelled
+            })
+    });
+    let abort = abort_rx.await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(10), entered_rx)
+        .await
+        .unwrap()
+        .unwrap();
+    let state: String = journal
+        .query_row(
+            "SELECT state FROM session_operations WHERE id='req-cancel-status'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(state, "confirmed");
+    abort.abort();
+    release_tx.send(()).unwrap();
+    assert!(
+        tokio::task::spawn_blocking(move || worker.join().unwrap())
+            .await
+            .unwrap()
+    );
+    let count:i64=usage.query_row("SELECT count(*) FROM usage_session_configs WHERE tmux_session='audit' AND tmux_pane='%0' AND effort='low' AND source='switch-observed'",[],|r|r.get(0)).unwrap();
+    assert_eq!(
+        count, 1,
+        "cancelar la GET no debe perder la configuración confirmada"
+    );
+}

@@ -1,12 +1,11 @@
 //! H. GET /model/status (8325, `session_operation_status` 6217) sobre el
 //! journal y MotorResults. Los casos sin fila o pendientes de confirmación
 //! pertenecen al corte Ops; con ese corte apagado se conservan sus Decline.
-//! `recover_abandoned` va antes, como en el Python: es idempotente, así que
-//! declinar después equivale a declinar antes.
-//!
-//! El dueño de una operación en curso es el proceso que la reclamó (el Python
-//! heredado o cc-app), nunca el frente: la recuperación pregunta por el pid
-//! guardado en la fila, y solo la marca abandonada si ese pid ya no existe.
+//! Antes del barrido idempotente se comprueba la certeza de MotorResults.
+//! El dueño de cada operación es el proceso que la reclamó: heredado o frente.
+//! La recuperación solo la marca abandonada si ese pid ya no existe.
+//! Toda la GET vive en una tarea registrada: confirmar el journal y registrar
+//! configuración/uso se completan aunque el cliente cierre la conexión.
 use super::{Answer, Entry, Fault, Key, Native, NativeRoute, Verb, light, py, query::Query};
 use super::{
     Cut,
@@ -37,6 +36,17 @@ enum Status {
 }
 
 pub async fn answer(native: &Arc<Native>, request: &crate::Request) -> Answer {
+    let worker = Arc::clone(native);
+    let request = request.clone();
+    let job = native
+        .tasks()
+        .spawn_handle(async move { run(&worker, &request).await })
+        .map_err(|_| Fault::Error(crate::HandlerError::Failure))?;
+    job.await
+        .map_err(|_| Fault::Error(crate::HandlerError::Failure))?
+}
+
+async fn run(native: &Arc<Native>, request: &crate::Request) -> Answer {
     let query = Query::parse(&request.target)?;
     // `str((query.get(k) or [""])[0])`.
     let operation = query.first("operationKey").unwrap_or("").to_owned();
