@@ -750,6 +750,10 @@ struct Turn {
 pub struct StateTurns {
     values: Vec<Value>,
     strings: HashMap<String, u32>,
+    /// Una sola casilla para `null` y otra por número o booleano distinto (por su
+    /// texto): una columna casi vacía no repite el valor en cada turno.
+    null: Option<u32>,
+    scalars: HashMap<String, u32>,
     turns: Vec<Turn>,
 }
 
@@ -794,12 +798,29 @@ impl StateTurns {
     fn intern(&mut self, value: &Value) -> u32 {
         // Más de 2³² - 1 valores distintos no caben en memoria antes que en `u32`.
         let next = u32::try_from(self.values.len()).unwrap_or(ABSENT);
-        // Otro tipo en una columna de texto es raro: no se comparte.
-        if let Value::String(s) = value {
-            if let Some(&i) = self.strings.get(s) {
-                return i;
+        match value {
+            Value::String(s) => {
+                if let Some(&i) = self.strings.get(s) {
+                    return i;
+                }
+                self.strings.insert(s.clone(), next);
             }
-            self.strings.insert(s.clone(), next);
+            Value::Null => {
+                if let Some(i) = self.null {
+                    return i;
+                }
+                self.null = Some(next);
+            }
+            // El texto JSON identifica el valor (mismo texto, mismo `Value`).
+            Value::Bool(_) | Value::Number(_) => {
+                let key = value.to_string();
+                if let Some(&i) = self.scalars.get(&key) {
+                    return i;
+                }
+                self.scalars.insert(key, next);
+            }
+            // Una columna de SQLite nunca da un contenedor: no se comparte.
+            Value::Array(_) | Value::Object(_) => {}
         }
         self.values.push(value.clone());
         next
@@ -1511,6 +1532,37 @@ pub fn wilson_interval(successes: i64, total: i64) -> (f64, f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn state_turns_share_null_and_scalar_slots() {
+        // `git_root` casi siempre vacío y `tmux_pane` numérico: una casilla por valor.
+        let rows: Vec<Row> = (0..5000)
+            .map(|i| {
+                let mut row = Row::new();
+                row.insert("tmux_session".into(), "s".into());
+                row.insert(
+                    "git_root".into(),
+                    if i % 100 == 0 {
+                        "/r".into()
+                    } else {
+                        Value::Null
+                    },
+                );
+                row.insert("tmux_pane".into(), Value::from(i % 3));
+                row.insert("model".into(), Value::Bool(i % 2 == 0));
+                row.insert("total_tokens".into(), Value::from(i));
+                row
+            })
+            .collect();
+        let turns = StateTurns::from_rows(&rows);
+        // s, /r, null, 0, 1, 2, true, false.
+        assert_eq!(turns.values.len(), 8);
+        for (row, turn) in rows.iter().zip(turns.iter()) {
+            for key in ["tmux_session", "git_root", "tmux_pane", "model", "agent"] {
+                assert_eq!(row.get(key), turn.slot(key), "{key}");
+            }
+        }
+    }
 
     #[test]
     fn float_sum_starts_at_integer_zero() {
