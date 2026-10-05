@@ -99,6 +99,11 @@ fn cold_import_on_real_data() {
         .as_secs() as i64;
     let zone = chrono::Local;
     let admit = |_: &Connection| true;
+    // `COMANDOS_PROBE_BIG_LINES=read`: sin el descarte en flujo, para comparar.
+    let big_lines = match std::env::var("COMANDOS_PROBE_BIG_LINES").as_deref() {
+        Ok("read") => usage_import::BigLines::Read,
+        _ => usage_import::BigLines::Skip,
+    };
     let plan = usage_import::ImportPlan {
         now,
         max_age_days: 21,
@@ -110,6 +115,7 @@ fn cold_import_on_real_data() {
         zone: &zone,
         admit: &admit,
         cancelled: &|| false,
+        big_lines,
     };
     let roots = GitCli::default();
     let mut seen = usage_import::ImportSeen::default();
@@ -188,7 +194,9 @@ fn cold_import_on_real_data() {
         .query_row("select count(*) from usage_turns", [], |r| r.get(0))
         .unwrap();
     drop(conn);
-    eprintln!("sonda importación en frío (GLIBC_TUNABLES={tunables:?})");
+    eprintln!(
+        "sonda importación en frío (GLIBC_TUNABLES={tunables:?}, líneas largas {big_lines:?})"
+    );
     for step in &steps {
         eprintln!("  {step}");
     }

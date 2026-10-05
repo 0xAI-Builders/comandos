@@ -20,6 +20,7 @@
 //! `AttributeError` de un `summary.json` que no es objeto, un error de SQLite) es
 //! `ImportError` y termina la vuelta; lo que no se reproduce con certeza en una
 //! línea (`repr` de un contenedor, un entero fuera de `i64`) salta esa línea.
+use crate::line_scan::{LineScan, Seen, Targets};
 use crate::usage::{TURN_INSERT_SQL, stable_id};
 use comandos_core::{
     json::{object_fields, python_eq, truthy, workspace_dumps_with_options, workspace_loads},
@@ -34,7 +35,7 @@ use serde_json::{Map, Value, value::RawValue};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs,
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Read, Seek, SeekFrom},
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
 };
@@ -48,6 +49,9 @@ type Object = Map<String, Value>;
 const BATCH: usize = 128;
 /// Un búfer de línea que creció por encima de esto se suelta tras la línea.
 const LINE_KEEP: usize = 1 << 20;
+/// Una línea que pasa de esto deja de guardarse y se lee en flujo (`LineScan`)
+/// si el importador sabe qué tipos usa. Por encima, el búfer no crece.
+const LINE_SCAN: usize = 128 * 1024;
 /// `record_local_grok_updates(..., max_files=200)`.
 const GROK_MAX_FILES: i64 = 200;
 /// `CONFIG_RACE_WINDOW` (cc_usage.py:2379).
@@ -125,7 +129,62 @@ pub struct ImportPlan<'a> {
     /// Verdadero si hay que dejar de importar (el carril se apaga): se mira
     /// antes de cada archivo y de cada lote, y la vuelta termina en `Refused`.
     pub cancelled: &'a dyn Fn() -> bool,
+    /// Las líneas muy largas: en producción, `Skip`.
+    pub big_lines: BigLines,
 }
+
+/// Qué hacer con una línea de más de `LINE_SCAN` bytes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BigLines {
+    /// Leerla en flujo sin guardarla y descartarla si su tipo es de los que el
+    /// Python ignora; si no, se vuelve a leer entera. Las filas no cambian.
+    Skip,
+    /// Guardarla entera siempre (para comparar en las pruebas).
+    Read,
+}
+
+impl ImportPlan<'_> {
+    /// El filtro de líneas largas de un importador, si el plan lo usa.
+    fn filter<'f>(&self, filter: &'f LineFilter) -> Option<&'f LineFilter> {
+        (self.big_lines == BigLines::Skip).then_some(filter)
+    }
+}
+
+/// Las rutas que decide un importador y si una línea con esas capturas puede
+/// llevar filas. `used` ve lo mismo que el Python tras `json.loads`: si da
+/// falso, el Python habría ignorado la línea.
+struct LineFilter {
+    targets: Targets,
+    used: fn(&[Seen]) -> bool,
+}
+
+fn seen_is(seen: &[Seen], i: usize, want: &str) -> bool {
+    seen.get(i).is_some_and(|s| s.is(want))
+}
+
+/// Codex: `session_meta`, `turn_context`, `token_usage_record` y los
+/// `event_msg` con `payload.type == "task_complete"`.
+const CODEX_FILTER: LineFilter = LineFilter {
+    targets: &[&["type"], &["payload", "type"]],
+    used: |s| {
+        seen_is(s, 0, "session_meta")
+            || seen_is(s, 0, "turn_context")
+            || seen_is(s, 0, "token_usage_record")
+            || (seen_is(s, 0, "event_msg") && seen_is(s, 1, "task_complete"))
+    },
+};
+
+/// Claude: `type` `system` (para `turn_duration`) o `assistant`.
+const CLAUDE_FILTER: LineFilter = LineFilter {
+    targets: &[&["type"]],
+    used: |s| seen_is(s, 0, "system") || seen_is(s, 0, "assistant"),
+};
+
+/// Grok: `params.update.sessionUpdate == "turn_completed"`.
+const GROK_FILTER: LineFilter = LineFilter {
+    targets: &[&["params", "update", "sessionUpdate"]],
+    used: |s| seen_is(s, 0, "turn_completed"),
+};
 
 impl ImportPlan<'_> {
     fn check(&self) -> Result<()> {
@@ -380,11 +439,25 @@ fn sort_and_cut(mut files: Vec<(f64, PathBuf)>, max_files: Option<i64>) -> Vec<(
 /// como U+FFFD. El búfer se reutiliza y se suelta si una línea lo hizo crecer.
 /// Un error de lectura a mitad corta el archivo (el `except OSError: continue`)
 /// conservando lo ya visto.
-fn each_line(file: fs::File, mut visit: impl FnMut(usize, &str) -> Result<()>) -> Result<()> {
+///
+/// Con `filter`, una línea que pasa de `LINE_SCAN` bytes deja de guardarse: el
+/// resto se lee en flujo con `LineScan` y, si su tipo es de los que el Python
+/// ignora, la línea se salta sin guardarla ni analizarla (cuenta para el número
+/// de línea). Si no se puede probar, se vuelve a leer entera desde su principio
+/// (los transcripts solo crecen por el final) y se visita como siempre.
+fn each_line(
+    file: fs::File,
+    filter: Option<&LineFilter>,
+    mut visit: impl FnMut(usize, &str) -> Result<()>,
+) -> Result<()> {
     let mut reader = BufReader::with_capacity(64 * 1024, file);
     let mut buf: Vec<u8> = Vec::new();
+    let mut scan: Option<LineScan> = None;
     let mut skip_lf = false;
     let mut no = 0usize;
+    // Bytes consumidos y principio de la línea en curso.
+    let mut pos: u64 = 0;
+    let mut start: u64 = 0;
     loop {
         let chunk = match reader.fill_buf() {
             Ok(chunk) => chunk,
@@ -392,9 +465,18 @@ fn each_line(file: fs::File, mut visit: impl FnMut(usize, &str) -> Result<()>) -
             Err(_) => return Ok(()),
         };
         if chunk.is_empty() {
-            if !buf.is_empty() {
+            if !buf.is_empty() || scan.is_some() {
                 no += 1;
-                visit(no, &String::from_utf8_lossy(&buf))?;
+                let line = settle_line(
+                    &mut reader,
+                    filter,
+                    scan.take(),
+                    &mut buf,
+                    (start, pos, pos),
+                );
+                if line == LineFate::Visit {
+                    visit(no, &String::from_utf8_lossy(&buf))?;
+                }
             }
             return Ok(());
         }
@@ -402,13 +484,19 @@ fn each_line(file: fs::File, mut visit: impl FnMut(usize, &str) -> Result<()>) -
             skip_lf = false;
             if chunk.first() == Some(&b'\n') {
                 reader.consume(1);
+                pos += 1;
+                start = pos;
                 continue;
             }
         }
         match chunk.iter().position(|b| *b == b'\n' || *b == b'\r') {
             Some(at) => {
                 let end = chunk.get(at).copied();
-                buf.extend_from_slice(chunk.get(..at).unwrap_or_default());
+                let content = chunk.get(..at).unwrap_or_default();
+                match scan.as_mut() {
+                    Some(s) => s.feed(content),
+                    None => buf.extend_from_slice(content),
+                }
                 // `\r\n` en el mismo trozo: se consume entero.
                 let mut used = at + 1;
                 if end == Some(b'\r') {
@@ -418,20 +506,95 @@ fn each_line(file: fs::File, mut visit: impl FnMut(usize, &str) -> Result<()>) -
                         skip_lf = true;
                     }
                 }
+                let line_end = pos + at as u64;
                 reader.consume(used);
+                pos += used as u64;
                 no += 1;
-                visit(no, &String::from_utf8_lossy(&buf))?;
+                match settle_line(
+                    &mut reader,
+                    filter,
+                    scan.take(),
+                    &mut buf,
+                    (start, line_end, pos),
+                ) {
+                    LineFate::Visit => visit(no, &String::from_utf8_lossy(&buf))?,
+                    LineFate::Skip => {}
+                    // La relectura falló: se corta el archivo, como un error de lectura.
+                    LineFate::Cut => return Ok(()),
+                }
                 buf.clear();
                 if buf.capacity() > LINE_KEEP {
                     buf = Vec::new();
                 }
+                start = pos;
             }
             None => {
                 let len = chunk.len();
-                buf.extend_from_slice(chunk);
+                match scan.as_mut() {
+                    Some(s) => s.feed(chunk),
+                    None => {
+                        buf.extend_from_slice(chunk);
+                        if let Some(f) = filter
+                            && buf.len() > LINE_SCAN
+                        {
+                            let mut s = LineScan::new(f.targets);
+                            s.feed(&buf);
+                            buf = Vec::new();
+                            scan = Some(s);
+                        }
+                    }
+                }
                 reader.consume(len);
+                pos += len as u64;
             }
         }
+    }
+}
+
+/// Qué pasa con la línea que acaba de terminar.
+#[derive(Debug, PartialEq, Eq)]
+enum LineFate {
+    /// Se visita con lo que hay en el búfer.
+    Visit,
+    /// El Python la habría ignorado: no se visita.
+    Skip,
+    /// No se pudo releer: se corta el archivo.
+    Cut,
+}
+
+/// Si la línea iba en flujo y no se pudo probar que el Python la ignora, se
+/// relee de `start` a `end` al búfer y el lector vuelve a `after`.
+fn settle_line(
+    reader: &mut BufReader<fs::File>,
+    filter: Option<&LineFilter>,
+    scan: Option<LineScan>,
+    buf: &mut Vec<u8>,
+    (start, end, after): (u64, u64, u64),
+) -> LineFate {
+    let Some(scan) = scan else {
+        return LineFate::Visit;
+    };
+    if let (Some(f), Some(seen)) = (filter, scan.finish())
+        && !(f.used)(&seen)
+    {
+        return LineFate::Skip;
+    }
+    buf.clear();
+    let reread = (|| -> std::io::Result<()> {
+        let len = end
+            .checked_sub(start)
+            .ok_or_else(|| std::io::Error::other("línea"))?;
+        reader.seek(SeekFrom::Start(start))?;
+        reader.by_ref().take(len).read_to_end(buf)?;
+        if buf.len() as u64 != len {
+            return Err(std::io::Error::other("línea corta"));
+        }
+        reader.seek(SeekFrom::Start(after))?;
+        Ok(())
+    })();
+    match reread {
+        Ok(()) => LineFate::Visit,
+        Err(_) => LineFate::Cut,
     }
 }
 
@@ -811,7 +974,7 @@ pub fn record_local_codex_rollouts(
                 thread: String::new(),
                 turns: HashMap::new(),
             };
-            each_line(file, |_, text| {
+            each_line(file, plan.filter(&CODEX_FILTER), |_, text| {
                 codex_line(conn, &mut sink, &mut state, text, plan.zone, roots).map(|_| ())
             })?;
         }
@@ -1029,7 +1192,7 @@ pub fn record_local_claude_jsonl(
             mtime: file_mtime,
             cutoff,
         };
-        each_line(handle, |no, text| {
+        each_line(handle, plan.filter(&CLAUDE_FILTER), |no, text| {
             claude_line(conn, &mut sink, &info, no, text, plan.zone, roots).map(|_| ())
         })?;
     }
@@ -1308,7 +1471,7 @@ pub fn record_local_grok_updates(
             model,
             effort,
         };
-        each_line(handle, |no, text| {
+        each_line(handle, plan.filter(&GROK_FILTER), |no, text| {
             grok_line(conn, &mut lookup, &mut sink, &file, no, text).map(|_| ())
         })?;
     }
@@ -2183,12 +2346,16 @@ mod tests {
     use super::*;
 
     fn read_lines(bytes: &[u8]) -> Vec<(usize, String)> {
+        read_lines_with(bytes, None)
+    }
+
+    fn read_lines_with(bytes: &[u8], filter: Option<&LineFilter>) -> Vec<(usize, String)> {
         let dir = std::env::temp_dir().join(format!("cmd-lines-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(format!("l-{}.txt", bytes.len()));
         std::fs::write(&path, bytes).unwrap();
         let mut out = Vec::new();
-        each_line(std::fs::File::open(&path).unwrap(), |no, text| {
+        each_line(std::fs::File::open(&path).unwrap(), filter, |no, text| {
             out.push((no, text.to_owned()));
             Ok(())
         })
@@ -2227,6 +2394,54 @@ mod tests {
         big.extend("é\n".as_bytes());
         let got = read_lines(&big);
         assert!(got.first().is_some_and(|(_, l)| l.ends_with('é')));
+    }
+
+    /// Con el filtro de Codex, las líneas largas de tipos que no se usan no se
+    /// visitan; las que se usan llegan enteras (releídas) y la numeración y los
+    /// fines de línea son los mismos que sin filtro.
+    #[test]
+    fn big_unused_lines_are_skipped_and_the_rest_is_identical() {
+        let big = "x".repeat(3 * LINE_SCAN);
+        let lines = [
+            r#"{"type":"session_meta","payload":{"id":"t","cwd":"/r"}}"#.to_owned(),
+            format!(
+                r#"{{"type":"response_item","payload":{{"type":"custom_tool_call_output","output":"{big}"}}}}"#
+            ),
+            format!(
+                r#"{{"type":"event_msg","payload":{{"type":"item_completed","item":"{big}"}}}}"#
+            ),
+            // Usada y larga: el tipo va después del contenido.
+            format!(
+                r#"{{"payload":{{"output":"{big}","type":"task_complete","turn_id":"t1"}},"type":"event_msg"}}"#
+            ),
+            // La última clave repetida gana: es `session_meta`.
+            format!(
+                r#"{{"type":"compacted","x":"{big}","type":"session_meta","payload":{{"id":"u"}}}}"#
+            ),
+            // Un escape en el tipo: no se puede probar, se lee entera.
+            format!(r#"{{"x":"{big}","type":"session{}u005fmeta"}}"#, '\\'),
+            r#"{"type":"token_usage_record","payload":{"response_id":"r"}}"#.to_owned(),
+            // Al final, sin fin de línea.
+            format!(r#"{{"type":"turn_context","payload":{{"turn_id":"t9","cwd":"{big}"}}}}"#),
+        ];
+        let mut bytes = Vec::new();
+        for (i, line) in lines.iter().enumerate() {
+            bytes.extend(line.as_bytes());
+            match i {
+                7 => {}
+                2 => bytes.extend(b"\r\n"),
+                4 => bytes.push(b'\r'),
+                _ => bytes.push(b'\n'),
+            }
+        }
+        let plain = read_lines(&bytes);
+        let filtered = read_lines_with(&bytes, Some(&CODEX_FILTER));
+        assert_eq!(plain.len(), 8);
+        let numbers: Vec<usize> = filtered.iter().map(|(n, _)| *n).collect();
+        assert_eq!(numbers, [1, 4, 5, 6, 7, 8]);
+        for (n, text) in &filtered {
+            assert_eq!(Some(text), plain.get(n - 1).map(|(_, t)| t), "línea {n}");
+        }
     }
 
     #[test]

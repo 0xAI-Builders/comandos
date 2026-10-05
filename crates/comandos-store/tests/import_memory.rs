@@ -71,6 +71,7 @@ fn claude_import_peak_stays_small_with_big_lines() {
         zone: &zone,
         admit: &admit,
         cancelled: &|| false,
+        big_lines: usage_import::BigLines::Skip,
     };
     let mut seen = usage_import::ImportSeen::default();
 

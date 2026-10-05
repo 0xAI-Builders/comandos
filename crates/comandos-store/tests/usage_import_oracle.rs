@@ -413,7 +413,13 @@ src.close()
 cycle()
 "#;
 
-fn rust_cycle(home: &Path, db: &Path, seen: &mut usage_import::ImportSeen, roots: &MapRoots) {
+fn rust_cycle(
+    home: &Path,
+    db: &Path,
+    seen: &mut usage_import::ImportSeen,
+    roots: &MapRoots,
+    big_lines: usage_import::BigLines,
+) {
     let conn = usage::open_usage_db_at(db).unwrap();
     let zone = chrono_tz::America::Mexico_City;
     let admit = |_: &Connection| true;
@@ -428,6 +434,7 @@ fn rust_cycle(home: &Path, db: &Path, seen: &mut usage_import::ImportSeen, roots
         zone: &zone,
         admit: &admit,
         cancelled: &|| false,
+        big_lines,
     };
     usage_import::reconcile_orphan_interactions(&conn, NOW, 14).unwrap();
     usage_import::prune_old_turns(&conn, NOW, 21).unwrap();
@@ -471,7 +478,13 @@ fn importers_match_python_row_by_row() {
         serde_json::from_str(&std::fs::read_to_string(home.join("roots.json")).unwrap()).unwrap();
     let roots = MapRoots(roots);
     let mut seen = usage_import::ImportSeen::default();
-    rust_cycle(&home, &ours, &mut seen, &roots);
+    rust_cycle(
+        &home,
+        &ours,
+        &mut seen,
+        &roots,
+        usage_import::BigLines::Skip,
+    );
     let first = dump(&ours);
     assert!(seen.files_read() >= 4, "{}", seen.files_read());
     // Lo importado no es trivial: turnos de las cuatro fuentes y tramos.
@@ -503,7 +516,13 @@ fn importers_match_python_row_by_row() {
         "primera pasada"
     );
     let read = seen.files_read();
-    rust_cycle(&home, &ours, &mut seen, &roots);
+    rust_cycle(
+        &home,
+        &ours,
+        &mut seen,
+        &roots,
+        usage_import::BigLines::Skip,
+    );
     assert_eq!(
         seen.files_read(),
         read,
@@ -512,6 +531,173 @@ fn importers_match_python_row_by_row() {
     assert_eq!(dump(&ours), dump(&theirs), "segunda pasada");
     assert!(seen.len() <= 6, "seen acotado al corte: {}", seen.len());
     let _ = SystemTime::now();
+}
+
+/// Líneas de varios cientos de KB en los tres importadores de JSONL: las de tipos
+/// que no se usan (salidas de herramientas, `compacted`, trozos de mensaje) junto
+/// a las normales, y largas que sí se usan (con el tipo detrás del contenido o la
+/// clave repetida). Encima de `seed_home`.
+fn seed_big(home: &Path) {
+    let big = "x".repeat(400 * 1024);
+    let mut codex = Vec::new();
+    for line in [
+        format!(
+            r#"{{"timestamp":"{}","type":"response_item","payload":{{"type":"custom_tool_call_output","output":"{big}"}}}}"#,
+            iso(NOW - 2900)
+        ),
+        r#"{"type":"session_meta","payload":{"id":"thread-big","cwd":"/r/big"}}"#.to_owned(),
+        format!(
+            r#"{{"type":"compacted","payload":{{"message":"","replacement_history":["{big}"]}}}}"#
+        ),
+        format!(
+            r#"{{"type":"turn_context","payload":{{"turn_id":"tb","cwd":"/r/big/sub","model":"gpt-5.5","effort":"high","notes":"{big}"}}}}"#
+        ),
+        format!(r#"{{"type":"event_msg","payload":{{"type":"item_completed","item":"{big}"}}}}"#),
+        format!(
+            r#"{{"type":"token_usage_record","timestamp":"{}","payload":{{"response_id":"rb","turn_id":"tb","usage":{{"input_tokens":30,"output_tokens":6}},"pad":"{big}"}}}}"#,
+            iso(NOW - 2800)
+        ),
+        // El tipo detrás del contenido: se usa.
+        format!(
+            r#"{{"payload":{{"pad":"{big}","type":"task_complete","turn_id":"tb","started_at":{},"completed_at":{}}},"type":"event_msg"}}"#,
+            NOW - 2850,
+            NOW - 2790
+        ),
+        // La última clave repetida gana: es un `token_usage_record`.
+        format!(
+            r#"{{"type":"response_item","pad":"{big}","type":"token_usage_record","timestamp":"{}","payload":{{"response_id":"rb2","usage":{{"input_tokens":2,"output_tokens":2}}}}}}"#,
+            iso(NOW - 2700)
+        ),
+        // Y al revés: un `token_usage_record` tapado por un tipo que no se usa.
+        format!(
+            r#"{{"type":"token_usage_record","timestamp":"{}","payload":{{"response_id":"no","usage":{{"input_tokens":2}}}},"pad":"{big}","type":"response_item"}}"#,
+            iso(NOW - 2700)
+        ),
+    ] {
+        codex.extend(line.as_bytes());
+        codex.extend(b"\r\n");
+    }
+    put(
+        &home.join(".codex/sessions/2026/10/04/rollout-big.jsonl"),
+        &codex,
+        (NOW - 90) as f64,
+    );
+    let mut claude = Vec::new();
+    for line in [
+        format!(
+            r#"{{"type":"user","timestamp":"{}","message":{{"content":[{{"type":"tool_result","content":"{big}"}}]}}}}"#,
+            iso(NOW - 700)
+        ),
+        format!(
+            r#"{{"type":"assistant","timestamp":"{}","cwd":"/r/big","sessionId":"s-big","requestId":"rq-big","message":{{"id":"mb","model":"claude-fable-5","content":[{{"type":"text","text":"{big}"}}],"usage":{{"input_tokens":11,"output_tokens":3}}}}}}"#,
+            iso(NOW - 650)
+        ),
+        format!(r#"{{"type":"progress","data":"{big}"}}"#),
+        // Sin `id` ni `uuid`: su id lleva el número de línea, que cuenta las saltadas.
+        format!(
+            r#"{{"type":"assistant","timestamp":"{}","cwd":"/r/big","message":{{"usage":{{"input_tokens":4}}}}}}"#,
+            iso(NOW - 640)
+        ),
+    ] {
+        claude.extend(line.as_bytes());
+        claude.push(b'\n');
+    }
+    put(
+        &home.join(".claude/projects/-r-big/s.jsonl"),
+        &claude,
+        (NOW - 15) as f64,
+    );
+    put(
+        &home.join(".grok/sessions/g-big/summary.json"),
+        br#"{"info": {"id": "grok-big", "cwd": "/r/grok-big"}, "current_model_id": "grok-5", "reasoning_effort": "high"}"#,
+        (NOW - 25) as f64,
+    );
+    let mut grok = Vec::new();
+    for line in [
+        format!(
+            r#"{{"timestamp":{},"params":{{"update":{{"sessionUpdate":"agent_message_chunk","content":{{"text":"{big}"}}}}}}}}"#,
+            NOW - 260
+        ),
+        format!(
+            r#"{{"timestamp":{},"params":{{"update":{{"content":"{big}","sessionUpdate":"tool_call_update"}}}}}}"#,
+            NOW - 255
+        ),
+        // Sin `eventId`: su id lleva el número de línea.
+        format!(
+            r#"{{"timestamp":{},"params":{{"sessionId":"ext-big","update":{{"sessionUpdate":"turn_completed","prompt_id":"pb","usage":{{"inputTokens":5,"outputTokens":5}},"pad":"{big}"}}}}}}"#,
+            NOW - 250
+        ),
+    ] {
+        grok.extend(line.as_bytes());
+        grok.push(b'\n');
+    }
+    put(
+        &home.join(".grok/sessions/g-big/updates.jsonl"),
+        &grok,
+        (NOW - 25) as f64,
+    );
+}
+
+/// Con el descarte de líneas largas (`BigLines::Skip`) las filas son las del
+/// Python y las de leerlas enteras (`BigLines::Read`), byte a byte.
+#[test]
+fn big_lines_skip_matches_python_and_full_read() {
+    let scratch = Scratch::new("oracle-big");
+    let home = scratch.0.join("home");
+    seed_home(&home);
+    seed_big(&home);
+    let skip = scratch.0.join("skip.sqlite");
+    let read = scratch.0.join("read.sqlite");
+    let theirs = scratch.0.join("theirs.sqlite");
+    for db in [&skip, &read, &theirs] {
+        seed_db(db);
+    }
+    let Some(_) = run_python(
+        ORACLE,
+        &[
+            home.as_os_str(),
+            theirs.as_os_str(),
+            OsStr::new(&NOW.to_string()),
+        ],
+        &home,
+    ) else {
+        return;
+    };
+    let roots: HashMap<String, String> =
+        serde_json::from_str(&std::fs::read_to_string(home.join("roots.json")).unwrap()).unwrap();
+    let roots = MapRoots(roots);
+    for (db, mode) in [
+        (&skip, usage_import::BigLines::Skip),
+        (&read, usage_import::BigLines::Read),
+    ] {
+        let mut seen = usage_import::ImportSeen::default();
+        rust_cycle(&home, db, &mut seen, &roots, mode);
+    }
+    let python = dump(&PathBuf::from(format!("{}.1", theirs.display())));
+    let skipped = dump(&skip);
+    let turns = skipped.first().unwrap().join("\n");
+    for id in [
+        "codex-resp-rb",
+        "codex-resp-rb2",
+        "claude-jsonl-mb:rq-big",
+        "grok-update-",
+    ] {
+        assert!(turns.contains(id), "falta {id}:\n{turns}");
+    }
+    assert!(
+        !turns.contains("codex-resp-no"),
+        "tapado por el último type"
+    );
+    assert!(skipped.get(1).unwrap().join("\n").contains("codex-turn-tb"));
+    assert_eq!(
+        skipped, python,
+        "descartando líneas largas contra el Python"
+    );
+    assert_eq!(
+        skipped,
+        dump(&read),
+        "descartando contra leyéndolas enteras"
+    );
 }
 
 const ORACLE_EDGES: &str = r#"
@@ -647,6 +833,7 @@ fn cuts_and_uncaught_errors_match_python() {
         zone: &zone,
         admit: &admit,
         cancelled: &|| false,
+        big_lines: usage_import::BigLines::Skip,
     };
     let roots = MapRoots(HashMap::new());
     let show = |r: usage_import::Result<usize>| match r {

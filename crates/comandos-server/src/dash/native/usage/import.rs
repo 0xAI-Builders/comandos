@@ -286,6 +286,7 @@ impl Cycle {
             zone: self.zone.as_ref(),
             admit: &admit,
             cancelled: &cancelled,
+            big_lines: usage_import::BigLines::Skip,
         };
         let roots = CycleRoots {
             handle: &self.handle,
