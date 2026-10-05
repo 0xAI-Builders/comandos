@@ -12,10 +12,9 @@ const MONO: &str = r#"{"family": "Monospace", "label": "Monospace del sistema", 
 
 fn new_tmux_sessions(home: &TestHome, names: &[&str]) {
     for name in names {
-        let ok = std::process::Command::new("tmux")
-            .args(["-f", "/dev/null", "new-session", "-d", "-s", name, "cat"])
-            .env_remove("TMUX")
-            .env("TMUX_TMPDIR", home.tmux_dir())
+        let ok = home
+            .tmux_command()
+            .args(["new-session", "-d", "-s", name, "cat"])
             .status()
             .unwrap()
             .success();

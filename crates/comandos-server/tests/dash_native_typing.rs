@@ -17,13 +17,8 @@ use support::{
 };
 
 fn tmux(home: &TestHome, args: &[&str]) -> String {
-    let out = std::process::Command::new("tmux")
-        .args(["-f", "/dev/null"])
-        .args(args)
-        .env_remove("TMUX")
-        .env("TMUX_TMPDIR", home.tmux_dir())
-        .output()
-        .unwrap();
+    // `-S` al socket privado: nunca el servidor del usuario.
+    let out = home.tmux_command().args(args).output().unwrap();
     String::from_utf8(out.stdout).unwrap()
 }
 
@@ -529,9 +524,17 @@ async fn same_request_id_finishing_during_resolution_types_once() {
     let mut program = Program::named("sh");
     program.prefix = vec![
         OsString::from("-c"),
-        OsString::from(r#"[ "$1" = has-session ] && sleep 1; exec tmux -f /dev/null "$@""#),
+        OsString::from(
+            r#"[ "$1" = has-session ] && sleep 1; exec tmux -f /dev/null -S "$SOCKET" "$@""#,
+        ),
         OsString::from("sh"),
     ];
+    // Socket explícito: solo `TMUX_TMPDIR` cae en el servidor real si el
+    // directorio desaparece.
+    program.env.push((
+        "SOCKET".into(),
+        support::private_socket_of(&home.tmux_dir()).into_os_string(),
+    ));
     program
         .env
         .push(("TMUX_TMPDIR".into(), home.tmux_dir().into_os_string()));

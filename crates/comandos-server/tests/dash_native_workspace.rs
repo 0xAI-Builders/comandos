@@ -2,10 +2,7 @@
 mod support;
 
 use serde_json::{Value, json};
-use std::{
-    process::{Command, Stdio},
-    sync::Arc,
-};
+use std::{process::Stdio, sync::Arc};
 use support::{
     FakeLegacy, TestHome, Wire, dead_port, front, get, oracle::oracle, request_body, tmux_available,
 };
@@ -55,10 +52,8 @@ fn tmux_sessions(home: &TestHome, names: &[&str]) -> bool {
         return false;
     }
     names.iter().all(|name| {
-        Command::new("tmux")
-            .args(["-f", "/dev/null", "new-session", "-d", "-s", name])
-            .env_remove("TMUX")
-            .env("TMUX_TMPDIR", home.tmux_dir())
+        home.tmux_command()
+            .args(["new-session", "-d", "-s", name])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
