@@ -777,11 +777,6 @@ fn start_tmux_pair(
     ))
 }
 
-/// `tmux` contra el servidor privado de `socket_dir` y solo contra ese: el
-/// socket va explícito con `-S`, no solo por `TMUX_TMPDIR`. tmux 3.2a ignora
-/// en silencio un `TMUX_TMPDIR` cuyo directorio no existe y cae en
-/// `/tmp/tmux-<uid>/default`, el servidor real del usuario; con `-S` un
-/// directorio borrado da «no server running» y nunca un `kill-server` ajeno.
 /// El entorno del cliente tmux que puede arrancar el servidor privado: si lo
 /// arranca, el servidor y todo panel nacen con el HOME de la copia, `PATH`
 /// mínimo y `SHELL=/bin/sh`, sin escritorio, DBus ni el HOME real (un
@@ -796,6 +791,11 @@ fn confined(mut cmd: Command, socket_dir: &Path, home: &Path) -> Command {
     cmd
 }
 
+/// `tmux` contra el servidor privado de `socket_dir` y solo contra ese: el
+/// socket va explícito con `-S`, no solo por `TMUX_TMPDIR`. tmux 3.2a ignora
+/// en silencio un `TMUX_TMPDIR` cuyo directorio no existe y cae en
+/// `/tmp/tmux-<uid>/default`, el servidor real del usuario; con `-S` un
+/// directorio borrado da «no server running» y nunca un `kill-server` ajeno.
 fn private_tmux(socket_dir: &Path) -> Command {
     let socket = socket_dir
         .join(format!("tmux-{}", nix::unistd::getuid().as_raw()))

@@ -360,6 +360,21 @@ async fn twin_starts_confined_and_compares_files() {
         twin.a.root.join("fakebin/tmux")
     );
     support::assert_private_tmux(&twin.front_options);
+    // Respaldos de `providers::which`: solo directorios del HOME de A.
+    assert_eq!(
+        twin.front_options.user_bin_dirs,
+        support::twin::home_bin_dirs()
+    );
+    assert!(
+        twin.front_options
+            .user_bin_dirs
+            .iter()
+            .all(|d| d.starts_with("~/")),
+        "{:?}",
+        twin.front_options.user_bin_dirs
+    );
+    // El oráculo importa el `sitecustomize.py` del confinamiento.
+    assert!(vars.iter().any(|v| v.starts_with("PYTHONPATH=")));
     assert_eq!(twin.front_options.desktop_device, "gemelo");
     assert!(twin.a.root.join("fakebin/mi-falso").exists());
     // Los dos lados responden.
@@ -596,5 +611,75 @@ fn canary_bare_session_path_keeps_fakebin_first() {
             text.contains(&format!("{name}={}/{name}\n", fakebin.display())),
             "{name} no es el falso: {text}"
         );
+    }
+}
+
+/// Canario de la revisión de la Tarea 3: la exclusión de `/usr/local/bin` es
+/// absoluta. Un nombre real que NO está en el registro ni en el `fakebin`
+/// (`ollama`, `ngrok`… de `/usr/local/bin` en esta máquina) no resuelve en
+/// ningún sitio real: ni por el `PATH` confinado ni por los respaldos
+/// `_USER_BIN_DIRS` de `lib/providers.py`/`lib/acp.py` (recortados por el
+/// `sitecustomize.py` del confinamiento) ni por los del frente
+/// (`NativeOptions::user_bin_dirs` del gemelo). Los respaldos del HOME siguen
+/// vivos en los dos lados (`~/.local/bin`).
+#[test]
+fn canary_unlisted_names_resolve_nowhere_real() {
+    let home = TestHome::new_short("canary-ulb");
+    let fakebin = support::oracle::confined_fakebin(&home, &[]);
+    let unlisted = ["ollama", "ngrok", "stripe", "circom", "android-studio"];
+    let present: Vec<&str> = unlisted
+        .iter()
+        .copied()
+        .filter(|n| Path::new("/usr/local/bin").join(n).is_file())
+        .collect();
+    if present.is_empty() {
+        eprintln!("ninguno de {unlisted:?} está en /usr/local/bin: el canario solo mira la lista");
+    }
+    // Sin el recorte, el Rust de producción sí los encontraría (el canario mide algo).
+    for name in &present {
+        assert!(
+            providers::which(name, Some(fakebin.as_os_str()), &home.root)
+                .is_some_and(|p| p.starts_with("/usr/local/bin")),
+            "{name}"
+        );
+    }
+    let dirs = support::twin::home_bin_dirs();
+    assert!(!dirs.iter().any(|d| d.starts_with('/')), "{dirs:?}");
+    // Un ejecutable del HOME sigue resolviendo por el respaldo `~/.local/bin`.
+    let local = home.root.join(".local/bin");
+    std::fs::create_dir_all(&local).unwrap();
+    write_executable(&local.join("casa-solo"), "#!/bin/sh\nexit 0\n");
+    let mut names: Vec<&str> = unlisted.to_vec();
+    names.push("casa-solo");
+    let rust: Vec<serde_json::Value> = names
+        .iter()
+        .map(|n| {
+            let hit = providers::which_in_dirs(n, Some(fakebin.as_os_str()), &home.root, &dirs);
+            serde_json::json!([n, hit.map(|p| p.display().to_string())])
+        })
+        .collect();
+    let casa = local.join("casa-solo").display().to_string();
+    for row in &rust {
+        let expected = if row[0] == "casa-solo" {
+            serde_json::Value::from(casa.clone())
+        } else {
+            serde_json::Value::Null
+        };
+        assert_eq!(row[1], expected, "Rust: {row}");
+    }
+    let code = format!(
+        "import json\nimport providers, acp\nnames = json.loads({names:?})\n\
+         assert all(d.startswith('~') for d in providers._USER_BIN_DIRS + acp._USER_BIN_DIRS)\n\
+         print(json.dumps([[n, providers.which(n), acp.which(n)] for n in names]))",
+        names = serde_json::to_string(&names).unwrap()
+    );
+    let Some(text) = run_dash(&home, &code) else {
+        return;
+    };
+    let rows: Vec<Vec<serde_json::Value>> = serde_json::from_str(text.trim()).unwrap();
+    assert_eq!(rows.len(), names.len());
+    for (row, rust) in rows.iter().zip(&rust) {
+        assert_eq!(row[1], rust[1], "providers.which: {row:?}");
+        assert_eq!(row[2], rust[1], "acp.which: {row:?}");
     }
 }

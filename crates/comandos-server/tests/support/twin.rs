@@ -75,6 +75,15 @@ pub struct TwinOpts {
     pub oracle_env: Vec<(String, String)>,
 }
 
+/// `USER_BIN_DIRS` sin lo que no es del HOME (`/usr/local/bin`).
+pub fn home_bin_dirs() -> Vec<String> {
+    comandos_runtime::providers::USER_BIN_DIRS
+        .iter()
+        .filter(|d| d.starts_with('~'))
+        .map(|d| (*d).to_owned())
+        .collect()
+}
+
 pub struct Twin {
     // Orden de los campos = orden de destrucción: primero los servidores
     // (frente, oráculo y su grupo de procesos), después los HOME, cuyo `Drop`
@@ -164,6 +173,10 @@ impl Twin {
         search.push(":");
         search.push(a.root.join("bin"));
         front_options.search_path = Some(search);
+        // Los respaldos de `providers::which` solo dentro del HOME de A: nunca
+        // el `/usr/local/bin` real (el oráculo hace lo mismo con su
+        // `sitecustomize.py`, `oracle::SITECUSTOMIZE`).
+        front_options.user_bin_dirs = home_bin_dirs();
         // C1 de la revisión de la Tarea 2: lo que el frente lance fuera de tmux
         // (`NativeOptions::program`) solo ve el entorno confinado de A, sin
         // `DISPLAY` (`gui_env_for` lo trata como ausente, como el oráculo).

@@ -585,6 +585,11 @@ pub fn confined_fakebin(home: &TestHome, extra: &[(String, String)]) -> PathBuf 
     let fakebin = home.root.join("fakebin");
     std::fs::create_dir_all(&fakebin).unwrap();
     std::fs::write(fakebin.join(".confined"), "").unwrap();
+    // Antes de leer `confined_env` (el guardián lo copia): con el archivo en su
+    // sitio, el entorno lleva `PYTHONPATH` a él.
+    let site = home.root.join(SITE_DIR);
+    std::fs::create_dir_all(&site).unwrap();
+    std::fs::write(site.join("sitecustomize.py"), SITECUSTOMIZE).unwrap();
     for name in REAL_TOOLS {
         if let Some(real) = real_program(name) {
             let link = fakebin.join(name);
@@ -635,6 +640,39 @@ pub fn confined_fakebin(home: &TestHome, extra: &[(String, String)]) -> PathBuf 
     }
     fakebin
 }
+
+/// Directorio (relativo al HOME de la prueba) del `sitecustomize.py` del
+/// confinamiento; `TestHome::confined_env` pone `PYTHONPATH` en él si existe.
+pub const SITE_DIR: &str = "pysite";
+
+/// `sitecustomize.py` generado en cada HOME confinado (no es Python del
+/// repositorio): todo Python que nazca con el entorno confinado (oráculo,
+/// `run_dash`, guiones de los paneles, `cc-acp`) lo importa al arrancar. Deja
+/// los respaldos `_USER_BIN_DIRS` de `lib/providers.py` y `lib/acp.py` solo con
+/// directorios del HOME (`~/…`): sin él, un nombre que no esté en el `fakebin`
+/// caería en el `/usr/local/bin` real. Es el mismo recorte que el frente del
+/// gemelo hace con `NativeOptions::user_bin_dirs`.
+pub const SITECUSTOMIZE: &str = r#"
+import sys, importlib.abc, importlib.machinery
+
+class _TwinUserBinDirs(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path, target=None):
+        if name not in ("providers", "acp"):
+            return None
+        spec = importlib.machinery.PathFinder.find_spec(name, path)
+        if spec is None or spec.loader is None:
+            return spec
+        original = spec.loader.exec_module
+        def exec_module(module):
+            original(module)
+            dirs = getattr(module, "_USER_BIN_DIRS", None)
+            if isinstance(dirs, tuple):
+                module._USER_BIN_DIRS = tuple(d for d in dirs if d.startswith("~"))
+        spec.loader.exec_module = exec_module
+        return spec
+
+sys.meta_path.insert(0, _TwinUserBinDirs())
+"#;
 
 /// Opciones del oráculo confinado (`oracle_with`, `run_dash_with`).
 #[derive(Default, Clone)]

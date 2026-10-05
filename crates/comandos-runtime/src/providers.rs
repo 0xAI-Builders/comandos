@@ -1137,8 +1137,10 @@ pub fn process_aliases(agents: &BTreeSet<String>, registry: &Value) -> HashMap<S
 // which
 // ---------------------------------------------------------------------------
 
-/// `_USER_BIN_DIRS` de `lib/providers.py`.
-const USER_BIN_DIRS: [&str; 7] = [
+/// `_USER_BIN_DIRS` de `lib/providers.py`: los respaldos de `which` en
+/// producción. Las pruebas confinadas pasan otra lista a `which_in_dirs` (sin
+/// `/usr/local/bin`, que no es del HOME temporal).
+pub const USER_BIN_DIRS: [&str; 7] = [
     "~/.local/bin",
     "~/.bun/bin",
     "~/.cargo/bin",
@@ -1198,14 +1200,25 @@ pub fn which_path(name: &str, path: Option<&OsStr>) -> Option<PathBuf> {
 /// `which` (`lib/providers.py`): `shutil.which` y luego los directorios de
 /// binarios de usuario (archivo regular ejecutable).
 pub fn which(name: &str, path: Option<&OsStr>, home: &Path) -> Option<PathBuf> {
+    which_in_dirs(name, path, home, &USER_BIN_DIRS)
+}
+
+/// `which` con la lista de respaldos dada (`~/…` relativo a `home`): con
+/// `USER_BIN_DIRS` es exactamente `which`.
+pub fn which_in_dirs<D: AsRef<str>>(
+    name: &str,
+    path: Option<&OsStr>,
+    home: &Path,
+    dirs: &[D],
+) -> Option<PathBuf> {
     if name.is_empty() {
         return None;
     }
     if let Some(hit) = which_path(name, path) {
         return Some(hit);
     }
-    USER_BIN_DIRS.iter().find_map(|dir| {
-        let candidate = expanduser(dir, home).join(name);
+    dirs.iter().find_map(|dir| {
+        let candidate = expanduser(dir.as_ref(), home).join(name);
         (fs::metadata(&candidate).is_ok_and(|m| m.is_file()) && executable(&candidate))
             .then_some(candidate)
     })

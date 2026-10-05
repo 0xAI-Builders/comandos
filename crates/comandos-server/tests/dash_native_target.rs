@@ -403,3 +403,67 @@ async fn target_only_reads_tmux() {
     // El tmux del frente es el privado de la prueba.
     support::assert_private_tmux(s.native.options());
 }
+
+/// Revisión de la Tarea 3: el frente emite las MISMAS órdenes de tmux, con los
+/// mismos argumentos y en el mismo orden, que el Python. El `opts.tmux` del
+/// frente apunta al guardián del `fakebin` (que anota en `<HOME>/tmux.log` y
+/// conserva el `-S` privado en el prefijo); el Python confinado llega al mismo
+/// guardián por su `PATH`. Se compara el registro de cada operación por
+/// separado: `resolve_project_session` de `Mi-Proyecto` y `agente-x`, y el
+/// preámbulo de los POST con un pane (`post_target` frente a `operator_pane`,
+/// que hace la misma resolución y la misma comprobación del pane).
+#[tokio::test]
+async fn target_tmux_argv_matches_python() {
+    let Some(s) = seed("target-argv") else {
+        return;
+    };
+    let mut opts = s.home.options();
+    opts.tmux.program.path = s.home.root.join("fakebin/tmux");
+    support::assert_private_tmux(&opts);
+    let native = Native::new(opts);
+    let log = s.home.root.join("tmux.log");
+    let take = || {
+        let calls = support::twin::tmux_log(&s.home);
+        let _ = std::fs::remove_file(&log);
+        calls
+    };
+    let _ = std::fs::remove_file(&log);
+    let mut rust = Vec::new();
+    for sess in ["Mi-Proyecto", "agente-x"] {
+        assert!(
+            resolve_project_session(&native, sess).await.is_ok(),
+            "{sess}"
+        );
+        rust.push(take());
+    }
+    for (sess, pane) in [("s1", "%0"), ("Mi-Proyecto", "%0"), ("s1", "%42")] {
+        let target = post_target(&native, "/send", &json!({"session": sess, "pane": pane})).await;
+        assert!(target.is_ok(), "{sess} {pane}");
+        rust.push(take());
+    }
+    // Sin oráculo, al menos el frente pasó por el guardián.
+    assert!(rust.iter().all(|calls| !calls.is_empty()), "{rust:?}");
+    assert!(
+        rust.iter()
+            .flatten()
+            .all(|args| args.first().is_some_and(|v| v != "kill-server")),
+        "{rust:?}"
+    );
+    let mut python = Vec::new();
+    let steps = [
+        "dash.resolve_project_session('Mi-Proyecto')",
+        "dash.resolve_project_session('agente-x')",
+        "dash.operator_pane('s1', '%0')",
+        "dash.operator_pane('Mi-Proyecto', '%0')",
+        "dash.operator_pane('s1', '%42')",
+    ];
+    for step in steps {
+        if oracle::run_dash(&s.home, step).is_none() {
+            return;
+        }
+        python.push(take());
+    }
+    for ((step, front), oracle) in steps.iter().zip(&rust).zip(&python) {
+        assert_eq!(front, oracle, "{step}");
+    }
+}

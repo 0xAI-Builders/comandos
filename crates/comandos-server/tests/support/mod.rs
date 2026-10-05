@@ -248,6 +248,11 @@ impl TestHome {
             ("XDG_CACHE_HOME".to_owned(), at(".cache")),
             ("TMUX_TMPDIR".to_owned(), at("tmux")),
         ];
+        // El `sitecustomize.py` del confinamiento (`oracle::SITECUSTOMIZE`).
+        let site = self.root.join(oracle::SITE_DIR);
+        if site.join("sitecustomize.py").is_file() {
+            env.push(("PYTHONPATH".to_owned(), site.display().to_string()));
+        }
         if let Ok(user) = std::env::var("USER") {
             env.push(("USER".to_owned(), user.clone()));
             env.push(("LOGNAME".to_owned(), user));
@@ -459,6 +464,11 @@ impl Drop for TestHome {
         let mut dying = self.root.clone().into_os_string();
         dying.push(".dying");
         let dying = PathBuf::from(dying);
+        // Un `.dying` viejo (corrida anterior abortada) puede tener aún su
+        // servidor vivo: se mata por su `-S` antes de borrar el directorio.
+        if dying.exists() {
+            kill_private_server(&dying.join("tmux"));
+        }
         let _ = std::fs::remove_dir_all(&dying);
         let root = if std::fs::rename(&self.root, &dying).is_ok() {
             kill_private_server(&dying.join("tmux"));

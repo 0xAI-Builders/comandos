@@ -437,6 +437,10 @@ pub struct NativeOptions {
     pub legacy_token: Vec<u8>,
     /// `PATH` del frente al arrancar, para `providers::which` (D9).
     pub search_path: Option<OsString>,
+    /// Respaldos de `providers::which` tras el `PATH` (`_USER_BIN_DIRS`):
+    /// `providers::USER_BIN_DIRS` en producción; el gemelo deja solo los del
+    /// HOME temporal, nunca `/usr/local/bin`.
+    pub user_bin_dirs: Vec<String>,
     /// Directorio de trabajo del frente (rutas relativas del catálogo y cuentas).
     pub cwd: PathBuf,
     /// `CODEX_HOME` / `GROK_HOME` del frente (catálogos de modelos).
@@ -551,6 +555,10 @@ impl NativeOptions {
             legacy: SocketAddr::from((Ipv4Addr::LOCALHOST, crate::dash::DEFAULT_LEGACY_PORT)),
             legacy_token: Vec::new(),
             search_path: std::env::var_os("PATH"),
+            user_bin_dirs: comandos_runtime::providers::USER_BIN_DIRS
+                .iter()
+                .map(|d| (*d).to_owned())
+                .collect(),
             cwd: std::env::current_dir().unwrap_or_else(|_| home.to_path_buf()),
             codex_home: env_path("CODEX_HOME"),
             grok_home: env_path("GROK_HOME"),
