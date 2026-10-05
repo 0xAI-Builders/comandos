@@ -1,0 +1,5 @@
+{"name":"n-news-latest","method":"GET","path":"/news/latest","headers":{"Host":"127.0.0.1"},"volatile":[],"expect":"same"}
+{"name":"n-news-editions","method":"GET","path":"/news/editions","headers":{"Host":"127.0.0.1"},"volatile":[],"expect":"same"}
+{"name":"n-news-edition-falta","method":"GET","path":"/news/edition","headers":{"Host":"127.0.0.1"},"volatile":[],"expect":"same"}
+{"name":"n-news-media-invalida","method":"GET","path":"/news/media/nada.png","headers":{"Host":"127.0.0.1"},"volatile":[],"expect":"same"}
+{"name":"n-news-saved","method":"GET","path":"/news/saved","headers":{"Host":"127.0.0.1"},"volatile":[],"expect":"same"}

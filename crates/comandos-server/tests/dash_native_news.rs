@@ -1,0 +1,190 @@
+//! Lector de noticias nativo (plan 2f-4, Tarea 1) contra el `cc-dash` Python
+//! con el gemelo: las ocho rutas GET, con estado, cabeceras y cuerpo.
+//!
+//! Confinamiento: sin tmux ni procesos propios de estas rutas. app-state,
+//! `news-media` (`XDG_STATE_HOME` = HOME temporal en los dos lados) y
+//! `~/.claude/hooks/news-*.json` viven en el HOME de cada lado. El oráculo
+//! corre sin red y sin bucles de fondo (sin planificador de ediciones).
+//! Efectos en vivo: ninguno (lecturas).
+mod support;
+
+use std::os::unix::fs::symlink;
+use support::{
+    FakeLegacy, TestHome, front, get,
+    news::{
+        EMPTY_IMAGE, LARGE_IMAGE, MISSING_IMAGE, SMALL_IMAGE, large_image, media_dir, migrated,
+        seed_editions,
+    },
+    twin::Twin,
+};
+
+/// La misma petición GET a los dos lados: estado, `Content-Type`,
+/// `Content-Length`, `Cache-Control` y cuerpo (bytes) iguales.
+async fn same(t: &Twin, path: &str) -> u16 {
+    let run = t.get(path).await;
+    let (f, o) = (&run.front, &run.oracle);
+    assert_eq!(f.status, o.status, "{path}: {} / {}", f.text(), o.text());
+    for header in ["content-type", "content-length", "cache-control"] {
+        assert_eq!(f.header(header), o.header(header), "{path}: {header}");
+    }
+    assert!(f.body == o.body, "{path}: {} / {}", f.text(), o.text());
+    f.status
+}
+
+#[tokio::test]
+async fn news_reads_match_python() {
+    let Some(t) = Twin::start("news", seed_editions).await else {
+        return;
+    };
+    for (path, status) in [
+        ("/news/latest", 200),
+        ("/news/latest?x=1", 200),
+        ("/news/latestX", 200),
+        ("/news/editions", 200),
+        ("/news/editions?x=1", 200),
+        ("/news/edition", 400),
+        ("/news/edition?id=", 400),
+        ("/news/edition?id=latest", 200),
+        ("/news/edition?id=x", 400),
+        ("/news/edition?id=a&id=b", 400),
+        ("/news/edition?id=2026-10-03@09:00", 200),
+        ("/news/edition?id=2026-10-03%4015:00", 200),
+        ("/news/edition?id=2026-10-03@21:00", 200),
+        ("/news/edition?id=2030-01-01@09:00", 200),
+        ("/news/edition?id=2026-01-01@09:00", 404),
+        ("/news/edition?id=2026-10-03@09:00%0A", 404),
+        ("/news/edition?id=2026-10-03@09:00&id=", 200),
+        ("/news/source?id=1", 200),
+        ("/news/source?id=3", 200),
+        ("/news/source?id=4", 200),
+        ("/news/source?id=999", 404),
+        ("/news/source?id=abc", 404),
+        ("/news/source?id=", 404),
+        ("/news/source", 404),
+        ("/news/source?id=+1", 200),
+        ("/news/source?id=%201%20", 200),
+        ("/news/source?id=0_1", 200),
+        ("/news/source?id=-1", 404),
+        ("/news/source?id=9007199254740992", 404),
+        ("/news/chat?story=10", 200),
+        ("/news/chat?story=11", 200),
+        ("/news/chat?story=99", 404),
+        ("/news/chat?story=x", 404),
+        ("/news/chat", 404),
+        ("/news/notes", 200),
+        ("/news/notes?story=10", 200),
+        ("/news/notes?story=1&q=palabra", 200),
+        ("/news/notes?q=PALABRA", 200),
+        ("/news/notes?q=%C3%81RBOL", 200),
+        ("/news/notes?q=%25", 200),
+        ("/news/notes?story=x&q=+", 200),
+        ("/news/saved", 200),
+        ("/news/saved?x=1", 200),
+        (&format!("/news/media/{SMALL_IMAGE}"), 200),
+        (&format!("/news/media/{SMALL_IMAGE}?v=2"), 200),
+        (&format!("/news/media/{LARGE_IMAGE}"), 200),
+        (&format!("/news/media/{EMPTY_IMAGE}"), 404),
+        (&format!("/news/media/{MISSING_IMAGE}"), 404),
+        ("/news/media/nada.png", 404),
+        ("/news/media/../x", 404),
+        ("/news/media/%2e%2e%2fx", 404),
+        ("/news/media/", 404),
+    ] {
+        assert_eq!(same(&t, path).await, status, "{path}");
+    }
+    // La imagen grande llega entera por trozos, con su longitud.
+    let run = t.get(&format!("/news/media/{LARGE_IMAGE}")).await;
+    assert_eq!(run.front.body, large_image());
+    assert_eq!(run.front.header("content-type"), Some("image/jpeg"));
+
+    // La configuración se relee en cada petición: con la clave en el entorno
+    // de los dos lados (`HOME`) y sin ella.
+    for config in [
+        r#"{"enabled": true, "summarizer": {"kind": "anthropic-messages", "model": "m", "inputUsdPerMTok": 3, "outputUsdPerMTok": 15, "apiKeyEnv": "HOME"}}"#,
+        r#"{"enabled": true, "summarizer": {"kind": "anthropic-messages", "model": "m", "inputUsdPerMTok": 3, "outputUsdPerMTok": 15, "apiKeyEnv": "NO_EXISTE_EN_LA_PRUEBA"}}"#,
+        r#"{"enabled": true, "summarizer": {"kind": "acp", "agent": "opencode", "model": 0}, "policy": {"slots": ["09:00", "15:00\n", "23:59"], "budgetUsd": 0.5}}"#,
+        r#"{"enabled": true, "summarizer": {"kind": "chain", "steps": {"agent": "x"}}}"#,
+        r#"{"enabled": false}"#,
+        "[1]",
+        "{roto",
+    ] {
+        t.a.write("news-editions.json", config);
+        t.b.write("news-editions.json", config);
+        assert_eq!(same(&t, "/news/editions").await, 200, "{config}");
+    }
+    // `steps` ausente en una cadena: `for st in None` → el 500 del tablero.
+    let broken = r#"{"enabled": true, "summarizer": {"kind": "chain"}}"#;
+    t.a.write("news-editions.json", broken);
+    t.b.write("news-editions.json", broken);
+    assert_eq!(same(&t, "/news/editions").await, 500);
+    for watch in ["[]", "0", "[1]", "{roto"] {
+        t.a.write("news-watch.json", watch);
+        t.b.write("news-watch.json", watch);
+        assert_eq!(same(&t, "/news/latest").await, 200, "{watch}");
+    }
+}
+
+#[tokio::test]
+async fn news_without_editions_match_python() {
+    let Some(t) = Twin::start("news-empty", |home| {
+        migrated(home);
+    })
+    .await
+    else {
+        return;
+    };
+    for (path, status) in [
+        ("/news/latest", 200),
+        ("/news/editions", 200),
+        ("/news/edition?id=latest", 404),
+        ("/news/notes", 200),
+        ("/news/saved", 200),
+        (&format!("/news/media/{SMALL_IMAGE}"), 404),
+    ] {
+        assert_eq!(same(&t, path).await, status, "{path}");
+    }
+}
+
+/// Review Focus 3: un nombre que no casa o un archivo fuera de `media_dir()`
+/// (por enlace simbólico) es «Imagen no encontrada», sin leer nada de fuera.
+#[tokio::test]
+async fn media_rejects_traversal() {
+    let home = TestHome::new("news-media");
+    seed_editions(&home);
+    let secret = home.root.join("secreto.png");
+    std::fs::write(&secret, b"no se lee").unwrap();
+    let outside = "22222222222222222222222222222222.png";
+    symlink(&secret, media_dir(&home).join(outside)).unwrap();
+    // Un enlace dentro de la carpeta sí se sirve.
+    let inside = "33333333333333333333333333333333.png";
+    symlink(
+        media_dir(&home).join(SMALL_IMAGE),
+        media_dir(&home).join(inside),
+    )
+    .unwrap();
+    // Un directorio con nombre válido.
+    std::fs::create_dir(media_dir(&home).join("44444444444444444444444444444444.gif")).unwrap();
+    let legacy = FakeLegacy::start().await;
+    let f = front(&home, legacy.port, home.options()).await;
+    for path in [
+        format!("/news/media/{outside}"),
+        "/news/media/../../secreto.png".to_owned(),
+        "/news/media/%2e%2e/%2e%2e/secreto.png".to_owned(),
+        "/news/media/..%2f..%2fsecreto.png".to_owned(),
+        "/news/media/44444444444444444444444444444444.gif".to_owned(),
+    ] {
+        let wire = get(f.port, &path).await;
+        assert_eq!(wire.status, 404, "{path}");
+        assert_eq!(
+            wire.text(),
+            r#"{"error": "Imagen no encontrada"}"#,
+            "{path}"
+        );
+    }
+    let wire = get(f.port, &format!("/news/media/{inside}")).await;
+    assert_eq!(wire.status, 200);
+    assert_eq!(wire.body, b"\x89PNG\r\n\x1a\nfalsa");
+    // Nada se reenvió al heredado.
+    assert!(legacy.requests().is_empty(), "{:?}", legacy.requests());
+    f.stop().await;
+}
