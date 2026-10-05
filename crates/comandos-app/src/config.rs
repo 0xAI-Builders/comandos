@@ -6,6 +6,11 @@
 //! sandbox sin servidor tmux propio no se puede representar (`Mode::Sandbox` lleva
 //! una [`SocketLabel`], que nunca es `default`), así que quien abra tmux a partir de
 //! la configuración no puede caer por descuido en el servidor del usuario.
+//!
+//! En sandbox, además, toda ruta en la que la app escribe se resuelve (enlaces
+//! incluidos) y tiene que quedar dentro de `sandbox_root()` o del directorio temporal
+//! del proceso: es una lista de permitidos, no de prohibidos.
+use std::ffi::OsString;
 use std::ops::RangeInclusive;
 use std::path::{Component, Path, PathBuf};
 
@@ -48,6 +53,7 @@ impl SocketLabel {
             && raw.len() <= 64
             && raw != "default"
             && !raw.starts_with('.')
+            && !raw.starts_with('-')
             && raw
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
@@ -56,8 +62,8 @@ impl SocketLabel {
         } else {
             Err(format!(
                 "--tmux-socket {raw:?} no vale: hace falta una etiqueta propia \
-                 ([A-Za-z0-9._-], distinta de \"default\"); para el servidor del usuario \
-                 se omite la opción"
+                 ([A-Za-z0-9._-], sin '.' ni '-' al principio, distinta de \"default\"); \
+                 para el servidor del usuario se omite la opción"
             ))
         }
     }
@@ -131,7 +137,8 @@ impl AppConfig {
         }
     }
 
-    /// Raíz de los directorios temporales del sandbox (`$XDG_RUNTIME_DIR/comandos-app-sbx`).
+    /// Raíz de los directorios temporales del sandbox (`$XDG_RUNTIME_DIR/comandos-app-sbx`,
+    /// ya resuelta). Toda escritura del sandbox queda aquí o bajo el temporal del proceso.
     pub fn sandbox_root(&self) -> Option<&Path> {
         match &self.mode {
             Mode::Sandbox { root, .. } => Some(root),
@@ -168,6 +175,7 @@ impl AppConfig {
         self.repo_root.as_deref()
     }
 
+    /// La sombra nunca escribe estado (archivos de hooks, tmux, tablero).
     pub fn writes_allowed(&self) -> bool {
         self.mode() != RunMode::Shadow
     }
@@ -200,27 +208,32 @@ impl AppConfig {
         }
     }
 
+    /// En sandbox, dentro de `sandbox_root()` (la lista de permitidos de escritura).
     pub fn layout_dump_path(&self) -> PathBuf {
-        let name = match self.mode() {
-            RunMode::Live => "comandos-app-layout.json".to_string(),
-            RunMode::Shadow => format!("{SHADOW_NAME}-layout.json"),
-            RunMode::Sandbox => format!("{SANDBOX_NAME}-layout.json"),
-        };
-        self.runtime_dir.join(name)
+        match &self.mode {
+            Mode::Live { .. } => self.runtime_dir.join("comandos-app-layout.json"),
+            Mode::Shadow { .. } => self.runtime_dir.join(format!("{SHADOW_NAME}-layout.json")),
+            Mode::Sandbox { root, .. } => root.join("layout.json"),
+        }
     }
 }
 
 /// `http://127.0.0.1:PUERTO[/]` → (URL normalizada, puerto).
 fn loopback_only(url: &str) -> Result<(String, u16), String> {
+    loopback_from(url, "--dash-url")
+}
+
+/// Igual que [`loopback_only`]; `origin` nombra de dónde vino el valor en el error.
+fn loopback_from(url: &str, origin: &str) -> Result<(String, u16), String> {
     let rest = url
         .strip_prefix("http://127.0.0.1:")
-        .ok_or_else(|| format!("--dash-url solo acepta http://127.0.0.1:PUERTO, no {url}"))?;
+        .ok_or_else(|| format!("{origin} solo acepta http://127.0.0.1:PUERTO, no {url}"))?;
     let digits = rest.strip_suffix('/').unwrap_or(rest);
     let port = digits
         .parse::<u16>()
         .ok()
         .filter(|p| *p != 0 && digits.chars().all(|c| c.is_ascii_digit()))
-        .ok_or_else(|| format!("--dash-url con puerto inválido: {url}"))?;
+        .ok_or_else(|| format!("{origin} con puerto inválido: {url}"))?;
     Ok((format!("http://127.0.0.1:{port}"), port))
 }
 
@@ -238,39 +251,82 @@ fn sandbox_dash(url: &str) -> Result<String, String> {
     }
 }
 
-/// Normalización léxica (`.` y `..`), absoluta respecto al directorio actual.
-fn lexical(path: &Path) -> PathBuf {
-    let joined;
-    let path = if path.is_absolute() {
-        path
-    } else {
-        joined = std::env::current_dir().unwrap_or_default().join(path);
-        &joined
-    };
-    let mut out = PathBuf::new();
-    for comp in path.components() {
-        match comp {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                out.pop();
-            }
-            other => out.push(other),
-        }
-    }
-    out
+/// Absoluta respecto al directorio actual; error si no se puede saber cuál es.
+fn absolute(path: &Path) -> Result<PathBuf, String> {
+    std::path::absolute(path)
+        .map_err(|e| format!("no se puede hacer absoluta {}: {e}", path.display()))
 }
 
-/// Si `candidate` es `real` o está dentro (léxicamente o tras resolver enlaces).
-fn inside(candidate: &Path, real: &Path) -> bool {
-    if lexical(candidate).starts_with(lexical(real)) {
-        return true;
+/// Ruta real: el ancestro existente más profundo resuelto con `canonicalize` (enlaces
+/// incluidos) y el resto añadido componente a componente. Un `..` en la parte que no
+/// existe, o un componente de esa parte que ya existe (un enlace colgante, o algo
+/// creado entre medias), es error: no se puede saber adónde llevaría.
+fn resolve(path: &Path) -> Result<PathBuf, String> {
+    let abs = absolute(path)?;
+    let comps: Vec<Component<'_>> = abs.components().collect();
+    for split in (0..=comps.len()).rev() {
+        let head: PathBuf = comps.iter().take(split).collect();
+        if head.as_os_str().is_empty() {
+            continue;
+        }
+        let Ok(mut out) = std::fs::canonicalize(&head) else {
+            continue;
+        };
+        for comp in comps.iter().skip(split) {
+            let name: OsString = match comp {
+                Component::Normal(name) => name.to_os_string(),
+                Component::CurDir => continue,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                    return Err(format!(
+                        "{}: `..` fuera de la parte que existe",
+                        path.display()
+                    ));
+                }
+            };
+            out.push(name);
+            if std::fs::symlink_metadata(&out).is_ok() {
+                return Err(format!(
+                    "{}: {} existe pero no se puede resolver (¿enlace colgante?)",
+                    path.display(),
+                    out.display()
+                ));
+            }
+        }
+        return Ok(out);
     }
-    match (
-        std::fs::canonicalize(candidate),
-        std::fs::canonicalize(real),
-    ) {
-        (Ok(c), Ok(r)) => c.starts_with(r),
-        _ => false,
+    Err(format!("{}: ningún ancestro existe", path.display()))
+}
+
+/// Raíces donde el sandbox puede escribir, ya resueltas. Se descarta la raíz que sea
+/// `/` o que contenga el `HOME` (un `TMPDIR=/home` no abre la puerta a `~`).
+fn sandbox_write_roots(root: &Path, temp: &Path, home: &Path) -> Result<Vec<PathBuf>, String> {
+    let home = resolve(home).unwrap_or_else(|_| home.to_path_buf());
+    let mut roots = Vec::new();
+    for candidate in [root, temp] {
+        let resolved = resolve(candidate)?;
+        if resolved.parent().is_some() && !home.starts_with(&resolved) {
+            roots.push(resolved);
+        }
+    }
+    Ok(roots)
+}
+
+/// Resuelve `path` y exige que quede dentro de alguna de `roots`.
+fn confine(what: &str, path: &Path, roots: &[PathBuf]) -> Result<PathBuf, String> {
+    let resolved = resolve(path).map_err(|e| format!("en sandbox {what}: {e}"))?;
+    if roots.iter().any(|r| resolved.starts_with(r)) {
+        Ok(resolved)
+    } else {
+        let allowed: Vec<String> = roots.iter().map(|r| r.display().to_string()).collect();
+        Err(format!(
+            "en sandbox {what} tiene que quedar dentro de {} (resuelto: {})",
+            if allowed.is_empty() {
+                "una raíz propia (ninguna es válida)".to_string()
+            } else {
+                allowed.join(" o ")
+            },
+            resolved.display()
+        ))
     }
 }
 
@@ -284,6 +340,9 @@ fn repo_root(hooks: &Path, env: &dyn Fn(&str) -> Option<String>) -> Option<PathB
     index.parent()?.parent().map(Path::to_path_buf)
 }
 
+/// Lee la configuración de los argumentos y del entorno `env` (en el binario, el del
+/// proceso). El temporal permitido al sandbox es `TMPDIR` o `/tmp`, la misma regla que
+/// `std::env::temp_dir()`, leída de `env` para que las pruebas no muten el entorno.
 pub fn parse_args(
     args: &[String],
     default_live: bool,
@@ -327,28 +386,39 @@ pub fn parse_args(
             other => return Err(format!("opción desconocida: {other}\n{USAGE}")),
         }
     }
-    let real_hooks = home.join(".claude/hooks");
+    // Vacío equivale a no definido, como `os.environ.get(...) or DEFAULT` (bin/cc-app:86).
     let env_dash = || {
         env("COMANDOS_DASH_URL")
-            .map(|u| loopback_only(&u).map(|(url, _)| url))
+            .filter(|v| !v.is_empty())
+            .map(|u| loopback_from(&u, "COMANDOS_DASH_URL").map(|(url, _)| url))
             .transpose()
+    };
+    let real_dash = |dash: Option<String>| -> Result<String, String> {
+        match dash {
+            Some(u) => Ok(loopback_only(&u)?.0),
+            None => Ok(env_dash()?.unwrap_or_else(|| DEFAULT_DASH.into())),
+        }
     };
     let (mode, hooks_dir, dash_url, web_data_dir, web_cache_dir) = match mode {
         RunMode::Sandbox => {
-            let root = runtime_dir.join(SANDBOX_NAME);
-            let hooks_dir = hooks.unwrap_or_else(|| root.join("hooks"));
-            if inside(&hooks_dir, &real_hooks) {
-                return Err(format!(
-                    "en sandbox --hooks-dir no puede ser {} ni estar dentro",
-                    real_hooks.display()
-                ));
-            }
+            let temp = env("TMPDIR")
+                .filter(|v| !v.is_empty())
+                .map_or_else(|| PathBuf::from("/tmp"), PathBuf::from);
+            let wanted_root = runtime_dir.join(SANDBOX_NAME);
+            let roots = sandbox_write_roots(&wanted_root, &temp, &home)?;
+            let root = confine("la raíz del sandbox", &wanted_root, &roots)?;
+            let hooks_dir = confine(
+                "--hooks-dir",
+                &hooks.unwrap_or_else(|| root.join("hooks")),
+                &roots,
+            )?;
             let socket = match socket {
                 Some(label) => label,
                 None => SocketLabel::new(SANDBOX_NAME)?,
             };
             let dash_url = dash.map(|u| sandbox_dash(&u)).transpose()?;
-            let (data, cache) = (root.join("data"), root.join("cache"));
+            let data = confine("los datos web", &root.join("data"), &roots)?;
+            let cache = confine("la caché web", &root.join("cache"), &roots)?;
             (
                 Mode::Sandbox { socket, root },
                 hooks_dir,
@@ -359,31 +429,21 @@ pub fn parse_args(
         }
         RunMode::Shadow => {
             let base = runtime_dir.join(SHADOW_NAME);
-            let dash_url = match dash {
-                Some(u) => loopback_only(&u)?.0,
-                None => env_dash()?.unwrap_or_else(|| DEFAULT_DASH.into()),
-            };
             (
                 Mode::Shadow { socket },
-                hooks.unwrap_or(real_hooks),
-                Some(dash_url),
+                absolute(&hooks.unwrap_or_else(|| home.join(".claude/hooks")))?,
+                Some(real_dash(dash)?),
                 base.join("data"),
                 base.join("cache"),
             )
         }
-        RunMode::Live => {
-            let dash_url = match dash {
-                Some(u) => loopback_only(&u)?.0,
-                None => env_dash()?.unwrap_or_else(|| DEFAULT_DASH.into()),
-            };
-            (
-                Mode::Live { socket },
-                hooks.unwrap_or(real_hooks),
-                Some(dash_url),
-                home.join(".local/share/comandos"),
-                home.join(".cache/comandos"),
-            )
-        }
+        RunMode::Live => (
+            Mode::Live { socket },
+            absolute(&hooks.unwrap_or_else(|| home.join(".claude/hooks")))?,
+            Some(real_dash(dash)?),
+            home.join(".local/share/comandos"),
+            home.join(".cache/comandos"),
+        ),
     };
     let repo_root = repo.or_else(|| repo_root(&hooks_dir, env));
     Ok(AppConfig {
@@ -399,41 +459,23 @@ pub fn parse_args(
 }
 
 /// Idioma de la interfaz: `CC_LANG=es|en` de `<hooks>/cc-notify.conf`; si no (falta,
-/// `auto` u otro valor), `es` cuando `$LANG` empieza por `es`.
+/// `auto`, otro valor o archivo ilegible), `es` cuando `$LANG` empieza por `es`.
 ///
 /// Diferencia con el Python: `_ui_lang` (`bin/cc-app:177`) pregunta a `cc-dash`
 /// (`GET /conf` → `_lang`) y, si el tablero no responde, cae directamente en `$LANG`.
-/// Aquí se lee el archivo con las mismas reglas que `read_conf`/`ui_lang` de `cc-dash`
-/// (línea a línea, `#` comenta, la última asignación gana, comillas emparejadas fuera,
-/// `export` no cuenta), así que el resultado coincide con lo que `/conf` respondería,
-/// y además funciona sin tablero (sandbox).
+/// Aquí se lee el archivo con `comandos_runtime::providers::read_conf`, el port de
+/// `read_conf` de `cc-dash` (la última asignación gana, comillas emparejadas fuera,
+/// `export` no cuenta). Coincide con lo que `/conf` respondería cuando la app y el
+/// tablero tienen el mismo `LANG`, y funciona sin tablero (sandbox).
 pub fn ui_lang(hooks_dir: &Path, lang_env: Option<&str>) -> &'static str {
-    let conf = std::fs::read_to_string(hooks_dir.join("cc-notify.conf")).unwrap_or_default();
-    let mut cc_lang = "auto";
-    for line in conf.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        if key.trim() != "CC_LANG" {
-            continue;
-        }
-        let value = value.trim();
-        let unquoted = ['"', '\'']
-            .iter()
-            .find_map(|q| value.strip_prefix(*q).and_then(|v| v.strip_suffix(*q)))
-            .unwrap_or(value);
-        cc_lang = match unquoted {
-            "es" => "es",
-            "en" => "en",
-            _ => "auto",
-        };
-    }
-    match cc_lang {
-        "es" | "en" => cc_lang,
+    let conf = comandos_runtime::providers::read_conf(&hooks_dir.join("cc-notify.conf"));
+    let cc_lang = conf
+        .ok()
+        .and_then(|pairs| pairs.into_iter().find(|(k, _)| k == "CC_LANG"))
+        .map(|(_, v)| v);
+    match cc_lang.as_deref() {
+        Some("es") => "es",
+        Some("en") => "en",
         _ if lang_env.is_some_and(|l| l.to_lowercase().starts_with("es")) => "es",
         _ => "en",
     }
