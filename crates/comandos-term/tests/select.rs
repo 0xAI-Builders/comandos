@@ -20,11 +20,13 @@ fn wrapped_rows_copy_without_newline_and_trailing_spaces_are_trimmed() {
         head: (2, 2),
         mode: SelectMode::Simple,
     };
-    assert_eq!(selected_text(&e, &s), "0123456789abc\nfin");
+    // Los espacios que la aplicación escribió son contenido (getTrimmedLength
+    // de xterm.js): solo se recortan las celdas nunca escritas.
+    assert_eq!(selected_text(&e, &s), "0123456789abc   \nfin");
 }
 
 #[test]
-fn url_split_by_tmux_hard_wrap_is_one_link() {
+fn url_split_by_soft_wrap_is_one_link() {
     let mut e = eng(20);
     e.advance(b"ver https://ejemplo.mx/un/camino/largo ok", 0.0);
     let urls = find_urls(&e, 1);
@@ -82,10 +84,12 @@ fn word_mode_uses_xterm_separators_including_comma_and_backtick() {
 }
 
 #[test]
-fn word_at_is_none_on_blank_run_and_follows_wrapped_rows() {
+fn word_at_selects_blank_run_and_follows_wrapped_rows() {
     let mut e = eng(10);
     e.advance(b"ab         cdefghijklmno", 0.0);
-    assert!(word_at(&e, (0, 5)).is_none());
+    // Como el doble clic de xterm.js (allowWhitespaceOnlySelection): la racha
+    // de espacios es la «palabra».
+    assert_eq!(word_at(&e, (0, 5)), Some(((0, 2), (0, 9))));
     // "cdefghijklmno" (13) arranca en la columna 11 → fila 1, cols 1..
     let (start, end) = word_at(&e, (1, 3)).expect("palabra");
     assert_eq!((start, end), ((1, 1), (2, 3)));
@@ -160,7 +164,7 @@ fn osc8_hyperlinks_are_found_per_row() {
 }
 
 #[test]
-fn hard_wrapped_url_is_found_from_either_row_and_not_from_others() {
+fn soft_wrapped_url_is_found_from_either_row_and_not_from_others() {
     let mut e = eng(20);
     e.advance(b"ver https://ejemplo.mx/un/camino/largo ok\r\nfin", 0.0);
     assert_eq!(find_urls(&e, 0).len(), 1);
@@ -176,4 +180,111 @@ fn ligature_runs_misc() {
     assert_eq!(ligature_runs("é->é"), vec![(1, 3)]);
     assert_eq!(ligature_runs("->->"), vec![(0, 2), (2, 4)]);
     assert_eq!(ligature_runs("a\\/b"), vec![(1, 3)]);
+}
+
+// --- ronda 1 de revisión ---
+
+#[test]
+fn space_at_the_edge_of_a_soft_wrapped_row_is_kept() {
+    let mut e = eng(10);
+    e.advance(b"012345678 abc", 0.0);
+    let s = sel((0, 0), (1, 9), SelectMode::Simple);
+    assert_eq!(selected_text(&e, &s), "012345678 abc");
+}
+
+#[test]
+fn erased_cells_are_trimmed_but_written_spaces_are_not() {
+    let mut e = eng(10);
+    // «ab» + 3 espacios escritos; la fila 1 se borra con EL tras escribirla.
+    e.advance(b"ab   \r\nxyz\x1b[2K\x1b[1;9H", 0.0);
+    let s = sel((0, 0), (1, 9), SelectMode::Simple);
+    assert_eq!(selected_text(&e, &s), "ab   \n");
+    // ECH borra y deja la celda sin escribir.
+    let mut e = eng(10);
+    e.advance(b"ab   \x1b[1;3H\x1b[3X", 0.0);
+    let s = sel((0, 0), (0, 9), SelectMode::Simple);
+    assert_eq!(selected_text(&e, &s), "ab");
+}
+
+#[test]
+fn tabs_copy_as_spaces_like_xterm() {
+    let mut e = eng(20);
+    e.advance(b"a\tb\r\nc\t", 0.0);
+    assert_eq!(
+        selected_text(&e, &sel((0, 0), (1, 19), SelectMode::Simple)),
+        "a       b\nc"
+    );
+}
+
+#[test]
+fn soft_wrap_strips_trailing_dot_like_weblinks() {
+    let mut e = eng(20);
+    e.advance(b"ver https://ejemplo.mx/abcdefgh. fin", 0.0);
+    for line in [0, 1] {
+        let urls = find_urls(&e, line);
+        assert_eq!(urls.len(), 1, "fila {line}");
+        assert_eq!(urls[0].url, "https://ejemplo.mx/abcdefgh");
+        assert_eq!((urls[0].start, urls[0].end), ((0, 4), (1, 10)));
+    }
+}
+
+#[test]
+fn tmux_hard_wrap_beats_truncated_weblinks_match() {
+    // La fila 0 está llena y termina en «.»: WebLinks la corta en «ejemplo»;
+    // el proveedor de tmux la sigue por la fila 1.
+    let mut e = eng(20);
+    e.advance(b"ver https://ejemplo.\r\nmx/un/camino/lar ok\r\nfin", 0.0);
+    for line in [0, 1] {
+        let urls = find_urls(&e, line);
+        assert_eq!(urls.len(), 1, "fila {line}");
+        assert_eq!(urls[0].url, "https://ejemplo.mx/un/camino/lar");
+        assert_eq!((urls[0].start, urls[0].end), ((0, 4), (1, 15)));
+    }
+    assert!(find_urls(&e, 2).is_empty());
+}
+
+#[test]
+fn url_scan_is_bounded_on_a_huge_full_row_block() {
+    // 10 000 filas llenas: el trabajo por llamada no crece con el bloque.
+    let mut e = Engine::new(
+        GridSize { cols: 20, rows: 5 },
+        20_000,
+        Palette::xterm_default([255; 3], [0; 3], [255; 3], [0; 3], [80; 3]),
+    );
+    let block = "a".repeat(20 * 10_000);
+    e.advance(block.as_bytes(), 0.0);
+    let started = std::time::Instant::now();
+    assert!(find_urls(&e, 4).is_empty());
+    assert!(started.elapsed() < std::time::Duration::from_millis(500));
+}
+
+#[test]
+fn hard_wrapped_url_longer_than_the_row_cap_is_not_joined_from_its_tail() {
+    let mut e = Engine::new(
+        GridSize { cols: 20, rows: 5 },
+        2000,
+        Palette::xterm_default([255; 3], [0; 3], [255; 3], [0; 3], [80; 3]),
+    );
+    // «http://» + 2000 caracteres en 100 filas con wrap duro (CRLF).
+    let mut text = String::from("http://");
+    text.push_str(&"b".repeat(13));
+    for _ in 0..99 {
+        text.push_str("\r\n");
+        text.push_str(&"b".repeat(20));
+    }
+    text.push_str("\r\nfin");
+    e.advance(text.as_bytes(), 0.0);
+    // La fila 3 es la última con «b»; el esquema queda 99 filas más arriba.
+    assert!(find_urls(&e, 3).is_empty());
+    // Desde la primera fila sí es un enlace (WebLinks ve «http://bbbb…»).
+    assert_eq!(find_urls(&e, -96).len(), 1);
+}
+
+#[test]
+fn idn_hosts_are_not_links_like_xterm() {
+    let mut e = eng(40);
+    e.advance("https://ñandú.mx/x y https://ok.mx".as_bytes(), 0.0);
+    let urls = find_urls(&e, 0);
+    let list: Vec<&str> = urls.iter().map(|u| u.url.as_str()).collect();
+    assert_eq!(list, vec!["https://ok.mx"]);
 }

@@ -1014,6 +1014,11 @@ impl<T> Term<T> {
         cursor_cell.fg = fg;
         cursor_cell.bg = bg;
         cursor_cell.flags = flags;
+        // COMANDOS: marca la celda como escrita por la aplicación (también si
+        // es un espacio), salvo las mitades de relleno de un carácter ancho.
+        if !flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
+            cursor_cell.flags.insert(Flags::WRITTEN);
+        }
         cursor_cell.extra = extra;
     }
 

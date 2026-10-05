@@ -30,6 +30,10 @@ bitflags! {
         const UNDERCURL                 = 0b0001_0000_0000_0000;
         const DOTTED_UNDERLINE          = 0b0010_0000_0000_0000;
         const DASHED_UNDERLINE          = 0b0100_0000_0000_0000;
+        // COMANDOS: la celda la escribió la aplicación (aunque sea un espacio);
+        // lo pone `write_at_cursor` y lo quita `Cell::reset` al borrar. Permite
+        // recortar filas como `getTrimmedLength` de xterm.js (ver COMANDOS-PATCH.md).
+        const WRITTEN                   = 0b1000_0000_0000_0000;
         const ALL_UNDERLINES            = Self::UNDERLINE.bits() | Self::DOUBLE_UNDERLINE.bits()
                                         | Self::UNDERCURL.bits() | Self::DOTTED_UNDERLINE.bits()
                                         | Self::DASHED_UNDERLINE.bits();
@@ -169,7 +173,8 @@ impl Cell {
     /// Remove all wide char data from a cell.
     #[inline(never)]
     pub fn clear_wide(&mut self) {
-        self.flags.remove(Flags::WIDE_CHAR);
+        // COMANDOS: la mitad que queda es una celda vacía, como en xterm.js.
+        self.flags.remove(Flags::WIDE_CHAR | Flags::WRITTEN);
         if let Some(extra) = self.extra.as_mut() {
             Arc::make_mut(extra).zerowidth = Vec::new();
         }

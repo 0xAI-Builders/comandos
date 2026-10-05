@@ -9,13 +9,14 @@
 //!
 //! ## Diferencias con xterm.js / `term.html` (documentadas, no accidentales)
 //!
-//! - **Espacios finales.** `translateToString(true)` de xterm.js recorta las
-//!   celdas *nunca escritas*, pero conserva los espacios que la aplicación
-//!   escribió. alacritty no distingue una celda borrada de un espacio
-//!   escrito (ambas son `' '`), así que aquí se recortan todos los espacios
-//!   finales. Es lo que pide el criterio de A8 (`"abc   "` se copia como
-//!   `"abc"`); el único efecto es que una fila «llena de espacios» ya no
-//!   cuenta como llena en el proveedor de URL envueltas.
+//! - **Espacios finales.** Como `getTrimmedLength` de xterm.js: solo se
+//!   recortan las celdas nunca escritas; un espacio que la aplicación escribió
+//!   es contenido (`"abc   "` se copia entero). alacritty no lo distinguía de
+//!   una celda borrada, así que el vendor marca las celdas escritas con
+//!   `Flags::WRITTEN` (ver `vendor/alacritty_terminal/COMANDOS-PATCH.md`). Una
+//!   fila con `WRAPLINE` en su última celda nunca se recorta. Los tabuladores
+//!   (alacritty guarda `'\t'` en la primera celda del salto) cuentan como
+//!   celdas vacías y se copian como espacios, como en xterm.js.
 //! - **Cabeza inclusiva.** xterm.js guarda el final de la selección como
 //!   exclusivo; [`Selection::head`] es la última celda seleccionada. Un clic
 //!   sin arrastre no debe crear una [`Selection`] (xterm.js tampoco la
@@ -23,15 +24,17 @@
 //! - **Separadores de palabra** (`wordSeparator` por defecto de xterm.js 5.5):
 //!   espacio y `()[]{}',"```. Salen del bundle, no de la lista del plan
 //!   (que olvidaba la coma y el acento grave).
-//! - **Enlaces.** Se reúnen tres fuentes, como en `term.html`: el proveedor
-//!   de URL envueltas por el wrap duro de tmux (regla copiada de
-//!   `term.html`), `WebLinksAddon` 0.11.0 (URL en una fila o envueltas con
-//!   el flag de wrap, con su expresión y su ventana de 2048 caracteres) y
-//!   los hipervínculos OSC 8 (solo http/https, una fila por enlace). Donde
-//!   dos se solapan gana, en este orden, OSC 8, el proveedor de tmux y
-//!   `WebLinksAddon`. La validación `new URL()` de `WebLinksAddon` se
-//!   reduce a «el anfitrión no está vacío»; `regex` no se usa (se evita una
-//!   dependencia nueva): los dos patrones se evalúan a mano.
+//! - **Enlaces.** Tres fuentes, con la precedencia de xterm.js (OSC 8,
+//!   `WebLinksAddon`, proveedor de `term.html`) y una excepción documentada
+//!   en [`find_urls`] (la URL con wrap duro de tmux no se abre truncada). El
+//!   proveedor de tmux recorre como mucho 64 filas llenas a cada lado
+//!   (`term.html` no tiene tope). La validación `new URL()` de
+//!   `WebLinksAddon` se reduce a «anfitrión ASCII no vacío» (los IDN se
+//!   rechazan como en xterm.js; `new URL` acepta anfitriones que empiezan por
+//!   `_`, y aquí también). OSC 8 solo admite `http://` y `https://` (xterm.js
+//!   acepta además cualquier URL cuyo protocolo analizado sea http/https,
+//!   p. ej. `http:a.mx`; rechazar de más es lo seguro). `regex` no se usa: los
+//!   dos patrones se evalúan a mano.
 //! - **Ligaduras.** Los rangos son índices de carácter (`char`), no de
 //!   UTF-16 ni de byte; el addon usa `m.index` (UTF-16) como columna, que
 //!   coincide mientras no haya caracteres anchos ni astrales antes.
@@ -128,18 +131,45 @@ fn is_spacer(cell: &Cell) -> bool {
         .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
 }
 
-fn has_content(cell: &Cell) -> bool {
-    cell.c != ' ' || cell.zerowidth().is_some_and(|marks| !marks.is_empty())
+/// Carácter de la celda como lo ve `translateToString`: las celdas sin
+/// escribir (y las que dejó un tabulador, que en xterm.js son NULL) son
+/// espacios.
+fn cell_char(cell: &Cell) -> char {
+    match cell.c {
+        '\t' | '\0' => ' ',
+        c => c,
+    }
 }
 
-/// Espacio «de verdad»: ni mitad de un carácter ancho ni otro carácter.
+/// Contenido de la celda según `BufferLine.getTrimmedLength` de xterm.js: un
+/// carácter, o un espacio que escribió la aplicación (`Flags::WRITTEN`, del
+/// parche del vendor). Las celdas borradas y las que deja un tabulador no
+/// cuentan. Las mitades de relleno de un carácter ancho tampoco: ya las
+/// cubre el ancho de su primera mitad.
+fn has_content(cell: &Cell) -> bool {
+    !is_spacer(cell)
+        && (cell.flags.contains(Flags::WRITTEN)
+            || !matches!(cell.c, ' ' | '\t' | '\0')
+            || cell.zerowidth().is_some_and(|marks| !marks.is_empty()))
+}
+
+/// Espacio «de verdad» (lo que xterm.js ve como `' '` en la fila): ni mitad
+/// de un carácter ancho ni otro carácter.
 fn is_space(cell: &Cell) -> bool {
-    cell.c == ' ' && !is_spacer(cell)
+    !is_spacer(cell) && cell_char(cell) == ' '
 }
 
 /// `getTrimmedLength`: columnas hasta la última celda con contenido (un
-/// carácter ancho ocupa dos).
+/// carácter ancho ocupa dos). Una fila cuya última celda lleva `WRAPLINE`
+/// nunca se recorta (como `LineLength::line_length` de alacritty): la fila
+/// siguiente continúa su texto, y un espacio en el borde es parte de él.
 fn trimmed_len(row: &[Cell]) -> usize {
+    if row
+        .last()
+        .is_some_and(|cell| cell.flags.contains(Flags::WRAPLINE))
+    {
+        return row.len();
+    }
     row.iter().rposition(has_content).map_or(0, |index| {
         let wide = row
             .get(index)
@@ -158,7 +188,7 @@ fn row_text(row: &[Cell], start: usize, end: Option<usize>) -> String {
         if is_spacer(cell) {
             continue;
         }
-        out.push(cell.c);
+        out.push(cell_char(cell));
         for mark in cell.zerowidth().unwrap_or_default() {
             out.push(*mark);
         }
@@ -179,8 +209,8 @@ pub fn selection_bounds(engine: &Engine, s: &Selection) -> Option<(Point, Point)
     Some(match s.mode {
         SelectMode::Simple => (lo, hi),
         SelectMode::Word => {
-            let start = word_extent(engine, lo, true).map_or(lo, |(start, _)| start);
-            let end = word_extent(engine, hi, true).map_or(hi, |(_, end)| end);
+            let start = word_extent(engine, lo).map_or(lo, |(start, _)| start);
+            let end = word_extent(engine, hi).map_or(hi, |(_, end)| end);
             (start, end)
         }
         SelectMode::Line => {
@@ -232,20 +262,22 @@ pub fn selected_text(engine: &Engine, s: &Selection) -> String {
 }
 
 /// Palabra bajo `point` como la elige el doble clic de xterm.js
-/// (`_getWordAt`): `None` sobre una racha de espacios. Devuelve la primera y
-/// la última celda de la palabra, que sigue por las filas envueltas.
+/// (`_getWordAt` con `allowWhitespaceOnlySelection`): sobre una racha de
+/// espacios es la racha entera. Devuelve la primera y la última celda de la
+/// palabra, que sigue por las filas envueltas; `None` solo fuera de la
+/// rejilla.
 pub fn word_at(engine: &Engine, point: Point) -> Option<(Point, Point)> {
-    word_extent(engine, point, false)
+    word_extent(engine, point)
 }
 
 fn is_separator(cell: &Cell) -> bool {
     !is_spacer(cell)
         && cell.zerowidth().is_none_or(<[char]>::is_empty)
-        && WORD_SEPARATORS.contains(cell.c)
+        && WORD_SEPARATORS.contains(cell_char(cell))
 }
 
 /// Columnas `(inicio, fin)` de la palabra de `col` dentro de una fila.
-fn word_cols(row: &[Cell], col: usize, allow_space: bool) -> Option<(usize, usize)> {
+fn word_cols(row: &[Cell], col: usize) -> Option<(usize, usize)> {
     let last = row.len().checked_sub(1)?;
     let mut col = col.min(last);
     // Mitad derecha de un carácter ancho: se parte de su primera mitad.
@@ -254,9 +286,6 @@ fn word_cols(row: &[Cell], col: usize, allow_space: bool) -> Option<(usize, usiz
     }
     let at = |index: usize| row.get(index);
     if at(col).is_some_and(is_space) {
-        if !allow_space {
-            return None;
-        }
         let mut start = col;
         while start > 0 && at(start - 1).is_some_and(is_space) {
             start -= 1;
@@ -284,10 +313,10 @@ fn word_cols(row: &[Cell], col: usize, allow_space: bool) -> Option<(usize, usiz
 
 /// Palabra con la extensión por filas envueltas de `_getWordAt`: si llega a
 /// un borde y la fila vecina continúa sin espacio, la palabra sigue allí.
-fn word_extent(engine: &Engine, point: Point, allow_space: bool) -> Option<(Point, Point)> {
+fn word_extent(engine: &Engine, point: Point) -> Option<(Point, Point)> {
     let (row, col) = point;
     let line = cells(engine, row)?;
-    let (s, e) = word_cols(line, usize::from(col), allow_space)?;
+    let (s, e) = word_cols(line, usize::from(col))?;
     let mut start = (row, col16(s));
     let mut end = (row, col16(e));
     let width = line.len();
@@ -306,7 +335,7 @@ fn word_extent(engine: &Engine, point: Point, allow_space: bool) -> Option<(Poin
         if prev_cells.last().is_none_or(is_space) {
             break;
         }
-        let Some((ps, _)) = word_cols(prev_cells, width, false) else {
+        let Some((ps, _)) = word_cols(prev_cells, width) else {
             break;
         };
         start = (prev, col16(ps));
@@ -327,7 +356,7 @@ fn word_extent(engine: &Engine, point: Point, allow_space: bool) -> Option<(Poin
         if !is_wrapped(engine, next) || next_cells.first().is_none_or(is_space) {
             break;
         }
-        let Some((_, ne)) = word_cols(next_cells, 0, false) else {
+        let Some((_, ne)) = word_cols(next_cells, 0) else {
             break;
         };
         end = (next, col16(ne));
@@ -479,12 +508,12 @@ fn weblink_matches(text: &[Glyph]) -> Vec<(usize, usize)> {
         match found {
             Some(len) => {
                 let candidate: String = rest.iter().take(len).map(|g| g.ch).collect();
+                // `RegExp.exec` con `g` reanuda tras la coincidencia aunque la
+                // validación posterior la descarte.
                 if valid_web_url(&candidate) {
                     out.push((i, i + len));
-                    i += len;
-                    continue;
                 }
-                i += 1;
+                i += len;
             }
             None => i += 1,
         }
@@ -492,17 +521,22 @@ fn weblink_matches(text: &[Glyph]) -> Vec<(usize, usize)> {
     out
 }
 
-/// Reducción de la validación `new URL(..)` de `WebLinksAddon`: tras
-/// `://` debe haber un anfitrión (no vacío, empieza por letra, cifra o `[`).
+/// Reducción de la validación `new URL(..)` de `WebLinksAddon` (que exige
+/// que `protocol//host` sea prefijo de la URL): tras `://` debe haber un
+/// anfitrión ASCII no vacío que empiece por letra, cifra, `_`, `-` o `[`. Un
+/// anfitrión IDN se rechaza, como en xterm.js (el `host` sale en punycode y
+/// el prefijo no coincide); `new URL` acepta `_` y `-` iniciales.
 fn valid_web_url(url: &str) -> bool {
     let Some((_, rest)) = url.split_once("://") else {
         return false;
     };
     let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
     let host = authority.rsplit('@').next().unwrap_or_default();
-    host.chars()
-        .next()
-        .is_some_and(|c| c.is_alphanumeric() || c == '[')
+    host.is_ascii()
+        && host
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphanumeric() || matches!(c, '[' | '_' | '-'))
 }
 
 /// Tramo de glifos `[from, to)` como `UrlSpan` (extremos inclusivos).
@@ -516,9 +550,16 @@ fn span_of(glyphs: &[Glyph], from: usize, to: usize) -> Option<UrlSpan> {
     })
 }
 
+/// Tope de filas llenas que el proveedor de tmux recorre a cada lado de la
+/// pedida. `term.html` no pone ninguno (recorre toda la historia en cada
+/// hover); 64 filas son más de 5 000 caracteres con 80 columnas, bastante más
+/// que cualquier URL, y acotan el trabajo de `find_urls` por llamada.
+const MAX_FULL_ROWS: usize = 64;
+
 /// Proveedor de URL envueltas por el wrap duro de tmux de `term.html`: junta
-/// el bloque de filas llenas contiguas que toca `line` y devuelve las URL
-/// que cruzan filas.
+/// el bloque de filas llenas contiguas que toca `line` (hasta
+/// [`MAX_FULL_ROWS`] a cada lado) y devuelve las URL que cruzan filas. Los
+/// glifos de cada fila se calculan una sola vez.
 fn tmux_wrapped(engine: &Engine, line: i32) -> Vec<UrlSpan> {
     let width = columns(engine);
     let (first, last) = (first_row(engine), last_row(engine));
@@ -527,21 +568,36 @@ fn tmux_wrapped(engine: &Engine, line: i32) -> Vec<UrlSpan> {
             .map(|c| row_glyphs(c, row))
             .unwrap_or_default()
     };
-    let full = |row: i32| utf16_len(&glyphs_of(row)) >= width;
-    let (mut top, mut bottom) = (line, line);
-    while top > first && full(top - 1) {
-        top -= 1;
+    let full = |glyphs: &[Glyph]| utf16_len(glyphs) >= width;
+    let own = glyphs_of(line);
+    // Hacia arriba mientras la fila anterior esté llena.
+    let mut above: Vec<Vec<Glyph>> = Vec::new();
+    let mut row = line;
+    while row > first && above.len() < MAX_FULL_ROWS {
+        let glyphs = glyphs_of(row - 1);
+        if !full(&glyphs) {
+            break;
+        }
+        above.push(glyphs);
+        row -= 1;
     }
-    while bottom < last && full(bottom) {
-        bottom += 1;
+    // Hacia abajo mientras la fila actual esté llena (la primera no llena se
+    // incluye, como `bot` de term.html).
+    let mut below: Vec<Vec<Glyph>> = Vec::new();
+    let mut row = line;
+    let mut current_full = full(&own);
+    while current_full && row < last && below.len() < MAX_FULL_ROWS {
+        row += 1;
+        let glyphs = glyphs_of(row);
+        current_full = full(&glyphs);
+        below.push(glyphs);
     }
-    if top == bottom {
+    if above.is_empty() && below.is_empty() {
         return Vec::new();
     }
-    let mut joined: Vec<Glyph> = Vec::new();
-    for row in top..=bottom {
-        joined.extend(glyphs_of(row));
-    }
+    let mut joined: Vec<Glyph> = above.into_iter().rev().flatten().collect();
+    joined.extend(own);
+    joined.extend(below.into_iter().flatten());
     provider_matches(&joined)
         .into_iter()
         .filter_map(|(s, e)| span_of(&joined, s, e))
@@ -646,23 +702,56 @@ fn overlaps(a: &UrlSpan, b: &UrlSpan) -> bool {
     a.start <= b.end && b.start <= a.end
 }
 
-/// Enlaces que tocan la fila absoluta `line`, ordenados por posición. Reúne
-/// OSC 8, URL envueltas por tmux y URL de texto (ver la cabecera del módulo).
+/// Enlaces que tocan la fila absoluta `line`, ordenados por posición.
+///
+/// Precedencia de xterm.js (gana el primero que cubre una celda): hipervínculos
+/// OSC 8, luego `WebLinksAddon` y, el último, el proveedor de URL envueltas
+/// por tmux de `term.html`. **Excepción (corrección de un fallo latente de
+/// `term.html`):** si el proveedor de tmux encuentra una URL que empieza en
+/// la misma celda que una coincidencia de `WebLinksAddon` pero acaba en una
+/// fila posterior (el wrap duro de tmux: `WebLinksAddon` solo ve la primera
+/// fila y la corta, p. ej. sin el «.» final de la fila llena), gana la
+/// del proveedor de tmux, para que una URL con wrap duro no se abra
+/// truncada. Con wrap suave ambas acaban en la misma fila y manda
+/// `WebLinksAddon`, que no incluye la puntuación final.
 pub fn find_urls(engine: &Engine, line: i32) -> Vec<UrlSpan> {
-    let mut out: Vec<UrlSpan> = Vec::new();
-    for source in [
-        osc8(engine, line),
-        tmux_wrapped(engine, line),
-        weblinks(engine, line),
-    ] {
-        for span in source {
-            if !out.iter().any(|kept| overlaps(kept, &span)) {
-                out.push(span);
+    /// Quién produjo cada enlace conservado.
+    #[derive(PartialEq)]
+    enum Source {
+        Osc8,
+        WebLinks,
+        Tmux,
+    }
+    let mut out: Vec<(Source, UrlSpan)> = Vec::new();
+    for span in osc8(engine, line) {
+        if !out.iter().any(|(_, kept)| overlaps(kept, &span)) {
+            out.push((Source::Osc8, span));
+        }
+    }
+    for span in weblinks(engine, line) {
+        if !out.iter().any(|(_, kept)| overlaps(kept, &span)) {
+            out.push((Source::WebLinks, span));
+        }
+    }
+    for span in tmux_wrapped(engine, line) {
+        let clash = out.iter().position(|(_, kept)| overlaps(kept, &span));
+        match clash {
+            None => out.push((Source::Tmux, span)),
+            Some(index) => {
+                let longer = out.get(index).is_some_and(|(source, kept)| {
+                    *source == Source::WebLinks
+                        && kept.start == span.start
+                        && span.end.0 > kept.end.0
+                });
+                if longer && let Some(slot) = out.get_mut(index) {
+                    *slot = (Source::Tmux, span);
+                }
             }
         }
     }
-    out.sort_by_key(|span| span.start);
-    out
+    let mut spans: Vec<UrlSpan> = out.into_iter().map(|(_, span)| span).collect();
+    spans.sort_by_key(|span| span.start);
+    spans
 }
 
 // --- ligaduras ---------------------------------------------------------------
