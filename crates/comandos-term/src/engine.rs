@@ -1,23 +1,39 @@
 //! Motor VT: `alacritty_terminal` con el reloj inyectado de `clock`, las
 //! respuestas DA de xterm.js 5.5.0 y una vista estable de modos, daños y
 //! eventos para el puente y el renderizador. No abre PTY ni toca tmux.
-use crate::clock::{ClockSync, set_now};
+use crate::{
+    clock::{ClockSync, set_now},
+    osc::OscLimiter,
+};
 use alacritty_terminal::{
     event::{Event, EventListener, WindowSize},
     grid::{Dimensions, Scroll},
     term::{Config, MIN_COLUMNS, MIN_SCREEN_LINES, Term, TermDamage, TermMode},
     vte::ansi::{Processor, Rgb},
 };
-use std::{cell::Cell, rc::Rc};
+use std::{cell::Cell, rc::Rc, sync::Arc};
 
 /// Respuesta DA1 de xterm.js 5.5.0 (`CSI ? 1 ; 2 c`).
 pub const DA1_REPLY: &[u8] = b"\x1b[?1;2c";
 /// Respuesta DA2 de xterm.js 5.5.0; `config/terminal-replies.conf` la traga.
 pub const DA2_REPLY: &[u8] = b"\x1b[>0;276;0c";
 
-/// Máximo de eventos pendientes entre dos `drain`: un flujo hostil no hace
-/// crecer la cola sin límite (lo que exceda se descarta).
-const MAX_PENDING_EVENTS: usize = 4096;
+/// Tope de bytes de respuestas al PTY entre dos `drain`. Una respuesta
+/// normal (DA, DSR, CPR, color) mide menos de 40 bytes: caben miles.
+pub const MAX_REPLY_BYTES: usize = 64 * 1024;
+
+/// Coste fijo de una consulta de color o de tamaño (su respuesta real es
+/// menor; se cobra antes de formatearla).
+const REQUEST_REPLY_COST: usize = 64;
+
+/// Tope de un título (OSC 0/2): se recorta sin partir un carácter. La
+/// cabecera de un pane muestra unas decenas de caracteres.
+pub const MAX_TITLE_BYTES: usize = 4 * 1024;
+
+/// Tope del texto copiado por OSC 52. Cubre copiar una respuesta larga de un
+/// agente o un archivo mediano; lo que lo supere se descarta entero. Es
+/// coherente con [`crate::osc::MAX_OSC_BYTES`], que admite su base64.
+pub const MAX_CLIPBOARD_BYTES: usize = 1024 * 1024;
 
 /// Celda en píxeles por omisión hasta el primer `resize` (la letra de 11 px).
 const DEFAULT_CELL_PX: (u16, u16) = (8, 16);
@@ -189,25 +205,103 @@ pub enum Damage {
     Lines(Vec<usize>),
 }
 
+/// Formateadores que alacritty adjunta a sus peticiones de respuesta.
+type ColorFormat = Arc<dyn Fn(Rgb) -> String + Sync + Send + 'static>;
+type SizeFormat = Arc<dyn Fn(WindowSize) -> String + Sync + Send + 'static>;
+
+/// Respuesta pendiente; las de color y tamaño se formatean en `drain`, que
+/// conoce la paleta y la celda en píxeles.
+enum Reply {
+    /// Ya reescrita (DA de xterm.js), para que su coste sea el real.
+    Bytes(Vec<u8>),
+    Color(usize, ColorFormat),
+    TextAreaSize(SizeFormat),
+}
+
+impl Reply {
+    /// Bytes que cuenta contra [`MAX_REPLY_BYTES`].
+    fn cost(&self) -> usize {
+        match self {
+            Reply::Bytes(bytes) => bytes.len(),
+            Reply::Color(..) | Reply::TextAreaSize(_) => REQUEST_REPLY_COST,
+        }
+    }
+}
+
+/// Lo acumulado entre dos `drain`, ya acotado: las respuestas por bytes,
+/// y de título, portapapeles y campana solo el último estado.
+#[derive(Default)]
+struct Pending {
+    replies: Vec<Reply>,
+    reply_bytes: usize,
+    title: Option<String>,
+    clipboard: Option<String>,
+    bell: bool,
+}
+
 /// Recolector de eventos: `send_event(&self)` exige mutabilidad interior;
-/// `Cell<Vec<_>>` con `take`/`set` no puede entrar en pánico (`RefCell` sí).
+/// `Cell` con `take`/`set` no puede entrar en pánico (`RefCell` sí).
+///
+/// Nada barato puede desplazar una respuesta: los eventos que `drain` no usa
+/// se ignoran al llegar, título/portapapeles/campana se sobrescriben y solo
+/// las respuestas al PTY ocupan cola, acotada por bytes. Si se llena, se
+/// conservan las primeras (la aplicación espera las respuestas en orden).
 #[derive(Clone, Default)]
-pub struct Collector(Rc<Cell<Vec<Event>>>);
+pub struct Collector(Rc<Cell<Pending>>);
+
+impl Collector {
+    fn take(&self) -> Pending {
+        self.0.take()
+    }
+}
 
 impl EventListener for Collector {
     fn send_event(&self, event: Event) {
         let mut pending = self.0.take();
-        if pending.len() < MAX_PENDING_EVENTS {
-            pending.push(event);
+        match event {
+            Event::PtyWrite(text) => {
+                pending.push_reply(Reply::Bytes(rewrite_reply(text.as_bytes()).to_vec()))
+            }
+            Event::ColorRequest(index, format) => pending.push_reply(Reply::Color(index, format)),
+            Event::TextAreaSizeRequest(format) => pending.push_reply(Reply::TextAreaSize(format)),
+            Event::Title(title) => pending.title = Some(bounded_title(title)),
+            Event::ResetTitle => pending.title = Some(String::new()),
+            // Un texto mayor que el tope se descarta entero: copiar media
+            // salida sería peor que no copiar.
+            Event::ClipboardStore(_, text) if text.len() <= MAX_CLIPBOARD_BYTES => {
+                pending.clipboard = Some(text);
+            }
+            Event::Bell => pending.bell = true,
+            _ => {}
         }
         self.0.set(pending);
     }
+}
+
+impl Pending {
+    fn push_reply(&mut self, reply: Reply) {
+        let cost = reply.cost();
+        if self.reply_bytes.saturating_add(cost) <= MAX_REPLY_BYTES {
+            self.reply_bytes += cost;
+            self.replies.push(reply);
+        }
+    }
+}
+
+/// Título acotado a [`MAX_TITLE_BYTES`] sin partir un carácter.
+fn bounded_title(mut title: String) -> String {
+    if title.len() > MAX_TITLE_BYTES {
+        let cut = title.floor_char_boundary(MAX_TITLE_BYTES);
+        title.truncate(cut);
+    }
+    title
 }
 
 /// Emulador de una terminal: bytes del PTY dentro, rejilla y eventos fuera.
 pub struct Engine {
     term: Term<Collector>,
     parser: Processor<ClockSync>,
+    osc: OscLimiter,
     events: Collector,
     palette: Palette,
     cell_px: (u16, u16),
@@ -227,6 +321,7 @@ impl Engine {
         Engine {
             term,
             parser: Processor::new(),
+            osc: OscLimiter::default(),
             events,
             palette,
             cell_px: DEFAULT_CELL_PX,
@@ -242,7 +337,8 @@ impl Engine {
         if self.sync_expired(now_ms) {
             self.parser.stop_sync(&mut self.term);
         }
-        self.parser.advance(&mut self.term, bytes);
+        let (parser, term) = (&mut self.parser, &mut self.term);
+        self.osc.filter(bytes, |chunk| parser.advance(term, chunk));
     }
 
     /// Instante (ms) en que vence la actualización sincronizada abierta.
@@ -274,19 +370,22 @@ impl Engine {
 
     /// Recoge respuestas y eventos pendientes desde el último `drain`.
     pub fn drain(&mut self) -> Drained {
-        let mut out = Drained::default();
-        for event in self.events.0.take() {
-            match event {
-                Event::PtyWrite(text) => {
-                    out.replies
-                        .extend_from_slice(rewrite_reply(text.as_bytes()));
-                }
-                Event::ColorRequest(index, format) => {
+        let pending = self.events.take();
+        let mut out = Drained {
+            replies: Vec::with_capacity(pending.reply_bytes),
+            title: pending.title,
+            clipboard: pending.clipboard,
+            bell: pending.bell,
+        };
+        for reply in pending.replies {
+            match reply {
+                Reply::Bytes(bytes) => out.replies.extend_from_slice(&bytes),
+                Reply::Color(index, format) => {
                     let [r, g, b] = self.palette.color_for_request(index);
                     out.replies
                         .extend_from_slice(format(Rgb { r, g, b }).as_bytes());
                 }
-                Event::TextAreaSizeRequest(format) => {
+                Reply::TextAreaSize(format) => {
                     let size = WindowSize {
                         num_lines: self.size.rows,
                         num_cols: self.size.cols,
@@ -295,11 +394,6 @@ impl Engine {
                     };
                     out.replies.extend_from_slice(format(size).as_bytes());
                 }
-                Event::Title(title) => out.title = Some(title),
-                Event::ResetTitle => out.title = Some(String::new()),
-                Event::ClipboardStore(_, text) => out.clipboard = Some(text),
-                Event::Bell => out.bell = true,
-                _ => {}
             }
         }
         out

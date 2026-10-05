@@ -3,4 +3,5 @@
 
 pub mod clock;
 pub mod engine;
+pub mod osc;
 pub mod proto;
