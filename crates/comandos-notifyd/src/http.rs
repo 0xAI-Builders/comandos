@@ -4,7 +4,7 @@
 use crate::notice::{Notice, conf_value};
 use serde_json::Value;
 use std::io::{self, BufRead, BufReader, Read, Write};
-use std::net::{IpAddr, Ipv4Addr, Shutdown, TcpListener, TcpStream};
+use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::time::Duration;
@@ -19,23 +19,60 @@ const MAX_BODY: i64 = 200_000;
 const MAX_INT_DIGITS: usize = 4_300;
 /// El Python no pone plazo; este solo evita que un cliente colgado retenga un hilo.
 const READ_TIMEOUT: Duration = Duration::from_secs(60);
+/// Pausa tras un `accept` fallido por falta de descriptores o memoria.
+const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 
-/// `DEFAULT_ERROR_MESSAGE` de `http.server`.
-const ERROR_TEMPLATE: &str = "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\"\n        \"http://www.w3.org/TR/html4/strict.dtd\">\n<html>\n    <head>\n        <meta http-equiv=\"Content-Type\" content=\"text/html;charset=utf-8\">\n        <title>Error response</title>\n    </head>\n    <body>\n        <h1>Error response</h1>\n        <p>Error code: {code}</p>\n        <p>Message: {message}.</p>\n        <p>Error code explanation: {status} - {explain}.</p>\n    </body>\n</html>\n";
+/// `DEFAULT_ERROR_MESSAGE` de `http.server`, con un solo `format!` (un mensaje
+/// que contenga `{explain}` no se vuelve a sustituir).
+fn error_body(code: u16, message: &str, status: &str, explain: &str) -> String {
+    format!(
+        "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\"\n        \"http://www.w3.org/TR/html4/strict.dtd\">\n<html>\n    <head>\n        <meta http-equiv=\"Content-Type\" content=\"text/html;charset=utf-8\">\n        <title>Error response</title>\n    </head>\n    <body>\n        <h1>Error response</h1>\n        <p>Error code: {code}</p>\n        <p>Message: {message}.</p>\n        <p>Error code explanation: {status} - {explain}.</p>\n    </body>\n</html>\n"
+    )
+}
 
-/// Atiende conexiones hasta que falle el `accept` del listener. Cada aviso
-/// aceptado se envía por `sink` (el hilo de GTK, o la salida de `--headless`).
-pub fn serve(listener: TcpListener, sink: Sender<Notice>, hooks: PathBuf) -> io::Result<()> {
+/// Atiende conexiones para siempre, como `serve_forever`: un error de `accept`
+/// (p. ej. `EMFILE` con muchas conexiones colgadas o `ECONNABORTED`) se anota
+/// y el bucle sigue. Cada aviso aceptado se envía por `sink` (el hilo de GTK,
+/// o la salida de `--headless`). Si este hilo terminara, quien lo lanzó lo
+/// detecta porque `sink` se suelta y sale con error.
+pub fn serve(listener: TcpListener, sink: Sender<Notice>, hooks: PathBuf) {
     let conf = hooks.join("cc-notify.conf");
-    loop {
-        let (stream, peer) = listener.accept()?;
-        let sink = sink.clone();
-        let conf = conf.clone();
-        let spawned = std::thread::Builder::new()
-            .name("notifyd-http".into())
-            .spawn(move || handle(stream, peer.ip(), &sink, &conf));
-        if let Err(err) = spawned {
-            eprintln!("comandos-notifyd: no se pudo atender una conexión: {err}");
+    accept_loop(
+        || Some(listener.accept()),
+        |stream, peer| {
+            let sink = sink.clone();
+            let conf = conf.clone();
+            let spawned = std::thread::Builder::new()
+                .name("notifyd-http".into())
+                .spawn(move || handle(stream, peer, &sink, &conf));
+            if let Err(err) = spawned {
+                eprintln!("comandos-notifyd: no se pudo atender una conexión: {err}");
+            }
+        },
+    );
+}
+
+/// `EMFILE`/`ENFILE`/`ENOBUFS`/`ENOMEM`: faltan recursos; se espera un poco
+/// para no girar en vacío mientras se liberan descriptores.
+fn accept_backoff(err: &io::Error) -> Option<Duration> {
+    matches!(err.raw_os_error(), Some(23 | 24 | 105 | 12)).then_some(ACCEPT_BACKOFF)
+}
+
+/// Bucle de `accept`. `accept` devuelve `None` solo en pruebas, para terminar.
+fn accept_loop<A, C>(mut accept: A, mut on_connection: C)
+where
+    A: FnMut() -> Option<io::Result<(TcpStream, SocketAddr)>>,
+    C: FnMut(TcpStream, IpAddr),
+{
+    while let Some(accepted) = accept() {
+        match accepted {
+            Ok((stream, peer)) => on_connection(stream, peer.ip()),
+            Err(err) => {
+                eprintln!("comandos-notifyd: accept falló ({err}); se sigue escuchando");
+                if let Some(pause) = accept_backoff(&err) {
+                    std::thread::sleep(pause);
+                }
+            }
         }
     }
 }
@@ -95,11 +132,12 @@ impl Request {
         let (short, long) = phrases(code);
         let message = message.unwrap_or(short);
         let explain = explain.unwrap_or(long);
-        let body = ERROR_TEMPLATE
-            .replace("{code}", &code.to_string())
-            .replace("{status}", status_name(code))
-            .replace("{message}", &html_escape(message))
-            .replace("{explain}", &html_escape(explain));
+        let body = error_body(
+            code,
+            &html_escape(message),
+            status_name(code),
+            &html_escape(explain),
+        );
         let headers = [
             ("Connection", "close".to_string()),
             ("Content-Type", "text/html;charset=utf-8".to_string()),
@@ -235,8 +273,10 @@ fn do_post<R: BufRead>(
     if length > MAX_BODY {
         return Some(request.status(413));
     }
-    let Ok(body) = read_body(reader, length) else {
-        return Some(request.status(400));
+    let body = match read_body(reader, length) {
+        Ok(Some(body)) => body,
+        Ok(None) => return Some(request.status(413)),
+        Err(_) => return Some(request.status(400)),
     };
     let payload = if body.is_empty() {
         Some(Value::Object(serde_json::Map::new()))
@@ -448,14 +488,26 @@ fn read_line<R: BufRead>(reader: &mut R, limit: usize) -> io::Result<Vec<u8>> {
     Ok(line)
 }
 
-/// `rfile.read(n)`: exactamente `n` bytes o hasta EOF; con `n < 0`, hasta EOF.
-fn read_body<R: Read>(reader: &mut R, length: i64) -> io::Result<Vec<u8>> {
+/// `rfile.read(n)`: exactamente `n` bytes o hasta EOF. Con `n < 0` el Python
+/// lee hasta EOF sin límite; aquí se lee como mucho `MAX_BODY + 1` bytes y
+/// `None` indica que el cuerpo pasa del tope (diferencia aceptada: 413 en vez
+/// de aceptar un cuerpo sin límite).
+fn read_body<R: Read>(reader: &mut R, length: i64) -> io::Result<Option<Vec<u8>>> {
     let mut body = Vec::new();
     match u64::try_from(length) {
-        Ok(length) => reader.take(length).read_to_end(&mut body)?,
-        Err(_) => reader.read_to_end(&mut body)?,
-    };
-    Ok(body)
+        Ok(length) => {
+            reader.take(length).read_to_end(&mut body)?;
+        }
+        Err(_) => {
+            reader
+                .take(MAX_BODY.unsigned_abs() + 1)
+                .read_to_end(&mut body)?;
+            if body.len() as u64 > MAX_BODY.unsigned_abs() {
+                return Ok(None);
+            }
+        }
+    }
+    Ok(Some(body))
 }
 
 enum HeaderError {
@@ -583,4 +635,74 @@ fn parse_header_block(text: &str) -> Headers {
     }
     flush(&mut last, &mut headers);
     Headers(headers)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    /// Un `accept` que falla (`EMFILE`, `ECONNABORTED`) no termina el servidor:
+    /// la conexión siguiente se atiende.
+    #[test]
+    fn accept_errors_do_not_stop_the_loop() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let client = std::thread::spawn(move || TcpStream::connect(("127.0.0.1", port)).unwrap());
+        let calls = Cell::new(0);
+        let served = Cell::new(0);
+        accept_loop(
+            || {
+                calls.set(calls.get() + 1);
+                match calls.get() {
+                    1 => Some(Err(io::Error::from_raw_os_error(24))),
+                    2 => Some(Err(io::Error::from_raw_os_error(103))),
+                    3 => Some(listener.accept()),
+                    _ => None,
+                }
+            },
+            |_stream, peer| {
+                assert!(peer.is_loopback());
+                served.set(served.get() + 1);
+            },
+        );
+        let _ = client.join();
+        assert_eq!(calls.get(), 4);
+        assert_eq!(served.get(), 1);
+    }
+
+    #[test]
+    fn backoff_only_when_resources_run_out() {
+        assert_eq!(
+            accept_backoff(&io::Error::from_raw_os_error(24)),
+            Some(ACCEPT_BACKOFF)
+        );
+        assert_eq!(
+            accept_backoff(&io::Error::from_raw_os_error(23)),
+            Some(ACCEPT_BACKOFF)
+        );
+        assert_eq!(accept_backoff(&io::Error::from_raw_os_error(103)), None);
+    }
+
+    /// Un mensaje con `{explain}` literal no se sustituye dos veces.
+    #[test]
+    fn error_body_substitutes_once() {
+        let body = error_body(400, "{explain}", "BAD_REQUEST", "x");
+        assert!(body.contains("<p>Message: {explain}.</p>"));
+        assert!(body.contains("BAD_REQUEST - x."));
+    }
+
+    /// `Content-Length` negativo: hasta EOF pero con el mismo tope de 200 000 bytes.
+    #[test]
+    fn negative_length_is_capped() {
+        let small = b"{}".to_vec();
+        assert_eq!(read_body(&mut &small[..], -1).unwrap(), Some(small.clone()));
+        let exact = vec![b' '; 200_000];
+        assert_eq!(
+            read_body(&mut &exact[..], -1).unwrap().map(|b| b.len()),
+            Some(200_000)
+        );
+        let big = vec![b' '; 200_001];
+        assert_eq!(read_body(&mut &big[..], -5).unwrap(), None);
+    }
 }

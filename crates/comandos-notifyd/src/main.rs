@@ -87,5 +87,8 @@ fn main() -> ExitCode {
             Err(err) => eprintln!("comandos-notifyd: aviso sin serializar: {err}"),
         }
     }
-    ExitCode::SUCCESS
+    // El canal solo se cierra si el hilo del servidor terminó: sin él no hay
+    // servicio, así que se sale con error para que systemd lo reinicie.
+    eprintln!("comandos-notifyd: el servidor HTTP terminó; se sale");
+    ExitCode::FAILURE
 }
