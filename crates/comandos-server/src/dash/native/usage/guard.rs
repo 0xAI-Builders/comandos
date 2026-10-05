@@ -6,8 +6,9 @@
 //! tabla vacía). Lo que el frente no reproduce con certeza declina y GET
 //! `/state` se reenvía, como cuando el heredado no respondía en la 2d: un error
 //! SQL de la conexión del frente, un BLOB o texto no UTF-8 que el Python quizá
-//! aceptaría, un entero fuera de `i64`, o la caché de límites aún vacía (el
-//! Python, que lleva tiempo vivo, ya tiene la suya llena).
+//! aceptaría, un entero fuera de `i64`, o la caché de límites aún sin cargar:
+//! vacía o con la cuenta `main` fallando desde el arranque (el Python, que
+//! lleva tiempo vivo, ya tiene la suya llena o sus últimas filas buenas).
 use super::super::{Fault, Native, states::suggest::latency_from};
 use comandos_core::{
     json::truthy,

@@ -508,3 +508,102 @@ async fn guard_waits_first_refresh_but_never_hangs() {
     assert_eq!(oauth.calls(), 1);
     assert!(native.limits().refreshing());
 }
+
+#[tokio::test]
+async fn guard_declines_until_main_reads_once_then_keeps_stale_rows() {
+    // I1 (revisión de la 5a): tras un reinicio, si la primera llamada OAuth de
+    // `main` falla (429), el frente no tiene «último dato bueno» y el Python
+    // sí: el pronóstico no puede salir `[]`, declina. Tras una lectura buena se
+    // calcula; un fallo posterior conserva esas filas (`stale`), como el Python.
+    use comandos_server::dash::native::states::context::Context;
+    use std::sync::atomic::{AtomicI64, Ordering};
+    let home = TestHome::new("guard-main-429");
+    seed_usage(&home, "");
+    write(
+        &home.root.join(".claude/.credentials.json"),
+        &json!({"claudeAiOauth": {"accessToken": "tok-main"}}).to_string(),
+    );
+    let oauth = Arc::new(FakeOauth::default());
+    oauth.set(
+        "tok-main",
+        FakeAnswer::Error("HTTP Error 429: Too Many Requests".into()),
+    );
+    let clock = Arc::new(AtomicI64::new(NOW_MS));
+    let mut opts = home.options();
+    opts.oauth = oauth.clone();
+    opts.clock = {
+        let clock = clock.clone();
+        Arc::new(move || clock.load(Ordering::SeqCst))
+    };
+    let native = Native::new(opts);
+    let registry = json!({});
+
+    // Primer refresco con error: ni la guardia ni el contexto calculan.
+    assert!(matches!(
+        guard::token_guard_with_forecast(&native).await,
+        Err(Fault::Decline)
+    ));
+    assert_eq!(oauth.calls(), 1);
+    assert!(!native.limits().refreshing());
+    let current = native.limits().current();
+    assert!(!current.loaded);
+    assert_eq!(current.health["claude_oauth"]["status"], json!("error"));
+    let ctx = Context::default();
+    assert!(ctx.get(&native, &registry, NOW_MS).await.is_err());
+    // Dentro del TTL de error (180 s) no hay otra petición y sigue declinando.
+    clock.store(NOW_MS + 179_000, Ordering::SeqCst);
+    assert!(matches!(
+        guard::token_guard_with_forecast(&native).await,
+        Err(Fault::Decline)
+    ));
+    assert_eq!(oauth.calls(), 1);
+
+    // Vencido el TTL, una lectura buena: ya se calcula.
+    oauth.set("tok-main", FakeAnswer::Json(oauth_answer()));
+    clock.store(NOW_MS + 181_000, Ordering::SeqCst);
+    let got = guard::token_guard_with_forecast(&native)
+        .await
+        .ok()
+        .flatten()
+        .unwrap();
+    assert_eq!(oauth.calls(), 2);
+    assert!(native.limits().current().loaded);
+    assert_eq!(got["forecasts"].as_array().unwrap().len(), 2);
+    let ok = ctx.get(&native, &registry, NOW_MS + 181_000).await.unwrap();
+    assert_eq!(ok.guard["forecasts"].as_array().unwrap().len(), 2);
+
+    // Un 429 posterior conserva las últimas filas buenas: sigue calculando.
+    oauth.set(
+        "tok-main",
+        FakeAnswer::Error("HTTP Error 429: Too Many Requests".into()),
+    );
+    clock.store(NOW_MS + 242_000, Ordering::SeqCst);
+    native.limits().get(&native.refresh_deps());
+    settle(native.limits()).await;
+    assert_eq!(oauth.calls(), 3);
+    let current = native.limits().current();
+    assert!(current.loaded);
+    assert_eq!(current.health["claude_oauth"]["stale"], json!(true));
+    let stale = guard::token_guard_with_forecast(&native)
+        .await
+        .ok()
+        .flatten()
+        .unwrap();
+    assert_eq!(stale["forecasts"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn guard_without_main_credentials_is_loaded() {
+    // Sin credenciales de `main` (estado `missing`) el Python tampoco tiene
+    // filas de `main`: la caché cuenta como cargada tras el primer refresco.
+    let home = TestHome::new("guard-main-missing");
+    seed_usage(&home, "");
+    let native = Native::new(home.options());
+    let got = guard::token_guard_with_forecast(&native)
+        .await
+        .ok()
+        .flatten()
+        .unwrap();
+    assert_eq!(got["forecasts"], json!([]));
+    assert!(native.limits().current().loaded);
+}

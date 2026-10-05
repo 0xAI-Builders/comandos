@@ -41,8 +41,11 @@ pub trait OauthHttp: Send + Sync + 'static {
 pub struct Limits {
     pub rows: Vec<Map<String, Value>>,
     pub health: Map<String, Value>,
-    /// Hubo al menos un refresco completo (`at > 0`): las filas son las de una
-    /// lectura real, no la caché vacía del arranque.
+    /// Hubo al menos un refresco completo (`at > 0`) y en alguno la cuenta
+    /// `main` no falló: las filas de `main` son las de una lectura real, no la
+    /// caché vacía del arranque. Si `main` falla (p. ej. 429) desde el primer
+    /// refresco, el frente no tiene «último dato bueno» y el Python, vivo desde
+    /// antes, sí: el pronóstico saldría distinto (I1 de la revisión de la 5a).
     pub loaded: bool,
 }
 
@@ -53,6 +56,10 @@ struct LimitsState {
     rows: Vec<Map<String, Value>>,
     health: Map<String, Value>,
     refreshing: bool,
+    /// Algún refresco terminó sin error de la cuenta `main` (incluido «no
+    /// configurada» o sin credenciales): desde entonces sus filas, frescas o
+    /// las últimas buenas, son las mismas que vería el Python.
+    main_read: bool,
 }
 
 /// Una entrada: la última lectura completa (cota explícita, regla 6).
@@ -96,7 +103,7 @@ impl LimitsCache {
         Limits {
             rows: st.rows.clone(),
             health: st.health.clone(),
-            loaded: st.at > 0,
+            loaded: st.at > 0 && st.main_read,
         }
     }
 
@@ -143,11 +150,12 @@ impl LimitsCache {
         Self::copy(&self.lock())
     }
 
-    /// `get` y, si la caché nunca se llenó (arranque del frente), espera como
-    /// mucho `wait` al refresco en vuelo. `None`: sigue vacía (sin efectos de
-    /// uso no hay refresco; red colgada; el lector abortó sin red) y quien
-    /// llama no sabe qué filas ve el Python, que ya tiene su caché llena. La
-    /// espera es async: el runtime sigue libre.
+    /// `get` y, si la caché aún no está cargada (`Limits::loaded`; arranque
+    /// del frente), espera como mucho `wait` al refresco en vuelo. `None`: sigue
+    /// sin cargar (sin efectos de uso no hay refresco; red colgada; el lector
+    /// abortó sin red; la cuenta `main` solo ha fallado desde el arranque) y
+    /// quien llama no sabe qué filas ve el Python, que ya tiene su caché llena
+    /// o sus últimas filas buenas. La espera es async: el runtime sigue libre.
     pub async fn get_loaded(
         self: &Arc<Self>,
         deps: &RefreshDeps,
@@ -163,16 +171,17 @@ impl LimitsCache {
         notified.as_mut().enable();
         {
             let st = self.lock();
-            if st.at > 0 {
-                return Some(Self::copy(&st));
+            let limits = Self::copy(&st);
+            if limits.loaded {
+                return Some(limits);
             }
             if !st.refreshing {
                 return None;
             }
         }
         let _ = tokio::time::timeout(wait, notified).await;
-        let st = self.lock();
-        (st.at > 0).then(|| Self::copy(&st))
+        let limits = Self::copy(&self.lock());
+        limits.loaded.then_some(limits)
     }
 
     /// D5: `attach_token_counts` sobre las filas cacheadas, como el Python (que
@@ -237,6 +246,15 @@ async fn refresh(cache: Arc<LimitsCache>, deps: RefreshDeps) {
     let at = secs(&deps.opts);
     {
         let mut st = cache.lock();
+        // `main` sin error en esta lectura: a partir de aquí sus filas son
+        // reales (o, tras un fallo posterior, las últimas buenas con `stale`).
+        let main_failed = done
+            .health
+            .get("claude_oauth")
+            .and_then(|h| h.get("status"))
+            .and_then(Value::as_str)
+            == Some("error");
+        st.main_read |= !main_failed;
         st.at = at;
         st.rows = done.rows;
         st.health = done.health;

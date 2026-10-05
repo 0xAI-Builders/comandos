@@ -438,6 +438,48 @@ async fn suggestion_context_is_native() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn suggestion_context_slow_lane_declines_within_two_seconds() {
+    use comandos_server::dash::native::{
+        Native,
+        states::context::{Context, QUERY_TIMEOUT},
+    };
+    // El carril de uso ocupado por otro trabajo largo: las consultas del
+    // contexto tienen el plazo de la subconsulta de la 2d (2 s) y, al vencer,
+    // declinan y el fallo se recuerda. El runtime sigue libre.
+    let home = TestHome::new("state-ctx-slow");
+    support::seed_usage(&home, &turn_sql(RECENT_TURN, NOW_MS));
+    let native = Native::new(home.options());
+    let lane = native.usage_lane();
+    // El carril ya abierto: el trabajo lento entra primero.
+    assert!(lane.with(|_| ()).await.is_ok());
+    let ctx = Context::default();
+    let registry = json!({});
+    let slow = async {
+        assert!(
+            lane.with(|_| std::thread::sleep(Duration::from_secs(4)))
+                .await
+                .is_ok()
+        );
+    };
+    let timed = async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let started = std::time::Instant::now();
+        let got = ctx.get(&native, &registry, NOW_MS).await;
+        (got.is_err(), started.elapsed())
+    };
+    let ((), (declined, waited)) = tokio::join!(slow, timed);
+    assert!(declined);
+    assert!(
+        waited >= QUERY_TIMEOUT && waited < QUERY_TIMEOUT + Duration::from_millis(700),
+        "{waited:?}"
+    );
+    assert!(ctx.failing(NOW_MS));
+    // Libre el carril y pasado el recuerdo del fallo, se calcula.
+    let got = ctx.get(&native, &registry, NOW_MS + 5_000).await.unwrap();
+    assert_eq!(got.guard["projects"][0]["project"], json!("Proyecto"));
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn suggestion_context_uncertain_declines_and_is_remembered() {
     use comandos_server::dash::native::{Native, states::context::Context};
     // Un valor no decodificable en la base declina y el fallo se recuerda

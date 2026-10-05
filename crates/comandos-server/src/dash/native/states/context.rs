@@ -30,6 +30,11 @@ const MAX_AGE_MS: i64 = 60_000;
 const FAILURE_MEMORY_MS: i64 = 5_000;
 /// `socket.create_connection(..., timeout=0.3)` de `proxy_alive` (3697).
 const PROXY_TIMEOUT: Duration = Duration::from_millis(300);
+/// Plazo de cada consulta del contexto (guardia, que incluye la espera de la
+/// primera lectura de límites, y latencia): el de la subconsulta al heredado
+/// de la 2d (`SUBREQUEST_TIMEOUT`). Un carril de uso ocupado por otro trabajo
+/// largo no alarga GET `/state` más que antes: al vencer, declina.
+pub const QUERY_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Sin fallo recordado.
 const NO_FAILURE: i64 = i64::MIN;
@@ -91,13 +96,17 @@ impl Context {
             }
         };
         // Cualquier fallo del carril (también un pánico del trabajo, que el
-        // `except` del Python no explica) declina: nunca un 500 que el Python
-        // no daría.
-        let Ok(guard) = guard::token_guard_with_forecast(native).await else {
+        // `except` del Python no explica) o un plazo vencido declina: nunca un
+        // 500 que el Python no daría. El trabajo ya encolado en el carril
+        // termina solo y su resultado se descarta (no tiene efectos).
+        let Ok(Ok(guard)) =
+            tokio::time::timeout(QUERY_TIMEOUT, guard::token_guard_with_forecast(native)).await
+        else {
             self.remember_failure(now_ms);
             return Err(StateFault::Decline);
         };
-        let Ok(latency) = guard::latency(native).await else {
+        let Ok(Ok(latency)) = tokio::time::timeout(QUERY_TIMEOUT, guard::latency(native)).await
+        else {
             self.remember_failure(now_ms);
             return Err(StateFault::Decline);
         };
