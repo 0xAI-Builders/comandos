@@ -1396,6 +1396,11 @@ rápida, `ssh`, `git` y `fc-list` salen todos de `Program::command`, que lo quit
   observadas (el ciclo siguiente sí).
 - Tras reiniciar el frente, la deduplicación de avisos de nivel empieza de cero (como tras
   reiniciar el Python).
+- Una línea `reenvío GET /usage/state` en la traza es un ciclo en que el Python fue dueño: el
+  frente declinó (carril de uso caído, base más nueva) y el Python importó, escribió bordes y
+  pudo avisar. Una línea aislada es aceptable; repetidas son motivo para revertir (paso 4). En ese
+  ciclo puede llegar un aviso de nivel duplicado: el `_TIER_LAST` del Python conserva el nivel que
+  vio antes del cutover y no sabe de los avisos del frente.
 - Un archivo de transcript que sale del corte de 21 días y vuelve sin cambiar se relee (el
   Python lo recordaba); la base queda igual.
 - `/proc/<pid>/environ` del frente muestra `GLIBC_TUNABLES` partido en dos líneas: glibc 2.35
@@ -1415,9 +1420,9 @@ grep -qa 'GET /extension-usage y GET /usage/state' "$NEW" || echo "BINARIO SIN 2
 grep -qa 'GLIBC_TUNABLES' "$NEW" || echo "BINARIO QUE NO QUITA GLIBC_TUNABLES A SUS HIJOS: no seguir"
 ldd --version | head -1                                              # glibc ≥ 2.26 (aquí 2.35)
 systemctl --user is-active cc-dash.service cc-dash-legacy.service    # active active
-~/.local/share/comandos/bin/comandos install --releases              # anotar la actual ('*')
+~/.local/share/comandos/bin/comandos install --releases              # la actual ('*') es 790e58866107
 systemctl --user cat cc-dash.service | grep ExecStart                # %h/.local/bin/cc-dash 4777 --no-open
-readlink -f ~/.local/bin/cc-dash                                     # …/releases/<sha12>/comandos
+readlink -f ~/.local/bin/cc-dash                                     # …/releases/790e58866107/comandos
 ls ~/.config/systemd/user/cc-dash.service.d/ 2>/dev/null             # sin no-native.conf ni malloc.conf
 for u in cc-dash.service cc-dash-legacy.service; do
   systemctl --user show -p Environment -p WorkingDirectory "$u"; done # mismo PATH, WorkingDirectory y TZ;
@@ -1428,6 +1433,11 @@ for u in cc-dash.service cc-dash-legacy.service; do
 ss -ltn 'sport = :4782'                                               # libre
 ```
 
+La release actual tiene que ser `790e58866107` (la 2d con la ligereza, 42 MiB y 5 hilos en vivo):
+es la que la reversión del paso 4 restaura. Hoy `releases/previous` apunta a `9f6fa07f26f0`, la
+2d anterior a la ligereza (270 MiB en vivo); el `--stage` del paso 2 lo sobrescribe con
+`790e58866107`. Si la actual no es `790e58866107`, parar y decidir con el usuario.
+
 ### 1. Sombra en 4782 con nativo, contra el heredado 4781
 
 La sombra arranca **sin efectos de uso**: no importa, no escribe bordes ni avisa (el dueño sigue
@@ -1435,7 +1445,7 @@ siendo el Python, que recibe el `/usage/state` de producción). Lleva el ajuste 
 producción.
 
 ```sh
-GLIBC_TUNABLES="$TUN" COMANDOS_DASH_TRACE_FORWARD=1 \
+GLIBC_TUNABLES="${TUN:?}" COMANDOS_DASH_TRACE_FORWARD=1 \
   "$NEW" dash 4782 --legacy-port 4781 --no-usage-effects 2> /tmp/sombra-2e.log
 ```
 
@@ -1472,10 +1482,42 @@ sí puede aparecer: la sombra no carga límites (ver «Diferencias»). Ctrl+C.
 
 ### 2. Cutover
 
-Sin un cambio de modelo o cuenta en vuelo en el momento del reinicio. Primero el drop-in del
-ajuste de malloc; no cambia el `ExecStart`, que sigue ejecutando la release activa por los
-enlaces `~/.local/bin/cc-dash` → `~/.local/share/comandos/bin/comandos` →
-`releases/<sha12>/comandos`, así que `--stage` y `--rollback-release` siguen funcionando igual:
+Antes de reiniciar, nada en vuelo: ni un cambio de cuenta o de modelo, ni un tecleo de la barra
+de comandos, ni una terminal rápida abriéndose. Las dos bases se miran en solo lectura; una fila
+reciente en un estado no final es algo en curso (las `awaiting_confirmation` y
+`recovery_required` antiguas son residuo y no cuentan):
+
+```sh
+sqlite3 "file:$HOME/.claude/hooks/session-operations.sqlite3?mode=ro" \
+  "SELECT id, state, datetime(updated, 'unixepoch', 'localtime') FROM session_operations
+   WHERE state NOT IN ('confirmed', 'failed', 'rolled_back')
+     AND updated > strftime('%s', 'now') - 900"                       # vacío
+sqlite3 "file:$HOME/.local/state/comandos/app-state.sqlite3?mode=ro" \
+  "SELECT request_id, datetime(updated_at, 'unixepoch', 'localtime') FROM quick_terminal_requests
+   WHERE state = 'launching' AND lease_until > strftime('%s', 'now')"  # vacío
+```
+
+Línea base antes del reinicio (el paso 3 la compara):
+
+```sh
+sqlite3 "file:$HOME/.claude/hooks/comandos-usage.sqlite?mode=ro" \
+  'select max(turn_finished_at), count(*) from usage_turns' | tee /tmp/base-2e-turnos.txt
+L=$(systemctl --user show -p MainPID --value cc-dash-legacy.service)
+awk '/^Pss:/{print $2}' /proc/$L/smaps_rollup | tee /tmp/base-2e-heredado.txt   # Pss del heredado (KiB)
+```
+
+Primero la release. `--stage` deja `releases/previous` en la release que había (`790e58866107`):
+
+```sh
+"$NEW" install --stage
+grep -qa 'GET /extension-usage y GET /usage/state' "$(readlink -f ~/.local/share/comandos/bin/comandos)" || echo "STAGE MALO: ~/.local/share/comandos/bin/comandos install --rollback-release"
+cat ~/.local/share/comandos/releases/previous                       # 790e58866107
+~/.local/share/comandos/bin/comandos hook claude-status >/dev/null && echo "hooks OK con la release nueva"
+```
+
+Después el drop-in del ajuste de malloc, el `daemon-reload` y el reinicio. El drop-in no cambia el
+`ExecStart`, que sigue ejecutando la release activa por los enlaces `~/.local/bin/cc-dash` →
+`~/.local/share/comandos/bin/comandos` → `releases/<sha12>/comandos`:
 
 ```sh
 mkdir -p ~/.config/systemd/user/cc-dash.service.d
@@ -1486,16 +1528,9 @@ cat > ~/.config/systemd/user/cc-dash.service.d/malloc.conf <<'EOF'
 Environment=GLIBC_TUNABLES=glibc.malloc.mmap_threshold=131072:glibc.malloc.arena_max=2
 EOF
 systemctl --user daemon-reload
-systemctl --user show -p Environment cc-dash.service | grep -o "GLIBC_TUNABLES=$TUN"   # una línea
-systemctl --user show -p Environment cc-dash-legacy.service | grep -c GLIBC_TUNABLES  # 0
-```
-
-Después la release y el reinicio:
-
-```sh
-"$NEW" install --stage
-grep -qa 'GET /extension-usage y GET /usage/state' "$(readlink -f ~/.local/share/comandos/bin/comandos)" || echo "STAGE MALO: ~/.local/share/comandos/bin/comandos install --rollback-release"
-~/.local/share/comandos/bin/comandos hook claude-status >/dev/null && echo "hooks OK con la release nueva"
+systemctl --user show -p Environment cc-dash.service \
+  | grep -o 'GLIBC_TUNABLES=glibc.malloc.mmap_threshold=131072:glibc.malloc.arena_max=2'   # una línea
+systemctl --user show -p Environment cc-dash-legacy.service | grep -c GLIBC_TUNABLES        # 0
 systemctl --user restart cc-dash.service
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4777/        # 200
 journalctl --user -u cc-dash.service --since -2min --no-pager | grep -c 'se reenvían al heredado\|rutas nativas desactivadas'   # 0
@@ -1511,32 +1546,60 @@ drop-in, paso 4).
 ### 3. Verificación
 
 Con efectos encendidos el frente es dueño de los límites: la guardia de `/state` usa la lectura
-del arranque.
+del arranque. La vigilancia de memoria corre dentro de la ventana con traza, sobre el mismo
+proceso, una muestra por minuto (minuto, Pss del frente en KiB, hilos, Pss del heredado):
 
 ```sh
 sleep 120
-journalctl --user -u cc-dash.service --since -3min --no-pager | grep -c 'GET /state declina'   # 0 tras el primer minuto
+journalctl --user -u cc-dash.service --since -1min --no-pager | grep -c 'GET /state declina'   # 0
 systemctl --user set-environment COMANDOS_DASH_TRACE_FORWARD=1 && systemctl --user restart cc-dash.service
-sleep 600
-journalctl --user -u cc-dash.service --since -11min --no-pager | grep 'reenvío' \
-  | sed 's/.*reenvío //' | sort | uniq -c | sort -rn
-systemctl --user unset-environment COMANDOS_DASH_TRACE_FORWARD && systemctl --user restart cc-dash.service
-sqlite3 "file:$HOME/.claude/hooks/comandos-usage.sqlite?mode=ro" 'select max(turn_finished_at), count(*) from usage_turns'  # avanza
 P=$(systemctl --user show -p MainPID --value cc-dash.service)
 L=$(systemctl --user show -p MainPID --value cc-dash-legacy.service)
-grep Pss /proc/$P/smaps_rollup; ls /proc/$P/task | wc -l; grep Pss /proc/$L/smaps_rollup   # al minuto 1 y al 10
+for i in $(seq 10); do
+  sleep 60
+  echo "$i $(awk '/^Pss:/{print $2}' /proc/$P/smaps_rollup) $(ls /proc/$P/task | wc -l) $(awk '/^Pss:/{print $2}' /proc/$L/smaps_rollup)"
+done | tee /tmp/vigilancia-2e.txt
+awk '$2 > 57344 || $3 > 12 {print "REVERTIR: minuto " $1 ": " $2 " KiB, " $3 " hilos"}
+     $1 == 5 {m5 = $2} $1 == 10 && $2 - m5 > 3072 {print "REVERTIR: +" $2 - m5 " KiB del minuto 5 al 10"}' \
+  /tmp/vigilancia-2e.txt                                              # nada
+journalctl --user -u cc-dash.service --since -11min --no-pager | grep 'reenvío' \
+  | sed 's/.*reenvío //' | sort | uniq -c | sort -rn
+systemctl --user unset-environment COMANDOS_DASH_TRACE_FORWARD     # sin reiniciar: el mismo proceso sigue
+sqlite3 "file:$HOME/.claude/hooks/comandos-usage.sqlite?mode=ro" \
+  'select max(turn_finished_at), count(*) from usage_turns'; cat /tmp/base-2e-turnos.txt   # avanza respecto a la base
+diff <(tmux list-panes -a -F '#{pane_id} #{@ccmodel}' | sed -E 's/#\[[^]]*\]//g; s/ ▸ / /' \
+         | awk 'NF > 1' | LC_ALL=C sort) \
+     <(LC_ALL=C sort ~/.claude/hooks/pane-models.txt)               # vacío
 ```
 
+La última orden lee los bordes del tmux real (socket por omisión, solo lectura), les quita los
+estilos y los compara con `pane-models.txt`: vacío. Una diferencia en un pane que cambia de modelo
+en ese segundo se repite a los 10 s.
+
+Seguimiento a los 30 y a los 60 minutos del reinicio, sobre el mismo proceso:
+
+```sh
+P=$(systemctl --user show -p MainPID --value cc-dash.service)
+awk '/^Pss:/{print $2}' /proc/$P/smaps_rollup; ls /proc/$P/task | wc -l   # minuto 30: anotar
+awk '/^Pss:/{print $2}' /proc/$P/smaps_rollup; ls /proc/$P/task | wc -l   # minuto 60: anotar
+```
+
+Revertir (paso 4, release `790e58866107`) si cualquier muestra pasa de 56 MiB (57 344 KiB) o de
+12 hilos, si del minuto 5 al 10 crece más de 3 MiB, o si del minuto 30 al 60 crece más de 2 MiB.
+
 - Ninguna ruta de uso en la traza; `GET /usage/guard` y `GET /usage/analytics` tampoco (la 2d ya
-  no los pide). `GET /state` no aparece (o menos de 1 de cada 100 sondeos): si aparece en cada
-  sondeo, la guardia no tiene límites (credenciales ilegibles: falla cerrado, ver «Diferencias»).
+  no los pide). Una línea `GET /usage/state` aislada es un ciclo del Python (ver «Diferencias»);
+  repetidas, revertir. `GET /state` no aparece (o menos de 1 de cada 100 sondeos): si aparece en
+  cada sondeo, la guardia no tiene límites (credenciales ilegibles: falla cerrado, ver
+  «Diferencias»).
 - La barra lateral muestra los % de cuota desde el primer minuto tras el reinicio (refresco del
   arranque). El menú «Cuenta» de un pane puede salir sin límites hasta 180 s si la primera
   petición OAuth dio 429.
 - Tras un turno de Claude o Codex, la tarjeta de uso lo refleja en ≤ 2 min; el borde del pane
-  cambia al cambiar de modelo en ≤ 10 s; `pane-models.txt` coincide con los bordes.
-- Pss del frente plano (± 1 MiB entre el minuto 1 y el 10) y ≤ 56 MiB; hilos ≤ 12; el heredado
-  crece menos que antes del cutover en el mismo intervalo.
+  cambia al cambiar de modelo en ≤ 10 s; el `diff` de bordes y `pane-models.txt` sale vacío.
+- Memoria: las diez muestras ≤ 56 MiB y ≤ 12 hilos; del minuto 5 al 10, ≤ 3 MiB; del 30 al 60,
+  ≤ 2 MiB. El heredado (última columna) apenas crece frente a `/tmp/base-2e-heredado.txt`: ya no
+  importa ni reconstruye el estado de uso.
 - Llamadas OAuth: el frente refresca como mucho cada 60 s y el Python cada 300 s. Si
   `api.anthropic.com` empieza a dar 429 con frecuencia, anotarlo: la caché de error del frente
   (180 s) lo absorbe, pero es la señal para adelantar la 2g (un solo dueño de límites).
@@ -1560,18 +1623,26 @@ systemctl --user daemon-reload && systemctl --user restart cc-dash.service
 systemctl --user show -p Environment cc-dash.service | grep -c GLIBC_TUNABLES   # 0
 ```
 
-Volver a la release anterior (la 2d), quitando también el drop-in: el binario de la 2d no quita la
-variable a sus hijos (un `tmux` que arrancara el servidor se la pasaría a los panes):
+Volver a la release de la 2d con la ligereza, `790e58866107` (la actual del paso 0), nunca a
+`9f6fa07f26f0` (la 2d de antes de la ligereza, 270 MiB en vivo). `install --rollback-release`
+vuelve a la que nombra `releases/previous`, que el `--stage` del paso 2 dejó en `790e58866107`.
+Comprobarlo antes, y quitar también el drop-in: el binario de la 2d no quita la variable a sus
+hijos (un `tmux` que arrancara el servidor se la pasaría a los panes):
 
 ```sh
-~/.local/share/comandos/bin/comandos install --releases
+cat ~/.local/share/comandos/releases/previous                       # 790e58866107
 ~/.local/share/comandos/bin/comandos install --rollback-release
+readlink -f ~/.local/share/comandos/bin/comandos                    # …/releases/790e58866107/comandos
 rm -f ~/.config/systemd/user/cc-dash.service.d/malloc.conf && systemctl --user daemon-reload
 systemctl --user restart cc-dash.service
 grep -qa 'GET /extension-usage y GET /usage/state' "$(readlink -f ~/.local/share/comandos/bin/comandos)" && echo "SIGUE LA 2e"
-grep -qa 'GET /pomodoro, GET /sovereignty y GET /state' "$(readlink -f ~/.local/share/comandos/bin/comandos)" || echo "NO ES LA 2d: revisar releases/previous"
+grep -qa 'GET /pomodoro, GET /sovereignty y GET /state' "$(readlink -f ~/.local/share/comandos/bin/comandos)" || echo "NO ES LA 2d"
 systemctl --user show -p Environment cc-dash.service | grep -c GLIBC_TUNABLES   # 0
 ```
+
+Si `previous` no es `790e58866107` (otro `--stage` entre medias), no usar `--rollback-release`:
+apagar lo nativo con el A/B de arriba (`COMANDOS_DASH_NATIVE=0`), quitar el drop-in y decidir la
+release con el usuario.
 
 El centinela de la 2d (`'GET /pomodoro, GET /sovereignty y GET /state'`) solo lo lleva el binario
 de la 2d. Desde el rebase de la 2e sobre main, `UsageBackend::ROUTES` dice `"GET /pomodoro, GET
