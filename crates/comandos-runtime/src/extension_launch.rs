@@ -323,6 +323,8 @@ enum Dates {
     Fail,
     /// Un valor opaco verdadero (su texto): el lector de la confianza.
     Opaque,
+    /// json.dumps(default=str) of the inventory fallback reader.
+    Inventory,
 }
 
 /// Un valor de `toml_edit` como el JSON que devuelve `json.dumps(tomllib…)`;
@@ -358,7 +360,47 @@ fn toml_value(value: &Tv, dates: Dates) -> Option<Value> {
             if dates == Dates::Fail || unrepresentable {
                 return None;
             }
-            json!(dt.value().to_string())
+            if dates == Dates::Inventory {
+                let dt = dt.value();
+                let mut text = String::new();
+                if let Some(d) = dt.date {
+                    if d.year == 0
+                        || chrono::NaiveDate::from_ymd_opt(
+                            i32::from(d.year),
+                            u32::from(d.month),
+                            u32::from(d.day),
+                        )
+                        .is_none()
+                    {
+                        return None;
+                    }
+                    text = format!("{:04}-{:02}-{:02}", d.year, d.month, d.day);
+                }
+                if let Some(t) = dt.time {
+                    if !text.is_empty() {
+                        text.push(' ')
+                    }
+                    text.push_str(&format!("{:02}:{:02}:{:02}", t.hour, t.minute, t.second?));
+                    let micros = t.nanosecond.unwrap_or(0) / 1000;
+                    if micros > 0 {
+                        text.push_str(&format!(".{micros:06}"));
+                    }
+                }
+                if let Some(o) = dt.offset {
+                    let offset = o.to_string();
+                    if offset == "Z" {
+                        text.push_str("+00:00");
+                    } else {
+                        if offset.get(1..3)?.parse::<u8>().ok()? >= 24 {
+                            return None;
+                        }
+                        text.push_str(&offset);
+                    }
+                }
+                json!(text)
+            } else {
+                json!(dt.value().to_string())
+            }
         }
         Tv::Array(items) => Value::Array(
             items
@@ -423,6 +465,103 @@ pub fn parse_toml(text: &str) -> Result<Option<Value>, Unsure> {
 /// demás fechas (misma desviación).
 pub(crate) fn parse_trust_toml(text: &str) -> Result<Option<Value>, Unsure> {
     parse_with(text, Dates::Opaque)
+}
+
+/// Inventory reader (Python 3.10 fallback): dates serialize as strings,
+/// but year zero is still invalid in tomllib.
+pub(crate) fn parse_inventory_toml(text: &str) -> Result<Option<Value>, Unsure> {
+    if let Ok(result) = parse_with(text, Dates::Inventory) {
+        return Ok(result);
+    }
+    // toml_edit narrows integer literals to i64. Shield valid overflowing
+    // numeric tokens, parse the complete grammar, then restore Python numbers.
+    let integer=regex::Regex::new(r"^([-+]?(0|[1-9](_?[0-9])*)|0x[0-9A-Fa-f](_?[0-9A-Fa-f])*|0o[0-7](_?[0-7])*|0b[01](_?[01])*)$").map_err(|_|Unsure)?;
+    let float = regex::Regex::new(
+        r"^[-+]?(0|[1-9](_?[0-9])*)(\.[0-9](_?[0-9])*)?([eE][-+]?[0-9](_?[0-9])*)?$",
+    )
+    .map_err(|_| Unsure)?;
+    use sha2::{Digest, Sha256};
+    let prefix = format!(
+        "__comandos_inventory_number_{:x}_",
+        Sha256::digest(text.as_bytes())
+    );
+    let source = Source::new(text);
+    let mut converted = String::new();
+    let mut cursor = 0;
+    let mut values = std::collections::HashMap::new();
+    for token in source.lex().into_vec().iter() {
+        if token.kind() != TokenKind::Atom {
+            continue;
+        }
+        let Some(raw) = source.get(token) else {
+            continue;
+        };
+        let raw = raw.as_str();
+        if !overflows(raw) {
+            continue;
+        }
+        let clean = raw.replace('_', "");
+        let value = if integer.is_match(raw) {
+            let normalized = if let Some(octal) = clean.strip_prefix("0o") {
+                format!("0{octal}")
+            } else {
+                clean.clone()
+            };
+            crate::profile_yaml::integer(&normalized)
+        } else if float.is_match(raw) && clean.parse::<f64>().is_ok_and(f64::is_infinite) {
+            Some(Value::Number(serde_json::Number::from_string_unchecked(
+                if clean.starts_with('-') {
+                    "-Infinity"
+                } else {
+                    "Infinity"
+                }
+                .into(),
+            )))
+        } else {
+            None
+        };
+        let Some(value) = value else { continue };
+        let marker = format!("{prefix}{}", values.len());
+        let span = token.span();
+        converted.push_str(&text[cursor..span.start()]);
+        converted.push('"');
+        converted.push_str(&marker);
+        converted.push('"');
+        cursor = span.end();
+        values.insert(marker, (raw.to_owned(), value));
+    }
+    if values.is_empty() {
+        return Err(Unsure);
+    }
+    converted.push_str(&text[cursor..]);
+    let Some(mut value) = parse_with(&converted, Dates::Inventory)? else {
+        return Ok(None);
+    };
+    fn restore(value: &mut Value, values: &std::collections::HashMap<String, (String, Value)>) {
+        match value {
+            Value::String(s) => {
+                if let Some((_, v)) = values.get(s) {
+                    *value = v.clone();
+                }
+            }
+            Value::Array(a) => {
+                for v in a {
+                    restore(v, values)
+                }
+            }
+            Value::Object(m) => {
+                let old = std::mem::take(m);
+                for (k, mut v) in old {
+                    restore(&mut v, values);
+                    let key = values.get(&k).map(|(raw, _)| raw.clone()).unwrap_or(k);
+                    m.insert(key, v);
+                }
+            }
+            _ => {}
+        }
+    }
+    restore(&mut value, &values);
+    Ok(Some(value))
 }
 
 /// `_read(path)` de un `.toml` con el lector dado: `Ok(None)` =

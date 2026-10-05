@@ -121,3 +121,8 @@ pub fn open_state(path: &Path, busy_ms: u64) -> Result<Connection> {
     }
     unreachable!("last migration attempt returns its result")
 }
+pub mod capabilities;
+pub mod mcp_descriptions;
+pub mod session_profiles;
+
+mod profile_yaml;

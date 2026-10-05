@@ -12,6 +12,8 @@ chrono-tz.workspace = true
 comandos-core = { path = "../comandos-core" }
 comandos-store = { path = "../comandos-store" }
 serde_json.workspace = true
+yaml-rust = "=0.4.5"
+unicode-casefold = "=0.2.0"
 rusqlite.workspace = true
 getrandom.workspace = true
 # Colación por locale del glob de bash en `hook claude-status` (ICU4X, sin `unsafe`).
