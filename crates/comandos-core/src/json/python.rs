@@ -131,11 +131,20 @@ struct Chunks {
     cur: String,
 }
 
+impl Chunks {
+    /// Cierra el trozo en curso con su tamaño justo: un `Bytes` hecho de él
+    /// conserva la capacidad entera del `String`.
+    fn close(&mut self) {
+        let mut full = std::mem::take(&mut self.cur);
+        full.shrink_to_fit();
+        self.done.push(full);
+    }
+}
+
 impl Out for Chunks {
     fn push_str(&mut self, s: &str) {
         if !self.cur.is_empty() && self.cur.len() + s.len() > self.cap {
-            let full = std::mem::replace(&mut self.cur, String::with_capacity(self.cap));
-            self.done.push(full);
+            self.close();
         }
         self.cur.push_str(s);
     }
@@ -150,10 +159,11 @@ pub fn response_dumps_entry_chunks(
 ) -> Result<Vec<String>, String> {
     validate_workspace_depth(value, 1)?;
     let cap = cap.max(1);
+    // `cur` crece desde vacío: una entrada pequeña no reserva `cap` entero.
     let mut out = Chunks {
         cap,
         done: Vec::new(),
-        cur: String::with_capacity(cap),
+        cur: String::new(),
     };
     encode_into(
         &Value::String(key.to_owned()),
@@ -165,11 +175,10 @@ pub fn response_dumps_entry_chunks(
     )?;
     out.push_str(": ");
     encode_into(value, true, false, false, Policy::Workspace, &mut out)?;
-    let Chunks { mut done, cur, .. } = out;
-    if !cur.is_empty() {
-        done.push(cur);
+    if !out.cur.is_empty() {
+        out.close();
     }
-    Ok(done)
+    Ok(out.done)
 }
 
 fn encode(
@@ -280,9 +289,20 @@ fn quoted<O: Out>(value: &str, ascii: bool, out: &mut O) {
             '\t' => out.push_str("\\t"),
             ch if ch < '\u{20}' || (ascii && ch >= '\u{7f}') => {
                 for unit in ch.encode_utf16(&mut [0; 2]) {
-                    let mut escape = String::with_capacity(6);
-                    let _ = write!(escape, "\\u{unit:04x}");
-                    out.push_str(&escape);
+                    // `\uXXXX` en minúsculas, en la pila y de una vez (un
+                    // escape nunca se parte entre dos trozos).
+                    let hex = |shift: u16| -> u8 {
+                        let digit = ((*unit >> shift) & 0xf) as u8;
+                        if digit < 10 {
+                            b'0' + digit
+                        } else {
+                            b'a' + digit - 10
+                        }
+                    };
+                    let escape = [b'\\', b'u', hex(12), hex(8), hex(4), hex(0)];
+                    if let Ok(escape) = std::str::from_utf8(&escape) {
+                        out.push_str(escape);
+                    }
                 }
             }
             ch => out.push(ch),
