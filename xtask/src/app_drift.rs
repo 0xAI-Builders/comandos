@@ -245,9 +245,26 @@ struct Open {
     indent: usize,
 }
 
+/// Interfaz del plan; el binario usa `checked_defs`.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn defs(src: &str) -> Vec<Def> {
+    scan_defs(src).0
+}
+
+/// Como `defs`, pero falla si el escáner acaba el archivo dentro de una cadena, con
+/// paréntesis abiertos o con una `\` final: entonces el hash no sería de fiar.
+pub fn checked_defs(src: &str) -> Result<Vec<Def>, ()> {
+    match scan_defs(src) {
+        (d, true) => Ok(d),
+        _ => Err(()),
+    }
+}
+
+/// Definiciones y si el estado del escáner al final del archivo es limpio.
+fn scan_defs(src: &str) -> (Vec<Def>, bool) {
     let mut scanner = Scanner::default();
     let lines: Vec<Line> = src.lines().map(|l| scanner.scan(l)).collect();
+    let clean = scanner.stack.is_empty() && scanner.depth == 0 && !scanner.continued;
     let mut out: Vec<(String, usize, usize)> = Vec::new(); // (qualname, inicio, fin)
     let mut names: Vec<String> = Vec::new(); // nombres simples de la pila, paralelo a `open`
     let mut open: Vec<Open> = Vec::new();
@@ -294,12 +311,14 @@ pub fn defs(src: &str) -> Vec<Def> {
         names.push(name.to_string());
         out.push((qualname, deco_start.unwrap_or(i), lines.len()));
     }
-    out.into_iter()
+    let found = out
+        .into_iter()
         .map(|(qualname, start, end)| Def {
             qualname,
             hash: body_hash(lines.get(start..end).unwrap_or_default()),
         })
-        .collect()
+        .collect();
+    (found, clean)
 }
 
 pub fn diff(base: &[Def], now: &[Def]) -> Drift {
@@ -363,6 +382,44 @@ fn from_json(v: &Value) -> Vec<Def> {
         .unwrap_or_default()
 }
 
+/// Opciones de `cargo xtask app-drift`.
+#[derive(Debug)]
+pub struct Opts {
+    pub baseline: std::path::PathBuf,
+    pub write: bool,
+    pub accept: Vec<String>,
+    pub paths: Vec<String>,
+}
+
+const USAGE: &str = "uso: cargo xtask app-drift [--write-baseline] [--accept NOMBRE…] [--baseline RUTA] CC_APP [CC_NOTIFYD]";
+
+/// Errores de uso (el llamador sale con 2): opción sin valor o sin rutas.
+pub fn parse_args(args: &[String]) -> Result<Opts, String> {
+    let mut o = Opts {
+        baseline: "docs/verification/app-drift-baseline.json".into(),
+        write: false,
+        accept: Vec::new(),
+        paths: Vec::new(),
+    };
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--write-baseline" => o.write = true,
+            "--baseline" => {
+                o.baseline = it.next().ok_or("--baseline pide una ruta")?.into();
+            }
+            "--accept" => o
+                .accept
+                .push(it.next().ok_or("--accept pide un nombre")?.clone()),
+            _ => o.paths.push(a.clone()),
+        }
+    }
+    if o.paths.is_empty() {
+        return Err(USAGE.into());
+    }
+    Ok(o)
+}
+
 /// `paths`: `[cc-app, cc-notifyd?]`. Devuelve el código de salida (1 si hay deriva).
 /// Un archivo ilegible o una línea base corrupta es `Err` (el llamador sale con 2),
 /// para que no se confunda con deriva.
@@ -395,7 +452,8 @@ pub fn run(
             .and_then(|n| n.to_str())
             .unwrap_or("archivo")
             .to_string();
-        let now = defs(&src);
+        let now = checked_defs(&src)
+            .map_err(|()| format!("estado de escaneo inválido al final de {path}"))?;
         let base = previous
             .get("files")
             .and_then(|f| f.get(&key))
@@ -702,5 +760,56 @@ mod tests {
         let a = "def f(): return 1\ndef g(): return 2\nclass K: pass\nx = 1\n";
         assert_eq!(names(a), ["f", "g", "K"]);
         assert_eq!(changed(a, &a.replace("return 2", "return 3")), ["g"]);
+    }
+
+    #[test]
+    fn unbalanced_scan_state_at_eof_is_an_error() {
+        let tmp = Tmp::new("eof");
+        let base = tmp.0.join("b.json");
+        for (n, src) in [
+            ("string", "def f():\n    s = \"\"\"abierta\n    return s\n"),
+            ("bracket", "def f():\n    x = (1,\n    return x\n"),
+            ("backslash", "def f():\n    x = 1 + \\\n"),
+        ] {
+            let file = tmp.0.join(format!("cc-{n}"));
+            fs::write(&file, src).unwrap();
+            let p = [file.to_string_lossy().into_owned()];
+            for write in [false, true] {
+                let err = run(&base, &p, write, &[]).unwrap_err();
+                assert!(
+                    err.contains("estado de escaneo inválido al final de") && err.contains(&p[0]),
+                    "{n}: {err}"
+                );
+            }
+        }
+        assert!(!base.exists(), "no debe escribirse una línea base inválida");
+        assert!(checked_defs("def f():\n    pass\n").is_ok());
+    }
+
+    #[test]
+    fn options_without_value_are_usage_errors() {
+        let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(
+            parse_args(&a(&["--baseline"]))
+                .unwrap_err()
+                .contains("--baseline")
+        );
+        assert!(
+            parse_args(&a(&["x", "--accept"]))
+                .unwrap_err()
+                .contains("--accept")
+        );
+        assert!(parse_args(&a(&[])).unwrap_err().starts_with("uso:"));
+        let o = parse_args(&a(&[
+            "--write-baseline",
+            "--accept",
+            "f",
+            "--baseline",
+            "b.json",
+            "x",
+        ]))
+        .unwrap();
+        assert!(o.write && o.accept == ["f"] && o.paths == ["x"]);
+        assert_eq!(o.baseline, std::path::PathBuf::from("b.json"));
     }
 }

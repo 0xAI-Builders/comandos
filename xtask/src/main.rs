@@ -49,32 +49,20 @@ fn main() {
             }
         }
         Some("app-drift") => {
-            let mut baseline =
-                std::path::PathBuf::from("docs/verification/app-drift-baseline.json");
-            let (mut write, mut accept, mut paths) = (false, Vec::new(), Vec::new());
-            let mut it = args[1..].iter();
-            while let Some(a) = it.next() {
-                match a.as_str() {
-                    "--write-baseline" => write = true,
-                    "--baseline" => match it.next() {
-                        Some(p) => baseline = p.into(),
-                        None => fail("--baseline pide una ruta"),
-                    },
-                    "--accept" => match it.next() {
-                        Some(n) => accept.push(n.clone()),
-                        None => fail("--accept pide un nombre"),
-                    },
-                    _ => paths.push(a.clone()),
-                }
-            }
-            if paths.is_empty() {
+            // Errores de uso: salida 2, sin tocar nada.
+            let o = app_drift::parse_args(&args[1..]).unwrap_or_else(|e| {
                 eprintln!(
-                    "uso: cargo xtask app-drift [--write-baseline] [--accept NOMBRE…] [--baseline RUTA] CC_APP [CC_NOTIFYD]"
+                    "{}",
+                    if e.starts_with("uso:") {
+                        e
+                    } else {
+                        format!("error: {e}")
+                    }
                 );
                 exit(2);
-            }
+            });
             // Salida 1 es solo deriva; un archivo ilegible o una línea base corrupta sale 2.
-            match app_drift::run(&baseline, &paths, write, &accept) {
+            match app_drift::run(&o.baseline, &o.paths, o.write, &o.accept) {
                 Ok(code) => exit(code),
                 Err(e) => {
                     eprintln!("error: {e}");
