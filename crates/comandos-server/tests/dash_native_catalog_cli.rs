@@ -581,6 +581,61 @@ async fn catalog_unsure_version_is_remembered() {
     server.stop().await;
 }
 
+/// Copia de `config/` del repo con un modelo de `providers.json` cambiado.
+fn repo_with_model(home: &TestHome, model: Value) -> std::path::PathBuf {
+    let repo = home.root.join("repo");
+    std::fs::create_dir_all(repo.join("config")).unwrap();
+    for entry in std::fs::read_dir(support::repo().join("config")).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_file() {
+            std::fs::copy(&path, repo.join("config").join(path.file_name().unwrap())).unwrap();
+        }
+    }
+    let file = repo.join("config/providers.json");
+    let mut doc: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    doc["motors"]["claude"]["models"]
+        .as_array_mut()
+        .unwrap()
+        .push(model);
+    std::fs::write(&file, doc.to_string()).unwrap();
+    repo
+}
+
+/// M1: un id de modelo que no es hashable (`[1]`) hace que el
+/// `_registry_model_ids` del Python lance `TypeError` (500) después del
+/// sondeo de versiones: el frente declina antes de ejecutar nada. Un id
+/// escalar que no es texto (`7`) se salta como en `latest_models`.
+#[tokio::test]
+async fn catalog_unhashable_model_id_declines_before_probing() {
+    let home = TestHome::new("cat-unhashable");
+    let repo = repo_with_model(&home, json!({"id": [1], "name": "lista"}));
+    let clock = Clock::at(T0);
+    let (legacy, server) = lone_front(
+        &home,
+        &[("claude", fake_cli("2.1.286", CLAUDE_HELP, ""))],
+        &clock,
+        Some(repo),
+    )
+    .await;
+    assert_eq!(get(server.port, "/commands/catalog").await.text(), LEGACY);
+    assert_eq!(calls(&home, "claude").await, 0);
+    assert_eq!(legacy.requests().len(), 1);
+    server.stop().await;
+
+    let home = TestHome::new("cat-scalar-id");
+    let repo = repo_with_model(&home, json!({"id": 7, "name": "número"}));
+    let (_legacy, server) = lone_front(
+        &home,
+        &[("claude", fake_cli("2.1.286", CLAUDE_HELP, ""))],
+        &clock,
+        Some(repo),
+    )
+    .await;
+    let wire = get(server.port, "/commands/catalog").await;
+    assert_eq!(wire.status, 200, "{}", wire.text());
+    server.stop().await;
+}
+
 #[test]
 fn routes_follow_python_matching() {
     use comandos_server::dash::native::{NativeRoute, catalog_cli::CliRoute, route};

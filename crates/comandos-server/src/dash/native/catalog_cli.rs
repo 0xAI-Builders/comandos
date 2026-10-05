@@ -303,7 +303,11 @@ fn read_disk(
     }
 }
 
-/// `_registry_model_ids()`: ids de cada motor sin los `soon`.
+/// `_registry_model_ids()`: ids de cada motor sin los `soon`. Un id lista u
+/// objeto revienta el `set` del Python (`TypeError: unhashable`, 500 después
+/// del sondeo de versiones): se declina, y quien llama lo hace antes de
+/// sondear. Un escalar que no es texto entra en el `set` y `latest_models` lo
+/// salta: aquí ni entra.
 fn registry_model_ids(registry: &Value) -> Result<BTreeMap<String, Vec<String>>, Fault> {
     let mut out = BTreeMap::new();
     let motors = match registry.get("motors") {
@@ -324,6 +328,7 @@ fn registry_model_ids(registry: &Value) -> Result<BTreeMap<String, Vec<String>>,
             match model.get("id") {
                 None => ids.push(String::new()),
                 Some(Value::String(id)) => ids.push(id.clone()),
+                Some(Value::Array(_) | Value::Object(_)) => return Err(Fault::Decline),
                 Some(_) => {}
             }
         }
@@ -461,6 +466,8 @@ async fn payload(native: &Arc<Native>) -> Result<(Value, f64), Fault> {
     };
     let fresh = cache.derived.as_ref().is_some_and(|d| d.key.same(&key));
     if !fresh {
+        // Lo que el Python haría reventar después del sondeo, antes de él.
+        let ids = registry_model_ids(&disk.registry)?;
         let mut at = checked_at(snap)?;
         let versions = match snap.get("versions") {
             Some(Value::Object(v)) => v.clone(),
@@ -488,7 +495,6 @@ async fn payload(native: &Arc<Native>) -> Result<(Value, f64), Fault> {
             }
         };
         let new_models = new_models(snap)?;
-        let ids = registry_model_ids(&disk.registry)?;
         let models = latest_models(snap.get("discovered"), &ids).map_err(view_fault)?;
         cache.derived = Some(Derived {
             key,
