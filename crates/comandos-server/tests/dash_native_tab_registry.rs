@@ -524,3 +524,80 @@ async fn waits_for_a_held_flock_and_keeps_the_other_write() {
     assert_eq!(map["nueva"], "Nueva");
     assert_eq!(map["otra"], "Otra");
 }
+
+/// Revisión de la T1: un `app-tabs-meta.json` incierto es el 500 ANTES de
+/// cualquier escritura (registro, cierre normal y cierre efímero).
+#[tokio::test]
+async fn unsure_meta_fails_before_any_write() {
+    let home = TestHome::new_short("reg-unsure-meta");
+    seed_registry(&home);
+    home.write(
+        "app-tabs.json",
+        r#"{"otra": "Otra", "comandos-e2e-x": "E"}"#,
+    );
+    let deep = format!("{}{}", "[".repeat(1100), "]".repeat(1100));
+    home.write("app-tabs-meta.json", &deep);
+    let before: Vec<Option<String>> = REGISTRY_FILES
+        .iter()
+        .map(|name| std::fs::read_to_string(home.hooks().join(name)).ok())
+        .collect();
+    let native = native_for(&home).await;
+    for kind in ["shell", "rara"] {
+        let err = reg::register_app_tab(&native, "uno", Some("Uno"), kind, "", "")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, RegistryError::Unsure(_)), "{kind}");
+    }
+    let err = reg::close_app_tab(&native, "otra", false)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, RegistryError::Unsure(_)));
+    let err = reg::close_app_tab(&native, "comandos-e2e-x", true)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, RegistryError::Unsure(_)));
+    let after: Vec<Option<String>> = REGISTRY_FILES
+        .iter()
+        .map(|name| std::fs::read_to_string(home.hooks().join(name)).ok())
+        .collect();
+    assert_eq!(before, after, "nada se escribió");
+    // Ni una orden de tmux: las lecturas fallan antes.
+    assert!(TmuxLog(&home).read().is_empty());
+}
+
+/// Revisión de la T1: el futuro de `write_tab_metadata` se suelta tras lanzar
+/// su trabajo de bloqueo; el candado viaja con el trabajo, así que el segundo
+/// escritor espera a que termine y ninguna entrada se pierde.
+#[tokio::test]
+async fn dropped_metadata_write_keeps_its_lock() {
+    let home = TestHome::new_short("reg-meta-drop");
+    seed_registry(&home);
+    // Un archivo grande: leerlo y reescribirlo lleva su tiempo.
+    let mut big = serde_json::Map::new();
+    for i in 0..60_000 {
+        big.insert(format!("s{i}"), json!({"kind": "shell", "cwd": "/srv/a/b"}));
+    }
+    home.write("app-tabs-meta.json", &Value::Object(big).to_string());
+    let native = native_for(&home).await;
+    for round in 0..3 {
+        let (first, second) = (format!("uno{round}"), format!("dos{round}"));
+        let mut pending = Box::pin(reg::write_tab_metadata(&native, &first, "shell", "", "/u"));
+        // Se sondea 20 ms (toma el candado y lanza el trabajo, que con este
+        // archivo tarda más) y se suelta a mitad de la escritura.
+        tokio::select! {
+            biased;
+            _ = &mut pending => {}
+            () = tokio::time::sleep(Duration::from_millis(20)) => {}
+        }
+        drop(pending);
+        reg::write_tab_metadata(&native, &second, "shell", "", "/d")
+            .await
+            .unwrap();
+        let meta: Value = serde_json::from_str(
+            &std::fs::read_to_string(home.hooks().join("app-tabs-meta.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(meta.get(&first).is_some(), "{first} perdida");
+        assert!(meta.get(&second).is_some(), "{second} perdida");
+    }
+}

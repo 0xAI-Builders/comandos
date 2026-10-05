@@ -32,9 +32,10 @@ use crate::dash::native::{
 use comandos_runtime::ssh_config;
 use serde_json::{Map, Value, json};
 use std::{
+    collections::HashSet,
     io,
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{Arc, OnceLock},
 };
 
 /// `TAB_KINDS` (5248).
@@ -111,9 +112,14 @@ impl From<RegistryError> for Fault {
 /// `TAB_METADATA_LOCK` del Python: solo el frente escribe `app-tabs-meta.json`
 /// con el corte `tabs` activo (D2 del plan maestro). Global del proceso: hay un
 /// solo archivo por HOME y un solo frente.
-fn meta_lock() -> &'static tokio::sync::Mutex<()> {
-    static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+///
+/// El guardia se toma con `lock_owned` y viaja DENTRO del trabajo de bloqueo
+/// que lee y reescribe el archivo: si el futuro de la ruta se suelta a mitad
+/// (cliente que se va, plazo del manejador, apagado), el hilo sigue
+/// escribiendo con el candado tomado y nadie más entra hasta que termina.
+fn meta_lock() -> &'static Arc<tokio::sync::Mutex<()>> {
+    static LOCK: OnceLock<Arc<tokio::sync::Mutex<()>>> = OnceLock::new();
+    LOCK.get_or_init(|| Arc::new(tokio::sync::Mutex::new(())))
 }
 
 fn hook(opts: &NativeOptions, name: &str) -> PathBuf {
@@ -260,8 +266,9 @@ pub async fn write_tab_metadata(
     let path = hook(native.options(), TABS_META_FILE);
     let item = meta_item(kind, host, cwd);
     let (sess, written) = (sess.to_owned(), item.clone());
-    let _guard = meta_lock().lock().await;
+    let guard = Arc::clone(meta_lock()).lock_owned().await;
     blocking(move || {
+        let _guard = guard;
         let mut metadata = read_tab_metadata(&path)?;
         metadata.insert(sess, written);
         write_json_atomic(&path, &Value::Object(metadata)).map_err(RegistryError::Io)
@@ -274,14 +281,10 @@ pub async fn write_tab_metadata(
 pub async fn remove_tab_metadata(native: &Native, sess: &str) -> Result<(), RegistryError> {
     let path = hook(native.options(), TABS_META_FILE);
     let sess = sess.to_owned();
-    let _guard = meta_lock().lock().await;
+    let guard = Arc::clone(meta_lock()).lock_owned().await;
     blocking(move || {
-        let mut metadata = read_tab_metadata(&path)?;
-        // `pop`: el resto conserva su orden.
-        if metadata.shift_remove(&sess).is_some() {
-            write_json_atomic(&path, &Value::Object(metadata)).map_err(RegistryError::Io)?;
-        }
-        Ok(())
+        let _guard = guard;
+        unmeta_locked(&path, &sess)
     })
     .await
 }
@@ -388,20 +391,31 @@ pub async fn register_app_tab(
     let opts = native.options();
     let path = hook(opts, TABS_FILE);
     let shown = label_or(label, sess);
+    let known = TAB_KINDS.contains(&kind);
     let (owned, mirrored, target) = (sess.to_owned(), shown.clone(), path.clone());
-    with_file_lock(path, move || {
+    let reads = opts.clone();
+    // Todo lo que puede responder 500 se lee ANTES de escribir el espejo:
+    // `app-tabs-meta.json` (que `write_tab_metadata` y la derivación leen
+    // después) y, con un tipo desconocido, la identidad derivada (sus lecturas
+    // no dependen de `app-tabs.json`; el Python la calcula después del espejo).
+    let derived = with_file_lock(path, move || {
+        let derived = if known {
+            read_tab_metadata(&hook(&reads, TABS_META_FILE))?;
+            None
+        } else {
+            Some(derived_metadata(&reads, &owned)?)
+        };
         let mut tabs = load_object(&target)?;
         if !tabs.contains_key(&owned) {
             tabs.insert(owned, json!(mirrored));
             write_json_atomic(&target, &Value::Object(tabs)).map_err(RegistryError::Io)?;
         }
-        Ok(())
+        Ok(derived)
     })
     .await?;
-    let mut meta = if TAB_KINDS.contains(&kind) {
-        write_tab_metadata(native, sess, kind, host, cwd).await?
-    } else {
-        Some(tab_metadata_for_session(native, sess).await?)
+    let mut meta = match derived {
+        None => write_tab_metadata(native, sess, kind, host, cwd).await?,
+        Some(found) => Some(found),
     };
     if let Some(found) = meta.clone() {
         let meta_path = hook(opts, TABS_META_FILE);
@@ -436,23 +450,17 @@ pub async fn register_app_tab(
     Ok(())
 }
 
-/// `remember_tab(sess, label, cwd, agent, reason)` (5223): la sesión entra al
-/// principio del historial (80 como mucho), sin duplicados.
-pub async fn remember_tab(
-    native: &Native,
+/// El item de `remember_tab` (5223); `None` si la sesión no vale.
+fn history_item(
+    opts: &NativeOptions,
     sess: &str,
     label: Option<&str>,
     cwd: &str,
     agent: &str,
     reason: &str,
-) -> Result<(), RegistryError> {
+) -> Option<Map<String, Value>> {
     if !py::is_session(sess) {
-        return Ok(());
-    }
-    let opts = native.options();
-    let ts = (opts.clock_seconds)();
-    if !ts.is_finite() {
-        return Err(Fault::Error(HandlerError::Failure).into());
+        return None;
     }
     let mut item = Map::new();
     item.insert("session".into(), json!(sess));
@@ -464,53 +472,139 @@ pub async fn remember_tab(
     let agent = if agent.is_empty() { "claude" } else { agent };
     item.insert("agent".into(), json!(py::take_chars(agent, 16)));
     item.insert("reason".into(), json!(py::take_chars(reason, 32)));
-    // `int(time.time())`: trunca hacia cero.
-    item.insert("ts".into(), json!(ts.trunc() as i64));
+    // `int(time.time())`: trunca hacia cero (un reloj no finito solo existe en
+    // pruebas; satura como cualquier conversión de Rust).
+    item.insert("ts".into(), json!(((opts.clock_seconds)()).trunc() as i64));
+    Some(item)
+}
+
+/// El cuerpo de `remember_tab` con el `flock` del historial ya tomado.
+fn remember_locked(
+    hooks: &Path,
+    target: &Path,
+    sess: &str,
+    item: Map<String, Value>,
+) -> Result<(), RegistryError> {
+    let history = light::read_tab_history(hooks).map_err(|fault| match fault {
+        Fault::Decline => RegistryError::Unsure(target.to_path_buf()),
+        other => RegistryError::Fault(other),
+    })?;
+    let mut out = vec![Value::Object(item)];
+    out.extend(
+        history
+            .into_iter()
+            .filter(|h| h.get("session").and_then(Value::as_str) != Some(sess))
+            .take(79)
+            .map(Value::Object),
+    );
+    write_json_atomic(target, &Value::Array(out)).map_err(RegistryError::Io)
+}
+
+/// `remember_tab(sess, label, cwd, agent, reason)` (5223): la sesión entra al
+/// principio del historial (80 como mucho), sin duplicados.
+pub async fn remember_tab(
+    native: &Native,
+    sess: &str,
+    label: Option<&str>,
+    cwd: &str,
+    agent: &str,
+    reason: &str,
+) -> Result<(), RegistryError> {
+    let opts = native.options();
+    let Some(item) = history_item(opts, sess, label, cwd, agent, reason) else {
+        return Ok(());
+    };
     let hooks = opts.hooks.clone();
     let path = hook(opts, TAB_HISTORY_FILE);
     let (sess, target) = (sess.to_owned(), path.clone());
-    with_file_lock(path, move || {
-        let history = light::read_tab_history(&hooks).map_err(|fault| match fault {
-            Fault::Decline => RegistryError::Unsure(target.clone()),
-            other => RegistryError::Fault(other),
-        })?;
-        let mut out = vec![Value::Object(item)];
-        out.extend(
-            history
-                .into_iter()
-                .filter(|h| h.get("session").and_then(Value::as_str) != Some(sess.as_str()))
-                .take(79)
-                .map(Value::Object),
-        );
-        write_json_atomic(&target, &Value::Array(out)).map_err(RegistryError::Io)
-    })
-    .await
+    with_file_lock(path, move || remember_locked(&hooks, &target, &sess, item)).await
+}
+
+/// `tabs_map.pop(sess)` de `close_app_tab` con el `flock` del espejo tomado:
+/// escribe solo si estaba.
+fn unmirror_locked(target: &Path, sess: &str) -> Result<(), RegistryError> {
+    if let Value::Object(mut tabs) = load_json_file(target, json!({}))?
+        && tabs.shift_remove(sess).is_some()
+    {
+        write_json_atomic(target, &Value::Object(tabs)).map_err(RegistryError::Io)?;
+    }
+    Ok(())
+}
+
+/// El cuerpo de `remove_tab_metadata` con `meta_lock` tomado.
+fn unmeta_locked(path: &Path, sess: &str) -> Result<(), RegistryError> {
+    let mut metadata = read_tab_metadata(path)?;
+    // `pop`: el resto conserva su orden.
+    if metadata.shift_remove(sess).is_some() {
+        write_json_atomic(path, &Value::Object(metadata)).map_err(RegistryError::Io)?;
+    }
+    Ok(())
+}
+
+/// `app-tab-close.json` de un cierre; `except Exception: pass`.
+fn write_close_event(opts: &NativeOptions, sess: &str) {
+    if let Ok(ts) = seconds_value(opts) {
+        let event = json!({"session": sess, "ts": ts});
+        let _ = write_json_atomic(&hook(opts, TAB_CLOSE_FILE), &event);
+    }
 }
 
 /// Lo que `close_app_tab` lee antes de tocar nada: `tab_labels()` y
-/// `read_tab_history()` de `session_labels()` y `state_agent(sess)`.
+/// `read_tab_history()` de `session_labels()`, `state_agent(sess)` y, para que
+/// un `app-tabs-meta.json` incierto sea un 500 ANTES de cualquier escritura,
+/// los metadatos que `remove_tab_metadata` leerá después.
 struct CloseReads {
     tabs: Vec<(String, String)>,
     history: Vec<Map<String, Value>>,
     agent: String,
 }
 
+fn unsure_in(opts: &NativeOptions, name: &str) -> impl FnOnce(Fault) -> RegistryError {
+    let path = hook(opts, name);
+    move |fault: Fault| match fault {
+        Fault::Decline => RegistryError::Unsure(path),
+        other => RegistryError::Fault(other),
+    }
+}
+
 fn close_reads(opts: &NativeOptions, sess: &str) -> Result<CloseReads, RegistryError> {
-    let unsure = |name: &str| {
-        let path = hook(opts, name);
-        move |fault: Fault| match fault {
-            Fault::Decline => RegistryError::Unsure(path),
-            other => RegistryError::Fault(other),
-        }
-    };
-    let tabs = light::tab_labels(&opts.hooks).map_err(unsure(TABS_FILE))?;
-    let history = light::read_tab_history(&opts.hooks).map_err(unsure(TAB_HISTORY_FILE))?;
+    let tabs = light::tab_labels(&opts.hooks).map_err(unsure_in(opts, TABS_FILE))?;
+    let history =
+        light::read_tab_history(&opts.hooks).map_err(unsure_in(opts, TAB_HISTORY_FILE))?;
     let agent = target::state_agent(&opts.hooks.join("state"), sess)?;
+    read_tab_metadata(&hook(opts, TABS_META_FILE))?;
     Ok(CloseReads {
         tabs,
         history,
         agent,
     })
+}
+
+/// Una efímera no lee el historial: solo se adelantan las lecturas del espejo
+/// y de los metadatos (el mismo motivo que en `close_reads`).
+fn ephemeral_reads(opts: &NativeOptions) -> Result<(), RegistryError> {
+    load_json_file(&hook(opts, TABS_FILE), json!({}))?;
+    read_tab_metadata(&hook(opts, TABS_META_FILE))?;
+    Ok(())
+}
+
+/// `session_labels().get(sess, sess)`.
+fn close_label(reads: CloseReads, live: &HashSet<String>, sess: &str) -> String {
+    session_labels(reads.tabs, live, &reads.history)
+        .get(sess)
+        .cloned()
+        .unwrap_or_else(|| sess.to_owned())
+}
+
+/// `display-message -p -t =<s>: #{pane_current_path}` del cierre.
+fn cwd_args(sess: &str) -> [String; 5] {
+    [
+        "display-message".into(),
+        "-p".into(),
+        "-t".into(),
+        format!("={sess}:"),
+        "#{pane_current_path}".into(),
+    ]
 }
 
 /// `close_app_tab(sess, ephemeral)` (5350): `Some(error)` si no se cierra;
@@ -528,22 +622,25 @@ pub async fn close_app_tab(
         return Ok(Some("ephemeral requiere comandos-e2e-".into()));
     }
     let opts = native.options();
-    if !ephemeral {
-        let (owned, reads_opts) = (sess.to_owned(), opts.clone());
-        let reads = blocking(move || close_reads(&reads_opts, &owned)).await?;
+    let (owned, reads_opts) = (sess.to_owned(), opts.clone());
+    let reads = blocking(move || {
+        if ephemeral {
+            ephemeral_reads(&reads_opts).map(|()| None)
+        } else {
+            close_reads(&reads_opts, &owned).map(Some)
+        }
+    })
+    .await?;
+    if let Some(reads) = reads {
+        let agent = reads.agent.clone();
         // `session_labels()`: `tmux_sessions()` entre las dos lecturas.
         let live = light::tmux_sessions(&opts.tmux).await?;
-        let labels = session_labels(reads.tabs, &live, &reads.history);
-        let label = labels.get(sess).cloned().unwrap_or_else(|| sess.to_owned());
+        let label = close_label(reads, &live, sess);
+        let args = cwd_args(sess);
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
         let out = opts
             .tmux
-            .run(&[
-                "display-message",
-                "-p",
-                "-t",
-                &format!("={sess}:"),
-                "#{pane_current_path}",
-            ])
+            .run(&args)
             .await
             .map_err(|e| Fault::Error(e.uncaught()))?;
         let cwd = if out.ok {
@@ -551,25 +648,19 @@ pub async fn close_app_tab(
         } else {
             String::new()
         };
-        remember_tab(native, sess, Some(&label), &cwd, &reads.agent, "closed").await?;
+        remember_tab(native, sess, Some(&label), &cwd, &agent, "closed").await?;
     }
     let path = hook(opts, TABS_FILE);
     let (owned, target) = (sess.to_owned(), path.clone());
-    with_file_lock(path, move || {
-        if let Value::Object(mut tabs) = load_json_file(&target, json!({}))?
-            && tabs.shift_remove(&owned).is_some()
-        {
-            write_json_atomic(&target, &Value::Object(tabs)).map_err(RegistryError::Io)?;
-        }
-        Ok(())
-    })
-    .await?;
+    with_file_lock(path, move || unmirror_locked(&target, &owned)).await?;
     remove_tab_metadata(native, sess).await?;
     sync_after_close(native, sess).await;
-    let event = json!({"session": sess, "ts": seconds_value(opts)?});
-    let close = hook(opts, TAB_CLOSE_FILE);
-    // `except Exception: pass`.
-    let _ = blocking(move || write_json_atomic(&close, &event).map_err(RegistryError::Io)).await;
+    let (owned, event_opts) = (sess.to_owned(), opts.clone());
+    let _ = blocking(move || {
+        write_close_event(&event_opts, &owned);
+        Ok(())
+    })
+    .await;
     Ok(None)
 }
 
