@@ -1165,26 +1165,20 @@ fn number_or_zero(value: &Value) -> Result<PyNum> {
     }
 }
 
-/// `extension_usage` (`lib/session_profiles.py:449`) con `days` ya convertido por la
-/// ruta. La comprobación de que el archivo existe (`Path(db).is_file()`) también es de
-/// la ruta (D8): aquí la base ya está abierta.
-pub fn extension_usage(
-    conn: &Connection,
-    session: &str,
-    pane: &str,
-    days: i64,
-    now: f64,
-) -> Result<std::result::Result<Value, String>> {
-    if let Some(message) = extension_scope_error(session, pane) {
-        return Ok(Err(message));
-    }
-    let days = days.clamp(1, 90);
+/// El resultado de `extension_usage` sin eventos (`lib/session_profiles.py:455-460`): lo
+/// que el Python devuelve cuando la base no existe (`Path(db).is_file()` falso) o le
+/// faltan las tablas. `days` es el `int(days)` de la ruta, aún sin acotar.
+pub fn extension_usage_empty(session: &str, pane: &str, days: i64) -> Value {
+    Value::Object(extension_empty(session, pane, days))
+}
+
+fn extension_empty(session: &str, pane: &str, days: i64) -> Object {
     let mut scope = Object::new();
     scope.insert("session".into(), session.into());
     scope.insert("pane".into(), pane.into());
     let mut result = Object::new();
     result.insert("scope".into(), Value::Object(scope));
-    result.insert("days".into(), days.into());
+    result.insert("days".into(), days.clamp(1, 90).into());
     result.insert(
         "provenance".into(),
         "usage_tool_calls + usage_interactions; observed hook events".into(),
@@ -1198,6 +1192,24 @@ pub fn extension_usage(
         "Solo eventos capturados; ausencia de eventos no demuestra ausencia de uso.".into(),
     );
     result.insert("status".into(), "empty".into());
+    result
+}
+
+/// `extension_usage` (`lib/session_profiles.py:449`) con `days` ya convertido por la
+/// ruta. La comprobación de que el archivo existe (`Path(db).is_file()`) también es de
+/// la ruta (D8): aquí la base ya está abierta.
+pub fn extension_usage(
+    conn: &Connection,
+    session: &str,
+    pane: &str,
+    days: i64,
+    now: f64,
+) -> Result<std::result::Result<Value, String>> {
+    if let Some(message) = extension_scope_error(session, pane) {
+        return Ok(Err(message));
+    }
+    let mut result = extension_empty(session, pane, days);
+    let days = days.clamp(1, 90);
     let mut tables = HashSet::new();
     {
         let mut stmt = conn.prepare("select name from sqlite_master where type='table'")?;

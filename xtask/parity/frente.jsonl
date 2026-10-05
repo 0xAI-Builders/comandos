@@ -159,3 +159,9 @@
 {"name":"u-week-demo","method":"GET","path":"/analytics/week?demo=normal","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"u-week-demo-nada","method":"GET","path":"/analytics/week?demo=zz9","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"u-week-prefijo","method":"GET","path":"/analytics/weekly","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/week/now","/week/measuredAt"],"expect":"same","forwarded":true}
+{"name":"u-extension-usage","method":"GET","path":"/extension-usage","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/extensions/*/lastSeen"],"expect":"same"}
+{"name":"u-extension-usage-30","method":"GET","path":"/extension-usage?days=30","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/extensions/*/lastSeen"],"expect":"same"}
+{"name":"u-extension-usage-dias","method":"GET","path":"/extension-usage?days=x","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"u-extension-usage-sesion","method":"GET","path":"/extension-usage?session=a%20b","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"u-extension-usage-panel","method":"GET","path":"/extension-usage?pane=%251","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"u-extension-usage-prefijo","method":"GET","path":"/extension-usageX","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}

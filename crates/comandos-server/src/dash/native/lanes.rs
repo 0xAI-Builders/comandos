@@ -194,7 +194,8 @@ pub struct UsageBackend {
 }
 
 impl LaneBackend for UsageBackend {
-    const ROUTES: &'static str = "GET /pomodoro, GET /sovereignty, GET /state y GET /analytics/week";
+    const ROUTES: &'static str =
+        "GET /pomodoro, GET /sovereignty, GET /state, GET /analytics/week y GET /extension-usage";
 
     fn open(path: &Path) -> Result<Self, Refusal> {
         // Sondeo sin PRAGMAs: `open_usage_db_at` pide `journal_mode=wal`, y una
