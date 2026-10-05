@@ -7,11 +7,13 @@ Rama `migration/rust-fase3-web`. Todo lo construido vive en `.spike/ui/`, que no
 
 **Se mantiene `web-sys` + `maud` sin framework.** Ningún framework cumple la regla de reversión: los tres pesan más que la variante sin framework (entre +56 % y +223 % en gzip), y Dioxus y Yew además pisan las clases que pone el JS heredado. B1 cita este informe.
 
+En este informe, «pasa la paridad» significa «pasa el oráculo `xtask dom-diff`», que ignora los comentarios. El JS heredado sí los ve al recorrer `childNodes`, `firstChild` o `nextSibling`. La variante `web-sys` + `maud` no genera comentarios, así que esto no afecta a la decisión.
+
 Tres mediciones no coinciden con lo que la tabla del plan daba por esperado. Ninguna cambia la decisión, pero B1 debe conocerlas:
 
 1. **Esfuerzo.** El plan esperaba «~1:1» en líneas para la variante sin framework. Lo medido es **2,46:1** con `wc -l` (666 líneas Rust frente a 271 JS). Los frameworks no lo mejoran: quedan entre 2,17:1 y 2,32:1.
-2. **Coste de la porción.** La variante sin framework tiene el menor coste fijo y el menor total. Sin embargo, la porción sola cuesta más en ella (56,4 KB gzip) que en Yew (51,9 KB). El grueso de esos 56 KB es código común a las cuatro variantes (`serde_json`, `core::fmt`, cola de `wasm-bindgen`), no la plantilla.
-3. **Convivencia de Leptos.** El plan decía que Leptos «asume la propiedad de sus nodos». En la prueba conserva la clase y el atributo que añade el JS heredado, porque `class:x=` usa `classList`. Lo que lo descarta es el tamaño, no la convivencia.
+2. **Coste de la porción.** La variante sin framework tiene el menor coste fijo y el menor total. Sin embargo, la porción sola cuesta más en ella (56,4 KB gzip) que en Yew (51,9 KB). Probablemente el grueso de esos 56 KB es código común a las cuatro variantes (`serde_json`, `core::fmt`, cola de `wasm-bindgen`) y no la plantilla; el coste de Yew lo sugiere. Es una hipótesis: no se midió por símbolo, y B1 debe verificarla con `twiggy`.
+3. **Convivencia de Leptos.** El plan decía que Leptos «asume la propiedad de sus nodos». En la prueba conserva la clase y el atributo que añade el JS heredado, porque `class:x=` usa `classList`. Ese resultado depende de una elección del spike: el botón solo tiene una clase dinámica, escrita con `class:wm-animated`. Con `class=move || …` Leptos reescribiría el atributo entero y pisaría la clase ajena. Lo que lo descarta es el tamaño, no la convivencia.
 
 ## Qué se midió
 
@@ -50,7 +52,7 @@ Herramientas y versiones exactas:
 | `serde` / `serde_json` | 1.0.228 / 1.0.150 |
 | `maud` | 0.27.0 |
 | `leptos` | 0.8.21, `csr` |
-| `dioxus` | 0.7.10, `web` (con los rasgos por omisión) |
+| `dioxus` | 0.7.10, `web` (con los rasgos por omisión; no se midió una configuración reducida) |
 | `futures-util` | 0.3.34 (solo Dioxus, para `rx.next()` del coroutine) |
 | `yew` | 0.23.0, `csr` |
 
@@ -104,7 +106,7 @@ Con la página montada, un script hace lo que hace hoy el JS heredado al decorar
 |---|---|---|---|---|---|---|
 | JS heredado (referencia) | sí | conserva | conserva | conserva | lo reescribe por `innerHTML` (borra el `i` ajeno) | 0 |
 | `web-sys` + `maud` | sí | conserva | **conserva** | conserva | igual que el heredado | 0 |
-| Leptos | sí | conserva | **conserva** (`class:` usa `classList`) | conserva | conserva el `i` ajeno, a diferencia del heredado | 0 |
+| Leptos | sí | conserva | **conserva** (`class:wm-animated` usa `classList`; con `class=move \|\| …` la pisaría) | conserva | conserva el `i` ajeno, a diferencia del heredado | 0 |
 | Dioxus | sí | conserva | **pisa** (reescribe `class`) | conserva | conserva el `i` ajeno | 0 |
 | Yew | sí | conserva | **pisa** (reescribe `class`) | conserva | conserva el `i` ajeno, pero al volver el sticker lo inserta **detrás** del nodo ajeno (orden distinto del heredado) | 0 |
 
@@ -140,11 +142,11 @@ Yew y Dioxus programan el primer render de forma asíncrona, así que su número
 
 | Crate | Versión fijada | Estado en la caché local a 2026-10-05 |
 |---|---|---|
-| `web-sys` / `wasm-bindgen` | 0.3.106 / 0.2.129 | serie 0.2/0.3 sin cambio de versión menor |
+| `web-sys` / `wasm-bindgen` | 0.3.106 / 0.2.129 | no hay en la caché una serie posterior (0.4 / 0.3) |
 | `maud` | 0.27.0 | sin runtime: solo macro |
 | Leptos | 0.8.21 | ya existe `leptos 0.9.0-beta2` en la caché |
 | Dioxus | 0.7.10 | ya existe `dioxus-web 0.8.0-alpha.1` en la caché |
-| Yew | 0.23.0 | — |
+| Yew | 0.23.0 | no hay en la caché una versión posterior |
 
 La fecha de la última ruptura de cada crate **no se verificó**. Los paquetes no traen `CHANGELOG` y la red de esta tarea se limitó a `cargo fetch` de las versiones fijadas.
 
@@ -177,10 +179,15 @@ Se toma como gzip el de la porción completa tras `wasm-opt` y como líneas el t
 | Dioxus | **no** | **no** | **no** (207 866 B, +223 %) | **no** (0,89×; 0,75×) | no |
 | Yew | sí (normalizado) | **no** | **no** (100 509 B, +56 %) | **no** (0,95×; 0,87×) | no |
 
+La regla falla también con la otra lectura de «gzip», la del coste de la porción sola. Haría falta ≤ 0,70 × 56 371 = 39 460 B, y el mejor, Yew, queda en 51 880 B (−8 %). Dioxus, con 65 554 B, y Leptos, con 82 215 B, están por encima de `web-sys`.
+
+En líneas, Leptos cumpliría el 0,8× si se contara solo `lib.rs` (0,72×). Lo descarta el gzip, no las líneas.
+
 Ningún framework cumple. La decisión queda como está en el plan, `web-sys` + `maud` sin framework. Los números de esta medición son los registrados arriba.
 
 ## Notas para B1
 
-- Lo que más pesa en el gzip de la porción es lo común: `serde_json`, el formateo (`format!`, `unwrap` de `Result<_, JsValue>`) y la cola de `wasm-bindgen`. Ese coste se reparte entre los componentes, pero para el objetivo de un tablero ultraligero conviene medirlo por símbolo en B1, por ejemplo con `twiggy`. También conviene valorar `js_sys::JSON` u otro analizador más pequeño en lugar de `serde_json`.
+- Hipótesis por verificar con `twiggy`: lo que más pesa en el gzip de la porción sería lo común, es decir `serde_json`, el formateo (`format!`, `unwrap` de `Result<_, JsValue>`) y la cola de `wasm-bindgen`. No se midió por símbolo, porque el perfil lleva `strip=symbols`. Si se confirma, ese coste se reparte entre los componentes, pero para el objetivo de un tablero ultraligero conviene medirlo por símbolo en B1, por ejemplo con `twiggy`. También conviene valorar `js_sys::JSON` u otro analizador más pequeño en lugar de `serde_json`.
+- `xtask dom-diff` ignora los comentarios. Para cualquier componente futuro, «pasa la paridad» significa «pasa el oráculo»: si el JS heredado recorre `childNodes`, `firstChild` o `nextSibling`, conviene comprobar además el `outerHTML` literal.
 - Las plantillas `maud` reproducen el `outerHTML` heredado byte a byte en esta porción: atributos booleanos vacíos (`data-wm-suggest`), `aria-checked="true"` como texto y SVG por `PreEscaped`.
 - La variante `web-sys` guarda en un `thread_local` lo que el JS guarda en propiedades del nodo (`_wmTarget`, `_wmSignature`). Busca el botón por igualdad de `JsValue` (`===`).
