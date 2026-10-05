@@ -190,6 +190,8 @@ impl TestHome {
         opts.clock = Arc::new(|| NOW_MS);
         // Nunca la red real: OAuth falso sin guion (toda petición es un error).
         opts.oauth = Arc::new(FakeOauth::default());
+        // Nunca el cc-notifyd real (127.0.0.1:4778): ningún popup de verdad.
+        opts.notifyd = Arc::new(FakeNotify::default());
         opts.zone = Arc::new(chrono_tz::America::Mexico_City);
         opts.usage_env = Arc::default();
         opts.tmux = Tmux::private(&self.tmux_dir());
@@ -513,6 +515,28 @@ impl comandos_server::dash::native::usage::limits::OauthHttp for FakeOauth {
                 FakeAnswer::Hang => std::future::pending().await,
             }
         })
+    }
+}
+
+/// cc-notifyd falso: guarda cada cuerpo que se le manda, sin red.
+#[derive(Default)]
+pub struct FakeNotify {
+    pub sent: Mutex<Vec<String>>,
+}
+
+impl FakeNotify {
+    pub fn bodies(&self) -> Vec<String> {
+        self.sent.lock().unwrap().clone()
+    }
+}
+
+impl comandos_server::dash::native::usage::pane_models::NotifyPost for FakeNotify {
+    fn post(
+        &self,
+        body: String,
+    ) -> comandos_server::dash::native::usage::pane_models::NotifyFuture {
+        self.sent.lock().unwrap().push(body);
+        Box::pin(async {})
     }
 }
 
