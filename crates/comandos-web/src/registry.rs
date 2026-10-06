@@ -115,6 +115,11 @@ pub const COMPONENTS: &[Component] = &[
         attach: Some(crate::components::theme_preferences::attach_preview),
     },
     Component {
+        id: "snippets",
+        mount: crate::components::foundation_snippets::mount,
+        attach: Some(crate::components::foundation_snippets::attach),
+    },
+    Component {
         id: "ui-general",
         mount: crate::components::foundation_ui::mount_ui,
         attach: Some(crate::components::foundation_ui::attach_ui),
