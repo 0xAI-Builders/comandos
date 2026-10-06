@@ -27,6 +27,14 @@ pub fn handles(args: &[String]) -> bool {
 }
 
 pub fn run(args: &[String]) -> Result<i32, String> {
+    run_with(args, &mut external)
+}
+
+/// Inject platform commands for private full-install regression tests.
+pub fn run_with(
+    args: &[String],
+    run_action: &mut dyn FnMut(&Action) -> Result<(), String>,
+) -> Result<i32, String> {
     let mut home = std::env::var_os("HOME").map(PathBuf::from);
     let mut source = None;
     let mut dry = false;
@@ -153,116 +161,182 @@ pub fn run(args: &[String]) -> Result<i32, String> {
     } else {
         release::WebSource::None
     };
-    let staged = if dry {
-        release::preview_release(&home, &candidate, &web)?
+    // Serialize full installers; component/standalone command locks still retain
+    // their existing contracts. This lock never exists during a dry preview.
+    let _full_lock = if dry {
+        None
     } else {
-        release::stage_release(&home, &candidate, &web)?
+        let path = home.join(".local/share/comandos/full-install.lock");
+        release::check_app_parents(&path)?;
+        std::fs::create_dir_all(path.parent().ok_or("install lock parent")?)
+            .map_err(|e| e.to_string())?;
+        Some(comandos_store::files::FileLock::exclusive(&path).map_err(|e| e.to_string())?)
     };
-    let proxy = super::proxy::prepare(&home, &source, dry)?;
-    let mut actions = plan::plan(&home, platform, &source);
-    if let Some(target) = proxy {
-        actions.retain(
-            |action| !matches!(action, Action::Link { name, .. } if name == "cc-model-proxy"),
-        );
-        actions.insert(
-            0,
-            Action::Link {
-                name: "cc-model-proxy".into(),
-                at: home.join(".local/bin/cc-model-proxy"),
-                target,
-            },
-        );
+    let mut initial_actions = plan::plan(&home, platform, &source);
+    if extensions {
+        initial_actions.extend(super::extensions::actions(&home, platform));
     }
-    // Freeze separate payloads before switching any public alias. Removing the
-    // input release or source checkout cannot invalidate an installed daemon.
-    for action in &mut actions {
-        if let Action::Link { name, target, .. } = action {
-            let artifact = match name.as_str() {
-                "cc-notifyd" => Some("comandos-notifyd"),
-                "cc-model-proxy" => Some("cc-model-proxy"),
-                _ => None,
-            };
-            if let Some(artifact) = artifact {
-                *target = super::components::stage(&home, artifact, target, dry)?;
-            }
-        }
-    }
-    // Stage and verify the GTK artifact using its existing reversible installer.
-    let mut app_source = source.join(if platform == Platform::Darwin {
-        "comandos-app-mac"
+    let journal = if dry {
+        None
     } else {
-        "comandos-app"
-    });
-    if platform == Platform::Darwin && !app_source.is_file() {
-        app_source = source.join("ComandOS.app/Contents/MacOS/comandos-app-mac");
+        Some(super::transaction::Journal::full(
+            &home,
+            &source,
+            &initial_actions,
+        )?)
+    };
+    let mut external_effects = Vec::new();
+    if extensions && !dry {
+        external_effects.push(
+            "optional extension import/sync destinations are outside the managed-file journal"
+                .into(),
+        );
     }
-    if app_source.is_file() {
-        let app = if dry {
-            release::preview_app(&home, &app_source)?
-        } else {
-            release::stage_app(&home, &app_source)?
-        };
-        if !actions
-            .iter()
-            .any(|action| matches!(action, Action::Link { name, .. } if name == "cc-app"))
-        {
-            actions.push(Action::Link {
-                name: "cc-app".into(),
-                at: home.join(".local/bin/cc-app"),
-                target: app.path.clone(),
-            });
+    if !dry && std::env::var("COMANDOS_RETIRE_TELEGRAM").as_deref() == Ok("1") {
+        external_effects
+            .push("Telegram archive/runtime state are outside the managed-file journal".into());
+    }
+    let mut tracked_action = |action: &Action| {
+        match action {
+            Action::Systemctl { args, .. } => {
+                external_effects.push(format!("systemctl {}", args.join(" ")))
+            }
+            Action::LaunchAgent(_) => external_effects.push("LaunchAgent preparation".into()),
+            Action::InstallFonts(_) => external_effects.push("font-cache refresh".into()),
+            _ => {}
         }
+        run_action(action)
+    };
+    let result = (|| {
+        let staged = if dry {
+            release::preview_release(&home, &candidate, &web)?
+        } else {
+            release::stage_release_unpruned(&home, &candidate, &web)?
+        };
+        let proxy = super::proxy::prepare(&home, &source, dry)?;
+        let mut actions = plan::plan(&home, platform, &source);
+        if let Some(target) = proxy {
+            actions.retain(
+                |action| !matches!(action, Action::Link { name, .. } if name == "cc-model-proxy"),
+            );
+            actions.insert(
+                0,
+                Action::Link {
+                    name: "cc-model-proxy".into(),
+                    at: home.join(".local/bin/cc-model-proxy"),
+                    target,
+                },
+            );
+        }
+        // Freeze separate payloads before switching any public alias. Removing the
+        // input release or source checkout cannot invalidate an installed daemon.
         for action in &mut actions {
-            if let Action::Link { name, target, .. } = action
-                && name == "cc-app"
-            {
-                *target = app.path.clone();
+            if let Action::Link { name, target, .. } = action {
+                let artifact = match name.as_str() {
+                    "cc-notifyd" => Some("comandos-notifyd"),
+                    "cc-model-proxy" => Some("cc-model-proxy"),
+                    _ => None,
+                };
+                if let Some(artifact) = artifact {
+                    *target = super::components::stage(&home, artifact, target, dry)?;
+                }
             }
         }
-    }
-    if platform == Platform::Darwin && source.join("ComandOS.app").is_dir() {
-        super::darwin::install_app(&home, &source.join("ComandOS.app"), dry)?;
-    }
-    println!(
-        "{}release {}: {}",
-        if dry { "dry-run: " } else { "" },
-        staged.id,
-        staged.path.display()
-    );
-    for line in plan::apply(&actions, dry)? {
-        println!("{line}");
-    }
-    if let Some(repo) = retarget {
-        for line in super::retarget::apply(&home, &repo, dry)? {
+        // Stage and verify the GTK artifact using its existing reversible installer.
+        let mut app_source = source.join(if platform == Platform::Darwin {
+            "comandos-app-mac"
+        } else {
+            "comandos-app"
+        });
+        if platform == Platform::Darwin && !app_source.is_file() {
+            app_source = source.join("ComandOS.app/Contents/MacOS/comandos-app-mac");
+        }
+        if app_source.is_file() {
+            let app = if dry {
+                release::preview_app(&home, &app_source)?
+            } else {
+                release::stage_app(&home, &app_source)?
+            };
+            if !actions
+                .iter()
+                .any(|action| matches!(action, Action::Link { name, .. } if name == "cc-app"))
+            {
+                actions.push(Action::Link {
+                    name: "cc-app".into(),
+                    at: home.join(".local/bin/cc-app"),
+                    target: app.path.clone(),
+                });
+            }
+            for action in &mut actions {
+                if let Action::Link { name, target, .. } = action
+                    && name == "cc-app"
+                {
+                    *target = app.path.clone();
+                }
+            }
+        }
+        if platform == Platform::Darwin && source.join("ComandOS.app").is_dir() {
+            super::darwin::install_app(&home, &source.join("ComandOS.app"), dry)?;
+        }
+        println!(
+            "{}release {}: {}",
+            if dry { "dry-run: " } else { "" },
+            staged.id,
+            staged.path.display()
+        );
+        for line in plan::apply_with(&actions, dry, &mut tracked_action)? {
             println!("{line}");
         }
-    }
-    if extensions {
-        if dry {
-            println!("dry-run: extensions import/sync");
-        } else {
-            let catalog = home.join(".config/comandos/extensions/catalog.json");
-            if !catalog.exists() {
+        if let Some(repo) = retarget {
+            for line in super::retarget::apply(&home, &repo, dry)? {
+                println!("{line}");
+            }
+        }
+        if extensions {
+            if dry {
+                println!("dry-run: extensions import/sync");
+            } else {
+                let catalog = home.join(".config/comandos/extensions/catalog.json");
+                if !catalog.exists() {
+                    command(
+                        &home,
+                        &staged.path,
+                        ["ext", "import"].into_iter().map(String::from).collect(),
+                        Duration::from_secs(90),
+                    )?;
+                }
                 command(
                     &home,
                     &staged.path,
-                    ["ext", "import"].into_iter().map(String::from).collect(),
+                    ["ext", "sync"].into_iter().map(String::from).collect(),
                     Duration::from_secs(90),
                 )?;
             }
-            command(
-                &home,
-                &staged.path,
-                ["ext", "sync"].into_iter().map(String::from).collect(),
-                Duration::from_secs(90),
-            )?;
+            super::extensions::apply(&home, platform, dry)?;
         }
-        super::extensions::apply(&home, platform, dry)?;
-    }
-    if std::env::var("COMANDOS_RETIRE_TELEGRAM").as_deref() == Ok("1") {
-        super::telegram::apply(&home, dry)?;
-    }
-    Ok(0)
+        if std::env::var("COMANDOS_RETIRE_TELEGRAM").as_deref() == Ok("1") {
+            super::telegram::apply(&home, dry)?;
+        }
+        if !dry && let Err(error) = release::prune_after_install(&home, &staged.id) {
+            eprintln!("installed successfully; release pruning deferred: {error}");
+        }
+        Ok(0)
+    })();
+    let result = if let Some(journal) = journal {
+        super::transaction::finish(journal, result)
+    } else {
+        result
+    };
+    result.map_err(|error| {
+        if external_effects.is_empty() {
+            error
+        } else {
+            format!(
+                "{error}; external runtime state was not reverted: {}",
+                external_effects.join(", ")
+            )
+        }
+    })
 }
 
 pub(super) fn command(

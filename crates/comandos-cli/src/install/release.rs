@@ -330,6 +330,23 @@ fn layout(home: &Path) -> Layout {
 
 /// Instala `exe` (y su `web/`, si lo hay) como release y apunta `bin/comandos` a ella.
 pub fn stage_release(home: &Path, exe: &Path, web: &WebSource) -> Result<Release, String> {
+    stage_release_with_pruning(home, exe, web, true)
+}
+
+/// Full-install staging retains every previous release until downstream success.
+pub(crate) fn stage_release_unpruned(
+    home: &Path,
+    exe: &Path,
+    web: &WebSource,
+) -> Result<Release, String> {
+    stage_release_with_pruning(home, exe, web, false)
+}
+fn stage_release_with_pruning(
+    home: &Path,
+    exe: &Path,
+    web: &WebSource,
+    pruning: bool,
+) -> Result<Release, String> {
     let Layout { releases, bin } = layout(home);
     let bin_dir = bin.parent().ok_or("ruta de destino sin directorio")?;
     for dir in [&releases, bin_dir] {
@@ -424,13 +441,19 @@ pub fn stage_release(home: &Path, exe: &Path, web: &WebSource) -> Result<Release
     if current_id(&releases, &bin).as_deref() != Some(id.as_str()) {
         swap_link(&bin, &id)?;
     }
-    prune(&releases, &id)?;
+    if pruning {
+        prune(&releases, &id)?;
+    }
     Ok(Release {
         id,
         path: target,
         current: true,
         web_files,
     })
+}
+
+pub(crate) fn prune_after_install(home: &Path, id: &str) -> Result<(), String> {
+    prune(&layout(home).releases, id)
 }
 
 /// Read-only counterpart of CLI staging: hash and validate the source in place.

@@ -166,6 +166,18 @@ pub fn apply_with(
     dry_run: bool,
     run: &mut dyn FnMut(&Action) -> Result<(), String>,
 ) -> Result<Vec<String>, String> {
+    if dry_run {
+        return apply_inner(actions, true, run);
+    }
+    let mut journal = super::transaction::Journal::default();
+    journal.actions(actions)?;
+    super::transaction::finish(journal, apply_inner(actions, false, run))
+}
+fn apply_inner(
+    actions: &[Action],
+    dry_run: bool,
+    run: &mut dyn FnMut(&Action) -> Result<(), String>,
+) -> Result<Vec<String>, String> {
     let mut report = Vec::new();
     if dry_run {
         for action in actions {

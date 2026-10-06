@@ -16,6 +16,7 @@ pub mod release;
 pub mod retarget;
 pub mod retirement;
 pub mod telegram;
+mod transaction;
 pub mod wsl;
 pub use manifest::STATE_PROTOCOL;
 
