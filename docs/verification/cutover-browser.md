@@ -27,7 +27,9 @@ requires `workers == 0`; an old status or a status from another broker fails.
 The second uses disposable `data:` pages, verifies separate inventories and
 snapshots, a PNG image, `ERR_BUSY` for a third worker and capacity release after
 disconnect. Each client closes on failure too. Requests have deadlines; replies
-and status reads have a 16 MiB limit. SSH uses batch mode and a connection timeout.
+and status reads have a 16 MiB limit. A screenshot must decode a complete PNG
+frame and stream, with a 64 MiB decoder/frame limit. SSH uses batch mode and a
+connection timeout.
 
 `--host ''` uses loopback TCP and requires an absolute private `--status-path`.
 The executable integration test starts the Rust broker and a stateful native MCP

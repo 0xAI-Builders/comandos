@@ -230,6 +230,25 @@ fn content_text(result: &Value) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
+fn valid_png(data: &str) -> bool {
+    let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(data) else {
+        return false;
+    };
+    const FRAME_LIMIT: usize = 64 * 1024 * 1024;
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+    decoder.set_limits(png::Limits { bytes: FRAME_LIMIT });
+    let Ok(mut image) = decoder.read_info() else {
+        return false;
+    };
+    let Some(size) = image
+        .output_buffer_size()
+        .filter(|size| *size <= FRAME_LIMIT)
+    else {
+        return false;
+    };
+    let mut pixels = vec![0; size];
+    image.next_frame(&mut pixels).is_ok() && image.finish().is_ok()
+}
 fn successful(result: &Value) -> Result<(), String> {
     if result["isError"] == true {
         Err(format!("tool failed: {}", content_text(result)))
@@ -393,11 +412,7 @@ fn run(opts: &Options) -> Result<(), String> {
         .flatten()
         .filter(|v| v["type"] == "image" && v["mimeType"] == "image/png")
         .filter_map(|v| v["data"].as_str())
-        .any(|data| {
-            base64::engine::general_purpose::STANDARD
-                .decode(data)
-                .is_ok_and(|b| b.starts_with(b"\x89PNG\r\n\x1a\n"))
-        });
+        .any(valid_png);
     if !png {
         return Err("screenshot lacks a PNG image".into());
     }

@@ -208,3 +208,11 @@ fn image_content_that_is_not_png_fails_the_smoke() {
     assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("lacks a PNG image"));
 }
+
+#[test]
+fn png_signature_without_image_chunks_fails_the_smoke() {
+    let f = Fixture::with_env(json!({"FIXTURE_BAD_PNG":"signature"}));
+    let out = f.run(&[]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("lacks a PNG image"));
+}

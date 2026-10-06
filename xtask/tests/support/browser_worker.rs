@@ -1,4 +1,5 @@
 //! Stateful MCP double; no browser, network, subprocess, or user profile.
+use base64::Engine;
 use serde_json::{Value, json};
 use std::io::{BufRead, Write};
 
@@ -34,7 +35,7 @@ fn main() {
                     json!({"content":[{"type":"text","text":pages.get(args["pageId"].as_u64().unwrap_or(0).saturating_sub(1) as usize).cloned().unwrap_or_default()}]})
                 }
                 Some("take_screenshot") => {
-                    json!({"content":[{"type":"image","mimeType":"image/png","data":if std::env::var_os("FIXTURE_BAD_PNG").is_some(){"bm90IGEgcG5n"}else{"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlVAAAAAASUVORK5CYII="}}]})
+                    json!({"content":[{"type":"image","mimeType":"image/png","data":fixture_png()}]})
                 }
                 _ => {
                     json!({"isError":true,"content":[{"type":"text","text":"unknown fixture tool"}]})
@@ -43,6 +44,23 @@ fn main() {
         };
         println!("{}", json!({"jsonrpc":"2.0","id":id,"result":result}));
         let _ = std::io::stdout().flush();
+    }
+}
+
+fn fixture_png() -> String {
+    match std::env::var("FIXTURE_BAD_PNG").as_deref() {
+        Ok("signature") => "iVBORw0KGgo=".into(),
+        Ok(_) => "bm90IGEgcG5n".into(),
+        Err(_) => {
+            let mut bytes = Vec::new();
+            let mut encoder = png::Encoder::new(&mut bytes, 1, 1);
+            encoder.set_color(png::ColorType::Rgb);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().unwrap();
+            writer.write_image_data(&[0, 128, 255]).unwrap();
+            writer.finish().unwrap();
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        }
     }
 }
 
