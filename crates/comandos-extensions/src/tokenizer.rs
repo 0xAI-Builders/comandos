@@ -144,6 +144,13 @@ fn offline_counts(home: &Path, texts: &[String]) -> Option<Vec<Option<u64>>> {
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| home.join(".cache/comandos/tiktoken"));
+    offline_counts_at(&cache, texts)
+}
+/// Count using an explicit verified offline cache; no environment mutation or downloads.
+pub fn offline_counts_at(cache: &Path, texts: &[String]) -> Option<Vec<Option<u64>>> {
+    if !valid_texts(texts) {
+        return None;
+    }
     let mut bytes = Vec::new();
     fs::File::open(cache.join(ENCODING_FILE))
         .ok()?

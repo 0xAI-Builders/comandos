@@ -9,6 +9,7 @@ publish.workspace = true
 base64 = "=0.22.1"
 chrono.workspace = true
 chrono-tz.workspace = true
+comandos-extensions = { path = "../comandos-extensions" }
 comandos-core = { path = "../comandos-core" }
 comandos-store = { path = "../comandos-store" }
 serde_json.workspace = true

@@ -28,7 +28,7 @@ use std::{
     collections::HashMap,
     ffi::OsStr,
     fs, io,
-    io::Write,
+    io::{Read, Write},
     os::unix::{
         ffi::OsStrExt,
         fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
@@ -1446,6 +1446,316 @@ pub fn normalize(inventory: &Value, selection: &Value) -> Result<Value, LaunchEr
         result.insert(kind.into(), Value::Object(chosen));
     }
     Ok(Value::Object(result))
+}
+
+fn discovery_fault(e: crate::capabilities::Fault) -> LaunchError {
+    match e {
+        crate::capabilities::Fault::Invalid(s) => LaunchError::Value(s),
+        crate::capabilities::Fault::Uncertain(_) => LaunchError::Unsure,
+        crate::capabilities::Fault::Io(_) => LaunchError::Other,
+    }
+}
+/// The launch reader uses the full object, unlike capabilities' public TOML projection.
+fn read_configuration(path: &Path) -> Result<Value, LaunchError> {
+    let error = || {
+        LaunchError::Value(
+            "Configuración ilegible; no se puede preparar el lanzamiento aislado.".into(),
+        )
+    };
+    let meta = match fs::metadata(path) {
+        Ok(m) => m,
+        Err(e) if matches!(e.raw_os_error(), Some(2 | 20 | 40)) => return Ok(json!({})),
+        Err(_) => return Err(error()),
+    };
+    if !meta.is_file() || meta.len() > 4_000_000 {
+        return Err(error());
+    }
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(nix::libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|_| error())?;
+    if !file.metadata().map_err(|_| error())?.is_file() {
+        return Err(error());
+    }
+    let mut bytes = Vec::new();
+    std::io::Read::take(file, 4_000_001)
+        .read_to_end(&mut bytes)
+        .map_err(|_| error())?;
+    if bytes.len() > 4_000_000 {
+        return Err(error());
+    }
+    let text = universal_text(bytes).ok_or_else(error)?;
+    let value = if path.extension() == Some(OsStr::new("toml")) {
+        parse_toml(&text).map_err(|_| LaunchError::Unsure)?
+    } else {
+        crate::capabilities::jsonc(&text)
+    };
+    value.filter(Value::is_object).ok_or_else(error)
+}
+/// Unsanitized inventory retained privately for isolated launch preparation.
+pub fn internal_inventory(
+    registry: &Value,
+    harness: &str,
+    account: &str,
+    cwd: &Path,
+    paths: &crate::capabilities::Paths,
+) -> Result<(crate::capabilities::Context, Value), LaunchError> {
+    use crate::{capabilities as c, session_profiles as p};
+    if !["claude", "codex", "grok", "opencode", "agy"].contains(&harness) {
+        return Err(LaunchError::Value(
+            "CLI sin adaptador de extensiones por proceso.".into(),
+        ));
+    }
+    let mut ctx =
+        c::configuration(registry, harness, account, cwd, paths).map_err(discovery_fault)?;
+    let base = c::from_context(&mut ctx, paths);
+    let mut skills = p::skills(&mut ctx, &json!({"skills":{"supported":true}}), paths);
+    if ctx.uncertain {
+        return Err(LaunchError::Unsure);
+    }
+    let mut mcps = c::list(&base["mcps"]);
+    for row in &mut mcps {
+        row["id"] = row["name"].clone();
+    }
+    let catalog = read_configuration(&paths.home.join(".config/comandos/extensions/catalog.json"))?;
+    let shared = c::object(&catalog["servers"]);
+    for (name, spec) in &shared {
+        if !mcps.iter().any(|r| r["name"] == *name)
+            && !name.is_empty()
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        {
+            if !spec.is_object() {
+                return Err(LaunchError::Other);
+            }
+            mcps.push(json!({"id":name,"name":name,"enabled":spec["enabled"]!=false,"scope":"shared","source":"shared-catalog","synthetic":true}));
+        }
+    }
+    if harness == "grok" {
+        for row in &mut mcps {
+            if c::list(&ctx.settings["disabled_mcp_servers"]).contains(&row["name"]) {
+                row["enabled"] = false.into();
+            }
+        }
+    }
+    if harness == "agy" {
+        let home = ctx.home.as_ref().ok_or(LaunchError::Other)?;
+        let cfg = read_configuration(&home.join("config/skills.json"))?;
+        for row in &mut skills {
+            if c::list(&cfg["exclude"]).contains(&row["name"]) {
+                row["enabled"] = false.into();
+            }
+        }
+    }
+    let shared_root = c::resolved(&paths.home.join(".agents/skills"));
+    for row in &mut skills {
+        let name = row["name"].as_str().ok_or(LaunchError::Other)?.to_owned();
+        let plugin = row["plugin"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned);
+        if harness == "claude" && plugin.is_none() && ctx.settings["skillOverrides"][&name] == "off"
+        {
+            row["enabled"] = false.into();
+        }
+        if harness == "opencode" {
+            let permissions = &ctx.settings["permission"]["skill"];
+            if permissions == "deny"
+                || permissions
+                    .get(&name)
+                    .or_else(|| permissions.get("*"))
+                    .is_some_and(|v| v == "deny")
+            {
+                row["enabled"] = false.into();
+            }
+        }
+        let path = Path::new(row["path"].as_str().ok_or(LaunchError::Other)?);
+        let id = if path.starts_with(&shared_root) && plugin.is_none() {
+            format!("shared:{name}")
+        } else if let Some(plugin) = &plugin {
+            format!("plugin-skill:{plugin}:{name}")
+        } else {
+            format!("skill:{}", row["id"].as_str().ok_or(LaunchError::Other)?)
+        };
+        row["id"] = id.into();
+        row["toggleable"] = (row["status"] != "shadowed").into();
+        row["reason"] = "".into();
+        if plugin.is_some() && harness == "claude" {
+            row["toggleable"] = false.into();
+            row["reason"] = "Se controla mediante el grupo del plugin completo.".into();
+        } else if plugin.is_some() && row["enabled"] != true {
+            row["toggleable"] = false.into();
+            row["reason"] = "El plugin está desactivado o su carga no está confirmada.".into();
+        }
+    }
+    if harness == "claude" {
+        for plugin in &ctx.plugins {
+            skills.push(json!({"id":format!("plugin:{}",plugin.key),"name":plugin.name,"plugin":plugin.key,"group":true,"scope":plugin.scope,"source":plugin.source,"enabled":plugin.enabled,"toggleable":plugin.enabled.is_boolean(),"reason":"Activa o desactiva todas las skills y hooks del plugin."}));
+        }
+    }
+    for row in &mut mcps {
+        let name = row["name"].as_str().ok_or(LaunchError::Other)?.to_owned();
+        let toggle = !truthy(&row["plugin"]) && !truthy(&row["unavailable"]);
+        row["toggleable"] = toggle.into();
+        row["reason"] = if toggle {
+            ""
+        } else {
+            "Declaración no controlable individualmente por este adaptador."
+        }
+        .into();
+        if harness == "codex" && name.contains('.') {
+            row["toggleable"] = false.into();
+            row["reason"] = "Codex no admite componentes con puntos en sus overrides CLI.".into();
+        }
+        if shared.get(&name).is_some_and(|s| s["enabled"] == false) {
+            row["enabled"] = false.into();
+            row["toggleable"] = false.into();
+            row["enforceDisabled"] = true.into();
+            row["reason"] =
+                "Desactivado en el catálogo compartido; no se activa por sesión.".into();
+        }
+    }
+    for row in mcps.iter_mut().chain(skills.iter_mut()) {
+        if !row["enabled"].is_boolean() {
+            row["toggleable"] = false.into();
+            row["reason"] = "Estado configurado desconocido; se conserva sin cambios.".into();
+        }
+        if !ctx.errors.is_empty() {
+            row["toggleable"] = false.into();
+            row["reason"] =
+                "Inventario incompleto; corrige la configuración antes de cambiar extensiones."
+                    .into();
+        }
+    }
+    let mut limitations = ctx.limitations.clone();
+    limitations.extend([json!("El catálogo previo puede permanecer en el historial al reanudar."),json!("La verificación comprueba configuración del proceso, no conexiones MCP ni disponibilidad del proveedor.")]);
+    let inv = json!({"harness":harness,"account":account,"mcps":mcps,"skills":skills,"limitations":limitations,"status":if ctx.errors.is_empty(){"configured"}else{"incomplete"}});
+    Ok((ctx, inv))
+}
+/// Sanitized catalog; no configuration contents or filesystem paths escape.
+pub fn inventory(
+    registry: &Value,
+    harness: &str,
+    account: &str,
+    cwd: &Path,
+    paths: &crate::capabilities::Paths,
+) -> Result<Value, LaunchError> {
+    use crate::capabilities as c;
+    use comandos_extensions::metadata as m;
+    let (ctx, mut inv) = internal_inventory(registry, harness, account, cwd, paths)?;
+    let rows = c::list(&inv["skills"]);
+    let cache_path = paths
+        .env
+        .get("TIKTOKEN_CACHE_DIR")
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| paths.home.join(".cache/comandos/tiktoken"));
+    let counter = |texts: Vec<String>| {
+        std::future::ready(
+            comandos_extensions::tokenizer::offline_counts_at(&cache_path, &texts)
+                .unwrap_or_else(|| vec![None; texts.len()]),
+        )
+    };
+    let mut cache = m::SkillMetadataCache::default();
+    let mut future = Box::pin(cache.measure(&rows, &paths.home, 0.0, &counter));
+    let mut task = std::task::Context::from_waker(std::task::Waker::noop());
+    let details = match std::future::Future::poll(future.as_mut(), &mut task) {
+        std::task::Poll::Ready(v) => v,
+        std::task::Poll::Pending => return Err(LaunchError::Unsure),
+    };
+    for row in inv["skills"].as_array_mut().ok_or(LaunchError::Other)? {
+        let id = row["id"].as_str().ok_or(LaunchError::Other)?.to_owned();
+        for (k, v) in c::object(&details[&id]) {
+            row[k] = v;
+        }
+    }
+    let catalog = read_configuration(&paths.home.join(".config/comandos/extensions/catalog.json"))?;
+    let shared = c::object(&catalog["servers"]);
+    let mut native = Map::new();
+    let key = if ["codex", "grok"].contains(&harness) {
+        "mcp_servers"
+    } else if harness == "opencode" {
+        "mcp"
+    } else {
+        "mcpServers"
+    };
+    for layer in &ctx.layers {
+        if let Ok(data) = read_configuration(&layer.path) {
+            native.extend(c::object(&data[key]));
+        }
+    }
+    for row in inv["mcps"].as_array_mut().ok_or(LaunchError::Other)? {
+        let name = row["name"].as_str().ok_or(LaunchError::Other)?.to_owned();
+        let scope = row["scope"].as_str().unwrap_or("unknown");
+        let source = row["source"].as_str().unwrap_or("unknown");
+        let label = match scope {
+            "shared" => "Catálogo compartido".to_owned(),
+            "project" => "Configuración del proyecto".to_owned(),
+            "user" => "Configuración de la cuenta".to_owned(),
+            "local" => "Configuración local".to_owned(),
+            _ => format!("Configuración: {source}"),
+        };
+        let origin = if truthy(&row["plugin"]) {
+            json!({"id":format!("plugin:{}",row["plugin"].as_str().ok_or(LaunchError::Other)?),"label":row["plugin"],"kind":"plugin"})
+        } else {
+            json!({"id":format!("config:{scope}:{source}"),"label":label,"kind":"configuration"})
+        };
+        row["origin"] = origin;
+        row["size"] = m::unknown_size("tool-definitions");
+        let spec = native
+            .get(&name)
+            .filter(|v| v.is_object())
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        let argv = if spec["command"].is_array() {
+            c::list(&spec["command"])
+        } else {
+            let mut a = vec![spec["command"].clone()];
+            a.extend(c::list(&spec["args"]));
+            a
+        };
+        if (truthy(&row["synthetic"])
+            || argv
+                == vec![
+                    json!(paths.home.join(".local/bin/cc-extensions")),
+                    json!("serve"),
+                    json!(name),
+                ])
+            && !truthy(&row["plugin"])
+            && let Some(spec) = shared.get(&name)
+        {
+            row["origin"] =
+                json!({"id":"config:shared","label":"Catálogo compartido","kind":"configuration"});
+            row["size"] = m::mcp_size(&paths.home, &name, spec, m::now());
+        }
+    }
+    let fields = [
+        "id",
+        "name",
+        "enabled",
+        "toggleable",
+        "reason",
+        "scope",
+        "source",
+        "plugin",
+        "group",
+        "origin",
+        "size",
+    ];
+    for kind in ["mcps", "skills"] {
+        for row in inv[kind].as_array_mut().ok_or(LaunchError::Other)? {
+            let mut clean = Map::new();
+            for key in fields {
+                if let Some(v) = row.get(key) {
+                    clean.insert(key.into(), v.clone());
+                }
+            }
+            *row = Value::Object(clean);
+        }
+    }
+    Ok(inv)
 }
 
 #[cfg(test)]
