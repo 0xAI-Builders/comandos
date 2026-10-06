@@ -104,6 +104,14 @@ await (async () => {
 
   })();
 
+await check('anchor keeps a lone surrogate at the 300 UTF16 unit boundary', async () => {
+  const source='a'.repeat(299)+'😀 tail', t=timers();let patch;
+  const a=D.createAnchor({key:'edge',load:async()=>({readingAnchors:{edge:patch.anchorsPatch.edge}}),save:value=>{patch=value;return Promise.resolve();},now:()=>1,schedule:t.schedule,cancel:t.cancel});
+  a.remember(source,0,0);t.run();
+  assert.equal(patch.anchorsPatch.edge.text.length,300);
+  assert.equal(patch.anchorsPatch.edge.text.charCodeAt(299),55357);
+  assert.deepEqual(await a.find(source),{state:'found',index:0});
+});
 output.device_drafts=rows;}
 {const PS=globalThis.PushSettings;const rows=[];
 // dash/push-settings.js: permission only after an explicit action, denial

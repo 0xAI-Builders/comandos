@@ -1,12 +1,9 @@
 [
   {
-    "id": "product-sounds",
-    "page": "/?panel=pomo&__product=sounds",
+    "id": "product-negative",
+    "page": "/?__product=session&__negative=1",
     "widths": [
-      1400,
-      844,
-      390,
-      320
+      390
     ],
     "height": 1000,
     "dpr": [
@@ -14,8 +11,7 @@
       2
     ],
     "selectors": [
-      ".pm-audio",
-      ".pm-sound-options"
+      "#session-workspace-modal"
     ],
     "mask": [],
     "channel": 24,

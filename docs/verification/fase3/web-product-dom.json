@@ -1,0 +1,5053 @@
+{
+  "status": "pass",
+  "scope": "actual production consumers, not generated API/JSON presentation",
+  "artifact": "4d3c40ac1992",
+  "crops": 80,
+  "failures": 0,
+  "widths": [
+    1400,
+    844,
+    390,
+    320
+  ],
+  "dpr": [
+    1,
+    2
+  ],
+  "sources": [
+    "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/report.json",
+    "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-quick/report.json",
+    "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/report.json"
+  ],
+  "superseded": {
+    "full_toast_container_row": "One original full-container quick row included unrelated background Not Found toast. All8 quick crops repeated against the actual terminal-error toast marked for capture. Raw failed report preserved."
+  },
+  "results": [
+    {
+      "id": "product-sounds",
+      "width": 1400,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "selector": ".pm-audio",
+      "element": 0,
+      "differing": 0,
+      "total": 46512,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-sounds/1400w-1x/0-pm-audio-0"
+    },
+    {
+      "id": "product-sounds",
+      "width": 1400,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "selector": ".pm-sound-options",
+      "element": 0,
+      "differing": 0,
+      "total": 46512,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-sounds/1400w-1x/1-pm-sound-options-0"
+    },
+    {
+      "id": "product-sounds",
+      "width": 1400,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "selector": ".pm-audio",
+      "element": 0,
+      "differing": 0,
+      "total": 186048,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-sounds/1400w-2x/0-pm-audio-0"
+    },
+    {
+      "id": "product-sounds",
+      "width": 1400,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "selector": ".pm-sound-options",
+      "element": 0,
+      "differing": 0,
+      "total": 186048,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-sounds/1400w-2x/1-pm-sound-options-0"
+    },
+    {
+      "id": "product-sounds",
+      "width": 844,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "selector": ".pm-audio",
+      "element": 0,
+      "differing": 0,
+      "total": 27608,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-sounds/844w-1x/0-pm-audio-0"
+    },
+    {
+      "id": "product-sounds",
+      "width": 844,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "selector": ".pm-sound-options",
+      "element": 0,
+      "differing": 0,
+      "total": 27608,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-sounds/844w-1x/1-pm-sound-options-0"
+    },
+    {
+      "id": "product-sounds",
+      "width": 844,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "selector": ".pm-audio",
+      "element": 0,
+      "differing": 0,
+      "total": 110432,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-sounds/844w-2x/0-pm-audio-0"
+    },
+    {
+      "id": "product-sounds",
+      "width": 844,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "selector": ".pm-sound-options",
+      "element": 0,
+      "differing": 0,
+      "total": 110432,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-sounds/844w-2x/1-pm-sound-options-0"
+    },
+    {
+      "id": "product-sounds",
+      "width": 390,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "selector": ".pm-audio",
+      "element": 0,
+      "differing": 0,
+      "total": 26492,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-sounds/390w-1x/0-pm-audio-0"
+    },
+    {
+      "id": "product-sounds",
+      "width": 390,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "selector": ".pm-sound-options",
+      "element": 0,
+      "differing": 0,
+      "total": 36516,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-sounds/390w-1x/1-pm-sound-options-0"
+    },
+    {
+      "id": "product-sounds",
+      "width": 390,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "selector": ".pm-audio",
+      "element": 0,
+      "differing": 0,
+      "total": 105968,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-sounds/390w-2x/0-pm-audio-0"
+    },
+    {
+      "id": "product-sounds",
+      "width": 390,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "selector": ".pm-sound-options",
+      "element": 0,
+      "differing": 0,
+      "total": 146064,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-sounds/390w-2x/1-pm-sound-options-0"
+    },
+    {
+      "id": "product-sounds",
+      "width": 320,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "selector": ".pm-audio",
+      "element": 0,
+      "differing": 0,
+      "total": 27648,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-sounds/320w-1x/0-pm-audio-0"
+    },
+    {
+      "id": "product-sounds",
+      "width": 320,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "selector": ".pm-sound-options",
+      "element": 0,
+      "differing": 0,
+      "total": 29376,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-sounds/320w-1x/1-pm-sound-options-0"
+    },
+    {
+      "id": "product-sounds",
+      "width": 320,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "selector": ".pm-audio",
+      "element": 0,
+      "differing": 0,
+      "total": 110592,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-sounds/320w-2x/0-pm-audio-0"
+    },
+    {
+      "id": "product-sounds",
+      "width": 320,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=pomo&__product=sounds&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "uiSounds.setEnabled",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.setEnabled",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume",
+          "uiSounds.setVolume",
+          "uiSounds.isEnabled",
+          "uiSounds.getVolume"
+        ],
+        "product": {
+          "consumer": "dash/pomodoro.js soundHtml/render and click/input handlers",
+          "enabled": true,
+          "volume": 0.35
+        }
+      },
+      "selector": ".pm-sound-options",
+      "element": 0,
+      "differing": 0,
+      "total": 117504,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-sounds/320w-2x/1-pm-sound-options-0"
+    },
+    {
+      "id": "product-push-enabled",
+      "width": 1400,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "actual push enable/test"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "enabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ]
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "actual push enable/test"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "enabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ]
+          ]
+        }
+      },
+      "selector": "#push-settings",
+      "element": 0,
+      "differing": 0,
+      "total": 108540,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-push-enabled/1400w-1x/0-push-settings-0"
+    },
+    {
+      "id": "product-push-enabled",
+      "width": 1400,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "actual push enable/test"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "enabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ]
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "actual push enable/test"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "enabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ]
+          ]
+        }
+      },
+      "selector": "#push-settings",
+      "element": 0,
+      "differing": 0,
+      "total": 431480,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-push-enabled/1400w-2x/0-push-settings-0"
+    },
+    {
+      "id": "product-push-enabled",
+      "width": 844,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "actual push enable/test"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "enabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ]
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "actual push enable/test"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "enabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ]
+          ]
+        }
+      },
+      "selector": "#push-settings",
+      "element": 0,
+      "differing": 0,
+      "total": 76832,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-push-enabled/844w-1x/0-push-settings-0"
+    },
+    {
+      "id": "product-push-enabled",
+      "width": 844,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "actual push enable/test"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "enabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ]
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "actual push enable/test"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "enabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ]
+          ]
+        }
+      },
+      "selector": "#push-settings",
+      "element": 0,
+      "differing": 0,
+      "total": 305760,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-push-enabled/844w-2x/0-push-settings-0"
+    },
+    {
+      "id": "product-push-enabled",
+      "width": 390,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "actual push enable/test"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "enabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ]
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "actual push enable/test"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "enabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ]
+          ]
+        }
+      },
+      "selector": "#push-settings",
+      "element": 0,
+      "differing": 0,
+      "total": 49170,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-push-enabled/390w-1x/0-push-settings-0"
+    },
+    {
+      "id": "product-push-enabled",
+      "width": 390,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "actual push enable/test"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "enabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ]
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "actual push enable/test"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "enabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ]
+          ]
+        }
+      },
+      "selector": "#push-settings",
+      "element": 0,
+      "differing": 0,
+      "total": 196680,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-push-enabled/390w-2x/0-push-settings-0"
+    },
+    {
+      "id": "product-push-enabled",
+      "width": 320,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "actual push enable/test"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "enabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ]
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "actual push enable/test"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "enabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ]
+          ]
+        }
+      },
+      "selector": "#push-settings",
+      "element": 0,
+      "differing": 0,
+      "total": 47580,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-push-enabled/320w-1x/0-push-settings-0"
+    },
+    {
+      "id": "product-push-enabled",
+      "width": 320,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "actual push enable/test"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "enabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ]
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "actual push enable/test"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "enabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ]
+          ]
+        }
+      },
+      "selector": "#push-settings",
+      "element": 0,
+      "differing": 0,
+      "total": 190320,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-push-enabled/320w-2x/0-push-settings-0"
+    },
+    {
+      "id": "product-push-disabled",
+      "width": 1400,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=settings&__product=push-disabled&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=settings&__product=push-disabled&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "actual push enable/test/disable"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "disabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ],
+            [
+              "DELETE",
+              "/push/subscription"
+            ]
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "actual push enable/test/disable"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "disabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ],
+            [
+              "DELETE",
+              "/push/subscription"
+            ]
+          ]
+        }
+      },
+      "selector": "#push-settings",
+      "element": 0,
+      "differing": 0,
+      "total": 108540,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-push-disabled/1400w-1x/0-push-settings-0"
+    },
+    {
+      "id": "product-push-disabled",
+      "width": 1400,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=settings&__product=push-disabled&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=settings&__product=push-disabled&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "actual push enable/test/disable"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "disabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ],
+            [
+              "DELETE",
+              "/push/subscription"
+            ]
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "actual push enable/test/disable"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "disabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ],
+            [
+              "DELETE",
+              "/push/subscription"
+            ]
+          ]
+        }
+      },
+      "selector": "#push-settings",
+      "element": 0,
+      "differing": 0,
+      "total": 431480,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-push-disabled/1400w-2x/0-push-settings-0"
+    },
+    {
+      "id": "product-push-disabled",
+      "width": 844,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=settings&__product=push-disabled&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=settings&__product=push-disabled&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "actual push enable/test/disable"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "disabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ],
+            [
+              "DELETE",
+              "/push/subscription"
+            ]
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "actual push enable/test/disable"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "disabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ],
+            [
+              "DELETE",
+              "/push/subscription"
+            ]
+          ]
+        }
+      },
+      "selector": "#push-settings",
+      "element": 0,
+      "differing": 0,
+      "total": 76832,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-push-disabled/844w-1x/0-push-settings-0"
+    },
+    {
+      "id": "product-push-disabled",
+      "width": 844,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=settings&__product=push-disabled&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=settings&__product=push-disabled&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "actual push enable/test/disable"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "disabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ],
+            [
+              "DELETE",
+              "/push/subscription"
+            ]
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "actual push enable/test/disable"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "disabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ],
+            [
+              "DELETE",
+              "/push/subscription"
+            ]
+          ]
+        }
+      },
+      "selector": "#push-settings",
+      "element": 0,
+      "differing": 0,
+      "total": 305760,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-push-disabled/844w-2x/0-push-settings-0"
+    },
+    {
+      "id": "product-push-disabled",
+      "width": 390,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=settings&__product=push-disabled&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=settings&__product=push-disabled&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "actual push enable/test/disable"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "disabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ],
+            [
+              "DELETE",
+              "/push/subscription"
+            ]
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "actual push enable/test/disable"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "disabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ],
+            [
+              "DELETE",
+              "/push/subscription"
+            ]
+          ]
+        }
+      },
+      "selector": "#push-settings",
+      "element": 0,
+      "differing": 0,
+      "total": 43560,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-push-disabled/390w-1x/0-push-settings-0"
+    },
+    {
+      "id": "product-push-disabled",
+      "width": 390,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=settings&__product=push-disabled&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=settings&__product=push-disabled&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "actual push enable/test/disable"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "disabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ],
+            [
+              "DELETE",
+              "/push/subscription"
+            ]
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "actual push enable/test/disable"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "disabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ],
+            [
+              "DELETE",
+              "/push/subscription"
+            ]
+          ]
+        }
+      },
+      "selector": "#push-settings",
+      "element": 0,
+      "differing": 0,
+      "total": 174240,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-push-disabled/390w-2x/0-push-settings-0"
+    },
+    {
+      "id": "product-push-disabled",
+      "width": 320,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=settings&__product=push-disabled&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=settings&__product=push-disabled&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "actual push enable/test/disable"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "disabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ],
+            [
+              "DELETE",
+              "/push/subscription"
+            ]
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "actual push enable/test/disable"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "disabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ],
+            [
+              "DELETE",
+              "/push/subscription"
+            ]
+          ]
+        }
+      },
+      "selector": "#push-settings",
+      "element": 0,
+      "differing": 0,
+      "total": 38740,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-push-disabled/320w-1x/0-push-settings-0"
+    },
+    {
+      "id": "product-push-disabled",
+      "width": 320,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?panel=settings&__product=push-disabled&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?panel=settings&__product=push-disabled&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "actual push enable/test/disable"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "disabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ],
+            [
+              "DELETE",
+              "/push/subscription"
+            ]
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "actual push enable/test/disable"
+        ],
+        "product": {
+          "consumer": "dash/index.html #push-settings and installed production handlers",
+          "state": "disabled",
+          "prompts": 1,
+          "requests": [
+            [
+              "GET",
+              "/push/key"
+            ],
+            [
+              "POST",
+              "/push/subscription"
+            ],
+            [
+              "POST",
+              "/push/test"
+            ],
+            [
+              "DELETE",
+              "/push/subscription"
+            ]
+          ]
+        }
+      },
+      "selector": "#push-settings",
+      "element": 0,
+      "differing": 0,
+      "total": 154960,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-push-disabled/320w-2x/0-push-settings-0"
+    },
+    {
+      "id": "product-session",
+      "width": 1400,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=session&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=session&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "SessionConfig.choices",
+          "SessionConfig.update",
+          "SessionConfig.choices"
+        ],
+        "product": {
+          "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+          "selected": "ultra"
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "SessionConfig.choices",
+          "SessionConfig.update",
+          "SessionConfig.choices"
+        ],
+        "product": {
+          "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+          "selected": "ultra"
+        }
+      },
+      "selector": "#session-workspace-modal",
+      "element": 0,
+      "differing": 0,
+      "total": 1400000,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-session/1400w-1x/0-session-workspace-modal-0"
+    },
+    {
+      "id": "product-session",
+      "width": 1400,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=session&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=session&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "SessionConfig.choices",
+          "SessionConfig.update",
+          "SessionConfig.choices"
+        ],
+        "product": {
+          "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+          "selected": "ultra"
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "SessionConfig.choices",
+          "SessionConfig.update",
+          "SessionConfig.choices"
+        ],
+        "product": {
+          "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+          "selected": "ultra"
+        }
+      },
+      "selector": "#session-workspace-modal",
+      "element": 0,
+      "differing": 0,
+      "total": 5600000,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-session/1400w-2x/0-session-workspace-modal-0"
+    },
+    {
+      "id": "product-session",
+      "width": 844,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=session&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=session&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "SessionConfig.choices",
+          "SessionConfig.update",
+          "SessionConfig.choices"
+        ],
+        "product": {
+          "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+          "selected": "ultra"
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "SessionConfig.choices",
+          "SessionConfig.update",
+          "SessionConfig.choices"
+        ],
+        "product": {
+          "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+          "selected": "ultra"
+        }
+      },
+      "selector": "#session-workspace-modal",
+      "element": 0,
+      "differing": 0,
+      "total": 844000,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-session/844w-1x/0-session-workspace-modal-0"
+    },
+    {
+      "id": "product-session",
+      "width": 844,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=session&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=session&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "SessionConfig.choices",
+          "SessionConfig.update",
+          "SessionConfig.choices"
+        ],
+        "product": {
+          "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+          "selected": "ultra"
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "SessionConfig.choices",
+          "SessionConfig.update",
+          "SessionConfig.choices"
+        ],
+        "product": {
+          "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+          "selected": "ultra"
+        }
+      },
+      "selector": "#session-workspace-modal",
+      "element": 0,
+      "differing": 0,
+      "total": 3376000,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-session/844w-2x/0-session-workspace-modal-0"
+    },
+    {
+      "id": "product-session",
+      "width": 390,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=session&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=session&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "SessionConfig.choices",
+          "SessionConfig.update",
+          "SessionConfig.choices"
+        ],
+        "product": {
+          "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+          "selected": "ultra"
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "SessionConfig.choices",
+          "SessionConfig.update",
+          "SessionConfig.choices"
+        ],
+        "product": {
+          "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+          "selected": "ultra"
+        }
+      },
+      "selector": "#session-workspace-modal",
+      "element": 0,
+      "differing": 0,
+      "total": 390000,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-session/390w-1x/0-session-workspace-modal-0"
+    },
+    {
+      "id": "product-session",
+      "width": 390,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=session&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=session&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "SessionConfig.choices",
+          "SessionConfig.update",
+          "SessionConfig.choices"
+        ],
+        "product": {
+          "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+          "selected": "ultra"
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "SessionConfig.choices",
+          "SessionConfig.update",
+          "SessionConfig.choices"
+        ],
+        "product": {
+          "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+          "selected": "ultra"
+        }
+      },
+      "selector": "#session-workspace-modal",
+      "element": 0,
+      "differing": 0,
+      "total": 1560000,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-session/390w-2x/0-session-workspace-modal-0"
+    },
+    {
+      "id": "product-session",
+      "width": 320,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=session&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=session&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "SessionConfig.choices",
+          "SessionConfig.update",
+          "SessionConfig.choices"
+        ],
+        "product": {
+          "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+          "selected": "ultra"
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "SessionConfig.choices",
+          "SessionConfig.update",
+          "SessionConfig.choices"
+        ],
+        "product": {
+          "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+          "selected": "ultra"
+        }
+      },
+      "selector": "#session-workspace-modal",
+      "element": 0,
+      "differing": 0,
+      "total": 320000,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-session/320w-1x/0-session-workspace-modal-0"
+    },
+    {
+      "id": "product-session",
+      "width": 320,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=session&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=session&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "SessionConfig.choices",
+          "SessionConfig.update",
+          "SessionConfig.choices"
+        ],
+        "product": {
+          "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+          "selected": "ultra"
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "SessionConfig.choices",
+          "SessionConfig.update",
+          "SessionConfig.choices"
+        ],
+        "product": {
+          "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+          "selected": "ultra"
+        }
+      },
+      "selector": "#session-workspace-modal",
+      "element": 0,
+      "differing": 0,
+      "total": 1280000,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-session/320w-2x/0-session-workspace-modal-0"
+    },
+    {
+      "id": "product-workspace",
+      "width": 1400,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=workspace&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=workspace&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "selector": ".ws-tree",
+      "element": 0,
+      "differing": 0,
+      "total": 967472,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-workspace/1400w-1x/0-ws-tree-0"
+    },
+    {
+      "id": "product-workspace",
+      "width": 1400,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=workspace&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=workspace&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "selector": "#tabbar",
+      "element": 0,
+      "differing": 0,
+      "total": 32868,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-workspace/1400w-1x/1-tabbar-0"
+    },
+    {
+      "id": "product-workspace",
+      "width": 1400,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=workspace&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=workspace&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "selector": ".ws-tree",
+      "element": 0,
+      "differing": 0,
+      "total": 3869888,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-workspace/1400w-2x/0-ws-tree-0"
+    },
+    {
+      "id": "product-workspace",
+      "width": 1400,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=workspace&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=workspace&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "selector": "#tabbar",
+      "element": 0,
+      "differing": 0,
+      "total": 131472,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-workspace/1400w-2x/1-tabbar-0"
+    },
+    {
+      "id": "product-workspace",
+      "width": 844,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=workspace&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=workspace&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "selector": ".ws-tree",
+      "element": 0,
+      "differing": 0,
+      "total": 435936,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-workspace/844w-1x/0-ws-tree-0"
+    },
+    {
+      "id": "product-workspace",
+      "width": 844,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=workspace&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=workspace&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "selector": "#tabbar",
+      "element": 0,
+      "differing": 0,
+      "total": 8404,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-workspace/844w-1x/1-tabbar-0"
+    },
+    {
+      "id": "product-workspace",
+      "width": 844,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=workspace&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=workspace&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "selector": ".ws-tree",
+      "element": 0,
+      "differing": 0,
+      "total": 1743744,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-workspace/844w-2x/0-ws-tree-0"
+    },
+    {
+      "id": "product-workspace",
+      "width": 844,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=workspace&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=workspace&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "selector": "#tabbar",
+      "element": 0,
+      "differing": 0,
+      "total": 33616,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-workspace/844w-2x/1-tabbar-0"
+    },
+    {
+      "id": "product-workspace",
+      "width": 390,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=workspace&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=workspace&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "selector": ".ws-tree",
+      "element": 0,
+      "differing": 0,
+      "total": 372840,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-workspace/390w-1x/0-ws-tree-0"
+    },
+    {
+      "id": "product-workspace",
+      "width": 390,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=workspace&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=workspace&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "selector": "#tabbar",
+      "element": 0,
+      "differing": 0,
+      "total": 5500,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-workspace/390w-1x/1-tabbar-0"
+    },
+    {
+      "id": "product-workspace",
+      "width": 390,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=workspace&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=workspace&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "selector": ".ws-tree",
+      "element": 0,
+      "differing": 0,
+      "total": 1491360,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-workspace/390w-2x/0-ws-tree-0"
+    },
+    {
+      "id": "product-workspace",
+      "width": 390,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=workspace&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=workspace&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "selector": "#tabbar",
+      "element": 0,
+      "differing": 0,
+      "total": 22000,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-workspace/390w-2x/1-tabbar-0"
+    },
+    {
+      "id": "product-workspace",
+      "width": 320,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=workspace&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=workspace&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "selector": ".ws-tree",
+      "element": 0,
+      "differing": 0,
+      "total": 305920,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-workspace/320w-1x/0-ws-tree-0"
+    },
+    {
+      "id": "product-workspace",
+      "width": 320,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=workspace&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=workspace&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "selector": "#tabbar",
+      "element": 0,
+      "differing": 0,
+      "total": 2420,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-workspace/320w-1x/1-tabbar-0"
+    },
+    {
+      "id": "product-workspace",
+      "width": 320,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=workspace&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=workspace&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "selector": ".ws-tree",
+      "element": 0,
+      "differing": 0,
+      "total": 1223680,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-workspace/320w-2x/0-ws-tree-0"
+    },
+    {
+      "id": "product-workspace",
+      "width": 320,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=workspace&web=off&__clock=1791254584497",
+      "web_url": "http://127.0.0.1:7321/?__product=workspace&web=shadow&__clock=1791254584497",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "WorkspaceLayout.moveTab",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds",
+          "WorkspaceLayout.tabIds"
+        ],
+        "product": {
+          "consumer": "dash/workspace-dock.js tree/strip render after actual WorkspaceLayout.moveTab",
+          "tabs": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "selector": "#tabbar",
+      "element": 0,
+      "differing": 0,
+      "total": 9680,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-final/product-workspace/320w-2x/1-tabbar-0"
+    },
+    {
+      "id": "product-quick",
+      "width": 1400,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=quick&web=off&__clock=1791255057366",
+      "web_url": "http://127.0.0.1:7321/?__product=quick&web=shadow&__clock=1791255057366",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosQuickTerminal.createQuickTerminal",
+          "terminal request"
+        ],
+        "product": {
+          "consumer": "dash/index.html #btn-terminal -> quickTerminalInstance -> toast",
+          "pending": "private-dom-test",
+          "busy": false
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosQuickTerminal.createQuickTerminal",
+          "terminal request"
+        ],
+        "product": {
+          "consumer": "dash/index.html #btn-terminal -> quickTerminalInstance -> toast",
+          "pending": "private-dom-test",
+          "busy": false
+        }
+      },
+      "selector": "#toasts > [data-product-quick]",
+      "element": 0,
+      "differing": 0,
+      "total": 10471,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-quick/product-quick/1400w-1x/0-toasts____data-product-quick-0"
+    },
+    {
+      "id": "product-quick",
+      "width": 1400,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=quick&web=off&__clock=1791255057366",
+      "web_url": "http://127.0.0.1:7321/?__product=quick&web=shadow&__clock=1791255057366",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosQuickTerminal.createQuickTerminal",
+          "terminal request"
+        ],
+        "product": {
+          "consumer": "dash/index.html #btn-terminal -> quickTerminalInstance -> toast",
+          "pending": "private-dom-test",
+          "busy": false
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosQuickTerminal.createQuickTerminal",
+          "terminal request"
+        ],
+        "product": {
+          "consumer": "dash/index.html #btn-terminal -> quickTerminalInstance -> toast",
+          "pending": "private-dom-test",
+          "busy": false
+        }
+      },
+      "selector": "#toasts > [data-product-quick]",
+      "element": 0,
+      "differing": 0,
+      "total": 42180,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-quick/product-quick/1400w-2x/0-toasts____data-product-quick-0"
+    },
+    {
+      "id": "product-quick",
+      "width": 844,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=quick&web=off&__clock=1791255057366",
+      "web_url": "http://127.0.0.1:7321/?__product=quick&web=shadow&__clock=1791255057366",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosQuickTerminal.createQuickTerminal",
+          "terminal request"
+        ],
+        "product": {
+          "consumer": "dash/index.html #btn-terminal -> quickTerminalInstance -> toast",
+          "pending": "private-dom-test",
+          "busy": false
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosQuickTerminal.createQuickTerminal",
+          "terminal request"
+        ],
+        "product": {
+          "consumer": "dash/index.html #btn-terminal -> quickTerminalInstance -> toast",
+          "pending": "private-dom-test",
+          "busy": false
+        }
+      },
+      "selector": "#toasts > [data-product-quick]",
+      "element": 0,
+      "differing": 0,
+      "total": 10471,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-quick/product-quick/844w-1x/0-toasts____data-product-quick-0"
+    },
+    {
+      "id": "product-quick",
+      "width": 844,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=quick&web=off&__clock=1791255057366",
+      "web_url": "http://127.0.0.1:7321/?__product=quick&web=shadow&__clock=1791255057366",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosQuickTerminal.createQuickTerminal",
+          "terminal request"
+        ],
+        "product": {
+          "consumer": "dash/index.html #btn-terminal -> quickTerminalInstance -> toast",
+          "pending": "private-dom-test",
+          "busy": false
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosQuickTerminal.createQuickTerminal",
+          "terminal request"
+        ],
+        "product": {
+          "consumer": "dash/index.html #btn-terminal -> quickTerminalInstance -> toast",
+          "pending": "private-dom-test",
+          "busy": false
+        }
+      },
+      "selector": "#toasts > [data-product-quick]",
+      "element": 0,
+      "differing": 0,
+      "total": 42180,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-quick/product-quick/844w-2x/0-toasts____data-product-quick-0"
+    },
+    {
+      "id": "product-quick",
+      "width": 390,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=quick&web=off&__clock=1791255057366",
+      "web_url": "http://127.0.0.1:7321/?__product=quick&web=shadow&__clock=1791255057366",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosQuickTerminal.createQuickTerminal",
+          "terminal request"
+        ],
+        "product": {
+          "consumer": "dash/index.html #btn-terminal -> quickTerminalInstance -> toast",
+          "pending": "private-dom-test",
+          "busy": false
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosQuickTerminal.createQuickTerminal",
+          "terminal request"
+        ],
+        "product": {
+          "consumer": "dash/index.html #btn-terminal -> quickTerminalInstance -> toast",
+          "pending": "private-dom-test",
+          "busy": false
+        }
+      },
+      "selector": "#toasts > [data-product-quick]",
+      "element": 0,
+      "differing": 0,
+      "total": 10471,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-quick/product-quick/390w-1x/0-toasts____data-product-quick-0"
+    },
+    {
+      "id": "product-quick",
+      "width": 390,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=quick&web=off&__clock=1791255057366",
+      "web_url": "http://127.0.0.1:7321/?__product=quick&web=shadow&__clock=1791255057366",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosQuickTerminal.createQuickTerminal",
+          "terminal request"
+        ],
+        "product": {
+          "consumer": "dash/index.html #btn-terminal -> quickTerminalInstance -> toast",
+          "pending": "private-dom-test",
+          "busy": false
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosQuickTerminal.createQuickTerminal",
+          "terminal request"
+        ],
+        "product": {
+          "consumer": "dash/index.html #btn-terminal -> quickTerminalInstance -> toast",
+          "pending": "private-dom-test",
+          "busy": false
+        }
+      },
+      "selector": "#toasts > [data-product-quick]",
+      "element": 0,
+      "differing": 0,
+      "total": 42180,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-quick/product-quick/390w-2x/0-toasts____data-product-quick-0"
+    },
+    {
+      "id": "product-quick",
+      "width": 320,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=quick&web=off&__clock=1791255057366",
+      "web_url": "http://127.0.0.1:7321/?__product=quick&web=shadow&__clock=1791255057366",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosQuickTerminal.createQuickTerminal",
+          "terminal request"
+        ],
+        "product": {
+          "consumer": "dash/index.html #btn-terminal -> quickTerminalInstance -> toast",
+          "pending": "private-dom-test",
+          "busy": false
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosQuickTerminal.createQuickTerminal",
+          "terminal request"
+        ],
+        "product": {
+          "consumer": "dash/index.html #btn-terminal -> quickTerminalInstance -> toast",
+          "pending": "private-dom-test",
+          "busy": false
+        }
+      },
+      "selector": "#toasts > [data-product-quick]",
+      "element": 0,
+      "differing": 0,
+      "total": 10471,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-quick/product-quick/320w-1x/0-toasts____data-product-quick-0"
+    },
+    {
+      "id": "product-quick",
+      "width": 320,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7321/?__product=quick&web=off&__clock=1791255057366",
+      "web_url": "http://127.0.0.1:7321/?__product=quick&web=shadow&__clock=1791255057366",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosQuickTerminal.createQuickTerminal",
+          "terminal request"
+        ],
+        "product": {
+          "consumer": "dash/index.html #btn-terminal -> quickTerminalInstance -> toast",
+          "pending": "private-dom-test",
+          "busy": false
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosQuickTerminal.createQuickTerminal",
+          "terminal request"
+        ],
+        "product": {
+          "consumer": "dash/index.html #btn-terminal -> quickTerminalInstance -> toast",
+          "pending": "private-dom-test",
+          "busy": false
+        }
+      },
+      "selector": "#toasts > [data-product-quick]",
+      "element": 0,
+      "differing": 0,
+      "total": 42180,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-quick/product-quick/320w-2x/0-toasts____data-product-quick-0"
+    },
+    {
+      "id": "product-drafts",
+      "width": 1400,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=off&__clock=1791254998210",
+      "web_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=shadow&__clock=1791254998210",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":97,\"rows\":48}",
+            "1{\"columns\":97,\"rows\":44}"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7318/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":97,\"rows\":48}",
+            "1{\"columns\":97,\"rows\":44}"
+          ]
+        }
+      },
+      "selector": "#mobile-compose",
+      "element": 0,
+      "differing": 0,
+      "total": 105000,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/product-drafts/1400w-1x/0-mobile-compose-0"
+    },
+    {
+      "id": "product-drafts",
+      "width": 1400,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=off&__clock=1791254998210",
+      "web_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=shadow&__clock=1791254998210",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":97,\"rows\":48}",
+            "1{\"columns\":97,\"rows\":44}"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7318/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":97,\"rows\":48}",
+            "1{\"columns\":97,\"rows\":44}"
+          ]
+        }
+      },
+      "selector": "#term-toolbar",
+      "element": 0,
+      "differing": 0,
+      "total": 81200,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/product-drafts/1400w-1x/1-term-toolbar-0"
+    },
+    {
+      "id": "product-drafts",
+      "width": 1400,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=off&__clock=1791254998210",
+      "web_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=shadow&__clock=1791254998210",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":101,\"rows\":48}",
+            "1{\"columns\":101,\"rows\":44}"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7318/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":101,\"rows\":48}",
+            "1{\"columns\":101,\"rows\":44}"
+          ]
+        }
+      },
+      "selector": "#mobile-compose",
+      "element": 0,
+      "differing": 0,
+      "total": 417200,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/product-drafts/1400w-2x/0-mobile-compose-0"
+    },
+    {
+      "id": "product-drafts",
+      "width": 1400,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=off&__clock=1791254998210",
+      "web_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=shadow&__clock=1791254998210",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":101,\"rows\":48}",
+            "1{\"columns\":101,\"rows\":44}"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7318/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":101,\"rows\":48}",
+            "1{\"columns\":101,\"rows\":44}"
+          ]
+        }
+      },
+      "selector": "#term-toolbar",
+      "element": 0,
+      "differing": 0,
+      "total": 322000,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/product-drafts/1400w-2x/1-term-toolbar-0"
+    },
+    {
+      "id": "product-drafts",
+      "width": 844,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=off&__clock=1791254998210",
+      "web_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=shadow&__clock=1791254998210",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":58,\"rows\":48}",
+            "1{\"columns\":58,\"rows\":44}"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7318/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":58,\"rows\":48}",
+            "1{\"columns\":58,\"rows\":44}"
+          ]
+        }
+      },
+      "selector": "#mobile-compose",
+      "element": 0,
+      "differing": 0,
+      "total": 63300,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/product-drafts/844w-1x/0-mobile-compose-0"
+    },
+    {
+      "id": "product-drafts",
+      "width": 844,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=off&__clock=1791254998210",
+      "web_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=shadow&__clock=1791254998210",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":58,\"rows\":48}",
+            "1{\"columns\":58,\"rows\":44}"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7318/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":58,\"rows\":48}",
+            "1{\"columns\":58,\"rows\":44}"
+          ]
+        }
+      },
+      "selector": "#term-toolbar",
+      "element": 0,
+      "differing": 0,
+      "total": 48952,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/product-drafts/844w-1x/1-term-toolbar-0"
+    },
+    {
+      "id": "product-drafts",
+      "width": 844,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=off&__clock=1791254998210",
+      "web_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=shadow&__clock=1791254998210",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":60,\"rows\":48}",
+            "1{\"columns\":60,\"rows\":44}"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7318/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":60,\"rows\":48}",
+            "1{\"columns\":60,\"rows\":44}"
+          ]
+        }
+      },
+      "selector": "#mobile-compose",
+      "element": 0,
+      "differing": 0,
+      "total": 251512,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/product-drafts/844w-2x/0-mobile-compose-0"
+    },
+    {
+      "id": "product-drafts",
+      "width": 844,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=off&__clock=1791254998210",
+      "web_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=shadow&__clock=1791254998210",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":60,\"rows\":48}",
+            "1{\"columns\":60,\"rows\":44}"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7318/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":60,\"rows\":48}",
+            "1{\"columns\":60,\"rows\":44}"
+          ]
+        }
+      },
+      "selector": "#term-toolbar",
+      "element": 0,
+      "differing": 0,
+      "total": 194120,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/product-drafts/844w-2x/1-term-toolbar-0"
+    },
+    {
+      "id": "product-drafts",
+      "width": 390,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=off&__clock=1791254998210",
+      "web_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=shadow&__clock=1791254998210",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":25,\"rows\":48}",
+            "1{\"columns\":25,\"rows\":44}"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7318/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":25,\"rows\":48}",
+            "1{\"columns\":25,\"rows\":44}"
+          ]
+        }
+      },
+      "selector": "#mobile-compose",
+      "element": 0,
+      "differing": 0,
+      "total": 29250,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/product-drafts/390w-1x/0-mobile-compose-0"
+    },
+    {
+      "id": "product-drafts",
+      "width": 390,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=off&__clock=1791254998210",
+      "web_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=shadow&__clock=1791254998210",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":25,\"rows\":48}",
+            "1{\"columns\":25,\"rows\":44}"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7318/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":25,\"rows\":48}",
+            "1{\"columns\":25,\"rows\":44}"
+          ]
+        }
+      },
+      "selector": "#term-toolbar",
+      "element": 0,
+      "differing": 0,
+      "total": 22620,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/product-drafts/390w-1x/1-term-toolbar-0"
+    },
+    {
+      "id": "product-drafts",
+      "width": 390,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=off&__clock=1791254998210",
+      "web_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=shadow&__clock=1791254998210",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":26,\"rows\":48}",
+            "1{\"columns\":26,\"rows\":44}"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7318/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":26,\"rows\":48}",
+            "1{\"columns\":26,\"rows\":44}"
+          ]
+        }
+      },
+      "selector": "#mobile-compose",
+      "element": 0,
+      "differing": 0,
+      "total": 116220,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/product-drafts/390w-2x/0-mobile-compose-0"
+    },
+    {
+      "id": "product-drafts",
+      "width": 390,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=off&__clock=1791254998210",
+      "web_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=shadow&__clock=1791254998210",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":26,\"rows\":48}",
+            "1{\"columns\":26,\"rows\":44}"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7318/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":26,\"rows\":48}",
+            "1{\"columns\":26,\"rows\":44}"
+          ]
+        }
+      },
+      "selector": "#term-toolbar",
+      "element": 0,
+      "differing": 0,
+      "total": 89700,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/product-drafts/390w-2x/1-term-toolbar-0"
+    },
+    {
+      "id": "product-drafts",
+      "width": 320,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=off&__clock=1791254998210",
+      "web_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=shadow&__clock=1791254998210",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":20,\"rows\":48}",
+            "1{\"columns\":20,\"rows\":44}"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7318/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":20,\"rows\":48}",
+            "1{\"columns\":20,\"rows\":44}"
+          ]
+        }
+      },
+      "selector": "#mobile-compose",
+      "element": 0,
+      "differing": 0,
+      "total": 24000,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/product-drafts/320w-1x/0-mobile-compose-0"
+    },
+    {
+      "id": "product-drafts",
+      "width": 320,
+      "dpr": 1,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=off&__clock=1791254998210",
+      "web_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=shadow&__clock=1791254998210",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":20,\"rows\":48}",
+            "1{\"columns\":20,\"rows\":44}"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7318/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":20,\"rows\":48}",
+            "1{\"columns\":20,\"rows\":44}"
+          ]
+        }
+      },
+      "selector": "#term-toolbar",
+      "element": 0,
+      "differing": 0,
+      "total": 18560,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/product-drafts/320w-1x/1-term-toolbar-0"
+    },
+    {
+      "id": "product-drafts",
+      "width": 320,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=off&__clock=1791254998210",
+      "web_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=shadow&__clock=1791254998210",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":21,\"rows\":48}",
+            "1{\"columns\":21,\"rows\":44}"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7318/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":21,\"rows\":48}",
+            "1{\"columns\":21,\"rows\":44}"
+          ]
+        }
+      },
+      "selector": "#mobile-compose",
+      "element": 0,
+      "differing": 0,
+      "total": 95360,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/product-drafts/320w-2x/0-mobile-compose-0"
+    },
+    {
+      "id": "product-drafts",
+      "width": 320,
+      "dpr": 2,
+      "touch": false,
+      "emulation": "viewport",
+      "touch_mode": "emulado",
+      "legacy_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=off&__clock=1791254998210",
+      "web_url": "http://127.0.0.1:7318/product/term.html?arg=private-dom&auth=private-token&__product=drafts&web=shadow&__clock=1791254998210",
+      "legacy_proof": {
+        "wasm_url": null,
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":21,\"rows\":48}",
+            "1{\"columns\":21,\"rows\":44}"
+          ]
+        }
+      },
+      "web_proof": {
+        "wasm_url": "http://127.0.0.1:7318/web/4d3c40ac1992/comandos_web_bg.wasm",
+        "actions": [
+          "ComandosDeviceDrafts.createDrafts",
+          "ComandosDeviceDrafts.createAnchor"
+        ],
+        "product": {
+          "consumer": "literal dash/term.html deviceDrafts.restore and mobile composer/keyboard handlers",
+          "source_sha256": "04651dffd0bdc0b463c72485d8f1b1f1dc4ddc2a358617a228cdb7512ce5237b",
+          "text": "git status\n😀 borrador local",
+          "selection": [
+            4,
+            10
+          ],
+          "sent": [
+            "{\"AuthToken\":\"\",\"columns\":21,\"rows\":48}",
+            "1{\"columns\":21,\"rows\":44}"
+          ]
+        }
+      },
+      "selector": "#term-toolbar",
+      "element": 0,
+      "differing": 0,
+      "total": 73600,
+      "ratio": 0.0,
+      "limit": 0.001,
+      "pass": true,
+      "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-drafts/product-drafts/320w-2x/1-term-toolbar-0"
+    }
+  ],
+  "negative_calibration": {
+    "suite": "b5-product-negative",
+    "base": "http://127.0.0.1:7321",
+    "clock": "1791255202726",
+    "touch_omitted": false,
+    "failures": 2,
+    "error": null,
+    "results": [
+      {
+        "id": "product-negative",
+        "width": 390,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7321/?__product=session&__negative=1&web=off&__clock=1791255202726",
+        "web_url": "http://127.0.0.1:7321/?__product=session&__negative=1&web=shadow&__clock=1791255202726",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "SessionConfig.choices",
+            "SessionConfig.update",
+            "SessionConfig.choices"
+          ],
+          "product": {
+            "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+            "selected": "ultra"
+          }
+        },
+        "web_proof": {
+          "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+          "actions": [
+            "SessionConfig.update"
+          ],
+          "product": {
+            "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+            "selected": ""
+          }
+        },
+        "selector": "#session-workspace-modal",
+        "element": 0,
+        "differing": 1599,
+        "total": 390000,
+        "ratio": 0.0041,
+        "limit": 0.001,
+        "pass": false,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-negative/product-negative/390w-1x/0-session-workspace-modal-0",
+        "dom_difference": "nodo 38: \"              <option selected=\\\"\\\" value=\\\"gpt-6-astra\\\">\" ≠ \"          <label class=\\\"sc-field\\\">\""
+      },
+      {
+        "id": "product-negative",
+        "width": 390,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7321/?__product=session&__negative=1&web=off&__clock=1791255202726",
+        "web_url": "http://127.0.0.1:7321/?__product=session&__negative=1&web=shadow&__clock=1791255202726",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "SessionConfig.choices",
+            "SessionConfig.update",
+            "SessionConfig.choices"
+          ],
+          "product": {
+            "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+            "selected": "ultra"
+          }
+        },
+        "web_proof": {
+          "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+          "actions": [
+            "SessionConfig.update"
+          ],
+          "product": {
+            "consumer": "dash/workspace.js openSessionProfiles/render and effort onchange",
+            "selected": ""
+          }
+        },
+        "selector": "#session-workspace-modal",
+        "element": 0,
+        "differing": 5710,
+        "total": 1560000,
+        "ratio": 0.00366025641025641,
+        "limit": 0.001,
+        "pass": false,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-product-negative/product-negative/390w-2x/0-session-workspace-modal-0",
+        "dom_difference": "nodo 38: \"              <option selected=\\\"\\\" value=\\\"gpt-6-astra\\\">\" ≠ \"          <label class=\\\"sc-field\\\">\""
+      }
+    ]
+  },
+  "terminal_fixture_scope": "literal dash/term.html HTML/CSS/xterm/render/handlers, JS/WASM bootstrap and isolated HTTP/WebSocket inputs only; no native or PTY integration",
+  "baseline_selection": {
+    "asserted_rows": 80,
+    "original": "Every legacy_url explicitly contains web=off and legacy_proof.wasm_url is null",
+    "candidate": "Every web_url explicitly contains web=shadow and loads /web/4d3c40ac1992/comandos_web_bg.wasm"
+  }
+}

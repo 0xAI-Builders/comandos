@@ -3,7 +3,7 @@
   "baseline": "original JavaScript",
   "candidate": "actual built WASM",
   "proof": {
-    "wasm_url": "/web/a99d4b03ca31/comandos_web_bg.wasm",
+    "wasm_url": "/web/4d3c40ac1992/comandos_web_bg.wasm",
     "ready": true,
     "actions": [
       "quick-terminal",
@@ -44,6 +44,10 @@
       },
       {
         "name": "remembering the top line saves one debounced anchor patch",
+        "ok": true
+      },
+      {
+        "name": "anchor keeps a lone surrogate at the 300 UTF16 unit boundary",
         "ok": true
       }
     ],
@@ -2284,7 +2288,8 @@
         "pass": true,
         "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/320w-2x/5-sound-settings-0"
       }
-    ]
+    ],
+    "evidence_scope": "Generated headings/JSON API fixture only. Excluded from production DOM/pixel acceptance."
   },
   "negative_visual_calibration": {
     "suite": "b5-negative",
@@ -2368,7 +2373,8 @@
         "error": "tamaños distintos: 684x913 vs 684x305",
         "dom_difference": "nodo 6: \"      #text \\\"{ \\\\\\\"groups\\\\\\\": [ { \\\\\\\"id\\\\\\\": \\\\\\\"b\\\\\\\", \\\\\\\"tree\\\\\\\": { \\\\\\\"type\\\\\\\": \\\\\\\"split\\\\\\\", \\\\\\\"axis\\\\\\\": \\\\\\\"x\\\\\\\", \\\\\\\"ratio\\\\\\\": 0.5, \\\\\\\"first\\\\\\\": { \\\\\\\"type\\\\\\\": \\\\\\\"tab\\\\\\\", \\\\\\\"tabId\\\\\\\": \\\\\\\"one\\\\\\\" }, \\\\\\\"second\\\\\\\": { \\\\\\\"type\\\\\\\": \\\\\\\"tab\\\\\\\", \\\\\\\"tabId\\\\\\\": \\\\\\\"two\\\\\\\" } } } ] }\\\"\" ≠ \"      #text \\\"{ \\\\\\\"broken\\\\\\\": \\\\\\\"negative calibration: WASM action replaced\\\\\\\" }\\\"\""
       }
-    ]
+    ],
+    "evidence_scope": "Generated headings/JSON API fixture only. Excluded from production DOM/pixel acceptance."
   },
   "remote_vs_desktop": {
     "desktop_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html",
@@ -2543,15 +2549,245 @@
         "pass": true,
         "problems": []
       }
-    ]
+    ],
+    "evidence_scope": "Generated headings/JSON API fixture only. Excluded from production DOM/pixel acceptance."
   },
   "external_acceptance": [
     "Actual front HEAD boot success and broken-loader browser fallback belong to controller integration.",
     "24 h phone and desktop shadow, cutover and listening acceptance remain unperformed."
   ],
   "artifact_versions": {
-    "behavior": "a99d4b03ca31",
-    "visual_pair": "a8fb743cdb0c",
-    "note": "Final source adds voice-stop fade scheduling; final API/original oracle and audio sample checks were repeated. API-driven visual screenshots precede this audio-only change."
+    "current_behavior_and_product_dom": "4d3c40ac1992",
+    "historical_api_only_visual": "a99d4b03ca31",
+    "synthesis_evidence": "unchanged from previously measured Rust synthesis code"
+  },
+  "production_dom_acceptance": {
+    "status": "pass",
+    "report": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-fase3/docs/verification/fase3/web-product-dom.json",
+    "crops": 80,
+    "pixel_differences": 0,
+    "baseline": "explicit web=off; no WASM resource on original pages",
+    "candidate": "web=shadow; actual 4d3c40ac1992 WASM",
+    "negative_calibration": {
+      "crops": 2,
+      "expected_failure": true
+    }
+  },
+  "parity_repairs": {
+    "report": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-fase3/docs/verification/fase3/web-parity-fixes.json",
+    "utf16_boundary": "preserves 300th UTF16 code unit 55357; find returns index0",
+    "audio_dispose": "settles active and stopping ended promises and removes owned ended listeners"
+  },
+  "production_computed_styles": {
+    "status": "pass",
+    "comparisons": 8,
+    "original": "explicit web=off, no WASM",
+    "candidate": "actual shadow4d3c40ac1992",
+    "checks": [
+      {
+        "report": "/home/someguy/codebase/0xJesus/ComandOS/.build/styles-product-session/remote-vs-desktop.json",
+        "evidence": {
+          "desktop_url": "http://127.0.0.1:7321/?__product=session&web=off",
+          "remote_url": "http://127.0.0.1:7321/?__product=session&web=shadow&__devwebterm=1",
+          "failures": 0,
+          "results": [
+            {
+              "width": 1400,
+              "selector": "#session-workspace-modal",
+              "remote_only": false,
+              "pass": true,
+              "problems": [],
+              "desktop_proof": {
+                "ready": false,
+                "wasm_url": null,
+                "actions": [
+                  "SessionConfig.choices",
+                  "SessionConfig.update",
+                  "SessionConfig.choices"
+                ]
+              },
+              "remote_proof": {
+                "ready": true,
+                "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+                "actions": [
+                  "SessionConfig.choices",
+                  "SessionConfig.update",
+                  "SessionConfig.choices"
+                ]
+              }
+            },
+            {
+              "width": 844,
+              "selector": "#session-workspace-modal",
+              "remote_only": false,
+              "pass": true,
+              "problems": [],
+              "desktop_proof": {
+                "ready": false,
+                "wasm_url": null,
+                "actions": [
+                  "SessionConfig.choices",
+                  "SessionConfig.update",
+                  "SessionConfig.choices"
+                ]
+              },
+              "remote_proof": {
+                "ready": true,
+                "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+                "actions": [
+                  "SessionConfig.choices",
+                  "SessionConfig.update",
+                  "SessionConfig.choices"
+                ]
+              }
+            },
+            {
+              "width": 390,
+              "selector": "#session-workspace-modal",
+              "remote_only": false,
+              "pass": true,
+              "problems": [],
+              "desktop_proof": {
+                "ready": false,
+                "wasm_url": null,
+                "actions": [
+                  "SessionConfig.choices",
+                  "SessionConfig.update",
+                  "SessionConfig.choices"
+                ]
+              },
+              "remote_proof": {
+                "ready": true,
+                "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+                "actions": [
+                  "SessionConfig.choices",
+                  "SessionConfig.update",
+                  "SessionConfig.choices"
+                ]
+              }
+            },
+            {
+              "width": 320,
+              "selector": "#session-workspace-modal",
+              "remote_only": false,
+              "pass": true,
+              "problems": [],
+              "desktop_proof": {
+                "ready": false,
+                "wasm_url": null,
+                "actions": [
+                  "SessionConfig.choices",
+                  "SessionConfig.update",
+                  "SessionConfig.choices"
+                ]
+              },
+              "remote_proof": {
+                "ready": true,
+                "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+                "actions": [
+                  "SessionConfig.choices",
+                  "SessionConfig.update",
+                  "SessionConfig.choices"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "report": "/home/someguy/codebase/0xJesus/ComandOS/.build/styles-product-push/remote-vs-desktop.json",
+        "evidence": {
+          "desktop_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=off",
+          "remote_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=shadow&__devwebterm=1",
+          "failures": 0,
+          "results": [
+            {
+              "width": 1400,
+              "selector": "#push-settings",
+              "remote_only": false,
+              "pass": true,
+              "problems": [],
+              "desktop_proof": {
+                "ready": false,
+                "wasm_url": null,
+                "actions": [
+                  "actual push enable/test"
+                ]
+              },
+              "remote_proof": {
+                "ready": true,
+                "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+                "actions": [
+                  "actual push enable/test"
+                ]
+              }
+            },
+            {
+              "width": 844,
+              "selector": "#push-settings",
+              "remote_only": false,
+              "pass": true,
+              "problems": [],
+              "desktop_proof": {
+                "ready": false,
+                "wasm_url": null,
+                "actions": [
+                  "actual push enable/test"
+                ]
+              },
+              "remote_proof": {
+                "ready": true,
+                "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+                "actions": [
+                  "actual push enable/test"
+                ]
+              }
+            },
+            {
+              "width": 390,
+              "selector": "#push-settings",
+              "remote_only": false,
+              "pass": true,
+              "problems": [],
+              "desktop_proof": {
+                "ready": false,
+                "wasm_url": null,
+                "actions": [
+                  "actual push enable/test"
+                ]
+              },
+              "remote_proof": {
+                "ready": true,
+                "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+                "actions": [
+                  "actual push enable/test"
+                ]
+              }
+            },
+            {
+              "width": 320,
+              "selector": "#push-settings",
+              "remote_only": false,
+              "pass": true,
+              "problems": [],
+              "desktop_proof": {
+                "ready": false,
+                "wasm_url": null,
+                "actions": [
+                  "actual push enable/test"
+                ]
+              },
+              "remote_proof": {
+                "ready": true,
+                "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+                "actions": [
+                  "actual push enable/test"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
   }
 }

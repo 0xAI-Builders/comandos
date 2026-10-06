@@ -85,21 +85,6 @@ fn audio_diff(args: &[String]) -> i32 {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::flag;
-
-    #[test]
-    fn flag_rejects_missing_values() {
-        let args = ["audio-diff", "--base", "--out", "x"]
-            .iter()
-            .map(|s| (*s).to_string())
-            .collect::<Vec<_>>();
-        assert_eq!(flag(&args, "--base"), None);
-        assert_eq!(flag(&args, "--out"), Some("x"));
-    }
-}
-
 fn behavior_diff(args: &[String]) -> i32 {
     let Some(base) = flag(args, "--base") else {
         return usage();
@@ -153,4 +138,19 @@ fn behavior_diff(args: &[String]) -> i32 {
     }
     println!("behavior-diff {}: wrote {out}", value["status"]);
     status
+}
+
+#[cfg(test)]
+mod tests {
+    use super::flag;
+
+    #[test]
+    fn flag_rejects_missing_values() {
+        let args = ["audio-diff", "--base", "--out", "x"]
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(flag(&args, "--base"), None);
+        assert_eq!(flag(&args, "--out"), Some("x"));
+    }
 }

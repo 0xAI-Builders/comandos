@@ -23,6 +23,10 @@
     {
       "name": "remembering the top line saves one debounced anchor patch",
       "ok": true
+    },
+    {
+      "name": "anchor keeps a lone surrogate at the 300 UTF16 unit boundary",
+      "ok": true
     }
   ],
   "push_settings": [
