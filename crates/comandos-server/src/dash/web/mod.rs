@@ -3,6 +3,7 @@ pub mod assets;
 pub mod compose;
 mod file_stamp;
 pub mod gate;
+pub mod markdown;
 pub mod registry;
 pub mod routes;
 pub mod status;
@@ -25,6 +26,7 @@ pub enum WebRoute {
     Index,
     Gate,
     Ready,
+    Markdown,
     Status,
     Asset(String),
 }
@@ -40,6 +42,7 @@ impl WebRoute {
             (&Method::GET, "/") | (&Method::GET, "/index.html") => Some(Self::Index),
             (&Method::GET, "/web/gate.js") => Some(Self::Gate),
             (&Method::POST, "/web/ready") => Some(Self::Ready),
+            (&Method::POST, "/web/markdown") => Some(Self::Markdown),
             (&Method::GET, "/web/status") => Some(Self::Status),
             (&Method::GET, p) if p.starts_with("/web/") => {
                 let rel = p.trim_start_matches("/web/");

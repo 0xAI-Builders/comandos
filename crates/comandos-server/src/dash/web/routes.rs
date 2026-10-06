@@ -16,6 +16,7 @@ pub async fn handle(
         WebRoute::Index => index(state, request).await,
         WebRoute::Gate => gate(state, request).await,
         WebRoute::Ready => ready(state, request),
+        WebRoute::Markdown => super::markdown::handle(request),
         WebRoute::Status => status_with_term(&state.web, state.term_control.status()),
         WebRoute::Asset(rel) => asset(state, &rel).await,
     }

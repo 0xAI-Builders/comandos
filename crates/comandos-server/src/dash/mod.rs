@@ -483,6 +483,10 @@ async fn handle(state: &DashState, request: Request) -> Result<Reply, HandlerErr
     if request.method == Method::POST && router::path_of(&request.target) == "/web/ready" {
         return web::routes::handle(state, web::WebRoute::Ready, &request).await;
     }
+    // Pure rendering only: no Native, store or mutation, including readonly shadow.
+    if request.method == Method::POST && router::path_of(&request.target) == "/web/markdown" {
+        return web::routes::handle(state, web::WebRoute::Markdown, &request).await;
+    }
     if state.config.shadow_readonly && request.method != Method::GET {
         return Reply::json(
             StatusCode::OK,

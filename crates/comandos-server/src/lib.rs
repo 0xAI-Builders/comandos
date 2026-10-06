@@ -374,6 +374,20 @@ async fn dispatch(
         }
     };
     let internal_producer = access::internal_producer(&policy_request, &expected);
+    if parts.method == Method::POST && parts.uri.path() == "/web/markdown" {
+        if !access::token_matches(
+            access::presented_token(&borrowed, &target).as_bytes(),
+            &expected,
+        ) {
+            return reject(401, "No autorizado", true);
+        }
+        if admission
+            .body_length
+            .is_some_and(|n| n > dash::web::markdown::MAX_INPUT_BYTES)
+        {
+            return reject(413, "texto demasiado largo", true);
+        }
+    }
     if method == access::Method::Get && !body.is_end_stream() {
         // No GET endpoint consumes a body. Closing prevents it being mistaken for
         // a subsequent keep-alive request; this is explicit wire hardening.
