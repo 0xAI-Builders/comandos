@@ -344,6 +344,40 @@ fn setup(home: &Path, out: &mut String) {
         }
     }
 }
+/// Replace only the first top-level notify string token. Parser spans preserve
+/// surrounding trivia, extra argv and unrelated fields byte for byte. Encode as
+/// TOML, then reparse and verify before the caller creates a backup or writes.
+fn migrate_notify(raw: &str, command: &str, native: &str) -> io::Result<String> {
+    if command == native {
+        return Ok(raw.to_owned());
+    }
+    let document = toml_edit::Document::parse(raw).map_err(io::Error::other)?;
+    let array = document
+        .get("notify")
+        .and_then(toml_edit::Item::as_array)
+        .ok_or_else(|| io::Error::other("notify no es una lista"))?;
+    let first = array
+        .get(0)
+        .filter(|value| value.as_str() == Some(command))
+        .ok_or_else(|| io::Error::other("notify no coincide con el comando leído"))?;
+    let span = first
+        .span()
+        .filter(|span| raw.get(span.clone()).is_some())
+        .ok_or_else(|| io::Error::other("notify no tiene span válido"))?;
+    let mut candidate = raw.to_owned();
+    candidate.replace_range(span, &toml_edit::Value::from(native).to_string());
+    let parsed: toml::Value = candidate.parse().map_err(io::Error::other)?;
+    let result = parsed
+        .get("notify")
+        .and_then(toml::Value::as_array)
+        .ok_or_else(|| io::Error::other("notify migrado no es una lista"))?;
+    if result.len() != array.len() || result.first().and_then(toml::Value::as_str) != Some(native) {
+        return Err(io::Error::other(
+            "notify migrado no coincide con el alias nativo",
+        ));
+    }
+    Ok(candidate)
+}
 fn setup_codex(home: &Path, out: &mut String) -> io::Result<()> {
     let cfg = home.join(".codex/config.toml");
     let raw = match fs::read_to_string(&cfg) {
@@ -359,11 +393,8 @@ fn setup_codex(home: &Path, out: &mut String) -> io::Result<()> {
             .and_then(toml::Value::as_str)
             .filter(|c| owned(c, "codex-notify.sh", home))
         {
-            save(
-                &cfg,
-                raw.replace(command, &script(home, "codex-notify.sh"))
-                    .as_bytes(),
-            )?;
+            let candidate = migrate_notify(&raw, command, &script(home, "codex-notify.sh"))?;
+            save(&cfg, candidate.as_bytes())?;
             ok(out, "codex: notify fallback ya configurado");
         } else {
             warn(

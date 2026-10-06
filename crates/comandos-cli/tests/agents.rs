@@ -806,3 +806,158 @@ fn status_matches_original_grep_markers_in_non_utf8_files() {
     assert_eq!(actual.status.code(), expected.status.code());
     assert_eq!(actual.stderr, expected.stderr);
 }
+
+fn review_setup_at(f: &Fixture, home: &Path) -> Output {
+    f.command(Path::new(env!("CARGO_BIN_EXE_comandos")))
+        .env("HOME", home)
+        .args(["agents", "setup"])
+        .output()
+        .unwrap()
+}
+fn review_backups(path: &Path) -> Vec<PathBuf> {
+    let prefix = format!(
+        "{}.bak-comandos-",
+        path.file_name().unwrap().to_string_lossy()
+    );
+    fs::read_dir(path.parent().unwrap())
+        .unwrap()
+        .filter_map(|entry| {
+            let p = entry.unwrap().path();
+            p.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with(&prefix)
+                .then_some(p)
+        })
+        .collect()
+}
+#[test]
+fn notify_migration_review_unknown_field_preserves_exact_unrelated_bytes() {
+    let f = Fixture::new(&["codex"]);
+    let raw = "notify = [\"/private/repo/adapters/codex-notify.sh\"]\n# reference /private/repo/adapters/codex-notify.sh\n[unrelated]\nkeep = \"/private/repo/adapters/codex-notify.sh\"\n";
+    seed(&f, ".codex/config.toml", raw);
+    let out = f.native(false, &["setup"]);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(out.stderr, b"");
+    let path = f.home().join(".codex/config.toml");
+    let actual = fs::read_to_string(&path).unwrap();
+    let parsed: toml::Value = actual.parse().unwrap();
+    assert_eq!(
+        parsed["notify"][0].as_str(),
+        f.home().join(".local/bin/codex-notify.sh").to_str()
+    );
+    assert_eq!(
+        actual.split_once('\n').unwrap().1,
+        raw.split_once('\n').unwrap().1
+    );
+    assert_eq!(
+        parsed["unrelated"]["keep"].as_str(),
+        Some("/private/repo/adapters/codex-notify.sh")
+    );
+    let backups = review_backups(&path);
+    assert_eq!(backups.len(), 1);
+    assert_eq!(fs::read(&backups[0]).unwrap(), raw.as_bytes());
+}
+#[test]
+fn notify_migration_review_quote_literal_remains_valid_for_apostrophe_home() {
+    let f = Fixture::new(&["codex"]);
+    let home = f.0.join("home's review");
+    fs::DirBuilder::new().mode(0o700).create(&home).unwrap();
+    fs::DirBuilder::new()
+        .mode(0o700)
+        .create(home.join(".codex"))
+        .unwrap();
+    let raw = "notify = ['/private/repo/adapters/codex-notify.sh']\nkeep = 42\n";
+    let path = home.join(".codex/config.toml");
+    fs::write(&path, raw).unwrap();
+    let out = review_setup_at(&f, &home);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(out.stderr, b"");
+    let actual = fs::read_to_string(&path).unwrap();
+    let parsed: toml::Value = actual
+        .parse()
+        .expect("migrated literal notify must stay valid TOML");
+    assert_eq!(
+        parsed["notify"][0].as_str(),
+        home.join(".local/bin/codex-notify.sh").to_str()
+    );
+    assert_eq!(actual.split_once('\n').unwrap().1, "keep = 42\n");
+    let backups = review_backups(&path);
+    assert_eq!(backups.len(), 1);
+    assert_eq!(fs::read(&backups[0]).unwrap(), raw.as_bytes());
+}
+#[test]
+fn notify_migration_review_escaped_command_migrates_and_is_backed_up() {
+    let f = Fixture::new(&["codex"]);
+    let raw = "notify = [\"/private/repo/adapters/codex-notify\\u002esh\"]\n";
+    seed(&f, ".codex/config.toml", raw);
+    let out = f.native(false, &["setup"]);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(out.stderr, b"");
+    let path = f.home().join(".codex/config.toml");
+    let parsed: toml::Value = fs::read_to_string(&path).unwrap().parse().unwrap();
+    assert_eq!(
+        parsed["notify"][0].as_str(),
+        f.home().join(".local/bin/codex-notify.sh").to_str()
+    );
+    let backups = review_backups(&path);
+    assert_eq!(backups.len(), 1);
+    assert_eq!(fs::read(&backups[0]).unwrap(), raw.as_bytes());
+}
+#[test]
+fn notify_migration_review_escaped_quoted_symlink_preserves_arguments_comments_and_backup() {
+    let f = Fixture::new(&["codex"]);
+    let raw = "\"noti\\u0066y\" = [\n  \"\"\"/private/repo/adapters/codex-notify\\u002esh\"\"\", # reference /private/repo/adapters/codex-notify.sh\n  '--foreign', \"/private/repo/adapters/codex-notify.sh\",\n]\n[unrelated]\nkeep = '/private/repo/adapters/codex-notify.sh'\n";
+    let target = f.0.join("config-target.toml");
+    fs::write(&target, raw).unwrap();
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o640)).unwrap();
+    fs::create_dir(f.home().join(".codex")).unwrap();
+    let path = f.home().join(".codex/config.toml");
+    symlink(&target, &path).unwrap();
+    let out = f.native(false, &["setup"]);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(out.stderr, b"");
+    assert_eq!(fs::read_link(&path).unwrap(), target);
+    assert_eq!(
+        fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+        0o640
+    );
+    let actual = fs::read_to_string(&path).unwrap();
+    let parsed: toml::Value = actual.parse().unwrap();
+    assert_eq!(
+        parsed["notify"][0].as_str(),
+        f.home().join(".local/bin/codex-notify.sh").to_str()
+    );
+    assert_eq!(parsed["notify"][1].as_str(), Some("--foreign"));
+    assert_eq!(
+        parsed["notify"][2].as_str(),
+        Some("/private/repo/adapters/codex-notify.sh")
+    );
+    assert_eq!(
+        actual.split_once(", # reference").unwrap().1,
+        raw.split_once(", # reference").unwrap().1
+    );
+    assert!(actual.starts_with("\"noti\\u0066y\" = [\n  "));
+    let backups = review_backups(&path);
+    assert_eq!(backups.len(), 1);
+    assert_eq!(fs::read(&backups[0]).unwrap(), raw.as_bytes());
+    assert_eq!(
+        fs::metadata(&backups[0]).unwrap().permissions().mode() & 0o777,
+        0o640
+    );
+    let bytes = fs::read(&target).unwrap();
+    let ino = {
+        use std::os::unix::fs::MetadataExt;
+        fs::metadata(&target).unwrap().ino()
+    };
+    assert_eq!(f.native(true, &["setup"]).status.code(), Some(0));
+    assert_eq!(fs::read(&target).unwrap(), bytes);
+    assert_eq!(
+        {
+            use std::os::unix::fs::MetadataExt;
+            fs::metadata(&target).unwrap().ino()
+        },
+        ino
+    );
+    assert_eq!(review_backups(&path).len(), 1);
+}
