@@ -21,10 +21,10 @@ fn main() {
         let id = msg.get("id").cloned();
         let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
         if method == "initialize" {
-            if let Ok(ms) = env::var("FAKE_INIT_DELAY_MS") {
-                if let Ok(ms) = ms.parse::<u64>() {
-                    thread::sleep(Duration::from_millis(ms));
-                }
+            if let Ok(ms) = env::var("FAKE_INIT_DELAY_MS")
+                && let Ok(ms) = ms.parse::<u64>()
+            {
+                thread::sleep(Duration::from_millis(ms));
             }
             if env::var("FAKE_INIT_FAIL").is_ok() {
                 break;

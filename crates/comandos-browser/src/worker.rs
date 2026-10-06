@@ -100,25 +100,20 @@ impl Worker {
         let pump = tokio::spawn(async move {
             let mut reader = BufReader::new(stdout);
             let mut buf = Vec::new();
-            loop {
-                match read_line(&mut reader, &mut buf).await {
-                    Ok(Line::Message(raw)) => {
-                        let Ok(message) = parse_slice(&raw) else {
-                            continue;
-                        };
-                        if let Some(id) = message.get("id").and_then(Value::as_i64) {
-                            if let Some(tx) = pump_pending.lock().await.remove(&id) {
-                                let _ = tx.send(Ok(message));
-                            }
-                        } else if message
-                            .get("method")
-                            .and_then(Value::as_str)
-                            .is_some_and(|method| method.starts_with("notifications/"))
-                        {
-                            let _ = pump_notify.try_send(message);
-                        }
+            while let Ok(Line::Message(raw)) = read_line(&mut reader, &mut buf).await {
+                let Ok(message) = parse_slice(&raw) else {
+                    continue;
+                };
+                if let Some(id) = message.get("id").and_then(Value::as_i64) {
+                    if let Some(tx) = pump_pending.lock().await.remove(&id) {
+                        let _ = tx.send(Ok(message));
                     }
-                    Ok(Line::TooLarge | Line::Eof) | Err(_) => break,
+                } else if message
+                    .get("method")
+                    .and_then(Value::as_str)
+                    .is_some_and(|method| method.starts_with("notifications/"))
+                {
+                    let _ = pump_notify.try_send(message);
                 }
             }
             for (_, tx) in std::mem::take(&mut *pump_pending.lock().await) {
@@ -273,11 +268,7 @@ fn remaining_live(proc_root: &Path, owned: &BTreeMap<i32, u64>) -> BTreeMap<i32,
 
 async fn drain_stderr<R: AsyncBufRead + Unpin>(reader: &mut R, ring: Arc<Mutex<VecDeque<String>>>) {
     let mut line = Vec::with_capacity(2048);
-    loop {
-        let available = match reader.fill_buf().await {
-            Ok(bytes) => bytes,
-            Err(_) => break,
-        };
+    while let Ok(available) = reader.fill_buf().await {
         if available.is_empty() {
             if !line.is_empty() {
                 push_stderr(&ring, &line).await;
