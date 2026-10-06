@@ -290,3 +290,35 @@ fn synchronized_update_timeout_releases_damage() {
     assert!(t.take_dirty(&mut lines) || lines.contains(&0));
     assert!(t.next_deadline().is_none());
 }
+
+#[test]
+fn bounded_multicolor_frame_cost() {
+    let (mut t, epoch) = engine(120, 40);
+    let mut input = String::new();
+    for line in 0..40 {
+        input.push_str(&format!("\x1b[{};1H\x1b[2m", line + 1));
+        for col in 0..120 {
+            input.push_str(if col % 2 == 0 {
+                "\x1b[38;2;255;0;0m"
+            } else {
+                "\x1b[31m"
+            });
+            input.push('x');
+        }
+    }
+    t.feed(input.as_bytes(), epoch);
+    let started = Instant::now();
+    let mut total = 0;
+    for _ in 0..5 {
+        for line in 0..40 {
+            total += plan(&t, line).len();
+        }
+    }
+    assert!(total >= 24_000);
+    eprintln!(
+        "five 120x40 mixed DIM frames: {:?}; ops={total}",
+        started.elapsed()
+    );
+    assert!(!t.fg_is_rgb(40, 0));
+    assert!(!t.fg_is_rgb(0, 120));
+}

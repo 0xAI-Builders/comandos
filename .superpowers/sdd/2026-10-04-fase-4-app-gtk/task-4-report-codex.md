@@ -27,3 +27,11 @@ RED: original T4 tests could not find the term module. Against the plan sample i
 Commands use existing /home/someguy/codebase/0xJesus/ComandOS/.build/target-fase4 and -j2. Tests invoke no GTK initialization, display server, browser, PTY, personal agent, service or user tmux socket. gtk_smoke is not executed. Pixel calibration against VTE remains the remote T12 gate and is not claimed by these pure tests.
 
 Next authorized task: T5 private PTY transport and size-settle logic, then T6 integration. Independent T4 review remains pending.
+
+## Ronda de revisión: coste por frame
+
+El reviewer detectó que `fg_is_rgb` buscaba desde el comienzo del viewport por cada celda y que `render_line` recorría el viewport por fila. Se sustituyeron por acceso directo a una fila, validando coordenadas de viewport y límites de almacenamiento antes del único `Index` requerido por Grid. Las columnas usan `get`; la cobertura de fondos se calcula en un pase por fila. La consulta de provenance cuesta O(1); el suplemento de fondos O(columnas), más la ordenación existente O(columnas log columnas), sin búsquedas cuadráticas por celda.
+
+Evidencia acotada en el mismo perfil debug y target: cinco frames 120×40 de texto DIM con provenance RGB/index alternada, 24.000 operaciones de pintura, pasaron de 3,564701825 s antes del cambio a 30,922212 ms después (aproximadamente 115×). El test verifica número de operaciones y coordenadas inválidas; imprime tiempo sin un umbral dependiente de carga de máquina. Los tests existentes cubren scrollback, colores inversos y fondos explícitos.
+
+Validación: term_paint 18/18; clippy comandos-app all-targets con -D warnings, fmt y diff-check pasan. No se lanzó GUI, Xvfb ni navegador. La fidelidad visual sigue pendiente del gate remoto T12.

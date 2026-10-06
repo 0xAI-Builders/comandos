@@ -2,7 +2,7 @@
 //! Fase 3 cambia una firma, solo cambia este archivo y quien use lo cambiado.
 use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::Line;
-use alacritty_terminal::term::cell::Flags;
+use alacritty_terminal::term::cell::{Cell, Flags};
 use alacritty_terminal::vte::ansi::{Color, NamedColor};
 pub use comandos_term::engine::{
     ClipboardTarget, Damage, Drained, Engine, GridSize, Modes, MouseMode, Palette,
@@ -91,27 +91,24 @@ impl TermEngine {
         render_row_into(&self.engine, line, &self.palette, &VTE_OPTS, out);
         // xterm drops backgrounds equal to the theme. Desktop opacity still
         // requires an opaque rectangle for explicit colors, including spaces.
-        let Some(point) = self.visible_line(line) else {
+        let Some(cells) = self.row_cells(line) else {
             return;
         };
-        for cell in self
-            .engine
-            .term()
-            .grid()
-            .display_iter()
-            .filter(|cell| cell.point.line == point)
-        {
-            let Ok(col) = u16::try_from(cell.point.column.0) else {
+        let mut covered = vec![false; cells.len()];
+        for (start, count, _) in &out.bg_runs {
+            let start = usize::from(*start);
+            let end = start.saturating_add(usize::from(*count)).min(covered.len());
+            if let Some(span) = covered.get_mut(start..end) {
+                span.fill(true);
+            }
+        }
+        for (column, cell) in cells.iter().enumerate() {
+            let Ok(col) = u16::try_from(column) else {
                 continue;
             };
-            let explicit = cell.cell.bg != Color::Named(NamedColor::Background)
-                || cell.cell.flags.contains(Flags::INVERSE);
-            if explicit
-                && !out
-                    .bg_runs
-                    .iter()
-                    .any(|(start, cells, _)| col >= *start && col < start.saturating_add(*cells))
-            {
+            let explicit = cell.bg != Color::Named(NamedColor::Background)
+                || cell.flags.contains(Flags::INVERSE);
+            if explicit && !covered.get(column).copied().unwrap_or(false) {
                 out.bg_runs.push((col, 1, self.palette.bg));
             }
         }
@@ -175,22 +172,27 @@ impl TermEngine {
         let offset = i32::try_from(self.engine.display_offset()).ok()?;
         Some(Line(line.checked_sub(offset)?))
     }
+    // Grid exposes Index only. Validate both viewport and storage bounds before
+    // accessing one row; callers then use checked slice access for columns.
+    #[allow(clippy::indexing_slicing)]
+    fn row_cells(&self, line: usize) -> Option<&[Cell]> {
+        let grid = self.engine.term().grid();
+        let point = self.visible_line(line)?;
+        if point < grid.topmost_line() || point > grid.bottommost_line() {
+            return None;
+        }
+        Some(&grid[point][..])
+    }
+
     /// El color de primer plano de la celda es RGB directo (VTE no lo atenúa).
     pub fn fg_is_rgb(&self, line: usize, col: u16) -> bool {
-        let grid = self.engine.term().grid();
-        let Some(point) = self.visible_line(line) else {
-            return false;
-        };
-        if usize::from(col) >= grid.columns() {
-            return false;
-        }
-        grid.display_iter()
-            .find(|cell| cell.point.line == point && cell.point.column.0 == usize::from(col))
+        self.row_cells(line)
+            .and_then(|cells| cells.get(usize::from(col)))
             .is_some_and(|cell| {
-                let color = if cell.cell.flags.contains(Flags::INVERSE) {
-                    cell.cell.bg
+                let color = if cell.flags.contains(Flags::INVERSE) {
+                    cell.bg
                 } else {
-                    cell.cell.fg
+                    cell.fg
                 };
                 matches!(color, Color::Spec(_))
             })
