@@ -38,3 +38,5 @@ ureq = { version = "=3.4.2", default-features = false }
 regex = "=1.13.1"
 nix = { version = "=0.31.3", default-features = false, features = ["fs", "signal", "process", "user"] }
 getrandom.workspace = true
+comandos-term = { path = "../comandos-term" }
+alacritty_terminal = { version = "=0.26.0", default-features = false }

@@ -8,4 +8,5 @@ pub mod config;
 pub mod guard;
 pub mod jobs;
 pub mod proc;
+pub mod term;
 pub mod tmux;
