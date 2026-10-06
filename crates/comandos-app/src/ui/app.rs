@@ -40,6 +40,12 @@ pub struct App {
     pub dash: DashClient,
     pub window: gtk::ApplicationWindow,
     english: bool,
+    modal_overlay: gtk::Overlay,
+    modal: RefCell<Option<app_t15::Modal>>,
+    modal_generation: Cell<u64>,
+    modal_idle: RefCell<Option<glib::SourceId>>,
+    last_ctrl_c: RefCell<BTreeMap<String, f64>>,
+    cleanup: Arc<dyn crate::agent_stop::CleanupService>,
     pub paned: gtk::Paned,
     pub notebook: gtk::Notebook,
     pub webview: webkit2gtk::WebView,
@@ -121,6 +127,7 @@ impl AppRuntime {
         self.app.closed.store(true, Ordering::Release);
         self.app.shutdown_protocol();
         self.app.shutdown_header();
+        self.app.close_modal();
         for source in self.sources {
             source.remove();
         }
@@ -492,6 +499,12 @@ impl App {
             config::ui_lang(cfg.hooks_dir(), std::env::var("LANG").ok().as_deref()) == "en";
         Rc::new(Self {
             english,
+            modal_overlay: gtk::Overlay::new(),
+            modal: RefCell::new(None),
+            modal_generation: Cell::new(0),
+            modal_idle: RefCell::new(None),
+            last_ctrl_c: RefCell::new(BTreeMap::new()),
+            cleanup: Arc::new(crate::agent_stop::NativeCleanup),
             cfg,
             tmux,
             guard,
@@ -839,7 +852,7 @@ impl App {
         let ended_key = key.to_string();
         let home = self.private_home();
         let sandbox = self.cfg.mode() == RunMode::Sandbox;
-        TermView::new(TermOptions {
+        let term = TermView::new(TermOptions {
             argv: self.tmux.attach_argv(key),
             cwd: home.clone(),
             session: Some(key.into()),
@@ -913,7 +926,9 @@ impl App {
             on_link: None,
             on_ssh_scroll: None,
         })
-        .map_err(|e| format!("{e:?}"))
+        .map_err(|e| format!("{e:?}"))?;
+        self.attach_term_keys(key, &term);
+        Ok(term)
     }
     fn add_tab(self: &Rc<Self>, key: &str, label: &str, attach: bool, error: Option<&str>) {
         if self.labels.borrow().contains_key(key) {
@@ -1870,10 +1885,12 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.pack_start(&app.header.bar, false, false, 0);
         content.pack_start(&paned, true, true, 0);
-        window.add(&content);
+        app.modal_overlay.add(&content);
+        window.add(&app.modal_overlay);
         app.install_foundation_handlers();
         ui::app_commands::install(&app);
         ui::header::install(&app);
+        app.install_keys();
         let bridge_source = ui::bridge::install(&app);
         let weak = Rc::downgrade(&app);
         app.workspace.on_resize(Rc::new(move |updates| {
@@ -2072,6 +2089,8 @@ fn parse_color(hex: &str) -> Option<[u8; 3]> {
 
 #[path = "app_t14.rs"]
 mod app_t14;
+#[path = "app_t15.rs"]
+mod app_t15;
 #[path = "app_diagnostics.rs"]
 mod diagnostics;
 #[path = "app_foundation.rs"]

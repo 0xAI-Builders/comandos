@@ -1,0 +1,82 @@
+#![allow(dead_code,unused_imports)]
+use std::{cell::{Cell,RefCell},rc::Rc};
+use comandos_app::ui::switcher::{Candidate,Kind};
+#[derive(Clone)] struct Row(i32); impl Row{fn index(&self)->i32{self.0}}
+#[derive(Default)] struct List{selected:Cell<Option<i32>>,count:Cell<i32>}
+impl List{fn selected_row(&self)->Option<Row>{self.selected.get().map(Row)}fn row_at_index(&self,i:i32)->Option<Row>{(i>=0&&i<self.count.get()).then_some(Row(i))}fn select_row(&self,r:Option<&Row>){self.selected.set(r.map(|r|r.0));}}
+struct Entry(RefCell<String>);impl Entry{fn text(&self)->String{self.0.borrow().clone()}}
+struct Panel{kind:Kind,list:List,rows:Rc<RefCell<Vec<Candidate>>>,entry:Option<Entry>,activate:Rc<dyn Fn(&Candidate)>,close:Rc<dyn Fn(&Candidate)>}
+
+extern crate gdk as native_gdk;
+mod gdk{pub use native_gdk::{keys,ModifierType,EventMask};pub type EventKey=crate::Event;}
+struct Event{key:native_gdk::keys::Key,mods:native_gdk::ModifierType}impl Event{fn keyval(&self)->native_gdk::keys::Key{self.key}fn state(&self)->native_gdk::ModifierType{self.mods}}
+use comandos_app::term::{engine::{TermEngine,Ime,Palette,KeyAction},keys::key_action};
+use std::{time::Instant,sync::{Arc,atomic::AtomicBool}};
+type AppKeyCallback=Rc<dyn Fn(&gdk::EventKey)->bool>;
+#[derive(Default)]struct Area{widget:Widget,callback:RefCell<Option<Rc<dyn Fn(&Area,&Event)->glib::Propagation>>>}
+impl Area{fn connect_key_press_event(&self,f:impl Fn(&Area,&Event)->glib::Propagation+'static){self.callback.replace(Some(Rc::new(f)));}fn queue_draw(&self){}fn emit(&self,e:&Event)->glib::Propagation{self.callback.borrow().as_ref().unwrap()(self,e)}}
+#[derive(Default)]struct IM(Cell<usize>);impl IM{fn filter_keypress(&self,_:&Event)->bool{self.0.set(self.0.get()+1);false}}
+struct Source(Rc<Cell<usize>>);impl Source{fn remove(self){self.0.set(self.0.get()+1);}}
+struct Model{pty:Option<()>,engine:TermEngine,ime:Ime}
+struct Inner{closed:Cell<bool>,app_key:RefCell<Option<AppKeyCallback>>,cleanup_cancelled:Arc<AtomicBool>,read_source:RefCell<Option<Source>>,write_source:RefCell<Option<Source>>,timer:RefCell<Option<Source>>,model:RefCell<Model>,area:Area,im:IM,writes:RefCell<Vec<Vec<u8>>>}
+impl Inner{fn send_event(&self,b:&[u8]){if !self.closed.get(){self.writes.borrow_mut().push(b.to_vec());}}}
+struct TermView{inner:Rc<Inner>}
+fn term_fixture()->(TermView,Rc<Cell<usize>>){let removed=Rc::new(Cell::new(0));let term=TermView{inner:Rc::new(Inner{closed:Cell::new(false),app_key:RefCell::new(None),cleanup_cancelled:Arc::new(AtomicBool::new(false)),read_source:RefCell::new(Some(Source(removed.clone()))),write_source:RefCell::new(Some(Source(removed.clone()))),timer:RefCell::new(Some(Source(removed.clone()))),model:RefCell::new(Model{pty:Some(()),engine:TermEngine::new(80,24,100,Palette::xterm_default([255;3],[0;3],[255;3],[80;3],[255;3]),true,Instant::now()),ime:Ime::default()}),area:Area::default(),im:IM::default(),writes:RefCell::new(Vec::new())})};connect(&term.inner);(term,removed)}
+fn verify_term(){
+ let(dropped,removed)=term_fixture();let cancellation=dropped.cleanup_cancellation();drop(dropped);assert!(cancellation.load(std::sync::atomic::Ordering::Acquire),"dropping terminal must cancel owned cleanup");assert_eq!(removed.get(),3);
+
+ let(term,removed)=term_fixture();let owner=Rc::new(Cell::new(0));let weak=Rc::downgrade(&owner);term.on_app_key(Rc::new(move|e|weak.upgrade().is_some_and(|o|{o.set(o.get()+1);*e.keyval()==*gdk::keys::constants::t})));
+ let event=|key,mods|Event{key,mods};assert_eq!(term.inner.area.emit(&event(gdk::keys::constants::t,gdk::ModifierType::CONTROL_MASK)),glib::Propagation::Stop);assert_eq!(owner.get(),1);assert_eq!(term.inner.im.0.get(),0);assert!(term.inner.writes.borrow().is_empty());
+ term.inner.area.emit(&event(gdk::keys::constants::c,gdk::ModifierType::CONTROL_MASK));assert_eq!(term.inner.writes.borrow().as_slice(),[vec![3]]);assert_eq!(term.inner.im.0.get(),1);
+ term.inner.area.emit(&event(gdk::keys::constants::a,gdk::ModifierType::empty()));assert_eq!(term.inner.writes.borrow().as_slice(),[vec![3],b"a".to_vec()]);
+ let weak=Rc::downgrade(&term.inner);term.on_app_key(Rc::new(move|_|{weak.upgrade().unwrap().app_key.borrow_mut().take();true}));assert_eq!(term.inner.area.emit(&event(gdk::keys::constants::c,gdk::ModifierType::CONTROL_MASK)),glib::Propagation::Stop);assert_eq!(term.inner.writes.borrow().len(),2);
+ let weak=Rc::downgrade(&owner);term.on_app_key(Rc::new(move|_|weak.upgrade().is_some()));drop(owner);term.inner.area.emit(&event(gdk::keys::constants::a,gdk::ModifierType::empty()));assert_eq!(term.inner.writes.borrow().len(),3);
+ term.shutdown();assert_eq!(removed.get(),3);assert!(term.cleanup_cancellation().load(std::sync::atomic::Ordering::Acquire));assert!(term.inner.app_key.borrow().is_none());assert!(term.inner.model.borrow().pty.is_none());term.inner.area.emit(&event(gdk::keys::constants::a,gdk::ModifierType::empty()));assert_eq!(term.inner.writes.borrow().len(),3);term.shutdown();assert_eq!(removed.get(),3);
+ let callback=term.inner.area.callback.borrow().as_ref().unwrap().clone();drop(term);assert_eq!(callback(&Area::default(),&event(gdk::keys::constants::a,gdk::ModifierType::empty())),glib::Propagation::Proceed);
+}
+
+use comandos_app::{agent_stop::{self,Cancellation,CleanupService},config::RunMode,ui};
+use comandos_app::ui::{keys::{KeyAction as AppKeyAction,KeyInput},app_commands::{Registry,Handler}};
+use serde_json::{Value,json};use std::{collections::BTreeMap,sync::{Mutex,atomic::Ordering}};
+mod gtk{pub type Widget=crate::Widget;pub type EventBox=crate::Widget;pub type Frame=crate::Widget;pub enum Align{Fill,Center}}
+thread_local!{static IDLES:RefCell<Vec<Box<dyn FnOnce()>>>=const{RefCell::new(Vec::new())};}
+fn idle_add_local_once(f:impl FnOnce()+'static)->Source{IDLES.with_borrow_mut(|v|v.push(Box::new(f)));Source(Rc::new(Cell::new(0)))}
+struct Style;impl Style{fn add_class(&self,_:&str){}}
+
+#[derive(Clone,Default)]struct Widget(Rc<Cell<usize>>,Rc<RefCell<Option<Rc<dyn Fn(&Widget,&())->glib::Propagation>>>>);impl Widget{fn new()->Self{Self::default()}fn style_context(&self)->Style{Style}fn set_visible_window(&self,_:bool){}fn set_halign(&self,_:gtk::Align){}fn set_valign(&self,_:gtk::Align){}fn set_hexpand(&self,_:bool){}fn set_vexpand(&self,_:bool){}fn add_events(&self,_:gdk::EventMask){}fn connect_button_press_event(&self,f:impl Fn(&Widget,&())->glib::Propagation+'static){self.1.replace(Some(Rc::new(f)));}fn add(&self,_:&Widget){}fn show_all(&self){}fn window(&self)->Option<Widget>{Some(self.clone())}fn raise(&self){self.0.set(self.0.get()+100);}fn upcast<T>(self)->Widget{self}fn grab_focus(&self){self.0.set(self.0.get()+1);}}impl PartialEq for Widget{fn eq(&self,o:&Self)->bool{Rc::ptr_eq(&self.0,&o.0)}}
+impl TermView{fn widget(&self)->Widget{self.inner.area.widget.clone()}fn child_tty(&self)->Option<String>{Some("/private/fake-tty".into())}fn selection_text(&self)->Option<String>{None}}
+#[derive(Default)]struct Window{focus:RefCell<Option<Widget>>,callback:RefCell<Option<Rc<dyn Fn(&Window,&Event)->glib::Propagation>>>}impl Window{fn connect_key_press_event(&self,f:impl Fn(&Window,&Event)->glib::Propagation+'static)->u32{self.callback.replace(Some(Rc::new(f)));1}fn focused_widget(&self)->Option<Widget>{self.focus.borrow().clone()}fn upcast(self)->Widget{Widget::default()}}impl Clone for Window{fn clone(&self)->Self{Self::default()}}
+#[derive(Default)]struct Status(RefCell<String>);impl Status{fn set_text(&self,s:&str){self.0.replace(s.into());}}
+struct Cfg(Cell<RunMode>);impl Cfg{fn mode(&self)->RunMode{self.0.get()}}
+struct Notebook(Cell<bool>);impl Notebook{fn is_visible(&self)->bool{self.0.get()}}
+#[derive(Default)]struct Drag(Cell<bool>);impl Drag{fn active(&self)->bool{self.0.get()}}
+struct Overlay(Rc<Cell<usize>>);impl Overlay{fn add_overlay(&self,_:&Widget){}fn remove(&self,_:&Widget){self.0.set(self.0.get()+1)}}
+struct Modal{generation:u64,kind:Kind,panel:Option<Rc<Panel>>,backdrop:Widget,wrapper:Widget}
+type CleanupResult=Result<Vec<(u32,agent_stop::Signal)>,String>;
+#[derive(Default)]struct Jobs(RefCell<Vec<(Box<dyn FnOnce()->CleanupResult>,Box<dyn FnOnce(CleanupResult)>)>>);impl Jobs{fn spawn(&self,work:impl FnOnce()->CleanupResult+Send+'static,done:impl FnOnce(CleanupResult)+'static){self.0.borrow_mut().push((Box::new(work),Box::new(done)));}fn drain(&self){let jobs=std::mem::take(&mut*self.0.borrow_mut());for(w,d)in jobs{d(w());}}}
+struct Tmux{socket:String,reads:Mutex<Vec<Vec<String>>>,output:Mutex<String>}
+struct Output{stdout:String}impl Output{fn ok(&self)->bool{true}}
+impl Tmux{fn read(&self,args:&[&str])->Result<Output,String>{let mut log=vec!["tmux".into(),"-S".into(),self.socket.clone()];log.extend(args.iter().map(|s|s.to_string()));self.reads.lock().unwrap().push(log);Ok(Output{stdout:self.output.lock().unwrap().clone()})}}
+#[derive(Default)]struct Cleanup(Mutex<Vec<u32>>);impl agent_stop::CleanupService for Cleanup{fn cleanup(&self,root:u32,_:&Value,_:RunMode,cancel:&agent_stop::StopCancellation)->CleanupResult{if !cancel.is_cancelled(){self.0.lock().unwrap().push(root);}Ok(vec![])}}
+struct App{closed:Arc<AtomicBool>,ready:Cell<bool>,handlers:Registry,window:Window,protocol_signals:RefCell<Vec<(Widget,u32)>>,terms:RefCell<BTreeMap<String,TermView>>,status:Status,cfg:Cfg,notebook:Notebook,drag_layer:Drag,last_ctrl_c:RefCell<BTreeMap<String,f64>>,mru_pages:RefCell<Vec<String>>,tmux:Arc<Tmux>,cleanup:Arc<Cleanup>,jobs:Jobs,modal:RefCell<Option<Modal>>,modal_generation:Cell<u64>,modal_idle:RefCell<Option<Source>>,modal_overlay:Overlay,events:RefCell<Vec<String>>,pages:RefCell<Vec<String>>}
+impl App{fn writable(&self)->bool{self.ready.get()&&!self.closed.load(Ordering::Acquire)&&self.cfg.mode()!=RunMode::Shadow}fn install_handler(&self,n:&'static str,h:Handler){self.handlers.install(n,h)}fn current_session(&self)->Option<String>{Some("fixture".into())}fn active_notebook(&self)->&Notebook{&self.notebook}fn cancel_drag(&self){self.drag_layer.0.set(false);}fn remember_current_navigation_page(&self){}fn close_tab(&self,key:&str,_:bool){self.events.borrow_mut().push(format!("close:{key}"));}fn open_tab(&self,key:&str,_:&str,_:&str,_:bool){self.events.borrow_mut().push(format!("open:{key}"));}fn select(&self,key:&str){self.events.borrow_mut().push(format!("select:{key}"));}fn navigation_index(&self,key:&str)->Option<usize>{self.pages.borrow().iter().position(|k|k==key)}fn refill_switcher(&self){self.events.borrow_mut().push("refill".into());}fn open_help(&self){self.events.borrow_mut().push("help".into());}fn open_switcher(&self,k:Kind){self.events.borrow_mut().push(format!("modal:{k:?}"));}}
+fn app_fixture()->Rc<App>{let private=std::env::temp_dir().join("fake-t15-private/socket");Rc::new(App{closed:Arc::new(AtomicBool::new(false)),ready:Cell::new(true),handlers:Registry::default(),window:Window::default(),protocol_signals:RefCell::new(Vec::new()),terms:RefCell::new(BTreeMap::new()),status:Status::default(),cfg:Cfg(Cell::new(RunMode::Sandbox)),notebook:Notebook(Cell::new(true)),drag_layer:Drag::default(),last_ctrl_c:RefCell::new(BTreeMap::new()),mru_pages:RefCell::new(Vec::new()),tmux:Arc::new(Tmux{socket:private.display().to_string(),reads:Mutex::new(Vec::new()),output:Mutex::new("/private/fake-tty|root|0|0|10".into())}),cleanup:Arc::new(Cleanup::default()),jobs:Jobs::default(),modal:RefCell::new(None),modal_generation:Cell::new(4),modal_idle:RefCell::new(None),modal_overlay:Overlay(Rc::new(Cell::new(0))),events:RefCell::new(Vec::new()),pages:RefCell::new(vec!["fixture".into()])})}
+fn verify_app(){
+ let app=app_fixture();app.install_keys();for(name,target)in[("help","T15.help"),("open_switcher","T15.switcher"),("tabs_overview","T15.overview")]{let weak=Rc::downgrade(&app);app.handlers.install(name,Rc::new(move|v|weak.upgrade().unwrap().handlers.invoke(target,v)));}app.handlers.invoke("T15.help",&json!({})).unwrap();app.handlers.invoke("T15.switcher",&json!({})).unwrap();app.handlers.invoke("T15.overview",&json!({})).unwrap();assert_eq!(app.events.borrow().as_slice(),["help","modal:Switcher","modal:Overview"]);assert_eq!(app.protocol_signals.borrow().len(),1);
+ let(term,_)=term_fixture();app.attach_term_keys("fixture",&term);app.terms.borrow_mut().insert("fixture".into(),term);
+ let widget=app.terms.borrow().get("fixture").unwrap().widget();app.window.focus.replace(Some(widget));let before=app.events.borrow().len();let event=Event{key:gdk::keys::constants::F1,mods:gdk::ModifierType::empty()};assert_eq!(app.window.callback.borrow().as_ref().unwrap()(&app.window,&event),glib::Propagation::Proceed);assert_eq!(app.events.borrow().len(),before,"window must skip its terminal hook");app.window.focus.replace(None);assert_eq!(app.window.callback.borrow().as_ref().unwrap()(&app.window,&event),glib::Propagation::Stop);assert_eq!(app.events.borrow().last().unwrap(),"help");
+ app.modal.replace(Some(Modal{generation:4,kind:Kind::Help,panel:None,backdrop:Widget::default(),wrapper:Widget::default()}));assert!(app.modal_key(*gdk::keys::constants::question,false));assert!(app.modal.borrow().is_none());app.modal_overlay.0.set(0);
+
+ let mut e=KeyInput::new(*gdk::keys::constants::c);e.control=true;e.terminal=true;e.has_term=true;assert!(!app.execute_key(e,Some("fixture"),1.));assert!(app.jobs.0.borrow().is_empty());assert!(!app.execute_key(e,Some("fixture"),1.2));app.jobs.drain();assert_eq!(*app.cleanup.0.lock().unwrap(),[10]);assert_eq!(app.tmux.reads.lock().unwrap()[0][..3],["tmux","-S",app.tmux.socket.as_str()]);
+ e.selection=true;assert!(app.execute_key(e,Some("fixture"),1.3));assert!(app.last_ctrl_c.borrow().is_empty());assert!(app.status.0.borrow().contains("MissingConsumer"));
+ app.arm_agent_cleanup("fixture");app.terms.borrow().get("fixture").unwrap().shutdown();app.jobs.drain();assert_eq!(app.tmux.reads.lock().unwrap().len(),1);
+ let row=Candidate{label:"fake".into(),key:"fixture".into(),state:"".into(),open:true};let(activate,close)=actions(&app,4);activate(&row);close(&row);assert!(app.events.borrow().iter().all(|e|!e.starts_with("select:")&&!e.starts_with("close:")),"callbacks from absent/closed modal must be stale");
+ app.modal.replace(Some(Modal{generation:4,kind:Kind::Switcher,panel:None,backdrop:Widget::default(),wrapper:Widget::default()}));close(&row);assert_eq!(app.events.borrow().last().unwrap(),"refill");app.pages.borrow_mut().clear();let before=app.events.borrow().len();close(&row);activate(&row);assert_eq!(app.events.borrow().len(),before,"stale open-page row");app.pages.borrow_mut().push("fixture".into());activate(&row);assert_eq!(app.events.borrow().last().unwrap(),"select:fixture");assert!(app.modal.borrow().is_none());assert_eq!(app.modal_overlay.0.get(),2);let before=app.events.borrow().len();activate(&row);close(&row);assert_eq!(app.events.borrow().len(),before);
+
+ let frame=Widget::default();app.mount_modal(&frame,Kind::Help,None);let backdrop=app.modal.borrow().as_ref().unwrap().backdrop.clone();let old=backdrop.1.borrow().as_ref().unwrap().clone();assert_eq!(backdrop.0.get(),100);IDLES.with_borrow_mut(|v|{for f in std::mem::take(v){f();}});assert_eq!(backdrop.0.get(),200);assert!(app.modal_idle.borrow().is_none());assert_eq!(old(&backdrop,&()),glib::Propagation::Stop);assert!(app.modal.borrow().is_none());
+ app.mount_modal(&frame,Kind::Help,None);let generation=app.modal.borrow().as_ref().unwrap().generation;old(&backdrop,&());assert_eq!(app.modal.borrow().as_ref().unwrap().generation,generation,"stale backdrop must not dismiss new modal");assert!(app.modal_key(*gdk::keys::constants::Escape,false));assert!(app.modal_idle.borrow().is_none());IDLES.with_borrow_mut(|v|{for f in std::mem::take(v){f();}});
+ app.cfg.0.set(RunMode::Shadow);assert!(app.handlers.invoke("T15.help",&json!({})).is_err());assert!(app.execute_key(e,Some("fixture"),2.));assert_eq!(app.tmux.reads.lock().unwrap().len(),1);app.closed.store(true,Ordering::Release);app.drag_layer.0.set(true);let escape=Event{key:gdk::keys::constants::Escape,mods:gdk::ModifierType::empty()};assert!(!app.handle_key(&escape,Some("fixture")));assert!(app.drag_layer.active(),"closed callback must not mutate drag");drop(app);
+}
+
+struct Click(i32);impl Click{fn connect_row_activated(&self,f:impl Fn(&Click,&Row)+'static){f(self,&Row(self.0));}}
+fn verify_click(){let rows=Rc::new(RefCell::new(vec![Candidate{label:"fake".into(),key:"fake".into(),state:"".into(),open:true}]));let copy=rows.clone();click(&rows,Rc::new(move|_|copy.borrow_mut().clear()),0);assert!(rows.borrow().is_empty());}

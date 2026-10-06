@@ -365,6 +365,7 @@ dependencies = [
  "pangocairo",
  "pty-process",
  "regex",
+ "rustix",
  "serde_json",
  "sha2",
  "ureq",

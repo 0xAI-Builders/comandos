@@ -4,6 +4,7 @@
     test,
     allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
 )]
+pub mod agent_stop;
 pub mod config;
 pub mod dash_client;
 pub mod fixture;

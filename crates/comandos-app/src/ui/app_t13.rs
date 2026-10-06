@@ -185,7 +185,7 @@ impl App {
             self.workspace.widget()
         }
     }
-    fn navigation_index(&self, key: &str) -> Option<u32> {
+    pub(super) fn navigation_index(&self, key: &str) -> Option<u32> {
         if self.workspace_doc.borrow().is_null() {
             self.strip.borrow().page_index(key)
         } else {

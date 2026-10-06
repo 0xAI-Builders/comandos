@@ -21,6 +21,7 @@ use std::{
 pub type TextCallback = Rc<dyn Fn(&str)>;
 pub type ExitCallback = Rc<dyn Fn(i32)>;
 pub type ScrollCallback = Rc<dyn Fn(&str, i32, u16, u16)>;
+pub type AppKeyCallback = Rc<dyn Fn(&gdk::EventKey) -> bool>;
 pub type ContextCallback = Rc<dyn Fn(&gdk::EventButton, (u16, u16))>;
 pub struct TermOptions {
     pub argv: Vec<String>,
@@ -84,6 +85,8 @@ struct Inner {
     timer: RefCell<Option<SourceId>>,
     closed: Cell<bool>,
     context_menu: RefCell<Option<ContextCallback>>,
+    app_key: RefCell<Option<AppKeyCallback>>,
+    cleanup_cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 pub struct TermView {
     inner: Rc<Inner>,
@@ -163,6 +166,8 @@ impl TermView {
             timer: RefCell::new(None),
             closed: Cell::new(false),
             context_menu: RefCell::new(None),
+            app_key: RefCell::new(None),
+            cleanup_cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         });
         inner.configure_font();
         connect_events(&inner);
@@ -175,6 +180,10 @@ impl TermView {
     }
     pub fn shutdown(&self) {
         self.inner.closed.set(true);
+        self.inner
+            .cleanup_cancelled
+            .store(true, std::sync::atomic::Ordering::Release);
+        self.inner.app_key.borrow_mut().take();
         for source in [
             &self.inner.read_source,
             &self.inner.write_source,
@@ -185,6 +194,12 @@ impl TermView {
             }
         }
         self.inner.model.borrow_mut().pty.take();
+    }
+    pub fn on_app_key(&self, callback: AppKeyCallback) {
+        *self.inner.app_key.borrow_mut() = Some(callback);
+    }
+    pub fn cleanup_cancellation(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+        self.inner.cleanup_cancelled.clone()
     }
     pub fn on_context_menu(&self, callback: ContextCallback) {
         *self.inner.context_menu.borrow_mut() = Some(callback);
@@ -269,6 +284,13 @@ impl TermView {
     }
 }
 impl Inner {
+    fn dispatch_app_key(&self, event: &gdk::EventKey) -> bool {
+        if self.closed.get() {
+            return false;
+        }
+        let callback = self.app_key.borrow().clone();
+        callback.is_some_and(|callback| callback(event))
+    }
     fn ms(&self) -> u64 {
         u64::try_from(self.epoch.elapsed().as_millis()).unwrap_or(u64::MAX)
     }
@@ -666,6 +688,9 @@ impl Inner {
 impl Drop for Inner {
     fn drop(&mut self) {
         self.closed.set(true);
+        self.cleanup_cancelled
+            .store(true, std::sync::atomic::Ordering::Release);
+        self.app_key.get_mut().take();
         for source in [
             &mut self.read_source,
             &mut self.write_source,
@@ -808,6 +833,9 @@ fn connect_events(inner: &Rc<Inner>) {
         let Some(inner) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
+        if inner.dispatch_app_key(event) {
+            return glib::Propagation::Stop;
+        }
         if inner.im.filter_keypress(event) {
             return glib::Propagation::Stop;
         }

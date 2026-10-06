@@ -120,7 +120,7 @@ impl App {
         ] {
             widgets.push(layout_dump::owned_widget(window, id, role, widget, None));
         }
-        if let Some(content) = window.child() {
+        if let Some(content) = self.modal_overlay.child() {
             widgets.push(layout_dump::owned_widget(
                 window,
                 "content-root",
