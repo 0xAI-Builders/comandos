@@ -61,7 +61,7 @@ fn claude_sources(
     servers.extend(c::object(&project["mcpServers"]));
     Ok(servers)
 }
-fn codex_configs(home: &Path) -> Result<Vec<Value>> {
+pub(crate) fn codex_configs(home: &Path) -> Result<Vec<Value>> {
     let mut errors = vec![];
     let data = c::read_config(&home.join("config.toml"), &mut errors, "codex-user");
     if !errors.is_empty() {
@@ -71,7 +71,7 @@ fn codex_configs(home: &Path) -> Result<Vec<Value>> {
     }
     Ok(vec![data])
 }
-fn overrides(configs: &[Value]) -> Vec<Value> {
+pub(crate) fn overrides(configs: &[Value]) -> Vec<Value> {
     let mut out = vec![];
     for cfg in configs {
         if let Some(a) = cfg["skills"]["config"].as_array() {
