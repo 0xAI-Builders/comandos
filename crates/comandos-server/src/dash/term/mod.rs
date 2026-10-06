@@ -6,3 +6,4 @@ pub mod replay;
 pub mod routes;
 pub use routes::TermMode;
 pub mod compat;
+pub mod lifecycle;

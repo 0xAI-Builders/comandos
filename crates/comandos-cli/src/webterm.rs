@@ -226,7 +226,36 @@ pub fn run_with(
     let front = p.get(o.dashboard, "/term/token").filter(|v| {
         v.body == r#"{"token":""}"# && matches!(v.mode.as_deref(), Some("ttyd" | "native"))
     });
-    let owned = |port: u16| front.as_ref().is_some_and(|f| f.ports.contains(&port));
+    // Configured ownership survives a frontend restart; probing alone races ttyd.
+    let configured = std::fs::read(comandos_server::dash::term::lifecycle::mode_file(&o.home))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .filter(|v| {
+            matches!(
+                v.get("mode").and_then(serde_json::Value::as_str),
+                Some("ttyd" | "native")
+            )
+        });
+    let configured_ports: Vec<u16> = configured
+        .as_ref()
+        .and_then(|v| v.get("ports"))
+        .and_then(serde_json::Value::as_array)
+        .map(|v| {
+            v.iter()
+                .filter_map(|p| {
+                    p.as_u64()
+                        .and_then(|p| u16::try_from(p).ok())
+                        .filter(|p| *p != 0)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let owned = |port: u16| {
+        configured_ports.contains(&port) || front.as_ref().is_some_and(|f| f.ports.contains(&port))
+    };
+    if configured.is_some() {
+        enabled(o)?;
+    }
     let launch = [
         (o.primary, false, "cc-webterm"),
         (o.path, true, "cc-webterm-path"),

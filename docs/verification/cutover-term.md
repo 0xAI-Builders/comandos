@@ -42,3 +42,19 @@ sin cambios y Pss con cuatro terminales dentro del presupuesto aprobado.
 Para revertir, retirar únicamente ese override, recargar systemd, reiniciar el
 frente y restaurar los enlaces de la release registrada. Ejecutar el controlador
 legacy de terminales desde su ruta absoluta verificada. No matar tmux ni sesiones.
+
+El modo configurado se publica también en
+`/home/someguy/.claude/hooks/webterm-mode.json`; el CLI lo usa durante reinicios,
+cuando 4777 todavía no responde. El interruptor real sigue siendo
+`/home/someguy/.claude/hooks/webterm-enabled`: eliminarlo cierra compat y las
+terminales del frente, y crearlo permite reabrir los puertos. Los fallos bind no
+paran HTTP y aparecen en `/web/status`; los puertos anunciados son solo los
+realmente enlazados. Antes del corte verificar esas transiciones con las rutas
+remotas integradas de fase2f, aún no fusionadas aquí.
+
+Los PTY de producción exigen `systemd-run --user --scope --collect --quiet`:
+attach y shell libre quedan bajo el gestor del usuario. Si el launcher falta,
+se rechaza la creación del PTY; no se lanza fuera del scope. La interacción se
+verificó con un launcher Rust privado que valida argumentos y ejecuta solo tmux
+con `-S` privado o `/bin/sh` bajo HOME temporal. No se ejecutó un scope real del
+usuario durante desarrollo; ese gate de cgroup queda para el controlador.

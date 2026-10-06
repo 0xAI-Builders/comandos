@@ -283,3 +283,36 @@ fn real_http_probe_reads_exact_listener_claims() {
     assert_eq!(response.body, r#"{"token":""}"#);
     task.join().unwrap();
 }
+
+#[test]
+fn persisted_native_mode_avoids_restart_race_when_front_probe_is_down() {
+    let home = Home::new();
+    std::fs::write(
+        home.0.join(".claude/hooks/webterm-mode.json"),
+        br#"{"mode":"native","ports":[4780,4779]}"#,
+    )
+    .unwrap();
+    let runner = Fake::default();
+    assert_eq!(
+        webterm::run_with(
+            &[],
+            &Options::for_home(&home.0),
+            &runner,
+            &Front {
+                mode: None,
+                ports: vec![]
+            },
+            &mut vec![]
+        )
+        .unwrap(),
+        0
+    );
+    assert!(
+        !runner
+            .calls
+            .borrow()
+            .iter()
+            .any(|(p, _)| p == "systemd-run")
+    );
+    assert!(home.0.join(".claude/hooks/webterm-enabled").is_file());
+}

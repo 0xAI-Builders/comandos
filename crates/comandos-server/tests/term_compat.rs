@@ -24,6 +24,7 @@ async fn profiles_confine_routes_rewrite_ws_and_hold_port() {
         let own = home.root.join("home");
         std::fs::create_dir_all(own.join(".claude/hooks/dash")).unwrap();
         std::fs::write(dash::token_path(&own), b"t0k").unwrap();
+        std::fs::write(own.join(".claude/hooks/webterm-enabled"), b"").unwrap();
         std::fs::write(own.join(".claude/hooks/dash/term.html"), b"exact-page").unwrap();
         std::fs::write(home.root.join("default.bin"), b"compat-replay").unwrap();
         let mut cfg = dash::parse_args(&[], &own, None).unwrap();
@@ -36,6 +37,7 @@ async fn profiles_confine_routes_rewrite_ws_and_hold_port() {
             asset_exists: Arc::new(|_| false),
             native: None,
             term_target: TmuxTarget::Private(home.root.clone()),
+            term_control: Arc::new(dash::term::lifecycle::Control::new(&own)),
         });
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -87,21 +89,89 @@ async fn profiles_confine_routes_rewrite_ws_and_hold_port() {
     }
 }
 #[tokio::test]
-async fn compat_bind_failure_prevents_front_start() {
+async fn compat_bind_failure_keeps_front_live_and_enablement_releases_and_rebinds_port() {
     let home = TestHome::new();
+    let own = home.root.join("home");
+    std::fs::create_dir_all(own.join(".claude/hooks")).unwrap();
+    std::fs::write(own.join(".claude/hooks/webterm-enabled"), b"").unwrap();
     let held = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = held.local_addr().unwrap().port();
     let front = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let mut cfg = dash::parse_args(&[], &home.root, None).unwrap();
+    let address = front.local_addr().unwrap();
+    let mut cfg = dash::parse_args(&[], &own, None).unwrap();
+    cfg.token = b"t0k".to_vec();
     cfg.native = false;
     cfg.term = TermMode::Ttyd;
-    cfg.webterm_compat = vec![held.local_addr().unwrap().port()];
-    cfg.port = front.local_addr().unwrap().port();
-    let (_stop, rx) = watch::channel(false);
-    assert_eq!(
-        dash::serve_with(front, cfg, None, rx)
-            .await
-            .unwrap_err()
-            .kind(),
-        std::io::ErrorKind::AddrInUse
-    );
+    cfg.webterm_compat = vec![port];
+    cfg.port = address.port();
+    let (stop, rx) = watch::channel(false);
+    let task = tokio::spawn(dash::serve_with(front, cfg, None, rx));
+    let http = || async {
+        let mut s = TcpStream::connect(address).await.unwrap();
+        s.write_all(
+            format!("GET /web/status HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n")
+                .as_bytes(),
+        )
+        .await
+        .unwrap();
+        let mut b = Vec::new();
+        s.read_to_end(&mut b).await.unwrap();
+        String::from_utf8(b).unwrap()
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            let response = http().await;
+            if response.contains("address in use") {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(!task.is_finished());
+    drop(held);
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            if TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port))
+                .await
+                .is_ok()
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    std::fs::remove_file(own.join(".claude/hooks/webterm-enabled")).unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            if TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
+                .await
+                .is_ok()
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    std::fs::write(own.join(".claude/hooks/webterm-enabled"), b"").unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            if TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port))
+                .await
+                .is_ok()
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    stop.send(true).unwrap();
+    task.await.unwrap().unwrap();
 }

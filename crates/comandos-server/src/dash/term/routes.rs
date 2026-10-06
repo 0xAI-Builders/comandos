@@ -95,8 +95,8 @@ pub async fn http_route(
         http::HeaderValue::from_static(state.config.term.name()),
     );
     let ports = state
-        .config
-        .webterm_compat
+        .term_control
+        .ports()
         .iter()
         .map(u16::to_string)
         .collect::<Vec<_>>()
@@ -118,6 +118,7 @@ async fn close(socket: &mut crate::ws::WsStream, code: CloseCode, reason: &'stat
 }
 pub fn ws_route(state: Arc<DashState>) -> WsRoute {
     let mode = state.config.term;
+    let control = state.term_control.clone();
     let handler: WsHandler = Arc::new(move |request, mut socket| {
         let state = state.clone();
         Box::pin(async move {
@@ -151,6 +152,10 @@ pub fn ws_route(state: Arc<DashState>) -> WsRoute {
                 }
             }
             let mut shutdown = request.shutdown;
+            let mut enabled = state.term_control.subscribe();
+            if !state.term_control.enabled() {
+                return;
+            }
             if *shutdown.borrow() {
                 return;
             }
@@ -167,6 +172,7 @@ pub fn ws_route(state: Arc<DashState>) -> WsRoute {
             };
             let init = tokio::select! {
                 _=shutdown.changed()=>return,
+                _=enabled.changed()=>return,
                 result=tokio::time::timeout(Duration::from_secs(10),receive)=>result.unwrap_or(None),
             };
             let Some(init) = init else {
@@ -189,23 +195,26 @@ pub fn ws_route(state: Arc<DashState>) -> WsRoute {
                     session,
                 }
             };
-            if let Err(error) = run_bridge(
-                socket,
-                dialect,
-                init,
-                source,
-                BridgeLimits::default(),
-                shutdown,
-            )
-            .await
-            {
-                eprintln!("comandos terminal: bridge {}", error.kind());
+            let (stop, rx) = tokio::sync::watch::channel(false);
+
+            if !state.term_control.enabled() {
+                let _ = stop.send(true);
+            }
+            let bridge = run_bridge(socket, dialect, init, source, BridgeLimits::default(), rx);
+            tokio::pin!(bridge);
+            let mut stopping = false;
+            loop {
+                tokio::select! {
+                    result=&mut bridge=>{if let Err(error)=result{eprintln!("comandos terminal: bridge {}",error.kind());}break},
+                    _=shutdown.changed(),if !stopping=>{let _=stop.send(true);stopping=true;},
+                    _=enabled.changed(),if !stopping=>{if !*enabled.borrow(){let _=stop.send(true);stopping=true;}},
+                }
             }
         })
     });
     WsRoute::new(
         Arc::new(move |path| {
-            if path != "/term/ws" {
+            if path != "/term/ws" || !control.enabled() {
                 None
             } else {
                 match mode {
@@ -219,9 +228,9 @@ pub fn ws_route(state: Arc<DashState>) -> WsRoute {
     )
     .with_admission(Arc::new(|protocol| {
         if protocol == Some("tty") {
-            WsAdmission::HandlerToken
+            WsAdmission::HandlerTokenOrigin
         } else {
-            WsAdmission::Dashboard
+            WsAdmission::DashboardTokenOrigin
         }
     }))
 }

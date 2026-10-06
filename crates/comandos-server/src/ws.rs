@@ -26,6 +26,10 @@ pub enum WsAdmission {
     Dashboard,
     /// Transport always checks Host/Origin; handler must authenticate before effects.
     HandlerToken,
+    /// Terminal application token with mandatory same-host Origin.
+    HandlerTokenOrigin,
+    /// Mandatory same-host Origin and dashboard token, including loopback.
+    DashboardTokenOrigin,
 }
 pub type WsAccepts = Arc<dyn Fn(&str) -> Option<&'static [&'static str]> + Send + Sync>;
 pub type WsAdmissionSelector = Arc<dyn Fn(Option<&'static str>) -> WsAdmission + Send + Sync>;

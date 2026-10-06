@@ -334,6 +334,7 @@ pub struct DashState {
     pub asset_exists: AssetExists,
     pub native: Option<Arc<native::Native>>,
     pub term_target: term::attach::TmuxTarget,
+    pub term_control: Arc<term::lifecycle::Control>,
 }
 
 pub fn handler(state: Arc<DashState>) -> Handler {
@@ -344,11 +345,21 @@ pub fn handler(state: Arc<DashState>) -> Handler {
 }
 
 async fn handle(state: &DashState, request: Request) -> Result<Reply, HandlerError> {
+    if request.method == Method::GET && router::path_of(&request.target) == "/web/status" {
+        return term::lifecycle::reply_status(state, &request);
+    }
     if state.config.shadow_readonly && request.method != Method::GET {
         return Reply::json(
             StatusCode::OK,
             &serde_json::json!({"ok":true,"shadow":true}),
         );
+    }
+    if state.config.term != term::TermMode::Off
+        && !state.term_control.enabled()
+        && (router::path_of(&request.target) == "/term"
+            || router::path_of(&request.target).starts_with("/term/"))
+    {
+        return not_found();
     }
     if state.config.term != term::TermMode::Off
         && let Some(route) = term::routes::route(&request.method, &request.target)
@@ -438,11 +449,13 @@ fn assemble(
         o.legacy_token = cfg.token.clone();
         Arc::new(native::Native::new(o))
     });
+    let term_control = Arc::new(term::lifecycle::Control::new(&cfg.home));
     let state = Arc::new(DashState {
         config: cfg,
         asset_exists: asset_exists.clone(),
         native: native.clone(),
         term_target,
+        term_control,
     });
     let config = Config {
         websocket: (state.config.term != term::TermMode::Off)
@@ -469,16 +482,7 @@ pub async fn serve_with(
     shutdown: watch::Receiver<bool>,
 ) -> io::Result<()> {
     validate_term(&cfg).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-    let ports = cfg.webterm_compat.clone();
-    let mut listeners = Vec::new();
-    for port in ports {
-        let profile = if port == 4779 {
-            term::compat::CompatProfile::Plain
-        } else {
-            term::compat::CompatProfile::Path
-        };
-        listeners.push((bind(port).await?, profile));
-    }
+    term::lifecycle::persist(&cfg)?;
     let ((config, native), state) = assemble(cfg, opts);
     if let Some(native) = &native {
         // Abre la base antes de atender: la primera petición no paga la migración.
@@ -487,14 +491,7 @@ pub async fn serve_with(
     let (stop, stop_rx) = watch::channel(*shutdown.borrow());
     let mut tasks = tokio::task::JoinSet::new();
     tasks.spawn(crate::serve(listener, config, stop_rx.clone()));
-    for (listener, profile) in listeners {
-        tasks.spawn(term::compat::serve_listener(
-            listener,
-            profile,
-            state.clone(),
-            stop_rx.clone(),
-        ));
-    }
+    tasks.spawn(term::lifecycle::run(state.clone(), stop_rx.clone()));
     let mut shutdown = shutdown;
     let mut served = Ok(());
     tokio::select! {

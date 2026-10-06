@@ -885,3 +885,97 @@ async fn selector_ctrl_u_ctrl_w_and_ctrl_c_do_not_open_wrong_shell() {
     assert_eq!(tmux.clients(), 0);
     assert!(tmux.tmux(&["has-session", "-t", "=t1"]).status.success());
 }
+#[tokio::test]
+async fn scoped_private_attach_and_free_shell_preserve_interaction_and_reap() {
+    use comandos_server::dash::term::attach::TmuxTarget;
+    let Some(tmux) = private_tmux::PrivateTmux::start(&["t1"]) else {
+        return;
+    };
+    let source = tmux.home.root.join("scope_fixture.rs");
+    let binary = tmux.home.root.join("scope-fixture");
+    std::fs::write(&source,r#"use std::{env,fs,process::Command,os::unix::process::CommandExt};fn main(){let a:Vec<_>=env::args().skip(1).collect();assert_eq!(&a[..5],["--user","--scope","--collect","--quiet","--"]);let home=env::var("HOME").unwrap();fs::write(format!("{home}/scope-args"),a.join("\n")).unwrap();assert!(a[5]=="tmux"||a[5]=="/bin/sh");if a[5]=="tmux"{assert!(a.iter().any(|v|v=="-S"));}let error=Command::new(&a[5]).args(&a[6..]).exec();panic!("{error}");}"#).unwrap();
+    assert!(
+        std::process::Command::new("rustc")
+            .arg(&source)
+            .arg("-o")
+            .arg(&binary)
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+    for shell in [false, true] {
+        let _ = std::fs::remove_file(tmux.home.root.join("home/scope-args"));
+        let (server, mut client) = pair().await;
+        let (_stop, rx) = watch::channel(false);
+        let mut initial = init();
+        if shell {
+            initial.session = None;
+        }
+        let task = tokio::spawn(run_bridge(
+            server,
+            Dialect::Tty,
+            initial,
+            Source::Pty {
+                target: TmuxTarget::PrivateScoped(tmux.home.root.clone(), binary.clone()),
+                session: if shell { None } else { Some("t1".into()) },
+            },
+            BridgeLimits::default(),
+            rx,
+        ));
+        client.next().await.unwrap().unwrap();
+        client.next().await.unwrap().unwrap();
+        if shell {
+            client.next().await.unwrap().unwrap();
+            client.send(Message::binary(b"0\r".to_vec())).await.unwrap();
+        }
+        timeout(WAIT, client.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        client
+            .send(Message::binary(b"0printf '%s%s\\n' scoped -ok\r".to_vec()))
+            .await
+            .unwrap();
+        timeout(WAIT, async {
+            loop {
+                let msg = client.next().await.unwrap().unwrap();
+                if String::from_utf8_lossy(&msg.into_data()).contains("scoped-ok") {
+                    break;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        timeout(WAIT, async {
+            loop {
+                if tmux.home.root.join("home/scope-args").is_file() {
+                    break;
+                }
+                sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let record = std::fs::read_to_string(tmux.home.root.join("home/scope-args")).unwrap();
+        assert!(record.starts_with("--user\n--scope\n--collect\n--quiet\n--\n"));
+        if shell {
+            assert!(record.ends_with("/bin/sh"));
+        } else {
+            assert!(record.contains("\n-S\n"));
+            assert!(record.ends_with("=t1"));
+        }
+        client.close(None).await.unwrap();
+        assert!(
+            timeout(WAIT, task)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap()
+                .child_reaped
+        );
+        wait_clients(&tmux, 0).await;
+        assert!(tmux.tmux(&["has-session", "-t", "=t1"]).status.success());
+    }
+}

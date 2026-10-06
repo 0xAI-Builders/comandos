@@ -5,6 +5,8 @@ use std::path::PathBuf;
 pub enum TmuxTarget {
     User,
     Private(PathBuf),
+    /// Private interaction fixture with an explicit scope launcher.
+    PrivateScoped(PathBuf, PathBuf),
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AttachCommand {
@@ -41,7 +43,7 @@ impl TmuxTarget {
     pub fn prefix(&self) -> Vec<std::ffi::OsString> {
         match self {
             Self::User => Vec::new(),
-            Self::Private(dir) => Tmux::private(dir).program.prefix,
+            Self::Private(dir) | Self::PrivateScoped(dir, _) => Tmux::private(dir).program.prefix,
         }
     }
     pub(crate) fn probe(&self, command: &AttachCommand) -> tokio::process::Command {
@@ -51,7 +53,7 @@ impl TmuxTarget {
             .env_remove("TMUX")
             .env_remove("TMUX_PANE")
             .kill_on_drop(true);
-        if let Self::Private(dir) = self {
+        if let Self::Private(dir) | Self::PrivateScoped(dir, _) = self {
             cmd.env_clear()
                 .env("HOME", dir.join("home"))
                 .env("PATH", "/usr/bin:/bin")
@@ -59,33 +61,59 @@ impl TmuxTarget {
         }
         cmd
     }
-    pub(crate) fn pty_command(&self, command: Option<&AttachCommand>) -> pty_process::Command {
-        let mut cmd = if let Some(command) = command {
-            pty_process::Command::new("tmux")
-                .args(self.prefix())
-                .args(command.args())
+    pub(crate) fn pty_command(
+        &self,
+        command: Option<&AttachCommand>,
+    ) -> std::io::Result<pty_process::Command> {
+        let (program, args) = if let Some(command) = command {
+            let mut args = self.prefix();
+            args.extend(command.args().into_iter().map(std::ffi::OsString::from));
+            (std::ffi::OsString::from("tmux"), args)
         } else {
-            let shell = if matches!(self, Self::Private(_)) {
-                "/bin/sh".into()
-            } else {
+            let shell = if matches!(self, Self::User) {
                 std::env::var_os("SHELL")
                     .filter(|s| !s.is_empty())
                     .unwrap_or_else(|| "/bin/sh".into())
+            } else {
+                "/bin/sh".into()
             };
-            pty_process::Command::new(shell)
+            (shell, Vec::new())
         };
-        if let Self::Private(dir) = self {
+        let scope = match self {
+            Self::User => Some(
+                crate::dash::native::quick::find_scope(std::env::var_os("PATH").as_deref())
+                    .ok_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            "terminal requires user scope launcher",
+                        )
+                    })?,
+            ),
+            Self::PrivateScoped(_, path) => Some(crate::dash::native::quick::scope_program(path)),
+            Self::Private(_) => None,
+        };
+        let mut cmd = if let Some(scope) = scope {
+            pty_process::Command::new(scope.path)
+                .args(scope.prefix)
+                .arg("--")
+                .arg(program)
+                .args(args)
+        } else {
+            pty_process::Command::new(program).args(args)
+        };
+        if let Self::Private(dir) | Self::PrivateScoped(dir, _) = self {
             cmd = cmd
                 .env_clear()
                 .env("HOME", dir.join("home"))
                 .env("PATH", "/usr/bin:/bin")
                 .env("SHELL", "/bin/sh");
         }
-        cmd.env_remove("TMUX")
+        Ok(cmd
+            .env_remove("TMUX")
             .env_remove("TMUX_PANE")
             .env("TERM", "xterm-256color")
             .env("COLORTERM", "truecolor")
-            .kill_on_drop(true)
+            .kill_on_drop(true))
     }
 }
 pub fn valid_session(name: &str) -> bool {

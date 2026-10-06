@@ -381,12 +381,12 @@ async fn dispatch(
                 Ok(admission) => admission,
                 Err(_) => return reject(500, "Error interno del tablero", true),
             };
-        if admission == WsAdmission::Dashboard {
-            if let Some(error) = access::security_gate(&policy_request, &state.config.token) {
-                return reject(error.status, error.message, true);
-            }
-        } else {
-            // GET admission has already checked exactly one allowed Host.
+        let strict_origin = matches!(
+            admission,
+            WsAdmission::HandlerTokenOrigin | WsAdmission::DashboardTokenOrigin
+        );
+        if strict_origin || admission == WsAdmission::HandlerToken {
+            // GET admission already checked exactly one allowed Host.
             let host = borrowed
                 .iter()
                 .find(|(key, _)| key.eq_ignore_ascii_case("host"))
@@ -397,11 +397,32 @@ async fn dispatch(
                 .filter(|(key, _)| key.eq_ignore_ascii_case("origin"))
                 .collect();
             if origins.len() > 1
+                || (strict_origin && origins.is_empty())
                 || origins
                     .iter()
                     .any(|(_, origin)| !access::origin_matches_host(origin, host))
             {
                 return reject(403, "Origen no permitido", true);
+            }
+        }
+        if matches!(
+            admission,
+            WsAdmission::Dashboard | WsAdmission::DashboardTokenOrigin
+        ) {
+            if let Some(error) = access::security_gate(&policy_request, &state.config.token) {
+                return reject(error.status, error.message, true);
+            }
+            if admission == WsAdmission::DashboardTokenOrigin
+                && !access::token_matches(
+                    access::presented_token(&borrowed, &target).as_bytes(),
+                    &state.config.token,
+                )
+            {
+                return reject(
+                    401,
+                    "No autorizado (token requerido para acceso remoto)",
+                    true,
+                );
             }
         }
         return websocket(

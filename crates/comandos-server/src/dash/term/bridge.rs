@@ -332,7 +332,7 @@ where
                 .resize(pty_process::Size::new(init.rows, init.cols))
                 .map_err(io::Error::other)?;
             let spawned = target
-                .pty_command(command.command.as_ref())
+                .pty_command(command.command.as_ref())?
                 .spawn(slave)
                 .map_err(io::Error::other)?;
             stats.child_pid = spawned.id();

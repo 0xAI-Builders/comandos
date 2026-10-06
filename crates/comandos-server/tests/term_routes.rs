@@ -23,6 +23,7 @@ impl Front {
         let own = home.root.join("home");
         std::fs::create_dir_all(own.join(".claude/hooks/dash")).unwrap();
         std::fs::write(dash::token_path(&own), b"  t0k\n").unwrap();
+        std::fs::write(own.join(".claude/hooks/webterm-enabled"), b"").unwrap();
         std::fs::write(
             own.join(".claude/hooks/dash/term.html"),
             b"fixture-terminal-exact",
@@ -287,4 +288,96 @@ async fn native_v1_retains_dashboard_gate_and_off_forwards_legacy() {
     assert!(response.ends_with("legacy"));
     f.stop().await;
     legacy_task.await.unwrap();
+}
+#[tokio::test]
+async fn terminal_requires_origin_and_v1_requires_token_even_direct_loopback() {
+    let Some(tmux) = PrivateTmux::start(&["t1"]) else {
+        return;
+    };
+    let f = Front::start(&tmux.home, TermMode::Native, false).await;
+    let mut request = f.request("t0k");
+    request.headers_mut().remove("Origin");
+    match tokio_tungstenite::connect_async(request).await.unwrap_err() {
+        Error::Http(r) => assert_eq!(r.status(), 403),
+        x => panic!("{x:?}"),
+    }
+    let mut request = f.request("t0k");
+    request.headers_mut().remove("X-Forwarded-For");
+    request.headers_mut().insert(
+        "Sec-WebSocket-Protocol",
+        "comandos.term.v1".parse().unwrap(),
+    );
+    match tokio_tungstenite::connect_async(request).await.unwrap_err() {
+        Error::Http(r) => assert_eq!(r.status(), 401),
+        x => panic!("{x:?}"),
+    }
+    let mut request = f.request("t0k");
+    request.headers_mut().remove("X-Forwarded-For");
+    request.headers_mut().insert(
+        "Sec-WebSocket-Protocol",
+        "comandos.term.v1".parse().unwrap(),
+    );
+    request
+        .headers_mut()
+        .insert("Cookie", "cc_token=t0k".parse().unwrap());
+    let (mut ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    ws.close(None).await.unwrap();
+    assert_eq!(tmux.clients(), 0);
+    f.stop().await;
+}
+
+#[tokio::test]
+async fn enabled_file_disables_front_ws_and_reaps_active_private_client() {
+    let Some(tmux) = PrivateTmux::start(&["t1"]) else {
+        return;
+    };
+    let f = Front::start(&tmux.home, TermMode::Ttyd, false).await;
+    let (mut ws, _) = tokio_tungstenite::connect_async(f.request("t0k"))
+        .await
+        .unwrap();
+    ws.send(Message::text(r#"{"columns":80,"rows":24}"#))
+        .await
+        .unwrap();
+    ws.next().await.unwrap().unwrap();
+    ws.next().await.unwrap().unwrap();
+    timeout(Duration::from_secs(3), ws.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let (mut pending, _) = tokio_tungstenite::connect_async(f.request("t0k"))
+        .await
+        .unwrap();
+    std::fs::remove_file(tmux.home.root.join("home/.claude/hooks/webterm-enabled")).unwrap();
+    assert!(
+        f.http("GET", "/term/token")
+            .await
+            .starts_with("HTTP/1.1 404")
+    );
+    timeout(Duration::from_secs(3), pending.next())
+        .await
+        .unwrap();
+    timeout(Duration::from_secs(3), async {
+        loop {
+            match ws.next().await {
+                Some(Ok(Message::Close(_))) | None => break,
+                Some(Err(_)) => break,
+                _ => {}
+            }
+        }
+    })
+    .await
+    .unwrap();
+    timeout(Duration::from_secs(3), async {
+        loop {
+            if tmux.clients() == 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(tmux.tmux(&["has-session", "-t", "=t1"]).status.success());
+    f.stop().await;
 }
