@@ -6,7 +6,16 @@
     clippy::indexing_slicing
 )]
 use comandos_app::proc::{ProcSpec, run};
+use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+static INVOCATION: AtomicUsize = AtomicUsize::new(0);
+struct ProbeDirectory(PathBuf);
+impl Drop for ProbeDirectory {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
 fn body(source: &str, needle: &str) -> String {
     let start = source.find(needle).expect(needle);
     let brace = start + source[start..].find('{').unwrap();
@@ -99,8 +108,13 @@ pub fn execute(input: &serde_json::Value) -> serde_json::Value {
     execute_source(&source, input)
 }
 pub fn execute_source(source: &str, input: &serde_json::Value) -> serde_json::Value {
-    let dir = std::env::temp_dir().join(format!("t17-native-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = std::env::temp_dir().join(format!(
+        "comandos-t17-native-{}-{}",
+        std::process::id(),
+        INVOCATION.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::DirBuilder::new().mode(0o700).create(&dir).unwrap();
+    let _cleanup = ProbeDirectory(dir.clone());
     let rust = dir.join("probe.rs");
     let bin = dir.join("probe");
     std::fs::write(&rust, source).unwrap();
