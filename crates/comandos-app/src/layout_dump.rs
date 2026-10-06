@@ -75,10 +75,39 @@ impl Diagnostic {
 }
 
 pub fn normalize(mut context: Value) -> Result<Value, String> {
-    for field in ["viewport", "theme", "font", "strip", "workspace"] {
+    for field in [
+        "viewport",
+        "window",
+        "dashboard",
+        "theme",
+        "font",
+        "strip",
+        "workspace",
+    ] {
         if context.get(field).is_none_or(|value| !value.is_object()) {
             return Err(format!("missing object: {field}"));
         }
+    }
+    nullable_string(context.get("window").ok_or("window unavailable")?, "title")?;
+    let dashboard = context.get("dashboard").ok_or("dashboard unavailable")?;
+    nullable_string(dashboard, "uri")?;
+    nullable_string(dashboard, "title")?;
+    boolean(dashboard, "loading")?;
+    if dashboard
+        .get("hardware_acceleration_policy")
+        .and_then(Value::as_str)
+        .is_none_or(str::is_empty)
+    {
+        return Err("WebKit policy unavailable".into());
+    }
+    if let Some(readiness) = context.get("readiness")
+        && (readiness.get("status").and_then(Value::as_str) != Some("ready")
+            || readiness
+                .get("issues")
+                .and_then(Value::as_array)
+                .is_none_or(|issues| !issues.is_empty()))
+    {
+        return Err("failed capture cannot be normalized into ready".into());
     }
     for field in ["tabs", "widgets", "terminals"] {
         if context.get(field).is_none_or(|value| !value.is_array()) {
@@ -137,6 +166,22 @@ pub fn normalize(mut context: Value) -> Result<Value, String> {
         .flatten()
     {
         validate_font(terminal.get("font").ok_or("terminal font unavailable")?)?;
+        let cursor = terminal
+            .get("cursor")
+            .filter(|value| value.is_object())
+            .ok_or("cursor unavailable")?;
+        if cursor.get("row").and_then(Value::as_i64).is_none()
+            || cursor.get("col").and_then(Value::as_u64).is_none()
+            || cursor
+                .get("shape")
+                .and_then(Value::as_str)
+                .is_none_or(str::is_empty)
+        {
+            return Err("invalid cursor observation".into());
+        }
+        for field in ["visible", "painted", "wide"] {
+            boolean(cursor, field)?;
+        }
         let metrics = terminal
             .get("cell_metrics")
             .ok_or("cell metrics unavailable")?;
@@ -173,25 +218,34 @@ pub fn normalize(mut context: Value) -> Result<Value, String> {
                 if cell.get("text").and_then(Value::as_str).is_none() {
                     return Err("cell text unavailable".into());
                 }
-                for field in [
-                    "width",
-                    "fg",
-                    "bg",
-                    "bold",
-                    "italic",
-                    "dim",
-                    "hidden",
-                    "inverse",
-                    "strike",
-                    "underline",
-                    "underline_color",
-                    "wrap",
-                    "hyperlink",
-                ] {
-                    if cell.get(field).is_none() {
-                        return Err(format!("cell attribute unavailable: {field}"));
-                    }
+                if cell
+                    .get("width")
+                    .and_then(Value::as_u64)
+                    .is_none_or(|width| width > 2)
+                {
+                    return Err("invalid cell width".into());
                 }
+                for field in ["fg", "bg"] {
+                    rgb(cell.get(field).ok_or("cell color unavailable")?)?;
+                }
+                for field in [
+                    "bold", "italic", "dim", "hidden", "inverse", "strike", "wrap",
+                ] {
+                    boolean(cell, field)?;
+                }
+                if !matches!(
+                    cell.get("underline").and_then(Value::as_str),
+                    Some("none" | "single" | "double" | "curly" | "dotted" | "dashed")
+                ) {
+                    return Err("cell underline unavailable".into());
+                }
+                let color = cell
+                    .get("underline_color")
+                    .ok_or("underline color unavailable")?;
+                if !color.is_null() {
+                    rgb(color)?;
+                }
+                nullable_string(cell, "hyperlink")?;
             }
         }
     }
@@ -200,6 +254,33 @@ pub fn normalize(mut context: Value) -> Result<Value, String> {
         object.insert("readiness".into(), json!({"status":"ready","issues":[]}));
     }
     Ok(context)
+}
+
+fn boolean(value: &Value, field: &str) -> Result<(), String> {
+    if value.get(field).and_then(Value::as_bool).is_none() {
+        return Err(format!("boolean observation unavailable: {field}"));
+    }
+    Ok(())
+}
+fn nullable_string(value: &Value, field: &str) -> Result<(), String> {
+    if value
+        .get(field)
+        .is_none_or(|value| !value.is_null() && !value.is_string())
+    {
+        return Err(format!("string observation unavailable: {field}"));
+    }
+    Ok(())
+}
+fn rgb(value: &Value) -> Result<(), String> {
+    if value.as_array().is_none_or(|channels| {
+        channels.len() != 3
+            || channels
+                .iter()
+                .any(|channel| channel.as_u64().is_none_or(|channel| channel > 255))
+    }) {
+        return Err("invalid RGB observation".into());
+    }
+    Ok(())
 }
 
 fn finite_number(value: &Value, field: &str, positive: bool) -> Result<(), String> {

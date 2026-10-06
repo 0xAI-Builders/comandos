@@ -17,7 +17,12 @@ fn context() -> Value {
         now,
     );
     engine.feed(b"\x1b[1mA", now);
-    json!({"viewport":{"width":1000,"height":800,"dpr":2},"theme":{"name":"bruno","tokens":{"fg":"#eeeeee"},"ansi":["#000000"]},"font":{"family":"Ubuntu Sans","size":11,"size_unit":"pt"},"tabs":[{"key":"term-測試","label":"日本 A","selected":true}],"strip":{"order":["term-測試"],"selected":"term-測試","layout":"rows"},"workspace":{"available":true,"revision":7,"groups":[{"id":"g","tree":{"type":"split","axis":"y","ratio":0.4,"first":{"type":"tab","tabId":"a"},"second":{"type":"tab","tabId":"b"}}}],"focused_tab":"term-測試","active_group":"g"},"widgets":[{"id":"term:term-測試","role":"terminal","mapped":true,"geometry":{"x":100,"y":40,"width":300,"height":400}}],"terminals":[{"key":"term-測試","grid":engine.diagnostic_grid(2).unwrap(),"font":{"family":"Ubuntu Sans Mono","size":13,"size_unit":"pt"},"cell_metrics":{"width":8,"height":19,"dpr":2,"font_size_px":17.333,"origin_x":8,"origin_y":14},"cursor":{"row":0,"col":1,"visible":true}}]})
+    let mut value = json!({"viewport":{"width":1000,"height":800,"dpr":2},"theme":{"name":"bruno","tokens":{"fg":"#eeeeee"},"ansi":["#000000"]},"font":{"family":"Ubuntu Sans","size":11,"size_unit":"pt"},"tabs":[{"key":"term-測試","label":"日本 A","selected":true}],"strip":{"order":["term-測試"],"selected":"term-測試","layout":"rows"},"workspace":{"available":true,"revision":7,"groups":[{"id":"g","tree":{"type":"split","axis":"y","ratio":0.4,"first":{"type":"tab","tabId":"a"},"second":{"type":"tab","tabId":"b"}}}],"focused_tab":"term-測試","active_group":"g"},"widgets":[{"id":"term:term-測試","role":"terminal","mapped":true,"geometry":{"x":100,"y":40,"width":300,"height":400}}],"terminals":[{"key":"term-測試","grid":engine.diagnostic_grid(2).unwrap(),"font":{"family":"Ubuntu Sans Mono","size":13,"size_unit":"pt"},"cell_metrics":{"width":8,"height":19,"dpr":2,"font_size_px":17.333,"origin_x":8,"origin_y":14},"cursor":{"row":0,"col":1,"visible":true}}]});
+    value["window"] = json!({"title":"Private diagnostic"});
+    value["dashboard"] = json!({"uri":"about:blank","title":null,"loading":false,"hardware_acceleration_policy":"never"});
+    value["terminals"][0]["cursor"] =
+        json!({"row":0,"col":1,"shape":"block","visible":true,"painted":true,"wide":false});
+    value
 }
 #[test]
 fn normalization_preserves_content_labels_order_focus_theme_font_and_geometry() {
@@ -57,6 +62,57 @@ fn incomplete_or_invalid_semantic_capture_cannot_be_ready() {
         normalize(invalid).is_err(),
         "even hidden authority has exact finite ratios"
     );
+}
+
+#[test]
+fn null_cell_flags_missing_cursor_and_missing_dashboard_cannot_be_ready() {
+    for flag in [
+        "bold", "italic", "dim", "hidden", "inverse", "strike", "wrap",
+    ] {
+        let mut value = context();
+        value["terminals"][0]["grid"]["cells"][0][0][flag] = Value::Null;
+        assert!(
+            normalize(value).is_err(),
+            "null is not an observed {flag} flag"
+        );
+    }
+    let mut value = context();
+    value["terminals"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("cursor");
+    assert!(
+        normalize(value).is_err(),
+        "missing cursor is not an observation"
+    );
+    let mut value = context();
+    value.as_object_mut().unwrap().remove("dashboard");
+    assert!(
+        normalize(value).is_err(),
+        "missing dashboard is not an observation"
+    );
+}
+
+#[test]
+fn malformed_observations_and_failed_readiness_never_become_ready() {
+    for (pointer, invalid) in [
+        ("/dashboard/loading", Value::Null),
+        ("/terminals/0/cursor/visible", json!(1)),
+        ("/terminals/0/cursor/row", json!(1.5)),
+        ("/terminals/0/grid/cells/0/0/fg", json!([0, 256, 0])),
+        ("/terminals/0/grid/cells/0/0/width", json!(3)),
+        ("/terminals/0/grid/cells/0/0/hyperlink", json!(12)),
+        ("/terminals/0/grid/cells/0/0/underline", json!("unknown")),
+    ] {
+        let mut value = context();
+        *value.pointer_mut(pointer).unwrap() = invalid;
+        assert!(normalize(value).is_err(), "invalid observation {pointer}");
+    }
+    let mut value = context();
+    value["readiness"] = json!({"status":"failed","issues":["terminal_not_ready"]});
+    assert!(normalize(value).is_err());
+    let ready = normalize(context()).unwrap();
+    assert_eq!(normalize(ready.clone()).unwrap(), ready);
 }
 #[test]
 fn diagnostic_waits_for_restore_and_quiet_semantics_and_publishes_once() {
