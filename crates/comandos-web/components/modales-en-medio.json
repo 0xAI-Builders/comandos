@@ -1,0 +1,15 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- Modales en medio (2-oct) ----------",
+  "marker_end": "// ---------- UI general ----------",
+  "sha256": "494c322487f628fb4b3534bdc4f0ecadfc8275ea8b016f70fc26a9ed59861fd8",
+  "id": "modales-en-medio",
+  "exports": [
+    "openCenterPanel"
+  ],
+  "deps": [
+    "app-nativa"
+  ]
+}
