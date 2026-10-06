@@ -1,7 +1,10 @@
 pub mod app;
+pub mod app_commands;
+pub mod bridge;
 pub mod confirm;
 pub mod drag;
 pub mod icons;
+pub mod presence;
 pub mod tab_label;
 pub mod tabstrip;
 pub mod webview;
