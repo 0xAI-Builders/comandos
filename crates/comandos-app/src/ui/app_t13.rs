@@ -469,7 +469,9 @@ impl App {
                 "restore not ready, shadow, or closed".into(),
             ));
         }
-        let script = ui::bridge::js_call(function, args)?;
+        // These calls return no value to Rust. An async dashboard function
+        // returns a Promise which WebKit cannot serialize as a result.
+        let script = format!("{}\nvoid 0;", ui::bridge::js_call(function, args)?);
         let weak = Rc::downgrade(self);
         self.webview.evaluate_javascript(
             &script,
