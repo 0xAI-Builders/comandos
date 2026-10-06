@@ -1,0 +1,26 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "marker_start": "// ---------- remoto ----------",
+  "marker_end": "// ---------- servidores ----------",
+  "sha256": "57a605a0b176926c5410594a8431123570ee962684752dd64712ccdd960a0a08",
+  "id": "remoto",
+  "exports": [
+    "REMOTE",
+    "REMOTE_BUSY",
+    "remoteQrPath",
+    "remoteButtonState",
+    "setRemoteButton",
+    "applyRemoteButtonState",
+    "setRemoteBusy",
+    "renderRemote",
+    "loadRemote",
+    "ensureRemoteTerminalVisible",
+    "remoteAction",
+    "copyRemote"
+  ],
+  "deps": [
+    "red",
+    "i18n"
+  ]
+}

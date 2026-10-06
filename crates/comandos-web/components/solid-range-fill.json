@@ -1,0 +1,15 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- solid range fill (color hasta el thumb) ----------",
+  "marker_end": "// ---------- preview de tipografía (Settings > Terminal) ----------",
+  "sha256": "f737145ce386e184837e676fe31d1ae092963aa5389dae9d2023993d7d0f7ead",
+  "id": "solid-range-fill",
+  "exports": [
+    "updateRangeFill",
+    "refreshAllRangeFills",
+    "wireRangeFills"
+  ],
+  "deps": []
+}

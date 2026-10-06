@@ -1,0 +1,14 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- tabs internos de modales ----------",
+  "marker_end": "// ---------- solid range fill (color hasta el thumb) ----------",
+  "sha256": "abe7f4942cf4ef4633491ac5b17b30736317581be0f280eac991813d78787f9e",
+  "id": "tabs-internos-de-modales",
+  "exports": [
+    "activateMtab",
+    "wireMtabs"
+  ],
+  "deps": []
+}

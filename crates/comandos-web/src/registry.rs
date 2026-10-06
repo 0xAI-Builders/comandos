@@ -40,9 +40,64 @@ pub struct Component {
 /// Componentes que este WASM sabe montar. Crece con cada port (B4…B13).
 pub const COMPONENTS: &[Component] = &[
     Component {
-        id: "theme-preferences",
-        mount: crate::components::theme_preferences::mount,
-        attach: Some(crate::components::theme_preferences::attach),
+        id: "remoto",
+        mount: crate::components::foundation_remote::mount,
+        attach: Some(crate::components::foundation_remote::attach),
+    },
+    Component {
+        id: "tema",
+        mount: crate::components::theme_preferences::mount_theme,
+        attach: Some(crate::components::theme_preferences::attach_theme),
+    },
+    Component {
+        id: "favoritos",
+        mount: crate::components::theme_preferences::mount_favorites,
+        attach: None,
+    },
+    Component {
+        id: "prefs-de-terminal",
+        mount: crate::components::theme_preferences::mount_prefs,
+        attach: None,
+    },
+    Component {
+        id: "tabs-internos-de-modales",
+        mount: crate::components::theme_preferences::mount_tabs,
+        attach: Some(crate::components::theme_preferences::attach_tabs),
+    },
+    Component {
+        id: "solid-range-fill",
+        mount: crate::components::theme_preferences::mount_ranges,
+        attach: Some(crate::components::theme_preferences::attach_ranges),
+    },
+    Component {
+        id: "preview-de-tipografia",
+        mount: crate::components::theme_preferences::mount_preview,
+        attach: Some(crate::components::theme_preferences::attach_preview),
+    },
+    Component {
+        id: "app-nativa",
+        mount: crate::components::foundation_lifecycle::mount_app,
+        attach: Some(crate::components::foundation_lifecycle::attach_app),
+    },
+    Component {
+        id: "toasts",
+        mount: crate::components::foundation_lifecycle::retire_toasts_separator,
+        attach: None,
+    },
+    Component {
+        id: "registro-local-de-uso",
+        mount: crate::components::foundation_lifecycle::mount_log,
+        attach: Some(crate::components::foundation_lifecycle::attach_log),
+    },
+    Component {
+        id: "avisos-de-eventos",
+        mount: crate::components::foundation_lifecycle::mount_notices,
+        attach: None,
+    },
+    Component {
+        id: "loop",
+        mount: crate::components::foundation_lifecycle::mount_poll,
+        attach: Some(crate::components::foundation_lifecycle::attach_poll),
     },
     Component {
         id: "prelude",

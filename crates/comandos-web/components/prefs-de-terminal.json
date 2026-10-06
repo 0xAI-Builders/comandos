@@ -1,0 +1,18 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- prefs de terminal (fuente/cursor/padding/opacity/ligas) ----------",
+  "marker_end": "// ---------- tabs internos de modales ----------",
+  "sha256": "dd0be23d4d901a64070d17c2f5799e8bbf20b1174dfe3427f98fb231727f91d3",
+  "id": "prefs-de-terminal",
+  "exports": [
+    "applyTabsLayout",
+    "hydrateTerminalPrefs",
+    "setPref"
+  ],
+  "deps": [
+    "i18n",
+    "red"
+  ]
+}

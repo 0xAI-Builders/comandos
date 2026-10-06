@@ -7,7 +7,7 @@ function fixture() {
   function node() {
     const classes=new Set(), listeners={};
     return {dataset:{},style:{setProperty(k,v){this[k]=v;}},innerHTML:'',value:'',attrs:{},
-      classList:{toggle(k,on){on?classes.add(k):classes.delete(k);return !!on;},contains:k=>classes.has(k),remove:k=>classes.delete(k),add:k=>classes.add(k)},
+      classList:{toggle(k,on){if(on===undefined)on=!classes.has(k);on?classes.add(k):classes.delete(k);return !!on;},contains:k=>classes.has(k),remove:k=>classes.delete(k),add:k=>classes.add(k)},
       setAttribute(k,v){this.attrs[k]=String(v);},getAttribute(k){return this.attrs[k]??null;},
       querySelectorAll(){return [];},querySelector(){return null;},closest(){return null;},
       addEventListener(k,f){(listeners[k]??=[]).push(f);},dispatch(k,extra={}){for(const f of listeners[k]??[])f({target:this,currentTarget:this,stopPropagation(){},preventDefault(){},...extra});},listenerCount:k=>(listeners[k]??[]).length,focus(){this.focused=true;}};
@@ -67,3 +67,5 @@ exports.reference=async root=>{
 };
 exports.install=install;
 exports.native=async()=>{globalThis.curThemeValue=()=>globalThis.curTheme;globalThis.curButtonsValue=()=>globalThis.curButtonStyle;return exercise(globalThis,active);};
+
+exports.fixture=fixture;

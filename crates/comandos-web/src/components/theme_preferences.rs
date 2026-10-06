@@ -42,8 +42,51 @@ export async function themePreferencesActual(){return JSON.stringify(await theme
 pub fn attach() -> Result<(), wasm_bindgen::JsValue> {
     Ok(())
 }
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mount_theme() -> Result<(), wasm_bindgen::JsValue> {
+    Ok(())
+}
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mount_favorites() -> Result<(), wasm_bindgen::JsValue> {
+    Ok(())
+}
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mount_prefs() -> Result<(), wasm_bindgen::JsValue> {
+    Ok(())
+}
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mount_tabs() -> Result<(), wasm_bindgen::JsValue> {
+    Ok(())
+}
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mount_ranges() -> Result<(), wasm_bindgen::JsValue> {
+    Ok(())
+}
+#[cfg(not(target_arch = "wasm32"))]
+pub fn mount_preview() -> Result<(), wasm_bindgen::JsValue> {
+    Ok(())
+}
+#[cfg(not(target_arch = "wasm32"))]
+pub fn attach_theme() -> Result<(), wasm_bindgen::JsValue> {
+    Ok(())
+}
+#[cfg(not(target_arch = "wasm32"))]
+pub fn attach_tabs() -> Result<(), wasm_bindgen::JsValue> {
+    Ok(())
+}
+#[cfg(not(target_arch = "wasm32"))]
+pub fn attach_ranges() -> Result<(), wasm_bindgen::JsValue> {
+    Ok(())
+}
+#[cfg(not(target_arch = "wasm32"))]
+pub fn attach_preview() -> Result<(), wasm_bindgen::JsValue> {
+    Ok(())
+}
 #[cfg(target_arch = "wasm32")]
-pub use web::{attach, mount};
+pub use web::{
+    attach, attach_preview, attach_ranges, attach_tabs, attach_theme, mount, mount_favorites,
+    mount_prefs, mount_preview, mount_ranges, mount_tabs, mount_theme,
+};
 #[cfg(target_arch = "wasm32")]
 mod web {
     use crate::components::web_support::*;
@@ -643,7 +686,7 @@ mod web {
         }
         Ok(())
     }
-    pub fn mount() -> Result<(), JsValue> {
+    pub fn mount_theme() -> Result<(), JsValue> {
         set(
             &js_sys::global(),
             "THEME_SEQ",
@@ -683,7 +726,13 @@ mod web {
             render_buttons()?;
             Ok(JsValue::UNDEFINED)
         })?;
+        Ok(())
+    }
+    pub fn mount_favorites() -> Result<(), JsValue> {
         publish("loadPrefs", |_| Ok(load_prefs()))?;
+        Ok(())
+    }
+    pub fn mount_prefs() -> Result<(), JsValue> {
         publish("applyTabsLayout", |a| {
             apply_tabs(a.get(0))?;
             Ok(JsValue::UNDEFINED)
@@ -693,6 +742,9 @@ mod web {
             Ok(JsValue::UNDEFINED)
         })?;
         publish("setPref", |a| Ok(set_pref(a.get(0), a.get(1))))?;
+        Ok(())
+    }
+    pub fn mount_tabs() -> Result<(), JsValue> {
         publish("activateMtab", |a| {
             activate(a.get(0), a.get(1))?;
             Ok(JsValue::UNDEFINED)
@@ -701,6 +753,9 @@ mod web {
             wire_tabs(if a.length() == 0 { doc() } else { a.get(0) })?;
             Ok(JsValue::UNDEFINED)
         })?;
+        Ok(())
+    }
+    pub fn mount_ranges() -> Result<(), JsValue> {
         publish("updateRangeFill", |a| {
             range(a.get(0))?;
             Ok(JsValue::UNDEFINED)
@@ -713,12 +768,24 @@ mod web {
             wire_ranges()?;
             Ok(JsValue::UNDEFINED)
         })?;
+        Ok(())
+    }
+    pub fn mount_preview() -> Result<(), JsValue> {
         publish("updateFontPreview", |_| {
             preview()?;
             Ok(JsValue::UNDEFINED)
         })
     }
-    pub fn attach() -> Result<(), JsValue> {
+    pub fn mount() -> Result<(), JsValue> {
+        mount_theme()?;
+        mount_favorites()?;
+        mount_prefs()?;
+        mount_tabs()?;
+        mount_ranges()?;
+        mount_preview()?;
+        Ok(())
+    }
+    pub fn attach_theme() -> Result<(), JsValue> {
         let btn = query(&doc(), "#btn-theme");
         listen(
             &btn,
@@ -741,13 +808,21 @@ mod web {
                 Ok(())
             }),
         );
-        wire_tabs(doc())?;
+        Ok(())
+    }
+    pub fn attach_tabs() -> Result<(), JsValue> {
+        wire_tabs(doc())
+    }
+    pub fn attach_ranges() -> Result<(), JsValue> {
         wire_ranges()?;
         call(
             &js_sys::global(),
             "setInterval",
             &[void(|_| refresh_ranges()), 250.0.into()],
         )?;
+        Ok(())
+    }
+    pub fn attach_preview() -> Result<(), JsValue> {
         preview()?;
         for (selector, label, key, ok) in [
             (
@@ -841,5 +916,11 @@ mod web {
             }
         }
         Ok(())
+    }
+    pub fn attach() -> Result<(), JsValue> {
+        attach_theme()?;
+        attach_tabs()?;
+        attach_ranges()?;
+        attach_preview()
     }
 }
