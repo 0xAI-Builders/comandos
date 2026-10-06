@@ -1,0 +1,50 @@
+{
+  "originalSha256": "54024241c4f88930671a069b1b84f2aa39752702716b2ac906b1929bc2ccf25b",
+  "cases": [
+    {
+      "id": "unicode-href-0",
+      "text": "[x](https://example.org/café?q=π#😀)",
+      "baseline": "<p><a href=\"https://example.org/caf%C3%A9?q=%CF%80#%F0%9F%98%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "unicode-href-1",
+      "text": "https://example.org/café?q=π#😀 end",
+      "baseline": "<p><a href=\"https://example.org/caf%C3%A9?q=%CF%80#%F0%9F%98%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/café?q=π#😀</a> end</p>\n"
+    },
+    {
+      "id": "unicode-href-2",
+      "text": "[x](https://example.org/a�b)",
+      "baseline": "<p><a href=\"https://example.org/a%EF%BF%BDb\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "unicode-href-3",
+      "text": "[x](https://例子.中国/café)",
+      "baseline": "<p><a href=\"https://xn--fsqu00a.xn--fiqs8s/caf%C3%A9\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "unicode-href-4",
+      "text": "[x](HTTP://例子.中国/café)",
+      "baseline": "<p><a href=\"HTTP://%E4%BE%8B%E5%AD%90.%E4%B8%AD%E5%9B%BD/caf%C3%A9\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "unicode-href-5",
+      "text": "[x](https://example.org/a﻿b)",
+      "baseline": "<p><a href=\"https://example.org/a%EF%BB%BFb\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "unicode-href-6",
+      "text": "[x](https://example.org/a​b)",
+      "baseline": "<p><a href=\"https://example.org/a%E2%80%8Bb\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "unicode-href-7",
+      "text": "https://example.org/é end",
+      "baseline": "<p><a href=\"https://example.org/%C3%A9\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/é</a> end</p>\n"
+    },
+    {
+      "id": "unicode-href-8",
+      "text": "https://example.org/😀 end",
+      "baseline": "<p><a href=\"https://example.org/%F0%9F%98%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/😀</a> end</p>\n"
+    }
+  ]
+}

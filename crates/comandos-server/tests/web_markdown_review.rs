@@ -88,15 +88,49 @@ fn independent_entity_masks_preserve_original_text_and_destinations() {
         let candidate = render(source, Profile::News);
         let difference =
             comandos_domdiff::first_difference(row["baseline"].as_str().unwrap(), &candidate);
-        if row["knownPreexistingNul"] == true {
-            assert!(difference.is_some(), "preexisting NUL calibration");
-            assert_eq!(candidate, row["knownCandidate"].as_str().unwrap());
-        } else if let Some(difference) = difference {
+        if let Some(difference) = difference {
             differences.push(
                 serde_json::json!({"text":source,"difference":difference,"candidate":candidate}),
             );
         }
     }
+    assert!(differences.is_empty(), "{differences:?}");
+}
+
+#[test]
+fn nul_normalization_matches_original_in_all_markdown_contexts() {
+    let cases: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../xtask/web/fixtures/b8/review-nul-baselines.json"
+    ))
+    .unwrap();
+    for row in cases["cases"].as_array().unwrap() {
+        let text = row["text"].as_str().unwrap();
+        let actual = render(text, Profile::News);
+        assert_eq!(
+            comandos_domdiff::first_difference(row["baseline"].as_str().unwrap(), &actual),
+            None,
+            "{}: {actual}",
+            row["id"]
+        );
+    }
+}
+
+#[test]
+fn unicode_href_normalization_preserves_original_bytes() {
+    let cases: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../xtask/web/fixtures/b8/review-unicode-href-baselines.json"
+    ))
+    .unwrap();
+    let differences = cases["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|row| {
+            let candidate = render(row["text"].as_str().unwrap(), Profile::News);
+            comandos_domdiff::first_difference(row["baseline"].as_str().unwrap(), &candidate)
+                .map(|difference| serde_json::json!({"id":row["id"],"difference":difference}))
+        })
+        .collect::<Vec<_>>();
     assert!(differences.is_empty(), "{differences:?}");
 }
 

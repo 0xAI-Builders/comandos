@@ -4,6 +4,7 @@ use http::StatusCode;
 use linkify::{LinkFinder, LinkKind};
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd, html};
 use std::{
+    borrow::Cow,
     collections::{HashMap, HashSet},
     sync::LazyLock,
 };
@@ -30,7 +31,7 @@ fn host(url: &str) -> String {
         .unwrap_or_default()
 }
 fn anchor(url: &str, title: &str) -> String {
-    let url = idna_href(url);
+    let url = normalized_href(url);
     format!(
         "<a href=\"{}\"{} target=\"_blank\" rel=\"noopener noreferrer nofollow\">",
         esc(&url),
@@ -40,6 +41,37 @@ fn anchor(url: &str, title: &str) -> String {
             format!(" title=\"{}\"", esc(title))
         }
     )
+}
+
+fn normalized_href(href: &str) -> String {
+    // URL encoding replaces unpaired UTF-16 units, while ordinary text retains
+    // them through the lossless browser transport. Decode only non-ASCII URLs.
+    let decoded = if href.is_ascii() {
+        Cow::Borrowed(href)
+    } else {
+        Cow::Owned(
+            char::decode_utf16(comandos_web_view::utf16::decode(href))
+                .map(|unit| unit.unwrap_or(char::REPLACEMENT_CHARACTER))
+                .collect::<String>(),
+        )
+    };
+    let href = idna_href(&decoded);
+    if href.is_ascii() {
+        return href;
+    }
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let extra = href.bytes().filter(|byte| !byte.is_ascii()).count() * 2;
+    let mut encoded = String::with_capacity(href.len() + extra);
+    for byte in href.bytes() {
+        if byte.is_ascii() {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push('%');
+            encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+            encoded.push(char::from(HEX[usize::from(byte & 15)]));
+        }
+    }
+    encoded
 }
 // markdown-it normalizes an international hostname without rewriting the
 // spelling of the scheme, port, userinfo or path.
@@ -439,7 +471,14 @@ fn restore_autolink_source(
 /// Live createRenderer profile: raw HTML is text; no remote image elements.
 pub fn render(text: &str, _profile: Profile) -> String {
     let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH;
-    let prepared = html_as_text(text, options);
+    // markdown-it replaces literal NUL before parsing, including code and URLs.
+    // Keep the common path borrowed; normalize only inputs containing NUL.
+    let text = if text.contains('\0') {
+        Cow::Owned(text.replace('\0', "\u{fffd}"))
+    } else {
+        Cow::Borrowed(text)
+    };
+    let prepared = html_as_text(&text, options);
     let source = &prepared.source;
     let mut events = Vec::new();
     let mut links: Vec<(String, String)> = Vec::new();

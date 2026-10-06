@@ -55,7 +55,7 @@ try{
  const reviewOriginal=original.createRenderer(md,actualPurify);
  const reviewActual=NewsReader.createRenderer(undefined,undefined);
  const reviewPairs=[];
- for(const fixture of ['review-baselines.json','repair-grammar.json','review-v2-baselines.json','review-v3-baselines.json','review-v4-baselines.json']){
+ for(const fixture of ['review-baselines.json','repair-grammar.json','review-v2-baselines.json','review-v3-baselines.json','review-v4-baselines.json','review-nul-baselines.json','review-unicode-href-baselines.json']){
   const rows=JSON.parse(fs.readFileSync(repo+'/xtask/web/fixtures/b8/'+fixture,'utf8')).cases;
   for(const row of rows){
    assert.equal(reviewOriginal(row.text),row.baseline,'immutable original '+row.text);
@@ -64,13 +64,13 @@ try{
    assert.equal(template.content.querySelectorAll('img,script,svg,[onerror],[onload]').length,0);
    for(const link of template.content.querySelectorAll('a')){assert.match(link.getAttribute('href'),/^https?:\/\//i);assert.equal(link.target,'_blank');assert.equal(link.rel,'noopener noreferrer nofollow');}
    reviewPairs.push({id:fixture+':'+reviewPairs.length,text:row.text,baseline:row.baseline,candidate,knownPreexistingNul:row.knownPreexistingNul===true});
-   if(row.knownPreexistingNul)assert.equal(candidate,row.knownCandidate,'preexisting NUL remains outside repair');
+   if(row.knownPreexistingNul)assert.equal(candidate,row.baseline,'NUL must match the immutable original');
   }
  }
  const reviewNormalized=spawnSync(executable,['--normalize'],{input:JSON.stringify(reviewPairs),encoding:'utf8',timeout:10000});assert.equal(reviewNormalized.status,0,reviewNormalized.stderr);
  const allReviewDifferences=JSON.parse(reviewNormalized.stdout).filter(row=>row.difference);
- const knownReviewDifferences=allReviewDifferences.filter(row=>reviewPairs.find(pair=>pair.id===row.id)?.knownPreexistingNul);assert.equal(knownReviewDifferences.length,1,'preexisting NUL calibration');
- const reviewDifferences=allReviewDifferences.filter(row=>!reviewPairs.find(pair=>pair.id===row.id)?.knownPreexistingNul);
+ const knownReviewDifferences=allReviewDifferences.filter(row=>reviewPairs.find(pair=>pair.id===row.id)?.knownPreexistingNul);assert.equal(knownReviewDifferences.length,0,'NUL normalization regression');
+ const reviewDifferences=allReviewDifferences;
  let alphabet='';for(let u=0xd800;u<=0xdfff;u++)alphabet+='x'+String.fromCharCode(u)+'y';for(let u=0xf0000;u<0xf0800;u++)alphabet+='x\ue000'+String.fromCodePoint(u)+'y';alphabet+='\ue000\ue000\ue000';
  assert.equal(NewsReader.inlineText(alphabet),original.inlineText(alphabet));
  assert.equal((await reviewActual(alphabet)).trim(),'<p>'+original.inlineText(alphabet)+'</p>');reviewActual.dispose();
