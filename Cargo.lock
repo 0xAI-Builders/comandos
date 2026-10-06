@@ -270,9 +270,11 @@ dependencies = [
  "comandos-extensions",
  "comandos-runtime",
  "comandos-server",
+ "getrandom 0.3.4",
  "nix",
  "serde_json",
  "sha2",
+ "toml",
 ]
 
 [[package]]

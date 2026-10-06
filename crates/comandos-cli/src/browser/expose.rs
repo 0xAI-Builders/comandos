@@ -6,13 +6,27 @@ use std::{
     io::{Read, Write},
     os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
+    time::{Duration, Instant},
 };
 
 #[derive(Debug)]
 struct ForwardError(String);
 
 pub fn run(args: &[String], home: impl AsRef<Path>) -> i32 {
+    if let Err((usage, message)) = validate_args(args) {
+        eprintln!(
+            "usage: {usage}\ncc-browser-expose{}: error: {message}",
+            if usage.starts_with("cc-browser-expose start ") {
+                " start"
+            } else if usage.starts_with("cc-browser-expose stop ") {
+                " stop"
+            } else {
+                ""
+            }
+        );
+        return 2;
+    }
     match run_inner(args, home.as_ref()) {
         Ok(()) => 0,
         Err(ForwardError(e)) => {
@@ -39,6 +53,17 @@ fn run_inner(args: &[String], home: &Path) -> Result<(), ForwardError> {
         return Ok(());
     }
     let lock = open_private(&root.join(".lock"), true, 0o600)?;
+    let metadata = lock
+        .metadata()
+        .map_err(|_| ForwardError("Cannot access private SSH forward state".into()))?;
+    if !metadata.is_file()
+        || metadata.uid() != current_uid()
+        || metadata.permissions().mode() & 0o077 != 0
+    {
+        return Err(ForwardError(
+            "Cannot access private SSH forward state".into(),
+        ));
+    }
     let _lock = Flock::lock(lock, FlockArg::LockExclusive)
         .map_err(|_| ForwardError("Cannot access private SSH forward state".to_owned()))?;
     match action {
@@ -100,10 +125,13 @@ fn directory(home: &Path, create: bool) -> Result<PathBuf, ForwardError> {
             "Forward state directory must be an absolute path".to_owned(),
         ));
     }
-    if create {
-        fs::create_dir_all(&root)
+    if create && fs::symlink_metadata(&root).is_err() {
+        use std::os::unix::fs::DirBuilderExt;
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&root)
             .map_err(|_| ForwardError("Cannot access private SSH forward state".to_owned()))?;
-        let _ = fs::set_permissions(&root, fs::Permissions::from_mode(0o700));
     }
     let Ok(meta) = fs::symlink_metadata(&root) else {
         return Ok(root);
@@ -174,14 +202,27 @@ fn read_mapping(
 }
 
 fn ssh(args: &[String]) -> bool {
-    Command::new("ssh")
+    let Ok(mut child) = Command::new("ssh")
         .args(args)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(10)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+        }
+    }
 }
 
 fn control(socket: &Path, operation: &str, host: &str) -> bool {
@@ -228,14 +269,10 @@ fn start(root: &Path, local: u16, remote: u16, home: &Path) -> Result<(), Forwar
     let path = root.join(format!("{remote}.json"));
     if !path.exists() {
         let mut file = open_private(&path, false, 0o600)?;
-        let text = serde_json::to_string(&json!({
-            "version":1,
-            "host":host,
-            "local_port":local,
-            "remote_port":remote
-        }))
-        .map_err(|e| ForwardError(e.to_string()))?
-            + "\n";
+        let text = format!(
+            "{{\"version\": 1, \"host\": {}, \"local_port\": {local}, \"remote_port\": {remote}}}\n",
+            serde_json::to_string(&host).unwrap()
+        );
         file.write_all(text.as_bytes())
             .map_err(|_| ForwardError("Cannot access private SSH forward state".to_owned()))?;
         file.sync_all()
@@ -341,7 +378,7 @@ fn open_private(path: &Path, truncate: bool, mode: u32) -> Result<File, ForwardE
         .write(true)
         .create(true)
         .create_new(!truncate)
-        .truncate(truncate)
+        .truncate(false)
         .mode(mode)
         .custom_flags(nix::libc::O_NOFOLLOW)
         .open(path)
@@ -349,11 +386,67 @@ fn open_private(path: &Path, truncate: bool, mode: u32) -> Result<File, ForwardE
 }
 
 fn current_uid() -> u32 {
-    std::process::Command::new("id")
-        .arg("-u")
-        .output()
-        .ok()
-        .and_then(|out| String::from_utf8(out.stdout).ok())
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(u32::MAX)
+    nix::unistd::Uid::current().as_raw()
+}
+
+fn validate_args(args: &[String]) -> Result<(), (String, String)> {
+    let main = "cc-browser-expose [-h] {start,stop,status} ...";
+    let (usage, fields): (&str, &[(&str, u16)]) = match args.first().map(String::as_str) {
+        Some("start") => (
+            "cc-browser-expose start [-h] local_port [remote_port]",
+            &[("local_port", 1), ("remote_port", 1024)],
+        ),
+        Some("stop") => (
+            "cc-browser-expose stop [-h] remote_port",
+            &[("remote_port", 1024)],
+        ),
+        Some("status") => (main, &[]),
+        None => {
+            return Err((
+                main.into(),
+                "the following arguments are required: action".into(),
+            ));
+        }
+        Some(action) => {
+            return Err((
+                main.into(),
+                format!(
+                    "argument action: invalid choice: '{action}' (choose from start, stop, status)"
+                ),
+            ));
+        }
+    };
+    if args.len() > fields.len() + 1 {
+        return Err((
+            main.into(),
+            format!(
+                "unrecognized arguments: {}",
+                args[fields.len() + 1..].join(" ")
+            ),
+        ));
+    }
+    for (index, (field, minimum)) in fields.iter().enumerate() {
+        if index == 1 && args.len() <= index + 1 {
+            continue;
+        }
+        if args.get(index + 1).is_none() {
+            return Err((
+                usage.into(),
+                format!("the following arguments are required: {field}"),
+            ));
+        }
+        if let Err(ForwardError(error)) = parse_port(args.get(index + 1), *minimum) {
+            return Err((usage.into(), format!("argument {field}: {error}")));
+        }
+    }
+    if args.first().is_some_and(|arg| arg == "start")
+        && args.len() == 2
+        && parse_port(args.get(1), 1).unwrap() < 1024
+    {
+        return Err((
+            main.into(),
+            "A local privileged port requires an explicit remote port from 1024 to 65535".into(),
+        ));
+    }
+    Ok(())
 }

@@ -14,12 +14,15 @@ name = "comandos"
 path = "src/main.rs"
 
 [dependencies]
+comandos-core = { path = "../comandos-core" }
+toml = "=0.8.2"
+getrandom.workspace = true
 comandos-extensions = { path = "../comandos-extensions" }
 comandos-runtime = { path = "../comandos-runtime" }
 comandos-server = { path = "../comandos-server" }
 sha2.workspace = true
 serde_json.workspace = true
-nix = { version = "=0.31.3", default-features = false, features = ["fs"] }
+nix = { version = "=0.31.3", default-features = false, features = ["fs", "user"] }
 
 [dev-dependencies]
 comandos-core = { path = "../comandos-core" }
