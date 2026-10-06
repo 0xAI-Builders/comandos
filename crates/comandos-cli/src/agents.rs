@@ -118,7 +118,8 @@ pub fn main(args: &[String]) -> i32 {
 }
 
 use comandos_core::json::{indent_dumps, workspace_loads};
-use comandos_store::files::{FileLock, write_atomic};
+
+use comandos_extensions::mutations::{self, Mutation};
 use serde_json::{Map, Value, json};
 use std::{
     io::{self, Write},
@@ -165,11 +166,91 @@ fn owned(command: &str, name: &str, home: &Path) -> bool {
             && command == home.join(".claude/hooks/cc-notify.sh").to_string_lossy())
 }
 
+fn before(mutation: Mutation<'_>) -> io::Result<()> {
+    mutations::before(mutation).map_err(io::Error::other)
+}
+fn after(path: &Path) -> io::Result<()> {
+    mutations::after(path).map_err(io::Error::other)
+}
 fn private_dirs(path: &Path) -> io::Result<()> {
+    before(Mutation::Directory { path, mode: 0o700 })?;
     fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
-        .create(path)
+        .create(path)?;
+    after(path)
+}
+pub(crate) fn installation_lock(home: &Path) -> io::Result<fs::File> {
+    let path = home.join(".local/share/comandos/agents.lock");
+    super::install::release::check_app_parents(&path).map_err(io::Error::other)?;
+    before(Mutation::Control { path: &path })?;
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags(nix::libc::O_NOFOLLOW)
+        .open(path)?;
+    file.lock()?;
+    Ok(file)
+}
+fn write_config_atomic(path: &Path, body: &[u8], mode: u32) -> io::Result<()> {
+    if !mutations::active() {
+        return comandos_store::files::write_atomic(path, body);
+    }
+    before(Mutation::AtomicFile {
+        path,
+        bytes: body,
+        mode,
+    })?;
+    let dir = path
+        .parent()
+        .ok_or_else(|| io::Error::other("config sin directorio"))?;
+    private_dirs(dir)?;
+    let name = path
+        .file_name()
+        .ok_or_else(|| io::Error::other("ruta sin nombre"))?
+        .to_string_lossy();
+    let mut random = [0u8; 8];
+    getrandom::fill(&mut random).map_err(|e| io::Error::other(e.to_string()))?;
+    let suffix: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
+    let tmp = dir.join(format!(".{name}.{suffix}.tmp"));
+    before(Mutation::File {
+        path: &tmp,
+        bytes: body,
+        mode: 0o600,
+    })?;
+    let result = (|| {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&tmp)?;
+        file.write_all(body)?;
+        file.flush()?;
+        file.sync_all()?;
+        after(&tmp)?;
+        before(Mutation::File {
+            path: &tmp,
+            bytes: body,
+            mode,
+        })?;
+        fs::set_permissions(&tmp, fs::Permissions::from_mode(mode))?;
+        after(&tmp)?;
+        before(Mutation::Move {
+            source: &tmp,
+            target: path,
+        })?;
+        fs::rename(&tmp, path)?;
+        after(path)?;
+        after(&tmp)
+    })();
+    if result.is_err() && before(Mutation::Remove { path: &tmp }).is_ok() {
+        let _ = fs::remove_file(&tmp);
+        let _ = after(&tmp);
+    }
+    result
 }
 /// Back up bytes before mutation. Follow a config symlink, preserving that symlink
 /// and its target mode. Exclusive backup names retain all same-second revisions.
@@ -219,6 +300,11 @@ fn save_at(path: &Path, body: &[u8], follow_symlink: bool, seconds: u64) -> io::
             "{}.bak-comandos-{stamp}{suffix}",
             path.file_name().unwrap_or_default().to_string_lossy()
         ));
+        before(Mutation::File {
+            path: &backup,
+            bytes: existing.as_deref().unwrap_or_default(),
+            mode,
+        })?;
         match fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -229,13 +315,14 @@ fn save_at(path: &Path, body: &[u8], follow_symlink: bool, seconds: u64) -> io::
                 f.write_all(existing.as_deref().unwrap_or_default())?;
                 f.sync_all()?;
                 fs::set_permissions(&backup, fs::Permissions::from_mode(mode))?;
+                after(&backup)?;
                 break;
             }
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => index += 1,
             Err(e) => return Err(e),
         }
     }
-    write_atomic(&target, body)?;
+    write_config_atomic(&target, body, mode)?;
     Ok(true)
 }
 fn read_object(path: &Path) -> io::Result<Value> {
@@ -300,30 +387,52 @@ fn add_group(
     true
 }
 fn setup(home: &Path, out: &mut String) {
+    let _ = setup_inner(home, out, false, &present);
+}
+pub(crate) fn setup_transaction(home: &Path, out: &mut String) -> io::Result<()> {
+    setup_transaction_with(home, out, &present)
+}
+pub(crate) fn setup_transaction_with(
+    home: &Path,
+    out: &mut String,
+    presence: &impl Fn(&str) -> bool,
+) -> io::Result<()> {
+    setup_inner(home, out, true, presence)
+}
+fn setup_inner(
+    home: &Path,
+    out: &mut String,
+    strict: bool,
+    presence: &impl Fn(&str) -> bool,
+) -> io::Result<()> {
     if !["codex", "grok", "opencode", "gemini", "agy"]
         .iter()
-        .any(|bin| present(bin))
+        .any(|bin| presence(bin))
     {
         for name in ["codex", "grok", "opencode", "gemini", "antigravity (agy)"] {
             missing(out, &format!("{name}: no instalado"));
         }
-        return;
+        return Ok(());
     }
     if !home.is_absolute() || home.to_str().is_none() {
         warn(out, "HOME debe ser una ruta absoluta UTF-8");
-        return;
+        return if strict {
+            Err(io::Error::other("HOME debe ser una ruta absoluta UTF-8"))
+        } else {
+            Ok(())
+        };
     }
     // Only setup creates controls; status performs presence and file reads only.
     let lock = home.join(".local/share/comandos/agents.lock");
     if let Err(e) = private_dirs(lock.parent().unwrap()) {
         warn(out, &format!("agents: {e}"));
-        return;
+        return if strict { Err(e) } else { Ok(()) };
     }
-    let _guard = match FileLock::exclusive(&lock) {
+    let _guard = match installation_lock(home) {
         Ok(g) => g,
         Err(e) => {
             warn(out, &format!("agents: {e}"));
-            return;
+            return if strict { Err(e) } else { Ok(()) };
         }
     };
     for (name, bin, configure) in [
@@ -337,12 +446,16 @@ fn setup(home: &Path, out: &mut String) {
         ("gemini", "gemini", setup_gemini),
         ("antigravity (agy)", "agy", setup_agy),
     ] {
-        if !present(bin) {
+        if !presence(bin) {
             missing(out, &format!("{name}: no instalado"));
         } else if let Err(e) = configure(home, out) {
             warn(out, &format!("{name}: no pude configurar — {e}"));
+            if strict {
+                return Err(e);
+            }
         }
     }
+    Ok(())
 }
 /// Replace only the first top-level notify string token. Parser spans preserve
 /// surrounding trivia, extra argv and unrelated fields byte for byte. Encode as
@@ -522,11 +635,25 @@ fn setup_grok(home: &Path, out: &mut String) -> io::Result<()> {
                     .to_string_lossy()
                     .ends_with("/adapters/grok-hooks.py") =>
         {
+            before(Mutation::Remove { path: &alias })?;
             fs::remove_file(&alias)?;
-            std::os::unix::fs::symlink(home.join(".local/bin/comandos"), &alias)?;
+            after(&alias)?;
+            let target = home.join(".local/bin/comandos");
+            before(Mutation::Link {
+                path: &alias,
+                target: &target,
+            })?;
+            std::os::unix::fs::symlink(&target, &alias)?;
+            after(&alias)?;
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            std::os::unix::fs::symlink(home.join(".local/bin/comandos"), &alias)?
+            let target = home.join(".local/bin/comandos");
+            before(Mutation::Link {
+                path: &alias,
+                target: &target,
+            })?;
+            std::os::unix::fs::symlink(&target, &alias)?;
+            after(&alias)?;
         }
         Err(e) => return Err(e),
         _ => {}

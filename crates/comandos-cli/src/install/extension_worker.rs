@@ -9,21 +9,40 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
-const LIMIT: Duration = Duration::from_secs(90);
+fn operation_limit(operation: &str) -> Result<Duration, String> {
+    match operation {
+        "import" | "sync" => Ok(Duration::from_secs(90)),
+        "agents-setup" => Ok(Duration::from_secs(30)),
+        _ => Err("invalid extension worker operation".into()),
+    }
+}
 
 /// Injected native execution seam. The production runner executes this in an
 /// owned worker process; private Action runners may call it synchronously.
 pub fn execute(home: &Path, journal: &Path, operation: &str) -> Result<(), String> {
-    if !matches!(operation, "import" | "sync") {
-        return Err("invalid extension worker operation".into());
-    }
+    operation_limit(operation)?;
     let _guard = transaction::installation_lock(home)?;
     let owned = Rc::new(RefCell::new(transaction::load_active_journal(
         home, journal,
     )?));
-    let adapter = Rc::new(RefCell::new(Adapter { journal: owned }));
+    let adapter = Rc::new(RefCell::new(if operation == "agents-setup" {
+        Adapter::agents(owned)
+    } else {
+        Adapter {
+            journal: owned,
+            agents: false,
+        }
+    }));
     comandos_extensions::mutations::with(adapter, || {
-        comandos_extensions::cli::catalog_command(home, None, operation)
+        if operation == "agents-setup" {
+            let mut out = String::new();
+            let result =
+                crate::agents::setup_transaction(home, &mut out).map_err(|e| e.to_string());
+            print!("{out}");
+            result
+        } else {
+            comandos_extensions::cli::catalog_command(home, None, operation)
+        }
     })
 }
 pub(crate) fn entry(args: &[String]) -> Result<i32, String> {
@@ -34,7 +53,7 @@ pub(crate) fn entry(args: &[String]) -> Result<i32, String> {
     let _guard = transaction::inherited_installation_lock(home)?;
     // This process watchdog also closes the lease if the parent disappears.
     // A blocked IO operation cannot continue in a detached mutation thread.
-    start_watchdog(LIMIT)?;
+    start_watchdog(operation_limit(&args[2])?)?;
     execute(home, Path::new(&args[1]), &args[2])?;
     Ok(0)
 }
@@ -66,7 +85,7 @@ pub(crate) fn run(
         .arg(home)
         .arg(journal)
         .arg(operation);
-    supervise_with_ack(home, &mut command, LIMIT, quiescent)
+    supervise_with_ack(home, &mut command, operation_limit(operation)?, quiescent)
 }
 #[cfg(test)]
 fn supervise(home: &Path, command: &mut Command, limit: Duration) -> Result<(), String> {
@@ -145,6 +164,17 @@ mod tests {
     use super::*;
     use std::{fs, os::unix::fs::PermissionsExt};
     #[test]
+    fn admitted_operation_deadlines_preserve_installer_contract() {
+        assert_eq!(
+            operation_limit("agents-setup").unwrap(),
+            Duration::from_secs(30)
+        );
+        for operation in ["import", "sync"] {
+            assert_eq!(operation_limit(operation).unwrap(), Duration::from_secs(90));
+        }
+        assert!(operation_limit("unknown").is_err());
+    }
+    #[test]
     fn worker_fixture() {
         let Some(home) = std::env::var_os("COMANDOS_TEST_EXTENSION_WORKER_HOME") else {
             return;
@@ -159,7 +189,10 @@ mod tests {
         let owned = Rc::new(RefCell::new(
             transaction::load_active_journal(&home, &journal).unwrap(),
         ));
-        let adapter = Rc::new(RefCell::new(Adapter { journal: owned }));
+        let adapter = Rc::new(RefCell::new(Adapter {
+            journal: owned,
+            agents: false,
+        }));
         comandos_extensions::mutations::with(adapter, || {
             comandos_extensions::config::save_json(
                 &home.join(".config/comandos/extensions/snapshot.json"),

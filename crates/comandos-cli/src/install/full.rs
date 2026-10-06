@@ -363,23 +363,7 @@ pub fn run_with(
                     vec!["import", "sync"]
                 };
                 for operation in operations {
-                    let quiescent = std::rc::Rc::new(std::cell::RefCell::new(false));
-                    let result = tracked_action(&Action::ExtensionOperation {
-                        home: home.clone(),
-                        journal: j.durable_path()?.into(),
-                        operation: operation.into(),
-                        quiescent: quiescent.clone(),
-                    });
-                    if !*quiescent.borrow() {
-                        j.refuse_rollback("owned worker group quiescence unproved");
-                        return Err(
-                            "owned worker group quiescence unproved; journal retained".into()
-                        );
-                    }
-                    // Re-read durable before-mutation intents only after the owned
-                    // worker has exited/reaped; never infer ownership from source IO.
-                    j.reload(&home)?;
-                    result?;
+                    j.operation(&home, operation, &mut tracked_action)?;
                 }
                 super::extensions::apply_with_journal(&home, platform, j, &mut tracked_action)?;
             }

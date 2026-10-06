@@ -22,6 +22,8 @@ pub(crate) struct Journal {
     pub(super) observed: BTreeMap<PathBuf, Before>,
     pub(super) pending: BTreeMap<PathBuf, Before>,
     pub(super) extensions: bool,
+    pub(super) agents: bool,
+    pub(super) agent_paths: std::collections::BTreeSet<PathBuf>,
     pub(super) extension_trees: Vec<PathBuf>,
     durable: Option<PathBuf>,
     committed: bool,
@@ -514,26 +516,29 @@ impl Journal {
                 .extension_trees
                 .iter()
                 .any(|root| path.starts_with(root));
-            let _file_guard =
-                if !private_parent && !extension_tree && path.parent().is_some_and(Path::is_dir) {
-                    let name = path
-                        .file_name()
-                        .ok_or("rollback destination name")?
-                        .to_string_lossy();
-                    Some(
-                        match comandos_store::files::FileLock::exclusive(
-                            &path.with_file_name(format!("{name}.install.lock")),
-                        ) {
-                            Ok(guard) => guard,
-                            Err(e) => {
-                                errors.push(format!("{} rollback lock: {e}", path.display()));
-                                continue;
-                            }
-                        },
-                    )
-                } else {
-                    None
-                };
+            let _file_guard = if !private_parent
+                && !extension_tree
+                && !self.agent_paths.contains(&path)
+                && path.parent().is_some_and(Path::is_dir)
+            {
+                let name = path
+                    .file_name()
+                    .ok_or("rollback destination name")?
+                    .to_string_lossy();
+                Some(
+                    match comandos_store::files::FileLock::exclusive(
+                        &path.with_file_name(format!("{name}.install.lock")),
+                    ) {
+                        Ok(guard) => guard,
+                        Err(e) => {
+                            errors.push(format!("{} rollback lock: {e}", path.display()));
+                            continue;
+                        }
+                    },
+                )
+            } else {
+                None
+            };
             let mut now = Self::default();
             let captured = now.capture(&path);
             if now.entries.get(&path) == Some(&before) {
@@ -788,6 +793,26 @@ pub(crate) fn inherited_installation_lock(home: &Path) -> Result<std::rc::Rc<fs:
     Ok(guard)
 }
 impl Journal {
+    pub(crate) fn operation(
+        &mut self,
+        home: &Path,
+        operation: &str,
+        run: &mut dyn FnMut(&super::plan::Action) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let quiescent = std::rc::Rc::new(std::cell::RefCell::new(false));
+        let result = run(&super::plan::Action::ExtensionOperation {
+            home: home.into(),
+            journal: self.durable_path()?.into(),
+            operation: operation.into(),
+            quiescent: quiescent.clone(),
+        });
+        if !*quiescent.borrow() {
+            self.refuse_rollback("owned worker group quiescence unproved");
+            return Err("owned worker group quiescence unproved; journal retained".into());
+        }
+        self.reload(home)?;
+        result
+    }
     pub(crate) fn durable_path(&self) -> Result<&Path, String> {
         self.durable
             .as_deref()
@@ -872,7 +897,7 @@ impl Journal {
         }
         let path = root.join("manifest.json");
         let bytes = serde_json::to_vec(
-            &serde_json::json!({"version":1,"committed":self.committed,"entries":rows,"runtime":self.runtime,"recompute":self.recompute,"documents":self.documents,"pending":pending,"extensions":self.extensions,"extension_trees":self.extension_trees}),
+            &serde_json::json!({"version":1,"committed":self.committed,"entries":rows,"runtime":self.runtime,"recompute":self.recompute,"documents":self.documents,"pending":pending,"extensions":self.extensions,"agents":self.agents,"agent_paths":self.agent_paths,"extension_trees":self.extension_trees}),
         )
         .map_err(|e| e.to_string())?;
         write_atomic(&path, &bytes).map_err(|e| e.to_string())?;
@@ -1112,6 +1137,21 @@ pub(crate) fn load_journal(home: &Path, path: &Path) -> Result<Journal, String> 
             }
         } else {
             super::release::check_app_parents(dest)?;
+        }
+    }
+    journal.agents = match value.get("agents") {
+        Some(v) => v.as_bool().ok_or("invalid agents journal scope")?,
+        None => false,
+    };
+    if let Some(paths) = value.get("agent_paths") {
+        journal.agent_paths = serde_json::from_value(paths.clone()).map_err(|e| e.to_string())?;
+        if (!journal.agents && !journal.agent_paths.is_empty())
+            || journal.agent_paths.iter().any(|p| {
+                !journal.entries.contains_key(p)
+                    && *p != home.join(".local/share/comandos/agents.lock")
+            })
+        {
+            return Err("invalid agent mutation paths".into());
         }
     }
     journal.extensions = value
@@ -1382,6 +1422,15 @@ impl Journal {
         if let Some(error) = &self.reload_error {
             return Err(self.runtime_error("extension worker journal reload", error));
         }
+        let _agent_lock = if self.agents {
+            let home = self.install_home().ok_or("agent journal home absent")?;
+            Some(
+                crate::agents::installation_lock(home)
+                    .map_err(|e| self.runtime_error("agent setup lock", &e.to_string()))?,
+            )
+        } else {
+            None
+        };
         let _extension_locks = if self.extensions {
             let home = self.install_home().ok_or("extension journal home absent")?;
             let state = comandos_extensions::config::state_dir(home);

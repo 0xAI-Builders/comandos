@@ -12,6 +12,12 @@ pub enum Mutation<'a> {
         bytes: &'a [u8],
         mode: u32,
     },
+    /// Atomic publication may replace a selected config link without following it.
+    AtomicFile {
+        path: &'a Path,
+        bytes: &'a [u8],
+        mode: u32,
+    },
     Directory {
         path: &'a Path,
         mode: u32,
@@ -63,13 +69,16 @@ pub fn with<T>(observer: Shared, body: impl FnOnce() -> Result<T>) -> Result<T> 
     let _reset = Reset;
     body()
 }
-pub(crate) fn before(mutation: Mutation<'_>) -> Result<()> {
+pub fn active() -> bool {
+    ACTIVE.with(|active| active.borrow().is_some())
+}
+pub fn before(mutation: Mutation<'_>) -> Result<()> {
     ACTIVE.with(|active| match active.borrow().as_ref() {
         Some(observer) => observer.borrow_mut().before(&mutation),
         None => Ok(()),
     })
 }
-pub(crate) fn after(path: &Path) -> Result<()> {
+pub fn after(path: &Path) -> Result<()> {
     ACTIVE.with(|active| match active.borrow().as_ref() {
         Some(observer) => observer.borrow_mut().after(path),
         None => Ok(()),

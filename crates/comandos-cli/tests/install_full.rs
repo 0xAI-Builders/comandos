@@ -6,6 +6,20 @@ use std::{
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
+fn private_action(action: &comandos_cli::install::plan::Action) -> Result<(), String> {
+    if let comandos_cli::install::plan::Action::ExtensionOperation {
+        home,
+        journal,
+        operation,
+        quiescent,
+    } = action
+    {
+        let result = comandos_cli::install::extension_worker::execute(home, journal, operation);
+        *quiescent.borrow_mut() = true;
+        return result;
+    }
+    Ok(())
+}
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
 #[test]
@@ -25,7 +39,7 @@ fn installer_resources_and_aliases_match_frozen_legacy_install_tree() {
     fs::create_dir_all(home.0.join(".local/share/comandos/bin")).unwrap();
     fs::write(home.0.join(".local/share/comandos/bin/comandos"), b"native").unwrap();
     let actions = comandos_cli::install::plan::plan(&home.0, Platform::LinuxNative, &release);
-    comandos_cli::install::plan::apply_with(&actions, false, &mut |_| Ok(())).unwrap();
+    comandos_cli::install::plan::apply_with(&actions, false, &mut private_action).unwrap();
     let mut resources = 0;
     let mut aliases = 0;
     let mut frontend = 0;
@@ -149,6 +163,7 @@ fn full_plan_is_idempotent_and_preserves_existing_tmux_and_custom_units() {
         comandos_cli::install::plan::plan(&home.0, Platform::LinuxNative, &home.0.join("release"));
     let mut tools = Vec::new();
     comandos_cli::install::plan::apply_with(&actions, false, &mut |action| {
+        private_action(action)?;
         tools.push(format!("{action:?}"));
         Ok(())
     })
@@ -170,7 +185,8 @@ fn full_plan_is_idempotent_and_preserves_existing_tmux_and_custom_units() {
             .iter()
             .any(|line| line.contains("restart") || line.contains("start-server"))
     );
-    let report = comandos_cli::install::plan::apply_with(&actions, false, &mut |_| Ok(())).unwrap();
+    let report =
+        comandos_cli::install::plan::apply_with(&actions, false, &mut private_action).unwrap();
     assert!(!report.iter().any(|line| line.starts_with("write ")
         || line.starts_with("link ")
         || line.starts_with("unit ")));

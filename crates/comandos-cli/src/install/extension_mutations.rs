@@ -130,6 +130,15 @@ pub(super) fn rollback_documents(effects: &[DocumentEffect]) -> Result<(), Strin
 }
 pub(crate) struct Adapter {
     pub(crate) journal: Rc<RefCell<Journal>>,
+    pub(crate) agents: bool,
+}
+impl Adapter {
+    pub(crate) fn agents(journal: Rc<RefCell<Journal>>) -> Self {
+        Self {
+            journal,
+            agents: true,
+        }
+    }
 }
 impl Observer for Adapter {
     fn before(&mut self, mutation: &Mutation<'_>) -> Result<(), String> {
@@ -137,12 +146,13 @@ impl Observer for Adapter {
         let paths = match mutation {
             Mutation::Move { source, target } => vec![*source, *target],
             Mutation::File { path, .. }
+            | Mutation::AtomicFile { path, .. }
             | Mutation::Directory { path, .. }
             | Mutation::Link { path, .. }
             | Mutation::Remove { path }
             | Mutation::Control { path } => vec![*path],
         };
-        for path in paths {
+        for path in &paths {
             if !j.install_home().is_some_and(|home| path.starts_with(home))
                 || path.components().any(|c| {
                     matches!(
@@ -157,7 +167,12 @@ impl Observer for Adapter {
                 ));
             }
         }
-        j.extensions = true;
+        if self.agents {
+            j.agents = true;
+            j.agent_paths.extend(paths.iter().map(|p| p.to_path_buf()));
+        } else {
+            j.extensions = true;
+        }
         match mutation {
             Mutation::Control { path } => {
                 super::release::check_app_parents(path)?;
@@ -168,10 +183,10 @@ impl Observer for Adapter {
                     ));
                 }
             }
-            Mutation::File { path, bytes, mode } => {
+            Mutation::File { path, bytes, mode } | Mutation::AtomicFile { path, bytes, mode } => {
                 j.file(path)?;
                 verify(&j, path)?;
-                if path.is_symlink() {
+                if path.is_symlink() && !matches!(mutation, Mutation::AtomicFile { .. }) {
                     return Err(format!(
                         "extension file symlink requires explicit target: {}",
                         path.display()
@@ -421,7 +436,10 @@ mod tests {
         let owned = Rc::new(RefCell::new(journal));
         (
             owned.clone(),
-            Rc::new(RefCell::new(Adapter { journal: owned })),
+            Rc::new(RefCell::new(Adapter {
+                journal: owned,
+                agents: false,
+            })),
         )
     }
     fn journal(owned: Rc<RefCell<Journal>>) -> Journal {
@@ -600,6 +618,7 @@ mod recovery_tests {
         mutations::with(
             Rc::new(RefCell::new(Adapter {
                 journal: owned.clone(),
+                agents: false,
             })),
             || {
                 config::private_write(
@@ -645,6 +664,7 @@ mod recovery_tests {
         let owned = Rc::new(RefCell::new(journal));
         let adapter = Rc::new(RefCell::new(Adapter {
             journal: owned.clone(),
+            agents: false,
         }));
         mutations::with(adapter.clone(), || {
             config::private_write(&path, b"first-owned-write")
@@ -693,6 +713,7 @@ mod recovery_tests {
         mutations::with(
             Rc::new(RefCell::new(Adapter {
                 journal: owned.clone(),
+                agents: false,
             })),
             || {
                 config::private_write(
@@ -716,6 +737,208 @@ mod recovery_tests {
             before
         );
         drop(access);
+        fs::remove_dir_all(home).unwrap();
+    }
+    #[test]
+    fn native_all_agent_setup_restores_configs_links_backups_and_target_modes() {
+        use std::os::unix::fs::PermissionsExt;
+        let home = (home(),);
+        let files = [
+            (
+                ".codex/config.toml",
+                b"# preserve\n[other]\nflag = 1\n".as_slice(),
+            ),
+            (".grok/hooks/comandos.json", b"{\"foreign\":1}\n".as_slice()),
+            (".gemini/config/hooks.json", b"{}\n".as_slice()),
+            (
+                ".config/private-gemini.json",
+                b"{\"foreign\":2}\n".as_slice(),
+            ),
+        ];
+        for (name, body) in files {
+            let path = home.0.join(name);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, body).unwrap();
+            fs::set_permissions(path, fs::Permissions::from_mode(0o624)).unwrap();
+        }
+        let gemini = home.0.join(".gemini/settings.json");
+        std::os::unix::fs::symlink(home.0.join(".config/private-gemini.json"), &gemini).unwrap();
+        let bin = home.0.join(".local/bin");
+        fs::create_dir_all(&bin).unwrap();
+        let alias = bin.join("grok-hooks.py");
+        let old = home.0.join("legacy/adapters/grok-hooks.py");
+        std::os::unix::fs::symlink(&old, &alias).unwrap();
+        let mut journal = Journal::default();
+        journal.durable(&home.0).unwrap();
+        let owned = Rc::new(RefCell::new(journal));
+        let mut out = String::new();
+        comandos_extensions::mutations::with(
+            Rc::new(RefCell::new(Adapter::agents(owned.clone()))),
+            || {
+                crate::agents::setup_transaction_with(&home.0, &mut out, &|_| true)
+                    .map_err(|e| e.to_string())
+            },
+        )
+        .unwrap();
+        assert_ne!(
+            fs::read(home.0.join(".config/private-gemini.json")).unwrap(),
+            files[3].1
+        );
+        assert_ne!(fs::read_link(&alias).unwrap(), old);
+        let mut journal = Rc::try_unwrap(owned).ok().unwrap().into_inner();
+        journal.reload(&home.0).unwrap();
+        journal.rollback().unwrap();
+        for (name, body) in files {
+            let path = home.0.join(name);
+            assert_eq!(fs::read(&path).unwrap(), body);
+            assert_eq!(
+                path.metadata().unwrap().permissions().mode() & 0o7777,
+                0o624
+            );
+        }
+        assert_eq!(fs::read_link(alias).unwrap(), old);
+        assert_eq!(
+            fs::read_link(gemini).unwrap(),
+            home.0.join(".config/private-gemini.json")
+        );
+        assert!(!home.0.join(".codex/hooks.json").exists());
+        assert!(!home.0.join(".config/opencode/plugin/comandos.js").exists());
+        assert!(
+            !home
+                .0
+                .join(".local/share/comandos/opencode-bridge.mjs")
+                .exists()
+        );
+        for parent in [".codex", ".grok/hooks", ".gemini", ".gemini/config"] {
+            assert!(fs::read_dir(home.0.join(parent)).unwrap().all(|entry| {
+                !entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .contains(".bak-comandos-")
+            }));
+        }
+        assert!(!home.0.join(".config/comandos/extensions").exists());
+        fs::remove_dir_all(home.0).unwrap();
+    }
+    #[test]
+    fn later_malformed_agent_config_restores_earlier_native_writes() {
+        let home = home();
+        let codex = home.join(".codex/config.toml");
+        let grok = home.join(".grok/hooks/comandos.json");
+        for (path, bytes) in [
+            (&codex, b"# original\n".as_slice()),
+            (&grok, b"{invalid".as_slice()),
+        ] {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, bytes).unwrap();
+        }
+        let mut j = Journal::default();
+        j.durable(&home).unwrap();
+        let owned = Rc::new(RefCell::new(j));
+        let mut out = String::new();
+        let error = mutations::with(
+            Rc::new(RefCell::new(Adapter::agents(owned.clone()))),
+            || {
+                crate::agents::setup_transaction_with(&home, &mut out, &|name| {
+                    matches!(name, "codex" | "grok")
+                })
+                .map_err(|e| e.to_string())
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("JSON"), "{error}");
+        assert_ne!(fs::read(&codex).unwrap(), b"# original\n");
+        let mut j = Rc::try_unwrap(owned).ok().unwrap().into_inner();
+        j.reload(&home).unwrap();
+        j.rollback().unwrap();
+        assert_eq!(fs::read(&codex).unwrap(), b"# original\n");
+        assert_eq!(fs::read(grok).unwrap(), b"{invalid");
+        fs::remove_dir_all(home).unwrap();
+    }
+    #[test]
+    fn followed_agent_config_outside_home_is_rejected_before_target_write() {
+        let home = home();
+        let outside = home.with_extension("outside");
+        fs::write(&outside, b"{\"foreign\":true}\n").unwrap();
+        let config = home.join(".gemini/settings.json");
+        fs::create_dir_all(config.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&outside, &config).unwrap();
+        let mut j = Journal::default();
+        j.durable(&home).unwrap();
+        let owned = Rc::new(RefCell::new(j));
+        let mut out = String::new();
+        let error = mutations::with(
+            Rc::new(RefCell::new(Adapter::agents(owned.clone()))),
+            || {
+                crate::agents::setup_transaction_with(&home, &mut out, &|name| name == "gemini")
+                    .map_err(|e| e.to_string())
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("outside admitted HOME"), "{error}");
+        let mut j = Rc::try_unwrap(owned).ok().unwrap().into_inner();
+        j.reload(&home).unwrap();
+        j.rollback().unwrap();
+        assert_eq!(fs::read(&outside).unwrap(), b"{\"foreign\":true}\n");
+        assert_eq!(fs::read_link(config).unwrap(), outside);
+        fs::remove_file(outside).unwrap();
+        fs::remove_dir_all(home).unwrap();
+    }
+    #[test]
+    fn atomic_agent_shim_replacement_restores_link_without_mutating_old_target() {
+        let home = home();
+        let outside = home.with_extension("shim");
+        fs::write(&outside, b"foreign shim\n").unwrap();
+        let shim = home.join(".config/opencode/plugin/comandos.js");
+        fs::create_dir_all(shim.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&outside, &shim).unwrap();
+        let mut j = Journal::default();
+        j.durable(&home).unwrap();
+        let owned = Rc::new(RefCell::new(j));
+        let mut out = String::new();
+        mutations::with(
+            Rc::new(RefCell::new(Adapter::agents(owned.clone()))),
+            || {
+                crate::agents::setup_transaction_with(&home, &mut out, &|name| name == "opencode")
+                    .map_err(|e| e.to_string())
+            },
+        )
+        .unwrap();
+        assert!(!shim.is_symlink());
+        let mut j = Rc::try_unwrap(owned).ok().unwrap().into_inner();
+        j.reload(&home).unwrap();
+        j.rollback().unwrap();
+        assert_eq!(fs::read_link(shim).unwrap(), outside);
+        assert_eq!(fs::read(&outside).unwrap(), b"foreign shim\n");
+        fs::remove_file(outside).unwrap();
+        fs::remove_dir_all(home).unwrap();
+    }
+    #[test]
+    fn agent_rollback_preserves_later_config_edit_and_retains_durable_journal() {
+        let home = home();
+        let config = home.join(".codex/config.toml");
+        fs::create_dir_all(config.parent().unwrap()).unwrap();
+        fs::write(&config, b"# original\n").unwrap();
+        let mut j = Journal::default();
+        j.durable(&home).unwrap();
+        let owned = Rc::new(RefCell::new(j));
+        let mut out = String::new();
+        mutations::with(
+            Rc::new(RefCell::new(Adapter::agents(owned.clone()))),
+            || {
+                crate::agents::setup_transaction_with(&home, &mut out, &|name| name == "codex")
+                    .map_err(|e| e.to_string())
+            },
+        )
+        .unwrap();
+        let mut j = Rc::try_unwrap(owned).ok().unwrap().into_inner();
+        let durable = j.durable_path().unwrap().to_path_buf();
+        j.reload(&home).unwrap();
+        fs::write(&config, b"# later user edit\n").unwrap();
+        assert!(j.rollback().is_err());
+        assert_eq!(fs::read(config).unwrap(), b"# later user edit\n");
+        assert!(durable.exists());
         fs::remove_dir_all(home).unwrap();
     }
 }

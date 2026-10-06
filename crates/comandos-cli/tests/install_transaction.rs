@@ -11,6 +11,12 @@ use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
+// These injected callbacks never spawn workers; explicitly acknowledge that boundary.
+fn acknowledge_private_action(action: &Action) {
+    if let Action::ExtensionOperation { quiescent, .. } = action {
+        *quiescent.borrow_mut() = true;
+    }
+}
 static SEQ: AtomicU64 = AtomicU64::new(0);
 struct Home(PathBuf);
 impl Home {
@@ -62,11 +68,10 @@ fn failed_action_restores_alias_regular_bytes_symlink_hooks_and_original_backups
         Action::RegisterClaudeHooks(home.0.clone()),
         Action::AgentsSetup(home.0.clone()),
     ];
-    let error = plan::apply_with(
-        &actions,
-        false,
-        &mut |_| Err("injected late failure".into()),
-    )
+    let error = plan::apply_with(&actions, false, &mut |action| {
+        acknowledge_private_action(action);
+        Err("injected late failure".into())
+    })
     .unwrap_err();
     assert!(error.contains("injected late failure"));
     assert_eq!(fs::read(&alias).unwrap(), b"original alias");
@@ -127,8 +132,9 @@ fn full_late_failure_restores_release_previous_app_proxy_and_plan_files_without_
             source.to_str().unwrap().into(),
         ],
         &mut |action| {
+            acknowledge_private_action(action);
             calls += 1;
-            if matches!(action, Action::AgentsSetup(_)) {
+            if matches!(action, Action::ExtensionOperation {operation,..} if operation=="agents-setup") {
                 Err("injected agents failure".into())
             } else {
                 Ok(())
@@ -201,7 +207,8 @@ fn a_user_edit_during_a_later_phase_is_preserved_and_recovery_journal_retained()
         },
         Action::AgentsSetup(home.0.clone()),
     ];
-    let error = plan::apply_with(&actions, false, &mut |_| {
+    let error = plan::apply_with(&actions, false, &mut |action| {
+        acknowledge_private_action(action);
         put(&config, b"user edit", 0o600);
         Err("injected after edit".into())
     })
@@ -241,7 +248,8 @@ fn termination_worker() {
         },
         Action::AgentsSetup(home.clone()),
     ];
-    let _ = plan::apply_with(&actions, false, &mut |_| {
+    let _ = plan::apply_with(&actions, false, &mut |action| {
+        acknowledge_private_action(action);
         fs::write(home.join("ready"), b"ready").unwrap();
         loop {
             std::thread::park_timeout(std::time::Duration::from_millis(100));
@@ -328,7 +336,8 @@ fn standalone_stage_waits_until_full_failure_has_restored_its_pointer() {
             "--release".into(),
             source.to_str().unwrap().into(),
         ],
-        &mut |_| {
+        &mut |action| {
+            acknowledge_private_action(action);
             owned.0 = Some(
                 std::process::Command::new(std::env::current_exe().unwrap())
                     .args(["--exact", "stage_worker", "--nocapture"])
@@ -389,7 +398,8 @@ fn rollback_never_adopts_the_default_contents_of_a_custom_file_that_was_skipped(
         },
         Action::AgentsSetup(home.0.clone()),
     ];
-    let error = plan::apply_with(&actions, false, &mut |_| {
+    let error = plan::apply_with(&actions, false, &mut |action| {
+        acknowledge_private_action(action);
         put(&config, b"default", 0o600);
         Err("user replaced skipped config".into())
     })
@@ -442,6 +452,7 @@ fn full_runtime_worker() {
             source.to_str().unwrap().into(),
         ],
         &mut |action| {
+            acknowledge_private_action(action);
             match action {
                 Action::SystemctlState { unit, response, .. } => {
                     assert_eq!(unit, "cc-telegram.service");
@@ -591,6 +602,7 @@ fn full_extension_import_sync_and_timer_partial_activation_roll_back_after_late_
                 "--extensions".into(),
             ],
             &mut |action| {
+                acknowledge_private_action(action);
                 match action {
                     Action::ExtensionOperation {
                         home,

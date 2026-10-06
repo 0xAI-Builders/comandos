@@ -344,6 +344,12 @@ fn apply_inner(
                     report.push(format!("registered Claude hooks {}", path.display()));
                 }
             }
+            Action::AgentsSetup(home) if journal.is_some() => {
+                journal
+                    .as_deref_mut()
+                    .unwrap()
+                    .operation(home, "agents-setup", run)?;
+            }
             Action::Systemctl { .. } if !units_changed => {}
             Action::InstallFonts(_) if !fonts_changed => {}
             external => {
