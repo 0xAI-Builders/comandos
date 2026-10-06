@@ -48,3 +48,5 @@ pub mod news;
 
 pub mod command_sidebar;
 pub mod index_page;
+
+pub mod theme_preferences;

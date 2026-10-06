@@ -67,6 +67,7 @@ pub mod components {
     pub mod push_settings;
     pub mod quick_terminal;
     pub mod session_config;
+    pub mod theme_preferences;
     pub mod ui_sounds;
     #[cfg(target_arch = "wasm32")]
     pub(crate) mod web_support;

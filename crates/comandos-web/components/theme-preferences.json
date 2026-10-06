@@ -1,0 +1,37 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "marker_start": "// ---------- tema ----------",
+  "marker_end": "// ---------- remoto ----------",
+  "sha256": "d1e1bd201c8badd752348924cbd58f0901d4d2b452f1da62b7165832a50b4931",
+  "id": "theme-preferences",
+  "exports": [
+    "THEME_SEQ",
+    "THEME_META",
+    "curTheme",
+    "broadcastTermTheme",
+    "applyTheme",
+    "BUTTON_STYLES",
+    "curButtonStyle",
+    "applyButtonStyle",
+    "renderButtonStyleGallery",
+    "selectButtonStyle",
+    "renderThemeGallery",
+    "selectTheme",
+    "loadPrefs",
+    "applyTabsLayout",
+    "hydrateTerminalPrefs",
+    "setPref",
+    "activateMtab",
+    "wireMtabs",
+    "updateRangeFill",
+    "refreshAllRangeFills",
+    "wireRangeFills",
+    "updateFontPreview"
+  ],
+  "deps": [
+    "prelude",
+    "i18n",
+    "red"
+  ]
+}
