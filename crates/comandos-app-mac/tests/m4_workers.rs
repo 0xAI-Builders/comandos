@@ -86,6 +86,11 @@ impl Backend for Fake {
                 String::new()
             }
             "display-message" if args.last().unwrap().starts_with("#{pid}") => {
+                assert_eq!(
+                    args[3],
+                    format!("={session}:"),
+                    "display-message requires a pane target on tmux 3.6"
+                );
                 let mut reads = self.identity_reads.lock().unwrap();
                 *reads += 1;
                 let result = format!("991|${}|3|{}", self.identity.lock().unwrap(), session);
