@@ -21,6 +21,274 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+const APP_ARTIFACT: &str = "comandos-app";
+const APP_VERSION: u64 = 1;
+
+/// App shares the release layout, but has a distinct hash domain and artifact.
+/// Preparing this pointer never changes the live `cc-app` link.
+struct AppCandidate {
+    bytes: Vec<u8>,
+    id: String,
+    sha256: String,
+    dir: PathBuf,
+    pointer: PathBuf,
+}
+
+/// Reject symlinked ancestors before reading or writing an App installation.
+/// Missing parents are allowed, including during a read-only preview.
+pub(crate) fn check_app_parents(path: &Path) -> Result<(), String> {
+    if !path.is_absolute()
+        || path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err(format!(
+            "se necesita una ruta absoluta sin '..': {}",
+            path.display()
+        ));
+    }
+    let parent = path.parent().ok_or("ruta sin directorio")?;
+    for dir in parent.ancestors() {
+        match dir.symlink_metadata() {
+            Ok(m) if m.is_dir() => {}
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Ok(_) => return Err(format!("{} no es un directorio regular", dir.display())),
+            Err(e) => return Err(format!("no se pudo inspeccionar {}: {e}", dir.display())),
+        }
+    }
+    Ok(())
+}
+
+fn app_hash(bytes: &[u8]) -> (String, String) {
+    let sha256 = format!("{:x}", Sha256::digest(bytes));
+    let mut h = Sha256::new();
+    h.update(b"comandos-app\0");
+    h.update(bytes);
+    (hex12(h.finalize().as_slice()), sha256)
+}
+
+fn app_binary(path: &Path) -> Result<Vec<u8>, String> {
+    check_app_parents(path)?;
+    let meta = path
+        .symlink_metadata()
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    if !meta.is_file() || meta.permissions().mode() & 0o111 == 0 {
+        return Err(format!(
+            "{} no es un archivo ejecutable regular",
+            path.display()
+        ));
+    }
+    let bytes = read_same(path, (meta.dev(), meta.ino()))?;
+    if bytes.is_empty() {
+        return Err(format!("{} está vacío", path.display()));
+    }
+    Ok(bytes)
+}
+
+fn app_manifest(bytes: &[u8]) -> Result<(), String> {
+    let v: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|e| format!("manifiesto App inválido: {e}"))?;
+    let compatible = v.as_object().is_some_and(|o| o.len() == 4)
+        && v.get("state_protocol").and_then(|p| p.as_u64())
+            == Some(u64::from(super::STATE_PROTOCOL))
+        && v.get("artifact_version").and_then(|p| p.as_u64()) == Some(APP_VERSION)
+        && v.get("artifact").and_then(|p| p.as_str()) == Some(APP_ARTIFACT)
+        && v.get("sha256").and_then(|p| p.as_str()).is_some_and(|s| {
+            s.len() == 64
+                && s.bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        });
+    if !compatible {
+        return Err("manifiesto App incompatible o desconocido".into());
+    }
+    Ok(())
+}
+
+fn verify_app(dir: &Path, id: &str) -> Result<PathBuf, String> {
+    check_app_parents(&dir.join(APP_ARTIFACT))?;
+    if !is_sha12(id) {
+        return Err("id de release App inválido".into());
+    }
+    let binary = dir.join(APP_ARTIFACT);
+    let bytes = app_binary(&binary)?;
+    let manifest = dir.join("manifest.json");
+    if !manifest.symlink_metadata().is_ok_and(|m| m.is_file()) {
+        return Err(format!(
+            "{} no es un manifiesto regular",
+            manifest.display()
+        ));
+    }
+    let raw = fs::read(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
+    app_manifest(&raw)?;
+    let v: serde_json::Value = serde_json::from_slice(&raw).map_err(|e| e.to_string())?;
+    let (got, sha256) = app_hash(&bytes);
+    if got != id || v.get("sha256").and_then(|p| p.as_str()) != Some(sha256.as_str()) {
+        return Err(format!(
+            "{} no coincide con el hash de la release App {id}",
+            dir.display()
+        ));
+    }
+    Ok(binary)
+}
+
+fn prepare_app(home: &Path, exe: &Path) -> Result<AppCandidate, String> {
+    let bytes = app_binary(exe)?;
+    let (id, sha256) = app_hash(&bytes);
+    // Reinstallation from a release must prove its own manifest and id too.
+    if exe.file_name().is_some_and(|n| n == APP_ARTIFACT)
+        && let Some(parent) = exe.parent()
+        && parent
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|n| n == "releases")
+    {
+        let own_id = parent
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or("id App inválido")?;
+        verify_app(parent, own_id)?;
+    }
+    let share = home.join(".local/share/comandos");
+    let dir = share.join("releases").join(&id);
+    let pointer = share.join("bin/comandos-app");
+    check_app_parents(&dir.join(APP_ARTIFACT))?;
+    check_app_parents(&pointer)?;
+    if dir.symlink_metadata().is_ok() {
+        verify_app(&dir, &id)?;
+    }
+    match pointer.symlink_metadata() {
+        Ok(m) if m.file_type().is_symlink() => {
+            app_release(home)?;
+        }
+        Ok(_) => {
+            return Err(format!(
+                "{} no es un enlace de release App",
+                pointer.display()
+            ));
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("{}: {e}", pointer.display())),
+    }
+    Ok(AppCandidate {
+        bytes,
+        id,
+        sha256,
+        dir,
+        pointer,
+    })
+}
+
+/// Fully validated immutable App artifact; an arbitrary pointer is never trusted.
+pub fn app_release(home: &Path) -> Result<PathBuf, String> {
+    let share = home.join(".local/share/comandos");
+    let pointer = share.join("bin/comandos-app");
+    check_app_parents(&pointer)?;
+    let target = fs::read_link(&pointer).map_err(|e| {
+        format!(
+            "primero: comandos install --stage-app RUTA ({}: {e})",
+            pointer.display()
+        )
+    })?;
+    let id = target
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|n| n.to_str())
+        .ok_or("enlace App inválido")?;
+    if !is_sha12(id) || target != Path::new("../releases").join(id).join(APP_ARTIFACT) {
+        return Err("el candidato no apunta exclusivamente a una release App".into());
+    }
+    verify_app(&share.join("releases").join(id), id)
+}
+
+/// Recognize an installed App path without accepting arbitrary files as App releases.
+pub(crate) fn is_app_artifact(home: &Path, path: &Path) -> bool {
+    let releases = home.join(".local/share/comandos/releases");
+    path.parent().is_some_and(|dir| {
+        dir.parent() == Some(releases.as_path())
+            && path.file_name().is_some_and(|n| n == APP_ARTIFACT)
+            && dir
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(is_sha12)
+    })
+}
+
+pub fn preview_app(home: &Path, exe: &Path) -> Result<Release, String> {
+    let c = prepare_app(home, exe)?;
+    Ok(Release {
+        id: c.id,
+        path: c.dir.join(APP_ARTIFACT),
+        current: false,
+        web_files: None,
+    })
+}
+
+pub fn stage_app(home: &Path, exe: &Path) -> Result<Release, String> {
+    let c = prepare_app(home, exe)?;
+    let bin_dir = c.pointer.parent().ok_or("ruta App sin directorio")?;
+    fs::create_dir_all(bin_dir).map_err(|e| format!("{}: {e}", bin_dir.display()))?;
+    let _lock = lock_release_dir(&c.dir)?;
+    let target = c.dir.join(APP_ARTIFACT);
+    if target.symlink_metadata().is_err() {
+        let manifest = serde_json::json!({"state_protocol": super::STATE_PROTOCOL, "artifact_version": APP_VERSION, "artifact": APP_ARTIFACT, "sha256": c.sha256});
+        comandos_store::files::write_atomic(
+            &c.dir.join("manifest.json"),
+            format!("{manifest}\n").as_bytes(),
+        )
+        .map_err(|e| e.to_string())?;
+        fs::set_permissions(
+            c.dir.join("manifest.json"),
+            fs::Permissions::from_mode(0o644),
+        )
+        .map_err(|e| e.to_string())?;
+        let tmp = c
+            .dir
+            .join(format!("comandos-app.tmp.{}", std::process::id()));
+        use std::io::Write;
+        let result = (|| {
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&tmp)
+                .map_err(|e| e.to_string())?;
+            file.write_all(&c.bytes)
+                .and_then(|()| file.set_permissions(fs::Permissions::from_mode(0o755)))
+                .and_then(|()| file.sync_all())
+                .map_err(|e| e.to_string())?;
+            fs::rename(&tmp, &target).map_err(|e| e.to_string())
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&tmp);
+        }
+        result?;
+    }
+    verify_app(&c.dir, &c.id)?;
+    fs::File::open(&c.dir)
+        .and_then(|f| f.sync_all())
+        .map_err(|e| e.to_string())?;
+    let tmp = c
+        .pointer
+        .with_extension(format!("tmp-link.{}", std::process::id()));
+    symlink(
+        Path::new("../releases").join(&c.id).join(APP_ARTIFACT),
+        &tmp,
+    )
+    .map_err(|e| format!("{}: {e}", tmp.display()))?;
+    if let Err(e) = fs::rename(&tmp, &c.pointer) {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!("{}: {e}", c.pointer.display()));
+    }
+    fs::File::open(bin_dir)
+        .and_then(|f| f.sync_all())
+        .map_err(|e| e.to_string())?;
+    Ok(Release {
+        id: c.id,
+        path: target,
+        current: true,
+        web_files: None,
+    })
+}
+
 pub struct Release {
     pub id: String,
     pub path: PathBuf,
@@ -162,6 +430,75 @@ pub fn stage_release(home: &Path, exe: &Path, web: &WebSource) -> Result<Release
         path: target,
         current: true,
         web_files,
+    })
+}
+
+/// Read-only counterpart of CLI staging: hash and validate the source in place.
+pub fn preview_release(home: &Path, exe: &Path, web: &WebSource) -> Result<Release, String> {
+    let Layout { releases, .. } = layout(home);
+    let binary = fs::read(exe).map_err(|e| format!("{}: {e}", exe.display()))?;
+    let (source, expected) = match web {
+        WebSource::None => (None, None),
+        WebSource::Explicit(p) => (Some(p.as_path()), None),
+        WebSource::OwnRelease { dir, id } => (Some(dir.as_path()), Some(id.as_str())),
+    };
+    let id = release_hash(&binary, source)?;
+    let web_files = if let Some(source) = source {
+        let path = source.join(MANIFEST_FILE);
+        let meta = path
+            .symlink_metadata()
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        if !meta.is_file() {
+            return Err(format!("{} no es un manifiesto regular", path.display()));
+        }
+        let raw = read_same(&path, (meta.dev(), meta.ino()))?;
+        let manifest: Manifest =
+            serde_json::from_slice(&raw).map_err(|e| format!("{}: {e}", path.display()))?;
+        manifest.check_paths().map_err(|e| e.to_string())?;
+        for rel in manifest.files.values() {
+            if !source
+                .join(rel)
+                .symlink_metadata()
+                .is_ok_and(|m| m.is_file())
+            {
+                return Err(format!("{}: falta {rel}", path.display()));
+            }
+        }
+        Some(web_tree(source)?.into_iter().filter(|e| !e.dir).count())
+    } else {
+        None
+    };
+    if expected.is_some_and(|expected| expected != id) {
+        return Err("la release propia no coincide con su contenido".into());
+    }
+    let dir = releases.join(&id);
+    if dir.join("comandos").symlink_metadata().is_ok() {
+        if super::manifest::release_protocol(&dir) != super::STATE_PROTOCOL {
+            return Err("release CLI sin protocolo compatible".into());
+        }
+        verify_release(&dir, &id, source.is_some())?;
+    }
+    Ok(Release {
+        path: dir.join("comandos"),
+        id,
+        current: false,
+        web_files,
+    })
+}
+
+pub fn preview_rollback_release(home: &Path) -> Result<Release, String> {
+    let Layout { releases, bin } = layout(home);
+    let prev = fs::read_to_string(releases.join("previous"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| valid_id(s) && releases.join(s).join("comandos").is_file())
+        .ok_or("no hay release anterior a la que volver")?;
+    current_id(&releases, &bin).ok_or("bin/comandos no es un enlace a una release")?;
+    Ok(Release {
+        path: releases.join(&prev).join("comandos"),
+        id: prev,
+        current: false,
+        web_files: None,
     })
 }
 
@@ -566,7 +903,12 @@ fn remove_unlocked(dir: &Path) -> io::Result<bool> {
 /// recorrido: un cambio por un enlace simbólico entre recorrer y leer es un error.
 fn read_same(path: &Path, inode: (u64, u64)) -> Result<Vec<u8>, String> {
     let err = |e: io::Error| format!("no se pudo leer {}: {e}", path.display());
-    let mut file = fs::File::open(path).map_err(err)?;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(nix::libc::O_NOFOLLOW)
+        .open(path)
+        .map_err(err)?;
     let meta = file.metadata().map_err(err)?;
     if !meta.is_file() || (meta.dev(), meta.ino()) != inode {
         return Err(format!("{} cambió durante la copia", path.display()));
@@ -616,7 +958,9 @@ fn prune_abandoned(releases: &Path, current: &str, now: SystemTime) {
             continue;
         };
         let leftover = name.starts_with(".web-stage.")
-            || (is_sha12(&name) && path.join("comandos").symlink_metadata().is_err());
+            || (is_sha12(&name)
+                && path.join("comandos").symlink_metadata().is_err()
+                && verify_app(&path, &name).is_err());
         let old = meta
             .modified()
             .ok()
