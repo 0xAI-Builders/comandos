@@ -22,6 +22,7 @@ pub type TextCallback = Rc<dyn Fn(&str)>;
 pub type ExitCallback = Rc<dyn Fn(i32)>;
 pub type ScrollCallback = Rc<dyn Fn(&str, i32, u16, u16)>;
 pub type AppKeyCallback = Rc<dyn Fn(&gdk::EventKey) -> bool>;
+pub type KeyObserver = Rc<dyn Fn(&gdk::EventKey)>;
 pub type LinkCallback = Rc<dyn Fn(&str, &gdk::EventButton, (u16, u16), bool)>;
 pub type ContextCallback = Rc<dyn Fn(&gdk::EventButton, (u16, u16))>;
 pub struct TermOptions {
@@ -92,6 +93,7 @@ struct Inner {
     primary_press: RefCell<Option<ContextCallback>>,
     replay: RefCell<crate::ui::clipboard::Replay<(gdk::EventKey, f64)>>,
     app_key: RefCell<Option<AppKeyCallback>>,
+    key_observer: RefCell<Option<KeyObserver>>,
     last_ctrl_c: Cell<Option<f64>>,
     cleanup_cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
     clipboard: Rc<crate::ui::clipboard::Clipboard>,
@@ -187,6 +189,7 @@ impl TermView {
             primary_press: RefCell::new(None),
             replay: RefCell::new(crate::ui::clipboard::Replay::default()),
             app_key: RefCell::new(None),
+            key_observer: RefCell::new(None),
             last_ctrl_c: Cell::new(None),
             cleanup_cancelled,
             clipboard,
@@ -212,6 +215,7 @@ impl TermView {
             .cleanup_cancelled
             .store(true, std::sync::atomic::Ordering::Release);
         self.inner.app_key.borrow_mut().take();
+        self.inner.key_observer.borrow_mut().take();
         for source in [
             &self.inner.read_source,
             &self.inner.write_source,
@@ -225,6 +229,15 @@ impl TermView {
     }
     pub fn on_app_key(&self, callback: AppKeyCallback) {
         *self.inner.app_key.borrow_mut() = Some(callback);
+    }
+    pub fn on_key_observer(&self, callback: KeyObserver) {
+        *self.inner.key_observer.borrow_mut() = Some(callback);
+    }
+    pub fn cell_geometry(&self) -> CellGeom {
+        self.inner.model.borrow().geom
+    }
+    pub fn grid_size(&self) -> (u16, u16) {
+        self.inner.model.borrow().engine.size()
     }
     /// El gesto pertenece a esta terminal, como _last_ctrl_c del objeto VTE original.
     pub fn ctrl_c_action(
@@ -838,6 +851,7 @@ impl Drop for Inner {
         self.cleanup_cancelled
             .store(true, std::sync::atomic::Ordering::Release);
         self.app_key.get_mut().take();
+        self.key_observer.get_mut().take();
         for source in [
             &mut self.read_source,
             &mut self.write_source,
@@ -872,6 +886,7 @@ fn connect_events(inner: &Rc<Inner>) {
                 .cleanup_cancelled
                 .store(true, std::sync::atomic::Ordering::Release);
             inner.app_key.borrow_mut().take();
+            inner.key_observer.borrow_mut().take();
             for source in [&inner.read_source, &inner.write_source, &inner.timer] {
                 if let Some(id) = source.borrow_mut().take() {
                     id.remove();
@@ -1004,6 +1019,10 @@ fn connect_events(inner: &Rc<Inner>) {
         let Some(inner) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
+        let observer = inner.key_observer.borrow().clone();
+        if let Some(observer) = observer {
+            observer(event);
+        }
         if inner.dispatch_app_key(event) {
             return glib::Propagation::Stop;
         }

@@ -55,7 +55,7 @@ impl App {
         }
         self.dispatch_bridge(ui::bridge::parse_bridge(&message.to_string())?)
     }
-    fn dispatch_bridge(self: &Rc<Self>, message: BridgeMsg) -> Result<(), CommandError> {
+    pub(super) fn dispatch_bridge(self: &Rc<Self>, message: BridgeMsg) -> Result<(), CommandError> {
         if !self.writable() {
             return Err(CommandError::Refused(
                 "restore not ready, shadow, or closed".into(),

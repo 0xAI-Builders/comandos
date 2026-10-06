@@ -39,6 +39,84 @@ const ALLOWED: &[&str] = &[
 ];
 
 impl StateFiles {
+    /// These two pane UI documents have distinct catalog owners.
+    pub fn read_pane_document(&self, name: &str) -> Result<Value, StateError> {
+        let (domain, key) = match name {
+            "app-tab-models.json" => ("tabs", "H/app-tab-models.json"),
+            "app-extension-shelf.json" => ("app-ui", "H/app-extension-shelf.json"),
+            _ => return Err(StateError::Name(name.into())),
+        };
+        let path = self.path(name)?;
+        let doc = comandos_store::domains::DomainStore {
+            home: self.config.home(),
+        }
+        .document(key, domain, path.clone());
+        match doc
+            .read_readonly()
+            .map_err(|e| StateError::Io(path.clone(), e.to_string()))?
+        {
+            None => Ok(Value::Null),
+            Some(bytes) if bytes.len() <= crate::clipboard_bridge::MAX_BYTES => {
+                comandos_core::json::workspace_loads_bytes(&bytes)
+                    .ok_or_else(|| StateError::Json(path, "invalid pane document JSON".into()))
+            }
+            Some(_) => Err(StateError::Name("pane document exceeds 8 MiB".into())),
+        }
+    }
+    pub fn write_shelf_when(
+        &self,
+        expected: &Value,
+        next: &Value,
+        allowed: impl Fn() -> bool,
+    ) -> Result<bool, StateError> {
+        let path = self.path("app-extension-shelf.json")?;
+        if !allowed() {
+            return Ok(false);
+        }
+        let doc = comandos_store::domains::DomainStore {
+            home: self.config.home(),
+        }
+        .document("H/app-extension-shelf.json", "app-ui", path.clone());
+        doc.with_legacy_authority(|| {
+            if self.config.mode() == crate::config::RunMode::Sandbox {
+                self.guard
+                    .create_dir_all(self.config.hooks_dir(), 0o700)
+                    .map_err(|e| comandos_store::Error::Validation(format!("{e:?}")))?;
+            }
+            let lock_path = self
+                .config
+                .hooks_dir()
+                .join("app-extension-shelf.json.lock");
+            let lock = self
+                .guard
+                .open_lock(&lock_path)
+                .map_err(|e| comandos_store::Error::Validation(format!("{e:?}")))?;
+            let _lock = lock_exclusive(lock, &lock_path)
+                .map_err(|e| comandos_store::Error::Validation(format!("{e:?}")))?;
+            let current = self
+                .read("app-extension-shelf.json")
+                .map_err(|e| comandos_store::Error::Validation(format!("{e:?}")))?;
+            if &current != expected || !allowed() {
+                return Ok(false);
+            }
+            let text = comandos_core::json::response_dumps(next)
+                .map_err(comandos_store::Error::Validation)?;
+            if text.len() > crate::clipboard_bridge::MAX_BYTES {
+                return Err(comandos_store::Error::Validation(
+                    "shelf document exceeds 8 MiB".into(),
+                ));
+            }
+            doc.with_legacy_authority(|| {
+                self.guard
+                    .write_atomic_when(&path, text.as_bytes(), "app-state.", || {
+                        allowed() && doc.with_legacy_authority(|| Ok(true)).is_ok()
+                    })
+                    .map_err(|e| comandos_store::Error::Validation(format!("{e:?}")))?;
+                Ok(true)
+            })
+        })
+        .map_err(|e| StateError::Io(path, e.to_string()))
+    }
     pub fn read_snippets(&self) -> Result<Vec<Value>, StateError> {
         let path = self.path("snippets.json")?;
         let doc = comandos_store::domains::DomainStore {

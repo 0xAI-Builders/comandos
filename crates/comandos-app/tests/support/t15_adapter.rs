@@ -93,6 +93,7 @@ pub fn execute() -> serde_json::Value {
     let term = include_str!("../../src/term/view.rs");
     let term_methods = body(term, "pub fn shutdown(")
         + &body(term, "pub fn on_app_key(")
+        + &body(term, "pub fn on_key_observer(")
         + &body(term, "pub fn cleanup_cancellation(")
         + &body(term, "pub fn ctrl_c_action(")
         + &body(term, "pub fn clipboard(")

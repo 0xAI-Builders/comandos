@@ -37,10 +37,16 @@ impl App {
             let weak = Rc::downgrade(self);
             let key = *key;
             button.connect_clicked(move |button| {
-                if let Some(app) = weak.upgrade().filter(|a| a.writable()) {
+                if let Some(app) = weak.upgrade().filter(|a| {
+                    !a.closed.load(Ordering::Acquire) && (key == "notif" || a.writable())
+                }) {
                     match key {
                         "settings" => app.dashboard_click("btn-settings"),
-                        "notif" => app.dashboard_click("btn-notif"),
+                        "notif" => {
+                            if let Err(error) = app.handlers.invoke("T17.notices", &json!({})) {
+                                app.status.set_text(&error.to_string());
+                            }
+                        }
                         "pomo" => app.panel_popover(button, "pomo", 520, 640),
                         _ => {
                             if let Err(error) = app

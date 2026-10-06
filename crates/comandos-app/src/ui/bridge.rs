@@ -193,11 +193,13 @@ pub fn parse_bridge(raw: &str) -> Result<BridgeMsg, BridgeError> {
 pub enum JsFunction {
     RefreshChains,
     StartChain,
+    NewSessionForPane,
 }
 pub fn js_call(function: JsFunction, args: &[Value]) -> Result<String, BridgeError> {
     let name = match function {
         JsFunction::RefreshChains => "refresh",
         JsFunction::StartChain => "startChain",
+        JsFunction::NewSessionForPane => "nsOpenForPane",
     };
     let args = args
         .iter()
@@ -205,6 +207,11 @@ pub fn js_call(function: JsFunction, args: &[Value]) -> Result<String, BridgeErr
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| BridgeError::Invalid(e.to_string()))?
         .join(",");
+    if matches!(function, JsFunction::NewSessionForPane) {
+        return Ok(format!(
+            "if(typeof window.nsOpenForPane!=='function'){{throw new Error('Missing nsOpenForPane');}}window.nsOpenForPane({args});"
+        ));
+    }
     Ok(format!(
         "if(!window.commandSidebar || typeof window.commandSidebar.{name}!=='function'){{throw new Error('Missing commandSidebar.{name}');}}window.commandSidebar.{name}({args});"
     ))

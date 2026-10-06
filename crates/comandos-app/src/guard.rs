@@ -90,6 +90,7 @@ impl WriteGuard {
                     "app-tab-active.json",
                     "app-tab-models.json",
                     "app-extension-shelf.json",
+                    "app-extension-shelf.json.lock",
                     "app-layout.json",
                     "app-pane-position.json",
                     "app-focus.json",

@@ -194,6 +194,13 @@ impl GtkWorkspace {
         self.pages.borrow_mut().insert(key, widget.clone());
         self.nodes.borrow_mut().clear();
     }
+    /// Child terminals inside an overlay report focus to this existing workspace owner.
+    pub fn note_focus(&self, key: &str) {
+        if let Some(widget) = self.pages.borrow().get(key) {
+            paint_leaf_focus(self.root.upcast_ref(), widget);
+            *self.focus.borrow_mut() = Some(key.into());
+        }
+    }
     pub fn refresh(&self) {
         let doc = self.document.borrow().clone();
         *self.document.borrow_mut() = Value::Null;

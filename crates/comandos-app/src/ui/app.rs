@@ -41,6 +41,7 @@ pub struct App {
     pub window: gtk::ApplicationWindow,
     english: bool,
     t16: app_t16::Owned,
+    t17: app_t17::Owned,
     modal_overlay: gtk::Overlay,
     modal: RefCell<Option<app_t15::Modal>>,
     modal_generation: Cell<u64>,
@@ -128,6 +129,7 @@ impl AppRuntime {
         self.app.shutdown_protocol();
         self.app.shutdown_header();
         self.app.shutdown_t16();
+        self.app.shutdown_t17();
         self.app.close_modal();
         for source in self.sources {
             source.remove();
@@ -490,6 +492,7 @@ impl App {
         Rc::new(Self {
             english,
             t16,
+            t17: app_t17::Owned::default(),
             modal_overlay: gtk::Overlay::new(),
             modal: RefCell::new(None),
             modal_generation: Cell::new(0),
@@ -830,10 +833,11 @@ impl App {
                 .ordered_keys()
                 .into_iter()
                 .find(|key| {
-                    self.terms
-                        .borrow()
-                        .get(key)
-                        .is_some_and(|term| self.notebook.page_num(term.widget()) == Some(current))
+                    self.terms.borrow().get(key).is_some_and(|_| {
+                        self.t17.boxes.borrow().get(key).is_some_and(|owner| {
+                            self.notebook.page_num(&owner.widget) == Some(current)
+                        })
+                    })
                 })
         })
     }
@@ -944,7 +948,7 @@ impl App {
         } else if attach {
             match self.terminal(key) {
                 Ok(term) => {
-                    let widget = term.widget().clone().upcast();
+                    let widget = self.attach_pane_overlay(key, &term).widget.clone().upcast();
                     self.terms.borrow_mut().insert(key.into(), term);
                     widget
                 }
@@ -1074,7 +1078,8 @@ impl App {
                 }
                 match app.terminal(&key) {
                     Ok(term) => {
-                        let widget: gtk::Widget = term.widget().clone().upcast();
+                        let widget: gtk::Widget =
+                            app.attach_pane_overlay(&key, &term).widget.clone().upcast();
                         app.strip.borrow_mut().remove(&key);
                         app.workspace.register_tab(&key, &widget);
                         let label = app
@@ -1178,7 +1183,12 @@ impl App {
             if !cancelled.load(Ordering::Acquire)&& let Ok(Some(owned))=tmux.idle_scratch(&key_for_archive){tmux.kill_owned_session(owned).map_err(|e|format!("{e:?}"))?;}
             Ok::<_,String>(())
         },|result|{if let Err(e)=result{eprintln!("close tab: {e}");}});
-        if let Some(term) = self.terms.borrow_mut().remove(key) {
+        let removed_term = self.terms.borrow_mut().remove(key);
+        if let Some(term) = removed_term {
+            self.close_pane_consumers(key);
+            if let Some(owner) = self.t17.boxes.borrow_mut().remove(key) {
+                owner.cancel();
+            }
             term.shutdown();
         }
         self.strip.borrow_mut().remove(key);
@@ -1834,6 +1844,7 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
         };
         let window = ui::window::create(application, &cfg);
         let paned = gtk::Paned::new(gtk::Orientation::Horizontal);
+        paned.style_context().add_class("cc-paned");
         paned.set_wide_handle(true);
         let notebook = gtk::Notebook::new();
         notebook.set_hexpand(true);
@@ -1871,7 +1882,8 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
         overlay.add(&terminals);
         overlay.add_overlay(app.drag_layer.widget());
         overlay.set_overlay_pass_through(app.drag_layer.widget(), true);
-        paned.pack2(&overlay, true, false);
+        app.t17.shelf.paned.pack1(&overlay, true, false);
+        paned.pack2(&app.t17.shelf.paned, true, false);
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.pack_start(&app.header.bar, false, false, 0);
         content.pack_start(&paned, true, true, 0);
@@ -1882,6 +1894,7 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
         ui::header::install(&app);
         app.install_keys();
         app.install_t16();
+        app.install_t17();
         let bridge_source = ui::bridge::install(&app);
         let weak = Rc::downgrade(&app);
         app.workspace.on_resize(Rc::new(move |updates| {
@@ -1947,6 +1960,7 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
                         }
                     }
                     app.tick_hourglass();
+                    app.paint_pane_indicators(epoch.elapsed().as_secs_f64());
                     if let Some(key) = app.current_session() {
                         app.paint_selected(&key);
                         app.save_device_focus(&key);
@@ -2099,3 +2113,9 @@ mod protocol;
 
 #[path = "app_t16.rs"]
 mod app_t16;
+#[path = "app_t17.rs"]
+mod app_t17;
+#[path = "app_t17_panes.rs"]
+mod app_t17_panes;
+#[path = "app_t17_shelf.rs"]
+mod app_t17_shelf;

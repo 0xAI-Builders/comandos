@@ -20,6 +20,9 @@ impl App {
             return;
         }
         self.header.paint(theme);
+        if let Err(error) = self.t17.shelf.paint(theme) {
+            self.status.set_text(&format!("Shelf theme: {error}"));
+        }
         let dim = theme
             .values
             .get("dim")
