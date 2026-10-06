@@ -320,7 +320,14 @@ fn builds_a_fixture_crate_end_to_end() {
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     top.sort();
-    assert_eq!(top, [hash.to_string(), "manifest.json".to_string()]);
+    assert_eq!(
+        top,
+        [
+            web_build::OUTPUT_OWNER_FILE.to_string(),
+            hash.to_string(),
+            "manifest.json".to_string()
+        ]
+    );
     // wasm-opt -Oz encoge la salida de wasm-bindgen.
     let raw = opts
         .target_dir
@@ -331,6 +338,15 @@ fn builds_a_fixture_crate_end_to_end() {
     // que lo no referenciado (hash viejo o ajeno) desaparece.
     fs::create_dir_all(out.join("deadbeef0000")).unwrap();
     fs::create_dir_all(out.join("no-es-hash")).unwrap();
+    let foreign = snapshot(&out);
+    assert!(web_build::build(&opts).is_err());
+    assert_eq!(
+        snapshot(&out),
+        foreign,
+        "foreign content cannot be discarded"
+    );
+    fs::remove_dir_all(out.join("deadbeef0000")).unwrap();
+    fs::remove_dir_all(out.join("no-es-hash")).unwrap();
     let again = web_build::build(&opts).unwrap();
     assert_eq!(again, m);
     assert!(!out.join("deadbeef0000").exists());
@@ -385,7 +401,6 @@ fn assembling_one_crate_keeps_the_other_entries_and_swaps_atomically() {
     for (dir, file) in [
         ("0123456789ab", "comandos_web_sw.js"),
         ("aaaaaaaaaaaa", "comandos_web.js"),
-        ("no-es-hash", "x"),
     ] {
         fs::create_dir_all(out.join(dir)).unwrap();
         fs::write(out.join(dir).join(file), dir).unwrap();
@@ -399,6 +414,7 @@ fn assembling_one_crate_keeps_the_other_entries_and_swaps_atomically() {
         "comandos_web.js".into(),
         "aaaaaaaaaaaa/comandos_web.js".into(),
     );
+    web_build::assemble(&root.join("absent"), &out, Manifest::default(), old.clone()).unwrap();
     // Lo recién compilado ya está en `next`.
     fs::create_dir_all(next.join("bbbbbbbbbbbb")).unwrap();
     fs::write(next.join("bbbbbbbbbbbb/comandos_web.js"), "nuevo").unwrap();
@@ -437,6 +453,14 @@ fn assembling_one_crate_keeps_the_other_entries_and_swaps_atomically() {
     // Sin salida previa, el cambio es un rename simple.
     let next2 = root.join("next2");
     fs::create_dir_all(&next2).unwrap();
+    fs::create_dir(next2.join("cccccccccccc")).unwrap();
+    fs::write(next2.join("cccccccccccc/comandos_web.js"), "fresh").unwrap();
+    let mut fresh2 = Manifest::default();
+    fresh2.files.insert(
+        "comandos_web.js".into(),
+        "cccccccccccc/comandos_web.js".into(),
+    );
+    web_build::assemble(&root.join("absent"), &next2, Manifest::default(), fresh2).unwrap();
     let fresh_out = root.join("web2");
     web_build::swap_into_place(&next2, &fresh_out, &root.join("trash2")).unwrap();
     assert!(fresh_out.is_dir());

@@ -6,6 +6,7 @@
 //! se reemplaza entero y al final: un build fallido no crea ni toca `<out>`.
 use flate2::{Compression, write::GzEncoder};
 use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::fs;
 use std::io::Write;
@@ -13,6 +14,38 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub use comandos_core::web_assets::{MANIFEST_FILE, Manifest};
+pub const OUTPUT_OWNER_FILE: &str = ".comandos-web-build.json";
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OutputOwner {
+    producer: String,
+    version: u32,
+    manifest_sha256: String,
+    files: BTreeMap<String, String>,
+}
+
+fn file_sha256(path: &Path) -> Result<String, String> {
+    let bytes = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(format!("{:x}", Sha256::digest(bytes)))
+}
+
+fn record_output_owner(out: &Path, manifest: &Manifest) -> Result<(), String> {
+    manifest.check_paths()?;
+    let files = manifest
+        .files
+        .values()
+        .map(|path| file_sha256(&out.join(path)).map(|hash| (path.clone(), hash)))
+        .collect::<Result<BTreeMap<_, _>, _>>()?;
+    let owner = OutputOwner {
+        producer: "comandos-xtask-web-build".into(),
+        version: 1,
+        manifest_sha256: file_sha256(&out.join(MANIFEST_FILE))?,
+        files,
+    };
+    let bytes = serde_json::to_vec_pretty(&owner).map_err(|e| e.to_string())?;
+    fs::write(out.join(OUTPUT_OWNER_FILE), bytes).map_err(|e| e.to_string())
+}
 
 /// Cargador generado. Única lógica: instanciar y ceder el control al WASM,
 /// que monta, publica sus globales y avisa a la compuerta (`/web/ready`).
@@ -509,6 +542,7 @@ pub fn assemble(
     let path = next.join(MANIFEST_FILE);
     fs::write(&path, format!("{text}\n"))
         .map_err(|e| format!("no se pudo escribir {}: {e}", path.display()))?;
+    record_output_owner(next, &merged)?;
     Ok(merged)
 }
 
@@ -518,10 +552,32 @@ pub fn assemble(
 pub fn swap_into_place(next: &Path, out: &Path, trash: &Path) -> Result<(), String> {
     use nix::fcntl::{AT_FDCWD, RenameFlags, renameat2};
     let err = |e: &dyn std::fmt::Display| format!("no se pudo instalar {}: {e}", out.display());
+    validate_output(out)?;
+    validate_output(next)?;
+    if fs::symlink_metadata(next).is_err() {
+        return Err("staged output is missing".into());
+    }
+    if fs::symlink_metadata(trash).is_ok() {
+        return Err("refusing to remove pre-existing swap trash".into());
+    }
+    let staged = fs::canonicalize(next).map_err(|e| e.to_string())?;
+    let destination = if out.exists() {
+        fs::canonicalize(out).map_err(|e| e.to_string())?
+    } else {
+        fs::canonicalize(out.parent().ok_or("output has no parent")?)
+            .map_err(|e| e.to_string())?
+            .join(out.file_name().ok_or("output has no name")?)
+    };
+    if staged.starts_with(&destination)
+        || destination.starts_with(&staged)
+        || trash.starts_with(next)
+        || trash.starts_with(out)
+    {
+        return Err("swap paths must be distinct and disjoint".into());
+    }
     if out.symlink_metadata().is_err() {
         return fs::rename(next, out).map_err(|e| err(&e));
     }
-    let _ = fs::remove_dir_all(trash);
     match renameat2(AT_FDCWD, next, AT_FDCWD, out, RenameFlags::RENAME_EXCHANGE) {
         // Tras el intercambio, `next` es la salida vieja.
         Ok(()) => fs::rename(next, trash).map_err(|e| err(&e))?,
@@ -539,6 +595,7 @@ pub fn swap_into_place(next: &Path, out: &Path, trash: &Path) -> Result<(), Stri
 /// presupuesto) no crea ni toca `<out>`. Los temporales viven en
 /// `<target>/web-build/`, fuera de `<out>`.
 pub fn build(opts: &Options) -> Result<Manifest, String> {
+    validate_output(&opts.out)?;
     opts.tools.check()?;
     let built = opts
         .crates
@@ -554,11 +611,14 @@ pub fn build(opts: &Options) -> Result<Manifest, String> {
     };
     let work = opts.target_dir.join("web-build");
     let pid = std::process::id();
-    let next = work.join(format!("out.{pid}"));
-    let _ = fs::remove_dir_all(&next);
+    fs::create_dir_all(&work).map_err(|e| e.to_string())?;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_nanos();
+    let next = work.join(format!("out.{pid}.{nonce}"));
+    fs::create_dir(&next).map_err(|e| e.to_string())?;
     let result = (|| {
-        fs::create_dir_all(&next)
-            .map_err(|e| format!("no se pudo crear {}: {e}", next.display()))?;
         let mut fresh = Manifest::default();
         for b in &built {
             write_built(&next, b)?;
@@ -573,7 +633,7 @@ pub fn build(opts: &Options) -> Result<Manifest, String> {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("no se pudo crear {}: {e}", parent.display()))?;
         }
-        swap_into_place(&next, &opts.out, &work.join(format!("old.{pid}")))?;
+        swap_into_place(&next, &opts.out, &work.join(format!("old.{pid}.{nonce}")))?;
         Ok(merged)
     })();
     if result.is_err() {
@@ -625,17 +685,78 @@ pub fn validate_output(out: &Path) -> Result<(), String> {
     if !out.is_dir() {
         return Err("--out must be a directory".into());
     }
+    let regular = |p: &Path| fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_file());
+    if !regular(&out.join(MANIFEST_FILE)) || !regular(&out.join(OUTPUT_OWNER_FILE)) {
+        return Err(format!(
+            "{} lacks a regular manifest and verified web-build ownership record; use a fresh --out",
+            out.display()
+        ));
+    }
+    let manifest: Manifest =
+        serde_json::from_slice(&fs::read(out.join(MANIFEST_FILE)).map_err(|e| e.to_string())?)
+            .map_err(|e| format!("invalid output manifest: {e}"))?;
+    manifest.check_paths()?;
+    if manifest.files.is_empty() {
+        return Err("owned output manifest is empty".into());
+    }
+    let owner: OutputOwner =
+        serde_json::from_slice(&fs::read(out.join(OUTPUT_OWNER_FILE)).map_err(|e| e.to_string())?)
+            .map_err(|e| format!("invalid output ownership record: {e}"))?;
+    if owner.producer != "comandos-xtask-web-build"
+        || owner.version != 1
+        || owner.manifest_sha256 != file_sha256(&out.join(MANIFEST_FILE))?
+    {
+        return Err("output ownership does not match the manifest".into());
+    }
+    let mut expected = BTreeSet::new();
+    let mut directories = BTreeSet::new();
+    for path in manifest.files.values() {
+        let Some((dir, file)) = path.split_once('/') else {
+            return Err("output asset path lacks hash directory".into());
+        };
+        if !is_hash_dir(dir)
+            || file.contains('/')
+            || file.is_empty()
+            || !fs::symlink_metadata(out.join(dir)).is_ok_and(|m| m.file_type().is_dir())
+            || !expected.insert(path.clone())
+            || !regular(&out.join(path))
+        {
+            return Err("output contains invalid, missing, duplicate or linked assets".into());
+        }
+        let Some(hash) = owner.files.get(path) else {
+            return Err("output asset is not owned".into());
+        };
+        if &file_sha256(&out.join(path))? != hash {
+            return Err("owned output asset changed".into());
+        }
+        directories.insert(dir.to_string());
+    }
+    if expected != owner.files.keys().cloned().collect() {
+        return Err("ownership inventory differs from manifest".into());
+    }
     for entry in fs::read_dir(out).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let name = entry.file_name().to_string_lossy().into_owned();
         let kind = entry.file_type().map_err(|e| e.to_string())?;
         if kind.is_symlink()
-            || !(name == MANIFEST_FILE && kind.is_file() || is_hash_dir(&name) && kind.is_dir())
+            || !((name == MANIFEST_FILE || name == OUTPUT_OWNER_FILE) && kind.is_file()
+                || directories.contains(&name) && kind.is_dir())
         {
             return Err(format!(
                 "refusing to replace non-artifact output {}",
                 out.display()
             ));
+        }
+        if kind.is_dir() {
+            for child in fs::read_dir(entry.path()).map_err(|e| e.to_string())? {
+                let child = child.map_err(|e| e.to_string())?;
+                let path = format!("{name}/{}", child.file_name().to_string_lossy());
+                if !child.file_type().map_err(|e| e.to_string())?.is_file()
+                    || !expected.contains(&path)
+                {
+                    return Err("refusing to remove an unowned output child".into());
+                }
+            }
         }
     }
     Ok(())
