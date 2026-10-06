@@ -503,6 +503,7 @@ dependencies = [
  "comandos-domdiff",
  "maud",
  "scraper",
+ "serde_json",
 ]
 
 [[package]]

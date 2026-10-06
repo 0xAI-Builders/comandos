@@ -5859,6 +5859,10 @@ document.addEventListener("keydown", (e) => {
 // PWA: registrar el service worker (instalable en celular/tablet)
 if("serviceWorker" in navigator)
   navigator.serviceWorker.register("/sw.js").catch(()=>{});
+// Read-only browser boundary for Rust ports while inline owners remain JS.
+window.__comandosState = () => S;
+window.__comandosTranslate = (es, en) => tf(es, en);
+window.__comandosIcon = (name, size) => svg(name, size);
 </script>
 
 <script src="analytics-render.js?v=an4"></script>

@@ -1,0 +1,10 @@
+{
+  "status": "implementation_and_node_checks_pass_browser_pending",
+  "artifact": "273329a58105",
+  "scope": "work-marks and manual Pomodoro; server authority and current polling preserved",
+  "plan_discrepancy": "Current original source uses pixel-art hourglass and six styles; preserving current source and CJS contracts over obsolete plan ring wording",
+  "node": {"pure_differential_groups": 8, "server_authority_sync_cases": 9, "original_ui_contract_cases": 17, "actual_wasm_fake_view_cases_within_ui_contract": 8, "negative_exit": 1, "prior_b5_edge_regression_pass": true},
+  "native_tests": 7,
+  "browser_acceptance": "pending root private-front candidate refresh and actual DOM/negative/style proof",
+  "external_acceptance": ["human listening", "native host runtime", "24h readonly shadow", "cutover/release"]
+}

@@ -7,6 +7,7 @@ publish.workspace = true
 description = "Plantillas del tablero en Rust: maud y los escapes del JS heredado (puro, host y wasm32)."
 
 [dependencies]
+serde_json.workspace = true
 # Solo la macro y su escape: sin runtime ni dependencias web.
 maud = "=0.27.0"
 

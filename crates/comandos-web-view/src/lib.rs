@@ -34,3 +34,7 @@ pub mod term_page;
 
 /// La macro de plantillas, para que los componentes no fijen otra versión.
 pub use maud;
+
+pub mod work_marks;
+
+pub mod pomodoro;

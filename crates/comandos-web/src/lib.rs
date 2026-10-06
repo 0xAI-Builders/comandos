@@ -56,6 +56,10 @@ pub mod registry;
 
 pub mod components {
     pub mod device_drafts;
+    pub mod work_marks;
+    pub mod pomodoro;
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) mod web_support;
     pub mod push_settings;
     pub mod quick_terminal;
     pub mod session_config;
