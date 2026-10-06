@@ -94,19 +94,73 @@ fn seed_usage(dir: &Path) -> PathBuf {
     let payload = serde_json::json!({"status":"working","harness":"claude","tmux_session":"fake-sess",
         "tmux_pane":"%7","prompt_id":"p1","agent_session_id":"s1","source":"hook:claude",
         "confidence":"exact","at_ms":now_ms()});
-    let mut child = Command::new("python3")
-        .arg(root().join("bin/cc_usage.py"))
-        .arg("lifecycle")
-        .env_clear()
-        .env("HOME", &seed)
-        .env("PATH", "/usr/bin:/bin")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .spawn()
-        .unwrap();
-    feed_stdin(&mut child, payload.to_string().as_bytes());
-    assert!(child.wait().unwrap().success());
+    let source =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/oracle-src/usage-seed/cc_usage.py");
+    let roots = [("<HOME>", seed.as_path()), ("<SOURCE>", source.as_path())];
+    let at_ms = payload["at_ms"].as_i64().unwrap();
+    let mut input = payload.clone();
+    input["at_ms"] = serde_json::json!("<SEED_MS>");
+    let before = comandos_oracle::snapshot_tree(&seed, &roots).unwrap();
+    let bytes = comandos_oracle::oracle_at(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "runtime-hook-usage-seed",
+        &serde_json::json!({"provenance":include_str!("oracle-src/usage-seed/PROVENANCE.json"),"payload":input,"before":before}),
+        || {
+            let mut child = Command::new(
+                std::env::var("COMANDOS_RUNTIME_ORACLE_PYTHON")
+                    .unwrap_or_else(|_| "python3".into()),
+            )
+            .arg(&source)
+            .arg("lifecycle")
+            .env_clear()
+            .env("HOME", &seed)
+            .env("PATH", "/usr/bin:/bin")
+            .env("PYTHONDONTWRITEBYTECODE", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+            feed_stdin(&mut child, payload.to_string().as_bytes());
+            if !child.wait().map_err(|e| e.to_string())?.success() {
+                return Err("original usage lifecycle failed".into());
+            }
+            let mut tree = comandos_oracle::snapshot_tree(&seed, &roots)?;
+            seed_clock(&mut tree, at_ms, false);
+            serde_json::to_vec(&tree).map_err(|e| e.to_string())
+        },
+    );
+    if !matches!(
+        std::env::var("COMANDOS_ORACLE").as_deref(),
+        Ok("record" | "check")
+    ) {
+        let mut tree = serde_json::from_slice(&bytes).unwrap();
+        seed_clock(&mut tree, at_ms, true);
+        comandos_oracle::restore_tree(&seed, &tree, &roots).unwrap();
+    }
     seed.join(".claude/hooks/comandos-usage.sqlite")
+}
+
+/// The original seed has one interaction. Normalize only its two fixture-clock
+/// columns; replay restores their live anchor, retaining the original age contract.
+fn seed_clock(tree: &mut serde_json::Value, at_ms: i64, restore: bool) {
+    let rows = tree[".claude/hooks/comandos-usage.sqlite"]["db"]["tables"]["usage_interactions"]
+        .as_array_mut()
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    for (index, token, value) in [
+        (7, "<SEED_MS>", at_ms),
+        (15, "<SEED_SECONDS>", at_ms / 1000),
+    ] {
+        let cell = &mut rows[0][index];
+        assert_eq!(cell[0], "integer");
+        if restore {
+            assert_eq!(cell[1], token);
+            cell[1] = serde_json::json!(value);
+        } else {
+            assert_eq!(cell[1], value);
+            cell[1] = serde_json::json!(token);
+        }
+    }
 }
 
 /// La duración de una herramienta (fin − inicio) depende de cuándo corrió cada
