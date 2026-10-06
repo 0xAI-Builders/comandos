@@ -1,6 +1,7 @@
 pub mod agents;
 pub mod browser;
 pub mod dispatch;
+pub mod doctor;
 pub mod install;
 pub mod keys;
 pub mod next;

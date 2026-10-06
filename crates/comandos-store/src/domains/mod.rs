@@ -239,6 +239,16 @@ pub struct DomainStore<'a> {
     pub home: &'a Path,
 }
 impl<'a> DomainStore<'a> {
+    /// Read all domain modes from one guarded source snapshot. Does not create
+    /// the database, lock, HOME, WAL, or guards, and never scans live processes.
+    pub fn modes_readonly(&self) -> Result<Vec<(&'static str, Mode)>> {
+        unified::modes::with_readonly_access(self.home, "session-status", |_, db| {
+            catalog::DOMAINS
+                .iter()
+                .map(|domain| Ok((domain.name, unified::mode_of(db, domain.name)?)))
+                .collect()
+        })
+    }
     pub fn document(
         &self,
         name: &'static str,

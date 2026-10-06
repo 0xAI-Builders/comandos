@@ -39,13 +39,14 @@ fn main() {
         Command::Next(args) => comandos_cli::next::main(&args),
         Command::Snapshot(args) => comandos_cli::snapshot::main(&args),
         Command::Agents(args) => comandos_cli::agents::main(&args),
+        Command::Doctor(args) => comandos_cli::doctor::main(&args),
         Command::Version => {
             println!("comandos {}", env!("CARGO_PKG_VERSION"));
             0
         }
         Command::Help => {
             println!(
-                "uso: comandos <ext|hook|events|install|dash|browser|web|webterm|webterm-attach|state|keys|x|raise|winstart|next|snapshot|agents|--version>"
+                "uso: comandos <ext|hook|events|install|dash|browser|web|webterm|webterm-attach|state|keys|x|raise|winstart|next|snapshot|agents|doctor|--version>"
             );
             0
         }

@@ -18,6 +18,7 @@ pub enum Command {
     Next(Vec<String>),
     Snapshot(Vec<String>),
     Agents(Vec<String>),
+    Doctor(Vec<String>),
     Version,
     Help,
     Unknown(String),
@@ -47,10 +48,15 @@ const ALIASES: &[(&str, &[&str])] = &[
     ("cc-next", &["next"]),
     ("cc-session-snapshot", &["snapshot"]),
     ("cc-agents", &["agents"]),
+    ("cc-doctor", &["doctor"]),
     ("cc-browser-remote", &["browser", "remote"]),
     ("cc-browser-expose", &["browser", "expose"]),
     ("cc-browser-npx-guard", &["browser", "npx-guard"]),
 ];
+
+pub(crate) fn alias_names() -> impl Iterator<Item = &'static str> {
+    ALIASES.iter().map(|(name, _)| *name)
+}
 
 pub(crate) fn alias_prefix(name: &str) -> Option<&'static [&'static str]> {
     ALIASES
@@ -84,6 +90,7 @@ pub fn resolve(argv0: &str, args: &[String]) -> Command {
         Some("next") => Command::Next(words[1..].to_vec()),
         Some("snapshot") => Command::Snapshot(words[1..].to_vec()),
         Some("agents") => Command::Agents(words[1..].to_vec()),
+        Some("doctor") => Command::Doctor(words[1..].to_vec()),
         Some("--version") | Some("version") => Command::Version,
         None | Some("--help") | Some("help") => Command::Help,
         Some(other) => Command::Unknown(other.to_string()),
