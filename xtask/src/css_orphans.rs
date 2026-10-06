@@ -1,6 +1,17 @@
 //! Auditoría de selectores CSS conservando el algoritmo de la herramienta original.
 use regex::Regex;
 use std::{collections::BTreeSet, fs, path::Path};
+mod python_word;
+
+fn word(c: char) -> bool {
+    if c == '_' || c == '-' {
+        return true;
+    }
+    let cp = u32::from(c);
+    let ranges = python_word::ALNUM_RANGES;
+    let end = ranges.partition_point(|(start, _)| *start <= cp);
+    end > 0 && cp <= ranges[end - 1].1
+}
 
 fn read_text(path: &Path) -> Result<String, String> {
     fs::read_to_string(path)
@@ -35,12 +46,17 @@ pub fn scan(root: &Path, prefixes: &[String]) -> Result<Vec<String>, String> {
     // Una sola sustitución, como re.sub: no se borran bloques CSS anidados de nuevo.
     let declarations = Regex::new(r"\{[^{}]*\}").unwrap();
     let selectors = declarations.replace_all(&style, "{}");
-    // Python \w admite letras/números/_, pero no combining marks ni conectores Unicode.
-    let names = Regex::new(r"[.#][A-Za-z][\p{L}\p{N}_-]*").unwrap();
-    let word = Regex::new(r"^[\p{L}\p{N}_-]$").unwrap();
-    let names = names
+    // El original usa UCD13: la tabla evita que versiones nuevas cambien los nombres.
+    let starts = Regex::new(r"[.#][A-Za-z]").unwrap();
+    let names = starts
         .find_iter(&selectors)
-        .map(|found| found.as_str())
+        .map(|found| {
+            let end = selectors[found.end()..]
+                .char_indices()
+                .find(|(_, c)| !word(*c))
+                .map_or(selectors.len(), |(offset, _)| found.end() + offset);
+            &selectors[found.start()..end]
+        })
         .collect::<BTreeSet<_>>();
     Ok(names
         .into_iter()
@@ -52,8 +68,7 @@ pub fn scan(root: &Path, prefixes: &[String]) -> Result<Vec<String>, String> {
             !rest.match_indices(bare).any(|(at, _)| {
                 let before = rest[..at].chars().next_back();
                 let after = rest[at + bare.len()..].chars().next();
-                !before.is_some_and(|c| word.is_match(&c.to_string()))
-                    && !after.is_some_and(|c| word.is_match(&c.to_string()))
+                !before.is_some_and(word) && !after.is_some_and(word)
             })
         })
         .map(str::to_owned)
@@ -73,5 +88,23 @@ pub fn main(args: &[String]) -> i32 {
             eprintln!("css-orphans: {error}");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use sha2::{Digest, Sha256};
+
+    #[test]
+    fn frozen_word_table_matches_original_for_every_codepoint() {
+        let mut digest = Sha256::new();
+        for cp in 0..=0x10ffff {
+            digest.update([u8::from(char::from_u32(cp).is_some_and(super::word))]);
+        }
+        // re.fullmatch(r"[\w-]", chr(cp)), Python3.10/UCD13; surrogates are false.
+        assert_eq!(
+            format!("{:x}", digest.finalize()),
+            "0d527713cc4fb4a2f3c010874f2a38e3110c0b0535be4abad37808c65c9db9cc"
+        );
     }
 }

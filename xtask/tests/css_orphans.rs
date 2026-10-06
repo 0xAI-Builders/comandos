@@ -119,6 +119,13 @@ fn invalid_utf8_and_missing_input_fail_instead_of_reporting_clean() {
 }
 
 #[test]
+fn unicode_version_matches_frozen_python_310_oracle() {
+    // U+1C89 se asignó después de Unicode13; el original actual lo trata como límite.
+    let fixture = Fixture::new("<style>.xᲉ,.used,.x²,.x界 {}</style><p class='usedᲉ x² x界'>");
+    assert_eq!(fixture.compare(&[]), ".x\n");
+}
+
+#[test]
 fn actual_binary_matches_original_on_checkout_from_arbitrary_directory() {
     let fixture = Fixture::new("");
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
