@@ -85,9 +85,10 @@ fn main() {
         Some("web-port") => exit(xtask::web_port::main(&args[1..])),
         Some("lint") => exit(xtask::lint::main(&args[1..])),
         Some("css-orphans") => exit(xtask::css_orphans::main(&args[1..])),
+        Some("cli-catalog") => exit(xtask::cli_catalog::main(&args[1..])),
         _ => {
             eprintln!(
-                "subcomandos: rss, parity, poll, app-drift, app-shot, app-layout, shots, png-diff, dom-diff, fixtures, web-build, web-bench, web-inventory, web-port, browser-e2e, lint, css-orphans"
+                "subcomandos: rss, parity, poll, app-drift, app-shot, app-layout, shots, png-diff, dom-diff, fixtures, web-build, web-bench, web-inventory, web-port, browser-e2e, lint, css-orphans, cli-catalog"
             );
             exit(2);
         }

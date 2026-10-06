@@ -4,6 +4,7 @@
 //! interfaz y vigilan la deriva de lo portado (B3).
 pub mod app_layout;
 pub mod browser_e2e;
+pub mod cli_catalog;
 pub mod css_orphans;
 pub mod fixtures;
 pub mod lint;

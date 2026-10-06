@@ -3,6 +3,10 @@ use regex::Regex;
 use std::{collections::BTreeSet, fs, path::Path};
 mod python_word;
 
+pub(crate) fn python_alnum_ranges() -> &'static [(u32, u32)] {
+    python_word::ALNUM_RANGES
+}
+
 fn word(c: char) -> bool {
     if c == '_' || c == '-' {
         return true;
