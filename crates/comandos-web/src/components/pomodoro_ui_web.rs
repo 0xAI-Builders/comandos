@@ -264,7 +264,9 @@ fn mini(u: &Ui, v: &JsValue) -> String {
     )
 }
 fn locale(value: JsValue) -> String {
-    call(&value, "toLocaleString", &["es-MX".into()])
+    // Reflect.get requires an object; JavaScript boxes numeric receivers.
+    let boxed = invoke(&global("Object"), std::slice::from_ref(&value)).unwrap_or(value.clone());
+    call(&boxed, "toLocaleString", &["es-MX".into()])
         .ok()
         .and_then(|v| v.as_string())
         .unwrap_or_else(|| text(&value))
