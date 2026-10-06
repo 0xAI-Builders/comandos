@@ -3,10 +3,11 @@ mod support;
 
 use comandos_server::{
     Request,
-    dash::native::{Native, NativeRoute, Outcome, wall_clock_ms},
+    dash::native::{Native, NativeRoute, Outcome},
 };
-use std::sync::Arc;
-use support::{FakeLegacy, TestHome, dead_port, front, get, oracle::oracle, request_body};
+
+use support::http_golden::FrozenHttp;
+use support::{FakeLegacy, TestHome, dead_port, front, get, request_body};
 
 fn get_request(target: &str) -> Request {
     Request {
@@ -84,7 +85,7 @@ async fn pomodoro_matches_python_oracle() {
     // ANTES de arrancar el oráculo: su hilo `pomodoro-scheduler` crea y migra
     // app-state después de abrir el puerto, y un INSERT tras `oracle()` podía
     // llegar antes que la migración («no such table») con la máquina cargada.
-    let now = wall_clock_ms();
+    let now = support::NOW_MS;
     std::fs::create_dir_all(home.state_db().parent().unwrap()).unwrap();
     let conn = comandos_store::state::connect(&home.state_db()).unwrap();
     comandos_store::state::migrate(&conn, comandos_store::state::MIGRATIONS, 0.0).unwrap();
@@ -105,18 +106,17 @@ async fn pomodoro_matches_python_oracle() {
     )
     .unwrap();
     drop(conn);
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
+    let py = FrozenHttp::new_rooted_with(&home, "server-http-pomodoro", &[
+        ".local/state/comandos/app-state.sqlite3", ".claude/hooks/comandos-usage.sqlite",
+        ".claude/hooks/focus-queue.jsonl", ".claude/hooks/prefs.json"],
+        "import pomodoro\npomodoro.uuid.uuid4 = lambda: pomodoro.uuid.UUID('0123456789abcdef0123456789abcdef')").await;
     // Un bloque en curso que arranca el Python (POST /pomodoro sigue en él).
     let start =
         r#"{"requestId": "r-paridad", "action": "start", "mode": "focus", "targetMs": 1500000}"#;
-    let started = request_body(py.port, "POST", "/pomodoro", "", start).await;
+    let started = py.request("POST", "/pomodoro", "", start).await;
     assert_eq!(started.status, 200, "{}", started.text());
-    let mut opts = home.options();
-    opts.clock = Arc::new(wall_clock_ms);
-    let front = front(&home, dead_port(), opts).await;
-    let a = get(py.port, "/pomodoro").await;
+    let front = front(&home, dead_port(), home.options()).await;
+    let a = py.get("/pomodoro").await;
     let b = get(front.port, "/pomodoro").await;
     assert_eq!((a.status, masked(&a.text())), (b.status, masked(&b.text())));
     let body = b.text();
@@ -135,7 +135,7 @@ async fn pomodoro_matches_python_oracle() {
             .status,
         200
     );
-    let a = get(py.port, "/pomodoro").await;
+    let a = py.get("/pomodoro").await;
     let b = get(front.port, "/pomodoro").await;
     assert_eq!(masked(&a.text()), masked(&b.text()));
     assert!(

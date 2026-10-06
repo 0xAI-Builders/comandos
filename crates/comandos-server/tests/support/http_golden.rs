@@ -15,6 +15,8 @@ use std::{
 
 pub struct FrozenHttp<'a> {
     home: &'a TestHome,
+    domain: PathBuf,
+    prelude: String,
     original: Option<Oracle>,
     family: &'static str,
     files: Vec<&'static str>,
@@ -22,6 +24,23 @@ pub struct FrozenHttp<'a> {
 }
 impl<'a> FrozenHttp<'a> {
     pub async fn new(home: &'a TestHome, family: &'static str, files: &[&'static str]) -> Self {
+        Self::new_inner(home, family, files, home.hooks(), "").await
+    }
+    pub async fn new_rooted_with(
+        home: &'a TestHome,
+        family: &'static str,
+        files: &[&'static str],
+        prelude: &str,
+    ) -> Self {
+        Self::new_inner(home, family, files, home.root.clone(), prelude).await
+    }
+    async fn new_inner(
+        home: &'a TestHome,
+        family: &'static str,
+        files: &[&'static str],
+        domain: PathBuf,
+        prelude: &str,
+    ) -> Self {
         let original = if matches!(
             std::env::var("COMANDOS_ORACLE").as_deref(),
             Ok("record" | "check")
@@ -31,7 +50,8 @@ impl<'a> FrozenHttp<'a> {
                 python_prelude: format!(
                     "dash.time.time = lambda: {}\ndash.motor_queue_resume = lambda: None\ndash.start_pomodoro_scheduler = lambda: None",
                     NOW_MS / 1000
-                ),
+                ) + "\n"
+                    + prelude,
                 extra_env: vec![(
                     "COMANDOS_ORACLE_REFERENCE_ROOT".into(),
                     reference.display().to_string(),
@@ -48,6 +68,8 @@ impl<'a> FrozenHttp<'a> {
         };
         Self {
             home,
+            domain,
+            prelude: prelude.to_owned(),
             original,
             family,
             files: files.to_vec(),
@@ -64,7 +86,7 @@ impl<'a> FrozenHttp<'a> {
     pub async fn request(&self, method: &str, target: &str, extra: &str, body: &str) -> Wire {
         let capsule = self.home.root.join(".oracle/http-effects");
         fs::create_dir_all(&capsule).unwrap();
-        copy_domain(&self.home.hooks(), &capsule, &self.files);
+        copy_domain(&self.domain, &capsule, &self.files);
         let mut roots = vec![("<HOME>", self.home.root.as_path())];
         roots.extend(
             self.aliases
@@ -77,18 +99,38 @@ impl<'a> FrozenHttp<'a> {
             &roots,
         ))
         .unwrap();
+        let mut input = json!({"source_commit":frozen::SOURCE_COMMIT,"source_sha256":"4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24", "python":"CPython 3.10.12","clock_ms":NOW_MS,"request":request,"effect_files":self.files});
+        if !self.prelude.is_empty() {
+            input["fixture_prelude"] = json!(self.prelude);
+        }
         let output = comandos_oracle::text_with_tree_at(
-            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"), self.family,
-            &json!({"source_commit":frozen::SOURCE_COMMIT,"source_sha256":"4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24", "python":"CPython 3.10.12","clock_ms":NOW_MS,"request":request,"effect_files":self.files}),
-            &capsule, &roots, || {
-                let original = self.original.as_ref().ok_or("original HTTP unavailable outside record/check")?;
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+            self.family,
+            &input,
+            &capsule,
+            &roots,
+            || {
+                let original = self
+                    .original
+                    .as_ref()
+                    .ok_or("original HTTP unavailable outside record/check")?;
                 let mut wire = original_request(original.port, method, target, extra, body)?;
                 wire.body = comandos_oracle::normalize(&wire.body, &roots);
-                copy_domain(&self.home.hooks(), &capsule, &self.files);
-                serde_json::to_string(&json!({"status":wire.status,"headers":wire.headers,"body":wire.body})).map_err(|e| e.to_string())
-            }).unwrap();
+                copy_domain(&self.domain, &capsule, &self.files);
+                serde_json::to_string(
+                    &json!({"status":wire.status,"headers":wire.headers,"body":wire.body}),
+                )
+                .map_err(|e| e.to_string())
+            },
+        )
+        .unwrap();
         // The capsule excludes processes, sockets and logs; only recorded domain files return.
-        copy_domain(&capsule, &self.home.hooks(), &self.files);
+        if !matches!(
+            std::env::var("COMANDOS_ORACLE").as_deref(),
+            Ok("record" | "check")
+        ) {
+            copy_domain(&capsule, &self.domain, &self.files);
+        }
         let value: Value = serde_json::from_str(&output).unwrap();
         Wire {
             status: value["status"].as_u64().unwrap().try_into().unwrap(),
@@ -103,13 +145,35 @@ impl<'a> FrozenHttp<'a> {
 fn copy_domain(from: &Path, to: &Path, files: &[&str]) {
     fs::create_dir_all(to).unwrap();
     for file in files {
-        assert!(!file.is_empty() && !file.contains('/') && *file != "." && *file != "..");
+        assert!(
+            !file.is_empty()
+                && Path::new(file)
+                    .components()
+                    .all(|part| matches!(part, std::path::Component::Normal(_)))
+        );
         let source = from.join(file);
         let target = to.join(file);
         match fs::symlink_metadata(&source) {
             Ok(metadata) => {
                 assert!(metadata.is_file() && !metadata.file_type().is_symlink());
-                fs::write(&target, fs::read(&source).unwrap()).unwrap();
+                fs::create_dir_all(target.parent().unwrap()).unwrap();
+                if fs::read(&source).unwrap().starts_with(b"SQLite format 3\0") {
+                    // SQLite backup observes WAL and applies the logical image in place;
+                    // never copy open database pages or discard live native connections.
+                    let connection = rusqlite::Connection::open_with_flags(
+                        &source,
+                        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+                    )
+                    .unwrap();
+                    let same = target.exists()
+                        && comandos_oracle::snapshot_sqlite(&source, &[]).unwrap()
+                            == comandos_oracle::snapshot_sqlite(&target, &[]).unwrap();
+                    if !same {
+                        connection.backup("main", &target, None).unwrap();
+                    }
+                } else {
+                    fs::write(&target, fs::read(&source).unwrap()).unwrap();
+                }
                 fs::set_permissions(&target, metadata.permissions()).unwrap();
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
