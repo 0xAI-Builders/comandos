@@ -90,6 +90,7 @@ impl Entry {
 
 fn cut_script(html: &str, source: &str) -> String {
     let name = source.rsplit('/').next().unwrap_or(source);
+    let relative = source.strip_prefix("dash/").unwrap_or(source);
     let mut search_from = 0;
     while let Some(open_rel) = html[search_from..].find("<script") {
         let open = search_from + open_rel;
@@ -107,11 +108,12 @@ fn cut_script(html: &str, source: &str) -> String {
         let close = open + close_rel + "</script>".len();
         let tag = &html[open..close];
         if script_src(tag).is_some_and(|src| {
-            src.split(['?', '#'])
+            let path = src
+                .split(['?', '#'])
                 .next()
                 .unwrap_or(src)
-                .trim_start_matches('/')
-                == name
+                .trim_start_matches('/');
+            path == name || path == relative
         }) {
             let end = close + html[close..].strip_prefix('\n').map_or(0, |_| 1);
             let mut out = String::with_capacity(html.len().saturating_sub(end - open));

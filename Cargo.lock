@@ -505,6 +505,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "comandos-core",
+ "comandos-domdiff",
  "comandos-runtime",
  "comandos-store",
  "comandos-term",

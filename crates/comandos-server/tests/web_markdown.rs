@@ -24,6 +24,19 @@ fn markdown_matches_live_reader_safety_and_presentation() {
     assert!(!render("[example.com](https://example.com/x)", Profile::News).contains("nr-host"));
     assert!(!render("![a](https://example.org/a.png)", Profile::News).contains("<img"));
     assert!(!render("user@example.org", Profile::News).contains("<a "));
+    for start in [0, 1, 2, 3] {
+        let list = render(&format!("{start}. item"), Profile::News);
+        assert!(list.starts_with("<ol>"), "{list}");
+        assert!(!list.contains("start="), "{list}");
+    }
+    for quote in ['«', '»', '“', '”', '‘', '’', '…'] {
+        let linked = render(&format!("https://example.org/path{quote}"), Profile::News);
+        assert!(
+            linked.contains("href=\"https://example.org/path\""),
+            "{linked}"
+        );
+        assert!(linked.contains(&format!("</a>{quote}")), "{linked}");
+    }
     let table = render("| a | b |\n|---|---|\n| 1 | 2 |", Profile::News);
     assert!(
         table.contains("<div class=\"nr-table-wrap\"><table>"),
@@ -212,6 +225,24 @@ async fn renderer_is_authenticated_bounded_and_pure_even_in_shadow_without_nativ
         .unwrap()
         .unwrap();
     assert!(String::from_utf8(raw).unwrap().starts_with("HTTP/1.1 413"));
+    for literal in [
+        r"high\ud800end",
+        r"low\udc00end",
+        r"marker\ue000\udb80\udc00end",
+    ] {
+        let body = format!(r#"{{"text":"{}","profile":"news"}}"#, literal);
+        let reply = front.http("POST", "/web/markdown", &body, token).await;
+        assert!(reply.starts_with("HTTP/1.1 200"), "{reply}");
+        let response = reply.split_once("\r\n\r\n").unwrap().1;
+        let expected = comandos_web_view::utf16::json_to_unicode(&body);
+        let expected: serde_json::Value = serde_json::from_str(&expected).unwrap();
+        let actual = comandos_web_view::utf16::json_to_unicode(response);
+        let actual: serde_json::Value = serde_json::from_str(&actual).unwrap();
+        assert_eq!(
+            actual["html"].as_str().unwrap().trim(),
+            format!("<p>{}</p>", expected["text"].as_str().unwrap())
+        );
+    }
     // The exemption cannot enable an unrelated write under the read-only shadow policy.
     let write = front
         .http(

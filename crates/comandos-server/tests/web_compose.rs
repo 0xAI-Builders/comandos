@@ -273,3 +273,67 @@ fn missing_dependency_keeps_component_off() {
         ComponentState::MissingDep(_)
     ));
 }
+
+#[test]
+fn nested_vendor_scripts_match_exact_path_and_restore_original_on_dependency_failure() {
+    let original = "<meta charset=\"utf-8\">\n<script data-src='/vendor/markdown.js' src='/other/markdown.js'></script>\n<script src='/vendor/markdown.js?v=1'></script>\n<script src='/news-reader.js'></script>\n<script>const text='vendor/markdown.js';</script>\n";
+    let src = "reader";
+    let vendor = "vendor";
+    let entries = vec![
+        Entry::script(
+            "news-reader",
+            "dash/news-reader.js",
+            &sha(src),
+            &["NewsReader"],
+            &[],
+        ),
+        Entry::script(
+            "vendor-markdown-it",
+            "dash/vendor/markdown.js",
+            &sha(vendor),
+            &[],
+            &["news-reader"],
+        ),
+    ];
+    let registry = Resolved::in_memory(
+        entries,
+        &[
+            ("dash/news-reader.js", src),
+            ("dash/vendor/markdown.js", vendor),
+        ],
+    );
+    let ready = compose(
+        original.as_bytes(),
+        &registry,
+        &sel(&["news-reader", "vendor-markdown-it"]),
+        false,
+        &Manifest::test(),
+        "ready",
+    );
+    let ready = String::from_utf8(ready.html).unwrap();
+    assert!(ready.contains("src='/other/markdown.js'"));
+    assert!(ready.contains("const text='vendor/markdown.js'"));
+    assert!(!ready.contains("src='/vendor/markdown.js?v=1'"));
+    assert!(!ready.contains("src='/news-reader.js'"));
+    let unavailable = compose(
+        original.as_bytes(),
+        &registry,
+        &sel(&["news-reader", "vendor-markdown-it"]),
+        false,
+        &Manifest::default(),
+        "failed",
+    );
+    assert_eq!(unavailable.html, original.as_bytes());
+    let without_reader = compose(
+        original.as_bytes(),
+        &registry,
+        &sel(&["vendor-markdown-it"]),
+        false,
+        &Manifest::test(),
+        "off",
+    );
+    assert_eq!(without_reader.html, original.as_bytes());
+    let different =
+        Entry::script("x", "dash/vendor/other.js", &sha(vendor), &[], &[]).cut(original);
+    assert_eq!(different, original);
+}

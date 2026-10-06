@@ -64,19 +64,24 @@ fn linkified(text: &str) -> String {
         if text.get(..link.start()).is_some_and(|s| s.ends_with('@')) {
             continue;
         }
-        let href = if link.as_str().contains("://") {
-            link.as_str().to_owned()
+        let visible = link
+            .as_str()
+            .split(['«', '»', '“', '”', '‘', '’', '…'])
+            .next()
+            .unwrap_or_default();
+        let href = if visible.contains("://") {
+            visible.to_owned()
         } else {
-            format!("http://{}", link.as_str())
+            format!("http://{visible}")
         };
         if !http_url(&href) {
             continue;
         }
         out.push_str(&esc(text.get(at..link.start()).unwrap_or_default()));
         out.push_str(&anchor(&href, ""));
-        out.push_str(&esc(link.as_str()));
+        out.push_str(&esc(visible));
         out.push_str("</a>");
-        at = link.end();
+        at = link.start() + visible.len();
     }
     out.push_str(&esc(text.get(at..).unwrap_or_default()));
     out
@@ -151,12 +156,12 @@ pub fn render(text: &str, _profile: Profile) -> String {
             }
             Event::Html(t) => {
                 events.push(Event::Start(Tag::Paragraph));
-                events.push(Event::Text(
-                    t.to_string().trim_end_matches('\n').to_owned().into(),
-                ));
+                events.push(Event::Html(linkified(t.trim_end_matches('\n')).into()));
                 events.push(Event::End(TagEnd::Paragraph));
             }
-            Event::InlineHtml(t) => events.push(Event::Text(t)),
+            Event::InlineHtml(t) => events.push(Event::Html(linkified(&t).into())),
+            Event::Start(Tag::Strikethrough) => events.push(Event::Html("<s>".into())),
+            Event::End(TagEnd::Strikethrough) => events.push(Event::Html("</s>".into())),
             Event::Start(Tag::Table(_)) => {
                 events.push(Event::Html("<div class=\"nr-table-wrap\"><table>".into()))
             }
@@ -198,7 +203,9 @@ pub fn render(text: &str, _profile: Profile) -> String {
     ]
     .into_iter()
     .collect();
-    let attrs = ["href", "target", "rel", "class", "title", "start"]
+    // The live DOMPurify URI policy removes numeric `start` values. Preserve
+    // that visible list numbering; only target/rel are explicitly URI-safe.
+    let attrs = ["href", "target", "rel", "class", "title"]
         .into_iter()
         .collect();
     ammonia::Builder::default()
@@ -210,6 +217,11 @@ pub fn render(text: &str, _profile: Profile) -> String {
         .link_rel(None)
         .clean(&raw)
         .to_string()
+}
+/// Scoped browser-string decoder; other POST domains retain their existing JSON policy.
+pub fn parse_request(raw: &[u8]) -> Option<serde_json::Value> {
+    let raw = std::str::from_utf8(raw).ok()?;
+    serde_json::from_str(&comandos_web_view::utf16::json_to_unicode(raw)).ok()
 }
 pub fn handle(request: &Request) -> Result<Reply, HandlerError> {
     if request.body.len() > MAX_INPUT_BYTES {
@@ -236,14 +248,19 @@ pub fn handle(request: &Request) -> Result<Reply, HandlerError> {
             &serde_json::json!({"error":"text debe ser texto"}),
         );
     };
-    if text.len() > MAX_INPUT_BYTES {
+    let text_bytes = char::decode_utf16(comandos_web_view::utf16::decode(text))
+        .map(|c| c.map(|c| c.len_utf8()).unwrap_or(3))
+        .sum::<usize>();
+    if text_bytes > MAX_INPUT_BYTES {
         return Reply::json(
             StatusCode::PAYLOAD_TOO_LARGE,
             &serde_json::json!({"error":"texto demasiado largo"}),
         );
     }
-    Reply::json(
+    let output = serde_json::json!({"html":render(text,Profile::News)}).to_string();
+    Ok(Reply::bytes(
         StatusCode::OK,
-        &serde_json::json!({"html":render(text,Profile::News)}),
-    )
+        "application/json",
+        comandos_web_view::utf16::json_to_javascript(&output).into_bytes(),
+    ))
 }

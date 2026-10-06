@@ -483,6 +483,8 @@ async fn dispatch(
         };
         let parsed = if raw.is_empty() {
             Some(serde_json::json!({}))
+        } else if parts.method == Method::POST && parts.uri.path() == "/web/markdown" {
+            dash::web::markdown::parse_request(&raw)
         } else {
             comandos_core::json::workspace_loads_bytes(&raw)
         };
