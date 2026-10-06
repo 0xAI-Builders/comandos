@@ -36,7 +36,13 @@ pub fn repo() -> std::path::PathBuf {
 pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> {
     if matches!(
         env!("CARGO_CRATE_NAME"),
-        "cli_catalog_oracle"
+        "extension_prepare_oracle"
+            | "tmux_snapshot_oracle"
+            | "extension_inventory_oracle"
+            | "session_profiles_oracle"
+            | "pane_extensions_oracle"
+            | "session_configuration_oracle"
+            | "cli_catalog_oracle"
             | "extension_observations_oracle"
             | "limits_oracle"
             | "model_watch_oracle"

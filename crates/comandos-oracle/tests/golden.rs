@@ -85,7 +85,7 @@ fn snapshots_replay_files_symlinks_and_sqlite_without_corrupting_path_lengths() 
     std::os::unix::fs::symlink("state.json", home.join("link")).unwrap();
     let c = rusqlite::Connection::open(home.join("state.sqlite")).unwrap();
     c.execute_batch(
-        "CREATE TABLE records(id INTEGER PRIMARY KEY,value TEXT);PRAGMA user_version=11",
+        "CREATE TABLE records(id INTEGER PRIMARY KEY,value TEXT); CREATE INDEX before_next_table ON records(value); CREATE TABLE later(value TEXT); CREATE TABLE a_child(parent_id INTEGER REFERENCES records(id)); PRAGMA user_version=11",
     )
     .unwrap();
     c.execute(
@@ -93,6 +93,7 @@ fn snapshots_replay_files_symlinks_and_sqlite_without_corrupting_path_lengths() 
         [home.join("file").to_string_lossy().as_ref()],
     )
     .unwrap();
+    c.execute("INSERT INTO a_child VALUES(1)", []).unwrap();
     drop(c);
     fs::create_dir(home.join("empty")).unwrap();
     let tree = comandos_oracle::snapshot_tree(&home, &[("<HOME>", &home)]).unwrap();
@@ -100,6 +101,10 @@ fn snapshots_replay_files_symlinks_and_sqlite_without_corrupting_path_lengths() 
     let replay = f.0.join("a-longer-replay-home");
     fs::create_dir(&replay).unwrap();
     comandos_oracle::restore_tree(&replay, &tree, &[("<HOME>", &replay)]).unwrap();
+    assert_eq!(
+        comandos_oracle::snapshot_tree(&replay, &[("<HOME>", &replay)]).unwrap(),
+        tree
+    );
     assert!(
         fs::read_to_string(replay.join("state.json"))
             .unwrap()

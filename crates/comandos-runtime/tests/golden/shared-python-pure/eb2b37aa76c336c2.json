@@ -1,0 +1,25 @@
+{
+  "input": {
+    "script": "\nimport json, os, subprocess, sys, time\nrepo, tmux_bin, socket, now = sys.argv[1:5]\nsys.path.insert(0, os.path.join(repo, \"lib\"))\nimport pane_snapshot, tmux_snapshot\ntime.time = lambda: float(now)\nenv = {k: v for k, v in os.environ.items() if k != \"TMUX\"}\ntmux = lambda *a, timeout=5: subprocess.run([tmux_bin, '-f', '/dev/null', '-S', socket, *a],\n                                            capture_output=True, text=True, timeout=timeout, env=env)\nprint(json.dumps(tmux_snapshot.capture_session(tmux, 's1', pane_snapshot.PaneInspector())))\n",
+    "args": [
+      {
+        "arg": "/usr/bin/tmux",
+        "file": "6684c9b0bd4af08461f9e476e0abee9c3f08daa5d55ed6fb7c663c000e09f83d"
+      },
+      {
+        "arg": "{{FIXTURE}}/tmux/tmux-1000/default",
+        "file": null
+      },
+      {
+        "arg": "1791115200.75",
+        "file": null
+      },
+      {
+        "arg": "[{\"pane\":\"%0\",\"pid\":{{PID:%0}},\"start\":{{START:%0}}},{\"pane\":\"%1\",\"pid\":{{PID:%1}},\"start\":{{START:%1}}},{\"pane\":\"%2\",\"pid\":{{PID:%2}},\"start\":{{START:%2}}},{\"pane\":\"%3\",\"pid\":{{PID:%3}},\"start\":{{START:%3}}}]",
+        "file": null
+      }
+    ],
+    "bin_inputs": []
+  },
+  "output_b64": "eyJ3aW5kb3dzIjogW3siaWQiOiAiQDAiLCAiaW5kZXgiOiAwLCAibmFtZSI6ICJ2ZW50YVx1MDBmMWEiLCAibGF5b3V0IjogIjk1ZTQsMTIweDQwLDAsMHs2MHg0MCwwLDAsMCw1OXg0MCw2MSwwWzU5eDIwLDYxLDAsMSw1OXgxOSw2MSwyMSwyXX0iLCAid2lkdGgiOiAxMjAsICJoZWlnaHQiOiA0MCwgImFjdGl2ZSI6IHRydWUsICJ6b29tZWQiOiBmYWxzZSwgInBhbmVzIjogW3siaWQiOiAiJTAiLCAiaW5kZXgiOiAwLCAiY3dkIjogInt7RklYVFVSRX19L3RyYWJham8iLCAicGlkIjoge3tQSUQ6JTB9fSwgInN0YXJ0Ijoge3tTVEFSVDolMH19LCAiY29tbWFuZCI6ICJzaCIsICJhY3RpdmUiOiBmYWxzZSwgInRhZ2dlZF9rZXkiOiAicGstdW5vIiwgImFnZW50IjogIiJ9LCB7ImlkIjogIiUxIiwgImluZGV4IjogMSwgImN3ZCI6ICJ7e0ZJWFRVUkV9fS90cmFiYWpvIiwgInBpZCI6IHt7UElEOiUxfX0sICJzdGFydCI6IHt7U1RBUlQ6JTF9fSwgImNvbW1hbmQiOiAic2giLCAiYWN0aXZlIjogZmFsc2UsICJhZ2VudCI6ICIifSwgeyJpZCI6ICIlMiIsICJpbmRleCI6IDIsICJjd2QiOiAie3tGSVhUVVJFfX0vdHJhYmFqbyIsICJwaWQiOiB7e1BJRDolMn19LCAic3RhcnQiOiB7e1NUQVJUOiUyfX0sICJjb21tYW5kIjogInNoIiwgImFjdGl2ZSI6IHRydWUsICJhZ2VudCI6ICIifV0sICJib3JkZXJfc3RhdHVzIjogIm9mZiIsICJhdXRvbWF0aWNfcmVuYW1lIjogIm9mZiIsICJ3aW5kb3dfc2l6ZSI6ICJsYXRlc3QifSwgeyJpZCI6ICJAMSIsICJpbmRleCI6IDEsICJuYW1lIjogInNlZ3VuZGEiLCAibGF5b3V0IjogImFiMDAsMTIweDQwLDAsMCwzIiwgIndpZHRoIjogMTIwLCAiaGVpZ2h0IjogNDAsICJhY3RpdmUiOiBmYWxzZSwgInpvb21lZCI6IGZhbHNlLCAicGFuZXMiOiBbeyJpZCI6ICIlMyIsICJpbmRleCI6IDAsICJjd2QiOiAie3tGSVhUVVJFfX0vdHJhYmFqbyIsICJwaWQiOiB7e1BJRDolM319LCAic3RhcnQiOiB7e1NUQVJUOiUzfX0sICJjb21tYW5kIjogInNoIiwgImFjdGl2ZSI6IHRydWUsICJhZ2VudCI6ICIifV0sICJib3JkZXJfc3RhdHVzIjogIm9mZiIsICJhdXRvbWF0aWNfcmVuYW1lIjogIm9mZiIsICJ3aW5kb3dfc2l6ZSI6ICJsYXRlc3QifV0sICJjYXB0dXJlZF9hdCI6IDE3OTExMTUyMDB9Cg=="
+}

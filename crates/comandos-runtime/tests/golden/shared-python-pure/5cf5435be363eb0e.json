@@ -1,0 +1,18 @@
+{
+  "input": {
+    "script": "import sys,json,pathlib\nsys.path.insert(0,str(pathlib.Path(sys.argv[1])/'lib'));import capabilities as c\nerrors=[];v=c.read_config(sys.argv[2],errors,'test');print(json.dumps([v,errors],ensure_ascii=False,default=str))",
+    "args": [
+      {
+        "arg": "{{HOME}}/x.toml",
+        "file": "9b5648181c9bf862d7c663cfeafa1b515406b0e05c92f5e3c464bded0b50752b"
+      }
+    ],
+    "bin_inputs": [],
+    "fixtures": {
+      "x.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "x.jsonc": "81374dde091ef24cb0329a4434f03e566c2bfd96f4a05f240547e623d45930d5",
+      "x.toml": "9b5648181c9bf862d7c663cfeafa1b515406b0e05c92f5e3c464bded0b50752b"
+    }
+  },
+  "output_b64": "W3sibWNwX3NlcnZlcnMiOiB7InMiOiB7ImRlc2NyaXB0aW9uIjogIjE5NzktMDUtMjcgMDc6MzI6MDAuMTIzNDU2KzAwOjAwIn19fSwgW11dCg=="
+}

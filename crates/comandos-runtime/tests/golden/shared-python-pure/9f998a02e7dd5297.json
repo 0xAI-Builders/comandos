@@ -1,0 +1,18 @@
+{
+  "input": {
+    "script": "import sys,json,pathlib\nsys.path.insert(0,str(pathlib.Path(sys.argv[1])/'lib'));import capabilities as c\nerrors=[];v=c.read_config(sys.argv[2],errors,'test');print(json.dumps([v,errors],ensure_ascii=False,default=str))",
+    "args": [
+      {
+        "arg": "{{HOME}}/x.toml",
+        "file": "fe3807dad9c7a4bda9191b49003c4a1205c969085f549b88bd53d21467168f4f"
+      }
+    ],
+    "bin_inputs": [],
+    "fixtures": {
+      "x.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "x.jsonc": "81374dde091ef24cb0329a4434f03e566c2bfd96f4a05f240547e623d45930d5",
+      "x.toml": "fe3807dad9c7a4bda9191b49003c4a1205c969085f549b88bd53d21467168f4f"
+    }
+  },
+  "output_b64": "W3sic2tpbGxzIjogeyJjb25maWciOiBbeyJwYXRoIjogImZvbyIsICJlbmFibGVkIjogdHJ1ZSwgIl91bnN1cHBvcnRlZEtleXMiOiB0cnVlfV0sICJwYXRocyI6IFsiYSJdfSwgIm1jcF9zZXJ2ZXJzIjogeyJzIjogeyJlbmFibGVkIjogZmFsc2UsICJkZXNjcmlwdGlvbiI6ICJoZWxsbyJ9fX0sIFtdXQo="
+}

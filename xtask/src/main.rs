@@ -36,6 +36,7 @@ fn main() {
         Some("test-map") => {
             let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
             test_map::run(&root).unwrap_or_else(|e| fail(e));
+            return;
         }
         Some("parity") => {
             // Falla cerrado: sin namespace de red propio no se lanza el oráculo.

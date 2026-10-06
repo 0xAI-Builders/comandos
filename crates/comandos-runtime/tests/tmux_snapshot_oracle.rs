@@ -74,6 +74,31 @@ for ns, hexv, now in calls:
 print(json.dumps(names))
 "#;
 
+// Identidad actual del laboratorio privado, leída de tmux y /proc de forma
+// independiente del capturador nativo que se compara con el dorado.
+fn fixture_identities(pt: &PrivateTmux) -> String {
+    let raw = pt.run(&["list-panes", "-a", "-F", "#{pane_id}\t#{pane_pid}"]);
+    let rows: Vec<_> = raw
+        .lines()
+        .map(|line| {
+            let (pane, pid) = line.split_once('\t').unwrap();
+            let pid: i64 = pid.parse().unwrap();
+            let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
+            let start: i64 = stat
+                .rsplit_once(')')
+                .unwrap()
+                .1
+                .split_whitespace()
+                .nth(19)
+                .unwrap()
+                .parse()
+                .unwrap();
+            serde_json::json!({"pane":pane,"pid":pid,"start":start})
+        })
+        .collect();
+    serde_json::to_string(&rows).unwrap()
+}
+
 fn callback(pt: &PrivateTmux) -> impl FnMut(&[&str]) -> tmux_snapshot::Result<TmuxResult> + '_ {
     move |args| {
         let out = pt
@@ -173,12 +198,14 @@ fn capture_session_matches_python() {
     let mut tmux = callback(&pt);
     let rust = capture_session_at(&mut tmux, "s1", &inspector, NOW.trunc() as i64).unwrap();
     let socket = pt.socket();
+    let identities = fixture_identities(&pt);
     let Some(expected) = run_python(
         CAPTURE,
         &[
             pt.tmux_path().as_os_str(),
             socket.as_os_str(),
             OsStr::new(&NOW.to_string()),
+            OsStr::new(&identities),
         ],
         &pt.home(),
     ) else {
@@ -359,8 +386,12 @@ fn closed_pane_save_matches_python() {
             .collect::<Vec<_>>(),
     )
     .unwrap();
-    let Some(expected) = run_python(&format!("{LOAD_DASH}{SAVE}"), &[OsStr::new(&plan)], &home_b)
-    else {
+    let identities = fixture_identities(&pt);
+    let Some(expected) = run_python(
+        &format!("{LOAD_DASH}{SAVE}"),
+        &[OsStr::new(&plan), OsStr::new(&identities)],
+        &home_b,
+    ) else {
         return;
     };
     assert_eq!(

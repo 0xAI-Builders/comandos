@@ -39,7 +39,8 @@ pub fn repo() -> std::path::PathBuf {
 pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> {
     if matches!(
         env!("CARGO_CRATE_NAME"),
-        "session_profiles_oracle"
+        "news_oracle"
+            | "session_profiles_oracle"
             | "usage_change_oracle"
             | "usage_import_oracle"
             | "usage_read_oracle"

@@ -1,0 +1,35 @@
+{
+  "input": {
+    "script": "import sys,json,pathlib\nsys.path.insert(0,str(pathlib.Path(sys.argv[1])/'lib'));sys.path.insert(0,str(pathlib.Path(sys.argv[1])/'bin'))\nimport extension_launch as e\ntry:e.prepare_launch(json.loads(sys.argv[2]),sys.argv[3],'main',sys.argv[4],json.loads(sys.argv[5]),sys.argv[6],'mount-test');error='ok'\nexcept ValueError as err:error=str(err)\nprivate=next(pathlib.Path(sys.argv[6]).glob('extensions-*'))\nfiles={p.name:p.read_text() for p in sorted(private.iterdir()) if p.is_file() and p.name!='manifest.json'}\nprint(json.dumps([error,files],ensure_ascii=False))",
+    "args": [
+      {
+        "arg": "{\"harnesses\":{\"grok\":{\"defaultHome\":\"{{HOME}}/.grok\"},\"agy\":{}}}",
+        "file": null
+      },
+      {
+        "arg": "grok",
+        "file": null
+      },
+      {
+        "arg": "{{HOME}}",
+        "file": null
+      },
+      {
+        "arg": "{\"mcps\":{\"native\":false},\"skills\":{}}",
+        "file": null
+      },
+      {
+        "arg": "{{HOME}}/runtime-grok",
+        "file": null
+      }
+    ],
+    "bin_inputs": [],
+    "fixtures": {
+      ".agents/skills/demo/SKILL.md": "d26ec7bf595a0f044b42d2d36b67f0af095c3892b79c0ac5d62d59d306482932",
+      ".gemini/config/mcp_config.json": "92eb1b7f997345f881b64cf591a6ec062ce5ae0fba9a636bb6a5f2e86f8c9675",
+      ".gemini/config/skills.json": "b83ae9348da8212e87cc58b6cb12c5a43aedbab45992999e936741128fdfaa25",
+      ".grok/config.toml": "ce92d447e699f9fb3f80a285fb879653e92a94254b8a70763d757d4ff8866fc8"
+    }
+  },
+  "output_b64": "eyJ2YWx1ZSI6WyJvayIseyJtb3VudC0wLnRvbWwiOiJcIm1jcF9zZXJ2ZXJzXCI9e1wibmF0aXZlXCI9e1wiY29tbWFuZFwiPVwibmV2ZXItcnVuXCIsXCJlbmFibGVkXCI9ZmFsc2V9fVxuXCJza2lsbHNcIj17XCJkaXNhYmxlZFwiPVtcIm9sZFwiXX1cblwiZGlzYWJsZWRfbWNwX3NlcnZlcnNcIj1bXCJuYXRpdmVcIl1cbiJ9XSwiZmlsZXMiOnt9fQ=="
+}

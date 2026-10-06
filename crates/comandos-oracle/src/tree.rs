@@ -69,7 +69,7 @@ fn walk(
             }
             let bytes = fs::read(&path).map_err(|e| e.to_string())?;
             let value = if bytes.starts_with(b"SQLite format 3\0") {
-                json!({"kind":"sqlite","mode":mode,"db":sqlite(&path,roots)?})
+                json!({"kind":"sqlite","mode":mode,"db":snapshot_sqlite(&path,roots)?})
             } else {
                 json!({"kind":"file","mode":mode,"body_b64":STANDARD.encode(normalize(&bytes,roots))})
             };
@@ -93,11 +93,11 @@ fn is_sidecar(path: &Path) -> bool {
 fn quote(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
-fn sqlite(path: &Path, roots: &[(&str, &Path)]) -> Result<Value, String> {
+pub fn snapshot_sqlite(path: &Path, roots: &[(&str, &Path)]) -> Result<Value, String> {
     let c = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|e| e.to_string())?;
     let schema: Vec<(String, String, Option<String>)> = c
-        .prepare("SELECT type,name,sql FROM sqlite_master ORDER BY rowid")
+        .prepare("SELECT type,name,sql FROM sqlite_master ORDER BY type,name")
         .map_err(|e| e.to_string())?
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
         .map_err(|e| e.to_string())?
@@ -288,6 +288,10 @@ fn restore_sqlite(path: &Path, value: &Value, roots: &[(&str, &Path)]) -> Result
         }
     }
     let c = Connection::open(path).map_err(|e| e.to_string())?;
+    // El snapshot contiene el estado completo; las tablas pueden estar ordenadas
+    // con la hija antes que la padre. Restaurar tampoco debe reparar el oráculo.
+    c.pragma_update(None, "foreign_keys", false)
+        .map_err(|e| e.to_string())?;
     let schema = value
         .get("schema")
         .and_then(Value::as_array)

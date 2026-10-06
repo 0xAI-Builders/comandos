@@ -1,0 +1,13 @@
+{
+  "input": {
+    "script": "\nimport json, os, sys\nrepo, case = sys.argv[1:3]\nsys.path.insert(0, os.path.join(repo, \"lib\"))\nimport tmux_snapshot\nc = json.load(open(case))\nprint(json.dumps([tmux_snapshot.remap_layout(l, c[\"map\"]) for l in c[\"layouts\"]]))\n",
+    "args": [
+      {
+        "arg": "{{FIXTURE}}/remap.json",
+        "file": "f0c63242d40b301a0c856b3130d334171b9d838804df5f60a396571b4ad5964e"
+      }
+    ],
+    "bin_inputs": []
+  },
+  "output_b64": "WyI2NjJmLDEyMHg0MCwwLDB7NjB4NDAsMCwwLDEwMCw1OXg0MCw2MSwwWzU5eDIwLDYxLDAsMTAxLDU5eDE5LDYxLDIxLDEwMl19IiwgImFiMGEsMTIweDQwLDAsMCwxMDMiLCAiYWIwYiwxMjB4NDAsMCwwLDEwNCJdCg=="
+}

@@ -179,7 +179,7 @@ pub fn golden_root(manifest_dir: &Path) -> PathBuf {
     manifest_dir.join("tests/golden")
 }
 mod tree;
-pub use tree::{restore_tree, snapshot_tree};
+pub use tree::{restore_tree, snapshot_sqlite, snapshot_tree};
 
 /// Graba stdout y efectos del HOME privado; replay conserva las aserciones de archivos.
 pub fn text_with_tree_at(

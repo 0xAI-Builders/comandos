@@ -100,6 +100,14 @@ pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> 
             let normalized =
                 String::from_utf8(comandos_oracle::normalize(text.as_bytes(), &roots)).unwrap();
             let file = std::fs::read(Path::new(arg)).ok().map(|bytes| {
+                if env!("CARGO_CRATE_NAME") == "news_oracle"
+                    && bytes.starts_with(b"SQLite format 3\0")
+                {
+                    return comandos_oracle::key(
+                        &comandos_oracle::snapshot_sqlite(Path::new(arg), &roots).unwrap(),
+                    )
+                    .unwrap();
+                }
                 format!(
                     "{:x}",
                     Sha256::digest(comandos_oracle::normalize(&bytes, &roots))
@@ -205,7 +213,10 @@ fn derived_aliases(home: &Path, roots: &[(&str, &Path)]) -> Vec<(String, std::pa
                 let normalized =
                     String::from_utf8(comandos_oracle::normalize(real.as_bytes(), roots)).unwrap();
                 aliases.push((
-                    format!("{{{{SKILL_ID:{normalized}}}}}"),
+                    format!(
+                        "{{{{SKILL_ID:{:x}}}}}",
+                        Sha256::digest(normalized.as_bytes())
+                    ),
                     format!("{:x}", Sha256::digest(real.as_bytes()))[..24].into(),
                 ));
             } else if meta.is_file() && path.extension().is_some_and(|n| n == "jsonl") {
