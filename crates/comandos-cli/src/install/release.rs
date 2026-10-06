@@ -224,6 +224,10 @@ pub fn preview_app(home: &Path, exe: &Path) -> Result<Release, String> {
 }
 
 pub fn stage_app(home: &Path, exe: &Path) -> Result<Release, String> {
+    let _guard = super::transaction::installation_lock(home)?;
+    stage_app_without_install_lock(home, exe)
+}
+pub(crate) fn stage_app_without_install_lock(home: &Path, exe: &Path) -> Result<Release, String> {
     let c = prepare_app(home, exe)?;
     let bin_dir = c.pointer.parent().ok_or("ruta App sin directorio")?;
     fs::create_dir_all(bin_dir).map_err(|e| format!("{}: {e}", bin_dir.display()))?;
@@ -330,6 +334,14 @@ fn layout(home: &Path) -> Layout {
 
 /// Instala `exe` (y su `web/`, si lo hay) como release y apunta `bin/comandos` a ella.
 pub fn stage_release(home: &Path, exe: &Path, web: &WebSource) -> Result<Release, String> {
+    let _guard = super::transaction::installation_lock(home)?;
+    stage_release_without_install_lock(home, exe, web)
+}
+pub(crate) fn stage_release_without_install_lock(
+    home: &Path,
+    exe: &Path,
+    web: &WebSource,
+) -> Result<Release, String> {
     stage_release_with_pruning(home, exe, web, true)
 }
 
@@ -526,6 +538,10 @@ pub fn preview_rollback_release(home: &Path) -> Result<Release, String> {
 }
 
 pub fn rollback_release(home: &Path) -> Result<Release, String> {
+    let _guard = super::transaction::installation_lock(home)?;
+    rollback_release_without_install_lock(home)
+}
+pub(crate) fn rollback_release_without_install_lock(home: &Path) -> Result<Release, String> {
     let Layout { releases, bin } = layout(home);
     let prev = fs::read_to_string(releases.join("previous"))
         .ok()

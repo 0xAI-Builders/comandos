@@ -52,6 +52,11 @@ pub fn run(args: &[String]) -> Result<i32, String> {
         eprintln!("{USAGE}");
         return Ok(2);
     };
+    let _guard = if dry_run || matches!(action, Action::Releases) {
+        None
+    } else {
+        Some(transaction::installation_lock(&home)?)
+    };
     let staged = home.join(".local/share/comandos/bin/comandos");
     match action {
         Action::DarwinAgent => darwin::agent(&home, dry_run, no_launchctl)?,
@@ -71,7 +76,7 @@ pub fn run(args: &[String]) -> Result<i32, String> {
                 );
                 return Ok(0);
             }
-            let r = release::stage_release(&home, &me, &web)?;
+            let r = release::stage_release_without_install_lock(&home, &me, &web)?;
             match (&web, r.web_files) {
                 (
                     release::WebSource::Explicit(p) | release::WebSource::OwnRelease { dir: p, .. },
@@ -88,7 +93,7 @@ pub fn run(args: &[String]) -> Result<i32, String> {
             let r = if dry_run {
                 release::preview_app(&home, &exe)?
             } else {
-                release::stage_app(&home, &exe)?
+                release::stage_app_without_install_lock(&home, &exe)?
             };
             println!(
                 "{}release App {} en {}; cc-app sin activar; rollback: {}",
@@ -110,7 +115,7 @@ pub fn run(args: &[String]) -> Result<i32, String> {
                 );
                 return Ok(0);
             }
-            let r = release::rollback_release(&home)?;
+            let r = release::rollback_release_without_install_lock(&home)?;
             println!("release activa: {}", r.id);
         }
         Action::Releases => {

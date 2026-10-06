@@ -9,7 +9,7 @@ use std::{
     os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt, symlink},
     path::{Path, PathBuf},
 };
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Before {
     Absent,
     File(Vec<u8>, u32),
@@ -20,6 +20,8 @@ enum Before {
 pub(crate) struct Journal {
     entries: BTreeMap<PathBuf, Before>,
     observed: BTreeMap<PathBuf, Before>,
+    durable: Option<PathBuf>,
+    committed: bool,
 }
 impl Journal {
     pub(crate) fn capture(&mut self, path: &Path) -> Result<(), String> {
@@ -71,6 +73,7 @@ impl Journal {
                 ));
             }
         };
+        self.observed.insert(path.into(), before.clone());
         self.entries.insert(path.into(), before);
         Ok(())
     }
@@ -213,24 +216,210 @@ impl Journal {
     /// Restore in reverse path order so newly-created children disappear before
     /// their parents. Immutable staged releases are retained for retry; no pruning
     /// occurs until the full transaction has succeeded.
-    fn observe(&mut self) -> Result<(), String> {
-        for path in self.entries.keys() {
+    pub(crate) fn checkpoint(&mut self, paths: &[PathBuf]) -> Result<(), String> {
+        for path in paths {
             let mut snapshot = Self::default();
             snapshot.capture(path)?;
-            if let Some(before) = snapshot.entries.remove(path) {
-                self.observed.insert(path.clone(), before);
+            if let Some(after) = snapshot.entries.remove(path) {
+                let same_bytes = matches!((&after,self.observed.get(path)),(Before::File(a,_),Some(Before::File(b,_))) if a==b);
+                if Some(&after) != self.observed.get(path)
+                    && Some(&after) != self.entries.get(path)
+                    && !same_bytes
+                {
+                    return Err(format!(
+                        "{} differs from the state written by installation; journal retained",
+                        path.display()
+                    ));
+                }
+                self.observed.insert(path.clone(), after);
             }
+        }
+        self.persist()
+    }
+    pub(crate) fn produced_file(&mut self, path: &Path) -> Result<(), String> {
+        let mut snapshot = Self::default();
+        snapshot.capture(path)?;
+        if let Some(value) = snapshot.entries.remove(path) {
+            self.observed.insert(path.into(), value);
+        }
+        self.persist()
+    }
+    pub(crate) fn expect_link(&mut self, path: &Path, target: &Path) -> Result<(), String> {
+        self.observed
+            .insert(path.into(), Before::Link(target.into()));
+        self.persist()
+    }
+    pub(crate) fn prepare_release(&mut self, home: &Path, id: &str) -> Result<(), String> {
+        use sha2::{Digest, Sha256};
+        let pointer = home.join(".local/share/comandos/bin/comandos");
+        let old = match self.entries.get(&pointer) {
+            Some(Before::Link(to)) => to
+                .parent()
+                .and_then(Path::file_name)
+                .and_then(|n| n.to_str())
+                .map(str::to_string),
+            Some(Before::File(bytes, _)) => Some(
+                hex(&Sha256::digest(bytes))
+                    .get(..12)
+                    .ok_or("old release hash")?
+                    .into(),
+            ),
+            _ => None,
+        };
+        if let Some(old) = old
+            && old != id
+        {
+            self.expect_file(
+                &home.join(".local/share/comandos/releases/previous"),
+                format!("{old}\n").as_bytes(),
+                0o644,
+            )?;
+        }
+        self.expect_link(
+            &pointer,
+            &Path::new("../releases").join(id).join("comandos"),
+        )
+    }
+    pub(crate) fn expect_file(
+        &mut self,
+        path: &Path,
+        bytes: &[u8],
+        mode: u32,
+    ) -> Result<(), String> {
+        self.observed
+            .insert(path.into(), Before::File(bytes.into(), mode));
+        self.persist()
+    }
+    pub(crate) fn prepare(&mut self, action: &Action) -> Result<(), String> {
+        match action {
+            Action::Mkdir(path, mode) => {
+                if matches!(self.entries.get(path), Some(Before::Absent)) {
+                    self.observed.insert(path.clone(), Before::Directory(*mode));
+                }
+            }
+            Action::Link { name, at, target } => {
+                let home = at
+                    .parent()
+                    .and_then(Path::parent)
+                    .and_then(Path::parent)
+                    .ok_or("alias HOME")?;
+                let target = if name == "cc-app" {
+                    super::release::app_release(home)?
+                } else {
+                    target.clone()
+                };
+                self.observed.insert(at.clone(), Before::Link(target));
+                let orig = home
+                    .join(".local/share/comandos/rollback")
+                    .join(format!("{name}.orig"));
+                let record = super::record::path(home, name);
+                let raw = match self.entries.get(at) {
+                    Some(Before::File(bytes, mode)) => {
+                        self.observed
+                            .insert(orig.clone(), Before::File(bytes.clone(), *mode));
+                        format!("FILE:{}\n", orig.display()).into_bytes()
+                    }
+                    Some(Before::Link(to)) => {
+                        use std::os::unix::ffi::OsStrExt;
+                        [b"LINK:".as_slice(), to.as_os_str().as_bytes(), b"\n"].concat()
+                    }
+                    _ => b"ABSENT\n".to_vec(),
+                };
+                self.observed.insert(record, Before::File(raw, 0o644));
+            }
+            Action::WriteIfAbsent { path, bytes, mode } => {
+                let mut current = Self::default();
+                current.capture(path)?;
+                if current.entries.get(path) != self.observed.get(path) {
+                    return Err(format!(
+                        "{} changed before install write; preserved",
+                        path.display()
+                    ));
+                }
+                if matches!(self.entries.get(path), Some(Before::Absent)) {
+                    self.observed
+                        .insert(path.clone(), Before::File(bytes.to_vec(), *mode));
+                }
+            }
+            Action::Write { path, bytes, mode } => {
+                self.observed
+                    .insert(path.clone(), Before::File(bytes.clone(), *mode));
+                self.expect_backup(path)?;
+            }
+            Action::WriteUnit {
+                path,
+                bytes,
+                original,
+            } => {
+                let prior = fs::read(path).ok();
+                if prior
+                    .as_deref()
+                    .is_none_or(|v| v == *original || v == bytes.as_slice())
+                {
+                    self.observed
+                        .insert(path.clone(), Before::File(bytes.clone(), 0o644));
+                    self.expect_backup(path)?;
+                }
+            }
+            Action::RegisterClaudeHooks(home) => {
+                self.expect_backup(&home.join(".claude/settings.json"))?
+            }
+            _ => {}
+        }
+        self.persist()
+    }
+    fn expect_backup(&mut self, path: &Path) -> Result<(), String> {
+        let name = path.file_name().ok_or("backup name")?.to_string_lossy();
+        let backup = path.with_file_name(format!("{name}.pre-comandos"));
+        if matches!(self.entries.get(&backup), Some(Before::Absent))
+            && let Some(before) = self.entries.get(path)
+        {
+            self.observed.insert(backup, before.clone());
         }
         Ok(())
     }
     pub(crate) fn rollback(self) -> Result<(), String> {
         let mut errors = Vec::new();
         for (path, before) in self.entries.into_iter().rev() {
+            let _file_guard = if path.parent().is_some_and(Path::is_dir) {
+                let name = path
+                    .file_name()
+                    .ok_or("rollback destination name")?
+                    .to_string_lossy();
+                Some(
+                    match comandos_store::files::FileLock::exclusive(
+                        &path.with_file_name(format!("{name}.install.lock")),
+                    ) {
+                        Ok(guard) => guard,
+                        Err(e) => {
+                            errors.push(format!("{} rollback lock: {e}", path.display()));
+                            continue;
+                        }
+                    },
+                )
+            } else {
+                None
+            };
             let mut now = Self::default();
             let captured = now.capture(&path);
+            if now.entries.get(&path) == Some(&before) {
+                continue;
+            }
+            if matches!(before, Before::Absent)
+                && matches!(self.observed.get(&path), Some(Before::Absent))
+                && now
+                    .entries
+                    .get(&path)
+                    .is_some_and(|v| matches!(v, Before::Directory(_)))
+            {
+                if let Err(e) = restore(&path, before) {
+                    errors.push(format!("{}: {e}", path.display()));
+                }
+                continue;
+            }
             if captured.is_err() || now.entries.get(&path) != self.observed.get(&path) {
                 errors.push(format!(
-                    "{} changed after the failed install; preserved",
+                    "{} differs from the state written by installation; preserved",
                     path.display()
                 ));
                 continue;
@@ -240,9 +429,18 @@ impl Journal {
             }
         }
         if errors.is_empty() {
+            if let Some(path) = self.durable {
+                fs::remove_dir_all(path).map_err(|e| e.to_string())?;
+            }
             Ok(())
         } else {
-            Err(errors.join("; "))
+            Err(format!(
+                "{}; retained recovery journal: {}",
+                errors.join("; "),
+                self.durable
+                    .as_ref()
+                    .map_or_else(|| "in-memory".into(), |p| p.display().to_string())
+            ))
         }
     }
 }
@@ -298,13 +496,17 @@ fn restore(path: &Path, before: Before) -> Result<(), String> {
         }
     }
 }
-pub(crate) fn finish<T>(mut journal: Journal, result: Result<T, String>) -> Result<T, String> {
+pub(crate) fn finish<T>(journal: Journal, result: Result<T, String>) -> Result<T, String> {
     match result {
-        Ok(value) => Ok(value),
-        Err(mut error) => {
-            if let Err(e) = journal.observe() {
-                return Err(format!("{error}; cannot admit file rollback: {e}"));
+        Ok(value) => {
+            let mut journal = journal;
+            if let Err(error) = journal.commit() {
+                return finish(journal, Err(error));
             }
+            journal.discard()?;
+            Ok(value)
+        }
+        Err(mut error) => {
             if let Err(e) = journal.rollback() {
                 error.push_str(&format!("; installation file rollback incomplete: {e}"));
             }
@@ -338,6 +540,16 @@ mod tests {
         fs::remove_dir_all(&app).unwrap();
         fs::create_dir_all(app.join("Contents")).unwrap();
         fs::write(app.join("Contents/new"), b"new input").unwrap();
+        fs::set_permissions(app.join("Contents/new"), fs::Permissions::from_mode(0o644)).unwrap();
+        journal
+            .observed
+            .insert(app.join("Contents/old"), Before::Absent);
+        journal
+            .observed
+            .insert(app.join("Contents/link"), Before::Absent);
+        journal
+            .expect_file(&app.join("Contents/new"), b"new input", 0o644)
+            .unwrap();
         finish::<()>(journal, Err("fixture failure".into())).unwrap_err();
         assert_eq!(fs::read(app.join("Contents/old")).unwrap(), b"old input");
         assert_eq!(
@@ -364,11 +576,310 @@ mod tests {
         let mut journal = Journal::default();
         journal.capture(&file).unwrap();
         fs::write(&file, b"installed").unwrap();
-        journal.observe().unwrap();
+        journal.expect_file(&file, b"installed", 0o644).unwrap();
         fs::write(&file, b"external edit").unwrap();
         let error = journal.rollback().unwrap_err();
         assert!(error.contains("preserved"));
         assert_eq!(fs::read(file).unwrap(), b"external edit");
         fs::remove_dir_all(root).unwrap();
+    }
+}
+
+// Nested installer subplans share the same guard on their current thread;
+// independent threads/processes still contend on the HOME directory inode.
+thread_local! {static HELD_INSTALL_LOCKS:std::cell::RefCell<BTreeMap<(u64,u64),std::rc::Weak<fs::File>>>=const{std::cell::RefCell::new(BTreeMap::new())};}
+pub(crate) fn installation_lock(home: &Path) -> Result<std::rc::Rc<fs::File>, String> {
+    super::release::check_app_parents(&home.join("placeholder"))?;
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(nix::libc::O_DIRECTORY | nix::libc::O_NOFOLLOW)
+        .open(home)
+        .map_err(|e| e.to_string())?;
+    let metadata = file.metadata().map_err(|e| e.to_string())?;
+    let key = (metadata.dev(), metadata.ino());
+    if let Some(held) =
+        HELD_INSTALL_LOCKS.with(|locks| locks.borrow().get(&key).and_then(std::rc::Weak::upgrade))
+    {
+        return Ok(held);
+    }
+    file.lock().map_err(|e| e.to_string())?;
+    let held = file.metadata().map_err(|e| e.to_string())?;
+    let current = home.symlink_metadata().map_err(|e| e.to_string())?;
+    if !current.is_dir() || (held.dev(), held.ino()) != (current.dev(), current.ino()) {
+        return Err("HOME changed during install lock admission".into());
+    }
+    let guard = std::rc::Rc::new(file);
+    HELD_INSTALL_LOCKS.with(|locks| {
+        let mut locks = locks.borrow_mut();
+        locks.retain(|_, guard| guard.strong_count() > 0);
+        locks.insert(key, std::rc::Rc::downgrade(&guard));
+    });
+    Ok(guard)
+}
+impl Journal {
+    pub(crate) fn commit(&mut self) -> Result<(), String> {
+        if self.committed {
+            return Ok(());
+        }
+        self.committed = true;
+        if let Err(e) = self.persist() {
+            self.committed = false;
+            return Err(e);
+        }
+        Ok(())
+    }
+    fn discard(self) -> Result<(), String> {
+        if let Some(path) = self.durable {
+            fs::remove_dir_all(&path).map_err(|e| {
+                format!(
+                    "installation committed; retained cleanup journal {}: {e}",
+                    path.display()
+                )
+            })?;
+        }
+        Ok(())
+    }
+    pub(crate) fn durable(&mut self, home: &Path) -> Result<(), String> {
+        for path in self.entries.keys() {
+            if !path.starts_with(home) || path.to_str().is_none() {
+                return Err("durable journal destinations must be UTF8 paths within HOME".into());
+            }
+        }
+        let parent = home.join(".local/share/comandos/install-journals");
+        super::release::check_app_parents(&parent.join("placeholder"))?;
+        fs::create_dir_all(&parent).map_err(|e| e.to_string())?;
+        fs::set_permissions(&parent, fs::Permissions::from_mode(0o700))
+            .map_err(|e| e.to_string())?;
+        let mut nonce = [0u8; 16];
+        getrandom::fill(&mut nonce).map_err(|e| e.to_string())?;
+        let path = parent.join(hex(&nonce));
+        fs::create_dir(&path).map_err(|e| e.to_string())?;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
+        self.durable = Some(path);
+        self.persist()?;
+        for ancestor in parent.ancestors().take_while(|p| p.starts_with(home)) {
+            fs::File::open(ancestor)
+                .and_then(|f| f.sync_all())
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+    fn persist(&self) -> Result<(), String> {
+        let Some(root) = &self.durable else {
+            return Ok(());
+        };
+        let mut rows = Vec::new();
+        for (path, before) in &self.entries {
+            rows.push(serde_json::json!({"path":path.to_str().ok_or("journal requires UTF8 destination")?,"before":encode_before(root,before)?,"written":encode_before(root,self.observed.get(path).ok_or("journal written state")?)?}));
+        }
+        let path = root.join("manifest.json");
+        let bytes = serde_json::to_vec(
+            &serde_json::json!({"version":1,"committed":self.committed,"entries":rows}),
+        )
+        .map_err(|e| e.to_string())?;
+        write_atomic(&path, &bytes).map_err(|e| e.to_string())?;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+        fs::File::open(&path)
+            .and_then(|f| f.sync_all())
+            .map_err(|e| e.to_string())?;
+        fs::File::open(root)
+            .and_then(|f| f.sync_all())
+            .map_err(|e| e.to_string())?;
+        fs::File::open(root.parent().ok_or("journal parent")?)
+            .and_then(|f| f.sync_all())
+            .map_err(|e| e.to_string())
+    }
+}
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+fn encode_before(root: &Path, value: &Before) -> Result<serde_json::Value, String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Write;
+    use std::os::unix::ffi::OsStrExt;
+    Ok(match value {
+        Before::Absent => serde_json::json!({"kind":"absent"}),
+        Before::Directory(mode) => serde_json::json!({"kind":"directory","mode":mode}),
+        Before::Link(target) => {
+            serde_json::json!({"kind":"link","target":hex(target.as_os_str().as_bytes())})
+        }
+        Before::File(bytes, mode) => {
+            let hash = hex(&Sha256::digest(bytes));
+            let path = root.join(&hash);
+            if !path.exists() {
+                let mut f = fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(&path)
+                    .map_err(|e| e.to_string())?;
+                f.write_all(bytes)
+                    .and_then(|()| f.sync_all())
+                    .map_err(|e| e.to_string())?;
+            }
+            serde_json::json!({"kind":"file","blob":hash,"mode":mode})
+        }
+    })
+}
+fn decode_before(root: &Path, value: &serde_json::Value) -> Result<Before, String> {
+    use sha2::{Digest, Sha256};
+    use std::os::unix::ffi::OsStringExt;
+    let mode = || {
+        value["mode"]
+            .as_u64()
+            .filter(|m| *m <= 0o7777)
+            .map(|m| m as u32)
+            .ok_or("journal mode".to_string())
+    };
+    match value["kind"].as_str() {
+        Some("absent") => Ok(Before::Absent),
+        Some("directory") => Ok(Before::Directory(mode()?)),
+        Some("link") => {
+            let raw = value["target"].as_str().ok_or("journal link")?;
+            let mut bytes = Vec::new();
+            for pair in raw.as_bytes().chunks(2) {
+                if pair.len() != 2 {
+                    return Err("journal link encoding".into());
+                }
+                bytes.push(
+                    u8::from_str_radix(std::str::from_utf8(pair).map_err(|e| e.to_string())?, 16)
+                        .map_err(|e| e.to_string())?,
+                );
+            }
+            Ok(Before::Link(std::ffi::OsString::from_vec(bytes).into()))
+        }
+        Some("file") => {
+            let hash = value["blob"]
+                .as_str()
+                .filter(|s| {
+                    s.len() == 64
+                        && s.bytes()
+                            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                })
+                .ok_or("journal blob hash")?;
+            let path = root.join(hash);
+            let mut file = fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(nix::libc::O_NOFOLLOW)
+                .open(&path)
+                .map_err(|e| e.to_string())?;
+            if !file.metadata().map_err(|e| e.to_string())?.is_file() {
+                return Err("journal blob not regular".into());
+            }
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+            if hex(&Sha256::digest(&bytes)) != hash {
+                return Err("journal blob hash mismatch".into());
+            }
+            Ok(Before::File(bytes, mode()?))
+        }
+        _ => Err("journal kind".into()),
+    }
+}
+pub(crate) fn recover(home: &Path, path: &Path) -> Result<(), String> {
+    let parent = home.join(".local/share/comandos/install-journals");
+    if path.parent() != Some(parent.as_path())
+        || !path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|s| s.len() == 32 && s.bytes().all(|b| b.is_ascii_hexdigit()))
+    {
+        return Err("recovery path must name an owned installation journal".into());
+    }
+    super::release::check_app_parents(&path.join("manifest.json"))?;
+    let _guard = installation_lock(home)?;
+    let meta = path.symlink_metadata().map_err(|e| e.to_string())?;
+    if !meta.is_dir()
+        || meta.uid() != nix::unistd::Uid::effective().as_raw()
+        || meta.permissions().mode() & 0o077 != 0
+    {
+        return Err("recovery journal is not a private owned directory".into());
+    }
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(nix::libc::O_NOFOLLOW)
+        .open(path.join("manifest.json"))
+        .map_err(|e| e.to_string())?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    if value["version"] != 1 {
+        return Err("unknown installation journal version".into());
+    }
+    let mut journal = Journal {
+        durable: Some(path.into()),
+        committed: value["committed"].as_bool().ok_or("journal commit state")?,
+        ..Default::default()
+    };
+    for row in value["entries"].as_array().ok_or("journal entries")? {
+        let dest = PathBuf::from(row["path"].as_str().ok_or("journal destination")?);
+        if !dest.starts_with(home) {
+            return Err("journal destination outside HOME".into());
+        }
+        super::release::check_app_parents(&dest)?;
+        if journal.entries.contains_key(&dest) {
+            return Err("duplicate journal destination".into());
+        }
+        journal
+            .entries
+            .insert(dest.clone(), decode_before(path, &row["before"])?);
+        journal
+            .observed
+            .insert(dest, decode_before(path, &row["written"])?);
+    }
+    if journal.committed {
+        journal.discard()
+    } else {
+        journal.rollback()
+    }
+}
+#[cfg(test)]
+mod durable_tests {
+    use super::*;
+    fn private_home(tag: &str) -> PathBuf {
+        let home =
+            std::env::temp_dir().join(format!("install-durable-{tag}-{}", std::process::id()));
+        fs::create_dir(&home).unwrap();
+        fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+        home
+    }
+    #[test]
+    fn committed_journal_recovery_only_cleans_and_never_restores_old_public_state() {
+        let home = private_home("commit");
+        let file = home.join("config");
+        fs::write(&file, b"original").unwrap();
+        let mut journal = Journal::default();
+        journal.file(&file).unwrap();
+        journal.durable(&home).unwrap();
+        journal.expect_file(&file, b"installed", 0o600).unwrap();
+        fs::write(&file, b"installed").unwrap();
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
+        journal.commit().unwrap();
+        let path = journal.durable.clone().unwrap();
+        drop(journal);
+        recover(&home, &path).unwrap();
+        assert_eq!(fs::read(&file).unwrap(), b"installed");
+        assert!(!path.exists());
+        fs::remove_dir_all(home).unwrap();
+    }
+    #[test]
+    fn a_corrupt_preimage_is_rejected_before_any_recovery_write_and_retains_journal() {
+        let home = private_home("corrupt");
+        let file = home.join("config");
+        fs::write(&file, b"original").unwrap();
+        let mut journal = Journal::default();
+        journal.file(&file).unwrap();
+        journal.durable(&home).unwrap();
+        let path = journal.durable.clone().unwrap();
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(path.join("manifest.json")).unwrap()).unwrap();
+        let blob = manifest["entries"][0]["before"]["blob"].as_str().unwrap();
+        fs::write(path.join(blob), b"corrupt").unwrap();
+        drop(journal);
+        let error = recover(&home, &path).unwrap_err();
+        assert!(error.contains("hash mismatch"));
+        assert!(path.exists());
+        assert_eq!(fs::read(file).unwrap(), b"original");
+        fs::remove_dir_all(home).unwrap();
     }
 }

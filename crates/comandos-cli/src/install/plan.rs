@@ -167,16 +167,36 @@ pub fn apply_with(
     run: &mut dyn FnMut(&Action) -> Result<(), String>,
 ) -> Result<Vec<String>, String> {
     if dry_run {
-        return apply_inner(actions, true, run);
+        return apply_inner(actions, true, run, None);
     }
+    let home = actions.iter().find_map(|a| match a {
+        Action::AgentsSetup(h) | Action::RegisterClaudeHooks(h) | Action::LaunchAgent(h) => Some(h),
+        Action::Systemctl { home, .. } => Some(home),
+        _ => None,
+    });
+    let _guard = home
+        .map(|home| super::transaction::installation_lock(home))
+        .transpose()?;
     let mut journal = super::transaction::Journal::default();
     journal.actions(actions)?;
-    super::transaction::finish(journal, apply_inner(actions, false, run))
+    if let Some(home) = home {
+        journal.durable(home)?;
+    }
+    let result = apply_inner(actions, false, run, Some(&mut journal));
+    super::transaction::finish(journal, result)
+}
+pub(crate) fn apply_with_journal(
+    actions: &[Action],
+    run: &mut dyn FnMut(&Action) -> Result<(), String>,
+    journal: &mut super::transaction::Journal,
+) -> Result<Vec<String>, String> {
+    apply_inner(actions, false, run, Some(journal))
 }
 fn apply_inner(
     actions: &[Action],
     dry_run: bool,
     run: &mut dyn FnMut(&Action) -> Result<(), String>,
+    mut journal: Option<&mut super::transaction::Journal>,
 ) -> Result<Vec<String>, String> {
     let mut report = Vec::new();
     if dry_run {
@@ -188,6 +208,9 @@ fn apply_inner(
     let mut units_changed = false;
     let mut fonts_changed = false;
     for action in actions {
+        if let Some(j) = journal.as_deref_mut() {
+            j.prepare(action)?;
+        }
         let error = |path: &Path, e: io::Error| format!("{}: {e}", path.display());
         match action {
             Action::Mkdir(path, mode) => {
@@ -218,6 +241,14 @@ fn apply_inner(
                     super::link_app(home, false)?;
                 } else {
                     super::link(home, target, name)?;
+                }
+                if let Some(j) = journal.as_deref_mut() {
+                    j.checkpoint(&[
+                        at.clone(),
+                        super::record::path(home, name),
+                        home.join(".local/share/comandos/rollback")
+                            .join(format!("{name}.orig")),
+                    ])?;
                 }
                 report.push(format!("link {} -> {}", at.display(), target.display()));
             }
@@ -286,6 +317,9 @@ fn apply_inner(
                         "{}\n",
                         serde_json::to_string_pretty(&output).map_err(|e| e.to_string())?
                     );
+                    if let Some(j) = journal.as_deref_mut() {
+                        j.expect_file(&path, bytes.as_bytes(), 0o600)?;
+                    }
                     write_changed(&path, bytes.as_bytes(), 0o600)?;
                     report.push(format!("registered Claude hooks {}", path.display()));
                 }

@@ -41,11 +41,20 @@ pub fn run_with(
     let mut extensions = false;
     let mut retarget = None;
     let mut restore = None;
+    let mut recovery = None;
     let mut cleanup = false;
     let mut cleanup_repo = None;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
+            "--recover-install" => {
+                let Some(value) = iter.next() else {
+                    return Ok(2);
+                };
+                if recovery.replace(PathBuf::from(value)).is_some() {
+                    return Ok(2);
+                }
+            }
             "--home" => {
                 let Some(value) = iter.next() else {
                     return Ok(2);
@@ -98,6 +107,17 @@ pub fn run_with(
             home.display()
         ));
     }
+    if recovery.is_some()
+        && (restore.is_some()
+            || cleanup
+            || cleanup_repo.is_some()
+            || source.is_some()
+            || extensions
+            || retarget.is_some()
+            || dry)
+    {
+        return Ok(2);
+    }
     if cleanup {
         if source.is_some() || extensions || retarget.is_some() || restore.is_some() {
             return Ok(2);
@@ -134,6 +154,13 @@ pub fn run_with(
         }
         return Ok(0);
     }
+    if let Some(path) = recovery {
+        if dry || source.is_some() || extensions || retarget.is_some() || cleanup {
+            return Ok(2);
+        }
+        super::transaction::recover(&home, &path)?;
+        return Ok(0);
+    }
     let platform = Platform::current();
     if platform == Platform::WslUbuntu && !super::wsl::prepare(&home, dry)? {
         return Ok(0);
@@ -166,17 +193,13 @@ pub fn run_with(
     let _full_lock = if dry {
         None
     } else {
-        let path = home.join(".local/share/comandos/full-install.lock");
-        release::check_app_parents(&path)?;
-        std::fs::create_dir_all(path.parent().ok_or("install lock parent")?)
-            .map_err(|e| e.to_string())?;
-        Some(comandos_store::files::FileLock::exclusive(&path).map_err(|e| e.to_string())?)
+        Some(super::transaction::installation_lock(&home)?)
     };
     let mut initial_actions = plan::plan(&home, platform, &source);
     if extensions {
         initial_actions.extend(super::extensions::actions(&home, platform));
     }
-    let journal = if dry {
+    let mut journal = if dry {
         None
     } else {
         Some(super::transaction::Journal::full(
@@ -185,6 +208,9 @@ pub fn run_with(
             &initial_actions,
         )?)
     };
+    if let Some(j) = journal.as_mut() {
+        j.durable(&home)?;
+    }
     let mut external_effects = Vec::new();
     if extensions && !dry {
         external_effects.push(
@@ -208,12 +234,27 @@ pub fn run_with(
         run_action(action)
     };
     let result = (|| {
+        if let Some(j) = journal.as_mut() {
+            let expected = release::preview_release(&home, &candidate, &web)?;
+            j.prepare_release(&home, &expected.id)?;
+        }
         let staged = if dry {
             release::preview_release(&home, &candidate, &web)?
         } else {
             release::stage_release_unpruned(&home, &candidate, &web)?
         };
+        if let Some(j) = journal.as_mut() {
+            j.checkpoint(&[
+                home.join(".local/share/comandos/bin/comandos"),
+                home.join(".local/share/comandos/releases/previous"),
+            ])?;
+        }
         let proxy = super::proxy::prepare(&home, &source, dry)?;
+        if let Some(j) = journal.as_mut() {
+            j.produced_file(
+                &home.join(".local/share/comandos/build/claude-codex/release/claude-codex"),
+            )?;
+        }
         let mut actions = plan::plan(&home, platform, &source);
         if let Some(target) = proxy {
             actions.retain(
@@ -252,11 +293,23 @@ pub fn run_with(
             app_source = source.join("ComandOS.app/Contents/MacOS/comandos-app-mac");
         }
         if app_source.is_file() {
+            if let Some(j) = journal.as_mut() {
+                let expected = release::preview_app(&home, &app_source)?;
+                j.expect_link(
+                    &home.join(".local/share/comandos/bin/comandos-app"),
+                    &Path::new("../releases")
+                        .join(expected.id)
+                        .join("comandos-app"),
+                )?;
+            }
             let app = if dry {
                 release::preview_app(&home, &app_source)?
             } else {
-                release::stage_app(&home, &app_source)?
+                release::stage_app_without_install_lock(&home, &app_source)?
             };
+            if let Some(j) = journal.as_mut() {
+                j.checkpoint(&[home.join(".local/share/comandos/bin/comandos-app")])?;
+            }
             if !actions
                 .iter()
                 .any(|action| matches!(action, Action::Link { name, .. } if name == "cc-app"))
@@ -284,7 +337,12 @@ pub fn run_with(
             staged.id,
             staged.path.display()
         );
-        for line in plan::apply_with(&actions, dry, &mut tracked_action)? {
+        let report = if let Some(j) = journal.as_mut() {
+            plan::apply_with_journal(&actions, &mut tracked_action, j)?
+        } else {
+            plan::apply_with(&actions, dry, &mut tracked_action)?
+        };
+        for line in report {
             println!("{line}");
         }
         if let Some(repo) = retarget {
@@ -316,6 +374,9 @@ pub fn run_with(
         }
         if std::env::var("COMANDOS_RETIRE_TELEGRAM").as_deref() == Ok("1") {
             super::telegram::apply(&home, dry)?;
+        }
+        if let Some(j) = journal.as_mut() {
+            j.commit()?;
         }
         if !dry && let Err(error) = release::prune_after_install(&home, &staged.id) {
             eprintln!("installed successfully; release pruning deferred: {error}");

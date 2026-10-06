@@ -181,3 +181,220 @@ fn dry_full_preview_invokes_no_commands_and_creates_no_journal_or_pointer() {
     assert!(!home.0.join(".local").exists());
     let _ = Platform::LinuxNative;
 }
+fn journal_path(home: &Path) -> PathBuf {
+    fs::read_dir(home.join(".local/share/comandos/install-journals"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.join("manifest.json").is_file())
+        .unwrap()
+}
+#[test]
+fn a_user_edit_during_a_later_phase_is_preserved_and_recovery_journal_retained() {
+    let home = Home::new();
+    let config = home.0.join(".config/managed.conf");
+    put(&config, b"original", 0o640);
+    let actions = [
+        Action::Write {
+            path: config.clone(),
+            bytes: b"installed".to_vec(),
+            mode: 0o600,
+        },
+        Action::AgentsSetup(home.0.clone()),
+    ];
+    let error = plan::apply_with(&actions, false, &mut |_| {
+        put(&config, b"user edit", 0o600);
+        Err("injected after edit".into())
+    })
+    .unwrap_err();
+    assert!(error.contains("retained recovery journal"));
+    assert!(error.contains(config.to_str().unwrap()));
+    assert_eq!(fs::read(&config).unwrap(), b"user edit");
+    let journal = journal_path(&home.0);
+    let args = [
+        "--home".into(),
+        home.0.to_str().unwrap().into(),
+        "--recover-install".into(),
+        journal.to_str().unwrap().into(),
+    ];
+    assert!(full::run_with(&args, &mut |_| panic!("recovery external command")).is_err());
+    assert!(journal.exists());
+    assert_eq!(fs::read(&config).unwrap(), b"user edit");
+    put(&config, b"original", 0o640);
+    assert_eq!(
+        full::run_with(&args, &mut |_| panic!("recovery external command")).unwrap(),
+        0
+    );
+    assert!(!journal.exists());
+}
+#[test]
+fn termination_worker() {
+    let Some(home) = std::env::var_os("COMANDOS_PRIVATE_TERMINATION_WORKER") else {
+        return;
+    };
+    let home = PathBuf::from(home);
+    let config = home.join(".config/managed.conf");
+    let actions = [
+        Action::Write {
+            path: config,
+            bytes: b"installed".to_vec(),
+            mode: 0o600,
+        },
+        Action::AgentsSetup(home.clone()),
+    ];
+    let _ = plan::apply_with(&actions, false, &mut |_| {
+        fs::write(home.join("ready"), b"ready").unwrap();
+        loop {
+            std::thread::park_timeout(std::time::Duration::from_millis(100));
+        }
+    });
+}
+#[test]
+fn terminating_owned_worker_leaves_durable_preimages_recoverable_without_external_commands() {
+    let home = Home::new();
+    let config = home.0.join(".config/managed.conf");
+    put(&config, b"original", 0o640);
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "termination_worker", "--nocapture"])
+        .env("COMANDOS_PRIVATE_TERMINATION_WORKER", &home.0)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !home.0.join("ready").exists() {
+        if std::time::Instant::now() > deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("owned worker did not reach durable phase");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert_eq!(fs::read(&config).unwrap(), b"installed");
+    let journal = journal_path(&home.0);
+    assert_eq!(
+        full::run_with(
+            &[
+                "--home".into(),
+                home.0.to_str().unwrap().into(),
+                "--recover-install".into(),
+                journal.to_str().unwrap().into()
+            ],
+            &mut |_| panic!("recovery external command")
+        )
+        .unwrap(),
+        0
+    );
+    assert_eq!(fs::read(&config).unwrap(), b"original");
+    assert_eq!(
+        config.metadata().unwrap().permissions().mode() & 0o777,
+        0o640
+    );
+    assert!(!journal.exists());
+}
+#[test]
+fn stage_worker() {
+    let Some(home) = std::env::var_os("COMANDOS_PRIVATE_STAGE_WORKER") else {
+        return;
+    };
+    let home = PathBuf::from(home);
+    fs::write(home.join("stage-started"), b"start").unwrap();
+    release::stage_release(&home, &home.join("other-candidate"), &WebSource::None).unwrap();
+    fs::write(home.join("stage-finished"), b"finished").unwrap();
+}
+#[test]
+fn standalone_stage_waits_until_full_failure_has_restored_its_pointer() {
+    let home = Home::new();
+    let source = home.0.join("source");
+    put(&source.join("comandos"), b"old", 0o755);
+    let old = release::stage_release(&home.0, &source.join("comandos"), &WebSource::None).unwrap();
+    put(&source.join("comandos"), b"failed-full", 0o755);
+    put(&home.0.join("other-candidate"), b"standalone", 0o755);
+    struct Owned(Option<std::process::Child>);
+    impl Drop for Owned {
+        fn drop(&mut self) {
+            if let Some(c) = self.0.as_mut() {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+        }
+    }
+    let mut owned = Owned(None);
+    let error = full::run_with(
+        &[
+            "--home".into(),
+            home.0.to_str().unwrap().into(),
+            "--release".into(),
+            source.to_str().unwrap().into(),
+        ],
+        &mut |_| {
+            owned.0 = Some(
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", "stage_worker", "--nocapture"])
+                    .env("COMANDOS_PRIVATE_STAGE_WORKER", &home.0)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                    .unwrap(),
+            );
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while !home.0.join("stage-started").exists() {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "private worker did not start"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            for _ in 0..15 {
+                assert!(
+                    !home.0.join("stage-finished").exists(),
+                    "standalone stage bypassed full-install lock"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err("forced full failure under lock".into())
+        },
+    )
+    .unwrap_err();
+    assert!(error.contains("forced full failure"));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        if let Some(status) = owned.0.as_mut().unwrap().try_wait().unwrap() {
+            assert!(status.success());
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "stage worker stayed locked"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(home.0.join("stage-finished").exists());
+    assert_eq!(
+        fs::read_to_string(home.0.join(".local/share/comandos/releases/previous")).unwrap(),
+        format!("{}\n", old.id)
+    );
+}
+#[test]
+fn rollback_never_adopts_the_default_contents_of_a_custom_file_that_was_skipped() {
+    let home = Home::new();
+    let config = home.0.join(".config/managed.conf");
+    put(&config, b"custom", 0o600);
+    let actions = [
+        Action::WriteIfAbsent {
+            path: config.clone(),
+            bytes: b"default",
+            mode: 0o600,
+        },
+        Action::AgentsSetup(home.0.clone()),
+    ];
+    let error = plan::apply_with(&actions, false, &mut |_| {
+        put(&config, b"default", 0o600);
+        Err("user replaced skipped config".into())
+    })
+    .unwrap_err();
+    assert!(error.contains("retained recovery journal"));
+    assert_eq!(fs::read(config).unwrap(), b"default");
+    assert!(journal_path(&home.0).exists());
+}
