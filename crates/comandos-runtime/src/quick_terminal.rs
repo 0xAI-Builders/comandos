@@ -112,10 +112,7 @@ pub fn valid_request_id(request_id: &Value) -> bool {
 /// Only timezone-aware timestamps can be supplied; naive dates do not type-check.
 pub fn reserve_directory(base: &Path, now: DateTime<FixedOffset>) -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(base)?;
-    let stem = now
-        .with_timezone(&chrono_tz::America::Mexico_City)
-        .format("T-%Y-%m-%d-%H-%M-%S")
-        .to_string();
+    let stem = directory_stem(now);
     let mut suffix = 1u64;
     loop {
         let path = base.join(if suffix == 1 {
@@ -133,6 +130,13 @@ pub fn reserve_directory(base: &Path, now: DateTime<FixedOffset>) -> std::io::Re
             Err(e) => return Err(e),
         }
     }
+}
+
+/// Nombre fechado compartido con la reserva por descriptores del escritorio.
+pub fn directory_stem(now: DateTime<FixedOffset>) -> String {
+    now.with_timezone(&chrono_tz::America::Mexico_City)
+        .format("T-%Y-%m-%d-%H-%M-%S")
+        .to_string()
 }
 
 /// La terminal reservada para un `requestId`: carpeta, sesión tmux y llave del pane.

@@ -24,6 +24,25 @@ pub struct DiffStats {
     pub total: u64,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct DiffSummary {
+    pub width: u32,
+    pub height: u32,
+    pub compared: u64,
+    pub different: u64,
+    pub percent: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiffError {
+    Io(String),
+    Decode(String),
+    Dimensions {
+        reference: (u32, u32),
+        candidate: (u32, u32),
+    },
+}
+
 impl DiffStats {
     pub fn ratio(&self) -> f64 {
         if self.total == 0 {
@@ -232,4 +251,27 @@ pub fn write_diff_png(a: &Rgba, b: &Rgba, channel: u8, out: &Path) -> Result<(),
         },
         out,
     )
+}
+
+pub fn compare(reference: &Path, candidate: &Path) -> Result<DiffSummary, DiffError> {
+    let reference_bytes = std::fs::read(reference)
+        .map_err(|e| DiffError::Io(format!("{}: {e}", reference.display())))?;
+    let candidate_bytes = std::fs::read(candidate)
+        .map_err(|e| DiffError::Io(format!("{}: {e}", candidate.display())))?;
+    let reference = decode(&reference_bytes).map_err(DiffError::Decode)?;
+    let candidate = decode(&candidate_bytes).map_err(DiffError::Decode)?;
+    if (reference.width, reference.height) != (candidate.width, candidate.height) {
+        return Err(DiffError::Dimensions {
+            reference: (reference.width, reference.height),
+            candidate: (candidate.width, candidate.height),
+        });
+    }
+    let stats = diff(&reference, &candidate, 24).map_err(DiffError::Decode)?;
+    Ok(DiffSummary {
+        width: reference.width,
+        height: reference.height,
+        compared: stats.total,
+        different: stats.differing,
+        percent: stats.ratio() * 100.0,
+    })
 }

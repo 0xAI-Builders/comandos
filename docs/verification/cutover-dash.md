@@ -1832,6 +1832,46 @@ los límites. Esas dos cosas se miden aparte o en vivo:
   (minutos 0 a 5), 6–7 hilos, 2815 peticiones, 0 errores, 0 no-2xx, ninguna ruta reenviada; GET
   `/usage/state` 104/903/2473 ms, GET `/state` 548/750/909, estáticos en la ola 0/21/22.
 
+### Ejecutado — 5 de octubre de 2026, 11:32 (release `7f3235a940d3`, main `755b1fc`)
+
+Fusión en `main` por avance rápido (la 2e solo toca `crates/`, `xtask/`, `docs/` y `Cargo.lock`:
+el Python vivo no cambia). Paso 0 conforme: release actual `790e58866107`, sin drop-ins, mismos
+entornos. Sombra en 4782: paridad 165 OK, 0 DIFF (una primera corrida dio 1 DIFF en
+`POST /terminal-panes`: qué sesión reutiliza la terminal rápida depende del momento; repetida,
+limpia); 0 reenvíos en la traza; `/providers` y `/optimization/plans` iguales;
+`/accounts?harness=claude` y `/analytics/week?offset=-1` difieren solo en los campos de límites
+(la sombra corre sin efectos y no los carga). La navegación manual con `chrome-bg` no se hizo: el
+navegador del Mac tenía sus dos sesiones ocupadas por otros procesos.
+
+Paso 2: nada en vuelo; base `1791221478|121847` turnos, heredado 462 049 KiB, frente 50 203 KiB
+con 5 hilos. `--stage` → `7f3235a940d3`, `previous` = `790e58866107`. Drop-in `malloc.conf`;
+`GLIBC_TUNABLES` solo en el frente (PID 583166). Respuesta 200, 0 líneas de rutas desactivadas,
+las 21 sesiones de tmux intactas.
+
+Paso 3, una muestra por minuto (Pss del frente en KiB, hilos, Pss del heredado):
+
+| min | frente | hilos | heredado |
+|---|---|---|---|
+| 1 | 40 805 | 6 | 449 469 |
+| 2 | 45 201 | 6 | 449 517 |
+| 3 | 43 217 | 6 | 449 411 |
+| 4 | 48 757 | 6 | 449 414 |
+| 5 | 47 477 | 6 | 449 380 |
+| 6 | 46 729 | 6 | 449 460 |
+| 7 | 40 328 | 6 | 449 371 |
+| 8 | 44 436 | 6 | 447 098 |
+| 9 | 44 404 | 6 | 446 498 |
+| 10 | 44 404 | 6 | 446 579 |
+
+Máximo 48 757 KiB (47,6 MiB, con la primera importación en frío), minuto 5 → 10 −3 MiB. `GET
+/state declina`: 0; reenvíos: ninguno. Turnos `1791221478|121847` → `1791222111|122005` (el frente
+importa). `diff` de bordes y `pane-models.txt`: vacío. Minuto 30: 43 075 KiB, 7 hilos; minuto 60:
+40 843 KiB, 6 hilos (−2,2 MiB del 30 al 60), `NRestarts=0`, mismo PID. No se revirtió.
+
+El heredado sigue en ≈ 440 MiB: ya no importa ni reconstruye, pero el Python no devuelve al
+sistema lo que reservó; baja solo al reiniciar `cc-dash-legacy` (no hace falta para la 2e).
+Pendientes: muestra de las 4–6 h y la del día siguiente.
+
 
 ## 2f: integración del resto del tablero (preparada, sin cutover ejecutado)
 

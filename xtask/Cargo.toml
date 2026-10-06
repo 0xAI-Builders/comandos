@@ -10,6 +10,7 @@ path = "src/lib.rs"
 [dependencies]
 serde_json.workspace = true
 rusqlite.workspace = true
+sha2.workspace = true
 comandos-core = { path = "../crates/comandos-core" }
 nix = { version = "0.31", features = ["signal", "process", "user", "fs"] }
 # Normalización del reloj en `files` (la misma que el gemelo de las pruebas; ya en Cargo.lock).
@@ -25,7 +26,6 @@ hyper = { version = "=1.11.1", default-features = false, features = ["server", "
 hyper-util = { version = "=0.1.21", default-features = false, features = ["tokio"] }
 tokio = { version = "=1.53.1", default-features = false, features = ["rt", "net", "macros", "sync", "time"] }
 # `web-build` (T4): hash de contenido y medida gzip del presupuesto.
-sha2.workspace = true
 flate2 = "=1.1.10"
 
 [dev-dependencies]

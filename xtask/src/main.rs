@@ -1,3 +1,5 @@
+mod app_drift;
+mod app_shot;
 mod parity;
 mod poll;
 mod rss;
@@ -48,6 +50,29 @@ fn main() {
                 Err(e) => fail(e),
             }
         }
+        Some("app-drift") => {
+            // Errores de uso: salida 2, sin tocar nada.
+            let o = app_drift::parse_args(&args[1..]).unwrap_or_else(|e| {
+                eprintln!(
+                    "{}",
+                    if e.starts_with("uso:") {
+                        e
+                    } else {
+                        format!("error: {e}")
+                    }
+                );
+                exit(2);
+            });
+            // Salida 1 es solo deriva; un archivo ilegible o una línea base corrupta sale 2.
+            match app_drift::run(&o.baseline, &o.paths, o.write, &o.accept) {
+                Ok(code) => exit(code),
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    exit(2);
+                }
+            }
+        }
+        Some("app-shot") => exit(app_shot::run(&args[1..])),
         Some("shots") => exit(web::shots(&args[1..])),
         Some("png-diff") => exit(web::png_diff(&args[1..])),
         Some("dom-diff") => exit(web::dom_diff(&args[1..])),
@@ -61,7 +86,7 @@ fn main() {
         Some("lint") => exit(xtask::lint::main(&args[1..])),
         _ => {
             eprintln!(
-                "subcomandos: rss, parity, poll, shots, png-diff, dom-diff, fixtures, web-build, web-bench, web-inventory, web-port, browser-e2e, app-layout, lint"
+                "subcomandos: rss, parity, poll, app-drift, app-shot, app-layout, shots, png-diff, dom-diff, fixtures, web-build, web-bench, web-inventory, web-port, browser-e2e, lint"
             );
             exit(2);
         }
