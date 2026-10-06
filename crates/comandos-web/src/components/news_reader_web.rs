@@ -432,6 +432,7 @@ struct Reader {
     stopped: Cell<bool>,
     drag: RefCell<Option<(JsValue, f64)>>,
     busy: RefCell<HashMap<String, u64>>,
+    edition_html: RefCell<Option<String>>,
 }
 impl Reader {
     fn q(&self, sel: &str) -> JsValue {
@@ -660,6 +661,7 @@ impl Reader {
         }
     }
     fn message(&self, message: &str) {
+        self.edition_html.replace(None);
         html(
             &self.q(".nr-edition"),
             &format!("<div class=\"nr-state\">{message}</div>"),
@@ -756,9 +758,78 @@ impl Reader {
             let picker = render.picker();
             html(&c.q(".nr-day"), &picker);
             let _ = set(&c.q(".nr-day"), "hidden", &picker.is_empty().into());
-            let edition = render.edition();
+            // Selection changes update existing cards, as the original reader does.
+            // Replacing their DOM would lose focus and regenerate tooltip metadata.
+            let mut edition_state = snapshot.clone();
+            if let Some(state) = edition_state.as_object_mut() {
+                state.insert("open".into(), Value::Null);
+            }
+            if let Some(stories) = edition_state
+                .get_mut("current")
+                .and_then(|v| v.get_mut("stories"))
+                .and_then(Value::as_array_mut)
+            {
+                for story in stories {
+                    if let Some(counts) = story.get_mut("counts").and_then(Value::as_object_mut) {
+                        counts.insert("notes".into(), Value::Null);
+                        counts.insert("saved".into(), Value::Null);
+                    }
+                }
+            }
+            let edition = view::Render {
+                state: &edition_state,
+                ..render
+            }
+            .edition();
             if !edition.is_empty() {
-                html(&c.q(".nr-edition"), &edition);
+                let changed = c.edition_html.borrow().as_ref() != Some(&edition);
+                if changed {
+                    html(&c.q(".nr-edition"), &edition);
+                    c.edition_html.replace(Some(edition));
+                }
+                let open = c.st("open");
+                let selected = (!open.is_null() && !open.is_undefined()).then(|| string(&open));
+                let story_counts: HashMap<_, _> = rows(&get(&c.st("current"), "stories"))
+                    .into_iter()
+                    .map(|story| (string(&get(&story, "id")), get(&story, "counts")))
+                    .collect();
+                for card in all(&c.el, ".nr-edition-story") {
+                    let id = string(&data(&card, "story"));
+                    let on = selected.as_ref() == Some(&id);
+                    classes(&card, "on", on);
+                    let button = utf16_query(&card, ".nr-open-btn");
+                    classes(&button, "on", on);
+                    let label = if on { "Abierta →" } else { "Abrir" };
+                    if string(&get(&button, "textContent")) != label {
+                        text(&button, label);
+                    }
+                    if let Some(counts) = story_counts.get(&id) {
+                        let saved = truthy(&get(counts, "saved"));
+                        let save = utf16_query(&card, ".nr-save");
+                        attr(&save, "aria-pressed", if saved { "true" } else { "false" });
+                        let label = if saved { "Guardada" } else { "Guardar" };
+                        if string(&get(&save, "textContent")) != label {
+                            text(&save, label);
+                        }
+                        let kicker = utf16_query(&card, ".nr-kicker");
+                        let badge = utf16_query(&kicker, ".nr-nn");
+                        let count = number(&get(counts, "notes"));
+                        if count == 0. {
+                            let _ = call(&badge, "remove", &[]);
+                        } else {
+                            let label =
+                                format!("{count} nota{}", if count == 1. { "" } else { "s" });
+                            if badge.is_null() || badge.is_undefined() {
+                                let badge = call(&c.doc, "createElement", &["span".into()])?;
+                                attr(&badge, "class", "nr-nn");
+                                text(&badge, &label);
+                                let _ = call(&kicker, "appendChild", &[badge]);
+                            } else if string(&get(&badge, "textContent")) != label {
+                                text(&badge, &label);
+                            }
+                        }
+                    }
+                }
             }
             attr(
                 &c.q(".nr-saved-btn"),
@@ -2375,6 +2446,7 @@ fn mount_reader(opts: JsValue) -> Result<JsValue, JsValue> {
         stopped: Cell::new(false),
         drag: RefCell::new(None),
         busy: RefCell::new(HashMap::new()),
+        edition_html: RefCell::new(None),
     });
     c.prefs();
     c.wire();
