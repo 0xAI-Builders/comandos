@@ -760,7 +760,17 @@ mod web {
         );
         if Reflect::has(&global("navigator"), &"serviceWorker".into())? {
             let worker = get(&global("navigator"), "serviceWorker");
-            let registered = call(&worker, "register", &["/sw.js".into()])?;
+            let mode = call(
+                &global("document"),
+                "querySelector",
+                &["meta[name=\"comandos-web-mode\"]".into()],
+            )?;
+            let path = if get(&mode, "content") == "native" {
+                "/sw.js?native=1"
+            } else {
+                "/sw.js"
+            };
+            let registered = call(&worker, "register", &[path.into()])?;
             call(
                 &registered,
                 "catch",

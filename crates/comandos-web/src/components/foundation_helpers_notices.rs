@@ -1126,6 +1126,7 @@ pub fn attach() -> Result<(), JsValue> {
         if let Ok(v) = api("/models/latest", None).await {
             let _ = global_set("MODEL_NEWS", &v);
             let ns = get(&v, "newSince");
+            let ns = if ns.is_falsy() { object() } else { ns };
             let entries = js_sys::Object::entries(&js_sys::Object::from(ns));
             let mut signature = serde_json::Map::new();
             let mut lines = Vec::new();

@@ -73,6 +73,14 @@ pub fn render_boot(module_js: &str, wasm: &str) -> String {
         .replace("{{WASM}}", wasm)
 }
 
+pub fn render_worker_boot(wasm: &[u8]) -> String {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD.encode(wasm);
+    format!(
+        "// Generated classic WASM worker loader.\nimportScripts({{{{SW_MODULE}}}});\nwasm_bindgen.initSync({{module: Uint8Array.from(atob(\"{bytes}\"), c => c.charCodeAt(0))}});\nwasm_bindgen.boot(true, {{{{PRECACHE}}}});\n"
+    )
+}
+
 /// Un archivo con su nombre (o ruta relativa) y sus bytes.
 pub type NamedFile = (String, Vec<u8>);
 
@@ -450,10 +458,27 @@ fn build_one(opts: &Options, c: &WasmCrate) -> Result<Built, String> {
         c.budget_gzip / 1024
     );
     check_budget(c, gz, opts.check_budget)?;
+    let worker_boot = (c.name == "comandos-web-sw" && c.target == BindgenTarget::NoModules)
+        .then(|| render_worker_boot(&wasm));
     let mut files = vec![
         (js_name.clone(), js_name.clone(), js),
         (wasm_name.clone(), wasm_name.clone(), wasm),
     ];
+    if let Some(loader) = worker_boot {
+        let gz = gzip_len(loader.as_bytes())?;
+        println!("{}: {} B gzip classic synchronous loader", c.name, gz);
+        check_budget(c, gz, opts.check_budget)?;
+        files.push((
+            format!("{}_boot.js", c.lib),
+            "worker-boot.js".into(),
+            loader.into_bytes(),
+        ));
+        files.push((
+            "comandos_web_sw_component.json".into(),
+            "comandos_web_sw_component.json".into(),
+            include_bytes!("../../crates/comandos-web-sw/components/sw.json").to_vec(),
+        ));
+    }
     // Clave lógica con el crate delante: dos WASM que usen el mismo crate
     // (p. ej. `comandos-web-dom`) emiten el mismo nombre plano en sus `<hash>/`
     // respectivos, y el manifiesto debe seguir siendo un mapa fiel.
@@ -474,6 +499,16 @@ fn build_one(opts: &Options, c: &WasmCrate) -> Result<Built, String> {
             .into_iter()
             .map(|(name, bytes)| (name.clone(), name, bytes)),
         );
+    }
+    if c.name == "comandos-web-sw" {
+        let total = files.iter().try_fold(0usize, |sum, (_, _, bytes)| {
+            gzip_len(bytes).map(|n| sum + n)
+        })?;
+        println!(
+            "{}: {} B gzip complete worker artifact (including embedded WASM duplication)",
+            c.name, total
+        );
+        check_budget(c, total, opts.check_budget)?;
     }
     let parts: Vec<&[u8]> = files.iter().map(|(_, _, b)| b.as_slice()).collect();
     Ok(Built {
@@ -868,6 +903,23 @@ pub fn native_page_files(workspace: &Path) -> Result<Vec<NamedFile>, String> {
         .into_iter()
         .map(str::to_string)
         .collect::<BTreeSet<_>>();
+    // These images are chosen at runtime rather than referenced by a CSS URL.
+    // A standalone page must ship every original style, not just its default.
+    let catalog = comandos_web_view::pomodoro::catalog();
+    let styles = catalog["STYLES"]
+        .as_object()
+        .ok_or("pomodoro styles missing")?;
+    for style in styles.values() {
+        let sprites = style["assets"]
+            .as_object()
+            .ok_or("pomodoro assets missing")?;
+        for sprite in sprites.values() {
+            let file = sprite["file"]
+                .as_str()
+                .ok_or("pomodoro sprite path missing")?;
+            pending.insert(format!("/assets/pomodoro/{file}"));
+        }
+    }
     while let Some(url) = pending.pop_first() {
         if source.contains_key(&url) {
             continue;

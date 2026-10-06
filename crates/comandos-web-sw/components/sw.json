@@ -1,0 +1,10 @@
+{
+  "id": "sw",
+  "kind": "script",
+  "source": "dash/sw.js",
+  "sha256": "500e28452888fd4a1438cc59f10cd373ed79807291f6bc53b1c4e799fe8ec5e9",
+  "exports": ["SHELL", "eventIdFrom"],
+  "deps": [],
+  "artifact": "comandos-web-sw",
+  "version": 1
+}

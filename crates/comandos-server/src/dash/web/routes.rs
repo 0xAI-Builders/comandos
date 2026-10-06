@@ -14,6 +14,7 @@ pub async fn handle(
 ) -> Result<Reply, HandlerError> {
     match route {
         WebRoute::Index => index(state, request).await,
+        WebRoute::NativeWorker => super::native_worker::serve(&state.web),
         WebRoute::Gate => gate(state, request).await,
         WebRoute::Ready => ready(state, request),
         WebRoute::Markdown => super::markdown::handle(request),
@@ -275,7 +276,7 @@ fn fallback() -> &'static str {
     "if(!sessionStorage.cc_web_fallback){sessionStorage.cc_web_fallback=1;try{fetch('/ui-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({event:'web-gate-timeout'}),keepalive:true}).catch(()=>{})}catch(e){}const u=new URL(location.href);u.searchParams.set('web','off');location.replace(u.href)}"
 }
 
-fn query_value(target: &str, key: &str) -> Option<String> {
+pub(super) fn query_value(target: &str, key: &str) -> Option<String> {
     let query = target
         .split_once('?')?
         .1

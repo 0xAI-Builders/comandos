@@ -355,15 +355,13 @@ async fn serve_real_native_payload_for_remote_smoke() {
     cfg.web_dir = web_dir;
     cfg.repo_root = Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."));
     let web = WebState::new(&cfg);
-    assert!(
-        dash::web::native_page::admit(
-            &web.registry,
-            &web.selection(),
-            &web.manifest(),
-            &cfg.web_dir
-        )
-        .is_ok()
-    );
+    dash::web::native_page::admit(
+        &web.registry,
+        &web.selection(),
+        &web.manifest(),
+        &cfg.web_dir,
+    )
+    .expect("real native payload admission");
     let asset_exists = dash::asset_exists(&cfg.dash_dir);
     let state = Arc::new(DashState {
         web,
@@ -382,7 +380,42 @@ async fn serve_real_native_payload_for_remote_smoke() {
         token: b"fixture-token".to_vec(),
         token_file: None,
         asset_exists,
-        handler: dash::handler(state),
+        handler: {
+            let frontend = dash::handler(state);
+            Arc::new(move |request| {
+                let path = dash::router::path_of(&request.target);
+                if path == "/"
+                    || path == "/index.html"
+                    || path.starts_with("/web/")
+                    || path.starts_with("/assets/")
+                    || path == "/sw.js"
+                {
+                    return frontend(request);
+                }
+                // No API request can reach the user's legacy daemon. The WASM
+                // artifact and frontend transport are real; backend data is a fixture.
+                let data = match path {
+                    "/conf" => {
+                        serde_json::json!({"_lang":"en","VOLUME":"50","SPEAK_DONE":"0","SPEAK_ATTENTION":"0"})
+                    }
+                    "/prefs" => {
+                        serde_json::json!({"favorites":[],"theme":"dia","button_style":"sutil","tabs_layout":"row"})
+                    }
+                    "/remote-state" => {
+                        serde_json::json!({"remoteOn":false,"terminalState":"off","urls":{},"qrAvailable":false})
+                    }
+                    "/ssh" | "/tabs" | "/state" | "/tab-history" => serde_json::json!([]),
+                    "/chains" => serde_json::json!({"chains":[]}),
+                    "/commands/catalog" => {
+                        serde_json::json!({"catalog":{"commands":[],"groups":[]},"cliInPane":"codex"})
+                    }
+                    "/workspace" => serde_json::json!({"revision":1,"groups":[],"tabs":[]}),
+                    "/notices" => serde_json::json!({"notices":[],"rev":"0"}),
+                    _ => serde_json::json!({}),
+                };
+                Box::pin(async move { comandos_server::Reply::json(http::StatusCode::OK, &data) })
+            })
+        },
         websocket: None,
         limits: dash::limits(),
     };
@@ -399,4 +432,83 @@ async fn serve_real_native_payload_for_remote_smoke() {
     stop.send(true).unwrap();
     task.await.unwrap().unwrap();
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn compiled_metadata_admits_atomic_analytics_pair() {
+    let front = Front::start().await;
+    let registry = Resolved::embedded(None);
+    let mut selection = dash::web::Selection {
+        on: comandos_core::web_assets::native_index_components()
+            .unwrap()
+            .into_iter()
+            .collect(),
+        shadow: Default::default(),
+    };
+    let manifest = dash::web::Manifest::load(&front.root.join("web")).unwrap();
+    let plan =
+        dash::web::native_page::admit(&registry, &selection, &manifest, &front.root.join("web"))
+            .unwrap();
+    let render = plan
+        .ids
+        .iter()
+        .position(|id| id == "analytics-render")
+        .unwrap();
+    let controller = plan.ids.iter().position(|id| id == "analytics").unwrap();
+    assert!(render < controller);
+    assert_eq!(plan.ids.len(), 48);
+    selection.on.remove("analytics");
+    assert!(
+        dash::web::native_page::admit(&registry, &selection, &manifest, &front.root.join("web"))
+            .is_err()
+    );
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn native_worker_requires_own_artifact_and_preserves_legacy_route() {
+    let front = Front::start().await;
+    std::fs::write(front.root.join(".claude/hooks/dash/sw.js"), "legacy-worker").unwrap();
+    let missing = front.http("GET", "/sw.js?native=1", "", "").await;
+    assert!(missing.starts_with("HTTP/1.1 503"), "{missing}");
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(front.root.join("web/manifest.json")).unwrap())
+            .unwrap();
+    for name in [
+        "comandos_web_sw.js",
+        "comandos_web_sw_bg.wasm",
+        "comandos_web_sw_boot.js",
+        "comandos_web_sw_component.json",
+    ] {
+        manifest["files"][name] = serde_json::json!(format!("fedcba987654/{name}"));
+        std::fs::write(front.root.join("web/fedcba987654").join(name), if name.ends_with("_component.json") { include_str!("../../comandos-web-sw/components/sw.json") } else if name.ends_with("_boot.js") {"importScripts({{SW_MODULE}}); wasm_bindgen.initSync({module:new Uint8Array()}); wasm_bindgen.boot(true, {{PRECACHE}});"} else {"worker-fixture"}).unwrap();
+    }
+    std::fs::write(
+        front.root.join("web/manifest.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    let native = front.http("GET", "/sw.js?native=1", "", "").await;
+    assert!(native.starts_with("HTTP/1.1 200"), "{native}");
+    assert!(native.contains("service-worker-allowed: /"));
+    assert!(native.contains("cache-control: no-store"));
+    assert!(native.contains("/web/fedcba987654/comandos_web_sw.js"));
+    assert!(native.contains("/?web=native"));
+    assert!(!native.contains("{{") || !native.contains("PRECACHE"));
+    assert!(!native.contains("legacy-worker"));
+    for path in ["/sw.js", "/sw.js?native=10"] {
+        let legacy = front.http("GET", path, "", "").await;
+        assert!(
+            legacy.starts_with("HTTP/1.1 200") && legacy.ends_with("legacy-worker"),
+            "{legacy}"
+        );
+    }
+    std::fs::remove_file(front.root.join("web/fedcba987654/comandos_web_sw_bg.wasm")).unwrap();
+    assert!(
+        front
+            .http("GET", "/sw.js?native=1", "", "")
+            .await
+            .starts_with("HTTP/1.1 503")
+    );
+    front.stop().await;
 }

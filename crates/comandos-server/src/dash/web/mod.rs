@@ -5,6 +5,7 @@ mod file_stamp;
 pub mod gate;
 pub mod markdown;
 pub mod native_page;
+mod native_worker;
 pub mod registry;
 pub mod routes;
 pub mod status;
@@ -31,6 +32,7 @@ pub enum WebRoute {
     Status,
     Asset(String),
     NativeAsset(String),
+    NativeWorker,
 }
 
 impl WebRoute {
@@ -46,6 +48,11 @@ impl WebRoute {
             (&Method::POST, "/web/ready") => Some(Self::Ready),
             (&Method::POST, "/web/markdown") => Some(Self::Markdown),
             (&Method::GET, "/web/status") => Some(Self::Status),
+            (&Method::GET, "/sw.js")
+                if routes::query_value(target, "native").as_deref() == Some("1") =>
+            {
+                Some(Self::NativeWorker)
+            }
             (&Method::GET, p) if p.starts_with("/web/") => {
                 let rel = p.trim_start_matches("/web/");
                 asset_exists(rel).then(|| Self::Asset(rel.to_string()))

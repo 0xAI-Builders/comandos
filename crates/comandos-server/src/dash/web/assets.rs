@@ -41,6 +41,10 @@ impl Manifest {
         self.files.get(logical).cloned().unwrap_or_default()
     }
 
+    pub(super) fn paths(&self) -> impl Iterator<Item = &str> {
+        self.files.values().map(String::as_str)
+    }
+
     pub fn is_versioned(&self, relative: &str) -> bool {
         relative.split_once('/').is_some_and(|(hash, _)| {
             hash.len() == 12 && hash.bytes().all(|b| b.is_ascii_hexdigit())

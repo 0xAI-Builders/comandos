@@ -680,6 +680,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "comandos-web-sw"
+version = "0.1.0"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "comandos-web-view"
 version = "0.1.0"
 dependencies = [
