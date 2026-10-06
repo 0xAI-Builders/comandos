@@ -2,17 +2,175 @@ use crate::tmux::TmuxCtl;
 use comandos_runtime::pane_snapshot::PaneInspector;
 use serde_json::Value;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SnapshotError {
-    Unsupported,
+    Read(String),
+    Invalid(String),
 }
 
 pub fn capture_session(
-    _tmux: &TmuxCtl,
-    _name: &str,
-    _inspector: &PaneInspector,
+    tmux: &TmuxCtl,
+    name: &str,
+    inspector: &PaneInspector,
 ) -> Result<Value, SnapshotError> {
-    Err(SnapshotError::Unsupported)
+    capture_with(tmux, name, |pane| {
+        let id = pane
+            .get("id")
+            .unwrap_or(&Value::Null)
+            .as_str()
+            .ok_or("missing pane id")?;
+        let pid = pane
+            .get("pid")
+            .unwrap_or(&Value::Null)
+            .as_i64()
+            .ok_or("missing pane pid")?;
+        let command = pane
+            .get("command")
+            .unwrap_or(&Value::Null)
+            .as_str()
+            .ok_or("missing command")?;
+        let mut metadata = inspector
+            .inspect(&comandos_runtime::pane_snapshot::PaneRef { id, pid, command })
+            .map_err(|_| "ambiguous process metadata")?;
+        metadata.insert(
+            "start".into(),
+            process_start_time(std::path::Path::new("/proc"), pid),
+        );
+        Ok(metadata)
+    })
+}
+
+pub fn process_start_time(proc_root: &std::path::Path, pid: i64) -> Value {
+    std::fs::read_to_string(proc_root.join(pid.to_string()).join("stat"))
+        .ok()
+        .and_then(|s| {
+            s.rsplit_once(')')
+                .and_then(|(_, fields)| fields.split_whitespace().nth(19))
+                .and_then(|tick| tick.parse::<u64>().ok())
+        })
+        .map(Value::from)
+        .unwrap_or(Value::Null)
+}
+
+/// All tmux reads and process metadata are injectable. No partial tree is returned.
+pub fn capture_with<T: crate::restore::RestoreTmux>(
+    tmux: &T,
+    name: &str,
+    mut metadata: impl FnMut(&Value) -> Result<serde_json::Map<String, Value>, &'static str>,
+) -> Result<Value, SnapshotError> {
+    let read = |args: &[&str]| tmux.read(args).map_err(SnapshotError::Read);
+    let mut nonce = [0u8; 12];
+    getrandom::fill(&mut nonce).map_err(|e| SnapshotError::Invalid(e.to_string()))?;
+    let separator = format!(
+        "<cc-{}>",
+        nonce.iter().map(|b| format!("{b:02x}")).collect::<String>()
+    );
+    let window_format = [
+        "window_id",
+        "window_index",
+        "window_name",
+        "window_layout",
+        "window_width",
+        "window_height",
+        "window_active",
+        "window_zoomed_flag",
+    ]
+    .iter()
+    .map(|key| format!("#{{{key}}}"))
+    .collect::<Vec<_>>()
+    .join(&separator);
+    let pane_format = [
+        "pane_id",
+        "pane_index",
+        "pane_current_path",
+        "pane_pid",
+        "pane_current_command",
+        "pane_active",
+        "@comandos-pane-key",
+    ]
+    .iter()
+    .map(|key| format!("#{{{key}}}"))
+    .collect::<Vec<_>>()
+    .join(&separator);
+    let raw = read(&[
+        "list-windows",
+        "-t",
+        &format!("={name}"),
+        "-F",
+        &window_format,
+    ])?;
+    let integer = |s: &str| {
+        s.parse::<i64>()
+            .map_err(|_| SnapshotError::Invalid(format!("invalid integer {s}")))
+    };
+    let mut windows = Vec::new();
+    for line in raw.lines() {
+        let fields: Vec<_> = line.split(&separator).collect();
+        let [wid, index, name, layout, width, height, active, zoomed] = fields.as_slice() else {
+            return Err(SnapshotError::Invalid(format!(
+                "incomplete window row: {line:?}"
+            )));
+        };
+        let mut window = serde_json::json!({"id":wid,"index":integer(index)?,"name":name,"layout":layout,
+            "width":integer(width)?,"height":integer(height)?,"active":*active == "1","zoomed":*zoomed == "1","panes":[]});
+        for (option, field, default) in [
+            ("pane-border-status", "border_status", "off"),
+            ("automatic-rename", "automatic_rename", "off"),
+            ("window-size", "window_size", "latest"),
+        ] {
+            let value = read(&["show-options", "-wAv", "-t", wid, option])?;
+            if let Some(object) = window.as_object_mut() {
+                object.insert(
+                    field.into(),
+                    Value::String(if value.is_empty() {
+                        default.into()
+                    } else {
+                        value
+                    }),
+                );
+            }
+        }
+        let raw = read(&["list-panes", "-t", wid, "-F", &pane_format])?;
+        let mut panes = Vec::new();
+        for row in raw.lines() {
+            let fields: Vec<_> = row.split(&separator).collect();
+            let [id, index, cwd, pid, command, active, tagged] = fields.as_slice() else {
+                return Err(SnapshotError::Invalid(format!(
+                    "incomplete pane row: {row:?}"
+                )));
+            };
+            let mut pane = serde_json::json!({"id":id,"index":integer(index)?,"cwd":cwd,"pid":integer(pid)?,"command":command,"active":*active == "1","start":null});
+            if !tagged.is_empty()
+                && let Some(object) = pane.as_object_mut()
+            {
+                object.insert("tagged_key".into(), Value::from(*tagged));
+            }
+            let extra = metadata(&pane).map_err(|e| SnapshotError::Invalid(e.into()))?;
+            if let Some(object) = pane.as_object_mut() {
+                object.extend(extra);
+            }
+            panes.push(pane);
+        }
+        if read(&["display-message", "-p", "-t", wid, "#{window_layout}"])? != *layout {
+            return Err(SnapshotError::Invalid(
+                "Window resized during capture".into(),
+            ));
+        }
+        if let Some(object) = window.as_object_mut() {
+            object.insert("panes".into(), Value::Array(panes));
+        }
+        windows.push(window);
+    }
+    let captured = serde_json::json!({"windows":windows,"captured_at":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())});
+    if comandos_core::workspace::snapshot::check_snapshot(
+        &serde_json::json!({"version":2,"sessions":{name:&captured}}),
+    ) != comandos_core::workspace::snapshot::Snapshot::Valid
+    {
+        return Err(SnapshotError::Invalid(
+            "incomplete or changed session layout".into(),
+        ));
+    }
+    Ok(captured)
 }
 
 pub fn carry_resume_ids(mut captured: Value, previous: &Value) -> Value {
@@ -79,11 +237,21 @@ pub fn carry_pane_keys(mut captured: Value, previous: &Value) -> Value {
                     .map(ToString::to_string)
             });
         if key.as_ref().is_none_or(|k| used.contains(k)) {
-            key = Some(format!("pane-{}", used.len() + 1));
+            let mut bytes = [0u8; 16];
+            if getrandom::fill(&mut bytes).is_err() {
+                // Refuse a deterministic cross-generation key on entropy failure.
+                return captured;
+            }
+            key = Some(format!(
+                "pane-{}",
+                bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
+            ));
         }
         let key = key.unwrap_or_else(|| "pane-1".to_string());
         used.insert(key.clone());
-        pane["key"] = Value::String(key);
+        if let Some(object) = pane.as_object_mut() {
+            object.insert("key".into(), Value::String(key));
+        }
     }
     captured
 }

@@ -26,6 +26,7 @@ pub struct WriteGuard {
     roots: Vec<(PathBuf, PathBuf)>,
     /// Archivos sueltos permitidos (candados, volcado de la sombra, log opt-in).
     files: Vec<PathBuf>,
+    snapshot_history: Option<PathBuf>,
 }
 
 const DIR_FLAGS: OFlag = OFlag::O_DIRECTORY
@@ -80,8 +81,11 @@ impl WriteGuard {
                     "app-tabs.json",
                     "app-tabs.json.lock",
                     "app-tabs-history.json",
+                    "app-tabs-history.json.lock",
                     "app-tabs-snapshot.json",
                     "app-sessions-v2.json",
+                    "app-sessions-v2.json.bak",
+                    "app-sessions-v2.json.history",
                     "app-tab-active.json",
                     "app-tab-models.json",
                     "app-extension-shelf.json",
@@ -113,6 +117,8 @@ impl WriteGuard {
             mode: cfg.mode(),
             roots,
             files,
+            snapshot_history: (cfg.mode() == RunMode::Live)
+                .then(|| cfg.hooks_dir().join("app-sessions-v2.json.history")),
         }
     }
 
@@ -136,6 +142,14 @@ impl WriteGuard {
             .parent()
             .ok_or_else(|| GuardError::Escape(path.to_path_buf()))?;
         if self.files.iter().any(|f| f == path) {
+            return Ok((open_dir_nofollow(parent)?, name));
+        }
+        if self.snapshot_history.as_deref() == Some(parent)
+            && name
+                .to_str()
+                .and_then(|name| name.strip_suffix(".json"))
+                .is_some_and(|name| name.len() == 12 && name.bytes().all(|b| b.is_ascii_digit()))
+        {
             return Ok((open_dir_nofollow(parent)?, name));
         }
         if self.mode == RunMode::Shadow {
@@ -262,6 +276,27 @@ impl WriteGuard {
         )
         .map(std::fs::File::from)
         .map_err(|e| io(path, e))
+    }
+
+    /// A minute archive is created once and cannot overwrite another generation.
+    pub fn archive_once(&self, path: &Path, bytes: &[u8]) -> Result<bool, GuardError> {
+        use std::io::Write;
+        let (dir, name) = self.resolve_parent(path, false)?;
+        let fd = match openat(
+            &dir,
+            name.as_os_str(),
+            OFlag::O_CREAT | OFlag::O_EXCL | OFlag::O_WRONLY | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC,
+            Mode::from_bits_truncate(0o600),
+        ) {
+            Ok(fd) => fd,
+            Err(nix::errno::Errno::EEXIST) => return Ok(false),
+            Err(error) => return Err(io(path, error)),
+        };
+        let mut file = std::fs::File::from(fd);
+        file.write_all(bytes)
+            .and_then(|()| file.sync_all())
+            .map_err(|error| io(path, error))?;
+        Ok(true)
     }
 }
 

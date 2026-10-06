@@ -170,6 +170,19 @@ impl TermView {
         }
         Ok(Self { inner })
     }
+    pub fn shutdown(&self) {
+        self.inner.closed.set(true);
+        for source in [
+            &self.inner.read_source,
+            &self.inner.write_source,
+            &self.inner.timer,
+        ] {
+            if let Some(id) = source.borrow_mut().take() {
+                id.remove();
+            }
+        }
+        self.inner.model.borrow_mut().pty.take();
+    }
     pub fn widget(&self) -> &gtk::DrawingArea {
         &self.inner.area
     }

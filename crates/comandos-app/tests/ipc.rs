@@ -57,3 +57,29 @@ fn sandbox_consumes_ipc_with_guard() {
         .unwrap();
     assert!(!path.exists());
 }
+
+#[test]
+fn duplicate_notifications_share_identity_but_replacement_is_not_consumed() {
+    let f = TestTmux::for_mode(RunMode::Sandbox).unwrap();
+    f.guard.create_dir_all(f.config.hooks_dir(), 0o700).unwrap();
+    let path = f.config.hooks_dir().join("app-tab-open.json");
+    std::fs::write(&path, br#"{"session":"term-one"}"#).unwrap();
+    let first = read_request(&path).unwrap();
+    assert_eq!(first, read_request(&path).unwrap());
+    let staged = f.config.hooks_dir().join("replacement.json");
+    std::fs::write(&staged, br#"{"session":"term-two"}"#).unwrap();
+    std::fs::rename(&staged, &path).unwrap();
+    IpcConsumer::new(f.config.mode(), f.guard.clone())
+        .consume(&first)
+        .unwrap();
+    assert_eq!(read_request(&path).unwrap().payload["session"], "term-two");
+}
+
+#[test]
+fn malformed_ipc_is_not_actionable() {
+    let f = TestTmux::for_mode(RunMode::Sandbox).unwrap();
+    f.guard.create_dir_all(f.config.hooks_dir(), 0o700).unwrap();
+    let path = f.config.hooks_dir().join("app-command.json");
+    std::fs::write(&path, b"[]").unwrap();
+    assert!(read_request(&path).is_err());
+}

@@ -111,3 +111,33 @@ fn output_is_capped_while_the_rest_is_drained() {
     assert!(out.truncated);
     assert_eq!(out.code, Some(0));
 }
+
+#[test]
+fn jobs_shutdown_cancels_queued_work_and_waits_only_to_its_deadline() {
+    let context = glib::MainContext::new();
+    let _guard = context.acquire().unwrap();
+    context
+        .with_thread_default(|| {
+            let jobs = Jobs::new(2, "shutdown");
+            let running = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            for _ in 0..8 {
+                let running = running.clone();
+                jobs.spawn(
+                    move || {
+                        running.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                        std::thread::sleep(Duration::from_millis(200));
+                    },
+                    |_| {},
+                );
+            }
+            while running.load(std::sync::atomic::Ordering::Acquire) < 2 {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            let started = Instant::now();
+            jobs.shutdown(Duration::from_millis(20));
+            assert!(started.elapsed() < Duration::from_millis(100));
+            std::thread::sleep(Duration::from_millis(220));
+            assert_eq!(running.load(std::sync::atomic::Ordering::Acquire), 2);
+        })
+        .unwrap();
+}

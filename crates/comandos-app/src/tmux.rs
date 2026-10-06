@@ -501,6 +501,18 @@ impl TmuxCtl {
         self.exec(&["kill-session", "-t", target], None)
     }
 
+    pub fn check_owned_session(&self, owned: &OwnedSession) -> Result<(), TmuxError> {
+        if owned.socket != self.socket {
+            return Err(TmuxError::Forbidden("token de otro servidor".into()));
+        }
+        if self.owned(&owned.name, owned.idle)?.identity != owned.identity {
+            return Err(TmuxError::Forbidden(
+                "sesión reemplazada desde la prueba de propiedad".into(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Mismo comando que `open_tab` (3611) con `-S`; la sombra se engancha en
     /// solo lectura y sin cambiar el tamaño de la sesión.
     pub fn attach_argv(&self, session: &str) -> Vec<String> {

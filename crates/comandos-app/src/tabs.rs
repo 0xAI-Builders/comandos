@@ -87,6 +87,23 @@ impl TabRegistry {
         }
     }
 
+    pub fn reorder(&mut self, key: &str, position: usize) {
+        if let Some(index) = self.records.iter().position(|r| r.key == key)
+            && let Some(record) = self.records.remove(index)
+        {
+            self.records
+                .insert(position.min(self.records.len()), record);
+        }
+    }
+
+    pub fn favorite_keys(&self) -> Vec<String> {
+        self.records
+            .iter()
+            .filter(|r| r.favorite)
+            .map(|r| r.key.clone())
+            .collect()
+    }
+
     pub fn archive(&mut self, key: &str, reason: &str) {
         if key.is_empty() {
             return;

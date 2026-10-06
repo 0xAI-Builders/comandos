@@ -24,6 +24,27 @@ pub enum PollUpdate {
     Marks(Value),
 }
 
+/// A GTK tick keeps only the latest complete update of each kind.
+#[derive(Default)]
+pub struct PollBatch {
+    latest: std::collections::BTreeMap<u8, PollUpdate>,
+}
+impl PollBatch {
+    pub fn push(&mut self, update: PollUpdate) {
+        let key = match &update {
+            PollUpdate::State(_) => 0,
+            PollUpdate::Prefs { .. } => 1,
+            PollUpdate::Workspace(_) => 2,
+            PollUpdate::Marks(_) => 3,
+            PollUpdate::Notices { .. } => 4,
+        };
+        self.latest.insert(key, update);
+    }
+    pub fn drain(self) -> impl Iterator<Item = PollUpdate> {
+        self.latest.into_values()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PollIntervals {
     pub state_prefs: Duration,
@@ -168,7 +189,8 @@ fn spawn_state_prefs(
                 }
                 let favorite_generation = generation.load(Ordering::Acquire);
                 if let Ok(value) = client.get("/prefs", intervals.state_timeout) {
-                    let snap = live_pref_snapshot(&value);
+                    let snap = serde_json::json!({"live":live_pref_snapshot(&value),
+                        "favorites":value.get("favorites"),"generation":favorite_generation});
                     if last_prefs.as_ref() != Some(&snap) {
                         last_prefs = Some(snap);
                         let _ = tx.send(PollUpdate::Prefs {

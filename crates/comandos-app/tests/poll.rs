@@ -175,3 +175,105 @@ fn poller_stop_cancels_blocked_notice_worker_under_500ms() {
     assert!(done.load(Ordering::Acquire));
     server.join().unwrap();
 }
+
+#[test]
+fn gtk_tick_coalesces_latest_state_and_preserves_notice_authority() {
+    let mut batch = comandos_app::poll::PollBatch::default();
+    batch.push(PollUpdate::State(json!({"seq":1,"badge":99})));
+    batch.push(PollUpdate::Notices {
+        revision: "r1".into(),
+        badge: 3,
+    });
+    batch.push(PollUpdate::State(json!({"seq":2,"badge":0})));
+    batch.push(PollUpdate::Notices {
+        revision: "r2".into(),
+        badge: 4,
+    });
+    let updates: Vec<_> = batch.drain().collect();
+    assert_eq!(
+        updates,
+        vec![
+            PollUpdate::State(json!({"seq":2,"badge":0})),
+            PollUpdate::Notices {
+                revision: "r2".into(),
+                badge: 4
+            }
+        ]
+    );
+}
+
+#[test]
+fn favorites_only_changes_and_fresh_generation_reach_gtk() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    listener.set_nonblocking(true).unwrap();
+    let stopped = Arc::new(AtomicBool::new(false));
+    let stop = stopped.clone();
+    let count = Arc::new(AtomicU64::new(0));
+    let requests = count.clone();
+    let server = std::thread::spawn(move || {
+        while !stop.load(Ordering::Acquire) {
+            let Ok((mut stream, _)) = listener.accept() else {
+                std::thread::sleep(Duration::from_millis(1));
+                continue;
+            };
+            let mut buffer = [0u8; 2048];
+            let n = std::io::Read::read(&mut stream, &mut buffer).unwrap_or(0);
+            let request = String::from_utf8_lossy(&buffer[..n]);
+            let body = if request.contains("GET /prefs ") {
+                let i = requests.fetch_add(1, Ordering::AcqRel);
+                if i == 0 {
+                    json!({"theme":"noche","favorites":[]})
+                } else {
+                    json!({"theme":"noche","favorites":["term-a"]})
+                }
+            } else {
+                json!({})
+            }
+            .to_string();
+            let response = format!(
+                "HTTP/1.0 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = std::io::Write::write_all(&mut stream, response.as_bytes());
+        }
+    });
+    let client = DashClient::new(Some(&format!("http://127.0.0.1:{port}")), RunMode::Live).unwrap();
+    let generation = Arc::new(AtomicU64::new(0));
+    let (poller, rx) = Poller::start_with_intervals(
+        client,
+        generation.clone(),
+        PollIntervals {
+            state_prefs: Duration::from_millis(20),
+            workspace: Duration::from_secs(1),
+            marks: Duration::from_secs(1),
+            notices_timeout: Duration::from_millis(50),
+            ..PollIntervals::default()
+        },
+    );
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut prefs = Vec::new();
+    while Instant::now() < deadline {
+        if let Ok(PollUpdate::Prefs {
+            value,
+            favorite_generation,
+        }) = rx.recv_timeout(Duration::from_millis(20))
+        {
+            prefs.push((value, favorite_generation));
+            if prefs.len() == 2 {
+                generation.store(1, Ordering::Release);
+            }
+            if prefs.len() == 3 {
+                break;
+            }
+        }
+    }
+    poller.stop();
+    stopped.store(true, Ordering::Release);
+    server.join().unwrap();
+    assert_eq!(prefs.len(), 3, "{prefs:?}");
+    assert_eq!(prefs[0].0["favorites"], json!([]));
+    assert_eq!(prefs[1].0["favorites"], json!(["term-a"]));
+    assert_eq!(prefs[2].1, 1);
+}

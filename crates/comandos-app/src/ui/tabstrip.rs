@@ -61,8 +61,16 @@ impl TabStripNotebook {
     }
 
     pub fn overview(&self) -> Vec<String> {
-        let mut out: Vec<_> = self.pages.keys().cloned().collect();
-        out.sort();
-        out
+        let mut pages: Vec<_> = self
+            .pages
+            .iter()
+            .filter_map(|(key, child)| {
+                self.notebook
+                    .page_num(child)
+                    .map(|index| (index, key.clone()))
+            })
+            .collect();
+        pages.sort_by_key(|(index, _)| *index);
+        pages.into_iter().map(|(_, key)| key).collect()
     }
 }

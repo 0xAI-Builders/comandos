@@ -1,6 +1,10 @@
 use crate::config::{AppConfig, RunMode};
 use gtk::prelude::*;
-use webkit2gtk::{SettingsExt, WebContext, WebViewExt};
+use std::{cell::RefCell, rc::Rc, time::Duration};
+use webkit2gtk::{
+    NavigationPolicyDecisionExt, PermissionRequestExt, PolicyDecisionExt, SettingsExt,
+    URIRequestExt, UserContentManagerExt, WebContext, WebViewExt,
+};
 
 pub type WebView = webkit2gtk::WebView;
 
@@ -19,7 +23,8 @@ pub fn dashboard_uri(base: Option<&str>, version: &str) -> Option<String> {
 
 pub fn create(cfg: &AppConfig) -> Result<WebView, WebError> {
     let manager = match cfg.mode() {
-        RunMode::Shadow | RunMode::Sandbox => webkit2gtk::WebsiteDataManager::builder()
+        RunMode::Shadow => webkit2gtk::WebsiteDataManager::new_ephemeral(),
+        RunMode::Sandbox => webkit2gtk::WebsiteDataManager::builder()
             .base_data_directory(cfg.web_data_dir().to_string_lossy().as_ref())
             .base_cache_directory(cfg.web_cache_dir().to_string_lossy().as_ref())
             .build(),
@@ -29,13 +34,70 @@ pub fn create(cfg: &AppConfig) -> Result<WebView, WebError> {
             .build(),
     };
     let context = WebContext::with_website_data_manager(&manager);
-    let webview = WebView::with_context(&context);
+    let content = webkit2gtk::UserContentManager::new();
+    if !content.register_script_message_handler("centro") {
+        return Err(WebError::Gtk("centro bridge unavailable".into()));
+    }
+    let webview = WebView::builder()
+        .web_context(&context)
+        .user_content_manager(&content)
+        .build();
     webview.set_hexpand(true);
     webview.set_vexpand(true);
     if let Some(settings) = WebViewExt::settings(&webview) {
         settings.set_enable_webaudio(true);
-        settings.set_enable_javascript(true);
+        settings.set_enable_javascript(cfg.mode() != RunMode::Shadow);
+        settings.set_enable_write_console_messages_to_stdout(true);
     }
+    let shadow = cfg.mode() == RunMode::Shadow;
+    webview.connect_permission_request(move |_, request| {
+        if !shadow && request.is::<webkit2gtk::NotificationPermissionRequest>() {
+            request.allow();
+        } else {
+            request.deny();
+        }
+        true
+    });
+    if shadow {
+        webview.connect_decide_policy(|_, decision, _| {
+            if let Some(navigation) =
+                decision.downcast_ref::<webkit2gtk::NavigationPolicyDecision>()
+                && let Some(request) = navigation
+                    .navigation_action()
+                    .and_then(|action| action.request())
+                && request
+                    .http_method()
+                    .is_some_and(|method| method.as_str() != "GET")
+            {
+                decision.ignore();
+                return true;
+            }
+            false
+        });
+    }
+    let retry = Rc::new(RefCell::new(None::<glib::SourceId>));
+    let retry_on_fail = retry.clone();
+    webview.connect_load_failed(move |webview, _, _, _| {
+        if let Some(source) = retry_on_fail.borrow_mut().take() {
+            source.remove();
+        }
+        let weak = webview.downgrade();
+        let source_slot = retry_on_fail.clone();
+        *retry_on_fail.borrow_mut() =
+            Some(glib::timeout_add_local(Duration::from_secs(2), move || {
+                source_slot.borrow_mut().take();
+                if let Some(webview) = weak.upgrade() {
+                    webview.reload();
+                }
+                glib::ControlFlow::Break
+            }));
+        true
+    });
+    webview.connect_destroy(move |_| {
+        if let Some(source) = retry.borrow_mut().take() {
+            source.remove();
+        }
+    });
     if let Some(uri) = dashboard_uri(cfg.dash_url(), env!("CARGO_PKG_VERSION")) {
         webview.load_uri(&uri);
     } else {
@@ -54,4 +116,29 @@ fn encode_query(raw: &str) -> String {
         }
     }
     out
+}
+
+pub fn terminal_uri(path: &std::path::Path, session: &str, token: &str, theme: &str) -> String {
+    format!(
+        "{}?auth={}&arg={}&theme={}",
+        gio::File::for_path(path).uri(),
+        encode_query(token),
+        encode_query(session),
+        encode_query(theme)
+    )
+}
+pub fn terminal_view(cfg: &AppConfig, uri: &str) -> Result<WebView, WebError> {
+    if cfg.mode() != RunMode::Live {
+        return Err(WebError::Gtk(
+            "web terminal backend refused in isolated mode".into(),
+        ));
+    }
+    let view = WebView::new();
+    if let Some(settings) = WebViewExt::settings(&view) {
+        settings.set_allow_file_access_from_file_urls(true);
+        settings.set_allow_universal_access_from_file_urls(true);
+        settings.set_enable_write_console_messages_to_stdout(true);
+    }
+    view.load_uri(uri);
+    Ok(view)
 }

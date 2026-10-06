@@ -146,16 +146,122 @@ pub fn exact_resume_command(pane: &Value) -> Option<String> {
 }
 
 fn is_uuidish(raw: &str) -> bool {
-    raw.len() == 36 && raw.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+    raw.len() == 36
+        && raw
+            .chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, 'a'..='f' | '-'))
 }
 
-fn shell_quote(raw: &str) -> String {
-    if raw
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '/' | ':' | '='))
+pub fn shell_quote(raw: &str) -> String {
+    if !raw.is_empty()
+        && raw.chars().all(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(c, '_' | '-' | '.' | '/' | ':' | '=' | '@' | '%' | '+' | ',')
+        })
     {
         raw.to_string()
     } else {
         format!("'{}'", raw.replace('\'', "'\"'\"'"))
     }
+}
+
+/// Verify the saved conversation under its own account before returning any command.
+/// Missing transcripts stay visible as ambiguity; no continuation fallback is invented.
+pub fn verified_resume_command(saved: &Value, home: &std::path::Path) -> Option<String> {
+    let agent = saved.get("agent")?.as_str()?;
+    let cli = if agent == "acp" { "cc-acp" } else { agent };
+    if !matches!(agent, "claude" | "codex" | "grok" | "acp") || !cli_available(cli, home) {
+        return None;
+    }
+    let mut command = exact_resume_command(saved)?;
+    if agent == "acp" {
+        return Some(command);
+    }
+    let id = saved.get("resume_id")?.as_str()?;
+    let (field, default, var) = match agent {
+        "claude" => ("claude_config_dir", ".claude", "CLAUDE_CONFIG_DIR"),
+        "codex" => ("codex_home", ".codex", "CODEX_HOME"),
+        "grok" => ("grok_home", ".grok", "GROK_HOME"),
+        _ => return None,
+    };
+    let fallback = home.join(default);
+    let root = saved
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            s.strip_prefix("~/")
+                .map(|s| home.join(s))
+                .unwrap_or_else(|| std::path::PathBuf::from(s))
+        })
+        .unwrap_or_else(|| fallback.clone());
+    let root = std::fs::canonicalize(root).ok()?;
+    let exists = match agent {
+        "claude" => std::fs::read_dir(root.join("projects"))
+            .ok()?
+            .filter_map(Result::ok)
+            .any(|entry| entry.path().join(format!("{id}.jsonl")).is_file()),
+        "codex" => find_transcript(&root.join("sessions"), 3, &|path| {
+            path.file_name()
+                .and_then(|s| s.to_str())
+                .is_some_and(|s| s.starts_with("rollout-") && s.ends_with(&format!("{id}.jsonl")))
+        }),
+        "grok" => find_transcript(&root.join("sessions"), 8, &|path| {
+            path.file_name().is_some_and(|s| s == "summary.json")
+                && path
+                    .parent()
+                    .and_then(|p| p.file_name())
+                    .is_some_and(|s| s == id)
+        }),
+        _ => false,
+    };
+    if !exists {
+        return None;
+    }
+    let default = std::fs::canonicalize(&fallback).unwrap_or(fallback);
+    if root != default {
+        command = format!("{var}={} {command}", shell_quote(root.to_str()?));
+    }
+    Some(command)
+}
+fn find_transcript(
+    root: &std::path::Path,
+    depth: usize,
+    accept: &dyn Fn(&std::path::Path) -> bool,
+) -> bool {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return false;
+    };
+    entries.filter_map(Result::ok).any(|entry| {
+        let path = entry.path();
+        if entry.file_type().is_ok_and(|t| t.is_file()) {
+            accept(&path)
+        } else {
+            depth > 0
+                && entry.file_type().is_ok_and(|t| t.is_dir())
+                && find_transcript(&path, depth - 1, accept)
+        }
+    })
+}
+fn cli_available(cli: &str, home: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+        .chain(
+            [
+                ".local/bin",
+                ".bun/bin",
+                ".cargo/bin",
+                ".npm-global/bin",
+                "bin",
+            ]
+            .into_iter()
+            .map(|p| home.join(p)),
+        )
+        .chain([std::path::PathBuf::from("/usr/local/bin")])
+        .any(|dir| {
+            std::fs::metadata(dir.join(cli))
+                .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        })
 }
