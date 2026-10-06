@@ -4324,6 +4324,7 @@ dependencies = [
  "comandos-core",
  "comandos-domdiff",
  "comandos-runtime",
+ "comandos-web-view",
  "flate2",
  "http-body-util",
  "hyper",

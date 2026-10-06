@@ -7,6 +7,8 @@ use tokio::sync::watch;
 
 const CAP: usize = 256;
 const TTL: Duration = Duration::from_secs(10);
+// Native readiness includes asynchronous application startup, without a blocking gate.
+const NATIVE_TTL: Duration = Duration::from_secs(120);
 
 #[derive(Default)]
 pub struct Gate {
@@ -27,6 +29,12 @@ pub enum Inserted {
 
 impl Gate {
     pub fn insert(&self) -> Inserted {
+        self.insert_mode(false)
+    }
+    pub fn insert_native(&self) -> Inserted {
+        self.insert_mode(true)
+    }
+    fn insert_mode(&self, native: bool) -> Inserted {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         inner.sweep();
         if inner.nonces.len() >= CAP {
@@ -37,6 +45,7 @@ impl Gate {
             inner.gate_full += 1;
             return Inserted::Full;
         };
+        let k = if native { format!("native-{k}") } else { k };
         let (tx, _) = watch::channel(false);
         inner.nonces.insert(k.clone(), (Instant::now(), tx));
         inner.order.push_back(k.clone());
@@ -80,18 +89,15 @@ impl Gate {
 impl Inner {
     fn sweep(&mut self) {
         let now = Instant::now();
-        while let Some(k) = self.order.front() {
-            let expired = self
-                .nonces
-                .get(k)
-                .is_none_or(|(created, _)| now.duration_since(*created) > TTL);
-            if !expired {
-                break;
-            }
-            if let Some(k) = self.order.pop_front() {
-                self.nonces.remove(&k);
-            }
-        }
+        self.nonces.retain(|k, (created, _)| {
+            now.duration_since(*created)
+                <= if k.starts_with("native-") {
+                    NATIVE_TTL
+                } else {
+                    TTL
+                }
+        });
+        self.order.retain(|k| self.nonces.contains_key(k));
     }
 }
 
@@ -121,6 +127,26 @@ mod tests {
         assert!(matches!(gate.insert(), Inserted::Nonce(_)));
     }
 
+    #[test]
+    fn native_startup_ticket_does_not_hold_expired_gradual_tickets() {
+        let gate = Gate::default();
+        let Inserted::Nonce(native) = gate.insert_native() else {
+            panic!("native nonce")
+        };
+        let Inserted::Nonce(gradual) = gate.insert() else {
+            panic!("gradual nonce")
+        };
+        {
+            let mut inner = gate.inner.lock().unwrap();
+            for key in [&native, &gradual] {
+                inner.nonces.get_mut(key).unwrap().0 =
+                    Instant::now() - TTL - Duration::from_millis(1);
+            }
+        }
+        assert!(gate.mark_ready(&native));
+        assert!(!gate.mark_ready(&gradual));
+        assert_eq!(gate.snapshot().0, 1);
+    }
     #[test]
     fn finishing_drops_sender_and_removes_order_bookkeeping() {
         let gate = Gate::default();

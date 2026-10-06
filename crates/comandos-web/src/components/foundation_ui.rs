@@ -409,7 +409,7 @@ mod web {
             );
         }
         let conf = exported("api", &["/conf".into()]);
-        let _ = promise(async move {
+        let startup = promise(async move {
             if let Ok(c) = wait(conf).await
                 && get(&c, "_lang").as_string().as_deref() == Some("en")
             {
@@ -435,6 +435,7 @@ mod web {
             exported("arm", &[])?;
             Ok(JsValue::UNDEFINED)
         });
+        set(&js_sys::global(), "__comandosStartup", &startup)?;
         Ok(())
     }
     fn click_if_present(el: JsValue) -> Result<(), JsValue> {

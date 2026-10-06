@@ -4,6 +4,7 @@ pub mod compose;
 mod file_stamp;
 pub mod gate;
 pub mod markdown;
+pub mod native_page;
 pub mod registry;
 pub mod routes;
 pub mod status;
@@ -29,6 +30,7 @@ pub enum WebRoute {
     Markdown,
     Status,
     Asset(String),
+    NativeAsset(String),
 }
 
 impl WebRoute {
@@ -47,6 +49,9 @@ impl WebRoute {
             (&Method::GET, p) if p.starts_with("/web/") => {
                 let rel = p.trim_start_matches("/web/");
                 asset_exists(rel).then(|| Self::Asset(rel.to_string()))
+            }
+            (&Method::GET, p) if p.starts_with("/assets/") => {
+                asset_exists(p).then(|| Self::NativeAsset(p.to_string()))
             }
             _ => None,
         }
@@ -91,7 +96,11 @@ impl WebState {
     }
 
     pub fn route_exists(&self) -> impl Fn(&str) -> bool + '_ {
-        |rel| assets::valid_relative(rel) && self.web_dir.join(rel).is_file()
+        |rel| {
+            (assets::valid_relative(rel) && self.web_dir.join(rel).is_file())
+                || native_page::alias(&self.manifest(), &self.web_dir, &self.dash_dir, rel)
+                    .is_some()
+        }
     }
 
     pub fn selection(&self) -> Selection {

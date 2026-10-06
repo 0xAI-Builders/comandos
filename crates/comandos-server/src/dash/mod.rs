@@ -477,7 +477,7 @@ pub fn handler(state: Arc<DashState>) -> Handler {
 
 async fn handle(state: &DashState, request: Request) -> Result<Reply, HandlerError> {
     if request.method == Method::GET && router::path_of(&request.target) == "/web/status" {
-        return web::routes::status_with_term(&state.web, state.term_control.status());
+        return web::routes::handle(state, web::WebRoute::Status, &request).await;
     }
     // El handshake del arranque solo cambia memoria del frente. Debe liberar
     // también la compuerta de la sombra, sin habilitar escrituras del tablero.

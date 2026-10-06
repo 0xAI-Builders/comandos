@@ -15,6 +15,7 @@ serde_json.workspace = true
 rusqlite.workspace = true
 sha2.workspace = true
 comandos-core = { path = "../crates/comandos-core" }
+comandos-web-view = { path = "../crates/comandos-web-view" }
 nix = { version = "0.31", features = ["signal", "process", "user", "fs"] }
 # Normalización del reloj en `files` (la misma que el gemelo de las pruebas; ya en Cargo.lock).
 regex = "=1.13.1"

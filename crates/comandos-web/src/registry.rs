@@ -3,19 +3,15 @@
 //! `boot` lo llama el cargador generado (`boot.js`) con el nonce de la
 //! compuerta, en dos fases por componente:
 //!
-//! 1. **`mount`**, en el orden de `<meta name="comandos-web">`: publica en
-//!    `window` los globales del componente (ver `comandos_web_dom::bridge`).
-//!    Corre mientras el navegador aún analiza el `<head>` (la compuerta
-//!    `gate.js` bloquea el análisis hasta `/web/ready`): `<body>` no existe, y
-//!    el JS en línea llamará a esos globales al analizarse. No toca el DOM ni
-//!    registra uso (`ui_log`).
-//! 2. **`attach`** (opcional), en el mismo orden y solo para los que montaron:
-//!    lo que necesita el DOM. El registro lo corre con `dom::on_ready`: al
-//!    momento si `document.readyState` ya no es `"loading"` (el cargador es
-//!    `async` y puede llegar tarde, p. ej. si la compuerta venció a los 8 s), o
-//!    en `DOMContentLoaded`. Sus fallos van al registro de uso por
-//!    `window.ulog("web-attach", id, error, 0)` y al final se marca
-//!    `window.__comandosAttached = true`.
+//! En modo gradual, `mount` publica los globales mientras se analiza el head
+//! y avisa a la compuerta antes de `attach` en DOMContentLoaded.
+//!
+//! Una página completa usa `<meta name="comandos-web-mode" content="native">`
+//! y un loader de módulo sin gate. Allí ambas fases esperan al DOM: todos los
+//! mounts publican primero, los attaches registran controles y UI general
+//! inicia al final. Ready exige mounts, attaches y startup asíncrono completos,
+//! además de la aceptación del nonce por el servidor. Los errores quedan en
+//! `window.__comandosBootReport`; una página fallida no anuncia ready.
 //!
 //! Cada `mount` y cada `attach` se llama desde JS con `try/catch`
 //! (`Function.prototype.call` de `js-sys`, que captura): un `Err`, una
@@ -347,6 +343,51 @@ pub fn attach_order(r: &Report, has_attach: impl Fn(&str) -> bool) -> Vec<&str> 
         .collect()
 }
 
+/// Explicit full-page opt-in; unmarked pages retain the gradual gate protocol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BootMode {
+    Gradual,
+    Native,
+}
+pub fn boot_mode(value: &str) -> BootMode {
+    if value == "native" {
+        BootMode::Native
+    } else {
+        BootMode::Gradual
+    }
+}
+/// Vendor retirement checks require the native reader export. The original
+/// page loaded vendors first; their Rust replacements depend on news-reader.
+/// No other relative order or selected component changes.
+pub fn native_mount_order(mut ids: Vec<&str>) -> Vec<&str> {
+    if let Some(reader) = ids.iter().position(|id| *id == "news-reader")
+        && let Some(vendor) = ids
+            .iter()
+            .position(|id| matches!(*id, "vendor-markdown-it" | "vendor-purify"))
+        && reader > vendor
+    {
+        let id = ids.remove(reader);
+        ids.insert(vendor, id);
+    }
+    ids
+}
+/// All globals have mounted before attach. Native startup runs after every
+/// listener/constructor attach; other relative ordering remains the page's.
+pub fn phase_attach_order(
+    r: &Report,
+    has_attach: impl Fn(&str) -> bool,
+    mode: BootMode,
+) -> Vec<&str> {
+    let mut ids = attach_order(r, has_attach);
+    if mode == BootMode::Native
+        && let Some(index) = ids.iter().position(|id| *id == "ui-general")
+    {
+        let startup = ids.remove(index);
+        ids.push(startup);
+    }
+    ids
+}
+
 /// `boot` solo corre si es la primera vez en esta instancia y la página no
 /// estaba ya lista (`window.__comandosReady === true`).
 pub fn first_boot(booted: bool, page_ready: bool) -> bool {
@@ -359,8 +400,8 @@ pub use web::{boot, boot_with};
 #[cfg(target_arch = "wasm32")]
 mod web {
     use super::{
-        COMPONENTS, Component, Phase, Report, attach_order, find_in, first_boot, meta_ids,
-        mount_all,
+        BootMode, COMPONENTS, Component, Phase, Report, boot_mode, find_in, first_boot, meta_ids,
+        mount_all, native_mount_order, phase_attach_order,
     };
     use comandos_web_dom::bridge::{call_global, global_get, global_set, js_text};
     use js_sys::{Array, Function, JSON, Object, Promise, Reflect};
@@ -394,6 +435,15 @@ mod web {
         let content = comandos_web_dom::dom::query(r#"meta[name="comandos-web"]"#)
             .and_then(|m| m.get_attribute("content"))
             .unwrap_or_default();
+        let mode = comandos_web_dom::dom::query(r#"meta[name="comandos-web-mode"]"#)
+            .and_then(|m| m.get_attribute("content"))
+            .map_or(BootMode::Gradual, |v| boot_mode(&v));
+        if mode == BootMode::Native {
+            let k = k.to_owned();
+            let _ = global_set("__comandosBootState", &"waiting-dom".into());
+            comandos_web_dom::dom::on_ready(move || boot_native(&k, &content, components));
+            return;
+        }
         let ids = meta_ids(&content);
         let report = mount_all(
             &ids,
@@ -402,9 +452,11 @@ mod web {
         );
         let _ = global_set("__comandosReady", &JsValue::TRUE);
         let _ = post_ready(k, &report);
-        let attach: Vec<(String, Phase)> = attach_order(&report, |id| {
-            find_in(components, id).is_some_and(|c| c.attach.is_some())
-        })
+        let attach: Vec<(String, Phase)> = phase_attach_order(
+            &report,
+            |id| find_in(components, id).is_some_and(|c| c.attach.is_some()),
+            BootMode::Gradual,
+        )
         .into_iter()
         .filter_map(|id| {
             find_in(components, id)
@@ -413,6 +465,99 @@ mod web {
         })
         .collect();
         comandos_web_dom::dom::on_ready(move || attach_all(&attach));
+    }
+
+    fn publish_report(k: &str, report: &Report, status: &str) {
+        if let Ok(bytes) = body(k, report)
+            && let Some(text) = bytes.as_string()
+            && let Ok(value) = JSON::parse(&text)
+        {
+            let _ = global_set("__comandosBootReport", &value);
+        }
+        let _ = global_set("__comandosBootState", &status.into());
+    }
+    fn boot_native(k: &str, content: &str, components: &'static [Component]) {
+        let _ = global_set("__comandosBootState", &"mounting".into());
+        let mut report = mount_all(
+            &native_mount_order(meta_ids(content)),
+            |id| find_in(components, id).map(|c| guarded(c.mount)),
+            describe,
+        );
+        if !report.failed.is_empty() {
+            publish_report(k, &report, "failed");
+            return;
+        }
+        publish_report(k, &report, "attaching");
+        let order = phase_attach_order(
+            &report,
+            |id| find_in(components, id).is_some_and(|c| c.attach.is_some()),
+            BootMode::Native,
+        )
+        .into_iter()
+        .map(String::from)
+        .collect::<Vec<_>>();
+        for id in &order {
+            // Never launch startup after a failed control attach.
+            if id == "ui-general" && !report.failed.is_empty() {
+                break;
+            }
+            if let Some(phase) = find_in(components, id).and_then(|c| c.attach)
+                && let Err(error) = guarded(phase)
+            {
+                report.failed.push((id.clone(), describe(&error)));
+            }
+        }
+        if !report.failed.is_empty() {
+            publish_report(k, &report, "failed");
+            return;
+        }
+        let startup = global_get("__comandosStartup");
+        let needs_startup = order.iter().any(|id| id == "ui-general");
+        if needs_startup && !Reflect::get(&startup, &"then".into()).is_ok_and(|v| v.is_function()) {
+            report.failed.push((
+                "ui-general".into(),
+                "native startup promise unavailable".into(),
+            ));
+            publish_report(k, &report, "failed");
+            return;
+        }
+        publish_report(k, &report, "starting");
+        let k = k.to_owned();
+        wasm_bindgen_futures::spawn_local(async move {
+            if needs_startup
+                && let Err(error) =
+                    wasm_bindgen_futures::JsFuture::from(Promise::resolve(&startup)).await
+            {
+                report.failed.push(("ui-general".into(), describe(&error)));
+                publish_report(&k, &report, "failed");
+                return;
+            }
+            publish_report(&k, &report, "reporting");
+            if let Err(error) = post_ready_native(&k, &report).await {
+                report.failed.push(("@ready".into(), describe(&error)));
+                publish_report(&k, &report, "failed");
+                return;
+            }
+            let _ = global_set("__comandosAttached", &JsValue::TRUE);
+            let _ = global_set("__comandosReady", &JsValue::TRUE);
+            publish_report(&k, &report, "ready");
+        });
+    }
+    async fn post_ready_native(k: &str, report: &Report) -> Result<(), JsValue> {
+        let win: JsValue = web_sys::window().ok_or(JsValue::NULL)?.into();
+        let options = Object::new();
+        set(&options, "method", &"POST".into())?;
+        let headers = Object::new();
+        set(&headers, "Content-Type", &"application/json".into())?;
+        set(&options, "headers", &headers)?;
+        set(&options, "body", &body(k, report)?)?;
+        let fetch: Function = Reflect::get(&win, &"fetch".into())?.dyn_into()?;
+        let result = fetch.call2(&win, &"/web/ready".into(), &options)?;
+        let response = wasm_bindgen_futures::JsFuture::from(Promise::resolve(&result)).await?;
+        if Reflect::get(&response, &"ok".into())? != JsValue::TRUE {
+            return Err(js_sys::Error::new("native readiness rejected by server").into());
+        }
+        Ok(())
     }
 
     fn attach_all(list: &[(String, Phase)]) {

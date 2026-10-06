@@ -328,3 +328,59 @@ fn boot_runs_once() {
     assert!(!first_boot(true, false), "ya arrancó en esta instancia");
     assert!(!first_boot(false, true), "__comandosReady ya vale true");
 }
+
+#[test]
+fn native_boot_requires_explicit_mode_and_moves_startup_after_controls() {
+    use comandos_web::registry::{BootMode, boot_mode, phase_attach_order};
+    assert_eq!(boot_mode("native"), BootMode::Native);
+    for value in ["", "shadow", "on", "NATIVE", "native "] {
+        assert_eq!(boot_mode(value), BootMode::Gradual);
+    }
+    let r = Report {
+        mounted: vec![
+            "ui-general".into(),
+            "app-nativa".into(),
+            "toasts".into(),
+            "servers".into(),
+        ],
+        failed: vec![],
+    };
+    assert_eq!(
+        phase_attach_order(&r, |id| id != "toasts", BootMode::Gradual),
+        ["ui-general", "app-nativa", "servers"]
+    );
+    assert_eq!(
+        phase_attach_order(&r, |id| id != "toasts", BootMode::Native),
+        ["app-nativa", "servers", "ui-general"]
+    );
+    assert_eq!(r.mounted, ["ui-general", "app-nativa", "toasts", "servers"]);
+}
+
+#[test]
+fn native_reader_mount_precedes_vendor_retirement_only() {
+    use comandos_web::registry::native_mount_order;
+    assert_eq!(
+        native_mount_order(vec![
+            "prelude",
+            "vendor-markdown-it",
+            "vendor-purify",
+            "news-reader",
+            "tail"
+        ]),
+        vec![
+            "prelude",
+            "news-reader",
+            "vendor-markdown-it",
+            "vendor-purify",
+            "tail"
+        ]
+    );
+    assert_eq!(
+        native_mount_order(vec!["news-reader", "vendor-purify"]),
+        vec!["news-reader", "vendor-purify"]
+    );
+    assert_eq!(
+        native_mount_order(vec!["vendor-purify"]),
+        vec!["vendor-purify"]
+    );
+}

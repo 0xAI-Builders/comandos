@@ -17,13 +17,59 @@ pub async fn handle(
         WebRoute::Gate => gate(state, request).await,
         WebRoute::Ready => ready(state, request),
         WebRoute::Markdown => super::markdown::handle(request),
+        WebRoute::Status if query_value(&request.target, "web").as_deref() == Some("native") => {
+            native_status(&state.web, state.term_control.status())
+        }
         WebRoute::Status => status_with_term(&state.web, state.term_control.status()),
         WebRoute::Asset(rel) => asset(state, &rel).await,
+        WebRoute::NativeAsset(url) => {
+            let manifest = state.web.manifest();
+            let Some(rel) = super::native_page::alias(
+                &manifest,
+                &state.web.web_dir,
+                &state.config.dash_dir,
+                &url,
+            ) else {
+                return dash::not_found();
+            };
+            asset(state, &rel).await
+        }
     }
 }
 
 async fn index(state: &DashState, request: &Request) -> Result<Reply, HandlerError> {
     let web = &state.web;
+    if query_value(&request.target, "web").as_deref() == Some("native") {
+        let manifest = web.manifest();
+        let plan = match super::native_page::admit(
+            &web.registry,
+            &web.selection(),
+            &manifest,
+            &web.web_dir,
+        ) {
+            Ok(plan) => plan,
+            Err(error) => {
+                return Reply::json(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    &serde_json::json!({"error":error,"mode":"native"}),
+                );
+            }
+        };
+        let nonce = match web.gate.insert_native() {
+            Inserted::Nonce(nonce) => nonce,
+            Inserted::Full => {
+                return Reply::json(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    &serde_json::json!({"error":"native readiness capacity exhausted","mode":"native"}),
+                );
+            }
+        };
+        return Ok(Reply::bytes(
+            StatusCode::OK,
+            "text/html",
+            super::native_page::render(&plan, &manifest, &nonce),
+        ));
+    }
     if query_value(&request.target, "web").as_deref() == Some("off") {
         return statics::serve(&state.config.dash_dir, request).await;
     }
@@ -108,13 +154,68 @@ fn ready(state: &DashState, request: &Request) -> Result<Reply, HandlerError> {
         .and_then(|v| v.get("k"))
         .and_then(|v| v.as_str())
         .unwrap_or_default();
+    if k.starts_with("native-") {
+        let data = request.data.as_ref();
+        let failed = data
+            .and_then(|v| v.get("failed"))
+            .and_then(|v| v.as_array());
+        let mounted = data
+            .and_then(|v| v.get("mounted"))
+            .and_then(|v| v.as_array())
+            .and_then(|v| {
+                let names = v
+                    .iter()
+                    .map(|item| item.as_str().map(str::to_string))
+                    .collect::<Option<Vec<_>>>()?;
+                let unique = names
+                    .iter()
+                    .cloned()
+                    .collect::<std::collections::BTreeSet<_>>();
+                (unique.len() == names.len()).then_some(unique)
+            });
+        let expected = super::native_page::admit(
+            &state.web.registry,
+            &state.web.selection(),
+            &state.web.manifest(),
+            &state.web.web_dir,
+        )
+        .ok()
+        .map(|p| p.ids.into_iter().collect::<std::collections::BTreeSet<_>>());
+        if failed.is_none_or(|v| !v.is_empty()) || mounted.is_none() || mounted != expected {
+            return Reply::json(
+                StatusCode::BAD_REQUEST,
+                &serde_json::json!({"error":"native page did not complete all mounts"}),
+            );
+        }
+    }
     if !state.web.gate.mark_ready(k) {
         return Reply::json(
             StatusCode::BAD_REQUEST,
             &serde_json::json!({"error":"nonce desconocido"}),
         );
     }
+    if k.starts_with("native-") {
+        state.web.gate.finish(k);
+    }
     Reply::json(StatusCode::OK, &serde_json::json!({"ok":true}))
+}
+
+fn native_status(web: &super::WebState, term: serde_json::Value) -> Result<Reply, HandlerError> {
+    match super::native_page::admit(
+        &web.registry,
+        &web.selection(),
+        &web.manifest(),
+        &web.web_dir,
+    ) {
+        Ok(plan) => Reply::json(
+            StatusCode::OK,
+            &serde_json::json!({"mode":"native","active":plan.ids,"artifacts":{"web_dir":web.web_dir.display().to_string()},"term":term}),
+        ),
+        Err(error) => Reply::json(
+            StatusCode::SERVICE_UNAVAILABLE,
+            &serde_json::json!({"mode":"native","error":error}),
+        ),
+    }
 }
 
 pub fn status(web: &super::WebState) -> Result<Reply, HandlerError> {

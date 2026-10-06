@@ -464,6 +464,17 @@ fn build_one(opts: &Options, c: &WasmCrate) -> Result<Built, String> {
         let text = render_boot(&format!("./{js_name}"), &format!("./{wasm_name}"));
         files.push((boot, BOOT_FILE.to_string(), text.into_bytes()));
     }
+    if c.name == "comandos-web" && c.target == BindgenTarget::Web {
+        files.extend(
+            native_page_files(
+                opts.manifest_path
+                    .parent()
+                    .ok_or("workspace manifest has no parent")?,
+            )?
+            .into_iter()
+            .map(|(name, bytes)| (name.clone(), name, bytes)),
+        );
+    }
     let parts: Vec<&[u8]> = files.iter().map(|(_, _, b)| b.as_slice()).collect();
     Ok(Built {
         hash: content_hash(&parts),
@@ -833,6 +844,136 @@ pub fn main(args: &[String]) -> i32 {
             1
         }
     }
+}
+
+/// Bundle only static native assets and their CSS dependencies; own legacy JS
+/// is never copied. All URLs in CSS/PWA resolve within the versioned directory.
+pub fn native_page_files(workspace: &Path) -> Result<Vec<NamedFile>, String> {
+    use comandos_core::web_assets::{
+        NATIVE_PAGE_FILE, NATIVE_PAGE_VERSION, NativePage, native_index_components,
+    };
+    use std::collections::{BTreeMap, BTreeSet};
+    let roots = [
+        "/workspace.css",
+        "/buttons.css",
+        "/analytics.css",
+        "/manifest.webmanifest",
+        "/icon-192.png",
+        "/icon-512.png",
+    ];
+    let urls =
+        regex::Regex::new(r#"url\(\s*['\"]?([^'\")]+)['\"]?\s*\)"#).map_err(|e| e.to_string())?;
+    let mut source = BTreeMap::new();
+    let mut pending = roots
+        .into_iter()
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+    while let Some(url) = pending.pop_first() {
+        if source.contains_key(&url) {
+            continue;
+        }
+        let rel = url.trim_start_matches('/');
+        if rel
+            .split('/')
+            .any(|s| s.is_empty() || s == ".." || s == ".")
+        {
+            return Err(format!("invalid native asset {url}"));
+        }
+        let source_path = if rel.starts_with("assets/") {
+            workspace.join(rel)
+        } else {
+            workspace.join("dash").join(rel)
+        };
+        let bytes = fs::read(source_path).map_err(|e| format!("native asset {url}: {e}"))?;
+        if url.ends_with(".css") {
+            let text = std::str::from_utf8(&bytes).map_err(|e| e.to_string())?;
+            for captures in urls.captures_iter(text) {
+                if let Some(m) = captures.get(1) {
+                    let value = m.as_str();
+                    if !value.starts_with("data:") && !value.contains("://") {
+                        pending.insert(format!("/{}", value.trim_start_matches('/')));
+                    }
+                }
+            }
+        }
+        source.insert(url, bytes);
+    }
+    let mut assets = BTreeMap::new();
+    for url in source.keys() {
+        let suffix = url.rsplit('/').next().unwrap_or("asset");
+        let physical = format!("native-{}-{suffix}", content_hash(&[url.as_bytes()]));
+        assets.insert(url.clone(), physical);
+    }
+    let mut files = Vec::new();
+    for (url, bytes) in source {
+        let physical = assets.get(&url).ok_or("native mapping missing")?.clone();
+        let bytes = if url.ends_with(".css") {
+            let mut text = String::from_utf8(bytes).map_err(|e| e.to_string())?;
+            let edits = urls
+                .captures_iter(&text)
+                .filter_map(|caps| caps.get(1).map(|m| m.as_str().to_string()))
+                .collect::<Vec<_>>();
+            for original in edits {
+                let root = format!("/{}", original.trim_start_matches('/'));
+                if let Some(target) = assets.get(&root) {
+                    text = text
+                        .replace(&format!("url('{original}')"), &format!("url('./{target}')"))
+                        .replace(
+                            &format!("url(\"{original}\")"),
+                            &format!("url(\"./{target}\")"),
+                        )
+                        .replace(&format!("url({original})"), &format!("url(./{target})"));
+                }
+            }
+            text.into_bytes()
+        } else if url == "/manifest.webmanifest" {
+            let mut manifest: serde_json::Value =
+                serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+            if let Some(icons) = manifest
+                .get_mut("icons")
+                .and_then(serde_json::Value::as_array_mut)
+            {
+                for icon in icons {
+                    if let Some(src) = icon.get("src").and_then(serde_json::Value::as_str)
+                        && let Some(target) = assets.get(src)
+                    {
+                        let target = format!("./{target}");
+                        if let Some(object) = icon.as_object_mut() {
+                            object.insert("src".into(), serde_json::Value::String(target));
+                        }
+                    }
+                }
+            }
+            if let Some(object) = manifest.as_object_mut() {
+                object.insert(
+                    "start_url".into(),
+                    serde_json::Value::String("/?web=native".into()),
+                );
+            }
+            serde_json::to_vec(&manifest).map_err(|e| e.to_string())?
+        } else {
+            bytes
+        };
+        files.push((physical, bytes));
+    }
+    let page = NativePage {
+        version: NATIVE_PAGE_VERSION,
+        template_sha256: format!(
+            "{:x}",
+            sha2::Sha256::digest(
+                comandos_web_view::index_page::shell("es")
+                    .into_string()
+                    .as_bytes()
+            )
+        ),
+        components: native_index_components()?,
+        assets,
+    };
+    files.push((
+        NATIVE_PAGE_FILE.into(),
+        serde_json::to_vec(&page).map_err(|e| e.to_string())?,
+    ));
+    Ok(files)
 }
 
 #[cfg(test)]

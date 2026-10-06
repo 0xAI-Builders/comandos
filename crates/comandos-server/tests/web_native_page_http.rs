@@ -1,0 +1,402 @@
+//! Real HTTP against disposable files, without browser or tmux processes.
+use comandos_server::{
+    Config,
+    dash::{
+        self, DashState,
+        web::{
+            WebState,
+            registry::{Entry, Resolved, sha256_hex},
+        },
+    },
+};
+use std::{path::PathBuf, sync::Arc, time::Duration};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpStream},
+    sync::watch,
+};
+
+const PAGE: &str = "legacy-exact";
+
+struct Front {
+    root: PathBuf,
+    address: std::net::SocketAddr,
+    stop: watch::Sender<bool>,
+    task: tokio::task::JoinHandle<std::io::Result<()>>,
+}
+impl Front {
+    async fn start() -> Self {
+        Self::start_readonly(false).await
+    }
+    async fn start_readonly(readonly: bool) -> Self {
+        let mut nonce = [0u8; 8];
+        getrandom::fill(&mut nonce).unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "comandos-web-http-{}-{:x}",
+            std::process::id(),
+            u64::from_le_bytes(nonce)
+        ));
+        std::fs::create_dir_all(root.join(".claude/hooks/dash")).unwrap();
+        std::fs::create_dir_all(root.join("web/fedcba987654")).unwrap();
+        std::fs::write(root.join(".claude/hooks/dash/index.html"), PAGE).unwrap();
+        std::fs::write(
+            root.join(".claude/hooks/comandos-web.json"),
+            r#"{"on":["quick-terminal"],"shadow":[]}"#,
+        )
+        .unwrap();
+        std::fs::write(root.join("quick-terminal.js"), b"original-script").unwrap();
+        std::fs::write(root.join("web/manifest.json"), r#"{"files":{"comandos_web_boot.js":"fedcba987654/boot.js","comandos_web.js":"fedcba987654/comandos_web.js","comandos_web_bg.wasm":"fedcba987654/comandos_web_bg.wasm"}}"#).unwrap();
+        for name in ["boot.js", "comandos_web.js", "comandos_web_bg.wasm"] {
+            std::fs::write(root.join("web/fedcba987654").join(name), b"fixture").unwrap();
+        }
+        let mut cfg = dash::parse_args(&[], &root, None).unwrap();
+        cfg.native = false;
+        cfg.shadow_readonly = readonly;
+        cfg.token = b"fixture-token".to_vec();
+        cfg.repo_root = Some(root.clone());
+        cfg.web_dir = root.join("web");
+        let ids = comandos_core::web_assets::native_index_components().unwrap();
+        std::fs::write(
+            root.join(".claude/hooks/comandos-web.json"),
+            serde_json::json!({"on":ids}).to_string(),
+        )
+        .unwrap();
+        let mut web = WebState::new(&cfg);
+        let mut entries = ids
+            .iter()
+            .map(|id| Entry::script(id, "compiled-only", "unused", &[], &[]))
+            .collect::<Vec<_>>();
+        entries[0].deps = vec![ids.last().unwrap().clone()];
+        web.registry = Resolved::in_memory(entries, &[]);
+        let assets = [
+            "/workspace.css",
+            "/buttons.css",
+            "/analytics.css",
+            "/manifest.webmanifest",
+            "/icon-192.png",
+            "/icon-512.png",
+        ]
+        .into_iter()
+        .map(|url| {
+            (
+                url.to_string(),
+                format!("native_{}", url.trim_start_matches('/')),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+        let descriptor = comandos_core::web_assets::NativePage {
+            version: 1,
+            template_sha256: sha256_hex(
+                comandos_web_view::index_page::shell("es")
+                    .into_string()
+                    .as_bytes(),
+            ),
+            components: ids,
+            assets: assets.clone(),
+        };
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(root.join("web/manifest.json")).unwrap())
+                .unwrap();
+        let files = manifest["files"].as_object_mut().unwrap();
+        for logical in assets.values() {
+            files.insert(
+                logical.clone(),
+                serde_json::json!(format!("fedcba987654/{logical}")),
+            );
+            std::fs::write(
+                root.join("web/fedcba987654").join(logical),
+                b"native-static",
+            )
+            .unwrap();
+        }
+        files.insert(
+            comandos_core::web_assets::NATIVE_PAGE_FILE.into(),
+            serde_json::json!("fedcba987654/comandos_native_page.json"),
+        );
+        std::fs::write(
+            root.join("web/fedcba987654/comandos_native_page.json"),
+            serde_json::to_vec(&descriptor).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("web/manifest.json"),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+        let asset_exists = dash::asset_exists(&cfg.dash_dir);
+        let state = Arc::new(DashState {
+            web,
+            config: cfg,
+            asset_exists: asset_exists.clone(),
+            native: None,
+            term_target: dash::term::attach::TmuxTarget::Private(root.clone()),
+            term_control: Arc::new(dash::term::lifecycle::Control::new(&root)),
+        });
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let config = Config {
+            token: b"fixture-token".to_vec(),
+            token_file: None,
+            asset_exists,
+            handler: dash::handler(state),
+            websocket: None,
+            limits: dash::limits(),
+        };
+        let (stop, rx) = watch::channel(false);
+        let task = tokio::spawn(comandos_server::serve(listener, config, rx));
+        Self {
+            root,
+            address,
+            stop,
+            task,
+        }
+    }
+    async fn http(&self, method: &str, path: &str, body: &str, headers: &str) -> String {
+        let mut stream = TcpStream::connect(self.address).await.unwrap();
+        stream.write_all(format!("{method} {path} HTTP/1.1\r\nHost: {}\r\nContent-Length: {}\r\nConnection: close\r\n{headers}\r\n{body}", self.address, body.len()).as_bytes()).await.unwrap();
+        let mut raw = Vec::new();
+        tokio::time::timeout(Duration::from_secs(12), stream.read_to_end(&mut raw))
+            .await
+            .unwrap()
+            .unwrap();
+        String::from_utf8(raw).unwrap()
+    }
+    async fn stop(self) {
+        self.stop.send(true).unwrap();
+        tokio::time::timeout(Duration::from_secs(3), self.task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        std::fs::remove_dir_all(self.root).unwrap();
+    }
+}
+fn nonce(page: &str) -> &str {
+    page.split_once("data-k=\"")
+        .unwrap()
+        .1
+        .split_once('"')
+        .unwrap()
+        .0
+}
+
+#[tokio::test]
+async fn compiled_native_page_serves_without_original_sources_and_ready_requires_every_mount() {
+    let front = Front::start().await;
+    std::fs::remove_file(front.root.join(".claude/hooks/dash/index.html")).unwrap();
+    std::fs::remove_file(front.root.join("quick-terminal.js")).unwrap();
+    let page = front.http("GET", "/?web=native&app=1", "", "").await;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert_eq!(page.matches("<!DOCTYPE html>").count(), 1);
+    assert_eq!(page.matches("<html").count(), 1);
+    assert_eq!(page.matches("<head>").count(), 1);
+    assert!(page.contains("comandos-web-mode\" content=\"native"));
+    assert!(page.find("id=\"servers\"").unwrap() < page.find("<script type=\"module\"").unwrap());
+    assert!(
+        !page.contains("gate.js")
+            && !page.contains("web=off")
+            && !page.contains("quick-terminal.js")
+    );
+    assert!(page.contains("/web/fedcba987654/native_workspace.css"));
+    let ids = comandos_core::web_assets::native_index_components().unwrap();
+    let meta = page
+        .split_once("<meta name=\"comandos-web\" content=\"")
+        .unwrap()
+        .1
+        .split_once('"')
+        .unwrap()
+        .0;
+    assert_eq!(
+        meta.split_whitespace().next(),
+        ids.last().map(String::as_str)
+    );
+    let status = front.http("GET", "/web/status?web=native", "", "").await;
+    assert!(
+        status.starts_with("HTTP/1.1 200") && status.contains("native"),
+        "{status}"
+    );
+    let k = nonce(&page);
+    let denied = front
+        .http(
+            "POST",
+            "/web/ready",
+            &serde_json::json!({"k":k,"mounted":ids,"failed":[{"id":"fixture"}]}).to_string(),
+            "",
+        )
+        .await;
+    assert!(denied.starts_with("HTTP/1.1 400"));
+    let denied = front
+        .http(
+            "POST",
+            "/web/ready",
+            &serde_json::json!({"k":k,"mounted":[],"failed":[]}).to_string(),
+            "",
+        )
+        .await;
+    assert!(denied.starts_with("HTTP/1.1 400"));
+    let mut repeated = ids.clone();
+    repeated.push(ids[0].clone());
+    let denied = front
+        .http(
+            "POST",
+            "/web/ready",
+            &serde_json::json!({"k":k,"mounted":repeated,"failed":[]}).to_string(),
+            "",
+        )
+        .await;
+    assert!(denied.starts_with("HTTP/1.1 400"));
+    let ready = front
+        .http(
+            "POST",
+            "/web/ready",
+            &serde_json::json!({"k":k,"mounted":ids,"failed":[]}).to_string(),
+            "",
+        )
+        .await;
+    assert!(ready.starts_with("HTTP/1.1 200"), "{ready}");
+    let duplicate = front
+        .http(
+            "POST",
+            "/web/ready",
+            &serde_json::json!({"k":k,"mounted":ids,"failed":[]}).to_string(),
+            "",
+        )
+        .await;
+    assert!(duplicate.starts_with("HTTP/1.1 400"));
+    let css = front
+        .http("GET", "/web/fedcba987654/native_workspace.css", "", "")
+        .await;
+    assert!(css.starts_with("HTTP/1.1 200") && css.contains("native-static"));
+    front.stop().await;
+}
+#[tokio::test]
+async fn incomplete_native_selection_and_assets_refuse_without_legacy_fallback() {
+    let front = Front::start().await;
+    std::fs::write(
+        front.root.join(".claude/hooks/comandos-web.json"),
+        "{\"on\":[]}",
+    )
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(1050)).await;
+    let reply = front.http("GET", "/?web=native", "", "").await;
+    assert!(
+        reply.starts_with("HTTP/1.1 503") && reply.contains("not selected on"),
+        "{reply}"
+    );
+    assert!(!reply.contains("legacy-exact"));
+    let off = front.http("GET", "/?web=off", "", "").await;
+    assert!(off.ends_with("legacy-exact"), "{off}");
+    front.stop().await;
+    let front = Front::start().await;
+    std::fs::remove_file(front.root.join("web/fedcba987654/native_workspace.css")).unwrap();
+    let reply = front.http("GET", "/?web=native", "", "").await;
+    assert!(reply.starts_with("HTTP/1.1 503"), "{reply}");
+    assert!(!reply.contains("legacy-exact"));
+    front.stop().await;
+}
+#[tokio::test]
+async fn native_admission_requires_metadata_and_rejects_dependency_cycles() {
+    use comandos_server::dash::web::{Manifest, Selection, native_page};
+    use std::collections::BTreeSet;
+    let front = Front::start().await;
+    let ids = comandos_core::web_assets::native_index_components().unwrap();
+    let selection = Selection {
+        on: ids.iter().cloned().collect(),
+        shadow: BTreeSet::new(),
+    };
+    let manifest = Manifest::load(&front.root.join("web")).unwrap();
+    let mut entries = ids
+        .iter()
+        .map(|id| Entry::script(id, "source-not-installed", "unused", &[], &[]))
+        .collect::<Vec<_>>();
+    let omitted = entries.pop().unwrap();
+    let registry = Resolved::in_memory(entries.clone(), &[]);
+    assert!(
+        native_page::admit(&registry, &selection, &manifest, &front.root.join("web"))
+            .unwrap_err()
+            .contains("component missing")
+    );
+    entries.push(omitted);
+    let first = entries.first().unwrap().id.clone();
+    let last = entries.last().unwrap().id.clone();
+    entries.first_mut().unwrap().deps = vec![last];
+    entries.last_mut().unwrap().deps = vec![first];
+    let registry = Resolved::in_memory(entries, &[]);
+    assert!(
+        native_page::admit(&registry, &selection, &manifest, &front.root.join("web"))
+            .unwrap_err()
+            .contains("dependency cycle")
+    );
+    front.stop().await;
+}
+
+/// Bounded real-payload host for a separately owned remote browser. The caller
+/// supplies only an xtask output; all HOME/config/database paths are disposable.
+#[tokio::test]
+#[ignore = "explicit real web-build payload and owned remote-browser smoke only"]
+async fn serve_real_native_payload_for_remote_smoke() {
+    let web_dir = PathBuf::from(
+        std::env::var_os("COMANDOS_SMOKE_WEB_DIR").expect("explicit web-build directory"),
+    );
+    assert!(web_dir.is_absolute());
+    let root = std::env::temp_dir().join(format!("comandos-native-smoke-{}", std::process::id()));
+    std::fs::create_dir(&root).unwrap();
+    std::fs::create_dir_all(root.join(".claude/hooks")).unwrap();
+    std::fs::write(
+        root.join(".claude/hooks/comandos-web.json"),
+        serde_json::json!({"on":comandos_core::web_assets::native_index_components().unwrap()})
+            .to_string(),
+    )
+    .unwrap();
+    let mut cfg = dash::parse_args(&[], &root, None).unwrap();
+    cfg.native = false;
+    cfg.shadow_readonly = true;
+    cfg.token = b"fixture-token".to_vec();
+    cfg.web_dir = web_dir;
+    cfg.repo_root = Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."));
+    let web = WebState::new(&cfg);
+    assert!(
+        dash::web::native_page::admit(
+            &web.registry,
+            &web.selection(),
+            &web.manifest(),
+            &cfg.web_dir
+        )
+        .is_ok()
+    );
+    let asset_exists = dash::asset_exists(&cfg.dash_dir);
+    let state = Arc::new(DashState {
+        web,
+        config: cfg,
+        asset_exists: asset_exists.clone(),
+        native: None,
+        term_target: dash::term::attach::TmuxTarget::Private(root.clone()),
+        term_control: Arc::new(dash::term::lifecycle::Control::new(&root)),
+    });
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    println!(
+        "NATIVE_SMOKE_URL=http://{}/?web=native",
+        listener.local_addr().unwrap()
+    );
+    let config = Config {
+        token: b"fixture-token".to_vec(),
+        token_file: None,
+        asset_exists,
+        handler: dash::handler(state),
+        websocket: None,
+        limits: dash::limits(),
+    };
+    let (stop, rx) = watch::channel(false);
+    let task = tokio::spawn(comandos_server::serve(listener, config, rx));
+    // Exit early by creating this private sentinel; otherwise close after 180s.
+    println!("NATIVE_SMOKE_STOP={}", root.join("stop").display());
+    for _ in 0..180 {
+        if root.join("stop").exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    stop.send(true).unwrap();
+    task.await.unwrap().unwrap();
+    std::fs::remove_dir_all(root).unwrap();
+}
