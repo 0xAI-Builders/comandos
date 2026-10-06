@@ -78,7 +78,13 @@ fn time(u: &Ui, v: &JsValue) -> String {
 }
 fn selected() -> JsValue {
     let it = invoke(&global("pickSel"), &[get(&state(), "list")]).unwrap_or(JsValue::NULL);
-    from_json(&json!({"project":get(&it,"project").as_string().filter(|s|!s.is_empty()).unwrap_or_else(||text(&get(&it,"session"))),"sessionKey":text(&get(&it,"session")),"paneKey":text(&get(&it,"pane"))})).unwrap_or(JsValue::NULL)
+    let project = get(&it, "project");
+    let project = if project.is_string() && !text(&project).is_empty() {
+        text(&project)
+    } else {
+        text(&get(&it, "session"))
+    };
+    from_json(&json!({"project":project,"sessionKey":text(&get(&it,"session")),"paneKey":text(&get(&it,"pane"))})).unwrap_or(JsValue::NULL)
 }
 fn apply(u: &Ui, settings: JsValue) {
     if !settings.is_object() {
@@ -213,10 +219,14 @@ fn note_completion(u: &Ui, v: &JsValue) -> Result<(), JsValue> {
             &format!(
                 "Bloque completado · {} min en {}",
                 (active / MIN + 0.5).floor(),
-                get(&b, "project")
-                    .as_string()
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| "sin proyecto".into())
+                {
+                    let project = text(&get(&b, "project"));
+                    if project.is_empty() {
+                        "sin proyecto".into()
+                    } else {
+                        project
+                    }
+                }
             ),
             &format!("Block complete · {} min", (active / MIN + 0.5).floor()),
         );
@@ -236,7 +246,7 @@ fn note_completion(u: &Ui, v: &JsValue) -> Result<(), JsValue> {
             "Break over · ready to continue",
         )
     };
-    ss(u, "banner", banner.into());
+    ss(u, "banner", utf16_value(&banner));
     ss(u, "bannerLevel", level_up.into());
     ss(u, "mode", if focus { "break" } else { "focus" }.into());
     Ok(())
@@ -523,7 +533,7 @@ fn render() -> Result<JsValue, JsValue> {
         "break",
         truthy(&get(&v, "live")) && get(&get(&v, "block"), "mode") == "break",
     );
-    set(&panel, "innerHTML", &panel_html(&u, &v).into())?;
+    set(&panel, "innerHTML", &utf16_value(&panel_html(&u, &v)))?;
     wire(panel.clone())?;
     let _ = invoke(
         &global("ComandosPomodoroExtras"),
@@ -951,7 +961,7 @@ fn progress(slot: JsValue, snapshot: JsValue) -> Result<JsValue, JsValue> {
         ),
         policy = escape(&text(&get(&g, "policyVersion")))
     );
-    set(&slot, "innerHTML", &html.into())?;
+    set(&slot, "innerHTML", &utf16_value(&html))?;
     Ok(JsValue::UNDEFINED)
 }
 pub(super) fn mount_ui(api: JsValue) -> Result<(), JsValue> {

@@ -1,9 +1,9 @@
 {
   "status": "implementation_native_and_actual_wasm_pass_browser_pending",
-  "artifact": "907d9739f301",
+  "artifact": "7c658a0613d7",
   "budget": {
-    "raw_bytes": 1408758,
-    "gzip_bytes": 370583,
+    "raw_bytes": 1421210,
+    "gzip_bytes": 373711,
     "limit_bytes": 614400
   },
   "actual_wasm": {
@@ -35,11 +35,25 @@
     "analytics": "d76f554af3e4abeffd3560d935c8d605f3460807b0bac34740bb912350604851",
     "analytics-render": "f3025e42ef03795c768f2cebd55aed6b0230fbee2fe2eb0d6aeca04dc95a83fa"
   },
-  "browser_acceptance": "pending coordinated root private candidate refresh and chrome-bg capability; suites use original product DOM/controls, explicit web=off versus web=shadow, require real WASM provenance",
+  "browser_acceptance": "pending Root coordinated refresh/review and chrome-bg capacity; no new browser run during remote outage; explicit web=off baseline versus verified actual WASM web=shadow candidate required",
   "external_acceptance": [
     "native host runtime",
     "human listening",
     "24h readonly shadow",
     "cutover/release"
-  ]
+  ],
+  "review_repairs": {
+    "numeric_object_key_order": "canonical JS array indices first; stable insertion ordering for other keys and ties",
+    "utf16_boundary": "explicit lossless B6/B7 adapter; high/low lone surrogates, paired text and private-use collisions preserved; existing B4/B5 adapter unchanged",
+    "supplied_actual_wasm_cases": 9,
+    "supplied_cases_all_equal": true,
+    "all_four_boundary_consumers_tested": [
+      "analytics",
+      "notifications",
+      "pomodoro",
+      "work-marks"
+    ],
+    "old_907d_red_exit": 1,
+    "final_7c658_green_exit": 0
+  }
 }

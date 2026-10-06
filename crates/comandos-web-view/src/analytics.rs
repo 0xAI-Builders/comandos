@@ -10,6 +10,29 @@ fn text(v: &Value) -> String {
         _ => v.to_string(),
     }
 }
+// JavaScript enumerates canonical array-index keys before other object keys.
+fn js_entries(v: &Value) -> Vec<(&String, &Value)> {
+    fn index(key: &str) -> Option<u32> {
+        key.parse::<u32>()
+            .ok()
+            .filter(|n| *n != u32::MAX && n.to_string() == key)
+    }
+    let mut entries = v
+        .as_object()
+        .map(|m| m.iter().collect::<Vec<_>>())
+        .unwrap_or_default();
+    entries.sort_by(|a, b| match (index(a.0), index(b.0)) {
+        (Some(a), Some(b)) => a.cmp(&b),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    });
+    entries
+}
+fn js_values(v: &Value) -> Vec<&Value> {
+    js_entries(v).into_iter().map(|(_, v)| v).collect()
+}
+
 fn num(v: &Value) -> f64 {
     v.as_f64().unwrap_or(0.)
 }
@@ -135,7 +158,7 @@ fn completed(f: &Value) -> bool {
 }
 fn encode(s: &str) -> String {
     let mut out = String::new();
-    for b in s.as_bytes() {
+    for b in crate::utf16::json_to_javascript(s).as_bytes() {
         if b.is_ascii_alphanumeric() || b"-_.!~*'()".contains(b) {
             out.push(*b as char)
         } else {
@@ -274,8 +297,8 @@ impl Renderer {
             })
             .collect();
         let mut last = json!({});
-        if let Some(m) = at(&model, "lastWeek").as_object() {
-            for (k, v) in m {
+        if at(&model, "lastWeek").is_object() {
+            for (k, v) in js_entries(at(&model, "lastWeek")) {
                 {
                     let next = v.clone();
                     *slot(&mut last, &(esc(k))) = next;
@@ -562,12 +585,13 @@ impl Renderer {
             }
         }
         let mut out = Vec::new();
-        if let Some(m) = m.as_object() {
-            for v in m.values() {
-                let id = at(v, "acc")
-                    .as_object()
-                    .and_then(|a| a.iter().max_by(|a, b| num(a.1).total_cmp(&num(b.1))))
-                    .map(|(k, _)| k.clone())
+        if m.is_object() {
+            for v in js_values(&m) {
+                let mut accounts = js_entries(at(v, "acc"));
+                accounts.sort_by(|a, b| num(b.1).total_cmp(&num(a.1)));
+                let id = accounts
+                    .first()
+                    .map(|(k, _)| (*k).clone())
                     .unwrap_or_default();
                 let mut v = v.clone();
                 {
@@ -676,8 +700,8 @@ impl Renderer {
             }
         }
         let mut out = Vec::new();
-        if let Some(groups) = groups.as_object() {
-            for a in groups.values() {
+        if groups.is_object() {
+            for a in js_values(&groups) {
                 let mut rows = arr(a);
                 rows.sort_by(|a, b| n(a, "st").total_cmp(&n(b, "st")));
                 let mut cur: Option<Value> = None;
@@ -936,10 +960,10 @@ impl Renderer {
                 *slot(a, &("q")) = next;
             }
         }
-        let mut out = projects
-            .as_object()
-            .map(|p| p.values().cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
+        let mut out = js_values(&projects)
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
         out.sort_by(|a, b| n(b, "tok").total_cmp(&n(a, "tok")));
         out
     }
@@ -965,10 +989,10 @@ impl Renderer {
                     }
                 }
             }
-            let mut top = projects
-                .as_object()
-                .map(|p| p.iter().map(|(p, h)| json!([p, h])).collect::<Vec<_>>())
-                .unwrap_or_default();
+            let mut top = js_entries(&projects)
+                .into_iter()
+                .map(|(p, h)| json!([p, h]))
+                .collect::<Vec<_>>();
             top.sort_by(|a, b| num(at(b, 1)).total_cmp(&num(at(a, 1))));
             top.truncate(3);
             json!({"n":name,"a":a,"b":b,"h":h,"top":top})
@@ -1010,15 +1034,10 @@ impl Renderer {
             }
         }
         let keys = unique(
-            cur.as_object()
+            js_entries(&cur)
                 .into_iter()
-                .flat_map(|m| m.keys().cloned())
-                .chain(
-                    self.last
-                        .as_object()
-                        .into_iter()
-                        .flat_map(|m| m.keys().cloned()),
-                ),
+                .map(|(k, _)| k.clone())
+                .chain(js_entries(&self.last).into_iter().map(|(k, _)| k.clone())),
         );
         let mut rows:Vec<_>=keys.into_iter().map(|p|json!({"p":p,"now":at(&cur, p.clone()),"prev":at(&self.last, p.clone()),"d":num(at(&cur, p.clone()))-num(at(&self.last, p))})).filter(|v|n(v,"now")!=0.||n(v,"prev")!=0.).collect();
         rows.sort_by(|a, b| n(b, "d").abs().total_cmp(&n(a, "d").abs()));
@@ -1146,10 +1165,7 @@ impl Renderer {
         waste.sort_by(|a, b| num(at(at(b, "cyc"), 0)).total_cmp(&num(at(at(a, "cyc"), 0))));
         let mut out = String::new();
         if let Some(top) = cd.first() {
-            let mut acc = at(top, "acc")
-                .as_object()
-                .map(|m| m.iter().collect::<Vec<_>>())
-                .unwrap_or_default();
+            let mut acc = js_entries(at(top, "acc"));
             acc.sort_by(|a, b| n(b.1, "q").total_cmp(&n(a.1, "q")));
             let title = acc
                 .first()
@@ -1284,8 +1300,8 @@ impl Renderer {
             let m = at(p, "acc").as_object();
             let viz = t!(
                 57,
-                m.into_iter()
-                    .flat_map(|m| m.iter())
+                js_entries(at(p, "acc"))
+                    .into_iter()
                     .map(|(id, x)| t!(
                         58,
                         field(&self.acc(id), "c"),
@@ -1351,10 +1367,7 @@ impl Renderer {
                 }
             }
         }
-        let mut out = m
-            .as_object()
-            .map(|m| m.values().cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
+        let mut out = js_values(&m).into_iter().cloned().collect::<Vec<_>>();
         out.sort_by(|a, b| n(b, "min").total_cmp(&n(a, "min")));
         out
     }
@@ -1521,9 +1534,8 @@ impl Renderer {
                 *slot(&mut m, &(p.clone())) = next;
             }
         }
-        m.as_object()
+        js_entries(&m)
             .into_iter()
-            .flat_map(|m| m.iter())
             .map(|(p, n)| t!(77, self.proj_color(p), p, text(n)))
             .collect::<Vec<_>>()
             .join(" ")

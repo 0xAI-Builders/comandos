@@ -280,7 +280,7 @@ impl Mount {
             .map_err(|_| js_sys::Error::new("Notice settings busy"))?;
         if html != *last {
             *last = html.clone();
-            set(&box_, "innerHTML", &html.into())?;
+            set(&box_, "innerHTML", &utf16_value(&html))?;
         }
         Ok(())
     }
@@ -311,12 +311,11 @@ impl Mount {
         set(
             &self.strip,
             "innerHTML",
-            &if self.hidden.get() {
+            &utf16_value(&if self.hidden.get() {
                 String::new()
             } else {
                 view::render_strip(&rendering(&view_))
-            }
-            .into(),
+            }),
         )?;
         for d in all(&self.strip, ".nt-full") {
             let key = string(
@@ -341,7 +340,7 @@ impl Mount {
         set(
             &self.float,
             "innerHTML",
-            &view::render_float(&rendering(&v)).into(),
+            &utf16_value(&view::render_float(&rendering(&v))),
         )?;
         classes(&self.root, "nt-hidden", self.hidden.get());
         classes(&self.root, "nt-collapsed", false);

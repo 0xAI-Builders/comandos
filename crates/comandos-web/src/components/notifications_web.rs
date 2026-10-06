@@ -1,4 +1,6 @@
 use super::super::web_support::*;
+use comandos_web_dom::port::utf16_string as string;
+use comandos_web_dom::port::{from_utf16_json as from_json, to_utf16_json as to_json};
 use comandos_web_dom::{bridge::global_set, port::*};
 use comandos_web_view::notifications as view;
 use js_sys::{Array, Map, Set};
@@ -983,7 +985,7 @@ pub fn mount() -> Result<(), JsValue> {
         Ok(view::is_news(&to_json(&a.get(0))).into())
     })?;
     method(&api, "groupKeyOf", |a| {
-        Ok(view::group_key(&to_json(&a.get(0))).into())
+        Ok(utf16_value(&view::group_key(&to_json(&a.get(0)))))
     })?;
     method(&api, "matchesFilter", |a| {
         Ok(view::matches(
@@ -1032,16 +1034,18 @@ pub fn mount() -> Result<(), JsValue> {
         Ok(view::clamp_height(number(&a.get(0)), number(&a.get(1))).into())
     })?;
     method(&api, "renderStrip", |a| {
-        Ok(view::render_strip(&rendering(&a.get(0))).into())
+        Ok(utf16_value(&view::render_strip(&rendering(&a.get(0)))))
     })?;
     method(&api, "renderFloat", |a| {
-        Ok(view::render_float(&rendering(&a.get(0))).into())
+        Ok(utf16_value(&view::render_float(&rendering(&a.get(0)))))
     })?;
     method(&api, "renderSettings", |a| {
-        Ok(view::render_settings(&to_json(&a.get(0))).into())
+        Ok(utf16_value(&view::render_settings(&to_json(&a.get(0)))))
     })?;
     method(&api, "floatSummary", |a| {
-        Ok(view::float_summary(&view::array(&to_json(&a.get(0)))).into())
+        Ok(utf16_value(&view::float_summary(&view::array(&to_json(
+            &a.get(0),
+        )))))
     })?;
     method(&api, "createController", |a| {
         controller(a.get(0)).map(|(out, _)| out)
@@ -1128,7 +1132,7 @@ fn watch_fetch(path: String, signal: JsValue) -> JsValue {
                     default(&r, "statusText", "La acción no se completó".into()),
                 ),
             );
-            return Err(js_sys::Error::new(&string(&message)).into());
+            return Err(invoke(&global("Error"), std::slice::from_ref(&message))?);
         }
         Ok(data)
     })

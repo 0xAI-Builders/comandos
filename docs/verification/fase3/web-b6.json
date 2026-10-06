@@ -1,6 +1,6 @@
 {
   "status": "implementation_and_node_checks_pass_browser_pending",
-  "artifact": "11d32ac0b328",
+  "artifact": "7c658a0613d7",
   "scope": "work-marks and manual Pomodoro; server authority and current polling preserved",
   "plan_discrepancy": "Current original source uses pixel-art hourglass and six styles; preserving current source and CJS contracts over obsolete plan ring wording",
   "node": {
@@ -12,7 +12,7 @@
     "prior_b5_edge_regression_pass": true
   },
   "native_tests": 7,
-  "browser_acceptance": "pending: corrected private front 11d refreshed; final coordinated remote run timed out before its first crop",
+  "browser_acceptance": "pending Root coordinated refresh/review and chrome-bg capacity; no new browser run during remote outage; explicit web=off baseline versus verified actual WASM web=shadow candidate required",
   "external_acceptance": [
     "human listening",
     "native host runtime",
@@ -37,5 +37,19 @@
     "report": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/web-functional/b6-final-product/report.json",
     "crops": 0,
     "error": "mcp tools/call: sin respuesta en 30 s"
+  },
+  "review_repairs": {
+    "numeric_object_key_order": "canonical JS array indices first; stable insertion ordering for other keys and ties",
+    "utf16_boundary": "explicit lossless B6/B7 adapter; high/low lone surrogates, paired text and private-use collisions preserved; existing B4/B5 adapter unchanged",
+    "supplied_actual_wasm_cases": 9,
+    "supplied_cases_all_equal": true,
+    "all_four_boundary_consumers_tested": [
+      "analytics",
+      "notifications",
+      "pomodoro",
+      "work-marks"
+    ],
+    "old_907d_red_exit": 1,
+    "final_7c658_green_exit": 0
   }
 }

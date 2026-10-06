@@ -42,3 +42,4 @@ pub mod pomodoro;
 pub mod analytics;
 
 pub mod notifications;
+pub mod utf16;

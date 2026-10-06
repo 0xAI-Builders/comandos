@@ -1,5 +1,6 @@
 use super::super::web_support::*;
 use super::*;
+use comandos_web_dom::port::{from_utf16_json as from_json, to_utf16_json as to_json};
 use comandos_web_dom::{bridge::global_set, port::*};
 use comandos_web_view::work_marks as view;
 use std::{cell::RefCell, rc::Rc};
@@ -351,7 +352,11 @@ fn open_menu(button: JsValue) -> Result<JsValue, JsValue> {
             t("Marca de la pestaña", "Tab mark")
         },
     );
-    set(&el, "innerHTML", &view::menu(&to_json(&items)).into())?;
+    set(
+        &el,
+        "innerHTML",
+        &utf16_value(&view::menu(&to_json(&items))),
+    )?;
     call(
         &get(&doc(), "body"),
         "appendChild",

@@ -1,5 +1,7 @@
 use super::super::web_support::*;
 use super::*;
+use comandos_web_dom::port::utf16_string as string;
+use comandos_web_dom::port::{from_utf16_json as from_json, to_utf16_json as to_json};
 use comandos_web_dom::{bridge::global_set, port::*};
 use comandos_web_view::pomodoro as art;
 use std::{cell::RefCell, rc::Rc};
@@ -88,7 +90,7 @@ fn view(st: &Rc<RefCell<Client>>) -> Result<JsValue, JsValue> {
         ),
         ("block", block.clone()),
         ("live", live.into()),
-        ("status", status.clone().into()),
+        ("status", utf16_value(&status)),
         ("remainingMs", rem.into()),
         ("elapsedMs", elapsed(&to_json(&block), at).into()),
         ("due", (live && status == "running" && rem == 0.).into()),
@@ -339,12 +341,16 @@ pub fn mount() -> Result<(), JsValue> {
         Ok(art::style(&string(&a.get(0))).into())
     })?;
     method(&api, "assetHtml", |a| {
-        Ok(art::asset(
+        let class = if a.get(2).is_string() {
+            string(&a.get(2))
+        } else {
+            String::new()
+        };
+        Ok(utf16_value(&art::asset(
             &string(&a.get(0)),
             &string(&a.get(1)),
-            a.get(2).as_string().as_deref().unwrap_or_default(),
-        )
-        .into())
+            &class,
+        )))
     })?;
     method(&api, "artFiles", |_| from_json(&art::files()))?;
     method(&api, "newRequestId", |_| Ok(new_id()))?;

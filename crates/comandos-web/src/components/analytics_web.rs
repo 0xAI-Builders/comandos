@@ -1,4 +1,6 @@
 use super::super::web_support::*;
+use comandos_web_dom::port::utf16_string as string;
+use comandos_web_dom::port::{from_utf16_json as from_json, to_utf16_json as to_json};
 use comandos_web_dom::{bridge::global_set, port::*};
 use comandos_web_view::{analytics::Renderer, escape::text as esc};
 use serde_json::json;
@@ -16,7 +18,7 @@ pub fn mount_render() -> Result<(), JsValue> {
             let mut r = state
                 .try_borrow_mut()
                 .map_err(|_| js_sys::Error::new("Analytics renderer busy"))?;
-            Ok(r.html(&string(&a.get(0))).into())
+            Ok(utf16_value(&r.html(&string(&a.get(0)))))
         })?;
         method(&out, "phoneDays", move |_| {
             Ok((r.try_borrow().map(|r| r.phone_days()).unwrap_or(0) as f64).into())
@@ -61,15 +63,14 @@ impl UI {
             set(
                 &self.el,
                 "innerHTML",
-                &format!(
+                &utf16_value(&format!(
                     "<div class=\"mhead\"><h2>Analytics</h2></div><p class=\"dim\">{}</p>",
                     esc(&if truthy(&err) {
                         string(&err)
                     } else {
                         "Leyendo el uso…".into()
                     })
-                )
-                .into(),
+                )),
             )?;
             return Ok(());
         }
@@ -86,7 +87,7 @@ impl UI {
         let instance = call(&render, "create", &[model, view])?;
         let html = string(&call(&instance, "html", &[get(&self.state, "tab")])?)
             + "<div class=\"tip\" hidden></div><div class=\"pop\" hidden></div>";
-        set(&self.el, "innerHTML", &html.into())?;
+        set(&self.el, "innerHTML", &utf16_value(&html))?;
         if phone {
             for row in all(&self.el, ".bar-row") {
                 let bar = call(&row, "closest", &[".bar".into()]).unwrap_or(JsValue::NULL);
@@ -150,11 +151,10 @@ impl UI {
                         set(
                             &state.state,
                             "error",
-                            &format!(
+                            &utf16_value(&format!(
                                 "No pude leer el uso: {}",
                                 string(if truthy(&msg) { &msg } else { &e })
-                            )
-                            .into(),
+                            )),
                         )?;
                     }
                 }
@@ -182,7 +182,7 @@ impl UI {
                 esc(&unesc(&string(&get(&row, "2"))))
             );
         }
-        set(&pop, "innerHTML", &html.into())?;
+        set(&pop, "innerHTML", &utf16_value(&html))?;
         set(&pop, "hidden", &false.into())?;
         let rect = call(&btn, "getBoundingClientRect", &[])?;
         style(
@@ -350,13 +350,12 @@ fn create(el: JsValue, opts: JsValue) -> Result<JsValue, JsValue> {
                 set(
                     &tip,
                     "innerHTML",
-                    &format!(
+                    &utf16_value(&format!(
                         "<b>{}</b><span>{}</span><em>{}</em>",
                         esc(second),
                         esc(first),
                         esc(third)
-                    )
-                    .into(),
+                    )),
                 )?;
                 set(&tip, "hidden", &false.into())?;
             }
