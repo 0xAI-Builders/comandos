@@ -12,6 +12,9 @@ use crate::index::Line;
 /// Maximum number of buffered lines outside of the grid for performance optimization.
 const MAX_CACHE_SIZE: usize = 1_000;
 
+/// Payload budget for unused rows before scrollback needs larger allocation batches.
+const COLD_CACHE_BYTES: usize = 64 * 1024;
+
 /// A ring buffer for optimizing indexing and rotation.
 ///
 /// The [`Storage::rotate`] and [`Storage::rotate_down`] functions are fast modular additions on
@@ -108,7 +111,8 @@ impl<T> Storage<T> {
         self.len -= shrinkage;
 
         // Free memory.
-        if self.inner.len() > self.len + MAX_CACHE_SIZE {
+        let columns = self.inner.first().map_or(0, Row::len);
+        if self.inner.len() > self.len + self.cache_size(columns) {
             self.truncate();
         }
     }
@@ -130,11 +134,26 @@ impl<T> Storage<T> {
         if self.len + additional_rows > self.inner.len() {
             self.rezero();
 
-            let realloc_size = self.inner.len() + max(additional_rows, MAX_CACHE_SIZE);
+            let realloc_size = self.inner.len() + max(additional_rows, self.cache_size(columns));
             self.inner.resize_with(realloc_size, || Row::new(columns));
         }
 
         self.len += additional_rows;
+    }
+
+    /// Keep cold terminals small while amortizing growth as history accumulates.
+    ///
+    /// A wide row can exceed the cold budget on its own, so always retain room for one row.
+    /// Once history is populated, batches grow geometrically up to the upstream row limit.
+    #[inline]
+    fn cache_size(&self, columns: usize) -> usize {
+        let row_bytes = columns
+            .saturating_mul(mem::size_of::<T>())
+            .saturating_add(mem::size_of::<Row<T>>())
+            .max(1);
+        let cold_rows = (COLD_CACHE_BYTES / row_bytes).clamp(1, MAX_CACHE_SIZE);
+        let history_rows = self.len.saturating_sub(self.visible_lines).min(MAX_CACHE_SIZE);
+        max(cold_rows, history_rows)
     }
 
     #[inline]
@@ -270,6 +289,50 @@ mod tests {
     use crate::grid::storage::{MAX_CACHE_SIZE, Storage};
     use crate::index::{Column, Line};
     use crate::term::cell::Flags;
+
+    #[test]
+    fn cold_cell_growth_keeps_unused_row_payload_within_64_kib() {
+        use crate::term::cell::Cell;
+        for columns in [80, 120, 240] {
+            let mut storage = Storage::<Cell>::with_capacity(24, columns);
+            storage.grow_visible_lines(32);
+            let row_bytes =
+                columns * std::mem::size_of::<Cell>() + std::mem::size_of::<Row<Cell>>();
+            let unused = storage.inner.len() - storage.len;
+            assert!(unused * row_bytes <= 64 * 1024, "{columns} columns: {unused} unused rows");
+            assert_eq!(storage.len, 32);
+            assert_eq!(storage.visible_lines, 32);
+        }
+    }
+
+    #[test]
+    fn reducing_history_releases_unused_cells_and_preserves_remaining_rows() {
+        use crate::term::cell::Cell;
+        let mut storage = Storage::<Cell>::with_capacity(24, 120);
+        storage.initialize(2048, 120);
+        storage[Line(0)][Column(0)].c = 'X';
+        storage[Line(-8)][Column(0)].c = 'H';
+        storage.shrink_lines(2036);
+        assert_eq!(storage.len, 36);
+        assert_eq!(storage[Line(0)][Column(0)].c, 'X');
+        assert_eq!(storage[Line(-8)][Column(0)].c, 'H');
+        let row_bytes = 120 * std::mem::size_of::<Cell>() + std::mem::size_of::<Row<Cell>>();
+        assert!((storage.inner.len() - storage.len) * row_bytes <= 64 * 1024);
+    }
+
+    #[test]
+    fn history_growth_reuses_chunks_instead_of_reallocating_every_small_batch() {
+        use crate::term::cell::Cell;
+        let mut storage = Storage::<Cell>::with_capacity(24, 240);
+        let mut growths = 0;
+        for _ in 0..1500 {
+            let old = storage.inner.len();
+            storage.initialize(1, 240);
+            growths += usize::from(storage.inner.len() != old);
+        }
+        assert_eq!(storage.len, 1524);
+        assert!(growths <= 16, "{growths} allocations for 1500 history rows");
+    }
 
     impl GridCell for char {
         fn is_empty(&self) -> bool {

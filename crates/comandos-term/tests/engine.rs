@@ -20,6 +20,58 @@ fn engine(cols: u16, rows: u16) -> Engine {
     Engine::new(GridSize { cols, rows }, 10_000, p)
 }
 
+#[test]
+fn repeated_height_resize_preserves_primary_and_alternate_cells_and_cursors() {
+    let mut e = engine(80, 24);
+    e.advance("normalé漢\x1b[8;6H".as_bytes(), 0.0);
+    let primary = (0..24)
+        .flat_map(|row| (0..80).map(move |col| (row, col)))
+        .map(|(row, col)| cell(&e, row, col))
+        .collect::<Vec<_>>();
+    let primary_cursor = e.term().grid().cursor.point;
+    e.advance("\x1b[?1049hALTé漢\x1b[9;7H".as_bytes(), 0.0);
+    let alternate = (0..24)
+        .flat_map(|row| (0..80).map(move |col| (row, col)))
+        .map(|(row, col)| cell(&e, row, col))
+        .collect::<Vec<_>>();
+    let alternate_cursor = e.term().grid().cursor.point;
+    for rows in [32, 24, 40, 24] {
+        e.resize(GridSize { cols: 80, rows }, (8, 16));
+        let actual = (0..24)
+            .flat_map(|row| (0..80).map(move |col| (row, col)))
+            .map(|(row, col)| cell(&e, row, col))
+            .collect::<Vec<_>>();
+        assert_eq!(actual, alternate);
+        assert_eq!(e.term().grid().cursor.point, alternate_cursor);
+    }
+    e.advance(b"\x1b[?1049l", 0.0);
+    let actual = (0..24)
+        .flat_map(|row| (0..80).map(move |col| (row, col)))
+        .map(|(row, col)| cell(&e, row, col))
+        .collect::<Vec<_>>();
+    assert_eq!(actual, primary);
+    assert_eq!(e.term().grid().cursor.point, primary_cursor);
+}
+
+#[test]
+fn history_remains_at_configured_limit_through_height_resize_and_scroll() {
+    let p = Palette::xterm_default([200; 3], [20; 3], [200; 3], [20; 3], [50; 3]);
+    let mut e = Engine::new(GridSize { cols: 20, rows: 4 }, 400, p);
+    let lines: String = (0..450).map(|n| format!("line{n}\r\n")).collect();
+    e.advance(lines.as_bytes(), 0.0);
+    assert_eq!(e.history_len(), 400);
+    let oldest = cell(&e, -400, 0);
+    for rows in [8, 4, 12, 4] {
+        e.resize(GridSize { cols: 20, rows }, (8, 16));
+    }
+    assert_eq!(e.history_len(), 400);
+    assert_eq!(cell(&e, -400, 0), oldest);
+    e.scroll_display(400);
+    assert_eq!(e.display_offset(), 400);
+    e.scroll_display(-400);
+    assert_eq!(e.display_offset(), 0);
+}
+
 fn cell(e: &Engine, line: i32, col: usize) -> alacritty_terminal::term::cell::Cell {
     e.term().grid()[Point::new(Line(line), Column(col))].clone()
 }
