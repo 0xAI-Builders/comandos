@@ -6,6 +6,8 @@
 )]
 use comandos_app::workspace_view::{DockEdge, dock_target, prune, shape, split_paths};
 use serde_json::json;
+#[path = "support/inert_oracle.rs"]
+mod inert_oracle;
 use std::collections::BTreeSet;
 
 #[test]
@@ -45,8 +47,6 @@ fn absent_workspace_focus_is_false_and_terminates() {
 
 #[test]
 fn measured_dock_targets_and_shapes_match_python_ast_oracle() {
-    use comandos_app::proc::{ProcSpec, run};
-    use std::time::Duration;
     let layout = json!({"strip":[0,0,600,40],"entries":[["a",[0,0,100,40]],["b",[100,0,80,40]]],"area":[0,40,600,400],"leaves":{"a":[0,40,300,400],"b":[300,40,300,400]},"active":"group-a","activeTabs":["a","b"]});
     let points = json!([
         [10, 20],
@@ -67,34 +67,13 @@ OUTER_PX=16
 v=json.load(sys.stdin)
 print(json.dumps({'targets':[dock_target(v['layout'],x,y,{'a'}) for x,y in v['points']],'shape':shape(v['tree']),'pruned':prune(v['tree'],{'b'}),'paths':split_paths(v['tree'])}))
 "#;
-    let output = run(&ProcSpec {
-        program: "python3".into(),
-        args: vec![
-            "-c".into(),
-            script.into(),
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../lib/gtk_workspace.py").into(),
-        ],
-        stdin: Some(serde_json::to_vec(&input).unwrap()),
-        env: vec![
-            (
-                "HOME".into(),
-                "/tmp/comandos-workspace-oracle-private-home".into(),
-            ),
-            ("PATH".into(), "/usr/bin:/bin".into()),
-        ],
-        clear_env: true,
-        env_remove: vec![],
-        cwd: None,
-        timeout: Duration::from_secs(5),
-    })
-    .unwrap();
-    assert_eq!(
-        output.code,
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
+    let oracle = inert_oracle::oracle(
+        "app-workspace-dock",
+        script,
+        "lib/gtk_workspace.py",
+        &input,
+        None,
     );
-    let oracle: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     let targets: Vec<_> = points
         .as_array()
         .unwrap()
@@ -131,9 +110,8 @@ print(json.dumps({'targets':[dock_target(v['layout'],x,y,{'a'}) for x,y in v['po
 
 #[test]
 fn trays_scroll_and_lift_threshold_match_original_python_functions() {
-    use comandos_app::{
-        proc::{ProcSpec, run},
-        workspace_view::{DragGesture, DragPhase, strip_edge_step, tray_at, tray_rects},
+    use comandos_app::workspace_view::{
+        DragGesture, DragPhase, strip_edge_step, tray_at, tray_rects,
     };
     let input = json!({"sizes":[[800,600],[220,90]],"points":[[2,70],[55,900],[56,900],[844,900],[845,900]],"trays":[[160,450],[250,500],[300,45],[1000,900]],"moves":[[6,0],[7,0],[0,7],[4,5]]});
     let script = r#"import ast,json,sys
@@ -155,33 +133,7 @@ for x,y in v['moves']:
  e=E();e.x_root=x;e.y_root=y;_ws_pointer_move(w,e);lifted.append(_WS['drag'] is not None)
 print(json.dumps({'rects':[ws_tray_rects(*size) for size in v['sizes']],'scroll':[ws_strip_edge_step(x,width) for x,width in v['points']],'hits':[ws_tray_at(r,x,y,40) for x,y in v['trays']],'lifted':lifted}))
 "#;
-    let home = std::env::temp_dir().join(format!("comandos-drag-oracle-{}", std::process::id()));
-    std::fs::create_dir_all(&home).unwrap();
-    let out = run(&ProcSpec {
-        program: "python3".into(),
-        args: vec![
-            "-c".into(),
-            script.into(),
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../bin/cc-app").into(),
-        ],
-        stdin: Some(serde_json::to_vec(&input).unwrap()),
-        env: vec![
-            ("HOME".into(), home.as_os_str().into()),
-            ("PATH".into(), "/usr/bin:/bin".into()),
-        ],
-        clear_env: true,
-        env_remove: vec![],
-        cwd: None,
-        timeout: std::time::Duration::from_secs(5),
-    })
-    .unwrap();
-    assert_eq!(
-        out.code,
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let oracle: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let oracle = inert_oracle::oracle("app-workspace-drag", script, "bin/cc-app", &input, None);
     let rects: Vec<_> = input["sizes"]
         .as_array()
         .unwrap()
@@ -219,7 +171,6 @@ print(json.dumps({'rects':[ws_tray_rects(*size) for size in v['sizes']],'scroll'
         })
         .collect();
     assert_eq!(json!(lifted), oracle["lifted"]);
-    std::fs::remove_dir_all(home).unwrap();
 }
 
 #[test]
@@ -239,7 +190,6 @@ fn cancelling_lift_keeps_source_and_restores_original_page_without_a_drop() {
 }
 #[test]
 fn natural_width_rows_match_original_reflow_without_loading_gtk() {
-    use comandos_app::proc::{ProcSpec, run};
     let input = json!([{ "width":212,"items":[100,100,20] },{"width":120,"items":[140,20,20]},{"width":400,"items":[80,90,100,110]},{"width":44,"items":[]}]);
     let script = r#"import ast,json,sys,types
 class Box:
@@ -263,33 +213,13 @@ for v in json.load(sys.stdin):
  out.append([[i.index for i in row.children] for row in s.flow.children])
 print(json.dumps(out))
 "#;
-    let home = std::env::temp_dir().join(format!("comandos-wrap-oracle-{}", std::process::id()));
-    std::fs::create_dir(&home).unwrap();
-    let out = run(&ProcSpec {
-        program: "python3".into(),
-        args: vec![
-            "-c".into(),
-            script.into(),
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../lib/gtk_tabstrip.py").into(),
-        ],
-        stdin: Some(serde_json::to_vec(&input).unwrap()),
-        env: vec![
-            ("HOME".into(), home.clone().into_os_string()),
-            ("PATH".into(), "/usr/bin:/bin".into()),
-        ],
-        clear_env: true,
-        env_remove: vec![],
-        cwd: Some(home.clone()),
-        timeout: std::time::Duration::from_secs(5),
-    })
-    .unwrap();
-    assert_eq!(
-        out.code,
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
+    let oracle = inert_oracle::oracle(
+        "app-workspace-wrap",
+        script,
+        "lib/gtk_tabstrip.py",
+        &input,
+        None,
     );
-    let oracle: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let actual: Vec<_> = input
         .as_array()
         .unwrap()
@@ -307,5 +237,4 @@ print(json.dumps(out))
         })
         .collect();
     assert_eq!(json!(actual), oracle);
-    std::fs::remove_dir_all(home).unwrap();
 }
