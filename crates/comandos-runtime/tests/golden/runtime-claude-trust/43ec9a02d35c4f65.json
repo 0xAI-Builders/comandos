@@ -1,0 +1,11 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "aa0256eb8e00d1a6e2be612a4e82bac55b1d6f76d5b3031cf4e6d8880dc205d6",
+      "script": "import sys, json; sys.path.insert(0, \"<ORACLE_SOURCE>\"); import claude_trust\ntry:\n    print(json.dumps(claude_trust.inherit_cwd_trust(\"<HOME>/codebase/p\", source_config_dir=None, dest_config_dir=\"<HOME>/.claude-accounts/rel\", home=\"<HOME>\")))\nexcept Exception as e:\n    print('error')"
+    },
+    "before_sha256": "eb8337a595b3432eb66bcc1955f92eb1ef4f1fae519b1157333950e0b34ed61d"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ0cnVlIiwidHJlZSI6eyIuY2xhdWRlLWFjY291bnRzIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCIuY2xhdWRlLWFjY291bnRzL3JlbCI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmNsYXVkZS1hY2NvdW50cy9yZWwvLmNsYXVkZS5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImV3b2dJQ0p3Y205cVpXTjBjeUk2SUhzS0lDQWdJQ0k4U0U5TlJUNHZZMjlrWldKaGMyVXZjQ0k2SUhzS0lDQWdJQ0FnSW1oaGMxUnlkWE4wUkdsaGJHOW5RV05qWlhCMFpXUWlPaUIwY25WbENpQWdJQ0I5Q2lBZ2ZRcDlDZz09In0sIi5jbGF1ZGUtYWNjb3VudHMvcmVsLy5jbGF1ZGUuanNvbi5sb2NrIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6IiJ9LCIuY2xhdWRlLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXlKNElqb2dNU3dnSW5CeWIycGxZM1J6SWpvZ2V5SThTRTlOUlQ0dlkyOWtaV0poYzJVdmNDSTZJSHNpYUdGelZISjFjM1JFYVdGc2IyZEJZMk5sY0hSbFpDSTZJSFJ5ZFdVc0lDSnZJam9nSXNPcEluMTlmUT09In0sIi5jbGF1ZGUuanNvbi5sb2NrIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6IiJ9LCJjb2RlYmFzZSI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiY29kZWJhc2UvcCI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fX19"
+}

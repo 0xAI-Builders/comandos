@@ -35,28 +35,57 @@ impl Drop for Home {
     }
 }
 
-fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+fn oracle_source() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/oracle-src")
 }
 
 /// `claude_trust.inherit_cwd_trust(...)` en el HOME `home` (como texto JSON),
-/// o `"error"` si lanza; `None` sin `python3`.
-fn python(home: &Home, cwd: &str, source: Option<&str>, dest: &str) -> Option<String> {
+/// o `"error"` si lanza. Replay aplica sus efectos de archivos y nunca ejecuta Python.
+fn python(home: &Home, cwd: &str, source: Option<&str>, dest: &str) -> String {
     let code = format!(
         "import sys, json; sys.path.insert(0, {lib:?}); import claude_trust\n\
          try:\n    print(json.dumps(claude_trust.inherit_cwd_trust({cwd:?}, source_config_dir={src}, dest_config_dir={dest:?}, home={home:?})))\n\
          except Exception as e:\n    print('error')",
-        lib = repo().join("lib").display().to_string(),
+        lib = oracle_source().display().to_string(),
         src = source.map_or("None".to_owned(), |s| format!("{s:?}")),
         home = home.s(),
     );
-    let out = Command::new("python3")
-        .arg("-c")
-        .arg(code)
-        .env("HOME", &home.0)
-        .output()
-        .ok()?;
-    Some(String::from_utf8_lossy(&out.stdout).trim().to_owned())
+    let source_root = oracle_source();
+    let roots = [
+        ("<HOME>", home.0.as_path()),
+        ("<ORACLE_SOURCE>", source_root.as_path()),
+    ];
+    let normalized_code =
+        String::from_utf8(comandos_oracle::normalize(code.as_bytes(), &roots)).unwrap();
+    comandos_oracle::text_with_tree_at(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "runtime-claude-trust",
+        &json!({"source_commit":"2674f366bb01b9db42f6f64b728929b3acfe8b83",
+            "source_sha256":"aa0256eb8e00d1a6e2be612a4e82bac55b1d6f76d5b3031cf4e6d8880dc205d6",
+            "script":normalized_code}),
+        &home.0,
+        &roots,
+        || {
+            let out = Command::new(
+                std::env::var("COMANDOS_RUNTIME_ORACLE_PYTHON")
+                    .unwrap_or_else(|_| "python3".into()),
+            )
+            .arg("-c")
+            .arg(&code)
+            .env("HOME", &home.0)
+            .env("PYTHONDONTWRITEBYTECODE", "1")
+            .current_dir(&home.0)
+            .output()
+            .map_err(|e| e.to_string())?;
+            if !out.status.success() {
+                return Err(String::from_utf8_lossy(&out.stderr).into_owned());
+            }
+            String::from_utf8(out.stdout)
+                .map(|s| s.trim().to_owned())
+                .map_err(|e| e.to_string())
+        },
+    )
+    .unwrap()
 }
 
 /// Árbol de archivos (ruta relativa, contenido, modo) bajo `home`, con la raíz
@@ -184,15 +213,12 @@ fn inherit_cwd_trust_matches_python() {
         };
         let src = |h: &Home| source.map(|s| h.0.join(s).display().to_string());
         let dest = |h: &Home| h.0.join(".claude-accounts/rel").display().to_string();
-        let Some(py) = python(
+        let py = python(
             &theirs,
             &at(&theirs),
             src(&theirs).as_deref(),
             &dest(&theirs),
-        ) else {
-            eprintln!("python3 no está instalado: se salta");
-            return;
-        };
+        );
         let got = claude_trust::inherit_cwd_trust(
             &at(&ours),
             src(&ours).as_deref(),
