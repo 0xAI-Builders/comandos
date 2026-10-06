@@ -11,6 +11,47 @@ use comandos_desktop::{
 use serde_json::{Value, json};
 use std::time::Duration;
 #[test]
+fn mac_json_loaders_preserve_text_utf8_file_policy() {
+    for (op, text) in [
+        ("saved", r#"{"雪":"Label"}"#),
+        ("metadata", r#"{"雪":{"kind":"shell","cwd":"/owned"}}"#),
+    ] {
+        let utf16le: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        let utf16be: Vec<u8> = text.encode_utf16().flat_map(u16::to_be_bytes).collect();
+        let utf32le: Vec<u8> = text
+            .chars()
+            .flat_map(|c| (c as u32).to_le_bytes())
+            .collect();
+        let utf32be: Vec<u8> = text
+            .chars()
+            .flat_map(|c| (c as u32).to_be_bytes())
+            .collect();
+        let cases = [
+            text.as_bytes().to_vec(),
+            [b"\xef\xbb\xbf".as_slice(), text.as_bytes()].concat(),
+            [b"\xff\xfe".as_slice(), &utf16le].concat(),
+            utf16le,
+            [b"\xfe\xff".as_slice(), &utf16be].concat(),
+            [b"\xff\xfe\0\0".as_slice(), &utf32le].concat(),
+            [b"\0\0\xfe\xff".as_slice(), &utf32be].concat(),
+            vec![0xff],
+        ];
+        for raw in cases {
+            let hex: String = raw.iter().map(|b| format!("{b:02x}")).collect();
+            let actual = if op == "saved" {
+                serde_json::to_value(load_saved_tabs(&raw)).unwrap()
+            } else {
+                serde_json::to_value(load_tab_metadata(&raw).unwrap()).unwrap()
+            };
+            assert_eq!(
+                actual,
+                oracle::original(json!({"op":op,"file_bytes_hex":hex})),
+                "{op} with bytes {raw:?}"
+            );
+        }
+    }
+}
+#[test]
 fn metadata_loading_and_restore_identity_match_real_mac_functions() {
     for value in [
         json!(null),

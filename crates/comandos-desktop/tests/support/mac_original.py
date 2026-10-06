@@ -9,6 +9,7 @@ class File(io.StringIO):
  def close(self):saved.append(self.getvalue());super().close()
 def fakeopen(path,mode='r'):
  if mode=='w':return File()
+ if 'file_bytes_hex' in value:return io.StringIO(bytes.fromhex(value['file_bytes_hex']).decode('utf8'))
  return io.StringIO(json.dumps(data))
 class Url:
  @classmethod

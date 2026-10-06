@@ -47,9 +47,14 @@ pub struct RestoreSpec {
 pub enum MetadataError {
     UnhashableKind(&'static str),
 }
+fn load_text_json(raw: &[u8]) -> Option<Value> {
+    // The macOS original uses json.load(open(path)) with text UTF-8 input.
+    // Preserve its rejection of BOM and UTF-16/32 rather than byte autodetection.
+    comandos_core::json::workspace_loads(std::str::from_utf8(raw).ok()?).ok()
+}
 pub fn load_tab_metadata(raw: &[u8]) -> Result<BTreeMap<String, TabMeta>, MetadataError> {
     let mut result = BTreeMap::new();
-    let data = comandos_core::json::workspace_loads_bytes(raw).unwrap_or(Value::Null);
+    let data = load_text_json(raw).unwrap_or(Value::Null);
     if let Some(items) = data.as_object() {
         for (session, item) in items {
             if !item.is_object() {
@@ -92,7 +97,7 @@ pub fn load_tab_metadata(raw: &[u8]) -> Result<BTreeMap<String, TabMeta>, Metada
 }
 pub type SavedTabs = Vec<(String, Value)>;
 pub fn load_saved_tabs(raw: &[u8]) -> SavedTabs {
-    match comandos_core::json::workspace_loads_bytes(raw) {
+    match load_text_json(raw) {
         Some(Value::Array(items)) => items
             .into_iter()
             .filter_map(|v| {
