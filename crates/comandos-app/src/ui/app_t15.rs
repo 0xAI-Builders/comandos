@@ -122,9 +122,16 @@ impl App {
         now: f64,
         copy_context: bool,
     ) -> bool {
+        if self.closed.load(Ordering::Acquire) {
+            return false;
+        }
         let action = ui::keys::action(input);
         if action == KeyAction::Pass {
             return false;
+        }
+        if action == KeyAction::Quit {
+            self.window.close();
+            return true;
         }
         if !self.writable() {
             self.status.set_text("restore not ready, shadow, or closed");

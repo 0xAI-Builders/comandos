@@ -49,7 +49,7 @@ struct Style;impl Style{fn add_class(&self,_:&str){}}
 
 #[derive(Clone,Default)]struct Widget(Rc<Cell<usize>>,Rc<RefCell<Option<Rc<dyn Fn(&Widget,&())->glib::Propagation>>>>);impl Widget{fn is_focus(&self)->bool{false}fn is_ancestor(&self,_:&Widget)->bool{false}fn new()->Self{Self::default()}fn style_context(&self)->Style{Style}fn set_visible_window(&self,_:bool){}fn set_halign(&self,_:gtk::Align){}fn set_valign(&self,_:gtk::Align){}fn set_hexpand(&self,_:bool){}fn set_vexpand(&self,_:bool){}fn add_events(&self,_:gdk::EventMask){}fn connect_button_press_event(&self,f:impl Fn(&Widget,&())->glib::Propagation+'static){self.1.replace(Some(Rc::new(f)));}fn add(&self,_:&Widget){}fn show_all(&self){}fn window(&self)->Option<Widget>{Some(self.clone())}fn raise(&self){self.0.set(self.0.get()+100);}fn upcast<T>(self)->Widget{self}fn upcast_ref(&self)->&Widget{self}fn grab_focus(&self){self.0.set(self.0.get()+1);}}impl PartialEq for Widget{fn eq(&self,o:&Self)->bool{Rc::ptr_eq(&self.0,&o.0)}}
 impl TermView{fn widget(&self)->Widget{self.inner.area.widget.clone()}fn child_tty(&self)->Option<String>{Some("/private/fake-tty".into())}}
-#[derive(Default)]struct Window{focus:RefCell<Option<Widget>>,callback:RefCell<Option<Rc<dyn Fn(&Window,&Event)->glib::Propagation>>>}impl Window{fn connect_key_press_event(&self,f:impl Fn(&Window,&Event)->glib::Propagation+'static)->u32{self.callback.replace(Some(Rc::new(f)));1}fn focused_widget(&self)->Option<Widget>{self.focus.borrow().clone()}fn upcast(self)->Widget{Widget::default()}}impl Clone for Window{fn clone(&self)->Self{Self::default()}}
+#[derive(Default)]struct Window{closes:Cell<usize>,focus:RefCell<Option<Widget>>,callback:RefCell<Option<Rc<dyn Fn(&Window,&Event)->glib::Propagation>>>}impl Window{fn close(&self){self.closes.set(self.closes.get()+1);}fn connect_key_press_event(&self,f:impl Fn(&Window,&Event)->glib::Propagation+'static)->u32{self.callback.replace(Some(Rc::new(f)));1}fn focused_widget(&self)->Option<Widget>{self.focus.borrow().clone()}fn upcast(self)->Widget{Widget::default()}}impl Clone for Window{fn clone(&self)->Self{Self::default()}}
 #[derive(Default)]struct Status(RefCell<String>);impl Status{fn set_text(&self,s:&str){self.0.replace(s.into());}}
 struct Cfg(Cell<RunMode>);impl Cfg{fn mode(&self)->RunMode{self.0.get()}}
 struct Notebook(Cell<bool>);impl Notebook{fn is_visible(&self)->bool{self.0.get()}}
@@ -146,4 +146,15 @@ fn verify_t16_click_capture(){
  app.tmux.reads.lock().unwrap().clear();for _ in 0..32{press(&event,(5,3));}release(&event,(5,3));assert_eq!(app.jobs.0.borrow().len(),1,"press burst has one worker and a single latest pending capture");app.jobs.drain();assert_eq!(app.jobs.0.borrow().len(),1);app.jobs.drain();app.jobs.drain();assert_eq!(app.tmux.reads.lock().unwrap().iter().filter(|a|a.first().map(String::as_str)==Some("select-pane")).count(),1,"only latest clean release may select");
  app.tmux.reads.lock().unwrap().clear();press(&event,(3,3));app.jobs.drain();assert!(app.jobs.0.borrow().is_empty(),"drag without clean release must not select");assert!(!app.tmux.reads.lock().unwrap().iter().any(|a|a.first().map(String::as_str)==Some("select-pane")));
  press(&event,(3,3));release(&event,(3,3));let(new,_)=term_fixture();app.terms.borrow_mut().insert("fixture".into(),new);app.jobs.drain();assert!(app.jobs.0.borrow().is_empty(),"stale capture cannot select a replacement terminal");press(&event,(3,3));release(&event,(3,3));assert!(app.jobs.0.borrow().is_empty(),"retained callbacks require originating instance");
+}
+
+fn verify_local_quit() {
+ for (mode,ready) in [(RunMode::Shadow,true),(RunMode::Sandbox,false)] {
+  let app=app_fixture();app.cfg.0.set(mode);app.ready.set(ready);
+  let q=Event{key:gdk::keys::constants::q,mods:gdk::ModifierType::CONTROL_MASK};
+  assert!(app.handle_key(&q,None));
+  assert_eq!(app.window.closes.get(),1,"local quit must close an owned window in shadow or during restore");
+  assert!(app.tmux.reads.lock().unwrap().is_empty());assert!(app.jobs.0.borrow().is_empty());
+  app.closed.store(true,Ordering::Release);assert!(!app.handle_key(&q,None));assert_eq!(app.window.closes.get(),1);let mut input=KeyInput::new(*gdk::keys::constants::q);input.control=true;assert!(!app.execute_key_context(input,None,0.,false));assert_eq!(app.window.closes.get(),1);
+ }
 }
