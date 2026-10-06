@@ -7,6 +7,7 @@ pub mod ipc;
 pub mod lang;
 pub mod mac_tabs;
 pub mod mode;
+pub mod proc;
 pub mod restore;
 pub mod state_files;
 pub mod tabs;

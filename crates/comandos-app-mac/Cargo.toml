@@ -1,0 +1,22 @@
+[package]
+name = "comandos-app-mac"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+comandos-desktop = { path = "../comandos-desktop" }
+comandos-core = { path = "../comandos-core" }
+serde_json.workspace = true
+nix = { version = "=0.31.3", default-features = false, features = ["user"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "=0.6.4"
+objc2-foundation = "=0.3.2"
+objc2-app-kit = "=0.3.2"
+objc2-web-kit = "=0.3.2"
+block2 = "=0.6.1"
+
+[lints.rust]
+unsafe_code = "deny"
