@@ -147,3 +147,79 @@ fn migrate_verify_backups_and_injected_status_roundtrip() {
     assert!(!different.status.success());
     assert!(String::from_utf8_lossy(&different.stdout).contains("hooks/snippets.json"));
 }
+
+#[test]
+fn sqlite_move_dry_run_and_inverse_cli_roundtrip() {
+    let h = Fixture::new();
+    let source = h.0.join(".claude/hooks/operator/actions.sqlite");
+    let operator = comandos_store::operator::open_operator_db_at(&source).unwrap();
+    operator
+        .conn
+        .execute("INSERT INTO actions(id,detail) VALUES('original','ñ')", [])
+        .unwrap();
+    drop(operator);
+    let before = fs::read(&source).unwrap();
+    let out = h.command(&["move", "db-operator", "--dry-run"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let estimate: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(estimate["copy_ms"].as_u64().unwrap() > 0);
+    assert_eq!(fs::read(&source).unwrap(), before);
+    assert!(!h.0.join(".local").exists());
+    let out = h.command(&["move", "db-operator"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let moved = comandos_store::operator::open_operator_db_at(&source).unwrap();
+    assert_eq!(moved.table, "operator_actions");
+    moved
+        .conn
+        .execute("INSERT INTO operator_actions(id) VALUES('after')", [])
+        .unwrap();
+    drop(moved);
+    let out = h.command(&["demote", "db-operator"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let legacy = comandos_store::operator::open_operator_db_at(&source).unwrap();
+    assert_eq!(legacy.table, "actions");
+    assert_eq!(
+        legacy
+            .conn
+            .query_row("SELECT count(*) FROM actions", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+    assert!(!h.command(&["move", "db-unknown"]).status.success());
+    assert!(
+        !h.command(&["demote", "db-operator", "--dry-run"])
+            .status
+            .success()
+    );
+}
+#[test]
+fn migrate_dry_run_reports_usage_move_estimate_without_creating_home_state() {
+    let h = Fixture::new();
+    let path = h.0.join(".claude/hooks/comandos-usage.sqlite");
+    let c = comandos_store::usage::open_usage_db_at(&path).unwrap();
+    comandos_store::usage::ensure_schema(&c).unwrap();
+    drop(c);
+    let before = fs::read(&path).unwrap();
+    let out = h.command(&["migrate", "--dry-run"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(report["usage_move_estimate_ms"].as_u64().unwrap() > 0);
+    assert_eq!(fs::read(path).unwrap(), before);
+    assert!(!h.0.join(".local").exists());
+}

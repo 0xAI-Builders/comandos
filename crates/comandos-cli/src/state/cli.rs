@@ -216,7 +216,7 @@ fn parse(args: &[String]) -> Result<(&str, Options), String> {
         match arg.as_str() {
             "--home" => opts.home = args.next().ok_or("falta --home")?.into(),
             "--json" => {}
-            "--dry-run" if command == "migrate" => opts.dry_run = true,
+            "--dry-run" if matches!(command, "migrate" | "move") => opts.dry_run = true,
             "--resume" if command == "migrate" => opts.resume = true,
             "--domain" if matches!(command, "migrate" | "verify") => opts
                 .domains
@@ -226,6 +226,12 @@ fn parse(args: &[String]) -> Result<(&str, Options), String> {
             }
             "--repo" if command == "status" => {
                 opts.repo = args.next().ok_or("falta --repo")?.into()
+            }
+            _ if matches!(command, "move" | "demote")
+                && arg.starts_with("db-")
+                && opts.domains.is_empty() =>
+            {
+                opts.domains.push(arg.clone())
             }
             _ => return Err(format!("opción state inválida: {arg}")),
         }
@@ -258,6 +264,22 @@ fn execute(command: &str, opts: &Options) -> Result<(Value, bool), String> {
         })
         .map(|report| (report.json(), false))
         .map_err(|e| e.to_string()),
+        "move" | "demote" => {
+            let domain = opts.domains.first().ok_or("falta dominio db-x")?;
+            let spec = migrate::spec_for(&opts.home, domain).map_err(|e|e.to_string())?;
+            if opts.dry_run {
+                let estimate = migrate::move_estimate(&opts.home, &spec, &db).map_err(|e|e.to_string())?;
+                return Ok((json!({"domain":domain,"dry_run":true,"bytes":estimate.bytes,"copy_ms":estimate.copy_ms,"budget_ms":4000}),false));
+            }
+            if command == "demote" {
+                migrate::demote_db(&spec, &db).map_err(|e|e.to_string())?;
+                return Ok((json!({"domain":domain,"direction":"inverse","source":spec.legacy,"target":db}),false));
+            }
+            let id=migrate::journal::new_id(migrate::journal::now_ms().map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+            let backup=opts.home.join(".local/share/comandos/backups").join(id);
+            migrate::move_db(&spec, &db, &backup,4000).map_err(|e|e.to_string())?;
+            Ok((json!({"domain":domain,"source":spec.legacy,"target":db,"backup_dir":backup.exists().then_some(backup)}),false))
+        }
         "verify" => {
             if !db.exists() {
                 return Err("verify requiere una base existente".into());
@@ -320,7 +342,7 @@ fn execute(command: &str, opts: &Options) -> Result<(Value, bool), String> {
             Ok((value, false))
         }
         _ => Err(
-            "uso: comandos state inventory|migrate|verify|status|backups [--home DIR] [--json]"
+            "uso: comandos state inventory|migrate|move db-x|demote db-x|verify|status|backups [--home DIR] [--json]"
                 .into(),
         ),
     }

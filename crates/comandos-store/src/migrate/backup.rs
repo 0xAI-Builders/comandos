@@ -221,14 +221,14 @@ pub fn verify_backup(manifest_path: &Path) -> Result<()> {
     let mut sources = BTreeSet::new();
     let mut copies = BTreeSet::new();
     for entry in manifest.entries {
-        if entry.kind != EntryKind::File
+        if !matches!(entry.kind, EntryKind::File | EntryKind::Sqlite)
             || !entry.source.is_absolute()
             || !entry.copy.is_absolute()
             || !sources.insert(entry.source.clone())
             || !copies.insert(entry.copy.clone())
         {
             return Err(Error::Validation(
-                "entradas de respaldo repetidas o no admitidas en S3".into(),
+                "entradas de respaldo repetidas o no admitidas".into(),
             ));
         }
         sources::check_parents(root, &entry.copy)?;

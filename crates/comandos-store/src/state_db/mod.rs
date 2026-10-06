@@ -23,6 +23,9 @@ pub struct MigrationOutcome {
     pub backup: Option<PathBuf>,
 }
 pub fn connect(path: &Path) -> Result<Connection> {
+    if let crate::migrate::DbLocation::Unified(path) = crate::migrate::resolve_configured(path)? {
+        return crate::unified::open_unified(&path);
+    }
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         let mut builder = DirBuilder::new();
         builder.recursive(true);

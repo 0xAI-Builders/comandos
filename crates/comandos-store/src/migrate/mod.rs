@@ -1,7 +1,12 @@
-//! Migración explícita de archivos. Las bases fuente pertenecen a S4.
+//! Migración explícita de archivos y traslado reversible de bases SQLite.
 pub mod backup;
 mod dry_run;
 mod import;
+pub mod move_db;
+pub use move_db::{
+    DbLocation, Marker, MoveEstimate, MoveSpec, demote_db, estimate, estimate_at_home, move_db,
+    move_estimate, resolve_configured, resolve_db, spec_for,
+};
 pub mod journal;
 mod sources;
 #[cfg(test)]
@@ -64,7 +69,7 @@ pub(crate) fn specs(opts: &MigrateOptions) -> Result<Vec<SourceSpec>> {
             }
             if name.starts_with("db-") {
                 return Err(Error::Validation(format!(
-                    "{name}: traslado SQLite pendiente de S4"
+                    "{name}: use state move para trasladar SQLite"
                 )));
             }
         }
@@ -101,7 +106,7 @@ pub fn migrate(opts: &MigrateOptions) -> Result<MigrateReport> {
         domains: None,
         now_ms: opts.now_ms,
     };
-    dry_run::run(&preflight, &[])?;
+    let preflight_report = dry_run::run(&preflight, &[])?;
     let conn = unified::open_unified(&opts.db)?;
     let _migration_lock = FileLock::exclusive(&sources::suffix(&opts.db, ".migration.lock"))?;
     let sources = sources::collect(&opts.home, &opts.db, &specs)?;
@@ -129,7 +134,7 @@ pub fn migrate(opts: &MigrateOptions) -> Result<MigrateReport> {
         run_id,
         backup_dir: Some(backup_dir),
         steps: vec![],
-        usage_move_estimate_ms: None,
+        usage_move_estimate_ms: preflight_report.usage_move_estimate_ms,
     };
     process(opts, &conn, &sources, &mut report, false)?;
     let manifest = backup::load(

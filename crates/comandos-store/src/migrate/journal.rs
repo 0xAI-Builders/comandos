@@ -15,7 +15,7 @@ pub fn now_ms() -> Result<i64> {
     )
     .map_err(|e| Error::Validation(e.to_string()))
 }
-pub(super) fn new_id(now_ms: i64) -> Result<String> {
+pub fn new_id(now_ms: i64) -> Result<String> {
     let date = chrono::DateTime::from_timestamp_millis(now_ms)
         .ok_or_else(|| Error::Validation("fecha fuera de rango".into()))?;
     let mut random = [0u8; 2];
@@ -34,7 +34,7 @@ pub(super) fn start(c: &Connection, id: &str, backup: &Path, now: i64) -> Result
     Ok(())
 }
 pub(super) fn latest_running(c: &Connection) -> Result<(String, PathBuf)> {
-    c.query_row("SELECT run_id,backup_dir FROM migration_runs WHERE status='running' ORDER BY started_at_ms DESC,run_id DESC LIMIT 1",[],|r|Ok((r.get(0)?,PathBuf::from(r.get::<_,String>(1)?)))).optional()?.ok_or_else(||Error::Validation("no hay una migración running que reanudar".into()))
+    c.query_row("SELECT run_id,backup_dir FROM migration_runs WHERE status='running' AND NOT EXISTS(SELECT 1 FROM migration_steps s WHERE s.run_id=migration_runs.run_id AND s.domain LIKE 'db-%') ORDER BY started_at_ms DESC,run_id DESC LIMIT 1",[],|r|Ok((r.get(0)?,PathBuf::from(r.get::<_,String>(1)?)))).optional()?.ok_or_else(||Error::Validation("no hay una migración running que reanudar".into()))
 }
 pub(super) fn finish(c: &Connection, id: &str, now: i64) -> Result<()> {
     c.execute(

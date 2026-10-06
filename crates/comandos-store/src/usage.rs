@@ -35,6 +35,9 @@ pub fn open_usage_db(home: &Path) -> Result<Connection> {
 /// `usage_db_path()` de Python) con los mismos PRAGMAs. Como `os.makedirs` de
 /// `connect()`, crea el directorio padre y falla si la ruta no tiene directorio.
 pub fn open_usage_db_at(path: &Path) -> Result<Connection> {
+    if let crate::migrate::DbLocation::Unified(path) = crate::migrate::resolve_configured(path)? {
+        return crate::unified::open_unified(&path);
+    }
     match path.parent().filter(|dir| !dir.as_os_str().is_empty()) {
         Some(dir) => std::fs::create_dir_all(dir).map_err(Error::Io)?,
         None => {

@@ -47,9 +47,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 // transactions roll back on an error or unwind, and take the write lock first.
 fn with_transaction<T>(conn: &Connection, run: impl FnOnce() -> Result<T>) -> Result<T> {
     if !conn.is_autocommit() {
+        migrate::move_db::admit_write(conn)?;
         return run();
     }
     let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)?;
+    migrate::move_db::admit_write(conn)?;
     let value = run()?;
     tx.commit()?;
     Ok(value)
@@ -250,3 +252,5 @@ pub mod pomodoro;
 pub mod usage;
 pub mod usage_import;
 pub mod usage_read;
+
+pub mod operator;

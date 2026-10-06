@@ -1039,19 +1039,33 @@ fn at_key(item: &Value) -> Result<f64, Fault> {
 /// `_history_append(hooks_dir, items, ts)`: historial `news-history.sqlite`
 /// (inserción o actualización por URL); `None` ante cualquier error.
 fn history_append(hooks: &Path, items: &[Value], ts: i64) -> Option<i64> {
-    let con = rusqlite::Connection::open(hooks.join("news-history.sqlite")).ok()?;
+    let legacy = hooks.join("news-history.sqlite");
+    let location = comandos_store::migrate::resolve_configured(&legacy).ok()?;
+    let (con, table) = match location {
+        comandos_store::migrate::DbLocation::Legacy(path) => {
+            (rusqlite::Connection::open(path).ok()?, "events")
+        }
+        comandos_store::migrate::DbLocation::Unified(path) => (
+            comandos_store::unified::open_unified(&path).ok()?,
+            "news_radar_events",
+        ),
+    };
     con.busy_timeout(Duration::from_secs(10)).ok()?;
+    let tx = rusqlite::Transaction::new_unchecked(&con, rusqlite::TransactionBehavior::Immediate)
+        .ok()?;
+    comandos_store::migrate::move_db::admit_write(&con).ok()?;
     con.execute(
-        "create table if not exists events(
+        &format!(
+            "create table if not exists {table}(
             url text primary key, source text not null, kind text not null,
             title text not null, at integer not null,
             first_seen integer not null, last_seen integer not null,
-            meta text not null default '{}')",
+            meta text not null default '{{}}')"
+        ),
         [],
     )
     .ok()?;
     if !items.is_empty() {
-        let tx = con.unchecked_transaction().ok()?;
         for it in items {
             let it = it.as_object()?;
             let text = |k: &str| it.get(k).and_then(Value::as_str).map(str::to_owned);
@@ -1061,10 +1075,12 @@ fn history_append(hooks: &Path, items: &[Value], ts: i64) -> Option<i64> {
             };
             let meta = response_dumps_unicode(&meta).ok()?;
             tx.execute(
-                "insert into events(url,source,kind,title,at,first_seen,last_seen,meta)
+                &format!(
+                    "insert into {table}(url,source,kind,title,at,first_seen,last_seen,meta)
                 values(?,?,?,?,?,?,?,?)
                 on conflict(url) do update set last_seen=excluded.last_seen,
-                  title=excluded.title, meta=excluded.meta",
+                  title=excluded.title, meta=excluded.meta"
+                ),
                 rusqlite::params![
                     text("url")?,
                     text("source")?,
@@ -1078,9 +1094,9 @@ fn history_append(hooks: &Path, items: &[Value], ts: i64) -> Option<i64> {
             )
             .ok()?;
         }
-        tx.commit().ok()?;
     }
-    con.query_row("select count(*) from events", [], |row| {
+    tx.commit().ok()?;
+    con.query_row(&format!("select count(*) from {table}"), [], |row| {
         row.get::<_, i64>(0)
     })
     .ok()
@@ -1180,6 +1196,46 @@ pub fn watch_news(sources: &Sources, hooks: &Path, now: i64) -> Result<NewsWatch
 mod tests {
     use super::*;
 
+    #[test]
+    fn moved_history_writes_renamed_table_and_legacy_stays_unchanged() {
+        let home = std::env::temp_dir().join(format!(
+            "comandos-s4-news-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let hooks = home.join(".claude/hooks");
+        std::fs::create_dir_all(&hooks).unwrap();
+        let original = json!({"url":"original","source":"source","kind":"kind","title":"ñ","at":1});
+        assert_eq!(history_append(&hooks, &[original], 1), Some(1));
+        let spec = comandos_store::migrate::spec_for(&home, "db-news").unwrap();
+        let target = home.join(".local/share/comandos/comandos.sqlite3");
+        comandos_store::migrate::move_db(
+            &spec,
+            &target,
+            &home.join(".local/share/comandos/backups/test"),
+            4000,
+        )
+        .unwrap();
+        assert_eq!(
+            history_append(
+                &hooks,
+                &[json!({"url":"after","source":"source","kind":"kind","title":"new","at":2})],
+                2
+            ),
+            Some(2)
+        );
+        let old = rusqlite::Connection::open(&spec.legacy).unwrap();
+        assert_eq!(
+            old.query_row("SELECT count(*) FROM events", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        drop(old);
+        std::fs::remove_dir_all(home).unwrap();
+    }
     #[test]
     fn isoformat_like_cpython_310() {
         assert_eq!(

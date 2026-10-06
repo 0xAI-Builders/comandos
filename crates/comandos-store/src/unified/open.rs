@@ -12,7 +12,7 @@ pub fn unified_path(home: &Path) -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| home.join(".local/share/comandos/comandos.sqlite3"))
 }
-pub(super) fn validate(conn: &Connection) -> Result<BTreeSet<i64>> {
+pub(crate) fn validate(conn: &Connection) -> Result<BTreeSet<i64>> {
     let uv: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
     if uv > crate::usage::SCHEMA_VERSION {
         return Err(Error::Validation(
@@ -130,5 +130,23 @@ pub fn open_unified(path: &Path) -> Result<Connection> {
         rusqlite::config::DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
         false,
     )?;
+    Ok(conn)
+}
+
+// Una base completa no necesita tomar el candado de migración al abrirse.
+// La puerta es la misma; sólo se omite aplicar DDL que ya está confirmado.
+pub(crate) fn open_existing(path: &Path) -> Result<Connection> {
+    let conn = super::preflight::accept(path)?;
+    let known = validate(&conn)?;
+    let uv: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    if uv != crate::usage::SCHEMA_VERSION
+        || known != UNIFIED_MIGRATIONS.iter().map(|m| m.version).collect()
+    {
+        drop(conn);
+        return open_unified(path);
+    }
+    conn.busy_timeout(Duration::from_secs(5))?;
+    conn.pragma_update(None, "foreign_keys", true)?;
+    conn.pragma_update(None, "journal_mode", "WAL")?;
     Ok(conn)
 }
