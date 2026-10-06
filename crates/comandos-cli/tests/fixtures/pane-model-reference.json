@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "source_commit": "2674f36",
+  "cases": [
+    {
+      "pane": "%1",
+      "body": "%12 codex other\n%1 claude Opus ñ😀\n%1 codex later\n",
+      "expected": "#[fg=colour141,bold]▸ claude Opus ñ😀#[default]"
+    },
+    {
+      "pane": "%2",
+      "body": "%2 codex gpt-5\n",
+      "expected": "#[fg=colour43,bold]▸ codex gpt-5#[default]"
+    },
+    {
+      "pane": "%3",
+      "body": "%3 grok-fast beta\n",
+      "expected": "#[fg=colour208,bold]▸ grok-fast beta#[default]"
+    },
+    {
+      "pane": "%4",
+      "body": "%4 opencode model\n",
+      "expected": "#[fg=colour215,bold]▸ opencode model#[default]"
+    },
+    {
+      "pane": "%5",
+      "body": "%5 gemini model\n",
+      "expected": "#[fg=colour111,bold]▸ gemini model#[default]"
+    },
+    {
+      "pane": "%6",
+      "body": "%6 agy model\n",
+      "expected": "#[fg=colour183,bold]▸ agy model#[default]"
+    },
+    {
+      "pane": "%7",
+      "body": "%7 shell raw\n",
+      "expected": "#[fg=colour244,bold]▸ shell raw#[default]"
+    },
+    {
+      "pane": "%1",
+      "body": "%12 claude different\n",
+      "expected": ""
+    },
+    {
+      "pane": "",
+      "body": "%1 claude ignored\n",
+      "expected": ""
+    }
+  ]
+}

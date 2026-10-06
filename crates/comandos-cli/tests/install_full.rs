@@ -39,10 +39,7 @@ fn installer_resources_and_aliases_match_frozen_legacy_install_tree() {
         }
         if matches!(
             relative.as_str(),
-            ".local/bin/cc-app-mac"
-                | ".local/bin/cc-extension-session"
-                | ".local/bin/cc-pane-model"
-                | ".local/bin/cc_usage.py"
+            ".local/bin/cc-app-mac" | ".local/bin/cc-extension-session" | ".local/bin/cc_usage.py"
         ) {
             remaining.push(relative.as_str());
             continue;
@@ -90,9 +87,9 @@ fn installer_resources_and_aliases_match_frozen_legacy_install_tree() {
         }
     }
     assert_eq!(resources, 15);
-    assert_eq!(aliases, 25);
+    assert_eq!(aliases, 26);
     assert_eq!(frontend, 33);
-    assert_eq!(remaining.len(), 4);
+    assert_eq!(remaining.len(), 3);
 }
 struct Home(PathBuf);
 impl Home {

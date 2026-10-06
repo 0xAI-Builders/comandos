@@ -8,6 +8,7 @@ pub mod install;
 pub mod keys;
 pub mod mobile;
 pub mod next;
+pub mod pane_model;
 pub mod raise;
 pub mod snapshot;
 pub mod state;

@@ -40,6 +40,7 @@ fn main() {
         Command::Raise(args) => comandos_cli::raise::main(&args),
         Command::Winstart(args) => comandos_cli::winstart::main(&args),
         Command::Next(args) => comandos_cli::next::main(&args),
+        Command::PaneModel(args) => comandos_cli::pane_model::main(&args),
         Command::Snapshot(args) => comandos_cli::snapshot::main(&args),
         Command::Agents(args) => comandos_cli::agents::main(&args),
         Command::Doctor(args) => comandos_cli::doctor::main(&args),
@@ -52,7 +53,7 @@ fn main() {
         }
         Command::Help => {
             println!(
-                "uso: comandos <ext|hook|events|install|dash|browser|web|webterm|webterm-attach|state|keys|x|raise|winstart|next|snapshot|agents|doctor|acp|mobile|codex|--version>"
+                "uso: comandos <ext|hook|events|install|dash|browser|web|webterm|webterm-attach|state|keys|x|raise|winstart|next|pane-model|snapshot|agents|doctor|acp|mobile|codex|--version>"
             );
             0
         }
