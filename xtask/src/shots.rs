@@ -33,6 +33,8 @@ pub struct PairEntry {
     pub channel: u8,
     pub ratio: f64,
     pub full_page: bool,
+    pub prepare: Option<String>,
+    pub require_wasm: bool,
 }
 
 /// Suite `remote-vs-desktop`.
@@ -44,6 +46,9 @@ pub struct RemoteSuite {
     pub components: Vec<String>,
     pub remote_only: Vec<String>,
     pub remote_query: String,
+    pub desktop_query: String,
+    pub prepare: Option<String>,
+    pub require_wasm: bool,
 }
 
 /// Propiedades que deben coincidir entre escritorio y remoto; las de
@@ -164,6 +169,11 @@ pub fn parse_pair_suite(text: &str) -> Result<Vec<PairEntry>, String> {
                 channel,
                 ratio,
                 full_page: o.get("full_page").and_then(Value::as_bool).unwrap_or(true),
+                prepare: text("prepare"),
+                require_wasm: o
+                    .get("require_wasm")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
                 id,
             })
         })
@@ -195,6 +205,16 @@ pub fn parse_remote_suite(text: &str) -> Result<RemoteSuite, String> {
             .and_then(Value::as_str)
             .unwrap_or("__devwebterm=1")
             .to_string(),
+        desktop_query: o
+            .get("desktop_query")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        prepare: o.get("prepare").and_then(Value::as_str).map(str::to_string),
+        require_wasm: o
+            .get("require_wasm")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
     })
 }
 
@@ -332,13 +352,24 @@ fn rect_of(v: &Value) -> Option<[f64; 4]> {
 fn capture(page: &mut Page<'_>, url: &str, entry: &PairEntry) -> Result<Capture, String> {
     page.navigate(url)?;
     wait_ready(page)?;
+    if let Some(prepare) = &entry.prepare {
+        page.eval(prepare)?;
+    }
+    if entry.require_wasm && url.contains("web=shadow") {
+        let proof = page.eval("() => ({ready:window.__comandosReady,mode:new URLSearchParams(location.search).get('web'),wasm:performance.getEntriesByType('resource').some(x=>x.name.endsWith('comandos_web_bg.wasm'))})")?;
+        if proof["ready"] != true || proof["mode"] != "shadow" || proof["wasm"] != true {
+            return Err(format!(
+                "production candidate did not boot actual WASM: {proof}"
+            ));
+        }
+    }
     // Se mide antes de capturar: así máscara y recorte describen el mismo
     // estado que la captura que sigue, sin una ventana entre ambas.
     let js = format!(
         "() => {{ const box = e => {{ const r = e.getBoundingClientRect(); \
          return [r.x + scrollX, r.y + scrollY, r.width, r.height]; }}; \
          const all = s => [...document.querySelectorAll(s)]; \
-         return {{ scale: devicePixelRatio, proof: {{wasm_url:window.fixtureWasmUrl || null, actions:window.fixtureApiCalls || null}}, \
+         return {{ scale: devicePixelRatio, proof: {{wasm_url:window.fixtureWasmUrl || performance.getEntriesByType('resource').find(x=>x.name.endsWith('comandos_web_bg.wasm'))?.name || null, actions:window.productApiCalls || window.fixtureApiCalls || null, product:window.productProof || null}}, \
          sel: {sel}.map(s => all(s).map(e => [box(e), e.outerHTML])), \
          mask: {mask}.map(s => all(s).map(box)) }}; }}",
         sel = js_list(&entry.selectors),
@@ -626,7 +657,7 @@ fn styles_js(selectors: &[String]) -> String {
     format!(
         "() => {{ const props = {props}; return {sels}.map(s => {{ \
          const e = document.querySelector(s); if (!e) return null; \
-         const cs = getComputedStyle(e); const o = {{}}; \
+         const cs = getComputedStyle(e); const o = {{__proof:{{ready:window.__comandosReady||false,wasm_url:performance.getEntriesByType('resource').find(x=>x.name.endsWith('comandos_web_bg.wasm'))?.name||null,actions:window.productApiCalls||null}}}}; \
          for (const p of props) o[p] = cs.getPropertyValue(p); return o; }}); }}",
         props = js_list(&props),
         sels = js_list(selectors),
@@ -637,11 +668,24 @@ fn load_styles(
     page: &mut Page<'_>,
     url: &str,
     selectors: &[String],
+    prepare: Option<&str>,
+    require_wasm: bool,
 ) -> Result<Vec<Option<Map<String, Value>>>, String> {
     page.navigate(url)?;
     wait_ready(page)?;
+    if let Some(prepare) = prepare {
+        page.eval(prepare)?;
+    }
     let v = page.eval(&styles_js(selectors))?;
     let list = v.as_array().ok_or("estilos: se esperaba una lista")?;
+    if require_wasm
+        && url.contains("web=shadow")
+        && list
+            .iter()
+            .any(|row| row["__proof"]["ready"] != true || row["__proof"]["wasm_url"].is_null())
+    {
+        return Err("remote style candidate did not boot actual WASM".into());
+    }
     Ok(list.iter().map(|s| s.as_object().cloned()).collect())
 }
 
@@ -662,14 +706,26 @@ pub fn run_remote_vs_desktop(
         .chain(&suite.remote_only)
         .cloned()
         .collect();
-    let desktop_url = page_url(base, &suite.page, "");
+    let desktop_url = page_url(base, &suite.page, &suite.desktop_query);
     let remote_url = page_url(remote_base, &suite.page, &suite.remote_query);
     let mut rows = Vec::new();
     let mut page = client.open_page("about:blank")?;
     for &width in &suite.widths {
         page.emulate(width, suite.height, 1, false)?;
-        let desktop = load_styles(&mut page, &desktop_url, &selectors)?;
-        let remote = load_styles(&mut page, &remote_url, &selectors)?;
+        let desktop = load_styles(
+            &mut page,
+            &desktop_url,
+            &selectors,
+            suite.prepare.as_deref(),
+            suite.require_wasm,
+        )?;
+        let remote = load_styles(
+            &mut page,
+            &remote_url,
+            &selectors,
+            suite.prepare.as_deref(),
+            suite.require_wasm,
+        )?;
         for (i, sel) in selectors.iter().enumerate() {
             let remote_only = i >= suite.components.len();
             let d = desktop.get(i).and_then(Option::as_ref);
@@ -677,7 +733,9 @@ pub fn run_remote_vs_desktop(
             let problems = compare_styles(sel, d, r, remote_only);
             rows.push(
                 json!({"width": width, "selector": sel, "remote_only": remote_only,
-                "pass": problems.is_empty(), "problems": problems}),
+                "pass": problems.is_empty(), "problems": problems,
+                "desktop_proof": d.and_then(|row| row.get("__proof")),
+                "remote_proof": r.and_then(|row| row.get("__proof"))}),
             );
         }
     }

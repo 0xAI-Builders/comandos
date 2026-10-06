@@ -1,0 +1,38 @@
+{
+  "status": "pass",
+  "artifact": "4d3c40ac1992",
+  "anchor_browser": {
+    "wasm": [
+      "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm"
+    ],
+    "savedLength": 300,
+    "lastCodeUnit": 55357,
+    "find": {
+      "state": "found",
+      "index": 0
+    }
+  },
+  "dispose_browser": {
+    "trusted": true,
+    "settled": true,
+    "completions": 2,
+    "wasm": [
+      "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm"
+    ],
+    "scope": "Temporary trusted gesture probe on actual WASM in the full private front; behavioral evidence, excluded from product DOM crops"
+  },
+  "node_regression": {
+    "script": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-fase3/xtask/web/fixtures/sounds/edge-check.mjs",
+    "red_artifact": "a99d4b03ca31",
+    "red_exit": 1,
+    "green_artifact": "4d3c40ac1992",
+    "green_exit": 0,
+    "checks": [
+      "exact300-unit anchor/lone surrogate and find",
+      "active playback completion on dispose",
+      "stopping playback completion on dispose",
+      "natural source-ended completion",
+      "zero owned ended listeners after teardown"
+    ]
+  }
+}

@@ -44,8 +44,35 @@ struct Player {
     master: JsValue,
     buffers: BTreeMap<String, JsValue>,
     voices: BTreeMap<String, (JsValue, JsValue, f64)>,
+    playbacks: BTreeMap<u64, Playback>,
+    next_playback: u64,
     volume: f64,
     last_started: BTreeMap<String, f64>,
+}
+struct Playback {
+    source: JsValue,
+    gain: JsValue,
+    resolve: JsValue,
+    listener: JsValue,
+}
+fn finish_playback(state: &Rc<RefCell<Player>>, id: u64) -> Result<JsValue, JsValue> {
+    let mut player = state.try_borrow_mut().map_err(|_| borrowed())?;
+    let Some(playback) = player.playbacks.remove(&id) else {
+        return Ok(JsValue::UNDEFINED);
+    };
+    player
+        .voices
+        .retain(|_, (source, _, _)| source != &playback.source);
+    drop(player);
+    let _ = call(
+        &playback.source,
+        "removeEventListener",
+        &["ended".into(), playback.listener],
+    );
+    let _ = call(&playback.source, "disconnect", &[]);
+    let _ = call(&playback.gain, "disconnect", &[]);
+    invoke(&playback.resolve, &[])?;
+    Ok(JsValue::UNDEFINED)
 }
 fn rust_player(volume: f64, pack: String) -> Result<JsValue, JsValue> {
     let state = Rc::new(RefCell::new(Player {
@@ -53,6 +80,8 @@ fn rust_player(volume: f64, pack: String) -> Result<JsValue, JsValue> {
         master: JsValue::NULL,
         buffers: BTreeMap::new(),
         voices: BTreeMap::new(),
+        playbacks: BTreeMap::new(),
+        next_playback: 0,
         last_started: BTreeMap::new(),
         volume,
     }));
@@ -105,7 +134,9 @@ fn rust_player(volume: f64, pack: String) -> Result<JsValue, JsValue> {
     let st = state.clone();
     let stop = function(move |_| {
         let mut s = st.try_borrow_mut().map_err(|_| borrowed())?;
-        for (_, (_, handle, _)) in std::mem::take(&mut s.voices) {
+        let voices = std::mem::take(&mut s.voices);
+        drop(s);
+        for (_, (_, handle, _)) in voices {
             let _ = call(&handle, "stop", &[]);
         }
         Ok(JsValue::UNDEFINED)
@@ -114,8 +145,21 @@ fn rust_player(volume: f64, pack: String) -> Result<JsValue, JsValue> {
     let st = state.clone();
     method(&o, "destroy", move |_| {
         invoke(&stop, &[])?;
+        // A stopped source can still be fading. Closing its context can cancel
+        // native ended delivery, so teardown owns completion of every playback.
+        let ids = st
+            .try_borrow()
+            .map_err(|_| borrowed())?
+            .playbacks
+            .keys()
+            .copied()
+            .collect::<Vec<_>>();
+        for id in ids {
+            finish_playback(&st, id)?;
+        }
         let mut s = st.try_borrow_mut().map_err(|_| borrowed())?;
         s.buffers.clear();
+        let _ = call(&s.master, "disconnect", &[]);
         let c = s.context.clone();
         s.context = JsValue::NULL;
         s.master = JsValue::NULL;
@@ -217,7 +261,10 @@ fn rust_player(volume: f64, pack: String) -> Result<JsValue, JsValue> {
                 return Ok(JsValue::UNDEFINED);
             }
             if let Ok(mut s) = player_state.try_borrow_mut()
-                && s.voices.get(&stop_key).is_some_and(|(current, _, _)| current == &src) {
+                && s.voices
+                    .get(&stop_key)
+                    .is_some_and(|(current, _, _)| current == &src)
+            {
                 s.voices.remove(&stop_key);
             }
             let now = get(&context, "currentTime").as_f64().unwrap_or(0.0);
@@ -236,39 +283,31 @@ fn rust_player(volume: f64, pack: String) -> Result<JsValue, JsValue> {
             let _ = call(&src, "stop", &[(now + 0.018).into()]);
             Ok(JsValue::UNDEFINED)
         })?;
-        let holder = Rc::new(RefCell::new(JsValue::UNDEFINED));
-        let holder2 = holder.clone();
-        let ended = js_sys::Promise::new(&mut move |resolve, _| {
-            if let Ok(mut h) = holder2.try_borrow_mut() {
-                *h = resolve.into();
-            }
+        let mut resolve_ended = JsValue::UNDEFINED;
+        let ended = js_sys::Promise::new(&mut |resolve, _| {
+            resolve_ended = resolve.into();
         });
         set(&handle, "ended", &ended.into())?;
         let st = state.clone();
-        let key = cue.clone();
-        let src = source.clone();
-        let ended_cb = function(move |_| {
-            if let Ok(mut s) = st.try_borrow_mut()
-                && s.voices
-                    .get(&key)
-                    .is_some_and(|(current, _, _)| current == &src)
-            {
-                s.voices.remove(&key);
-            }
-            let _ = call(&src, "disconnect", &[]);
-            let _ = call(&gain, "disconnect", &[]);
-            if let Ok(resolve) = holder.try_borrow() {
-                let _ = invoke(&resolve, &[]);
-            }
-            Ok(JsValue::UNDEFINED)
-        });
+        s.next_playback += 1;
+        let id = s.next_playback;
+        let ended_cb = function(move |_| finish_playback(&st, id));
         let once = object();
         set(&once, "once", &true.into())?;
         call(
             &source,
             "addEventListener",
-            &["ended".into(), ended_cb, once],
+            &["ended".into(), ended_cb.clone(), once],
         )?;
+        s.playbacks.insert(
+            id,
+            Playback {
+                source: source.clone(),
+                gain,
+                resolve: resolve_ended,
+                listener: ended_cb,
+            },
+        );
         s.last_started.insert(cue.clone(), now);
         s.voices.insert(cue, (source.clone(), handle.clone(), now));
         call(&source, "start", &[])?;

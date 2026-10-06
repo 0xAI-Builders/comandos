@@ -197,7 +197,6 @@ impl AnchorMemory {
 
 #[cfg(target_arch = "wasm32")]
 pub mod web {
-    use super::line_at;
     use crate::port::*;
     use std::{cell::RefCell, rc::Rc};
     use wasm_bindgen::JsValue;
@@ -206,6 +205,23 @@ pub mod web {
         timer: JsValue,
         last_saved: Option<String>,
         pending: Option<(String, JsValue, JsValue)>,
+    }
+    #[derive(Default)]
+    struct AnchorState {
+        timer: JsValue,
+        saved: JsValue,
+    }
+    // Keep browser strings in UTF-16: a JavaScript slice may end in a lone
+    // surrogate, which cannot round-trip through Rust's UTF-8 String.
+    fn js_line_at(text: JsValue, index: JsValue) -> js_sys::JsString {
+        let text = js_sys::JsString::from(text);
+        let position = (number(&index) - 1.0).max(0.0) as i32;
+        let start = text.last_index_of("\n", position) + 1;
+        let end = text.index_of("\n", start);
+        text.slice(
+            start as u32,
+            if end < 0 { text.length() } else { end as u32 },
+        )
     }
     fn timer_options(opts: &JsValue, delay: f64) -> (JsValue, JsValue, JsValue, JsValue) {
         let global = js_sys::global();
@@ -239,11 +255,7 @@ pub mod web {
     pub fn export() -> Result<(), JsValue> {
         let api = object();
         method(&api, "lineAt", |args| {
-            Ok(line_at(
-                &string(&args.get(0)),
-                args.get(1).as_f64().unwrap_or(0.0).max(0.0) as usize,
-            )
-            .into())
+            Ok(js_line_at(args.get(0), args.get(1)).into())
         })?;
         method(&api, "createDrafts", |args| {
             let opts = args.get(0);
@@ -368,9 +380,9 @@ pub mod web {
             let opts = args.get(0);
             let key = string(&get(&opts, "key"));
             let (schedule, cancel, now, delay) = timer_options(&opts, 800.0);
-            let state = Rc::new(RefCell::new(State {
+            let state = Rc::new(RefCell::new(AnchorState {
                 timer: 0.into(),
-                ..State::default()
+                ..AnchorState::default()
             }));
             let out = object();
             let options = opts.clone();
@@ -389,8 +401,11 @@ pub mod web {
                     if !truthy(&line) {
                         return from_json(&serde_json::json!({"state":"none"}));
                     }
-                    let index =
-                        js_sys::JsString::from(text).last_index_of(&string(&line), i32::MAX);
+                    let prototype = get(&get(&js_sys::global(), "String"), "prototype");
+                    let index = js_sys::Function::from(get(&prototype, "lastIndexOf"))
+                        .call1(&text, &line)?
+                        .as_f64()
+                        .unwrap_or(-1.0) as i32;
                     if index < 0 {
                         let o = object();
                         set(&o, "state", &"missing".into())?;
@@ -403,19 +418,14 @@ pub mod web {
                 .into())
             })?;
             method(&out, "remember", move |args| {
-                let line = line_at(
-                    &string(&args.get(0)),
-                    args.get(1).as_f64().unwrap_or(0.0).max(0.0) as usize,
-                )
-                .trim()
-                .encode_utf16()
-                .take(300)
-                .collect::<Vec<_>>();
-                let line = String::from_utf16_lossy(&line);
+                let line: JsValue = js_line_at(args.get(0), args.get(1))
+                    .trim()
+                    .slice(0, 300)
+                    .into();
                 let mut st = state
                     .try_borrow_mut()
                     .map_err(|_| js_sys::Error::new("anchor state busy"))?;
-                if line.is_empty() || st.last_saved.as_deref() == Some(&line) {
+                if !truthy(&line) || st.saved == line {
                     return Ok(JsValue::UNDEFINED);
                 }
                 invoke(&cancel, std::slice::from_ref(&st.timer))?;
@@ -426,10 +436,10 @@ pub mod web {
                 let memory = state.clone();
                 let callback = function(move |_| {
                     if let Ok(mut s) = memory.try_borrow_mut() {
-                        s.last_saved = Some(line.clone());
+                        s.saved = line.clone();
                     }
                     let entry = object();
-                    set(&entry, "text", &line.clone().into())?;
+                    set(&entry, "text", &line)?;
                     set(&entry, "ratio", &ratio)?;
                     set(&entry, "updatedAt", &invoke(&now, &[])?)?;
                     let patch = object();
@@ -442,7 +452,7 @@ pub mod web {
                         if wait(saved).await.is_err()
                             && let Ok(mut s) = memory.try_borrow_mut()
                         {
-                            s.last_saved = None;
+                            s.saved = JsValue::NULL;
                         }
                     });
                     Ok(JsValue::UNDEFINED)
