@@ -68,6 +68,11 @@ impl FileLock {
             .mode(0o600)
             .open(path)
     }
+    pub fn shared(path: &Path) -> io::Result<Self> {
+        let file = Self::open(path)?;
+        file.lock_shared()?;
+        Ok(Self { _file: file })
+    }
     pub fn exclusive(path: &Path) -> io::Result<Self> {
         let file = Self::open(path)?;
         file.lock()?;

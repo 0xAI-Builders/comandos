@@ -104,6 +104,21 @@ pub(crate) fn access_mode(
     db: Option<&Connection>,
     name: &str,
 ) -> Result<(Mode, Option<FileLock>)> {
+    access_mode_with_lease(home, db, name, false)
+}
+pub(crate) fn access_caller_mode(
+    home: &Path,
+    db: Option<&Connection>,
+    name: &str,
+) -> Result<(Mode, Option<FileLock>)> {
+    access_mode_with_lease(home, db, name, true)
+}
+fn access_mode_with_lease(
+    home: &Path,
+    db: Option<&Connection>,
+    name: &str,
+    shared: bool,
+) -> Result<(Mode, Option<FileLock>)> {
     check_domain(name)?;
     if let Some(db) = db {
         validate_access(db)?;
@@ -114,7 +129,18 @@ pub(crate) fn access_mode(
     let lock = if db.is_some_and(|c| connection_path(c).is_none()) {
         None
     } else {
-        Some(mode_lock(&path)?)
+        Some(if shared {
+            use std::os::unix::fs::DirBuilderExt;
+            if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+                fs::DirBuilder::new()
+                    .recursive(true)
+                    .mode(0o700)
+                    .create(parent)?;
+            }
+            FileLock::shared(&mode_lock_path(&path))?
+        } else {
+            mode_lock(&path)?
+        })
     };
     let sealed = guarded(&path, name)?;
     let mode = mode_of(db, name)?;
@@ -235,7 +261,7 @@ fn sync_parent(path: &Path) -> Result<()> {
 
 /// Mode authority stays at the source path even when SQLite reads a WAL copy.
 /// Existing mode locks are shared, read-only and nonblocking; none is created.
-pub(crate) fn with_readonly_access<T>(
+pub fn with_readonly_access<T>(
     home: &Path,
     name: &str,
     body: impl FnOnce(Mode, Option<&Connection>) -> Result<T>,

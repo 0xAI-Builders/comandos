@@ -28,3 +28,5 @@ impl Origin {
         }
     }
 }
+
+pub use modes::with_readonly_access;

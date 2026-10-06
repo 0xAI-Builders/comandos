@@ -149,3 +149,42 @@ fn release_caller_200_writes_profile() {
     drop(access);
     fs::remove_dir_all(home).unwrap();
 }
+
+#[test]
+fn caller_lease_allows_other_readers_and_blocks_mode_flip_until_drop() {
+    use std::sync::mpsc;
+    let home = std::env::temp_dir().join(format!("caller-shared-{}", std::process::id()));
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&home)
+        .unwrap();
+    let db = unified::open_unified(&unified::unified_path(&home)).unwrap();
+    let access = caller::CallerAccess::open(&home, "tabs").unwrap();
+    assert_eq!(
+        unified::with_readonly_access(&home, "ui-docs", |mode, _| Ok(mode)).unwrap(),
+        Mode::Legacy
+    );
+    let (started_tx, started_rx) = mpsc::channel();
+    let (done_tx, done_rx) = mpsc::channel();
+    let other = home.clone();
+    let worker = std::thread::spawn(move || {
+        let db = rusqlite::Connection::open(unified::unified_path(&other)).unwrap();
+        started_tx.send(()).unwrap();
+        unified::set_mode(&db, "tabs", Mode::Unified, "fixture", 1).unwrap();
+        done_tx.send(()).unwrap();
+    });
+    started_rx.recv().unwrap();
+    assert!(
+        done_rx
+            .recv_timeout(std::time::Duration::from_millis(50))
+            .is_err()
+    );
+    drop(access);
+    done_rx
+        .recv_timeout(std::time::Duration::from_secs(2))
+        .unwrap();
+    worker.join().unwrap();
+    drop(db);
+    fs::remove_dir_all(home).unwrap();
+}

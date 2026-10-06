@@ -19,7 +19,7 @@ impl CallerAccess {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => return Err(e.into()),
         };
-        let (mode, guard) = unified::modes::access_mode(home, db.as_ref(), domain)?;
+        let (mode, guard) = unified::modes::access_caller_mode(home, db.as_ref(), domain)?;
         if db.is_none() && path.exists() {
             return Err(Error::Validation("base apareció durante admisión".into()));
         }
@@ -44,8 +44,15 @@ impl CallerAccess {
         let Some(db) = self.db.as_ref().filter(|_| self.mode != Mode::Legacy) else {
             return legacy();
         };
-        let tx = Transaction::new_unchecked(db, TransactionBehavior::Immediate)?;
-        crate::migrate::move_db::admit_write(&tx)?;
+        let tx = if db.is_autocommit() {
+            Some(Transaction::new_unchecked(
+                db,
+                TransactionBehavior::Immediate,
+            )?)
+        } else {
+            None
+        };
+        crate::migrate::move_db::admit_write(db)?;
         let mut legacy = Some(legacy);
         if self.mode == Mode::Mirror
             && let Some(write) = legacy.take()
@@ -53,20 +60,44 @@ impl CallerAccess {
             write()?;
         }
         row(
-            &tx,
+            db,
             if self.mode == Mode::Mirror {
                 Origin::Mirror
             } else {
                 Origin::Unified
             },
         )?;
-        tx.commit()?;
+        if let Some(tx) = tx {
+            tx.commit()?;
+        } else {
+            db.execute_batch("COMMIT")?;
+        }
         if self.mode == Mode::Unified
             && let Some(write) = legacy.take()
         {
             write()?;
         }
         Ok(())
+    }
+    /// Protect an authoritative RMW without blocking unrelated mode readers.
+    /// Acquire the original per-file flock before entering this transaction.
+    pub fn with_write_transaction<T, E>(
+        &self,
+        body: impl FnOnce() -> std::result::Result<T, E>,
+    ) -> Result<std::result::Result<T, E>> {
+        let Some(db) = self.db.as_ref().filter(|_| self.mode != Mode::Legacy) else {
+            return Ok(body());
+        };
+        db.execute_batch("BEGIN IMMEDIATE")?;
+        if let Err(error) = crate::migrate::move_db::admit_write(db) {
+            let _ = db.execute_batch("ROLLBACK");
+            return Err(error);
+        }
+        let result = body();
+        if !db.is_autocommit() {
+            db.execute_batch(if result.is_ok() { "COMMIT" } else { "ROLLBACK" })?;
+        }
+        Ok(result)
     }
     pub fn read_document(&self, name: &str, file: &Path) -> Result<Option<Vec<u8>>> {
         if matches!(self.mode, Mode::Unified | Mode::Sealed) {
