@@ -408,7 +408,7 @@ pub fn python_seconds(nanos: i64) -> f64 {
 /// `"desktop-" + re.sub(r"[^A-Za-z0-9_.-]", "-", os.uname().nodename or "local")[:60]`.
 /// `/proc/sys/kernel/hostname` es el `nodename` de `uname`.
 pub fn desktop_device() -> String {
-    let node = std::fs::read_to_string("/proc/sys/kernel/hostname")
+    let node = comandos_runtime::platform::hostname()
         .map(|s| s.trim_end_matches('\n').to_owned())
         .unwrap_or_default();
     let node = if node.is_empty() {
@@ -476,8 +476,8 @@ pub struct NativeOptions {
     /// `ssh` de `ssh_state` (7708).
     pub ssh: tmux::Program,
     /// `systemd-run --user --scope --collect --quiet` de `scope_cmd` (5420) para
-    /// lanzar la terminal rápida; `None` (sin `systemd-run` en el `PATH`) declina
-    /// POST `/terminal/quick`.
+    /// lanzar la terminal rápida en Linux; `None` declina POST `/terminal/quick`
+    /// allí. Darwin conserva el programa tmux directo y no consulta el scope.
     pub scope: Option<tmux::Program>,
     /// `quick_terminal_lib.default_base()` (carpetas de la terminal rápida).
     pub quick_base: PathBuf,

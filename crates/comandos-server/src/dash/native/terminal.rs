@@ -281,6 +281,13 @@ fn identify(
         return Err(PaneError("el panel no pertenece a esa sesión".into()));
     }
     let pid = parts.get(1).copied().unwrap_or("");
+    #[cfg(target_os = "macos")]
+    let start = pid
+        .parse::<i64>()
+        .ok()
+        .map(|p| comandos_runtime::agent_procs::process_start(std::path::Path::new("/proc"), p))
+        .unwrap_or_default();
+    #[cfg(not(target_os = "macos"))]
     let start = match std::fs::read(format!("/proc/{pid}/stat")) {
         // `except OSError`: sin inicio del servidor.
         Err(_) => String::new(),

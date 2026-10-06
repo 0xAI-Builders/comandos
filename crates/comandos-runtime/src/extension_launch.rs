@@ -2281,7 +2281,17 @@ pub fn prepare_launch(
     Ok(bundle)
 }
 
+/// Darwin has no Linux user/mount namespace. Refuse before creating the
+/// probe directory or starting any helper; no process has been stopped here.
+#[cfg(target_os = "macos")]
+fn namespace_preflight(_runtime_dir: &Path, _home: &Path) -> Result<(), LaunchError> {
+    Err(LaunchError::Value(
+        "El aislamiento user/mount namespace no está disponible; no se detuvo el agente.".into(),
+    ))
+}
+
 /// Real child proof: user/mount isolation, original HOME and zero execution capabilities.
+#[cfg(not(target_os = "macos"))]
 fn namespace_preflight(runtime_dir: &Path, home: &Path) -> Result<(), LaunchError> {
     use std::os::unix::process::CommandExt;
     let refused = || {

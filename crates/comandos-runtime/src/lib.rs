@@ -31,6 +31,8 @@ pub mod pane_extensions;
 pub mod pane_observe;
 pub mod pane_snapshot;
 pub mod pane_typing;
+pub mod platform;
+pub mod procs;
 pub mod providers;
 pub mod quick_terminal;
 pub mod session_configuration;
@@ -73,6 +75,14 @@ pub fn process_start_time(pid: &str) -> Option<u64> {
         return None;
     }
     let number = pid.parse::<u64>().ok()?;
+    #[cfg(target_os = "macos")]
+    {
+        use procs::ProcSource;
+        return procs::system()
+            .process(i32::try_from(number).ok()?)
+            .map(|p| p.start);
+    }
+    #[cfg(not(target_os = "macos"))]
     parse_process_stat(&std::fs::read_to_string(format!("/proc/{number}/stat")).ok()?)
 }
 

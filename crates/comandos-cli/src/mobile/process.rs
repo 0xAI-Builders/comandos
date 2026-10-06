@@ -1,10 +1,7 @@
 //! Bounded, noninteractive argv/stdin transport. Never invokes a shell.
 use nix::{
     fcntl::{FcntlArg, OFlag, fcntl},
-    sys::{
-        signal::{Signal, killpg},
-        wait::{Id, WaitPidFlag, WaitStatus, waitid},
-    },
+    sys::signal::{Signal, killpg},
     unistd::Pid,
 };
 use std::{
@@ -125,12 +122,9 @@ pub(super) fn run(
         // when descendants closed their own stdio before the leader exited.
         if out_done && err_done && stdin.is_none() {
             let id = Pid::from_raw(i32::try_from(owned.child.id()).map_err(|e| e.to_string())?);
-            let state = waitid(
-                Id::Pid(id),
-                WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT,
-            )
-            .map_err(|e| e.to_string())?;
-            if !matches!(state, WaitStatus::StillAlive) {
+            let exited = comandos_runtime::procs::child_exited_unreaped(&owned.child)
+                .map_err(|e| e.to_string())?;
+            if exited {
                 // Signal before wait/reap; the unreaped leader prevents PID
                 // reuse from redirecting this signal to an unrelated group.
                 let _ = killpg(id, Signal::SIGKILL);

@@ -21,7 +21,6 @@ use super::{
     light::{data, error, read_reply},
     procs::which_in,
     py::{str_scalar, take_chars},
-    quick::scoped_tmux,
     reply,
     tmux::{RunError, run_program},
 };
@@ -511,13 +510,16 @@ async fn key_setup(native: &Native, d: &Map<String, Value>) -> Answer {
     if exists.ok {
         return reply(StatusCode::OK, &json!({"ok": true, "session": session}));
     }
-    // Sin `systemd-run` el Python lanzaría tmux suelto; el frente declina
+    // Linux: sin `systemd-run` el frente declina
     // (aún sin efectos), como `/terminal/quick`: un servidor tmux nacido en el
-    // cgroup del frente moriría con él al reiniciar el servicio.
-    let Some(scope) = opts.scope.as_ref() else {
+    // cgroup del frente moriría con él al reiniciar el servicio. Darwin va directo.
+    let Some(program) = super::quick::platform_tmux(
+        comandos_runtime::platform::host(),
+        opts.scope.as_ref(),
+        &opts.tmux.program,
+    ) else {
         return Err(Fault::Decline);
     };
-    let program = scoped_tmux(scope, &opts.tmux.program);
     let cmd = setup_command(&host, &key);
     let args = ["new-session", "-d", "-s", &session, "-n", "setup", &cmd];
     let out = match run_program(&program, &args, Duration::from_secs(SETUP_SECONDS)).await {

@@ -12,9 +12,10 @@
 //! `resolve_project_session` (en el Python está antes de esa llamada); las
 //! otras cuatro, tras `target::post_target`.
 //!
-//! Sin `systemd-run` (`opts.scope == None`) las cinco declinan antes de nada
+//! Linux: sin `systemd-run` (`opts.scope == None`) las cinco declinan antes de nada
 //! (R2 del pre-flight de la 2d): un servidor tmux que naciera fuera de un scope
 //! del gestor de usuario viviría en el cgroup del frente y moriría con él.
+//! Darwin lanza la cola tmux directamente y no requiere ese scope.
 //!
 //! `Decline` solo antes del primer efecto: cada efecto (orden de tmux que muta,
 //! escritura del registro o de `app-focus.json`, `wmctrl`, la terminal) marca
@@ -369,14 +370,13 @@ pub(crate) fn agent_set(opts: &NativeOptions) -> Result<BTreeSet<String>, Fault>
 /// `opts.scope` tal cual (sus banderas `--user --scope --collect --quiet` ya
 /// van en el prefijo, P18) seguido del programa de la cola con su prefijo. El
 /// entorno de la cola (el socket privado en las pruebas) pasa al scope.
-/// `None` sin `systemd-run`: quien llama declina antes de cualquier efecto.
+/// Linux: `None` sin `systemd-run` declina antes de efectos. Darwin usa la cola directa.
 pub(crate) fn scope_cmd(opts: &NativeOptions, tail: &Program) -> Option<Program> {
-    let mut program = opts.scope.clone()?;
-    program.prefix.push(tail.path.clone().into_os_string());
-    program.prefix.extend(tail.prefix.iter().cloned());
-    program.env.extend(tail.env.iter().cloned());
-    program.env_remove.extend(tail.env_remove.iter().cloned());
-    Some(program)
+    super::quick::platform_tmux(
+        comandos_runtime::platform::host(),
+        opts.scope.as_ref(),
+        tail,
+    )
 }
 
 /// `subprocess.run(scope_cmd(["tmux", *args]), capture_output=True,
@@ -419,7 +419,7 @@ async fn new_session_with(
     cwd: &str,
     launch: &str,
 ) -> Result<Output, Fault> {
-    if opts.scope.is_none() {
+    if scope_cmd(opts, &opts.tmux.program).is_none() {
         return Err(Fault::Decline);
     }
     let command = format!("{PROVIDERS_ENV}{launch}; exec $SHELL");
@@ -666,7 +666,10 @@ async fn spawn_terminal(native: &Native, sess: &str) -> Result<Option<String>, F
     let reads = opts.clone();
     let picked = blocking(move || {
         let terminal = pick_terminal(&reads)?;
+        #[cfg(target_os = "linux")]
         let runner = procs::which_in(reads.search_path.as_deref(), "systemd-run");
+        #[cfg(not(target_os = "linux"))]
+        let runner: Option<PathBuf> = None;
         Ok((terminal, runner))
     })
     .await?;

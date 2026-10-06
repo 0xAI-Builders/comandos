@@ -93,6 +93,12 @@ fn mtime_age(cache: &Path, now: i64) -> Option<i64> {
 pub fn run(_args: &[String]) -> i32 {
     let home = PathBuf::from(OsStr::from_bytes(&env_bytes("HOME")));
     let state = home.join(".claude/hooks/state");
+    #[cfg(target_os = "macos")]
+    let runtime = match crate::platform::runtime_directory_from_env(true) {
+        Ok(Some(path)) => path.as_os_str().as_bytes().to_vec(),
+        _ => return 2,
+    };
+    #[cfg(not(target_os = "macos"))]
     let runtime = env_bytes("XDG_RUNTIME_DIR");
     let runtime = if runtime.is_empty() {
         b"/tmp".to_vec()

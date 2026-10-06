@@ -1,10 +1,7 @@
 //! Bounded JSON-lines transport, owned child cleanup, and JSON-RPC request identity.
 use super::Result;
 use nix::{
-    sys::{
-        signal::{Signal, killpg},
-        wait::{Id, WaitPidFlag, WaitStatus, waitid},
-    },
+    sys::signal::{Signal, killpg},
     unistd::Pid,
 };
 use serde_json::{Value, json};
@@ -89,17 +86,11 @@ impl OwnedChild {
         let Some(child) = self.0.as_ref() else {
             return false;
         };
-        let Ok(pid) = i32::try_from(child.id()) else {
-            return false;
-        };
         // Observe without reaping: the leader PID keeps this private group
         // reserved until close has signalled its remaining descendants.
         matches!(
-            waitid(
-                Id::Pid(Pid::from_raw(pid)),
-                WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT
-            ),
-            Ok(WaitStatus::StillAlive)
+            comandos_runtime::procs::child_exited_unreaped(child),
+            Ok(false)
         )
     }
     fn close(&mut self) {
@@ -115,11 +106,8 @@ impl OwnedChild {
             let deadline = Instant::now() + Duration::from_millis(100);
             while Instant::now() < deadline {
                 if !matches!(
-                    waitid(
-                        Id::Pid(group),
-                        WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT
-                    ),
-                    Ok(WaitStatus::StillAlive)
+                    comandos_runtime::procs::child_exited_unreaped(&child),
+                    Ok(false)
                 ) {
                     break;
                 }

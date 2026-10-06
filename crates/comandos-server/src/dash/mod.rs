@@ -375,9 +375,10 @@ pub fn from_env(args: &[String]) -> Result<DashConfig, StartError> {
     .map_err(StartError::Usage)?;
     // D7: el censo vive en el directorio de ejecución del usuario; sin él no
     // se escribe. Solo aquí (arranque real): las pruebas nunca lo alcanzan.
-    cfg.census_path = std::env::var_os("XDG_RUNTIME_DIR")
-        .filter(|dir| !dir.is_empty())
-        .map(|dir| PathBuf::from(dir).join(native::census::file_name(cfg.port)));
+    cfg.census_path = comandos_runtime::platform::runtime_directory_from_env(true)
+        .map_err(|e| StartError::Usage(format!("runtime directory: {e}")))?
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .map(|dir| dir.join(native::census::file_name(cfg.port)));
     if !args
         .iter()
         .any(|a| a == "--term" || a.starts_with("--term="))

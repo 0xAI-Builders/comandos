@@ -264,8 +264,7 @@ where
         return Ok(BridgeStats::default());
     }
     let (mut sink, mut stream) = socket.split();
-    let host =
-        std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_else(|_| "localhost".into());
+    let host = comandos_runtime::platform::hostname().unwrap_or_else(|_| "localhost".into());
     send(
         &mut sink,
         proto::title(&proto::tty_title("cc-webterm-attach", host.trim())),

@@ -95,6 +95,12 @@ fn record_process(home: &Path, raw: &[u8], event: &str) -> Option<()> {
     let mut pid = std::process::id();
     let mut found = None;
     for _ in 0..10 {
+        #[cfg(target_os = "macos")]
+        let argv = {
+            let args = crate::agent_procs::proc_cmdline(Path::new("/proc"), i64::from(pid));
+            args.first()?.as_bytes().to_vec()
+        };
+        #[cfg(not(target_os = "macos"))]
         let argv = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
         let (parent, start) = proc_stat(pid)?;
         let argv0 = argv.split(|&b| b == 0).next().unwrap_or_default();

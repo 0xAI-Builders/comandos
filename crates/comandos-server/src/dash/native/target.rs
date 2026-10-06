@@ -16,8 +16,8 @@ use crate::HandlerError;
 use comandos_runtime::session_configuration as sc;
 use comandos_runtime::{
     agent_procs::{
-        self, AgentInfo, AgentMaps, AgentProc, PANE_FORMAT, agent_pane_maps, agent_procs,
-        parse_pane_inventory, process_owners,
+        self, AgentInfo, AgentMaps, AgentProc, PANE_FORMAT, agent_pane_maps,
+        agent_procs_for_agents, parse_pane_inventory, process_owners,
     },
     model_catalog::catalog_paths,
     providers::{self, RegistryCache},
@@ -188,7 +188,8 @@ pub fn find_project_dir(home: &Path, sess: &str) -> Result<Option<PathBuf>, Faul
 
 /// `agent_process_aliases()` del Python sobre el registro y `cc-notify.conf`
 /// del frente (lo mismo que hace el escaneo de `/state`).
-fn process_aliases(ctx: &Context) -> Result<HashMap<String, String>, Fault> {
+type ProcessNames = (std::collections::BTreeSet<String>, HashMap<String, String>);
+fn process_aliases(ctx: &Context) -> Result<ProcessNames, Fault> {
     let repo = ctx.repo_root.as_ref().ok_or(Fault::Decline)?;
     let catalog = catalog_paths(
         &ctx.home,
@@ -206,7 +207,8 @@ fn process_aliases(ctx: &Context) -> Result<HashMap<String, String>, Fault> {
         .find(|(k, _)| k == "AGENTS")
         .map(|(_, v)| v.as_str());
     let agents = providers::agent_set(conf_agents, &registry);
-    Ok(providers::process_aliases(&agents, &registry))
+    let aliases = providers::process_aliases(&agents, &registry);
+    Ok((agents, aliases))
 }
 
 /// Lo que los trabajos de disco necesitan de las opciones.
@@ -292,8 +294,8 @@ fn plan(ctx: &Context, sess: &str, live: &HashSet<String>) -> Result<Plan, Fault
     if cwd.is_empty() {
         return Ok(Plan::NoCwd);
     }
-    let aliases = process_aliases(ctx)?;
-    let procs = agent_procs(&ctx.proc_root, &aliases)
+    let (agents, aliases) = process_aliases(ctx)?;
+    let procs = agent_procs_for_agents(&ctx.proc_root, &aliases, &agents)
         .map_err(|_| Fault::Decline)?
         .into_iter()
         .filter(|p| p.cwd == cwd)
@@ -420,8 +422,8 @@ async fn live_agent_maps(native: &Native) -> Result<AgentMaps, Fault> {
     let opts = native.options();
     let ctx = Context::of(opts);
     let procs = blocking(move || {
-        let aliases = process_aliases(&ctx)?;
-        agent_procs(&ctx.proc_root, &aliases).map_err(|_| Fault::Decline)
+        let (agents, aliases) = process_aliases(&ctx)?;
+        agent_procs_for_agents(&ctx.proc_root, &aliases, &agents).map_err(|_| Fault::Decline)
     })
     .await?;
     let listed = opts

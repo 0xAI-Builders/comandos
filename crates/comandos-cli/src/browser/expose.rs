@@ -119,8 +119,10 @@ fn parse_port(value: Option<&String>, minimum: u16) -> Result<u16, ForwardError>
 fn directory(home: &Path, create: bool) -> Result<PathBuf, ForwardError> {
     let root = if let Some(path) = std::env::var_os("CC_BROWSER_FORWARD_DIR") {
         PathBuf::from(path)
-    } else if let Some(path) = std::env::var_os("XDG_RUNTIME_DIR") {
-        PathBuf::from(path).join("cc-browser-forwards")
+    } else if let Some(path) = comandos_runtime::platform::runtime_directory_from_env(create)
+        .map_err(|e| ForwardError(format!("Runtime directory: {e}")))?
+    {
+        path.join("cc-browser-forwards")
     } else {
         home.join(".local/state/cc-browser-forwards")
     };

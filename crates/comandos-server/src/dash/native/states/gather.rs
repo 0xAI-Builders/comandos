@@ -22,7 +22,7 @@ use comandos_runtime::{
     Unsure,
     agent_procs::{
         self, AccountCache, AgentInfo, AgentMaps, PANE_FORMAT, PaneRow, agent_pane_maps,
-        agent_procs, external_agents, parse_pane_inventory, process_owners,
+        agent_procs_for_agents, external_agents, parse_pane_inventory, process_owners,
     },
     hooks::py::float_value,
     model_catalog::catalog_paths,
@@ -140,7 +140,7 @@ pub(crate) fn agent_maps(
     let agents = providers::agent_set(conf_agents, registry);
     let aliases = providers::process_aliases(&agents, registry);
     let proc_root = opts.proc_root.as_path();
-    let procs = agent_procs(proc_root, &aliases).map_err(unsure)?;
+    let procs = agent_procs_for_agents(proc_root, &aliases, &agents).map_err(unsure)?;
     // Padres y `cmdline` de `/proc` con cachés locales de este cómputo.
     let mut parents: HashMap<i64, i64> = HashMap::new();
     let mut parent = |pid: i64| {
@@ -533,22 +533,35 @@ fn gather_evidence(
     if tmux_pid.is_empty() || !tmux_pid.bytes().all(|b| b.is_ascii_digit()) {
         return Err(StateFault::Decline);
     }
-    let server_start = match fs::read(probe.proc_root.join(tmux_pid).join("stat")) {
-        Err(_) => String::new(),
-        Ok(raw) => {
-            // Modo texto: `UnicodeDecodeError` es `ValueError`.
-            let Ok(text) = String::from_utf8(raw) else {
-                return Ok(Gathered::Unconfirmed);
-            };
-            // `rsplit(')', 1)[1].split()[19]`: el `IndexError` no se captura.
-            let (_, after) = text.rsplit_once(')').ok_or(StateFault::Failure)?;
-            after
-                .split(py::is_space)
-                .filter(|t| !t.is_empty())
-                .nth(19)
-                .ok_or(StateFault::Failure)?
-                .to_owned()
-        }
+    #[cfg(target_os = "macos")]
+    let darwin_start = (probe.proc_root == Path::new("/proc")).then(|| {
+        tmux_pid
+            .parse::<i64>()
+            .ok()
+            .map(|p| agent_procs::process_start(&probe.proc_root, p))
+            .unwrap_or_default()
+    });
+    #[cfg(not(target_os = "macos"))]
+    let darwin_start: Option<String> = None;
+    let server_start = match darwin_start {
+        Some(start) => start,
+        None => match fs::read(probe.proc_root.join(tmux_pid).join("stat")) {
+            Err(_) => String::new(),
+            Ok(raw) => {
+                // Modo texto: `UnicodeDecodeError` es `ValueError`.
+                let Ok(text) = String::from_utf8(raw) else {
+                    return Ok(Gathered::Unconfirmed);
+                };
+                // `rsplit(')', 1)[1].split()[19]`: el `IndexError` no se captura.
+                let (_, after) = text.rsplit_once(')').ok_or(StateFault::Failure)?;
+                after
+                    .split(py::is_space)
+                    .filter(|t| !t.is_empty())
+                    .nth(19)
+                    .ok_or(StateFault::Failure)?
+                    .to_owned()
+            }
+        },
     };
     let key = [
         identity.field(0),

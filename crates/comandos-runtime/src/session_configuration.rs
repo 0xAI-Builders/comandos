@@ -369,7 +369,7 @@ pub fn agent_info_for_pane(env: &Env, pane: &str) -> Result<Option<Proc>, Fail> 
         .map(|(_, v)| v.as_str());
     let agents = providers::agent_set(conf_agents, &env.registry);
     let aliases = providers::process_aliases(&agents, &env.registry);
-    let procs = agent_procs::agent_procs(&env.proc_root, &aliases)?;
+    let procs = agent_procs::agent_procs_for_agents(&env.proc_root, &aliases, &agents)?;
     let listed = env.tmux(&["list-panes", "-a", "-F", PANE_FORMAT])?;
     let panes = if listed.returncode == 0 {
         parse_pane_inventory(&listed.stdout)
@@ -442,6 +442,14 @@ pub fn identity_from_output(
 /// `/proc/<pid>/stat`, `""` si no se lee (`except OSError`); lo que el Python
 /// no captura (`UnicodeDecodeError`, `IndexError`) es incierto. Bloquea.
 pub fn server_start(proc_root: &Path, pid: &str) -> Result<String, Fail> {
+    #[cfg(target_os = "macos")]
+    if proc_root == Path::new("/proc") {
+        return Ok(pid
+            .parse::<i64>()
+            .ok()
+            .map(|p| crate::agent_procs::process_start(proc_root, p))
+            .unwrap_or_default());
+    }
     match fs::read(proc_root.join(pid).join("stat")) {
         Err(_) => Ok(String::new()),
         Ok(bytes) => {

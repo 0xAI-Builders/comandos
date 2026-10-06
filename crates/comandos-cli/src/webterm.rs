@@ -149,6 +149,7 @@ fn health(o: &Options, p: &dyn Probe) -> &'static str {
     }
 }
 fn stop(o: &Options, r: &dyn Runner) -> io::Result<()> {
+    #[cfg(target_os = "linux")]
     let _ = r.run(
         "systemctl",
         &[
@@ -315,7 +316,11 @@ pub fn run_with(
             }
         }
         args.extend(common.clone());
-        if r.available("systemd-run") {
+        #[cfg(target_os = "linux")]
+        let use_systemd = r.available("systemd-run");
+        #[cfg(not(target_os = "linux"))]
+        let use_systemd = false;
+        if use_systemd {
             let _ = r.run(
                 "systemctl",
                 &[

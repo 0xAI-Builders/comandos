@@ -180,9 +180,16 @@ fn write_record(root: &Path, pid: u32, record: &Map<String, Value>) -> Option<()
 
 /// El tick de arranque como lo saca el plugin: tras el PRIMER `)` de `stat`.
 fn start_tick(pid: u32) -> Option<String> {
-    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-    let rest = stat.split_once(')')?.1;
-    rest.split_whitespace().nth(19).map(str::to_string)
+    #[cfg(target_os = "macos")]
+    {
+        return crate::process_start_time(&pid.to_string()).map(|start| start.to_string());
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let rest = stat.split_once(')')?.1;
+        rest.split_whitespace().nth(19).map(str::to_string)
+    }
 }
 
 /// `mkdir(..., { recursive: true, mode })`: el modo va en cada directorio creado.

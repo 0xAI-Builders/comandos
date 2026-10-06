@@ -26,10 +26,7 @@
 use comandos_core::json::{float_repr, python_eq, response_dumps, truthy};
 use comandos_core::text::strip;
 use nix::{
-    sys::{
-        signal::{Signal, killpg},
-        wait::{Id, WaitPidFlag, WaitStatus, waitid},
-    },
+    sys::signal::{Signal, killpg},
     unistd::Pid,
 };
 use serde_json::{Map, Value, json};
@@ -964,11 +961,7 @@ impl Session {
         if self.closed {
             return false;
         }
-        let flags = WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT;
-        matches!(
-            waitid(Id::Pid(self.group), flags),
-            Ok(WaitStatus::StillAlive)
-        )
+        matches!(crate::procs::child_exited_unreaped(&self.child), Ok(false))
     }
 
     /// `proc.stdin.write(json.dumps(obj) + "\n")`, sin bloquear más allá del
@@ -1321,12 +1314,8 @@ impl Session {
         if valid {
             let _ = killpg(self.group, Signal::SIGTERM);
             let started = Instant::now();
-            let flags = WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT;
             while started.elapsed() < CLOSE_WAIT {
-                if !matches!(
-                    waitid(Id::Pid(self.group), flags),
-                    Ok(WaitStatus::StillAlive)
-                ) {
+                if !matches!(crate::procs::child_exited_unreaped(&self.child), Ok(false)) {
                     break;
                 }
                 std::thread::sleep(Duration::from_millis(20));

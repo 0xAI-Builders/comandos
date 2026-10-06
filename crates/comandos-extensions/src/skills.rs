@@ -172,14 +172,23 @@ fn rename_new(source: &Path, dest: &Path) -> Result<()> {
         .map_err(|_| config::err(source))?;
     let to = fs::File::open(dest.parent().ok_or_else(|| config::err(dest))?)
         .map_err(|_| config::err(dest))?;
-    nix::fcntl::renameat2(
+    #[cfg(not(target_os = "macos"))]
+    let renamed = nix::fcntl::renameat2(
         from,
         source.file_name().ok_or_else(|| config::err(source))?,
         to,
         dest.file_name().ok_or_else(|| config::err(dest))?,
         nix::fcntl::RenameFlags::RENAME_NOREPLACE,
-    )
-    .map_err(|_| config::err(dest))
+    );
+    #[cfg(target_os = "macos")]
+    let renamed = rustix::fs::renameat_with(
+        from,
+        source.file_name().ok_or_else(|| config::err(source))?,
+        to,
+        dest.file_name().ok_or_else(|| config::err(dest))?,
+        rustix::fs::RenameFlags::NOREPLACE,
+    );
+    renamed.map_err(|_| config::err(dest))
 }
 fn replace_tree(home: &Path, path: &Path, tmp: &Path) -> Result<()> {
     let displaced = backup(home, path)?;
