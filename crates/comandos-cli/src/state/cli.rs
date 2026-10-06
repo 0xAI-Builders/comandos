@@ -1,8 +1,10 @@
-use comandos_store::domains::catalog::{file_classification, is_unified_control_file, source};
+use comandos_store::domains::catalog::{
+    control_path_identity, file_classification, is_unified_control_file, source,
+};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     io::Read,
     path::{Path, PathBuf},
@@ -12,7 +14,9 @@ use std::{
 pub fn inventory(home: &Path) -> Result<Value, String> {
     let mut files = Vec::new();
     let mut errors = Vec::new();
-    let db = comandos_store::unified::unified_path(home);
+    let db = control_path_identity(&comandos_store::unified::unified_path(home))
+        .map_err(|e| e.to_string())?;
+    let mut seen = BTreeSet::new();
     for (prefix, relative) in [
         ("H", ".claude/hooks"),
         ("STATE", ".local/state/comandos"),
@@ -20,7 +24,7 @@ pub fn inventory(home: &Path) -> Result<Value, String> {
     ] {
         let dir = home.join(relative);
         if dir.exists() {
-            walk(&dir, prefix, &db, &mut files, &mut errors)?;
+            walk(&dir, prefix, &db, &mut files, &mut errors, &mut seen)?;
         }
     }
     // COMANDOS_DB puede estar fuera de las raíces inventariadas. Solo sus
@@ -31,11 +35,9 @@ pub fn inventory(home: &Path) -> Result<Value, String> {
                 for entry in entries {
                     let entry = entry.map_err(|e| format!("{}: {e}", parent.display()))?;
                     let path = entry.path();
-                    if is_unified_control_file(&path, &db)
-                        && !files.iter().any(|r| r.get("path") == Some(&json!(path)))
-                    {
+                    if is_unified_control_file(&path, &db) {
                         let symbolic = format!("CONTROL/{}", entry.file_name().to_string_lossy());
-                        record(&path, &symbolic, &db, &mut files, &mut errors)?;
+                        record(&path, &symbolic, &db, &mut files, &mut errors, &mut seen)?;
                     }
                 }
             }
@@ -72,6 +74,7 @@ fn walk(
     db: &Path,
     files: &mut Vec<Value>,
     errors: &mut Vec<String>,
+    seen: &mut BTreeSet<PathBuf>,
 ) -> Result<(), String> {
     let entries = fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     for entry in entries {
@@ -84,10 +87,10 @@ fn walk(
         let path = entry.path();
         let before = fs::symlink_metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         if before.is_dir() {
-            walk(&path, &symbolic, db, files, errors)?;
+            walk(&path, &symbolic, db, files, errors, seen)?;
             continue;
         }
-        record(&path, &symbolic, db, files, errors)?;
+        record(&path, &symbolic, db, files, errors, seen)?;
     }
     Ok(())
 }
@@ -97,7 +100,12 @@ fn record(
     db: &Path,
     files: &mut Vec<Value>,
     errors: &mut Vec<String>,
+    seen: &mut BTreeSet<PathBuf>,
 ) -> Result<(), String> {
+    let identity = control_path_identity(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if !seen.insert(identity) {
+        return Ok(());
+    }
     let before = fs::symlink_metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let symlink = before.file_type().is_symlink();
     let control = is_unified_control_file(path, db);

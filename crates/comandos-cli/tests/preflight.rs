@@ -157,3 +157,69 @@ fn app_executables_and_hook_aliases_use_their_release_manifest() {
     assert!(f.check("session-status").is_ok());
     assert!(f.check("db-usage").is_ok());
 }
+
+#[test]
+fn unknown_python_entrypoint_is_not_masked_by_known_data_argument() {
+    let f = Fixture::new("unknown-data");
+    let unknown = f.repo.join("bin/unknown.py");
+    let known = f.repo.join("bin/cc-app");
+    f.process(
+        123,
+        &PathBuf::from("/usr/bin/python3"),
+        &[
+            "python3",
+            unknown.to_str().unwrap(),
+            known.to_str().unwrap(),
+        ],
+    );
+    assert!(f.check("tabs").is_err());
+    assert!(f.check("logs").is_err());
+}
+
+#[test]
+fn known_python_entrypoint_does_not_treat_data_paths_as_writers() {
+    let f = Fixture::new("known-data");
+    let known = f.repo.join("bin/cc-app");
+    let unrelated = f.repo.join("bin/cc_usage.py");
+    f.process(
+        123,
+        &PathBuf::from("/usr/bin/python3"),
+        &[
+            "python3",
+            "-W",
+            "default",
+            known.to_str().unwrap(),
+            unrelated.to_str().unwrap(),
+        ],
+    );
+    assert!(f.check("tabs").is_err());
+    assert!(f.check("logs").is_ok());
+    assert!(f.check("db-usage").is_ok());
+}
+
+#[test]
+fn dynamic_python_entrypoints_cannot_be_masked_by_known_data() {
+    for option in ["-m", "-c", "-"] {
+        let f = Fixture::new(&format!("dynamic-{option}"));
+        let known = f.repo.join("bin/cc-app");
+        let mut argv = vec!["python3", option];
+        if option != "-" {
+            argv.push("unknown_entrypoint");
+        }
+        argv.push(known.to_str().unwrap());
+        f.process(123, &PathBuf::from("/usr/bin/python3"), &argv);
+        assert!(f.check("logs").is_err());
+    }
+}
+#[test]
+fn external_python_script_does_not_become_repo_writer_from_data() {
+    let f = Fixture::new("external-data");
+    let known = f.repo.join("bin/cc-app");
+    f.process(
+        123,
+        &PathBuf::from("/usr/bin/python3"),
+        &["python3", "/private/external.py", known.to_str().unwrap()],
+    );
+    assert!(f.check("tabs").is_ok());
+    assert!(f.check("logs").is_ok());
+}

@@ -122,3 +122,76 @@ fn unified_database_and_guards_are_control_metadata_even_with_override() {
         );
     }
 }
+
+#[test]
+fn equivalent_override_spellings_exclude_destination_once() {
+    let home = Home::new();
+    let hooks = home.0.join(".claude/hooks");
+    let db = hooks.join("prefs.json");
+    let controls = [
+        db.clone(),
+        PathBuf::from(format!("{}.sealed-ui-docs", db.display())),
+        PathBuf::from(format!("{}-wal", db.display())),
+    ];
+    for path in &controls {
+        fs::write(path, b"private-control").unwrap();
+    }
+    std::os::unix::fs::symlink(&hooks, home.0.join("hooks-alias")).unwrap();
+    for configured in [
+        hooks.join("../hooks/prefs.json"),
+        PathBuf::from(".claude/hooks/../hooks/prefs.json"),
+        home.0.join("hooks-alias/prefs.json"),
+        home.0.join("hooks-alias/../hooks/prefs.json"),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_comandos"))
+            .args(["state", "inventory", "--json", "--home"])
+            .arg(&home.0)
+            .current_dir(&home.0)
+            .env("COMANDOS_DB", configured)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        let rows = value["files"].as_array().unwrap();
+        for control in &controls {
+            let equivalent: Vec<_> = rows
+                .iter()
+                .filter(|r| fs::canonicalize(r["path"].as_str().unwrap()).unwrap() == *control)
+                .collect();
+            assert_eq!(equivalent.len(), 1, "duplicate rows: {equivalent:?}");
+            assert_eq!(equivalent[0]["classification"], "metadatos-control");
+            assert!(equivalent[0]["domain"].is_null());
+        }
+    }
+}
+
+#[test]
+fn missing_destination_and_sidecars_use_equivalent_parent_identity() {
+    use comandos_store::domains::catalog::is_unified_control_file;
+    let home = Home::new();
+    let hooks = home.0.join(".claude/hooks");
+    std::os::unix::fs::symlink(&hooks, home.0.join("hooks-alias")).unwrap();
+    for configured in [
+        hooks.join("../hooks/prefs.json"),
+        home.0.join("hooks-alias/prefs.json"),
+        home.0.join("hooks-alias/missing/../prefs.json"),
+    ] {
+        assert!(is_unified_control_file(
+            &hooks.join("prefs.json"),
+            &configured
+        ));
+        assert!(is_unified_control_file(
+            &hooks.join("prefs.json.sealed-ui-docs"),
+            &configured
+        ));
+        assert!(!is_unified_control_file(
+            &hooks.join("snippets.json"),
+            &configured
+        ));
+    }
+    assert!(!hooks.join("prefs.json").exists());
+}

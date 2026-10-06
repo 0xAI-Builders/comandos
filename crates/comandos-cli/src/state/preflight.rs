@@ -87,22 +87,25 @@ fn inspect(
     let is_python =
         basename(Path::new(first)).starts_with("python") || exe_name.starts_with("python");
     let mut python_repo = false;
-    let mut python_names = vec![];
+    let mut python_script = None;
     if is_python {
-        for arg in argv.iter().skip(1).filter(|a| !a.starts_with('-')) {
-            let candidate = Path::new(arg);
-            let absolute = if candidate.is_absolute() {
-                candidate.to_owned()
-            } else {
-                let cwd =
-                    fs::read_link(path.join("cwd")).map_err(|e| format!("cwd ilegible: {e}"))?;
-                cwd.join(candidate)
-            };
-            let resolved = fs::canonicalize(&absolute).unwrap_or_else(|_| normalize(&absolute));
-            let repo = fs::canonicalize(repo).unwrap_or_else(|_| normalize(repo));
-            if resolved.starts_with(&repo) {
-                python_repo = true;
-                python_names.push(basename(&resolved));
+        let entrypoint = python_entrypoint(&argv)?;
+        let candidate = Path::new(entrypoint);
+        let absolute = if candidate.is_absolute() {
+            candidate.to_owned()
+        } else {
+            let cwd = fs::read_link(path.join("cwd")).map_err(|e| format!("cwd ilegible: {e}"))?;
+            cwd.join(candidate)
+        };
+        let resolved = fs::canonicalize(&absolute)
+            .or_else(|_| comandos_store::domains::catalog::control_path_identity(&absolute))
+            .map_err(|e| format!("entrypoint Python sin identidad: {e}"))?;
+        let repo = fs::canonicalize(repo).map_err(|e| format!("repo sin identidad: {e}"))?;
+        if let Ok(relative) = resolved.strip_prefix(&repo) {
+            python_repo = true;
+            // El registro del plan identifica ejecutables en bin, no nombres de datos.
+            if relative.parent() == Some(Path::new("bin")) {
+                python_script = Some(basename(&resolved));
             }
         }
     }
@@ -111,17 +114,14 @@ fn inspect(
         .as_deref()
         .is_some_and(|command| matches_rust(domain, command));
     let python_match = python_repo
-        && python_names.iter().any(|script| {
-            domain.python_writers.contains(&script.as_str())
+        && python_script.as_deref().is_some_and(|script| {
+            domain.python_writers.contains(&script)
                 || (script == "cc-dash" && domain.rust_writers.contains(&"dash"))
         });
-    // Un Python del repo desconocido puede importar escritores: no se adivina su alcance.
+    // Solo el entrypoint puede demostrar el alcance. Sus argumentos no son escritores.
     let ambiguous_python = python_repo
-        && !python_names.iter().any(|script| {
-            script == "cc-dash"
-                || DOMAINS
-                    .iter()
-                    .any(|d| d.python_writers.contains(&script.as_str()))
+        && !python_script.as_deref().is_some_and(|script| {
+            script == "cc-dash" || DOMAINS.iter().any(|d| d.python_writers.contains(&script))
         });
     let in_release = release_dir(&exe, home);
     let ambiguous_rust = (exe_name == "comandos"
@@ -144,6 +144,39 @@ fn inspect(
         python_repo,
     }))
 }
+/// Consume las opciones del intérprete y devuelve únicamente el script ejecutado.
+/// Código, módulos, stdin y opciones desconocidas no permiten demostrar un alcance.
+fn python_entrypoint(argv: &[String]) -> Result<&str, String> {
+    let mut args = argv.iter().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "-c" | "-m" | "-" => return Err("entrypoint Python dinámico; alcance ambiguo".into()),
+            "--" => {
+                return args
+                    .next()
+                    .map(String::as_str)
+                    .ok_or_else(|| "entrypoint Python ausente".into());
+            }
+            "-W" | "-X" | "--check-hash-based-pycs" => {
+                args.next()
+                    .ok_or_else(|| format!("opción Python incompleta: {arg}"))?;
+            }
+            _ if !arg.starts_with('-') => return Ok(arg),
+            _ if arg.starts_with("-c") || arg.starts_with("-m") => {
+                return Err("entrypoint Python dinámico; alcance ambiguo".into());
+            }
+            _ if arg.starts_with("-W")
+                || arg.starts_with("-X")
+                || arg.starts_with("--check-hash-based-pycs=") => {}
+            _ if arg.strip_prefix('-').is_some_and(|flags| {
+                !flags.is_empty() && flags.chars().all(|flag| "bBdEiIOPqsSuvx".contains(flag))
+            }) => {}
+            _ => return Err(format!("opción Python sin alcance demostrado: {arg}")),
+        }
+    }
+    Err("entrypoint Python ausente; alcance ambiguo".into())
+}
+
 fn basename(path: &Path) -> String {
     path.file_name()
         .map(|v| {
@@ -204,19 +237,6 @@ fn release_dir(exe: &Path, home: &Path) -> Option<PathBuf> {
         return None;
     }
     Some(base.join(id.as_os_str()))
-}
-fn normalize(path: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for c in path.components() {
-        match c {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                out.pop();
-            }
-            other => out.push(other.as_os_str()),
-        }
-    }
-    out
 }
 pub fn can_unify(writers: &[WriterProc]) -> Result<(), Vec<String>> {
     let reasons: Vec<_> = writers

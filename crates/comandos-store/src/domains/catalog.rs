@@ -173,7 +173,7 @@ pub fn source(path: &str) -> Option<&'static SourceSpec> {
 
 /// Solo restos observables y excepciones D3/D9; lo desconocido queda visible.
 pub fn file_classification(path: &str) -> &'static str {
-    if is_unified_control_file(
+    if control_suffix(
         std::path::Path::new(path),
         std::path::Path::new("SHARE/comandos.sqlite3"),
     ) {
@@ -354,6 +354,14 @@ pub fn domain(name: &str) -> Option<&'static Domain> {
 /// La base de destino y sus controles nunca son fuentes de una migración.
 /// Se compara también con COMANDOS_DB, incluso cuando cae dentro de H o STATE.
 pub fn is_unified_control_file(path: &std::path::Path, db: &std::path::Path) -> bool {
+    match (control_path_identity(path), control_path_identity(db)) {
+        (Ok(path), Ok(db)) => control_suffix(&path, &db),
+        // Sin identidad fiable no se permite proponer el archivo como fuente.
+        _ => true,
+    }
+}
+
+fn control_suffix(path: &std::path::Path, db: &std::path::Path) -> bool {
     use std::os::unix::ffi::OsStrExt;
     let Some(tail) = path
         .as_os_str()
@@ -368,4 +376,49 @@ pub fn is_unified_control_file(path: &std::path::Path, db: &std::path::Path) -> 
             b"-wal" | b"-shm" | b"-journal" | b".domain-modes.lock"
         )
         || tail.starts_with(b".sealed-")
+}
+
+/// Identidad absoluta con padres resueltos, sin seguir el enlace de la entrada final.
+/// Los componentes todavía ausentes se resuelven desde el ancestro existente.
+pub fn control_path_identity(path: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+    use std::path::Component;
+    let absolute = if path.is_absolute() {
+        path.to_owned()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    let name = absolute
+        .file_name()
+        .ok_or_else(|| std::io::Error::other("ruta de control sin nombre"))?;
+    let mut parent = absolute
+        .parent()
+        .ok_or_else(|| std::io::Error::other("ruta de control sin padre"))?
+        .to_owned();
+    let mut absent = Vec::new();
+    let mut resolved = loop {
+        match std::fs::canonicalize(&parent) {
+            Ok(parent) => break parent,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let component = parent.components().next_back().ok_or(error)?;
+                absent.push(component.as_os_str().to_owned());
+                if !parent.pop() {
+                    return Err(std::io::Error::other("sin ancestro de control"));
+                }
+            }
+            Err(error) => return Err(error),
+        }
+    };
+    for suffix in absent.into_iter().rev() {
+        for component in std::path::Path::new(&suffix).components() {
+            match component {
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    resolved.pop();
+                }
+                other => resolved.push(other.as_os_str()),
+            }
+        }
+    }
+    resolved.push(name);
+    Ok(resolved)
 }
