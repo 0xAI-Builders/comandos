@@ -68,6 +68,7 @@ pub mod components {
     pub mod foundation_remote;
     pub mod foundation_snippets;
     pub mod foundation_system;
+    pub mod foundation_tail;
     pub mod foundation_ui;
     pub mod news_reader;
     pub mod notifications;

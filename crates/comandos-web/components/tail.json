@@ -1,0 +1,22 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 2,
+  "marker_start": "// N2: franja de avisos por proyecto + aviso flotante de llegada. La llegada",
+  "marker_end": "</script>",
+  "sha256": "e1bf12aee4a1a1456a10da513de1193a6b088485be5e97b5157d4d4015b92cab",
+  "id": "tail",
+  "exports": [
+    "selectPaneInFrame"
+  ],
+  "deps": [
+    "prelude",
+    "i18n",
+    "red",
+    "app-nativa",
+    "app-combinada",
+    "notificaciones-del-sistema",
+    "helpers",
+    "notifications"
+  ]
+}
