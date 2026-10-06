@@ -1,0 +1,16 @@
+{
+  "input": {
+    "case": {
+      "provenance": "{\n  \"source_commit\": \"2674f366bb01b9db42f6f64b728929b3acfe8b83\",\n  \"source_path\": \"hooks/cc-status.sh\",\n  \"sha256\": \"d5318e31eedee1b875e5a3341d29a74e588bccdb69380326c0f6722c93c54f6e\",\n  \"bash\": \"GNU bash, version 5.1.16(1)-release (x86_64-pc-linux-gnu)\",\n  \"jq\": \"jq-1.6\",\n  \"observations\": \"Exit/stdout and complete private cache/file effects. Input cache age and locale explicit; fixture wallclock aliases preserve exact existing state ages.\"\n}\n",
+      "env": [
+        [
+          "XDG_RUNTIME_DIR",
+          "<HOME>/run"
+        ]
+      ],
+      "cache": null
+    },
+    "before_sha256": "9d32c40ad6d3a37cb6502eb0e38a4ce75d21febbe1595e2872f608bdbeb9f51d"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbMCxbXV0iLCJ0cmVlIjp7Ii5jbGF1ZGUiOnsia2luZCI6ImRpcmVjdG9yeSIsIm1vZGUiOjUwOX0sIi5jbGF1ZGUvaG9va3MiOnsia2luZCI6ImRpcmVjdG9yeSIsIm1vZGUiOjUwOX0sIi5jbGF1ZGUvaG9va3Mvc3RhdGUiOnsia2luZCI6ImRpcmVjdG9yeSIsIm1vZGUiOjUwOX0sIi5jbGF1ZGUvaG9va3Mvc3RhdGUvMC5qc29uIjp7ImtpbmQiOiJzeW1saW5rIiwidGFyZ2V0IjoiL25vL2V4aXN0ZSJ9LCIuY2xhdWRlL2hvb2tzL3N0YXRlL2EuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJld29nSUNKd2NtOXFaV04wSWpvZ0ltRnNabUVpTEFvZ0lDSnpkR0YwZFhNaU9pQWlaRzl1WlNJc0NpQWdJblJ6SWpvZ1BFRkhSVjh4UGdwOUNnPT0ifSwicnVuIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCJydW4vY2Mtc3RhdHVzLmNhY2hlIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6IiJ9fX0="
+}

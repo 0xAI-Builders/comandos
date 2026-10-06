@@ -58,7 +58,16 @@ fn run(
     stdin: &[u8],
 ) -> (Option<i32>, Vec<u8>) {
     let mut command = if side == "bash" {
-        let mut c = Command::new("bash");
+        assert!(
+            matches!(
+                std::env::var("COMANDOS_ORACLE").as_deref(),
+                Ok("record" | "check")
+            ),
+            "reference shell must only execute in explicit record/check mode"
+        );
+        let mut c = Command::new(
+            std::env::var("COMANDOS_RUNTIME_ORACLE_BASH").unwrap_or_else(|_| "bash".into()),
+        );
         c.arg("-c")
             .arg("trap wait EXIT; . \"$0\" \"$@\"")
             .arg(root().join(script));
@@ -405,6 +414,51 @@ type StatusScenario<'a> = (
 /// (stdout, código, archivos del directorio de la caché con modo y contenido).
 type StatusRun = (Vec<u8>, Option<i32>, Vec<(String, u32, Vec<u8>)>);
 
+fn status_reference(
+    home: &Path,
+    fake: &Path,
+    env: &[(&str, &str)],
+    cache: Option<(&str, u64)>,
+    clock: i64,
+) -> (Option<i32>, Vec<u8>) {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/oracle-src/hooks/cc-status.sh");
+    let times: Vec<PathBuf> = [0, 1, 5, 10, 20, 30, 30000, 28801]
+        .into_iter()
+        .map(|age| PathBuf::from((clock - age).to_string()))
+        .collect();
+    let mut roots = vec![("<HOME>", home), ("<SOURCE>", source.as_path())];
+    for (token, time) in [
+        "<CLOCK>",
+        "<AGE_1>",
+        "<AGE_5>",
+        "<AGE_10>",
+        "<AGE_20>",
+        "<AGE_30>",
+        "<AGE_30000>",
+        "<AGE_28801>",
+    ]
+    .into_iter()
+    .zip(&times)
+    {
+        roots.push((token, time));
+    }
+    let normalized_env: Vec<(&str, String)> = env
+        .iter()
+        .map(|(key, value)| {
+            (
+                *key,
+                String::from_utf8(comandos_oracle::normalize(value.as_bytes(), &roots)).unwrap(),
+            )
+        })
+        .collect();
+    let output = comandos_oracle::text_with_tree_at(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"), "runtime-shell-claude-status",
+        &serde_json::json!({"provenance":include_str!("oracle-src/hooks/STATUS_PROVENANCE.json"),"env":normalized_env,"cache":cache}),
+        home, &roots, || serde_json::to_string(&run(source.to_str().unwrap(), "claude-status", "bash", home, fake, env, b""))
+            .map_err(|e| e.to_string())).unwrap();
+    serde_json::from_str(&output).unwrap()
+}
+
 fn status_side(
     dir: &Path,
     name: &str,
@@ -412,6 +466,7 @@ fn status_side(
     states: &[(&str, String)],
     cache: Option<(&str, u64)>,
     locale: &[(&str, &str)],
+    clock: i64,
 ) -> StatusRun {
     let home = dir.join(format!("{name}-{side}"));
     let runtime = home.join("run");
@@ -439,15 +494,11 @@ fn status_side(
     let runtime_env = runtime.to_string_lossy().into_owned();
     let mut env = vec![("XDG_RUNTIME_DIR", runtime_env.as_str())];
     env.extend_from_slice(locale);
-    let (code, stdout) = run(
-        "hooks/cc-status.sh",
-        "claude-status",
-        side,
-        &home,
-        &fake,
-        &env,
-        b"",
-    );
+    let (code, stdout) = if side == "bash" {
+        status_reference(&home, &fake, &env, cache, clock)
+    } else {
+        run("", "claude-status", side, &home, &fake, &env, b"")
+    };
     let mut files: Vec<(String, u32, Vec<u8>)> = fs::read_dir(&runtime)
         .unwrap()
         .map(|e| {
@@ -574,8 +625,8 @@ fn claude_status_matches_cc_status() {
         ("colacion_lc_collate", &collation, None, lc_collate),
     ];
     for (name, states, cache, locale) in scenarios {
-        let bash = status_side(&dir, name, "bash", states, cache, locale);
-        let rust = status_side(&dir, name, "rust", states, cache, locale);
+        let bash = status_side(&dir, name, "bash", states, cache, locale, now);
+        let rust = status_side(&dir, name, "rust", states, cache, locale, now);
         assert_eq!(
             String::from_utf8_lossy(&bash.0),
             String::from_utf8_lossy(&rust.0),

@@ -1,0 +1,8 @@
+{
+  "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+  "source_path": "hooks/cc-status.sh",
+  "sha256": "d5318e31eedee1b875e5a3341d29a74e588bccdb69380326c0f6722c93c54f6e",
+  "bash": "GNU bash, version 5.1.16(1)-release (x86_64-pc-linux-gnu)",
+  "jq": "jq-1.6",
+  "observations": "Exit/stdout and complete private cache/file effects. Input cache age and locale explicit; fixture wallclock aliases preserve exact existing state ages."
+}

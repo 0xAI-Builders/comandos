@@ -1,0 +1,20 @@
+{
+  "input": {
+    "case": {
+      "provenance": "{\n  \"source_commit\": \"2674f366bb01b9db42f6f64b728929b3acfe8b83\",\n  \"source_path\": \"hooks/cc-status.sh\",\n  \"sha256\": \"d5318e31eedee1b875e5a3341d29a74e588bccdb69380326c0f6722c93c54f6e\",\n  \"bash\": \"GNU bash, version 5.1.16(1)-release (x86_64-pc-linux-gnu)\",\n  \"jq\": \"jq-1.6\",\n  \"observations\": \"Exit/stdout and complete private cache/file effects. Input cache age and locale explicit; fixture wallclock aliases preserve exact existing state ages.\"\n}\n",
+      "env": [
+        [
+          "XDG_RUNTIME_DIR",
+          "<HOME>/run"
+        ],
+        [
+          "LANG",
+          "es_MX.UTF-8"
+        ]
+      ],
+      "cache": null
+    },
+    "before_sha256": "d20d9ba375ab7dc151f5b3d14117530ccbbd03d5f5ee1d5a3669df59a1ce2403"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbMCxbMzUsOTEsMTAyLDEwMyw2MSwzNSw2OCw0OCw1Niw1NSw1NSw0OCw5MywyMzksMTMxLDE3OSwzMiw2NSw5OCw5OSwzMiwxOTQsMTgzLDMyLDk3LDEwOCwxMDIsOTcsMzIsNDMsNDksMzUsOTEsMTAwLDEwMSwxMDIsOTcsMTE3LDEwOCwxMTYsOTMsMzIsMzIsMzUsOTEsMTAyLDEwMyw2MSwzNSw2NSw1MSw2Niw2OSw1Niw2Nyw5MywyMzksMTI4LDE0MCwzMiw5Nyw5OCw5OSwzMiwxOTQsMTgzLDMyLDEwMywxMTcsMTA1LDExMSwxMTAsMzIsNDMsNDksMzUsOTEsMTAwLDEwMSwxMDIsOTcsMTE3LDEwOCwxMTYsOTNdXSIsInRyZWUiOnsiLmNsYXVkZSI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmNsYXVkZS9ob29rcyI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmNsYXVkZS9ob29rcy9zdGF0ZSI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmNsYXVkZS9ob29rcy9zdGF0ZS9BYmMuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJld29nSUNKd2NtOXFaV04wSWpvZ0lrRmlZeUlzQ2lBZ0luTjBZWFIxY3lJNklDSjNZV2wwYVc1bklpd0tJQ0FpZEhNaU9pQThRVWRGWHpFK0NuMEsifSwiLmNsYXVkZS9ob29rcy9zdGF0ZS9aZXRhLS1zLS0xLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXdvZ0lDSndjbTlxWldOMElqb2dJbHBsZEdFaUxBb2dJQ0p6ZEdGMGRYTWlPaUFpZDJGcGRHbHVaeUlzQ2lBZ0luUnpJam9nUEVGSFJWOHhQZ3A5Q2c9PSJ9LCIuY2xhdWRlL2hvb2tzL3N0YXRlL19iLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXdvZ0lDSndjbTlxWldOMElqb2dJbWQxYVc5dUlpd0tJQ0FpYzNSaGRIVnpJam9nSW1SdmJtVWlMQW9nSUNKMGN5STZJRHhCUjBWZk1UNEtmUW89In0sIi5jbGF1ZGUvaG9va3Mvc3RhdGUvYWJjLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXdvZ0lDSndjbTlxWldOMElqb2dJbUZpWXlJc0NpQWdJbk4wWVhSMWN5STZJQ0prYjI1bElpd0tJQ0FpZEhNaU9pQThRVWRGWHpFK0NuMEsifSwiLmNsYXVkZS9ob29rcy9zdGF0ZS9hbGZhLS1zLS0yLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXdvZ0lDSndjbTlxWldOMElqb2dJbUZzWm1FaUxBb2dJQ0p6ZEdGMGRYTWlPaUFpZDJGcGRHbHVaeUlzQ2lBZ0luUnpJam9nUEVGSFJWOHhQZ3A5Q2c9PSJ9LCIuY2xhdWRlL2hvb2tzL3N0YXRlL8OpY2xhaXIuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJld29nSUNKd2NtOXFaV04wSWpvZ0ltVmpiR0ZwY2lJc0NpQWdJbk4wWVhSMWN5STZJQ0prYjI1bElpd0tJQ0FpZEhNaU9pQThRVWRGWHpFK0NuMEsifSwicnVuIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCJydW4vY2Mtc3RhdHVzLmNhY2hlIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6IkkxdG1aejBqUkRBNE56Y3dYZStEc3lCQlltTWd3cmNnWVd4bVlTQXJNU05iWkdWbVlYVnNkRjBnSUNOYlptYzlJMEV6UWtVNFExM3ZnSXdnWVdKaklNSzNJR2QxYVc5dUlDc3hJMXRrWldaaGRXeDBYUT09In19fQ=="
+}
