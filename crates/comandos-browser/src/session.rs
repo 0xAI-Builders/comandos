@@ -409,7 +409,7 @@ async fn dispatch_one<W: AsyncWrite + Unpin + Send + 'static>(
     registry: Arc<Registry>,
     writer: Writer<W>,
 ) {
-    let Some(ident) = message.get("id").cloned() else {
+    let Some(ident) = message.get("id").filter(|id| !id.is_null()).cloned() else {
         return;
     };
     let method = message.get("method").and_then(Value::as_str).unwrap_or("");

@@ -87,8 +87,6 @@ fn serve(args: &[String]) -> i32 {
         }
     };
     rt.block_on(async move {
-        println!("ComandOS browser broker ready on loopback");
-        let _ = io::stdout().flush();
         match Broker::serve(cfg, shutdown_signal()).await {
             Ok(()) => 0,
             Err(error) => {
@@ -100,7 +98,10 @@ fn serve(args: &[String]) -> i32 {
 }
 
 async fn shutdown_signal() {
-    let _ = tokio::signal::ctrl_c().await;
+    use tokio::signal::unix::{SignalKind, signal};
+    let mut terminate = signal(SignalKind::terminate()).expect("SIGTERM handler");
+    let mut interrupt = signal(SignalKind::interrupt()).expect("SIGINT handler");
+    tokio::select! { _ = terminate.recv() => {}, _ = interrupt.recv() => {} }
 }
 
 fn status(args: &[String]) -> i32 {

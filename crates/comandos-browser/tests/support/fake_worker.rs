@@ -11,6 +11,19 @@ fn main() {
     let profile_arg = env::args()
         .find(|arg| arg.starts_with("--user-data-dir="))
         .unwrap_or_else(|| "--user-data-dir=/tmp/comandos-browser-fake".to_owned());
+    if let Some(path) = env::var_os("FAKE_ROOT_PID_FILE") {
+        std::fs::write(path, std::process::id().to_string()).unwrap();
+    }
+    let _owned_child = if let Some(path) = env::var_os("FAKE_CHILD_PID_FILE") {
+        let child = Command::new("/bin/sh")
+            .args(["-c", "trap '' TERM; exec sleep 600"])
+            .spawn()
+            .unwrap();
+        std::fs::write(path, child.id().to_string()).unwrap();
+        Some(child)
+    } else {
+        None
+    };
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
     for line in stdin.lock().lines() {
@@ -33,7 +46,13 @@ fn main() {
                 &mut stdout,
                 json!({"jsonrpc":"2.0","id":id,"result":{"protocolVersion":"2025-11-25"}}),
             );
+            if let Ok(ms) = env::var("FAKE_PAUSE_AFTER_INIT_MS") {
+                thread::sleep(Duration::from_millis(ms.parse().unwrap()));
+            }
         } else if method == "tools/call" {
+            if let Some(path) = env::var_os("FAKE_CALL_MARKER") {
+                std::fs::write(path, b"call-started").unwrap();
+            }
             let args = msg
                 .get("params")
                 .and_then(|p| p.get("arguments"))

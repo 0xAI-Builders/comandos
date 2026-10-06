@@ -203,3 +203,24 @@ async fn initialized_notification_does_not_wrap_pending_counter() {
         .await;
     assert_eq!(call, r#"{"jsonrpc":"2.0","id":3,"result":{"content":[]}}"#);
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn null_id_never_initializes_or_executes_a_tool() {
+    let mut c = Harness::start().await;
+    c.send_line(r#"{"jsonrpc":"2.0","id":null,"method":"initialize","params":{}}"#)
+        .await;
+    let out = c
+        .request(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#)
+        .await;
+    assert!(out.contains("Initialize the MCP connection first"));
+    assert!(out.contains(r#""id":2"#));
+    c.initialize().await;
+    c.send_line(
+        r#"{"jsonrpc":"2.0","id":null,"method":"tools/call","params":{"name":"navigate_page"}}"#,
+    )
+    .await;
+    let out = c
+        .request(r#"{"jsonrpc":"2.0","id":3,"method":"ping"}"#)
+        .await;
+    assert_eq!(out, r#"{"jsonrpc":"2.0","id":3,"result":{}}"#);
+}

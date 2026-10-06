@@ -364,3 +364,159 @@ async fn retrying_stuck_worker_keeps_capacity_reserved() {
     assert_eq!(pool.status().await["stuck"], 1);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn cancelling_starts_and_queue_waits_recovers_every_reservation() {
+    let dir = temp_dir("cancel-start");
+    let mut c = cfg_with_env(dir.clone(), json!({"FAKE_INIT_DELAY_MS":"5000"}));
+    c.max_workers = 1;
+    c.queue_timeout = 10.0;
+    let pool = Pool::new(c, Arc::new(Registry::new()));
+    let start = {
+        let pool = pool.clone();
+        tokio::spawn(async move { call(&pool, "a", json!({})).await })
+    };
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while pool.status().await["workers"] != 1 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let waiter = {
+        let pool = pool.clone();
+        tokio::spawn(async move { call(&pool, "b", json!({})).await })
+    };
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while pool.status().await["queued"] != 1 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    waiter.abort();
+    let _ = waiter.await;
+    start.abort();
+    let _ = start.await;
+    pool.disconnect(SessionId("a".into())).await;
+    pool.disconnect(SessionId("b".into())).await;
+    pool.close_all().await;
+    assert_eq!(pool.status().await["workers"], 0);
+    assert_eq!(pool.status().await["queued"], 0);
+    assert!(!dir.join("session-a").exists());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn idle_snapshot_is_revalidated_after_another_worker_closes() {
+    let dir = temp_dir("reap-active");
+    let mut c = cfg(dir.clone());
+    c.idle_seconds = 0.01;
+    let pool = Pool::new(c, Arc::new(Registry::new()));
+    call(&pool, "a", json!({})).await;
+    call(&pool, "b", json!({})).await;
+    let started = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let attempts = Arc::new(AtomicUsize::new(0));
+    pool.with_close_hook(Arc::new({
+        let started = started.clone();
+        let release = release.clone();
+        let attempts = attempts.clone();
+        move || {
+            let started = started.clone();
+            let release = release.clone();
+            let attempts = attempts.clone();
+            Box::pin(async move {
+                if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                    started.notify_one();
+                    release.notified().await;
+                }
+                Ok(())
+            })
+        }
+    }))
+    .await;
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    let reaper = {
+        let pool = pool.clone();
+        tokio::spawn(async move {
+            pool.reap_idle().await;
+        })
+    };
+    started.notified().await;
+    let active = {
+        let pool = pool.clone();
+        tokio::spawn(async move { call(&pool, "b", json!({"sleep_ms":800})).await })
+    };
+    tokio::task::yield_now().await;
+    release.notify_one();
+    reaper.await.unwrap();
+    assert_eq!(
+        active.await.unwrap()["content"][0]["text"],
+        "ok navigate_page"
+    );
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    pool.close_all().await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn failed_initialization_with_failed_cleanup_stays_owned_until_retry() {
+    let dir = temp_dir("failed-init-stuck");
+    let c = cfg_with_env(dir.clone(), json!({"FAKE_INIT_FAIL":"1"}));
+    let pool = Pool::new(c, Arc::new(Registry::new()));
+    pool.fail_next_close();
+    let _ = call(&pool, "a", json!({})).await;
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while pool.status().await["stuck"] != 1 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(pool.status().await["workers"], 1);
+    pool.close_all().await;
+    assert_eq!(pool.status().await["workers"], 0);
+    assert!(!dir.join("session-a").exists());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cancelled_teardown_keeps_cleanup_task_and_capacity_owned() {
+    let dir = temp_dir("cancel-close");
+    let mut c = cfg(dir.clone());
+    c.max_workers = 1;
+    c.queue_timeout = 0.01;
+    let pool = Pool::new(c, Arc::new(Registry::new()));
+    call(&pool, "a", json!({})).await;
+    let started = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    pool.with_close_hook(Arc::new({
+        let started = started.clone();
+        let release = release.clone();
+        move || {
+            let started = started.clone();
+            let release = release.clone();
+            Box::pin(async move {
+                started.notify_one();
+                release.notified().await;
+                Ok(())
+            })
+        }
+    }))
+    .await;
+    let close = {
+        let pool = pool.clone();
+        tokio::spawn(async move {
+            pool.disconnect(SessionId("a".into())).await;
+        })
+    };
+    started.notified().await;
+    close.abort();
+    let _ = close.await;
+    assert_eq!(pool.status().await["workers"], 1);
+    assert_eq!(
+        call(&pool, "b", json!({})).await["content"][0]["text"],
+        ERR_BUSY
+    );
+    release.notify_one();
+    pool.close_all().await;
+    assert_eq!(pool.status().await["workers"], 0);
+}

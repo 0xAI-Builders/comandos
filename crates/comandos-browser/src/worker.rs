@@ -38,25 +38,41 @@ pub enum CloseError {
     DescendantsAlive,
 }
 
-struct Inner {
-    child: Child,
-    stdin: ChildStdin,
-}
-
 type Pending = Arc<Mutex<BTreeMap<i64, oneshot::Sender<Result<Value, WorkerError>>>>>;
 
 pub struct Worker {
-    inner: Arc<Mutex<Inner>>,
+    child: Mutex<Child>,
+    stdin: Mutex<ChildStdin>,
+    root: Option<(i32, u64)>,
+    owned: Mutex<BTreeMap<i32, u64>>,
+    closing: Mutex<()>,
     pending: Pending,
     counter: AtomicI64,
     profile: PathBuf,
     stderr: Arc<Mutex<VecDeque<String>>>,
-    tasks: Mutex<Vec<tokio::task::JoinHandle<()>>>,
+    tasks: std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>,
     last_used: Mutex<Instant>,
 }
 
 impl Worker {
     pub async fn start(
+        cfg: &BrokerConfig,
+        profile: PathBuf,
+        notify: mpsc::Sender<Value>,
+    ) -> Result<Arc<Self>, WorkerError> {
+        let worker = Arc::new(Self::spawn(cfg, profile, notify)?);
+        let mut cleanup = StartCleanup(Some(worker.clone()), cfg.stop_grace);
+        if let Err(error) = worker.initialize(cfg).await {
+            if worker.clone().close(cfg.stop_grace).await.is_ok() {
+                cleanup.0 = None;
+            }
+            return Err(error);
+        }
+        cleanup.0 = None;
+        Ok(worker)
+    }
+
+    pub fn spawn(
         cfg: &BrokerConfig,
         profile: PathBuf,
         notify: mpsc::Sender<Value>,
@@ -125,46 +141,55 @@ impl Worker {
             let mut reader = BufReader::new(stderr);
             drain_stderr(&mut reader, err_ring).await;
         });
-        let worker = Self {
-            inner: Arc::new(Mutex::new(Inner { child, stdin })),
+        let root = child.id().and_then(|pid| {
+            crate::proc_scan::process_identity(Path::new("/proc"), pid as i32)
+                .map(|(generation, _)| (pid as i32, generation))
+        });
+        Ok(Self {
+            child: Mutex::new(child),
+            stdin: Mutex::new(stdin),
+            root,
+            owned: Mutex::new(BTreeMap::new()),
+            closing: Mutex::new(()),
             pending,
             counter: AtomicI64::new(0),
             profile,
             stderr: stderr_ring,
-            tasks: Mutex::new(vec![pump, drain]),
+            tasks: std::sync::Mutex::new(vec![pump, drain]),
             last_used: Mutex::new(Instant::now()),
-        };
+        })
+    }
+
+    pub fn own_task(&self, task: tokio::task::JoinHandle<()>) {
+        self.tasks.lock().unwrap().push(task);
+    }
+
+    pub async fn initialize(&self, cfg: &BrokerConfig) -> Result<(), WorkerError> {
         let init = json!({
             "protocolVersion": cfg.catalog.get("protocolVersion").and_then(Value::as_str).unwrap_or("2025-11-25"),
             "capabilities": {},
             "clientInfo": {"name":"comandos-browser","version":"1"}
         });
         let _response =
-            match tokio::time::timeout(Duration::from_secs(20), worker.request("initialize", init))
+            match tokio::time::timeout(Duration::from_secs(20), self.request("initialize", init))
                 .await
             {
                 Ok(Ok(response)) if response.get("error").is_none() => response,
                 _ => {
-                    let _ = Arc::new(worker).close(cfg.stop_grace).await;
                     return Err(WorkerError::Io("Worker initialization failed".to_owned()));
                 }
             };
-        if let Err(error) = worker
-            .send_value(&json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
-            .await
-        {
-            let _ = Arc::new(worker).close(cfg.stop_grace).await;
-            return Err(error);
-        }
-        Ok(worker)
+        self.send_value(&json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
+            .await?;
+        Ok(())
     }
 
     async fn send_value(&self, value: &Value) -> Result<(), WorkerError> {
         let bytes = encode_message(value).map_err(WorkerError::Json)?;
-        let mut inner = self.inner.lock().await;
+        let mut stdin = self.stdin.lock().await;
         tokio::time::timeout(Duration::from_secs(10), async {
-            inner.stdin.write_all(&bytes).await?;
-            inner.stdin.flush().await
+            stdin.write_all(&bytes).await?;
+            stdin.flush().await
         })
         .await
         .map_err(|_| WorkerError::Io("stdin write timed out".to_owned()))?
@@ -188,29 +213,45 @@ impl Worker {
     }
 
     pub async fn close(self: Arc<Self>, stop_grace: f64) -> Result<(), CloseError> {
-        let pid = self.pid().map(|pid| pid as i32);
-        let mut owned = pid
-            .map(|pid| owned_processes(Path::new("/proc"), pid, &self.profile))
-            .unwrap_or_default();
+        let _closing = self.closing.lock().await;
+        let proc_root = Path::new("/proc");
+        let root_pid = self
+            .root
+            .filter(|(pid, generation)| {
+                crate::proc_scan::process_identity(proc_root, *pid)
+                    .is_some_and(|(current, _)| current == *generation)
+            })
+            .map(|(pid, _)| pid)
+            .unwrap_or(-1);
+        let mut owned = self.owned.lock().await;
+        owned.extend(owned_processes(proc_root, root_pid, &self.profile));
         {
-            let mut inner = self.inner.lock().await;
-            if let Some(pid) = inner.child.id() {
+            let mut child = self.child.lock().await;
+            if let Some(pid) = child.id() {
                 let _ = nix::sys::signal::kill(Pid::from_raw(pid as i32), Signal::SIGTERM);
             }
-            if tokio::time::timeout(
-                Duration::from_secs_f64(stop_grace.max(0.0)),
-                inner.child.wait(),
-            )
-            .await
-            .is_err()
+            if tokio::time::timeout(Duration::from_secs_f64(stop_grace.max(0.0)), child.wait())
+                .await
+                .is_err()
             {
-                let _ = inner.child.start_kill();
-                let _ = inner.child.wait().await;
+                let _ = child.start_kill();
+                child
+                    .wait()
+                    .await
+                    .map_err(|e| CloseError::Io(e.to_string()))?;
             }
         }
-        if let Some(pid) = pid {
-            owned.extend(owned_processes(Path::new("/proc"), pid, &self.profile));
-        }
+        // The profile scan still works after reaping the root, and previous generations
+        // remain owned across failed closes and retries.
+        let root_pid = self
+            .root
+            .filter(|(pid, generation)| {
+                crate::proc_scan::process_identity(proc_root, *pid)
+                    .is_some_and(|(current, _)| current == *generation)
+            })
+            .map(|(pid, _)| pid)
+            .unwrap_or(-1);
+        owned.extend(owned_processes(proc_root, root_pid, &self.profile));
         signal_owned(Path::new("/proc"), &owned, Signal::SIGTERM);
         tokio::time::sleep(Duration::from_millis(50)).await;
         signal_owned(Path::new("/proc"), &owned, Signal::SIGKILL);
@@ -224,7 +265,7 @@ impl Worker {
         if !remaining_live(Path::new("/proc"), &owned).is_empty() {
             return Err(CloseError::DescendantsAlive);
         }
-        for task in self.tasks.lock().await.drain(..) {
+        for task in self.tasks.lock().unwrap().drain(..) {
             task.abort();
         }
         let _ = std::fs::remove_dir_all(&self.profile);
@@ -232,10 +273,7 @@ impl Worker {
     }
 
     pub fn pid(&self) -> Option<u32> {
-        self.inner
-            .try_lock()
-            .ok()
-            .and_then(|inner| inner.child.id())
+        self.root.map(|(pid, _)| pid as u32)
     }
 
     pub async fn last_used(&self) -> Instant {
@@ -307,4 +345,38 @@ pub fn remote_error_text(value: &Value) -> String {
             .and_then(Value::as_str)
             .unwrap_or("unknown error")
     )
+}
+
+// Direct users retain cleanup ownership even when startup is cancelled.
+struct StartCleanup(Option<Arc<Worker>>, f64);
+impl Drop for StartCleanup {
+    fn drop(&mut self) {
+        if let Some(worker) = self.0.take() {
+            let grace = self.1;
+            tokio::spawn(async move {
+                while worker.clone().close(grace).await.is_err() {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            });
+        }
+    }
+}
+impl Drop for Worker {
+    fn drop(&mut self) {
+        for task in self.tasks.get_mut().unwrap().drain(..) {
+            task.abort();
+        }
+        let proc_root = Path::new("/proc");
+        let root_pid = self
+            .root
+            .filter(|(pid, generation)| {
+                crate::proc_scan::process_identity(proc_root, *pid)
+                    .is_some_and(|(current, _)| current == *generation)
+            })
+            .map(|(pid, _)| pid)
+            .unwrap_or(-1);
+        let owned = self.owned.get_mut();
+        owned.extend(owned_processes(proc_root, root_pid, &self.profile));
+        signal_owned(proc_root, owned, Signal::SIGKILL);
+    }
 }

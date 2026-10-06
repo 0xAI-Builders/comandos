@@ -14,6 +14,11 @@ impl Broker {
     pub async fn serve(cfg: BrokerConfig, shutdown: impl Future<Output = ()>) -> io::Result<()> {
         std::fs::create_dir_all(&cfg.state_dir)?;
         let listener = TcpListener::bind(("127.0.0.1", cfg.port)).await?;
+        println!("ComandOS browser broker ready on loopback");
+        {
+            use std::io::Write;
+            let _ = std::io::stdout().flush();
+        }
         let catalog_value = cfg.catalog.clone();
         let registry = Arc::new(Registry::new());
         let pool = Pool::new(cfg, registry.clone());
@@ -36,9 +41,9 @@ impl Broker {
         registry.close();
         clients.abort_all();
         while clients.join_next().await.is_some() {}
-        pool.close_all().await;
         let _ = tx.send(true);
         let _ = house.await;
+        pool.close_all().await;
         Ok(())
     }
 }
