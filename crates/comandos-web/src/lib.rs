@@ -61,9 +61,10 @@ pub mod components {
     pub mod device_drafts;
     pub mod extensions;
     pub mod foundation;
+    pub mod foundation_helpers;
     pub mod foundation_lifecycle;
-    pub mod foundation_remote;
     pub mod foundation_navigation;
+    pub mod foundation_remote;
     pub mod news_reader;
     pub mod notifications;
     pub mod pomodoro;
