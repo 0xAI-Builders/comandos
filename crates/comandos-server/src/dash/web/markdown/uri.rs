@@ -479,3 +479,102 @@ pub(super) fn restore_href_attributes(html: &str) -> Cow<'_, str> {
     result.push_str(&html[at..]);
     Cow::Owned(result)
 }
+
+// RFC 3492 decoding for the original renderer's autolink display spelling.
+// Surrogate code points remain UTF-16 units; they are not Unicode replacements.
+pub(super) fn autolink_text(source: &str) -> Cow<'_, str> {
+    let Some((scheme, rest)) = source.split_once("://") else {
+        return Cow::Borrowed(source);
+    };
+    if !matches!(scheme, "http" | "https") {
+        return Cow::Borrowed(source);
+    }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let host_port = authority.rsplit('@').next().unwrap_or(authority);
+    let host = host_port.split(':').next().unwrap_or(host_port);
+    if host.len() > 255 || !host.contains("xn--") {
+        return Cow::Borrowed(source);
+    }
+    let mut units = Vec::new();
+    for (i, label) in host.split('.').enumerate() {
+        if i > 0 {
+            units.push(46);
+        }
+        if let Some(encoded) = label.strip_prefix("xn--") {
+            let Some(points) = decode_punycode(encoded) else {
+                return Cow::Borrowed(source);
+            };
+            for cp in points {
+                if cp <= 0xffff {
+                    units.push(cp as u16);
+                } else if let Some(ch) = char::from_u32(cp) {
+                    let mut buffer = [0; 2];
+                    units.extend_from_slice(ch.encode_utf16(&mut buffer));
+                } else {
+                    return Cow::Borrowed(source);
+                }
+            }
+        } else {
+            units.extend(label.encode_utf16());
+        }
+    }
+    let start = scheme.len() + 3 + authority.len() - host_port.len();
+    let mut result = String::from(&source[..start]);
+    result.push_str(&comandos_web_view::utf16::encode(units));
+    result.push_str(&source[start + host.len()..]);
+    Cow::Owned(result)
+}
+fn decode_punycode(input: &str) -> Option<Vec<u32>> {
+    let (basic, encoded) = input.rsplit_once('-').map_or(("", input), |(a, b)| (a, b));
+    if !basic.is_ascii() {
+        return None;
+    }
+    let mut out = basic.bytes().map(u32::from).collect::<Vec<_>>();
+    let mut bytes = encoded.bytes();
+    let mut n = 128u64;
+    let mut index = 0u64;
+    let mut bias = 72u64;
+    while let Some(first) = bytes.next() {
+        let old = index;
+        let mut weight = 1u64;
+        let mut k = 36u64;
+        let mut byte = first;
+        loop {
+            let digit = match byte {
+                b'a'..=b'z' => byte - b'a',
+                b'A'..=b'Z' => byte - b'A',
+                b'0'..=b'9' => byte - b'0' + 26,
+                _ => return None,
+            };
+            index = index.checked_add(u64::from(digit).checked_mul(weight)?)?;
+            let threshold = if k <= bias { 1 } else { (k - bias).min(26) };
+            if u64::from(digit) < threshold {
+                break;
+            }
+            weight = weight.checked_mul(36 - threshold)?;
+            k += 36;
+            byte = bytes.next()?;
+        }
+        let count = out.len() as u64 + 1;
+        let mut d = if old == 0 {
+            (index - old) / 700
+        } else {
+            (index - old) / 2
+        };
+        d += d / count;
+        let mut k = 0;
+        while d > 455 {
+            d /= 35;
+            k += 36;
+        }
+        bias = k + 36 * d / (d + 38);
+        n = n.checked_add(index / count)?;
+        if n > 0x10ffff {
+            return None;
+        }
+        index %= count;
+        out.insert(index as usize, n as u32);
+        index += 1;
+    }
+    Some(out)
+}

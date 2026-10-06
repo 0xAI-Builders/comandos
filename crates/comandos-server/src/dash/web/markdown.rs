@@ -277,23 +277,30 @@ fn tail(text: &str, url: &str) -> String {
         String::new()
     }
 }
-fn numeric_entity_terminator(text: &str, start: usize, end: usize) -> bool {
+fn source_entity_terminator(text: &str, start: usize, end: usize) -> bool {
     text.get(end..).is_some_and(|tail| tail.starts_with(';'))
         && text
             .get(start..end)
-            .and_then(|url| url.rsplit_once("&#"))
-            .is_some_and(|(_, digits)| {
-                if let Some(hex) = digits.strip_prefix(['x', 'X']) {
-                    !hex.is_empty() && hex.bytes().all(|ch| ch.is_ascii_hexdigit())
+            .and_then(|url| url.rsplit_once('&'))
+            .is_some_and(|(_, entity)| {
+                if let Some(digits) = entity.strip_prefix('#') {
+                    if let Some(hex) = digits.strip_prefix(['x', 'X']) {
+                        !hex.is_empty() && hex.bytes().all(|ch| ch.is_ascii_hexdigit())
+                    } else {
+                        !digits.is_empty() && digits.bytes().all(|ch| ch.is_ascii_digit())
+                    }
                 } else {
-                    !digits.is_empty() && digits.bytes().all(|ch| ch.is_ascii_digit())
+                    !entity.is_empty()
+                        && entity.len() <= 31
+                        && entity.as_bytes()[0].is_ascii_alphabetic()
+                        && entity.bytes().all(|ch| ch.is_ascii_alphanumeric())
                 }
             })
 }
 // Markdown-it's raw URL matcher retains a semicolon only when followed by
 // something other than whitespace, a control character or end of input.
-fn numeric_entity_end(text: &str, start: usize, end: usize) -> usize {
-    if numeric_entity_terminator(text, start, end)
+fn source_entity_end(text: &str, start: usize, end: usize) -> usize {
+    if source_entity_terminator(text, start, end)
         && text
             .get(end + 1..)
             .and_then(|tail| tail.chars().next())
@@ -336,7 +343,7 @@ fn linkified(text: &str, generated_hrefs: &mut HashSet<String>) -> String {
         if text.get(..link.start).is_some_and(|s| s.ends_with('@')) {
             continue;
         }
-        let end = numeric_entity_end(text, link.start, link.end);
+        let end = source_entity_end(text, link.start, link.end);
         let visible = text
             .get(link.start..end)
             .unwrap_or_default()
@@ -363,7 +370,7 @@ fn linkified(text: &str, generated_hrefs: &mut HashSet<String>) -> String {
         // Bare destinations still originate in source, before entities.
         let href = uri::transport_destination(&href);
         out.push_str(&anchor(&href, "", generated_hrefs));
-        out.push_str(&esc(visible));
+        out.push_str(&esc(&uri::autolink_text(visible)));
         out.push_str("</a>");
         at = link.start + visible.len();
     }
@@ -414,13 +421,13 @@ fn restore_autolink_source(
     let mut at = 0;
     for link in autolinks(&raw, &finder) {
         let matched = raw.get(link.clone()).unwrap_or_default();
-        if !(matched.contains('\\') || matched.contains("&#")) || !http_url(matched) {
+        if !(matched.contains('\\') || matched.contains('&')) || !http_url(matched) {
             continue;
         }
         if raw.get(..link.start).is_some_and(|s| s.ends_with('@')) {
             continue;
         }
-        let mut end = numeric_entity_end(&raw, link.start, link.end);
+        let mut end = source_entity_end(&raw, link.start, link.end);
         let (Some(source_start), Some(source_end)) = (source_at(link.start), source_at(end)) else {
             continue;
         };
@@ -430,7 +437,7 @@ fn restore_autolink_source(
         // while linkified independently applies the contextual URL boundary.
         // This recovers raw bytes; it does not add the semicolon to the href.
         if end_decoded.is_none()
-            && numeric_entity_terminator(&raw, link.start, end)
+            && source_entity_terminator(&raw, link.start, end)
             && let Some(decoded_end) = source_at(end + 1).and_then(offset)
         {
             end += 1;
