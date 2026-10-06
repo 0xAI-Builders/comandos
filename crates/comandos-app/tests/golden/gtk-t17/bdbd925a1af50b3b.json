@@ -1,0 +1,12 @@
+{
+  "input": {
+    "op": "wizard",
+    "session": "fixture",
+    "pane": "%7",
+    "cwd": "/tmp/fixture 'quoted' \"new\"",
+    "statuses": [
+      null
+    ]
+  },
+  "output_b64": "eyJzY3JpcHRzIjogWyJuc09wZW5Gb3JQYW5lKFwiZml4dHVyZVwiLFwiJTdcIixcIi90bXAvZml4dHVyZSAncXVvdGVkJyBcXFwibmV3XFxcIlwiKSJdLCAicmVhZHMiOiBbWyJkaXNwbGF5LW1lc3NhZ2UiLCAiLXAiLCAiLXQiLCAiJTciLCAiI3twYW5lX2N1cnJlbnRfcGF0aH0iXV19Cg=="
+}

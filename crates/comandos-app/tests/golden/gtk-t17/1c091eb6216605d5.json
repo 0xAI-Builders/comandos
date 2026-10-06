@@ -1,0 +1,18 @@
+{
+  "input": {
+    "op": "quota",
+    "percents": [
+      -1,
+      0,
+      84,
+      85,
+      94,
+      95,
+      120
+    ],
+    "statuses": [
+      null
+    ]
+  },
+  "output_b64": "WyIiLCAiIiwgIiIsICJ3YXJuIiwgIndhcm4iLCAiZnVsbCIsICJmdWxsIl0K"
+}

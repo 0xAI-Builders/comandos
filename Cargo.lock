@@ -374,6 +374,7 @@ dependencies = [
  "comandos-core",
  "comandos-desktop",
  "comandos-notifyd",
+ "comandos-oracle",
  "comandos-runtime",
  "comandos-store",
  "comandos-term",

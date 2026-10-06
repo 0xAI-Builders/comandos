@@ -1,0 +1,46 @@
+{
+  "input": {
+    "op": "geometry",
+    "panes": [
+      {
+        "id": "%1",
+        "left": 0,
+        "top": 1,
+        "width": 40,
+        "height": 29
+      },
+      {
+        "id": "%2",
+        "left": 41,
+        "top": 1,
+        "width": 38,
+        "height": 10
+      },
+      {
+        "id": "%3",
+        "left": 41,
+        "top": 12,
+        "width": 38,
+        "height": 18
+      }
+    ],
+    "geom": {
+      "cell_w": 8.5,
+      "cell_h": 17.5,
+      "origin_x": 12.0,
+      "origin_y": 24.0
+    },
+    "grid": [
+      80,
+      30
+    ],
+    "focused": false,
+    "active": [
+      "%3"
+    ],
+    "statuses": [
+      null
+    ]
+  },
+  "output_b64": "eyJmcmFtZXMiOiBbWzcuMCwgNy4wLCAzNDguMCwgNTQ1LjAsIGZhbHNlXSwgWzM1Ny41LCA3LjAsIDMyOS4wLCAyMDcuNSwgZmFsc2VdLCBbMzU3LjUsIDIxOS41LCAzMjkuMCwgMzMyLjUsIGZhbHNlXV0sICJyb3dzIjogeyIlMSI6IFs3LjAsIDI0LjAsIDM0OC4wLCA3LjBdLCAiJTIiOiBbMzU3LjUsIDI0LjAsIDMyOS4wLCA3LjBdLCAiJTMiOiBbMzU3LjUsIDIxNi41LCAzMjkuMCwgMjE5LjVdfSwgImd1dHRlcnMiOiBbWyJ2IiwgMzUyLjAsIDEzLjAsIDguNSwgNTMzLjAsICIlMSJdLCBbInYiLCA2ODMuNSwgMTMuMCwgOC41LCAxOTUuNSwgIiUyIl0sIFsiaCIsIDM2Ny41LCAyMTQuNSwgMzA5LjAsIDUsICIlMiJdLCBbInYiLCA2ODMuNSwgMjI1LjUsIDguNSwgMzIwLjUsICIlMyJdXSwgImdyaXBzIjogW1szNDQsIDEzLCAyNCwgNTMzXSwgWzY3NSwgMTMsIDI0LCAxOTVdLCBbMzY3LCAyMDYsIDMwOSwgMjFdLCBbNjc1LCAyMjUsIDI0LCAzMjBdXSwgInBpbGxzIjogeyIlMSI6IFsxNSwgMTNdLCAiJTIiOiBbMzY1LCAxM10sICIlMyI6IFszNjUsIDIyMF19LCAiY2FyZHMiOiB7IiUxIjogWzgsIDgsIDM0NiwgMzNdLCAiJTIiOiBbMzU4LCA4LCAzMjcsIDMzXSwgIiUzIjogWzM1OCwgMjIwLCAzMjcsIDE4XX19Cg=="
+}

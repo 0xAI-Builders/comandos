@@ -48,3 +48,6 @@ comandos-term = { path = "../comandos-term" }
 alacritty_terminal = { version = "=0.26.0", default-features = false }
 rustix = { version = "=1.1.5", features = ["process"] }
 signal-hook = "=0.4.5"
+
+[dev-dependencies]
+comandos-oracle = { path = "../comandos-oracle" }

@@ -1,0 +1,35 @@
+{
+  "input": {
+    "op": "gutter",
+    "panes": [
+      {
+        "id": "%1",
+        "left": 0,
+        "top": 1,
+        "width": 40,
+        "height": 29
+      },
+      {
+        "id": "%2",
+        "left": 41,
+        "top": 1,
+        "width": 38,
+        "height": 10
+      },
+      {
+        "id": "%3",
+        "left": 41,
+        "top": 12,
+        "width": 38,
+        "height": 18
+      }
+    ],
+    "pane": "%2",
+    "orientation": "h",
+    "cell": -10.0,
+    "statuses": [
+      null
+    ]
+  },
+  "output_b64": "eyJuZWlnaGJvciI6ICIlMyIsICJ0YXJnZXQiOiAyLCAiaGFsZiI6IDE0fQo="
+}

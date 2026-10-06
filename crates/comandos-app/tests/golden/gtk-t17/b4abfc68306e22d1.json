@@ -1,0 +1,19 @@
+{
+  "input": {
+    "op": "account",
+    "english": true,
+    "statuses": [
+      {
+        "operationId": "fixture-id",
+        "state": "snapshot"
+      },
+      null,
+      {
+        "operationId": "fixture-id",
+        "state": "rolled_back",
+        "ok": false
+      }
+    ]
+  },
+  "output_b64": "eyJyZXN1bHQiOiB7Im9wZXJhdGlvbklkIjogImZpeHR1cmUtaWQiLCAic3RhdGUiOiAicm9sbGVkX2JhY2siLCAib2siOiBmYWxzZX0sICJub3RlcyI6IFsiR3VhcmRhbmRvIGxhIGNvbnZlcnNhY2lcdTAwZjNuXHUyMDI2Il0sICJkZWxheXMiOiBbMS41LCAxLjUsIDEuNV0sICJjYWxscyI6IFtbImh0dHA6Ly8xMjcuMC4wLjE6NzMzNy9tb2RlbC9zdGF0dXM/b3BlcmF0aW9uS2V5PWZpeHR1cmUlN0MlMjU3Jm9wZXJhdGlvbklkPWZpeHR1cmUtaWQiLCA4XSwgWyJodHRwOi8vMTI3LjAuMC4xOjczMzcvbW9kZWwvc3RhdHVzP29wZXJhdGlvbktleT1maXh0dXJlJTdDJTI1NyZvcGVyYXRpb25JZD1maXh0dXJlLWlkIiwgOF0sIFsiaHR0cDovLzEyNy4wLjAuMTo3MzM3L21vZGVsL3N0YXR1cz9vcGVyYXRpb25LZXk9Zml4dHVyZSU3QyUyNTcmb3BlcmF0aW9uSWQ9Zml4dHVyZS1pZCIsIDhdXX0K"
+}

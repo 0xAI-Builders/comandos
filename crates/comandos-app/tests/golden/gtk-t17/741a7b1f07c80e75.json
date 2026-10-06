@@ -1,0 +1,13 @@
+{
+  "input": {
+    "op": "account",
+    "statuses": [
+      {
+        "operationId": "fixture-id",
+        "state": "confirmed",
+        "ok": false
+      }
+    ]
+  },
+  "output_b64": "eyJyZXN1bHQiOiB7Im9wZXJhdGlvbklkIjogImZpeHR1cmUtaWQiLCAic3RhdGUiOiAiY29uZmlybWVkIiwgIm9rIjogZmFsc2V9LCAibm90ZXMiOiBbXSwgImRlbGF5cyI6IFsxLjVdLCAiY2FsbHMiOiBbWyJodHRwOi8vMTI3LjAuMC4xOjczMzcvbW9kZWwvc3RhdHVzP29wZXJhdGlvbktleT1maXh0dXJlJTdDJTI1NyZvcGVyYXRpb25JZD1maXh0dXJlLWlkIiwgOF1dfQo="
+}
