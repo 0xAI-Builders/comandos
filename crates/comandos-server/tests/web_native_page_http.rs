@@ -394,16 +394,43 @@ async fn serve_real_native_payload_for_remote_smoke() {
         token_file: None,
         asset_exists,
         handler: {
+            let mut asset_urls =
+                dash::web::native_page::bundle(&state.web.manifest(), &state.config.web_dir)
+                    .unwrap()
+                    .assets
+                    .into_keys()
+                    .collect::<std::collections::HashSet<_>>();
+            if let Ok(manifest) = dash::web::assets::Manifest::load_terminal(&state.config.web_dir)
+                && let Ok(page) =
+                    dash::web::native_term_page::bundle(&manifest, &state.config.web_dir)
+            {
+                asset_urls.extend(page.assets.into_keys());
+            }
             let frontend = dash::handler(state);
             Arc::new(move |request| {
                 let path = dash::router::path_of(&request.target);
-                if path == "/"
-                    || path == "/index.html"
+                let native_page = request
+                    .target
+                    .split('?')
+                    .nth(1)
+                    .is_some_and(|query| query.split('&').any(|pair| pair == "web=native"));
+                if (matches!(path, "/" | "/index.html" | "/term/") && native_page)
                     || path.starts_with("/web/")
-                    || path.starts_with("/assets/")
-                    || path == "/sw.js"
+                    || asset_urls.contains(path)
+                    || (path == "/sw.js" && request.target.split('?').nth(1) == Some("native=1"))
                 {
                     return frontend(request);
+                }
+                if path.starts_with("/assets/")
+                    || matches!(path, "/" | "/index.html" | "/term/" | "/sw.js")
+                {
+                    return Box::pin(async {
+                        Ok(comandos_server::Reply::bytes(
+                            http::StatusCode::NOT_FOUND,
+                            "text/plain",
+                            b"private fixture: no legacy asset fallback".to_vec(),
+                        ))
+                    });
                 }
                 // No API request can reach the user's legacy daemon. The WASM
                 // artifact and frontend transport are real; backend data is a fixture.
@@ -423,10 +450,18 @@ async fn serve_real_native_payload_for_remote_smoke() {
                         serde_json::json!({"catalog":{"commands":[],"groups":[]},"cliInPane":"codex"})
                     }
                     "/workspace" => serde_json::json!({"revision":1,"groups":[],"tabs":[]}),
-                    "/notices" => serde_json::json!({"notices":[],"rev":"0"}),
+                    "/notices" | "/notices/watch" => {
+                        serde_json::json!({"notices":[],"rev":"0"})
+                    }
                     _ => serde_json::json!({}),
                 };
-                Box::pin(async move { comandos_server::Reply::json(http::StatusCode::OK, &data) })
+                let long_poll = path == "/notices/watch";
+                Box::pin(async move {
+                    if long_poll {
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
+                    comandos_server::Reply::json(http::StatusCode::OK, &data)
+                })
             })
         },
         websocket: None,
@@ -434,9 +469,9 @@ async fn serve_real_native_payload_for_remote_smoke() {
     };
     let (stop, rx) = watch::channel(false);
     let task = tokio::spawn(comandos_server::serve(listener, config, rx));
-    // Exit early by creating this private sentinel; otherwise close after 180s.
+    // Exit early by creating this private sentinel; otherwise close after 300s.
     println!("NATIVE_SMOKE_STOP={}", root.join("stop").display());
-    for _ in 0..180 {
+    for _ in 0..300 {
         if root.join("stop").exists() {
             break;
         }
