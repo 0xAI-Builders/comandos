@@ -1,0 +1,10 @@
+{
+  "id": "workspace-layout",
+  "kind": "script",
+  "source": "dash/workspace-layout.js",
+  "sha256": "6aa6462bb9bfd56aaf0d6e7634dda0a7e2a4d79f12f624122f13c6619e57a4e3",
+  "exports": [
+    "WorkspaceLayout"
+  ],
+  "deps": []
+}

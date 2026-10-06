@@ -1,0 +1,10 @@
+{
+  "id": "quick-terminal",
+  "kind": "script",
+  "source": "dash/quick-terminal.js",
+  "sha256": "1c22331636b8e709df5e161eebcacc38be830294b9dacd763ed46ae1eebf385e",
+  "exports": [
+    "ComandosQuickTerminal"
+  ],
+  "deps": []
+}

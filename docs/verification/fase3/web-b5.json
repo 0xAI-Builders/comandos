@@ -1,0 +1,44 @@
+{
+  "status": "implemented",
+  "remote_visual": {
+    "status": "partial-pass",
+    "reason": "pair suites passed through chrome-bg/macmini on private fixtures; remote-vs-desktop and 24 h shadow remain controller gates"
+  },
+  "checks": [
+    {
+      "command": "CARGO_TARGET_DIR=/home/someguy/codebase/0xJesus/ComandOS/.build/target-fase3 nice -n10 cargo test -p comandos-web-dom -p comandos-web -p comandos-web-view -j2",
+      "status": "pass"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=/home/someguy/codebase/0xJesus/ComandOS/.build/target-fase3 nice -n10 cargo test -p xtask -j2",
+      "status": "pass"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=/home/someguy/codebase/0xJesus/ComandOS/.build/target-fase3 nice -n10 cargo check -p comandos-web --target wasm32-unknown-unknown -j2",
+      "status": "pass"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=/home/someguy/codebase/0xJesus/ComandOS/.build/target-fase3 nice -n10 cargo clippy -p comandos-web-dom -p comandos-web -p comandos-web-view -j2 -- -D warnings",
+      "status": "pass"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=/home/someguy/codebase/0xJesus/ComandOS/.build/target-fase3 nice -n10 cargo clippy -p comandos-web --target wasm32-unknown-unknown -j2 -- -D warnings",
+      "status": "pass"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=/home/someguy/codebase/0xJesus/ComandOS/.build/target-fase3 nice -n10 cargo run -j2 -p xtask -- shots check",
+      "status": "pass",
+      "output": "chrome-bg schema valid, viewport emulation true"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=/home/someguy/codebase/0xJesus/ComandOS/.build/target-fase3 nice -n10 cargo run -j2 -p xtask -- shots pair --base http://127.0.0.1:7307 --suite push-settings --out /home/someguy/codebase/0xJesus/ComandOS/.build/shots-b5",
+      "status": "pass",
+      "output": "4 crops, 0 failed"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=/home/someguy/codebase/0xJesus/ComandOS/.build/target-fase3 nice -n10 cargo run -j2 -p xtask -- shots pair --base http://127.0.0.1:7307 --suite session-config --out /home/someguy/codebase/0xJesus/ComandOS/.build/shots-b5",
+      "status": "pass",
+      "output": "4 crops, 0 failed"
+    }
+  ]
+}

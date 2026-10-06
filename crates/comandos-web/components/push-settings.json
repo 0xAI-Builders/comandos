@@ -1,0 +1,10 @@
+{
+  "id": "push-settings",
+  "kind": "script",
+  "source": "dash/push-settings.js",
+  "sha256": "3af04ea72436664360eeea65959e8290ff3ee1edbf8870a4e58c288abbe2ff19",
+  "exports": [
+    "PushSettings"
+  ],
+  "deps": []
+}

@@ -55,7 +55,12 @@
 pub mod registry;
 
 pub mod components {
+    pub mod device_drafts;
+    pub mod push_settings;
+    pub mod quick_terminal;
+    pub mod session_config;
     pub mod ui_sounds;
+    pub mod workspace_layout;
 }
 
 #[cfg(target_arch = "wasm32")]

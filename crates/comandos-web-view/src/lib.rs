@@ -28,6 +28,8 @@
 )]
 
 pub mod escape;
+pub mod push_settings;
+pub mod session_config;
 pub mod term_page;
 
 /// La macro de plantillas, para que los componentes no fijen otra versión.

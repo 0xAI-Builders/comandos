@@ -1,0 +1,13 @@
+[
+  {
+    "id": "push-settings",
+    "page": "/sounds/push-settings.html",
+    "widths": [1400, 390],
+    "dpr": [1, 2],
+    "touch": false,
+    "selectors": ["#push-settings"],
+    "mask": [],
+    "channel": 24,
+    "ratio": 0.001
+  }
+]

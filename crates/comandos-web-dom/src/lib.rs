@@ -28,7 +28,9 @@
 )]
 
 pub mod api;
+pub mod audio;
 pub mod bridge;
+pub mod drafts;
 pub mod i18n;
 pub mod log;
 
