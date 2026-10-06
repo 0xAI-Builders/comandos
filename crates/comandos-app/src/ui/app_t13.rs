@@ -157,20 +157,77 @@ impl App {
                 }),
             );
         }
-        let weak = Rc::downgrade(self);
-        let signal = self.notebook.connect_switch_page(move |_, page, _| {
-            if let Some(app) = weak.upgrade().filter(|a| !a.closed.load(Ordering::Acquire)) {
-                let mut pages = app.mru_pages.borrow_mut();
-                pages.retain(|old| old != page);
-                pages.push(page.clone());
-                if pages.len() > 2 {
-                    pages.remove(0);
-                }
+        for notebook in [&self.notebook, self.workspace.widget()] {
+            let weak = Rc::downgrade(self);
+            // Focus the selected group's leaf after GTK commits its current page.
+            let signal = notebook.connect_closure(
+                "switch-page",
+                true,
+                glib::closure_local!(move |notebook: gtk::Notebook,
+                                           page: gtk::Widget,
+                                           _index: u32| {
+                    if let Some(app) = weak.upgrade().filter(|a| !a.closed.load(Ordering::Acquire))
+                    {
+                        app.remember_navigation_page(&notebook, &page);
+                    }
+                }),
+            );
+            self.protocol_signals
+                .borrow_mut()
+                .push((notebook.clone().upcast(), signal));
+        }
+        self.remember_current_navigation_page();
+    }
+    pub(super) fn active_notebook(&self) -> &gtk::Notebook {
+        if self.workspace_doc.borrow().is_null() {
+            &self.notebook
+        } else {
+            self.workspace.widget()
+        }
+    }
+    fn navigation_index(&self, key: &str) -> Option<u32> {
+        if self.workspace_doc.borrow().is_null() {
+            self.strip.borrow().page_index(key)
+        } else {
+            self.workspace.page_index(key)
+        }
+    }
+    fn remember_navigation_page(&self, notebook: &gtk::Notebook, page: &gtk::Widget) {
+        if self.workspace.is_applying() || notebook != self.active_notebook() {
+            return;
+        }
+        let key = if self.workspace_doc.borrow().is_null() {
+            self.strip
+                .try_borrow()
+                .ok()
+                .and_then(|strip| strip.page_key(page))
+        } else {
+            self.workspace.focus_page(page);
+            self.workspace.page_key(page)
+        };
+        if let Some(key) = key {
+            let index = self.navigation_index(&key);
+            let mut pages = self.mru_pages.borrow_mut();
+            // A split group can contain more than one remembered tab; retain distinct pages.
+            pages.retain(|old| self.navigation_index(old).is_some_and(|i| Some(i) != index));
+            pages.push(key);
+            if pages.len() > 2 {
+                pages.remove(0);
             }
-        });
-        self.protocol_signals
-            .borrow_mut()
-            .push((self.notebook.clone().upcast(), signal));
+        }
+    }
+    pub(super) fn remember_current_navigation_page(&self) {
+        let notebook = self.active_notebook();
+        if let Some(page) = notebook
+            .current_page()
+            .and_then(|i| notebook.nth_page(Some(i)))
+        {
+            self.remember_navigation_page(notebook, &page);
+        }
+    }
+    pub(super) fn forget_navigation_page(&self, key: &str) {
+        self.mru_pages.borrow_mut().retain(|old| old != key);
+        self.remember_current_navigation_page();
     }
     fn run_app_command(self: &Rc<Self>, name: &str, args: &Value) -> Result<(), CommandError> {
         if !self.writable() {
@@ -263,16 +320,18 @@ impl App {
                 })?;
             }
             "next_tab" | "prev_tab" => {
-                let n = self.notebook.n_pages();
+                let notebook = self.active_notebook();
+                let n = notebook.n_pages();
                 if n > 0 {
-                    let current = self.notebook.current_page().unwrap_or(0) as i64;
-                    self.notebook.set_current_page(Some(
+                    let current = notebook.current_page().unwrap_or(0) as i64;
+                    notebook.set_current_page(Some(
                         (current + if name == "next_tab" { 1 } else { -1 }).rem_euclid(i64::from(n))
                             as u32,
                     ));
                 }
             }
             "mru_toggle" => {
+                self.remember_current_navigation_page();
                 let previous = self
                     .mru_pages
                     .borrow()
@@ -280,9 +339,9 @@ impl App {
                     .cloned()
                     .filter(|_| self.mru_pages.borrow().len() >= 2);
                 if let Some(page) = previous
-                    && let Some(index) = self.notebook.page_num(&page)
+                    && let Some(index) = self.navigation_index(&page)
                 {
-                    self.notebook.set_current_page(Some(index));
+                    self.active_notebook().set_current_page(Some(index));
                 }
             }
             "focus_page" => {
@@ -297,7 +356,7 @@ impl App {
                 self.reorder_tab(session, index.max(0) as usize);
             }
             "terminals_visible" => self
-                .notebook
+                .active_notebook()
                 .set_visible(args.get("on").is_none_or(comandos_core::json::truthy)),
             "reload_dashboard" => {
                 if let Some(uri) =
@@ -319,7 +378,7 @@ impl App {
             }
             "new_local_tab" => self.new_terminal(),
             "open_xterm_tab" => {
-                let session = commands::session_arg(args, "local")?;
+                let session = commands::xterm_session_arg(args)?;
                 let key = format!("xterm-{session}");
                 self.add_tab(&key, &format!("xterm · {session}"), false, None);
                 self.select(&key);

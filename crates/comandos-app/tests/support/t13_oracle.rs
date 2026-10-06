@@ -9,6 +9,7 @@ use serde_json::Value;
 use std::{path::PathBuf, process::Command};
 const LOADER: &str = r#"
 import ast,json,re,sys,types
+from urllib.parse import quote
 tree=ast.parse(open(sys.argv[1],encoding='utf-8').read())
 mode=sys.argv[2];cases=json.loads(sys.argv[3]);calls=[]
 def stub(name):
@@ -41,6 +42,7 @@ ns['open_tab']=open_tab
 want={'on_msg','APP_COMMANDS','SESSION_RE','WIN_RE','_side_tabs_from_web','report_presence','ssh_host_from_session'}
 if mode=='split':want.add('_split_cmd')
 if mode=='fonts':want.add('set_font_scale')
+if mode=='xterm':want.add('open_xterm_tab')
 for node in tree.body:
     names=[node.name] if isinstance(node,ast.FunctionDef) else [t.id for t in node.targets if isinstance(t,ast.Name)] if isinstance(node,ast.Assign) else []
     if want.intersection(names):exec(compile(ast.Module([node],[]),'original-ast','exec'),ns)
@@ -56,6 +58,29 @@ elif mode in ('commands','fonts'):
     for name,args in cases:
         calls.clear()
         try:ns['APP_COMMANDS'][name](args);out.append({'calls':list(calls)})
+        except Exception as e:out.append({'error':type(e).__name__})
+elif mode=='xterm':
+    class Box:
+        def __init__(self,**kw):pass
+        def pack_start(self,*a):pass
+        def show_all(self):pass
+    class WebView:
+        def get_settings(self):return types.SimpleNamespace(set_property=lambda *a:None)
+        def load_uri(self,uri):calls.append(['load_uri',uri])
+    class Response:
+        def __enter__(self):return self
+        def __exit__(self,*a):pass
+        def read(self):return b'{"token":"private-token"}'
+    class Thread:
+        def __init__(self,target,daemon):self.target=target
+        def start(self):self.target()
+    ns.update({'quote':quote,'threading':types.SimpleNamespace(Thread=Thread),'urllib':types.SimpleNamespace(request=types.SimpleNamespace(urlopen=lambda *a,**kw:Response())),'Gtk':types.SimpleNamespace(Box=Box,Orientation=types.SimpleNamespace(VERTICAL=1)),'WebKit2':types.SimpleNamespace(WebView=WebView),'_ensure_cc_webterm':lambda:None,'TERM_HTML':'/private/term.html','BASE_URL':'http://private.invalid','THEMES':{},'THEME':{},'tab_label':lambda *a:None,'save_tabs':stub('save_tabs'),'ws_select':stub('ws_select')})
+    for session in cases:
+        ns['tabs']={};ns['_XTERM_PENDING']=set();calls.clear()
+        ns['nb']=types.SimpleNamespace(append_page=lambda *a:0,set_tab_reorderable=lambda *a:None,set_current_page=stub('select_page'))
+        try:
+            ns['APP_COMMANDS']['open_xterm_tab']({'session':session})
+            out.append({'keys':list(ns['tabs']),'calls':list(calls)})
         except Exception as e:out.append({'error':type(e).__name__})
 elif mode=='presence':
     ns['_PRESENCE']={'last':0.0,'visible':True};ns['WS_DEVICE']='desktop-private'

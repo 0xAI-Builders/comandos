@@ -95,12 +95,57 @@ pub fn parse_command(value: &Value) -> Result<AppCommand, CommandError> {
         .filter(|v| comandos_core::json::truthy(v))
         .cloned()
         .unwrap_or_else(|| json!({}));
-    if !args.is_object() {
+    if !args.is_object() && !ignores_arguments(name) {
         return Err(CommandError::Invalid("args must be an object".into()));
     }
     Ok(AppCommand {
         name: name.into(),
         args,
+    })
+}
+
+fn ignores_arguments(name: &str) -> bool {
+    matches!(
+        name,
+        "toggle_window"
+            | "next_tab"
+            | "prev_tab"
+            | "mru_toggle"
+            | "reload_dashboard"
+            | "open_switcher"
+            | "tabs_overview"
+            | "help"
+            | "snippets"
+            | "new_local_tab"
+            | "open_wizard"
+            | "copy_selection"
+            | "paste_clipboard"
+            | "copy_reply"
+            | "quit"
+    )
+}
+
+pub fn valid_xterm_session(session: &str) -> bool {
+    !session.is_empty()
+        && session.len() <= 32
+        && session
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+}
+
+/// Xterm-specific names fall back before creating their tab identity.
+pub fn xterm_session_arg(args: &Value) -> Result<&str, CommandError> {
+    let session = args
+        .get("session")
+        .filter(|v| comandos_core::json::truthy(v))
+        .map_or(Ok("local"), |v| {
+            v.as_str()
+                .ok_or_else(|| CommandError::Invalid("session must be a string".into()))
+        })?;
+    Ok(if valid_xterm_session(session) {
+        session
+    } else {
+        "local"
     })
 }
 

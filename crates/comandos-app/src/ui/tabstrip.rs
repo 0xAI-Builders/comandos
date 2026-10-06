@@ -81,6 +81,17 @@ impl TabStripNotebook {
             .find(|(_, widget)| self.notebook.page_num(*widget) == Some(current))
             .map(|(key, _)| key.clone())
     }
+
+    pub fn page_key(&self, page: &gtk::Widget) -> Option<String> {
+        self.pages
+            .iter()
+            .find(|(_, widget)| *widget == page)
+            .map(|(key, _)| key.clone())
+    }
+
+    pub fn page_index(&self, key: &str) -> Option<u32> {
+        self.notebook.page_num(self.pages.get(key)?)
+    }
 }
 
 #[derive(Clone)]

@@ -63,6 +63,43 @@ impl GtkWorkspace {
     pub fn widget(&self) -> &gtk::Notebook {
         &self.root
     }
+    pub fn is_applying(&self) -> bool {
+        self.applying.get()
+    }
+    /// Registered tab keys survive reconstruction of the group's GTK container.
+    pub fn page_key(&self, page: &gtk::Widget) -> Option<String> {
+        self.pages
+            .borrow()
+            .iter()
+            .filter(|(_, widget)| *widget == page || widget.is_ancestor(page))
+            .map(|(key, _)| key.clone())
+            .min()
+    }
+    pub fn page_index(&self, key: &str) -> Option<u32> {
+        let pages = self.pages.borrow();
+        let widget = pages.get(key)?;
+        if !widget.is_ancestor(&self.root) {
+            return None;
+        }
+        let mut child = widget.clone();
+        while let Some(parent) = child.parent() {
+            if parent == self.root.clone().upcast::<gtk::Widget>() {
+                break;
+            }
+            child = parent;
+        }
+        self.root.page_num(&child)
+    }
+    pub fn focus_page(&self, page: &gtk::Widget) {
+        let index = self.root.page_num(page);
+        let key = self
+            .focused()
+            .filter(|key| self.page_index(key) == index)
+            .or_else(|| self.page_key(page));
+        if let Some(key) = key {
+            self.select(&key);
+        }
+    }
     pub fn resize_pending(&self) -> bool {
         !self.pending_resize.borrow().is_empty() || self.resize_timer.borrow().is_some()
     }
@@ -163,6 +200,7 @@ impl GtkWorkspace {
         self.apply(&doc);
     }
     pub fn remove_tab(&self, key: &str) {
+        self.applying.set(true);
         if let Some(widget) = self.pages.borrow_mut().remove(key) {
             detach(&widget);
         }
@@ -170,6 +208,7 @@ impl GtkWorkspace {
         let doc = self.document.borrow().clone();
         *self.document.borrow_mut() = Value::Null;
         self.apply(&doc);
+        self.applying.set(false);
     }
     pub fn apply(&self, doc: &Value) {
         if self.document.borrow().eq(doc) {
@@ -284,7 +323,9 @@ impl GtkWorkspace {
             }
             child = parent;
         }
-        if let Some(index) = self.root.page_num(&child) {
+        if let Some(index) = self.root.page_num(&child)
+            && self.root.current_page() != Some(index)
+        {
             self.root.set_current_page(Some(index));
         }
         widget.grab_focus();

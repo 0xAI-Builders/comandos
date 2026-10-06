@@ -49,7 +49,7 @@ pub struct App {
     presence: RefCell<ui::presence::Presence>,
     presence_visible: Cell<bool>,
     bridge_queue: RefCell<ui::bridge::BridgeQueue>,
-    mru_pages: RefCell<Vec<gtk::Widget>>,
+    mru_pages: RefCell<Vec<String>>,
     state: StateFiles,
     registry: RefCell<TabRegistry>,
     strip: RefCell<ui::tabstrip::TabStripNotebook>,
@@ -234,11 +234,7 @@ impl App {
             let weak = Rc::downgrade(self);
             button.connect_clicked(move |_| {
                 if let Some(app) = weak.upgrade() {
-                    let notebook = if app.workspace_doc.borrow().is_null() {
-                        &app.notebook
-                    } else {
-                        app.workspace.widget()
-                    };
+                    let notebook = app.active_notebook();
                     let n = notebook.n_pages();
                     if n > 0 {
                         let current = notebook.current_page().unwrap_or(0) as i32;
@@ -724,12 +720,7 @@ impl App {
             return;
         };
         let session = key.strip_prefix("xterm-").unwrap_or("local").to_string();
-        if session.is_empty()
-            || session.len() > 32
-            || !session
-                .bytes()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-'))
-        {
+        if !ui::app_commands::valid_xterm_session(&session) {
             slot.add(&gtk::Label::new(Some("Invalid web terminal session")));
             return;
         }
@@ -1004,6 +995,7 @@ impl App {
             self.workspace.refresh();
             self.notebook.hide();
         }
+        self.remember_current_navigation_page();
     }
     fn attach_selected(self: &Rc<Self>, key: &str) {
         if self.cfg.mode() != RunMode::Shadow || self.terms.borrow().contains_key(key) {
@@ -1167,6 +1159,7 @@ impl App {
         }
         self.strip.borrow_mut().remove(key);
         self.workspace.remove_tab(key);
+        self.forget_navigation_page(key);
         if let Some(row) = self.labels.borrow_mut().remove(key)
             && let Some(parent) = row
                 .item
@@ -1306,6 +1299,7 @@ impl App {
         );
         self.workspace.apply(doc);
         *self.workspace_doc.borrow_mut() = doc.clone();
+        self.remember_current_navigation_page();
         self.sync_strip();
         self.notebook.hide();
         self.workspace.widget().show_all();

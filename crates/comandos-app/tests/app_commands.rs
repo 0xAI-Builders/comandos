@@ -40,7 +40,7 @@ fn invalid_commands_and_args_never_reach_consumers() {
         json!(null),
         json!({"command":"oops"}),
         json!({"command":"split","args":[1]}),
-        json!({"command":"quit","args":true}),
+        json!({"command":"window","args":true}),
     ] {
         assert!(parse_command(&value).is_err());
     }
@@ -346,4 +346,118 @@ fn registry_does_not_retain_owner_and_allows_reentrant_registration() {
         .dispatch(&parse_command(&json!({"command":"help"})).unwrap())
         .unwrap();
     registry.clear();
+}
+
+#[test]
+fn ignored_arguments_match_original_lambdas_for_every_command() {
+    let ignored = [
+        "toggle_window",
+        "next_tab",
+        "prev_tab",
+        "mru_toggle",
+        "reload_dashboard",
+        "open_switcher",
+        "tabs_overview",
+        "help",
+        "snippets",
+        "new_local_tab",
+        "open_wizard",
+        "copy_selection",
+        "paste_clipboard",
+        "copy_reply",
+        "quit",
+    ];
+    let cases: Vec<_> = COMMAND_NAMES
+        .iter()
+        .flat_map(|name| {
+            [json!(true), json!(1), json!("x"), json!([1])]
+                .into_iter()
+                .map(move |args| (*name, args))
+        })
+        .collect();
+    let expected = oracle::oracle("commands", &json!(cases));
+    for ((name, args), expected) in cases.iter().zip(expected.as_array().unwrap()) {
+        let parsed = parse_command(&json!({"command":name,"args":args}));
+        if ignored.contains(name) {
+            assert!(
+                expected.get("error").is_none(),
+                "original {name}: {expected}"
+            );
+            assert_eq!(parsed.unwrap().args, *args, "{name}");
+        } else {
+            assert!(
+                parsed.is_err(),
+                "field consumer {name} must require an object"
+            );
+        }
+    }
+}
+
+#[test]
+fn xterm_names_match_real_original_mount_fallback() {
+    let cases = json!([
+        "local",
+        "safe_-09",
+        "x".repeat(32),
+        "proj.name",
+        "x".repeat(33),
+        "x".repeat(81),
+        "bad session",
+        "",
+        null,
+        false,
+        "ñ"
+    ]);
+    let expected = oracle::oracle("xterm", &cases);
+    for (session, expected) in cases
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(expected.as_array().unwrap())
+    {
+        let normalized = commands::xterm_session_arg(&json!({"session":session}))
+            .unwrap()
+            .to_string();
+        assert!(commands::valid_xterm_session(&normalized));
+        assert_eq!(json!([format!("xterm-{normalized}")]), expected["keys"]);
+        assert!(expected["calls"].as_array().unwrap().iter().any(|call| {
+            call[0] == "load_uri"
+                && call[1]
+                    .as_str()
+                    .unwrap()
+                    .contains(&format!("&arg={normalized}&"))
+        }));
+    }
+}
+
+#[test]
+fn xterm_truthy_nontext_is_rejected_and_falsey_args_use_local() {
+    for session in [json!(true), json!(1), json!([1]), json!({"a":1})] {
+        let expected = oracle::oracle("xterm", &json!([session]));
+        assert_eq!(expected[0]["error"], "TypeError");
+        assert!(commands::xterm_session_arg(&json!({"session":session})).is_err());
+    }
+    for session in [json!(false), json!(0), json!(null), json!([]), json!({})] {
+        assert_eq!(
+            commands::xterm_session_arg(&json!({"session":session})).unwrap(),
+            "local"
+        );
+    }
+}
+
+#[test]
+fn xterm_keeps_complete_ascii_validation_for_terminal_newline() {
+    // Approved validation exception: Python's `$` accepts one trailing newline.
+    // Native mounting retains the complete ASCII name rule and falls back to local.
+    for session in [
+        "safe\n".to_string(),
+        format!("{}\n", "x".repeat(32)),
+        "safe\n\n".into(),
+    ] {
+        assert!(!commands::valid_xterm_session(&session));
+        assert_eq!(
+            commands::xterm_session_arg(&json!({"session":session})).unwrap(),
+            "local"
+        );
+    }
 }
