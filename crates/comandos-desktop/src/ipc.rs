@@ -134,6 +134,77 @@ pub fn read_request_domain(home: &Path, path: &Path) -> Result<IpcRequest, IpcEr
         stamp: (u64::MAX, seq as u64, 0, 0),
     })
 }
+
+/// Best-effort polling, preserving path order and one authority lease per batch.
+/// Missing or invalid individual requests are skipped just as in the app poller.
+pub fn read_requests_domain(home: &Path, paths: &[PathBuf]) -> Result<Vec<IpcRequest>, IpcError> {
+    let queued: Vec<_> = paths
+        .iter()
+        .filter_map(|path| {
+            let name = path.file_name()?.to_str()?;
+            comandos_store::domains::commands::kind(name)
+                .ok()
+                .map(|_| (path, name))
+        })
+        .collect();
+    if queued.is_empty() {
+        return Ok(paths
+            .iter()
+            .filter_map(|path| read_request(path).ok())
+            .collect());
+    }
+    let names: Vec<_> = queued.iter().map(|(_, name)| *name).collect();
+    comandos_store::domains::commands::with_peeked(home, &names, |mode, rows| {
+        let mut queued = queued.into_iter().zip(rows).peekable();
+        paths
+            .iter()
+            .filter_map(|path| {
+                let Some(((queued_path, name), row)) = queued.peek() else {
+                    return (path.file_name()?.to_str()? == "app-tab-active.json")
+                        .then(|| read_request(path).ok())
+                        .flatten();
+                };
+                if *queued_path != path {
+                    return (path.file_name()?.to_str()? == "app-tab-active.json")
+                        .then(|| read_request(path).ok())
+                        .flatten();
+                }
+                let name = *name;
+                let row = row.as_ref().ok().and_then(Option::as_ref);
+                let request = if matches!(
+                    mode,
+                    comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed
+                ) {
+                    row.and_then(|(seq, body)| {
+                        if body.len() > 1 << 20 {
+                            return None;
+                        }
+                        let payload = comandos_core::json::workspace_loads_bytes(body)
+                            .filter(Value::is_object)?;
+                        let kind = match name {
+                            "app-focus.json" => IpcKind::Focus,
+                            "app-tab-open.json" => IpcKind::TabOpen,
+                            "app-tab-close.json" => IpcKind::TabClose,
+                            "app-command.json" => IpcKind::Command,
+                            _ => return None,
+                        };
+                        Some(IpcRequest {
+                            kind,
+                            payload,
+                            path: path.clone(),
+                            stamp: (u64::MAX, *seq as u64, 0, 0),
+                        })
+                    })
+                } else {
+                    read_request(path).ok()
+                };
+                queued.next();
+                request
+            })
+            .collect()
+    })
+    .map_err(|e| IpcError::Io(home.into(), e.to_string()))
+}
 impl<G: IpcGuard> IpcConsumer<G> {
     pub fn consume_domain(&self, home: &Path, request: &IpcRequest) -> Result<(), IpcError> {
         if self.mode == RunMode::Shadow {

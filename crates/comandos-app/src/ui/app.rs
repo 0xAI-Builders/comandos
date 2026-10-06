@@ -1700,10 +1700,8 @@ impl App {
         let weak = Rc::downgrade(self);
         self.jobs.spawn(
             move || {
-                paths
-                    .into_iter()
-                    .filter_map(|p| ipc::read_request_domain(&home, &p).ok())
-                    .collect::<Vec<_>>()
+                ipc::read_requests_domain(&home, &paths.into_iter().collect::<Vec<_>>())
+                    .unwrap_or_default()
             },
             move |requests| {
                 let Some(app) = weak.upgrade() else {

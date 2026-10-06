@@ -255,3 +255,155 @@ fn layout_publication_preserves_app_policy_and_guard_in_every_mode() {
         std::fs::remove_dir_all(f.home).unwrap();
     }
 }
+
+#[test]
+fn ipc_batch_matches_individual_peeks_in_every_mode_and_preserves_invalid_siblings() {
+    use comandos_desktop::ipc::{read_request_domain, read_requests_domain};
+    for mode in [Mode::Legacy, Mode::Mirror, Mode::Unified, Mode::Sealed] {
+        let f = Fixture::new();
+        let db = unified::open_unified(&unified::unified_path(&f.home)).unwrap();
+        unified::set_mode(&db, "app-commands", mode, "fixture", 1).unwrap();
+        let names = [
+            "app-focus.json",
+            "app-tab-open.json",
+            "app-tab-close.json",
+            "app-command.json",
+        ];
+        let bodies: [&[u8]; 4] = [
+            br#"{ "session": "s1", "nested": {"unknown":true}, "n": 9007199254740993 }"#,
+            br#"{"session":"s2"}"#,
+            b"not json",
+            br#"{"command":"keep"}"#,
+        ];
+        for (name, body) in names.iter().zip(bodies) {
+            let path = f.hooks.join(name);
+            comandos_store::domains::commands::publish(&f.home, name, body, 2, || {
+                Ok(std::fs::write(&path, body)?)
+            })
+            .unwrap();
+        }
+        let mut paths: Vec<_> = names.iter().map(|name| f.hooks.join(name)).collect();
+        paths.insert(2, f.hooks.join("ignored.json"));
+        paths.push(f.hooks.join("app-tab-active.json"));
+        std::fs::write(paths.last().unwrap(), br#"{"session":"legacy-active"}"#).unwrap();
+        let expected: Vec<_> = paths
+            .iter()
+            .filter_map(|path| read_request_domain(&f.home, path).ok())
+            .collect();
+        assert_eq!(expected.len(), 4);
+        assert_eq!(read_requests_domain(&f.home, &paths).unwrap(), expected);
+        assert_eq!(
+            read_requests_domain(&f.home, &paths).unwrap(),
+            expected,
+            "peek never consumes"
+        );
+        for (name, body) in names.iter().zip(bodies) {
+            let (got_mode, row) = comandos_store::domains::commands::peek(&f.home, name).unwrap();
+            assert_eq!(got_mode, mode);
+            if matches!(mode, Mode::Unified | Mode::Sealed) {
+                assert_eq!(row.unwrap().1, body);
+            }
+            if mode != Mode::Sealed {
+                assert_eq!(std::fs::read(f.hooks.join(name)).unwrap(), body);
+            }
+        }
+        unified::set_mode(&db, "app-commands", Mode::Unified, "fixture", 3).unwrap();
+        assert_eq!(
+            read_requests_domain(&f.home, &paths)
+                .unwrap()
+                .iter()
+                .filter(|r| r.stamp.0 == u64::MAX)
+                .count(),
+            if mode == Mode::Legacy { 0 } else { 3 }
+        );
+        drop(db);
+        std::fs::remove_dir_all(f.home).unwrap();
+    }
+}
+
+#[test]
+fn ipc_batch_absent_database_keeps_legacy_bytes_and_does_not_create_controls() {
+    use comandos_desktop::ipc::{read_request_domain, read_requests_domain};
+    let f = Fixture::new();
+    let paths: Vec<_> = [
+        "app-focus.json",
+        "app-tab-open.json",
+        "app-tab-close.json",
+        "app-command.json",
+    ]
+    .iter()
+    .map(|n| f.hooks.join(n))
+    .collect();
+    let bytes = br#"{ "session": "private", "unknown": [1,2,3] }"#;
+    std::fs::write(&paths[0], bytes).unwrap();
+    let before: Vec<_> = std::fs::read_dir(&f.home)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(
+        read_requests_domain(&f.home, &paths).unwrap(),
+        vec![read_request_domain(&f.home, &paths[0]).unwrap()]
+    );
+    assert_eq!(std::fs::read(&paths[0]).unwrap(), bytes);
+    let after: Vec<_> = std::fs::read_dir(&f.home)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(before, after);
+    std::fs::remove_dir_all(f.home).unwrap();
+}
+
+#[test]
+fn ipc_batch_lease_excludes_mode_flip_and_rejects_transient_authority() {
+    let f = Fixture::new();
+    let names = [
+        "app-focus.json",
+        "app-tab-open.json",
+        "app-tab-close.json",
+        "app-command.json",
+    ];
+    let path = unified::unified_path(&f.home);
+    let db = unified::open_unified(&path).unwrap();
+    unified::set_mode(&db, "app-commands", Mode::Unified, "fixture", 1).unwrap();
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(format!("{}.domain-modes.lock", path.display()))
+        .unwrap();
+    comandos_store::domains::commands::with_peeked(&f.home, &names, |mode, rows| {
+        assert_eq!(mode, Mode::Unified);
+        assert_eq!(rows.len(), 4);
+        assert!(rows.into_iter().all(|r| r.unwrap().is_none()));
+        assert!(
+            matches!(lock.try_lock(), Err(std::fs::TryLockError::WouldBlock)),
+            "entire batch holds mode exclusion"
+        );
+    })
+    .unwrap();
+    lock.try_lock().unwrap();
+    lock.unlock().unwrap();
+    unified::set_mode(&db, "app-commands", Mode::Sealed, "fixture", 2).unwrap();
+    assert_eq!(
+        comandos_store::domains::commands::with_peeked(&f.home, &names, |mode, _| mode).unwrap(),
+        Mode::Sealed
+    );
+    drop(db);
+    std::fs::remove_dir_all(f.home).unwrap();
+    let f = Fixture::new();
+    let path = unified::unified_path(&f.home);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::File::open(path.parent().unwrap())
+        .unwrap()
+        .set_times(std::fs::FileTimes::new().set_modified(std::time::UNIX_EPOCH))
+        .unwrap();
+    assert!(
+        comandos_store::domains::commands::with_peeked(&f.home, &names, |mode, _| {
+            assert_eq!(mode, Mode::Legacy);
+            std::fs::write(&path, b"transient authority").unwrap();
+            std::fs::remove_file(&path).unwrap();
+        })
+        .is_err(),
+        "whole batch revalidates authority after its callback"
+    );
+    std::fs::remove_dir_all(f.home).unwrap();
+}
