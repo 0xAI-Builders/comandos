@@ -1,0 +1,25 @@
+use serde_json::{json,Value};
+const QUIET_MS:u64=300;
+#[derive(Debug,PartialEq)]
+pub enum Decision {Pending,Ready(Value),Failed(Vec<String>)}
+// ACTUAL_METHODS
+fn rss()->u64 {let text=std::fs::read_to_string("/proc/self/status").unwrap();text.lines().find_map(|line|line.strip_prefix("VmRSS:")).unwrap().split_whitespace().next().unwrap().parse().unwrap()}
+fn main() {
+ let before=rss();
+ let epoch=std::time::Instant::now();
+ let palette=comandos_app::term::engine::Palette::xterm_default([240;3],[0;3],[200;3],[0;3],[240;3]);
+ let engines:Vec<_>=(0..20).map(|_| comandos_app::term::engine::TermEngine::new(40,12,10000,palette.clone(),false,epoch)).collect();
+ let snapshot=json!({"terminals":engines.iter().map(|e|e.diagnostic_grid(100000).unwrap()).collect::<Vec<_>>()});
+ let after_snapshot=rss();
+ let mut ready=Diagnostic::new(0,15000);ready.observe(0,&[],Some(&snapshot));let after_candidate=rss();
+ let decision=ready.observe(300,&[],Some(&snapshot));
+ let ready_payload=matches!(&decision,Decision::Ready(value) if value==&snapshot);
+ let ready_candidate=ready.candidate.is_some();
+ drop(decision);drop(snapshot);let after_release=rss();
+ let reopen=ready.observe(301,&[],Some(&json!("replacement")));
+ let done_reopens=reopen!=Decision::Pending;
+ let mut timeout=Diagnostic::new(0,1000);timeout.observe(0,&[],Some(&json!({"large":"candidate"})));let timeout_result=timeout.observe(1000,&[],Some(&json!({"large":"changed"})));
+ let timeout_issues=match timeout_result {Decision::Failed(issues)=>issues,_=>vec![]};
+ let mut issues=Diagnostic::new(0,1000);issues.observe(0,&[],Some(&json!("candidate")));issues.observe(100,&["unmapped".into()],None);
+ println!("{}",json!({"ready_payload":ready_payload,"ready_candidate":ready_candidate,"timeout_candidate":timeout.candidate.is_some(),"timeout_issues":timeout_issues,"done_reopens":done_reopens,"issues_candidate":issues.candidate.is_some(),"rss_kib":{"before":before,"snapshot":after_snapshot,"candidate":after_candidate,"released":after_release}}));
+}

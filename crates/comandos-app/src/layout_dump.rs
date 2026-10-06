@@ -41,6 +41,7 @@ impl Diagnostic {
         }
         if now_ms >= self.deadline {
             self.done = true;
+            self.candidate = None;
             return Decision::Failed(if issues.is_empty() {
                 vec![
                     if snapshot.is_some() {
@@ -62,6 +63,7 @@ impl Diagnostic {
             {
                 if now_ms.saturating_sub(*since) >= QUIET_MS {
                     self.done = true;
+                    self.candidate = None;
                     return Decision::Ready(snapshot.clone());
                 }
             } else {
