@@ -1,0 +1,20 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="comandos-web" content="ui-sounds quick-terminal device-drafts session-config workspace-layout push-settings"><title>Original JS / actual WASM behavior fixture</title><style>body{font:16px system-ui;margin:24px}button{min-height:40px}section{max-width:440px}</style></head><body><main id="result"></main><script>
+window.COMANDOS_DASH_TEST_HOOKS=true;
+window.fixtureReady=(async()=>{
+ const mode=new URLSearchParams(location.search).get('web');
+ if(mode==='on'||mode==='shadow'){
+  const manifest=await(await fetch('/web/manifest.json')).json();
+  const url=manifest.files['comandos_web.js'];
+  if(!url)throw new Error('missing actual comandos-web artifact');
+  const wasm='/web/'+manifest.files['comandos_web_bg.wasm'];
+  window.fixtureWasmUrl=wasm;
+  const module=await import('/web/'+url);await module.default({module_or_path:wasm});module.boot('private-fixture');
+  if(!window.__comandosReady)throw new Error('actual WASM did not boot');
+ }else{
+  for(const name of ['ui-sounds','quick-terminal','device-drafts','session-config','workspace-layout','push-settings'])await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='/dash/'+name+'.js';s.onload=resolve;s.onerror=reject;document.head.append(s);});
+ }
+ if(new URLSearchParams(location.search).get("__negative")==="1"&&mode!=="off")WorkspaceLayout.moveTab=()=>({broken:"negative calibration: WASM action replaced"});
+ const {renderVisual}=await import("./visual.mjs");await renderVisual();
+ return true;
+})();
+</script></body></html>

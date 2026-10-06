@@ -1,0 +1,11 @@
+{
+  "id": "ui-sounds",
+  "kind": "script",
+  "source": "dash/ui-sounds.js",
+  "sha256": "521e54b9c1a77d8c16ba2064f732a8c3ebb298f60085e2ca182776f4ed0c1b63",
+  "exports": [
+    "ComandosUISounds",
+    "uiSounds"
+  ],
+  "deps": []
+}

@@ -8,6 +8,7 @@ pub mod mcp;
 pub mod png_diff;
 pub mod shots;
 pub mod web_build;
+pub mod web_bench;
 pub mod web_inventory;
 pub mod web_port;
 

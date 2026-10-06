@@ -1,0 +1,20 @@
+[
+  {
+    "id": "workspace-negative",
+    "page": "/xtask/web/fixtures/sounds/parity.html?__negative=1",
+    "widths": [
+      390
+    ],
+    "dpr": [
+      1,
+      2
+    ],
+    "touch": false,
+    "selectors": [
+      "#workspace-layout"
+    ],
+    "mask": [],
+    "channel": 24,
+    "ratio": 0.001
+  }
+]

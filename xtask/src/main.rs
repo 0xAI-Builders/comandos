@@ -53,12 +53,13 @@ fn main() {
         Some("dom-diff") => exit(web::dom_diff(&args[1..])),
         Some("fixtures") => exit(web::fixtures(&args[1..])),
         Some("web-build") => exit(xtask::web_build::main(&args[1..])),
+        Some("web-bench") => exit(xtask::web_bench::main(&args[1..])),
         Some("web-inventory") => exit(xtask::web_inventory::main(&args[1..])),
         Some("web-port") => exit(xtask::web_port::main(&args[1..])),
         Some("lint") => exit(xtask::lint::main(&args[1..])),
         _ => {
             eprintln!(
-                "subcomandos: rss, parity, poll, shots, png-diff, dom-diff, fixtures, web-build, web-inventory, web-port, lint"
+                "subcomandos: rss, parity, poll, shots, png-diff, dom-diff, fixtures, web-build, web-bench, web-inventory, web-port, lint"
             );
             exit(2);
         }

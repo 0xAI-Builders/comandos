@@ -28,7 +28,9 @@
 )]
 
 pub mod api;
+pub mod audio;
 pub mod bridge;
+pub mod drafts;
 pub mod i18n;
 pub mod log;
 
@@ -45,3 +47,6 @@ pub mod timers;
 pub fn dom_ready(ready_state: &str) -> bool {
     ready_state != "loading"
 }
+
+#[cfg(target_arch = "wasm32")]
+pub mod port;

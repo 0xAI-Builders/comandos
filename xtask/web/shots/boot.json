@@ -1,0 +1,23 @@
+[
+  {
+    "id": "boot",
+    "page": "/xtask/web/fixtures/sounds/parity.html",
+    "widths": [
+      1400,
+      844,
+      390,
+      320
+    ],
+    "dpr": [
+      1,
+      2
+    ],
+    "touch": false,
+    "selectors": [
+      "body"
+    ],
+    "mask": [],
+    "channel": 24,
+    "ratio": 0.001
+  }
+]

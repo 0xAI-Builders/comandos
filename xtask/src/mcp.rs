@@ -459,7 +459,7 @@ impl Client {
     /// Abre una página propia con `new_page`; se cierra al soltarla.
     pub fn open_page(&mut self, url: &str) -> Result<Page<'_>, String> {
         let schema = self.schema()?;
-        let r = self.call("new_page", json!({"url": url}))?;
+        let r = self.call("new_page", json!({"url": url,"timeout":25_000}))?;
         let text = result_text(&r);
         let id = selected_page_id(&text).ok_or_else(|| {
             format!("new_page: no se encontró la página seleccionada en {text:?}")
@@ -525,7 +525,7 @@ impl Page<'_> {
     pub fn navigate(&mut self, url: &str) -> Result<(), String> {
         self.client.call(
             "navigate_page",
-            json!({"pageId": self.id, "type": "url", "url": url}),
+            json!({"pageId": self.id, "type": "url", "url": url,"timeout":25_000}),
         )?;
         Ok(())
     }

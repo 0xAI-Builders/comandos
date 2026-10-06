@@ -1,0 +1,279 @@
+{
+  "device_drafts": [
+    {
+      "name": "restore writes the saved text into the composer and sends nothing to the PTY",
+      "ok": true
+    },
+    {
+      "name": "text typed on this device before the answer is never overwritten",
+      "ok": true
+    },
+    {
+      "name": "changes save as debounced patches; the last one wins; empty removes",
+      "ok": true
+    },
+    {
+      "name": "a failed save retries on the next change",
+      "ok": true
+    },
+    {
+      "name": "reading anchor is found by its line text, or reported missing",
+      "ok": true
+    },
+    {
+      "name": "remembering the top line saves one debounced anchor patch",
+      "ok": true
+    }
+  ],
+  "push_settings": [
+    {
+      "name": "reading the state never prompts for permission",
+      "ok": true
+    },
+    {
+      "name": "enable prompts once, subscribes with the VAPID key and registers the device",
+      "ok": true
+    },
+    {
+      "name": "a denied permission explains how to fix it and never re-prompts",
+      "ok": true
+    },
+    {
+      "name": "a dismissed prompt stays disabled without subscribing",
+      "ok": true
+    },
+    {
+      "name": "insecure origins and missing support are explained, not prompted",
+      "ok": true
+    },
+    {
+      "name": "server without push reports an error and does not subscribe",
+      "ok": true
+    },
+    {
+      "name": "test and disable are explicit actions against the stored endpoint",
+      "ok": true
+    },
+    {
+      "name": "resync re-posts an existing subscription only after an explicit enable",
+      "ok": true
+    },
+    {
+      "name": "?event=<id> is routed once and removed from the address bar",
+      "ok": true
+    }
+  ],
+  "ui_sounds": [
+    {
+      "name": "sound is opt-in: muted by default and silent without a trusted gesture",
+      "ok": true
+    },
+    {
+      "name": "one playback per eventId, shared by tabs of the same browser",
+      "ok": true
+    },
+    {
+      "name": "no loops: loop cues are rejected and every play is one-shot",
+      "ok": true
+    },
+    {
+      "name": "hidden pages are silent and stop sound; volume is clamped",
+      "ok": true
+    },
+    {
+      "name": "preview works while muted only from a human gesture",
+      "ok": true
+    }
+  ],
+  "workspace_layout": [
+    {
+      "name": "dock a tab to the right of a tab in another group",
+      "ok": true
+    },
+    {
+      "name": "dock above a tab puts the moved tab first",
+      "ok": true
+    },
+    {
+      "name": "outer edge wraps the whole group",
+      "ok": true
+    },
+    {
+      "name": "move within a group collapses the old parent",
+      "ok": true
+    },
+    {
+      "name": "moving a whole group into another",
+      "ok": true
+    },
+    {
+      "name": "target inside the moved subtree is rejected",
+      "ok": true
+    },
+    {
+      "name": "target equal to source is rejected",
+      "ok": true
+    },
+    {
+      "name": "outer edge of the only group containing the source alone is rejected",
+      "ok": true
+    },
+    {
+      "name": "unknown edge is rejected",
+      "ok": true
+    },
+    {
+      "name": "detach the last leaf of a group into a new strip entry",
+      "ok": true
+    },
+    {
+      "name": "detach a group reorders the strip",
+      "ok": true
+    },
+    {
+      "name": "detach a single-tab group reorders it",
+      "ok": true
+    },
+    {
+      "name": "detach to the end with an out-of-range index",
+      "ok": true
+    },
+    {
+      "name": "resize a nested split",
+      "ok": true
+    },
+    {
+      "name": "resize clamps to usable bounds",
+      "ok": true
+    },
+    {
+      "name": "resize on a leaf path is rejected",
+      "ok": true
+    }
+  ],
+  "quick_terminal": [
+    {
+      "name": "same request until success, reload, double-click, next id and exact body",
+      "ok": true
+    }
+  ],
+  "session_config": [
+    {
+      "name": "test_combined_cli_account_effort_uses_one_consistent_draft",
+      "result": {
+        "before": {
+          "toHarness": "claude",
+          "motor": "claude",
+          "model": "opus",
+          "effort": "high",
+          "harnessAccount": "main",
+          "motorAccount": "main",
+          "interrupt": false
+        },
+        "after": {
+          "toHarness": "codex",
+          "motor": "codex",
+          "model": "gpt-6-astra",
+          "effort": "ultra",
+          "harnessAccount": "work",
+          "motorAccount": "work",
+          "interrupt": false
+        },
+        "invalid": "Selecciona una cuenta con sesión iniciada",
+        "valid": "",
+        "changed": true
+      }
+    },
+    {
+      "name": "test_invalid_effort_cannot_submit_and_unchanged_draft_is_not_change",
+      "result": {
+        "same": false,
+        "error": "Selecciona un esfuerzo compatible"
+      }
+    },
+    {
+      "name": "test_acp_keeps_named_motor_account_separate_from_local_harness",
+      "result": {
+        "d": {
+          "toHarness": "acp",
+          "motor": "codex",
+          "model": "gpt-6-astra",
+          "effort": "high",
+          "harnessAccount": "main",
+          "motorAccount": "work",
+          "interrupt": false
+        },
+        "error": ""
+      }
+    },
+    {
+      "name": "test_direct_options_skip_unavailable_models_and_accounts",
+      "result": {
+        "models": [
+          {
+            "value": "gpt-6-astra",
+            "label": "gpt-6-astra",
+            "disabled": false,
+            "reason": ""
+          },
+          {
+            "value": "future",
+            "label": "future",
+            "disabled": true,
+            "reason": "Próximamente"
+          }
+        ],
+        "next": null,
+        "accounts": [
+          {
+            "value": "work",
+            "label": "work",
+            "detail": "",
+            "disabled": false,
+            "reason": "Cuenta sin sesión compatible"
+          },
+          {
+            "value": "logged-out",
+            "label": "logged-out",
+            "detail": "",
+            "disabled": true,
+            "reason": "Cuenta sin sesión compatible"
+          }
+        ],
+        "invalid": "Selecciona un modelo disponible"
+      }
+    },
+    {
+      "name": "test_recommendations_keep_live_identity_and_filter_incompatible_configurations",
+      "result": [
+        {
+          "config": {
+            "toHarness": "codex",
+            "motor": "codex",
+            "model": "gpt-6-astra",
+            "effort": "ultra",
+            "harnessAccount": "work",
+            "motorAccount": "work",
+            "interrupt": false,
+            "expectedIdentity": {
+              "pid": 99
+            },
+            "expectedConversationId": "live-conversation"
+          },
+          "count": 3,
+          "lastUsed": 3
+        }
+      ]
+    },
+    {
+      "name": "test_direct_changes_require_confirmation_only_for_route_or_explicit_interruption",
+      "result": {
+        "effort": false,
+        "account": false,
+        "cli": true,
+        "motor": true,
+        "interrupt": true
+      }
+    }
+  ]
+}

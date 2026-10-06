@@ -1,0 +1,28 @@
+[
+  {
+    "id": "b5-all",
+    "page": "/xtask/web/fixtures/sounds/parity.html",
+    "widths": [
+      1400,
+      844,
+      390,
+      320
+    ],
+    "dpr": [
+      1,
+      2
+    ],
+    "touch": false,
+    "selectors": [
+      "#quick-terminal",
+      "#device-drafts",
+      "#session-config",
+      "#workspace-layout",
+      "#push-fixture",
+      "#sound-settings"
+    ],
+    "mask": [],
+    "channel": 24,
+    "ratio": 0.001
+  }
+]

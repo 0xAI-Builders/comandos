@@ -1,0 +1,11 @@
+{
+  "suites": [
+    "boot",
+    "settings-sounds",
+    "push-settings",
+    "session-config",
+    "quick-terminal",
+    "device-drafts",
+    "workspace-layout"
+  ]
+}

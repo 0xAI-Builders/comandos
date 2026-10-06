@@ -14,9 +14,11 @@ comandos-web-dom = { path = "../comandos-web-dom" }
 comandos-web-view = { path = "../comandos-web-view" }
 # `Component::mount` devuelve `Result<(), JsValue>`: el tipo compila en host.
 wasm-bindgen = "=0.2.129"
+serde_json.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "=0.3.106"
+wasm-bindgen-futures = "=0.4.79"
 web-sys = { version = "=0.3.106", features = ["Document", "Element", "HtmlMetaElement", "Window"] }
 
 [dev-dependencies]

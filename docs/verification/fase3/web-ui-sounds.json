@@ -1,0 +1,91 @@
+{
+  "wasm_url": "/web/a99d4b03ca31/comandos_web_bg.wasm",
+  "ready": true,
+  "cues": [
+    {
+      "cue": "open",
+      "max_abs_diff": 0,
+      "same_duration": true,
+      "baseline_samples": 18270,
+      "candidate_samples": 18270
+    },
+    {
+      "cue": "close",
+      "max_abs_diff": 0,
+      "same_duration": true,
+      "baseline_samples": 15727,
+      "candidate_samples": 15727
+    },
+    {
+      "cue": "complete",
+      "max_abs_diff": 0,
+      "same_duration": true,
+      "baseline_samples": 35244,
+      "candidate_samples": 35244
+    },
+    {
+      "cue": "success",
+      "max_abs_diff": 0,
+      "same_duration": true,
+      "baseline_samples": 29993,
+      "candidate_samples": 29993
+    },
+    {
+      "cue": "level-up",
+      "max_abs_diff": 0,
+      "same_duration": true,
+      "baseline_samples": 38249,
+      "candidate_samples": 38249
+    },
+    {
+      "cue": "notification",
+      "max_abs_diff": 0,
+      "same_duration": true,
+      "baseline_samples": 25040,
+      "candidate_samples": 25040
+    },
+    {
+      "cue": "error",
+      "max_abs_diff": 0,
+      "same_duration": true,
+      "baseline_samples": 26691,
+      "candidate_samples": 26691
+    },
+    {
+      "cue": "warning",
+      "max_abs_diff": 0,
+      "same_duration": true,
+      "baseline_samples": 28342,
+      "candidate_samples": 28342
+    }
+  ],
+  "base": "http://127.0.0.1:7317",
+  "status": "pass",
+  "method": "remote chrome-bg evaluate_script: original UISFX and actual final WASM through OfflineAudioContext",
+  "last_cli_attempt": {
+    "status": "error",
+    "exit_code": 1,
+    "reason": "mcp tools/call: sin respuesta en 30 s"
+  },
+  "actual_buffer_playback": {
+    "wasm_url": "/web/a99d4b03ca31/comandos_web_bg.wasm",
+    "trusted_unlock": true,
+    "unlocked": true,
+    "ready": true,
+    "handle": true,
+    "endedPromise": true,
+    "trace": {
+      "contexts": 1,
+      "buffers": [
+        {
+          "channels": 2,
+          "length": 32381,
+          "rate": 44100
+        }
+      ],
+      "sources": 1,
+      "starts": 1,
+      "stops": 1
+    }
+  }
+}

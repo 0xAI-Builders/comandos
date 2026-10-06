@@ -1,0 +1,18 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="comandos-web" content="push-settings"><title>Push handler fixture</title></head><body>
+<section id="push-settings"><p id="push-status"></p><button id="push-enable">Activar</button><button id="push-disable" hidden>Desactivar</button><button id="push-test" hidden>Enviar aviso de prueba</button></section>
+<script>
+// Isolated deterministic browser capabilities. No notification or subscription escapes.
+window.fixtureRequests=[];window.fixturePrompts=0;let subscription=null;
+window.Notification={permission:'default',requestPermission:async()=>{fixturePrompts++;Notification.permission='granted';return 'granted';}};
+window.PushManager=function(){};
+Object.defineProperty(navigator,'serviceWorker',{value:{addEventListener(){},ready:Promise.resolve({pushManager:{getSubscription:async()=>subscription,subscribe:async()=>subscription={endpoint:'https://fixture.invalid/push',toJSON(){return {endpoint:this.endpoint};},unsubscribe:async()=>{subscription=null;return true;}}}})}});
+const originalFetch=window.fetch.bind(window);window.fetch=async(url,options={})=>{if(String(url).startsWith('/push/')){fixtureRequests.push({url,method:options.method,body:options.body?JSON.parse(options.body):null});const key='BOrKqD0jdhZ4Ta4Q2S7XqVy9YkKxzwP3xqg7r5RkVY8H8Yb3x8o5JH3fSxPp9QmW1dYkGiJ0rJ6nq3M0Qm2a1sQ';return new Response(JSON.stringify(String(url)==='/push/key'?{available:true,publicKey:key}:{ok:true,status:201}),{headers:{'Content-Type':'application/json'}});}return originalFetch(url,options);};
+window.fixtureReady=(async()=>{
+ const mode=new URLSearchParams(location.search).get('web');
+ if(mode==='on'||mode==='shadow'){const manifest=await(await fetch('/web/manifest.json')).json();const wasm='/web/'+manifest.files['comandos_web_bg.wasm'];window.fixtureWasmUrl=wasm;const module=await import('/web/'+manifest.files['comandos_web.js']);await module.default({module_or_path:wasm});module.boot('push-ui-fixture');}
+ else await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='/dash/push-settings.js';s.setAttribute('data-autoinstall','');s.onload=resolve;s.onerror=reject;document.head.append(s);});
+ for(let i=0;i<100&&!document.querySelector('#push-settings').dataset.state;i++)await new Promise(r=>setTimeout(r,10));
+ if(document.querySelector('#push-settings').dataset.state!=='disabled')throw new Error('push attach did not install UI');
+ window.fixtureApiCalls=['PushSettings.attach current'];window.fixtureVisualReady=true;
+})();
+</script></body></html>

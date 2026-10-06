@@ -38,7 +38,38 @@ pub struct Component {
 }
 
 /// Componentes que este WASM sabe montar. Crece con cada port (B4…B13).
-pub const COMPONENTS: &[Component] = &[];
+pub const COMPONENTS: &[Component] = &[
+    Component {
+        id: "ui-sounds",
+        mount: crate::components::ui_sounds::mount,
+        attach: None,
+    },
+    Component {
+        id: "quick-terminal",
+        mount: crate::components::quick_terminal::mount,
+        attach: None,
+    },
+    Component {
+        id: "device-drafts",
+        mount: crate::components::device_drafts::mount,
+        attach: None,
+    },
+    Component {
+        id: "session-config",
+        mount: crate::components::session_config::mount,
+        attach: None,
+    },
+    Component {
+        id: "workspace-layout",
+        mount: crate::components::workspace_layout::mount,
+        attach: None,
+    },
+    Component {
+        id: "push-settings",
+        mount: crate::components::push_settings::mount,
+        attach: Some(crate::components::push_settings::attach),
+    },
+];
 
 /// Error de un id que la página pide y este WASM no tiene.
 pub const UNKNOWN: &str = "componente desconocido en este WASM";
