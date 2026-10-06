@@ -155,6 +155,9 @@ impl Poller {
             client.cancel_pending();
         }
         if let Ok(mut threads) = self.threads.lock() {
+            for thread in threads.iter() {
+                thread.thread().unpark();
+            }
             for thread in threads.drain(..) {
                 let _ = thread.join();
             }
@@ -293,13 +296,15 @@ pub fn live_pref_snapshot(value: &Value) -> Value {
 }
 
 fn sleep_cancel(stop: &AtomicBool, duration: Duration) {
-    let step = Duration::from_millis(10);
-    let mut slept = Duration::ZERO;
-    while slept < duration && !stop.load(Ordering::Acquire) {
-        let remaining = duration.saturating_sub(slept);
-        let now = remaining.min(step);
-        std::thread::sleep(now);
-        slept = slept.saturating_add(now);
+    let started = std::time::Instant::now();
+    while !stop.load(Ordering::Acquire) {
+        let remaining = duration.saturating_sub(started.elapsed());
+        if remaining.is_zero() {
+            break;
+        }
+        // stop() wakes every worker. Preserve the polling interval on a
+        // spurious wake without waking idle threads one hundred times a second.
+        std::thread::park_timeout(remaining);
     }
 }
 

@@ -53,6 +53,24 @@ fn disconnected_poller_stops_without_updates_or_sockets() {
 }
 
 #[test]
+fn stopping_interrupts_long_idle_intervals_without_waiting_for_next_poll() {
+    let client = DashClient::new(None, RunMode::Sandbox).unwrap();
+    let intervals = PollIntervals {
+        state_prefs: Duration::from_secs(30),
+        workspace: Duration::from_secs(30),
+        marks: Duration::from_secs(30),
+        notices_backoff: Duration::from_secs(30),
+        ..PollIntervals::default()
+    };
+    let (poller, rx) = Poller::start_with_intervals(client, Arc::new(AtomicU64::new(0)), intervals);
+    std::thread::sleep(Duration::from_millis(30));
+    let start = Instant::now();
+    poller.stop();
+    assert!(start.elapsed() < Duration::from_millis(500));
+    assert!(rx.try_recv().is_err());
+}
+
+#[test]
 fn poll_update_derives_debug_and_partial_eq() {
     assert_eq!(
         PollUpdate::Notices {
