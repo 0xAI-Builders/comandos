@@ -6,9 +6,10 @@ use std::{
     collections::HashMap,
     rc::Rc,
 };
-type Resize = Rc<dyn Fn(&[(String, Vec<usize>, f64)])>;
+type Resize = Rc<dyn Fn(&[crate::workspace_resize::ResizeUpdate])>;
 type Header = Rc<dyn Fn(&str) -> gtk::Widget>;
-type PendingResize = std::collections::BTreeMap<(String, Vec<usize>), f64>;
+type PendingResize =
+    std::collections::BTreeMap<(String, Vec<usize>), crate::workspace_resize::ResizeUpdate>;
 #[derive(Default)]
 struct RatioState {
     ratio: Cell<f64>,
@@ -137,7 +138,7 @@ impl GtkWorkspace {
             for group in groups {
                 collect_keys(
                     group["id"].as_str().unwrap_or("group"),
-                    &crate::workspace_view::prune(&group["tree"], &present),
+                    &crate::workspace_view::prune_for_view(&group["tree"], &present),
                     Vec::new(),
                     &mut used,
                 );
@@ -152,7 +153,10 @@ impl GtkWorkspace {
                     .map(|group| {
                         (
                             group["id"].clone(),
-                            signature(&crate::workspace_view::prune(&group["tree"], &present)),
+                            signature(&crate::workspace_view::prune_for_view(
+                                &group["tree"],
+                                &present,
+                            )),
                         )
                     })
                     .collect::<Vec<_>>()
@@ -169,7 +173,7 @@ impl GtkWorkspace {
             for group in groups {
                 let group_id = group["id"].as_str().unwrap_or("group");
                 let present = self.pages.borrow().keys().cloned().collect();
-                let tree = crate::workspace_view::prune(&group["tree"], &present);
+                let tree = crate::workspace_view::prune_for_view(&group["tree"], &present);
                 if tree.is_null() {
                     continue;
                 }
@@ -364,53 +368,55 @@ impl GtkWorkspace {
                 });
                 let callback = self.resize.clone();
                 let applying = self.applying.clone();
-                let group = group.to_string();
                 let pending = self.pending_resize.clone();
                 let timer = self.resize_timer.clone();
-                paned.connect_position_notify(move |paned| {
-                    let size = if orientation == gtk::Orientation::Horizontal {
-                        paned.allocated_width()
-                    } else {
-                        paned.allocated_height()
-                    };
-                    if applying.get()
-                        || state.programmatic.get()
-                        || size <= 1
-                        || size != state.size.get()
-                    {
-                        return;
-                    }
-                    let ratio = (f64::from(paned.position()) / f64::from(size)).clamp(0.1, 0.9);
-                    if (ratio - state.ratio.get()).abs() < 0.005 {
-                        return;
-                    }
-                    state.ratio.set(ratio);
-                    pending
-                        .borrow_mut()
-                        .insert((group.clone(), path.clone()), ratio);
-                    if let Some(source) = timer.borrow_mut().take() {
-                        source.remove();
-                    }
-                    let pending = pending.clone();
-                    let callback = callback.clone();
-                    let weak_timer = Rc::downgrade(&timer);
-                    *timer.borrow_mut() = Some(glib::timeout_add_local_once(
-                        std::time::Duration::from_millis(400),
-                        move || {
-                            if let Some(timer) = weak_timer.upgrade() {
-                                timer.borrow_mut().take();
-                            }
-                            let updates = std::mem::take(&mut *pending.borrow_mut());
-                            let updates = updates
-                                .into_iter()
-                                .map(|((group, path), ratio)| (group, path, ratio))
-                                .collect::<Vec<_>>();
-                            if let Some(callback) = callback.borrow().as_ref() {
-                                callback(&updates);
-                            }
-                        },
-                    ));
-                });
+                if let Some(identity) =
+                    crate::workspace_view::resize_update(group, node, state.ratio.get())
+                {
+                    paned.connect_position_notify(move |paned| {
+                        let size = if orientation == gtk::Orientation::Horizontal {
+                            paned.allocated_width()
+                        } else {
+                            paned.allocated_height()
+                        };
+                        if applying.get()
+                            || state.programmatic.get()
+                            || size <= 1
+                            || size != state.size.get()
+                        {
+                            return;
+                        }
+                        let ratio = (f64::from(paned.position()) / f64::from(size)).clamp(0.1, 0.9);
+                        if (ratio - state.ratio.get()).abs() < 0.005 {
+                            return;
+                        }
+                        state.ratio.set(ratio);
+                        let mut update = identity.clone();
+                        update.ratio = ratio;
+                        pending
+                            .borrow_mut()
+                            .insert((update.group.clone(), update.path.clone()), update);
+                        if let Some(source) = timer.borrow_mut().take() {
+                            source.remove();
+                        }
+                        let pending = pending.clone();
+                        let callback = callback.clone();
+                        let weak_timer = Rc::downgrade(&timer);
+                        *timer.borrow_mut() = Some(glib::timeout_add_local_once(
+                            std::time::Duration::from_millis(400),
+                            move || {
+                                if let Some(timer) = weak_timer.upgrade() {
+                                    timer.borrow_mut().take();
+                                }
+                                let updates = std::mem::take(&mut *pending.borrow_mut());
+                                let updates = updates.into_values().collect::<Vec<_>>();
+                                if let Some(callback) = callback.borrow().as_ref() {
+                                    callback(&updates);
+                                }
+                            },
+                        ));
+                    });
+                }
                 paned.upcast()
             }
             _ => gtk::Label::new(None).upcast(),
@@ -434,7 +440,7 @@ fn detach(widget: &gtk::Widget) {
 }
 
 fn signature(node: &Value) -> Value {
-    crate::workspace_view::shape(node)
+    crate::workspace_view::view_signature(node)
 }
 fn collect_keys(
     group: &str,

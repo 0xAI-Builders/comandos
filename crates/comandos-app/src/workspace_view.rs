@@ -58,6 +58,71 @@ pub fn shape(tree: &Value) -> Value {
     }
 }
 
+/// Proyección utilizada por el builder GTK; la identidad no se persiste en el documento.
+pub fn prune_for_view(tree: &Value, present: &BTreeSet<String>) -> Value {
+    fn walk(node: &Value, present: &BTreeSet<String>, path: Vec<usize>) -> Value {
+        if node.get("type").and_then(Value::as_str) != Some("split") {
+            return prune(node, present);
+        }
+        let mut first_path = path.clone();
+        first_path.push(0);
+        let mut second_path = path.clone();
+        second_path.push(1);
+        let first = walk(&node["first"], present, first_path);
+        let second = walk(&node["second"], present, second_path);
+        match (first.is_null(), second.is_null()) {
+            (true, true) => Value::Null,
+            (true, false) => second,
+            (false, true) => first,
+            (false, false) => {
+                let mut out = node.clone();
+                if let Some(object) = out.as_object_mut() {
+                    object.insert("first".into(), first);
+                    object.insert("second".into(), second);
+                    // Se anota antes de promover ramas: el path siempre pertenece a la autoridad.
+                    object.insert("_resize".into(), json!({"path":path,"shape":shape(node)}));
+                }
+                out
+            }
+        }
+    }
+    walk(tree, present, Vec::new())
+}
+
+/// La caché distingue callbacks sobre splits distintos aunque su vista sea igual.
+pub fn view_signature(tree: &Value) -> Value {
+    match tree.get("type").and_then(Value::as_str) {
+        Some("split") => json!([
+            tree.get("axis"),
+            tree.get("_resize"),
+            view_signature(&tree["first"]),
+            view_signature(&tree["second"])
+        ]),
+        _ => shape(tree),
+    }
+}
+
+/// Mismo payload inmutable que captura connect_position_notify al construir el divisor.
+pub fn resize_update(
+    group: &str,
+    node: &Value,
+    ratio: f64,
+) -> Option<crate::workspace_resize::ResizeUpdate> {
+    let identity = node.get("_resize")?;
+    let path = identity
+        .get("path")?
+        .as_array()?
+        .iter()
+        .map(|step| step.as_u64().and_then(|step| usize::try_from(step).ok()))
+        .collect::<Option<Vec<_>>>()?;
+    Some(crate::workspace_resize::ResizeUpdate {
+        group: group.into(),
+        path,
+        shape: identity.get("shape")?.clone(),
+        ratio,
+    })
+}
+
 pub fn split_paths(tree: &Value) -> Vec<(Vec<usize>, f64)> {
     fn walk(node: &Value, path: &mut Vec<usize>, out: &mut Vec<(Vec<usize>, f64)>) {
         if node.get("type").and_then(Value::as_str) != Some("split") {

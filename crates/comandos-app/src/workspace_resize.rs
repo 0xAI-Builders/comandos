@@ -4,6 +4,13 @@ use std::collections::BTreeMap;
 
 type Key = (String, Vec<usize>);
 #[derive(Clone)]
+pub struct ResizeUpdate {
+    pub group: String,
+    pub path: Vec<usize>,
+    pub shape: Value,
+    pub ratio: f64,
+}
+#[derive(Clone)]
 struct Intent {
     ratio: f64,
     shape: Value,
@@ -37,6 +44,30 @@ fn node<'a>(doc: &'a Value, group: &str, path: &[usize]) -> Option<&'a Value> {
     (node.get("type").and_then(Value::as_str) == Some("split")).then_some(node)
 }
 impl ResizeQueue {
+    /// Rechaza callbacks obsoletos antes de capturar identidad desde la autoridad nueva.
+    pub fn record_visual(&mut self, doc: &Value, updates: &[ResizeUpdate]) -> usize {
+        let mut rejected = 0;
+        if self.stopped {
+            return rejected;
+        }
+        for update in updates {
+            if !update.ratio.is_finite()
+                || node(doc, &update.group, &update.path)
+                    .is_none_or(|node| crate::workspace_view::shape(node) != update.shape)
+            {
+                rejected += 1;
+                continue;
+            }
+            self.pending.insert(
+                (update.group.clone(), update.path.clone()),
+                Intent {
+                    ratio: update.ratio,
+                    shape: update.shape.clone(),
+                },
+            );
+        }
+        rejected
+    }
     pub fn record(&mut self, doc: &Value, updates: &[(String, Vec<usize>, f64)]) {
         if self.stopped {
             return;

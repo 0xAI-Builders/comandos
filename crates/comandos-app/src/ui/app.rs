@@ -1955,9 +1955,14 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
         let weak = Rc::downgrade(&app);
         app.workspace.on_resize(Rc::new(move |updates| {
             if let Some(app) = weak.upgrade().filter(|a| !a.closed.load(Ordering::Acquire)) {
-                app.resize_queue
+                let rejected = app
+                    .resize_queue
                     .borrow_mut()
-                    .record(&app.workspace_doc.borrow(), updates);
+                    .record_visual(&app.workspace_doc.borrow(), updates);
+                if rejected > 0 {
+                    app.status
+                        .set_text("Layout changed; obsolete divider movement discarded");
+                }
                 app.flush_resize();
             }
         }));
