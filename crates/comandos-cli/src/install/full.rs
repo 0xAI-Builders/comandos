@@ -223,12 +223,13 @@ pub fn run_with(
                             "--now",
                             "comandos-extensions-sync.timer",
                         ]
+                    && args != &["--user", "daemon-reload"]
                 {
                     external_effects.push(format!("systemctl {}", args.join(" ")))
                 }
             }
             Action::LaunchAgent(_) => external_effects.push("LaunchAgent preparation".into()),
-            Action::InstallFonts(_) => external_effects.push("font-cache refresh".into()),
+            Action::InstallFonts(_) => {}
             _ => {}
         }
         run_action(action)
@@ -466,7 +467,8 @@ pub(super) fn external(action: &Action) -> Result<(), String> {
             // Font cache is optional on macOS and minimal Linux installations.
             let home = path
                 .ancestors()
-                .find(|p| p.join(".local/share/comandos/bin/comandos").is_file())
+                .nth(4)
+                .filter(|home| *path == home.join(".local/share/fonts/comandos"))
                 .ok_or("font path outside installation")?;
             let Some(program) = find("fc-cache") else {
                 return Ok(());
@@ -474,7 +476,11 @@ pub(super) fn external(action: &Action) -> Result<(), String> {
             command(
                 home,
                 &program,
-                vec!["-f".into(), path.to_string_lossy().into_owned()],
+                if path.is_dir() {
+                    vec!["-f".into(), path.to_string_lossy().into_owned()]
+                } else {
+                    vec!["-f".into()]
+                },
                 Duration::from_secs(30),
             )
         }

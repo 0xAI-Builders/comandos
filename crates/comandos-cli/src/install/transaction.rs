@@ -27,6 +27,7 @@ pub(crate) struct Journal {
     committed: bool,
     reload_error: Option<String>,
     runtime: Vec<RuntimeEffect>,
+    recompute: Vec<RecomputeEffect>,
     pub(super) documents: Vec<super::extension_mutations::DocumentEffect>,
 }
 impl Journal {
@@ -453,6 +454,7 @@ impl Journal {
         }
         Ok(())
     }
+    #[cfg(test)]
     pub(crate) fn rollback(self) -> Result<(), String> {
         self.rollback_with(&mut |_| Err("runtime compensation runner unavailable".into()))
     }
@@ -644,6 +646,7 @@ fn restore(path: &Path, before: Before) -> Result<(), String> {
         }
     }
 }
+#[cfg(test)]
 pub(crate) fn finish<T>(journal: Journal, result: Result<T, String>) -> Result<T, String> {
     match result {
         Ok(value) => {
@@ -866,7 +869,7 @@ impl Journal {
         }
         let path = root.join("manifest.json");
         let bytes = serde_json::to_vec(
-            &serde_json::json!({"version":1,"committed":self.committed,"entries":rows,"runtime":self.runtime,"documents":self.documents,"pending":pending,"extensions":self.extensions,"extension_trees":self.extension_trees}),
+            &serde_json::json!({"version":1,"committed":self.committed,"entries":rows,"runtime":self.runtime,"recompute":self.recompute,"documents":self.documents,"pending":pending,"extensions":self.extensions,"extension_trees":self.extension_trees}),
         )
         .map_err(|e| e.to_string())?;
         write_atomic(&path, &bytes).map_err(|e| e.to_string())?;
@@ -1033,6 +1036,15 @@ pub(crate) fn load_journal(home: &Path, path: &Path) -> Result<Journal, String> 
         journal.documents = serde_json::from_value(documents.clone()).map_err(|e| e.to_string())?;
         super::extension_mutations::validate_documents(home, &journal.documents)?;
     }
+    if let Some(recompute) = value.get("recompute") {
+        journal.recompute = serde_json::from_value(recompute.clone()).map_err(|e| e.to_string())?;
+        let mut unique = std::collections::BTreeSet::new();
+        for effect in &journal.recompute {
+            if !effect.valid(home) || !unique.insert(effect.clone()) {
+                return Err("invalid/duplicate runtime recomputation".into());
+            }
+        }
+    }
     if let Some(runtime) = value.get("runtime") {
         journal.runtime = serde_json::from_value(runtime.clone()).map_err(|e| e.to_string())?;
         for effect in &journal.runtime {
@@ -1186,6 +1198,30 @@ mod durable_tests {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+enum RecomputeEffect {
+    Reload(PathBuf),
+    Fonts { home: PathBuf, path: PathBuf },
+}
+impl RecomputeEffect {
+    fn valid(&self, home: &Path) -> bool {
+        match self {
+            Self::Reload(owned) => owned == home,
+            Self::Fonts { home: owned, path } => {
+                owned == home && *path == home.join(".local/share/fonts/comandos")
+            }
+        }
+    }
+    fn action(&self) -> Action {
+        match self {
+            Self::Reload(home) => Action::Systemctl {
+                home: home.clone(),
+                args: vec!["--user".into(), "daemon-reload".into()],
+            },
+            Self::Fonts { path, .. } => Action::InstallFonts(path.clone()),
+        }
+    }
+}
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct RuntimeEffect {
     home: PathBuf,
@@ -1254,6 +1290,32 @@ impl Journal {
             self.observed.insert(wants, Before::Absent);
         }
         self.persist()
+    }
+    pub(crate) fn prepare_recompute(&mut self, action: &Action) -> Result<(), String> {
+        let Some(home) = self.install_home() else {
+            if self.durable.is_none() {
+                return Ok(());
+            }
+            return Err("runtime recomputation HOME absent".into());
+        };
+        let effect = match action {
+            Action::Systemctl { home: owned, args } if args == &["--user", "daemon-reload"] => {
+                RecomputeEffect::Reload(owned.clone())
+            }
+            Action::InstallFonts(path) => RecomputeEffect::Fonts {
+                home: home.into(),
+                path: path.clone(),
+            },
+            _ => return Ok(()),
+        };
+        if !effect.valid(home) {
+            return Err("runtime recomputation outside installation".into());
+        }
+        if !self.recompute.contains(&effect) {
+            self.recompute.push(effect);
+            self.persist()?;
+        }
+        Ok(())
     }
     pub(crate) fn prepare_unit_activation(
         &mut self,
@@ -1381,6 +1443,12 @@ impl Journal {
         super::extension_mutations::rollback_documents(&self.documents)
             .map_err(|e| self.runtime_error("extension documents", &e))?;
         self.rollback_files()?;
+        while let Some(effect) = self.recompute.last().cloned() {
+            run(&effect.action())
+                .map_err(|error| self.runtime_error("runtime recomputation", &error))?;
+            self.recompute.pop();
+            self.persist()?;
+        }
         while let Some(effect) = self.runtime.last().cloned() {
             let compensation: Result<(), String> = (|| {
                 let current = query_unit(&effect.home, &effect.unit, false, run)?;
@@ -1710,5 +1778,89 @@ mod timer_tests {
                 fs::remove_dir_all(home).unwrap();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod recompute_tests {
+    use super::*;
+    fn home() -> PathBuf {
+        let mut id = [0; 8];
+        getrandom::fill(&mut id).unwrap();
+        let home =
+            std::env::temp_dir().join(format!("install-recompute-{:x}", u64::from_ne_bytes(id)));
+        fs::create_dir(&home).unwrap();
+        fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+        home
+    }
+    #[test]
+    fn failed_refresh_is_retried_after_durable_reload_and_restored_file_bytes() {
+        let home = home();
+        let fonts = home.join(".local/share/fonts/comandos");
+        fs::create_dir_all(&fonts).unwrap();
+        let font = fonts.join("private-font");
+        fs::write(&font, b"original font").unwrap();
+        fs::set_permissions(&font, fs::Permissions::from_mode(0o600)).unwrap();
+        let mut journal = Journal::default();
+        journal.file(&font).unwrap();
+        journal.durable(&home).unwrap();
+        journal.expect_file(&font, b"new font", 0o600).unwrap();
+        fs::write(&font, b"new font").unwrap();
+        journal
+            .prepare_recompute(&Action::InstallFonts(fonts.clone()))
+            .unwrap();
+        journal
+            .prepare_recompute(&Action::Systemctl {
+                home: home.clone(),
+                args: vec!["--user".into(), "daemon-reload".into()],
+            })
+            .unwrap();
+        let durable = journal.durable_path().unwrap().to_path_buf();
+        let mut fail = true;
+        let mut calls = Vec::new();
+        let mut runner = |a: &Action| -> Result<(), String> {
+            assert_eq!(fs::read(&font).unwrap(), b"original font");
+            calls.push(a.clone());
+            if matches!(a, Action::InstallFonts(_)) && fail {
+                fail = false;
+                return Err("private font refresh failure".into());
+            }
+            Ok(())
+        };
+        let error =
+            finish_with_runtime::<()>(journal, Err("later phase".into()), &mut runner).unwrap_err();
+        assert!(error.contains("retained recovery journal"));
+        assert!(durable.is_dir());
+        recover_with(&home, &durable, &mut runner).unwrap();
+        assert!(!durable.exists());
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|a| matches!(a, Action::Systemctl { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|a| matches!(a, Action::InstallFonts(_)))
+                .count(),
+            2
+        );
+        fs::remove_dir_all(home).unwrap();
+    }
+    #[test]
+    fn ordinary_file_failure_runs_no_unactivated_runtime_refresh() {
+        let home = home();
+        let mut journal = Journal::default();
+        journal.durable(&home).unwrap();
+        let mut calls = 0;
+        finish_with_runtime::<()>(journal, Err("private failure".into()), &mut |_| {
+            calls += 1;
+            Ok(())
+        })
+        .unwrap_err();
+        assert_eq!(calls, 0);
+        fs::remove_dir_all(home).unwrap();
     }
 }

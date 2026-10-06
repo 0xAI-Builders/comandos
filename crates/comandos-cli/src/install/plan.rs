@@ -202,7 +202,7 @@ pub fn apply_with(
         journal.durable(home)?;
     }
     let result = apply_inner(actions, false, run, Some(&mut journal));
-    super::transaction::finish(journal, result)
+    super::transaction::finish_with_runtime(journal, result, run)
 }
 pub(crate) fn apply_with_journal(
     actions: &[Action],
@@ -345,7 +345,12 @@ fn apply_inner(
             }
             Action::Systemctl { .. } if !units_changed => {}
             Action::InstallFonts(_) if !fonts_changed => {}
-            external => run(external)?,
+            external => {
+                if let Some(j) = journal.as_deref_mut() {
+                    j.prepare_recompute(external)?;
+                }
+                run(external)?;
+            }
         }
     }
     if report.is_empty() {

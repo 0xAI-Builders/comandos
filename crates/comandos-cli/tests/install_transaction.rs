@@ -433,6 +433,7 @@ fn full_runtime_worker() {
     };
     let mut state = before.clone();
     let mut inverses = Vec::new();
+    let mut reload_failed = false;
     let error = full::run_with(
         &[
             "--home".into(),
@@ -463,8 +464,11 @@ fn full_runtime_worker() {
                     state.active = false;
                 }
                 Action::Systemctl { args, .. }
-                    if args.iter().any(|a| a == "daemon-reload") && !state.enabled =>
+                    if args.iter().any(|a| a == "daemon-reload")
+                        && !state.enabled
+                        && !reload_failed =>
                 {
+                    reload_failed = true;
                     return Err("later Telegram reload failure".into());
                 }
                 Action::Systemctl { args, .. } if args.iter().any(|a| a == "enable") => {

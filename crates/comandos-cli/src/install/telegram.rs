@@ -87,9 +87,13 @@ pub(crate) fn apply_with(
             })?;
         }
     }
-    if let Some(manifest) =
-        super::cleanup::stage_with_journal(home, &paths, dry, &mut || Ok(()), journal)?
-    {
+    if let Some(manifest) = super::cleanup::stage_with_journal(
+        home,
+        &paths,
+        dry,
+        &mut || Ok(()),
+        journal.as_deref_mut(),
+    )? {
         println!(
             "Telegram links archived; restore with {}",
             manifest.display()
@@ -100,10 +104,14 @@ pub(crate) fn apply_with(
             .iter()
             .any(|p| p.extension().is_some_and(|e| e == "service"))
     {
-        run(&Action::Systemctl {
+        let reload = Action::Systemctl {
             home: home.into(),
             args: vec!["--user".into(), "daemon-reload".into()],
-        })?;
+        };
+        if let Some(j) = journal {
+            j.prepare_recompute(&reload)?;
+        }
+        run(&reload)?;
     }
     Ok(())
 }
@@ -144,6 +152,7 @@ mod tests {
             runtime: false,
             active: true,
         };
+        let mut reload_failed = false;
         let mut run = |action: &Action| match action {
             Action::SystemctlState { response, .. } => {
                 *response.borrow_mut() = Some(state.clone());
@@ -170,7 +179,16 @@ mod tests {
                     state.active = false;
                     Ok(())
                 } else if args.iter().any(|arg| arg == "daemon-reload") {
-                    Err("private runner reload failure".into())
+                    if !reload_failed {
+                        reload_failed = true;
+                        Err("private runner reload failure".into())
+                    } else {
+                        assert_eq!(
+                            fs::read_link(&unit).unwrap(),
+                            legacy.join("systemd/cc-telegram.service")
+                        );
+                        Ok(())
+                    }
                 } else if args.iter().any(|arg| arg == "enable") {
                     state.enabled = true;
                     Ok(())
@@ -188,13 +206,14 @@ mod tests {
             .unwrap_err();
         assert_eq!(error, "private runner reload failure");
         assert!(state.enabled && state.active);
-        assert_eq!(calls.len(), 4);
+        assert_eq!(calls.len(), 5);
         assert_eq!(
             calls[0],
             ["--user", "disable", "--now", "cc-telegram.service"]
         );
-        assert_eq!(calls[2], ["--user", "enable", "cc-telegram.service"]);
-        assert_eq!(calls[3], ["--user", "start", "cc-telegram.service"]);
+        assert_eq!(calls[2], ["--user", "daemon-reload"]);
+        assert_eq!(calls[3], ["--user", "enable", "cc-telegram.service"]);
+        assert_eq!(calls[4], ["--user", "start", "cc-telegram.service"]);
         assert_eq!(
             fs::read_link(&unit).unwrap(),
             legacy.join("systemd/cc-telegram.service")
