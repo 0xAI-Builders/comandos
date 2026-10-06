@@ -665,7 +665,9 @@ impl Inner {
         }
         let drained = m.engine.drain();
         let mut lines = Vec::new();
-        m.engine.take_dirty(&mut lines);
+        if m.engine.take_dirty(&mut lines) {
+            lines.extend(0..usize::from(m.engine.size().1));
+        }
         m.schedule.damage(self.ms(), &lines);
         drop(m);
         if !drained.replies.is_empty() {
@@ -796,10 +798,15 @@ impl Inner {
             m = self.model.borrow_mut();
         }
         self.poll_shadow(&mut m, now);
-        m.engine.tick(Instant::now());
-        let mut lines = Vec::new();
-        m.engine.take_dirty(&mut lines);
-        m.schedule.damage(now, &lines);
+        // Damage queries always include Alacritty's cursor row. Only consume
+        // timer damage when DEC2026 actually flushes; PTY bytes use read().
+        if m.engine.tick(Instant::now()) {
+            let mut lines = Vec::new();
+            if m.engine.take_dirty(&mut lines) {
+                lines.extend(0..usize::from(m.engine.size().1));
+            }
+            m.schedule.damage(now, &lines);
+        }
         let blink = m
             .preferences
             .get("cursor_blink")
@@ -863,6 +870,11 @@ impl Inner {
                     m.engine.feed(&frame.bytes, Instant::now());
                     // A captured audit frame never sends engine replies or OSC callbacks.
                     m.engine.drain();
+                    let mut lines = Vec::new();
+                    if m.engine.take_dirty(&mut lines) {
+                        lines.extend(0..usize::from(m.engine.size().1));
+                    }
+                    m.schedule.damage(now, &lines);
                     m.shadow_frame = Some(frame);
                 }
             }

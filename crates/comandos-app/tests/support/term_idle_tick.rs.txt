@@ -1,0 +1,49 @@
+use std::{cell::{Cell,RefCell},rc::Rc};
+use comandos_app::term::{engine::{TermEngine,Palette},schedule::PaintSchedule,settle::Settle,lifecycle::RespawnPolicy,pty::{DrainOutcome,PtyError}};
+use glib::{IOCondition,SourceId};
+use serde_json::{json,Value};
+thread_local! {static EPOCH:std::time::Instant=std::time::Instant::now();static NOW:Cell<u64>=const{Cell::new(0)};}
+struct Instant;
+impl Instant {fn now()->std::time::Instant {EPOCH.with(|epoch|*epoch)+std::time::Duration::from_millis(NOW.with(Cell::get))}}
+fn clock(ms:u64) {NOW.with(|now|now.set(ms));}
+struct Area {mapped:Cell<bool>,draws:Cell<usize>}
+impl Area {fn is_mapped(&self)->bool {self.mapped.get()}fn queue_draw(&self){self.draws.set(self.draws.get()+1)}}
+struct Pty {bytes:Option<Vec<u8>>}
+#[derive(Default)]
+struct Drain;
+impl Drain {
+ fn observe_exit(&mut self,_pty:&mut Pty){}fn has_exited(&self)->bool {false}fn finished(&self)->Option<i32>{None}fn close(&mut self){}
+ fn read_into(&mut self,pty:&mut Pty,mut feed:impl FnMut(&[u8]))->DrainOutcome {if let Some(bytes)=pty.bytes.take(){feed(&bytes);}DrainOutcome::WouldBlock}
+}
+type PtyDrain=Drain;
+struct Clipboard;
+impl Clipboard {fn osc52(&self,_target:crate::ui::clipboard::Target,_text:&str) {}}
+mod ui {pub mod clipboard {pub enum Target {Primary,Clipboard}}}
+use comandos_app::term::engine::ClipboardTarget;
+struct Options {on_title:Option<fn(&str)>,on_bell:Option<fn()>,on_exit:Option<fn(i32)>,on_ssh_scroll:Option<fn(&str,i32,u16,u16)>,session:Option<String>}
+struct Model {engine:TermEngine,pty:Option<Pty>,drain:Drain,respawn:RespawnPolicy,respawn_at:Option<u64>,settle:Settle,schedule:PaintSchedule,preferences:Value,blink_visible:bool,ssh_at:Option<u64>,ssh_delta:f64,ssh_point:(u16,u16)}
+struct Inner {model:RefCell<Model>,area:Area,read_source:RefCell<Option<SourceId>>,write_source:RefCell<Option<SourceId>>,options:Options,clipboard:Clipboard}
+impl Inner {
+ fn ms(&self)->u64 {NOW.with(Cell::get)}fn arm(&self){}fn send_event(&self,_bytes:&[u8]){}fn spawn(&self)->Result<(),PtyError>{panic!("fixture must never spawn")}
+ // ACTUAL_METHODS
+}
+const RESPAWN_MS:u64=1000;
+fn make(blink:bool,focused:bool,clear:bool)->Rc<Inner> {
+ clock(0);let epoch=Instant::now();let palette=Palette::xterm_default([240;3],[0;3],[200;3],[0;3],[240;3]);let mut engine=TermEngine::new(40,12,10,palette,false,epoch);
+ if clear {let mut lines=Vec::new();engine.take_dirty(&mut lines);}
+ let mut schedule=PaintSchedule::default();schedule.set_focused(focused,0);schedule.painted(0);
+ Rc::new(Inner{model:RefCell::new(Model{engine,pty:Some(Pty{bytes:None}),drain:Drain,respawn:RespawnPolicy::default(),respawn_at:None,settle:Settle::new(100,1000,0),schedule,preferences:json!({"cursor_blink":blink}),blink_visible:true,ssh_at:None,ssh_delta:0.,ssh_point:(0,0)}),area:Area{mapped:Cell::new(true),draws:Cell::new(0)},read_source:RefCell::new(None),write_source:RefCell::new(None),options:Options{on_title:None,on_bell:None,on_exit:None,on_ssh_scroll:None,session:None},clipboard:Clipboard})
+}
+fn tick_at(inner:&Rc<Inner>,ms:u64) {clock(ms);inner.tick();inner.model.borrow_mut().schedule.painted(ms);}
+fn input(inner:&Rc<Inner>,bytes:&[u8]) {inner.model.borrow_mut().pty.as_mut().unwrap().bytes=Some(bytes.to_vec());assert!(inner.read(IOCondition::empty()));}
+fn main() {
+ let idle=make(false,true,true);for ms in (100..=10000).step_by(100){tick_at(&idle,ms);}let idle_paints=idle.area.draws.get();
+ let bytes=make(false,true,true);input(&bytes,b"prompt");tick_at(&bytes,100);let bytes_paints=bytes.area.draws.get();
+ let full=make(false,true,false);input(&full,b"first frame");let full_pending=!full.model.borrow().schedule.pending_lines().is_empty();tick_at(&full,100);let full_paints=full.area.draws.get();
+ let sync=make(false,true,true);input(&sync,b"\x1b[?2026hSYNC");tick_at(&sync,100);let early=sync.area.draws.get();let deadline=sync.model.borrow().engine.next_deadline().unwrap();let deadline_ms=EPOCH.with(|epoch|deadline.duration_since(*epoch).as_millis() as u64);tick_at(&sync,deadline_ms+1);let flushed=sync.area.draws.get();for ms in ((deadline_ms+101)..(deadline_ms+2000)).step_by(100){tick_at(&sync,ms);}let after=sync.area.draws.get();
+ let explicit=make(false,true,true);input(&explicit,b"\x1b[?2026hUPDATE");tick_at(&explicit,100);input(&explicit,b"\x1b[?2026l");tick_at(&explicit,200);let explicit_paints=explicit.area.draws.get();
+ let blink=make(true,true,true);tick_at(&blink,600);let blink_paints=blink.area.draws.get();
+ let unfocused=make(true,false,true);tick_at(&unfocused,600);let unfocused_paints=unfocused.area.draws.get();
+ let unmapped=make(false,true,true);unmapped.area.mapped.set(false);input(&unmapped,b"retained");clock(100);unmapped.tick();let hidden=unmapped.area.draws.get();let retained=!unmapped.model.borrow().schedule.pending_lines().is_empty();unmapped.area.mapped.set(true);clock(200);unmapped.tick();
+ println!("{}",json!({"idle_paints":idle_paints,"bytes_paints":bytes_paints,"full_read_pending":full_pending,"full_read_paints":full_paints,"sync_early_paints":early,"sync_deadline_paints":flushed,"sync_after_idle_paints":after,"explicit_sync_paints":explicit_paints,"blink_paints":blink_paints,"unfocused_paints":unfocused_paints,"unmapped_paints":hidden,"queued_before_map":retained,"remapped_paints":unmapped.area.draws.get()}));
+}
