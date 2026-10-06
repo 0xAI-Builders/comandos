@@ -2,6 +2,7 @@ pub mod browser;
 pub mod dispatch;
 pub mod install;
 pub mod keys;
+pub mod raise;
 pub mod state;
 pub mod web;
 pub mod webterm;

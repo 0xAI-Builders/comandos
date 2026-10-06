@@ -34,13 +34,14 @@ fn main() {
         Command::Keys(args) => comandos_cli::keys::main(&args),
         Command::Browser(args) => comandos_cli::browser::run(&args),
         Command::X(args) => comandos_cli::x::main(&args),
+        Command::Raise(args) => comandos_cli::raise::main(&args),
         Command::Version => {
             println!("comandos {}", env!("CARGO_PKG_VERSION"));
             0
         }
         Command::Help => {
             println!(
-                "uso: comandos <ext|hook|events|install|dash|browser|web|webterm|webterm-attach|state|keys|x|--version>"
+                "uso: comandos <ext|hook|events|install|dash|browser|web|webterm|webterm-attach|state|keys|x|raise|--version>"
             );
             0
         }
