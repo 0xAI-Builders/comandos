@@ -667,6 +667,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "comandos-web-content"
+version = "0.1.0"
+dependencies = [
+ "comandos-web-dom",
+ "comandos-web-view",
+ "js-sys",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "comandos-web-dom"
 version = "0.1.0"
 dependencies = [

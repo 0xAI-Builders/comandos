@@ -395,7 +395,7 @@ pub fn first_boot(booted: bool, page_ready: bool) -> bool {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use web::{boot, boot_with};
+pub use web::{boot, boot_with, dependency_failed, needs_content};
 
 #[cfg(target_arch = "wasm32")]
 mod web {
@@ -412,6 +412,36 @@ mod web {
 
     thread_local! {
         static BOOTED: Cell<bool> = const { Cell::new(false) };
+    }
+
+    #[wasm_bindgen]
+    pub fn needs_content() -> bool {
+        let content = comandos_web_dom::dom::query(r#"meta[name="comandos-web"]"#)
+            .and_then(|m| m.get_attribute("content"))
+            .unwrap_or_default();
+        meta_ids(&content).iter().any(|id| {
+            matches!(
+                *id,
+                "analytics"
+                    | "analytics-render"
+                    | "news-reader"
+                    | "ui-sounds"
+                    | "vendor-markdown-it"
+                    | "vendor-purify"
+            )
+        })
+    }
+    #[wasm_bindgen]
+    pub fn dependency_failed(k: &str, error: JsValue) {
+        let _ = BOOTED.try_with(|b| b.set(true));
+        publish_report(
+            k,
+            &Report {
+                mounted: Vec::new(),
+                failed: vec![("native-content".into(), describe(&error))],
+            },
+            "failed",
+        );
     }
 
     /// Lee `<meta name="comandos-web">`, monta en ese orden, marca

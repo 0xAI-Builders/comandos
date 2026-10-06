@@ -581,3 +581,27 @@ fn separate_output_preserves_default_and_refuses_source_or_roots() {
     );
     fs::remove_dir_all(private).unwrap();
 }
+
+#[test]
+fn content_loader_waits_for_native_dependency_and_refuses_failed_transport() {
+    let root = scratch("content-loader");
+    let loader = root.join("content_boot.js");
+    fs::write(
+        &loader,
+        web_build::render_content_boot("./comandos_web.js", "./comandos_web_bg.wasm"),
+    )
+    .unwrap();
+    let proof = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/content_loader.cjs");
+    let output = Command::new("node")
+        .args(["--experimental-vm-modules"])
+        .arg(proof)
+        .arg(loader)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

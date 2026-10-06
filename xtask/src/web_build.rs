@@ -56,6 +56,27 @@ await init({ module_or_path: new URL("{{WASM}}", import.meta.url) });
 boot(me ? me.dataset.k || "" : "");
 "#;
 
+/// Transport-only conditional loader: Rust selects the dependency and reports failures.
+/// Full native selection initializes both artifacts before boot; this is not first-use lazy loading.
+pub fn render_content_boot(module_js: &str, wasm: &str) -> String {
+    format!(
+        r#"// Generated native transport; component selection and lifecycle stay in Rust.
+import init, {{ boot, needs_content, dependency_failed }} from "{module_js}";
+const me=document.currentScript||document.querySelector("script[data-k]");
+const k=me?me.dataset.k||"":"";
+await init({{module_or_path:new URL("{wasm}",import.meta.url)}});
+if(needs_content()){{
+  try{{
+    const content=await import("./comandos_web_content.js");
+    await content.default({{module_or_path:new URL("./comandos_web_content_bg.wasm",import.meta.url)}});
+    content.register_content();
+  }}catch(error){{dependency_failed(k,error);throw error;}}
+}}
+boot(k);
+"#
+    )
+}
+
 /// Versiones exactas de las herramientas (el crate `wasm-bindgen` va fijado igual).
 pub const WASM_BINDGEN_VERSION: &str = "0.2.129";
 pub const WASM_OPT_VERSION: &str = "116";
@@ -486,10 +507,40 @@ fn build_one(opts: &Options, c: &WasmCrate) -> Result<Built, String> {
         files.push((format!("{}_{name}", c.lib), name, bytes));
     }
     if let Some(boot) = boot_name {
-        let text = render_boot(&format!("./{js_name}"), &format!("./{wasm_name}"));
+        let text = if c.name == "comandos-web" {
+            render_content_boot(&format!("./{js_name}"), &format!("./{wasm_name}"))
+        } else {
+            render_boot(&format!("./{js_name}"), &format!("./{wasm_name}"))
+        };
         files.push((boot, BOOT_FILE.to_string(), text.into_bytes()));
     }
     if c.name == "comandos-web" && c.target == BindgenTarget::Web {
+        let companion = build_one(
+            opts,
+            &WasmCrate::new("comandos-web-content", BindgenTarget::Web, 350 * 1024),
+        )?;
+        let mut companion_gzip = 0;
+        for (logical, physical, bytes) in companion.files {
+            if physical == BOOT_FILE {
+                continue;
+            }
+            if physical.ends_with(".wasm") {
+                companion_gzip += gzip_len(&bytes)?;
+            }
+            if let Some((_, _, existing)) = files.iter().find(|(_, name, _)| name == &physical) {
+                if existing != &bytes {
+                    return Err(format!("companion file collision: {physical}"));
+                }
+                continue;
+            }
+            files.push((logical, physical, bytes));
+        }
+        println!(
+            "complete dashboard WASM: {} B gzip (main {} + content {})",
+            gz + companion_gzip,
+            gz,
+            companion_gzip
+        );
         files.extend(
             native_page_files(
                 opts.manifest_path
@@ -520,6 +571,18 @@ fn build_one(opts: &Options, c: &WasmCrate) -> Result<Built, String> {
             .into_iter()
             .map(|(name, bytes)| (name.clone(), name, bytes)),
         );
+    }
+    if c.name == "comandos-web"
+        && let Some((_, _, bytes)) = files
+            .iter_mut()
+            .find(|(name, _, _)| name == comandos_core::web_assets::NATIVE_PAGE_FILE)
+    {
+        let mut page: comandos_core::web_assets::NativePage =
+            serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+        for name in ["comandos_web_content.js", "comandos_web_content_bg.wasm"] {
+            page.assets.insert(format!("/{name}"), name.into());
+        }
+        *bytes = serde_json::to_vec(&page).map_err(|e| e.to_string())?;
     }
     let parts: Vec<&[u8]> = files.iter().map(|(_, _, b)| b.as_slice()).collect();
     Ok(Built {

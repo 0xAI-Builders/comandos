@@ -69,6 +69,8 @@ impl Front {
         entries[0].deps = vec![ids.last().unwrap().clone()];
         web.registry = Resolved::in_memory(entries, &[]);
         let assets = [
+            "/comandos_web_content.js",
+            "/comandos_web_content_bg.wasm",
             "/workspace.css",
             "/buttons.css",
             "/analytics.css",
@@ -289,6 +291,17 @@ async fn incomplete_native_selection_and_assets_refuse_without_legacy_fallback()
     front.stop().await;
     let front = Front::start().await;
     std::fs::remove_file(front.root.join("web/fedcba987654/native_workspace.css")).unwrap();
+    let reply = front.http("GET", "/?web=native", "", "").await;
+    assert!(reply.starts_with("HTTP/1.1 503"), "{reply}");
+    assert!(!reply.contains("legacy-exact"));
+    front.stop().await;
+    let front = Front::start().await;
+    std::fs::remove_file(
+        front
+            .root
+            .join("web/fedcba987654/native_comandos_web_content_bg.wasm"),
+    )
+    .unwrap();
     let reply = front.http("GET", "/?web=native", "", "").await;
     assert!(reply.starts_with("HTTP/1.1 503"), "{reply}");
     assert!(!reply.contains("legacy-exact"));

@@ -88,4 +88,4 @@ pub mod components {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use registry::boot;
+pub use registry::{boot, dependency_failed, needs_content};
