@@ -54,6 +54,38 @@ pub struct StatusDir<'a> {
     pub domain: &'static str,
 }
 impl StatusDir<'_> {
+    /// No source writes, new lock files or migrations. Legacy/Mirror preserve filesystem
+    /// iteration and follow regular JSON symlinks as Python glob did. Unified
+    /// and Sealed deliberately use stable file-key order for equal timestamps.
+    pub fn list_readonly(&self) -> Result<Vec<(String, Vec<u8>)>> {
+        unified::modes::with_readonly_access(self.home, self.domain, |mode, db| {
+            if matches!(mode, Mode::Unified | Mode::Sealed) {
+                let db = db.ok_or_else(|| Error::Validation("estado único sin base".into()))?;
+                return Ok(db.prepare("SELECT file_key,body FROM session_status WHERE file_key NOT LIKE '.%' AND substr(file_key,-5)='.json' ORDER BY file_key")?
+                    .query_map([], |r| Ok((r.get(0)?,r.get(1)?)))?
+                    .collect::<rusqlite::Result<_>>()?);
+            }
+            // glob.glob silently ignores inaccessible directories; opening each
+            // matched file is also best-effort in the original cc-next.
+            let Ok(entries) = fs::read_dir(&self.dir) else {
+                return Ok(vec![]);
+            };
+            let mut rows = vec![];
+            for entry in entries.flatten() {
+                let Ok(name) = entry.file_name().into_string() else {
+                    continue;
+                };
+                if !name.starts_with('.')
+                    && name.ends_with(".json")
+                    && fs::metadata(entry.path()).is_ok_and(|meta| meta.is_file())
+                    && let Ok(body) = fs::read(entry.path())
+                {
+                    rows.push((name, body));
+                }
+            }
+            Ok(rows)
+        })
+    }
     fn file(&self, key: &str) -> Result<PathBuf> {
         if key.is_empty()
             || key.contains('/')
