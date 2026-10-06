@@ -142,6 +142,50 @@ pub(super) fn source_title(source: &str, kind: LinkType) -> Option<String> {
         title, true,
     )))
 }
+enum NumericHrefEntity {
+    Literal,
+    Scalar(u32),
+}
+fn numeric_href_entity(entity: &str) -> Option<NumericHrefEntity> {
+    let digits = entity.strip_prefix("&#")?.strip_suffix(';')?;
+    let (digits, radix) = digits
+        .strip_prefix(['x', 'X'])
+        .map_or((digits, 10), |hex| (hex, 16));
+    if digits.is_empty()
+        || !digits.bytes().all(|b| {
+            if radix == 16 {
+                b.is_ascii_hexdigit()
+            } else {
+                b.is_ascii_digit()
+            }
+        })
+    {
+        return None;
+    }
+    let value = u64::from_str_radix(digits, radix).ok();
+    if digits.len() > 8 {
+        // Markdown-it's bounded numeric grammar falls through to its HTML
+        // entity decoder for longer digit strings. Overflow becomes U+FFFD.
+        let value = value
+            .filter(|n| *n != 0 && *n <= 0x10ffff && !(0xd800..=0xdfff).contains(n))
+            .unwrap_or(0xfffd);
+        return Some(NumericHrefEntity::Scalar(value as u32));
+    }
+    let n = value? as u32;
+    let invalid = (0xd800..=0xdfff).contains(&n)
+        || (0xfdd0..=0xfdef).contains(&n)
+        || matches!(n & 0xffff, 0xffff | 0xfffe)
+        || n <= 8
+        || n == 11
+        || (14..=31).contains(&n)
+        || (127..=159).contains(&n)
+        || n > 0x10ffff;
+    Some(if invalid {
+        NumericHrefEntity::Literal
+    } else {
+        NumericHrefEntity::Scalar(n)
+    })
+}
 // Decode escapes and entities independently, preserving their origin. In
 // particular MARK emitted by an entity never meets the transport decoder.
 fn destination_units(source: &str, entities: bool) -> Vec<u16> {
@@ -170,10 +214,17 @@ fn destination_units(source: &str, entities: bool) -> Vec<u16> {
                 .position(|&byte| byte == b';')
         {
             let entity = &tail[..end + 1];
-            if !invalid_numeric(entity)
-                && entity[1..end]
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'#')
+            if let Some(numeric) = numeric_href_entity(entity) {
+                if let NumericHrefEntity::Scalar(n) = numeric {
+                    let scalar = char::from_u32(n).unwrap_or(char::REPLACEMENT_CHARACTER);
+                    let mut buffer = [0; 2];
+                    units.extend_from_slice(scalar.encode_utf16(&mut buffer));
+                    at += end + 1;
+                    continue;
+                }
+            } else if entity[1..end]
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'#')
             {
                 let mut decoded = String::new();
                 for event in Parser::new(entity) {
@@ -297,12 +348,7 @@ pub(super) fn transport_destination(source: &str) -> Cow<'_, str> {
     }
 }
 pub(super) fn parsed_destination(source: &str, kind: LinkType) -> Option<String> {
-    if !source.contains(MARK)
-        && !source.split_inclusive(';').any(|part| {
-            part.rfind("&#")
-                .is_some_and(|at| invalid_numeric(&part[at..]))
-        })
-    {
+    if !source.contains(MARK) && !source.contains("&#") {
         return None;
     }
     Some(normalize_units(destination_units(

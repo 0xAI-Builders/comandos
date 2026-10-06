@@ -83,3 +83,21 @@ fn all_original_legacy_uri_baselines() {
     }
     assert!(differences.is_empty(), "{}", differences.join("\n"));
 }
+
+#[test]
+fn reviewer_reference_and_destination_cases() {
+    let rows: serde_json::Value = serde_json::from_str(&comandos_web_view::utf16::json_to_unicode(
+        include_str!("../../../xtask/web/fixtures/b8/uri-review36-node-baselines.json"),
+    ))
+    .unwrap();
+    let mut differences = Vec::new();
+    for row in rows["cases"].as_array().unwrap().iter().skip(10) {
+        let actual = render(row["text"].as_str().unwrap(), Profile::News);
+        if let Some(difference) =
+            comandos_domdiff::first_difference(row["originalNode"].as_str().unwrap(), &actual)
+        {
+            differences.push(format!("{}: {difference}", row["id"]));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}

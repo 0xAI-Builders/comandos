@@ -61,14 +61,26 @@ fn normalized_href(href: &str) -> Cow<'_, str> {
     // Parser destinations have already decoded entities. Their PUA scalars
     // are Unicode data, never evidence of the UTF-16 transport codec.
     let href = idna_href(href);
-    if href.is_ascii() {
+    let bytes = href.as_bytes();
+    let allowed = |at: usize, byte: u8| {
+        byte.is_ascii_alphanumeric()
+            || b";/?:@&=+$,-_.!~*'()#".contains(&byte)
+            || (byte == b'%'
+                && bytes.get(at + 1).is_some_and(u8::is_ascii_hexdigit)
+                && bytes.get(at + 2).is_some_and(u8::is_ascii_hexdigit))
+    };
+    let count = bytes
+        .iter()
+        .enumerate()
+        .filter(|(at, byte)| !allowed(*at, **byte))
+        .count();
+    if count == 0 {
         return href;
     }
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
-    let extra = href.bytes().filter(|byte| !byte.is_ascii()).count() * 2;
-    let mut encoded = String::with_capacity(href.len() + extra);
-    for byte in href.bytes() {
-        if byte.is_ascii() {
+    let mut encoded = String::with_capacity(href.len() + count * 2);
+    for (at, byte) in href.bytes().enumerate() {
+        if allowed(at, byte) {
             encoded.push(char::from(byte));
         } else {
             encoded.push('%');
@@ -465,10 +477,12 @@ pub fn render(text: &str, _profile: Profile) -> String {
     // before Text coalescing, so a URL's closing tilde remains part of the
     // same text run and receives the original autolink treatment.
     let base_parser = Parser::new_ext(source, options);
+    // Markdown-it normalizes reference labels by lowercasing then uppercasing,
+    // including Unicode expansions such as sharp-s, on both sides of lookup.
     let definitions = base_parser
         .reference_definitions()
         .iter()
-        .map(|(id, definition)| (id.to_string(), definition.span.clone()))
+        .map(|(id, definition)| (id.to_lowercase().to_uppercase(), definition.span.clone()))
         .collect::<HashMap<_, _>>();
     let parsed = base_parser
         .into_offset_iter()
@@ -535,10 +549,14 @@ pub fn render(text: &str, _profile: Profile) -> String {
                         source.get(range.clone())
                     }
                     _ => definitions
-                        .get(id.as_ref())
+                        .get(&id.to_lowercase().to_uppercase())
                         .and_then(|span| source.get(span.clone())),
                 };
-                let raw = if dest_url.contains('\u{e000}') || dest_url.contains('\u{fffd}') {
+                let raw = if dest_url.contains('\u{e000}')
+                    || dest_url.contains('\u{fffd}')
+                    || dest_url.chars().any(char::is_control)
+                    || raw_source.is_some_and(|raw| raw.contains("&#"))
+                {
                     raw_source.and_then(|raw| match link_type {
                         LinkType::Inline => uri::inline_destination(raw),
                         LinkType::Autolink | LinkType::Email => {
