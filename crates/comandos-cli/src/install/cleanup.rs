@@ -82,6 +82,16 @@ pub fn stage_admitted(
     dry: bool,
     admission: &mut dyn FnMut() -> Result<(), String>,
 ) -> Result<Option<PathBuf>, String> {
+    stage_with_journal(home, paths, dry, admission, None)
+}
+
+pub(crate) fn stage_with_journal(
+    home: &Path,
+    paths: &[PathBuf],
+    dry: bool,
+    admission: &mut dyn FnMut() -> Result<(), String>,
+    mut journal: Option<&mut super::transaction::Journal>,
+) -> Result<Option<PathBuf>, String> {
     super::release::check_app_parents(&home.join("placeholder"))?;
     let mut entries = Vec::new();
     for (i, path) in paths.iter().enumerate() {
@@ -116,15 +126,31 @@ pub fn stage_admitted(
     );
     let backup = home.join(".local/share/comandos/backups").join(id);
     super::release::check_app_parents(&backup.join("placeholder"))?;
+    let manifest = backup.join("manifest.json");
+    let record =
+        json!({"version":1,"home":home.to_str().ok_or("HOME must be UTF-8")?,"entries":entries});
+    let bytes = format!("{record}\n");
+    if let Some(j) = journal.as_deref_mut() {
+        j.prepare_private_parents(&backup)?;
+        j.file(&manifest)?;
+        j.expect_file(&manifest, bytes.as_bytes(), 0o600)?;
+        for entry in record["entries"]
+            .as_array()
+            .ok_or("invalid cleanup entries")?
+        {
+            let path = entry["path"].as_str().ok_or("missing cleanup path")?;
+            j.prepare_archive(&home.join(path), &backup.join("home-legacy").join(path))?;
+        }
+    }
     fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
         .create(&backup)
         .map_err(|e| e.to_string())?;
-    let manifest = backup.join("manifest.json");
-    let record =
-        json!({"version":1,"home":home.to_str().ok_or("HOME must be UTF-8")?,"entries":entries});
-    write_atomic(&manifest, format!("{record}\n").as_bytes()).map_err(|e| e.to_string())?;
+    write_atomic(&manifest, bytes.as_bytes()).map_err(|e| e.to_string())?;
+    if let Some(j) = journal {
+        j.checkpoint(std::slice::from_ref(&manifest))?;
+    }
     for entry in record["entries"]
         .as_array()
         .ok_or("invalid cleanup entries")?
@@ -232,4 +258,103 @@ pub fn restore(home: &Path, manifest: &Path, dry: bool) -> Result<Vec<String>, S
         }
     }
     Ok(report)
+}
+
+#[cfg(test)]
+mod transaction_tests {
+    use super::*;
+    use crate::install::transaction::{Journal, finish};
+    use std::os::unix::fs::symlink;
+    fn home() -> PathBuf {
+        let mut id = [0u8; 8];
+        getrandom::fill(&mut id).unwrap();
+        let path =
+            std::env::temp_dir().join(format!("cleanup-journal-{:x}", u64::from_ne_bytes(id)));
+        fs::create_dir(&path).unwrap();
+        path
+    }
+    #[test]
+    fn late_failure_restores_selected_links_and_removes_new_archive_tree() {
+        let home = home();
+        let source = home.join(".local/bin/cc-telegram");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        symlink("/private/legacy/bin/cc-telegram", &source).unwrap();
+        let credentials = home.join("telegram-credentials");
+        fs::write(&credentials, b"private secret").unwrap();
+        let mut journal = Journal::default();
+        journal.durable(&home).unwrap();
+        let manifest = stage_with_journal(
+            &home,
+            &[PathBuf::from(".local/bin/cc-telegram")],
+            false,
+            &mut || Ok(()),
+            Some(&mut journal),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(!source.is_symlink());
+        assert!(manifest.is_file());
+        let error = finish::<()>(journal, Err("injected late failure".into())).unwrap_err();
+        assert!(!error.contains("rollback failed"), "{error}");
+        assert_eq!(
+            fs::read_link(&source).unwrap(),
+            Path::new("/private/legacy/bin/cc-telegram")
+        );
+        assert!(!manifest.parent().unwrap().exists());
+        assert_eq!(fs::read(&credentials).unwrap(), b"private secret");
+        fs::remove_dir_all(home).unwrap();
+    }
+    #[test]
+    fn edited_archive_is_retained_with_durable_conflict() {
+        let home = home();
+        let source = home.join("owned-link");
+        symlink("old-target", &source).unwrap();
+        let mut journal = Journal::default();
+        journal.durable(&home).unwrap();
+        let manifest = stage_with_journal(
+            &home,
+            &[PathBuf::from("owned-link")],
+            false,
+            &mut || Ok(()),
+            Some(&mut journal),
+        )
+        .unwrap()
+        .unwrap();
+        let archived = manifest.parent().unwrap().join("home-legacy/owned-link");
+        fs::remove_file(&archived).unwrap();
+        symlink("user-new-target", &archived).unwrap();
+        let error = finish::<()>(journal, Err("late failure".into())).unwrap_err();
+        assert!(error.contains(&archived.display().to_string()), "{error}");
+        assert!(error.contains("retained recovery journal"), "{error}");
+        assert_eq!(
+            fs::read_link(archived).unwrap(),
+            Path::new("user-new-target")
+        );
+        fs::remove_dir_all(home).unwrap();
+    }
+    #[test]
+    fn retargeted_source_fails_before_any_archive_mutation() {
+        let home = home();
+        let source = home.join("owned-link");
+        symlink("old-target", &source).unwrap();
+        let mut journal = Journal::default();
+        journal.capture(&source).unwrap();
+        journal.durable(&home).unwrap();
+        fs::remove_file(&source).unwrap();
+        symlink("user-target", &source).unwrap();
+        let error = stage_with_journal(
+            &home,
+            &[PathBuf::from("owned-link")],
+            false,
+            &mut || Ok(()),
+            Some(&mut journal),
+        )
+        .unwrap_err();
+        assert!(error.contains("archive source changed"), "{error}");
+        let error = finish::<()>(journal, Err(error)).unwrap_err();
+        assert!(error.contains("retained recovery journal"));
+        assert_eq!(fs::read_link(&source).unwrap(), Path::new("user-target"));
+        assert!(!home.join(".local/share/comandos/backups").exists());
+        fs::remove_dir_all(home).unwrap();
+    }
 }

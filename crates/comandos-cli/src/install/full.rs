@@ -219,8 +219,7 @@ pub fn run_with(
         );
     }
     if !dry && std::env::var("COMANDOS_RETIRE_TELEGRAM").as_deref() == Ok("1") {
-        external_effects
-            .push("Telegram archive/runtime state are outside the managed-file journal".into());
+        external_effects.push("Telegram service enablement/activity is not compensated".into());
     }
     let mut tracked_action = |action: &Action| {
         match action {
@@ -373,7 +372,7 @@ pub fn run_with(
             super::extensions::apply(&home, platform, dry)?;
         }
         if std::env::var("COMANDOS_RETIRE_TELEGRAM").as_deref() == Ok("1") {
-            super::telegram::apply(&home, dry)?;
+            super::telegram::apply_with(&home, dry, journal.as_mut(), &mut tracked_action)?;
         }
         if let Some(j) = journal.as_mut() {
             j.commit()?;

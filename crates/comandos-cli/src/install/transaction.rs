@@ -89,6 +89,59 @@ impl Journal {
         }
         Ok(())
     }
+    /// Admit only the selected file/link, then publish its rename destination
+    /// before mutation. Retargeted sources and occupied destinations fail closed.
+    pub(crate) fn prepare_archive(&mut self, source: &Path, target: &Path) -> Result<(), String> {
+        let meta = source.symlink_metadata().map_err(|e| e.to_string())?;
+        if !meta.is_file() && !meta.file_type().is_symlink() {
+            return Err(format!(
+                "transactional archive requires a file or link: {}",
+                source.display()
+            ));
+        }
+        self.tree(source)?;
+        self.overlay(source, target)?;
+        let selected = self
+            .entries
+            .keys()
+            .filter(|p| p.starts_with(source))
+            .cloned()
+            .collect::<Vec<_>>();
+        for path in selected {
+            let mut actual = Self::default();
+            actual.capture(&path)?;
+            if actual.entries.get(&path) != self.observed.get(&path) {
+                return Err(format!("archive source changed: {}", path.display()));
+            }
+            let dest = target.join(path.strip_prefix(source).map_err(|e| e.to_string())?);
+            if self.entries.get(&dest) != Some(&Before::Absent) || dest.symlink_metadata().is_ok() {
+                return Err(format!("archive destination occupied: {}", dest.display()));
+            }
+            let written = actual
+                .entries
+                .remove(&path)
+                .ok_or("archive preimage missing")?;
+            self.observed.insert(dest, written);
+            self.observed.insert(path, Before::Absent);
+        }
+        if let Some(parent) = target.parent() {
+            self.prepare_private_parents(parent)?;
+        }
+        self.persist()
+    }
+    pub(crate) fn prepare_private_parents(&mut self, path: &Path) -> Result<(), String> {
+        self.file(path)?;
+        let paths = self
+            .entries
+            .iter()
+            .filter(|(p, v)| path.starts_with(p) && **v == Before::Absent)
+            .map(|(p, _)| p.clone())
+            .collect::<Vec<_>>();
+        for parent in paths {
+            self.observed.insert(parent, Before::Directory(0o700));
+        }
+        self.persist()
+    }
     fn managed_file(&mut self, path: &Path) -> Result<(), String> {
         self.file(path)?;
         let name = path
@@ -380,8 +433,23 @@ impl Journal {
     }
     pub(crate) fn rollback(self) -> Result<(), String> {
         let mut errors = Vec::new();
+        // Newly created private trees have no pre-existing destination locks.
+        // The shared installation lock covers recovery; avoid creating control
+        // files inside trees whose empty directories must be removed below.
+        let new_directories = self
+            .entries
+            .iter()
+            .filter(|(path, before)| {
+                **before == Before::Absent
+                    && matches!(self.observed.get(*path), Some(Before::Directory(_)))
+            })
+            .map(|(path, _)| path.clone())
+            .collect::<Vec<_>>();
         for (path, before) in self.entries.into_iter().rev() {
-            let _file_guard = if path.parent().is_some_and(Path::is_dir) {
+            let private_parent = path
+                .parent()
+                .is_some_and(|parent| new_directories.iter().any(|dir| parent.starts_with(dir)));
+            let _file_guard = if !private_parent && path.parent().is_some_and(Path::is_dir) {
                 let name = path
                     .file_name()
                     .ok_or("rollback destination name")?
