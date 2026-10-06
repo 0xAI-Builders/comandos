@@ -5,8 +5,15 @@
     clippy::expect_used,
     clippy::disallowed_methods
 )]
-use serde_json::Value;
-use std::{path::PathBuf, process::Command};
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+use std::{
+    os::unix::fs::DirBuilderExt,
+    path::{Path, PathBuf},
+    process::Command,
+};
+const SOURCE: &str = "2674f366bb01b9db42f6f64b728929b3acfe8b83:bin/cc-app";
+const SOURCE_SHA256: &str = "1b535bc6f4463959cc3ab992fa5a4ab859fbdaec43fcf628123cfede68b4ca6b";
 const LOADER: &str = r#"
 import ast,json,re,sys,types
 from urllib.parse import quote
@@ -101,6 +108,9 @@ elif mode=='split':
         except Exception as e:out.append({'error':type(e).__name__})
 print(json.dumps(out,ensure_ascii=False))
 "#;
+/// Frozen AST oracle. Default replay never reads source or starts Python/git.
+/// The central helper also records the private HOME tree, so filesystem effects
+/// cannot disappear silently even though the approved stubs currently create none.
 pub fn oracle(mode: &str, cases: &Value) -> Value {
     let mut nonce = [0u8; 12];
     getrandom::fill(&mut nonce).unwrap();
@@ -108,25 +118,68 @@ pub fn oracle(mode: &str, cases: &Value) -> Value {
         "comandos-t13-oracle-{}",
         nonce.iter().map(|b| format!("{b:02x}")).collect::<String>()
     ));
-    std::fs::create_dir_all(root.join("home")).unwrap();
-    let result = Command::new("/usr/bin/python3")
-        .env_clear()
-        .env("HOME", root.join("home"))
-        .env("PATH", "/usr/bin:/bin")
-        .env("LC_ALL", "C.UTF-8")
-        .env("COMANDOS_APP_TMUX_SOCKET", root.join("private-tmux.sock"))
-        .arg("-c")
-        .arg(LOADER)
-        .arg(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../bin/cc-app"))
-        .arg(mode)
-        .arg(cases.to_string())
-        .output()
+    let home = root.join("home");
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&home)
         .unwrap();
-    std::fs::remove_dir_all(root).unwrap();
-    assert!(
-        result.status.success(),
-        "{}",
-        String::from_utf8_lossy(&result.stderr)
+    let golden_root = std::env::var_os("COMANDOS_APP_T13_GOLDEN_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| comandos_oracle::golden_root(Path::new(env!("CARGO_MANIFEST_DIR"))));
+    let input = json!({
+        "source": SOURCE, "source_sha256": SOURCE_SHA256,
+        "loader_sha256": format!("{:x}", Sha256::digest(LOADER.as_bytes())),
+        "mode": mode, "cases": cases,
+    });
+    let result = comandos_oracle::text_with_tree_at(
+        &golden_root,
+        "app-t13",
+        &input,
+        &home,
+        &[("$T13_HOME", &home), ("$T13_ROOT", &root)],
+        || {
+            // Deliberately inside record/check: neither git nor source access is
+            // a replay prerequisite. A moving checkout or environment override
+            // cannot change the approved original.
+            let source = Command::new("git")
+                .args(["show", SOURCE])
+                .current_dir(env!("CARGO_MANIFEST_DIR"))
+                .output()
+                .map_err(|e| e.to_string())?;
+            if !source.status.success() {
+                return Err("T13 original source unavailable".into());
+            }
+            if format!("{:x}", Sha256::digest(&source.stdout)) != SOURCE_SHA256 {
+                return Err("T13 original source checksum differs".into());
+            }
+            let source_path = root.join("original-cc-app");
+            std::fs::write(&source_path, source.stdout).map_err(|e| e.to_string())?;
+            let result = Command::new(
+                std::env::var_os("COMANDOS_APP_ORACLE_PYTHON")
+                    .unwrap_or_else(|| "/usr/bin/python3".into()),
+            )
+            .env_clear()
+            .env("HOME", &home)
+            .env("PATH", "/usr/bin:/bin")
+            .env("LC_ALL", "C.UTF-8")
+            .env("COMANDOS_APP_TMUX_SOCKET", root.join("private-tmux.sock"))
+            .arg("-c")
+            .arg(LOADER)
+            .arg(&source_path)
+            .arg(mode)
+            .arg(cases.to_string())
+            .output()
+            .map_err(|e| e.to_string())?;
+            if !result.status.success() {
+                return Err(format!(
+                    "T13 original failed: {}",
+                    String::from_utf8_lossy(&result.stderr)
+                ));
+            }
+            String::from_utf8(result.stdout).map_err(|e| e.to_string())
+        },
     );
-    serde_json::from_slice(&result.stdout).unwrap()
+    std::fs::remove_dir_all(root).unwrap();
+    serde_json::from_str(&result.unwrap()).unwrap()
 }

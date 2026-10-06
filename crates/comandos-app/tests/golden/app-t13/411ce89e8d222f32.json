@@ -1,0 +1,434 @@
+{
+  "input": {
+    "case": {
+      "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83:bin/cc-app",
+      "source_sha256": "1b535bc6f4463959cc3ab992fa5a4ab859fbdaec43fcf628123cfede68b4ca6b",
+      "loader_sha256": "622fc2c525c2d2d5c7229b9b86a59164fae7394490f4274f371af4501d22a65b",
+      "mode": "commands",
+      "cases": [
+        [
+          "split",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "split_ssh",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "kill_pane",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "toggle_window",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "select_pane",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "next_tab",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "prev_tab",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "mru_toggle",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "focus_page",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "tab_reorder",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "mosaic",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "mosaic_zoom",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "side_panel",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "terminals_visible",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "reload_dashboard",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "font_scale",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "open_switcher",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "tabs_overview",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "help",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "snippets",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "new_local_tab",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "open_xterm_tab",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "open_wizard",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "start_ai_here",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "copy_selection",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "paste_clipboard",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "copy_reply",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "window",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "paned_position",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ],
+        [
+          "quit",
+          {
+            "session": "safe",
+            "pane": "%4",
+            "side": "left",
+            "state": "on",
+            "on": true,
+            "index": 3,
+            "action": "maximize",
+            "px": "805",
+            "delta": "0.25"
+          }
+        ]
+      ]
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbe1wiY2FsbHNcIjogW1tcIl9zcGxpdF9jbWRcIiwgW1wibGVmdFwiXSwge31dXX0sIHtcImNhbGxzXCI6IFtbXCJfc3BsaXRfY21kXCIsIFtcImxlZnRcIl0sIHtcInNzaFwiOiB0cnVlfV1dfSwge1wiY2FsbHNcIjogW1tcIl9raWxsX2N1cl9wYW5lXCIsIFtcInNhZmVcIl0sIHt9XV19LCB7XCJjYWxsc1wiOiBbW1wiZmVlZFwiLCBbWzIsIDEwOF1dLCB7fV1dfSwge1wiY2FsbHNcIjogW1tcIl9zZWxlY3RfcGFuZV9jbWRcIiwgW3tcInNlc3Npb25cIjogXCJzYWZlXCIsIFwicGFuZVwiOiBcIiU0XCIsIFwic2lkZVwiOiBcImxlZnRcIiwgXCJzdGF0ZVwiOiBcIm9uXCIsIFwib25cIjogdHJ1ZSwgXCJpbmRleFwiOiAzLCBcImFjdGlvblwiOiBcIm1heGltaXplXCIsIFwicHhcIjogXCI4MDVcIiwgXCJkZWx0YVwiOiBcIjAuMjVcIn1dLCB7fV1dfSwge1wiY2FsbHNcIjogW1tcIl9jeWNsZV90YWJcIiwgWzFdLCB7fV1dfSwge1wiY2FsbHNcIjogW1tcIl9jeWNsZV90YWJcIiwgWy0xXSwge31dXX0sIHtcImNhbGxzXCI6IFtbXCJfbXJ1X3RvZ2dsZVwiLCBbXSwge31dXX0sIHtcImNhbGxzXCI6IFtbXCJuYi5zZXRfY3VycmVudF9wYWdlXCIsIFsyXSwge31dXX0sIHtcImNhbGxzXCI6IFtbXCJ0YWJfcmVvcmRlclwiLCBbXCJzYWZlXCIsIDNdLCB7fV1dfSwge1wiY2FsbHNcIjogW1tcIl9tb3NhaWNfb3BlblwiLCBbXSwge31dXX0sIHtcImNhbGxzXCI6IFtbXCJfbW9zYWljX3pvb21cIiwgW1wic2FmZVwiLCBcInNhZmVcIl0sIHt9XV19LCB7XCJjYWxsc1wiOiBbW1wiX2xlZnRfcGFuZWxfc2V0XCIsIFtmYWxzZV0sIHt9XV19LCB7XCJjYWxsc1wiOiBbW1wibmIuc2V0X3Zpc2libGVcIiwgW3RydWVdLCB7fV1dfSwge1wiY2FsbHNcIjogW1tcInd2LmxvYWRfdXJpXCIsIFtcInByaXZhdGUtZGFzaGJvYXJkLXVybFwiXSwge31dXX0sIHtcImNhbGxzXCI6IFtbXCJzZXRfZm9udF9zY2FsZVwiLCBbMS4yNV0sIHt9XV19LCB7XCJjYWxsc1wiOiBbW1wib3Blbl9zd2l0Y2hlclwiLCBbXSwge31dXX0sIHtcImNhbGxzXCI6IFtbXCJvcGVuX3RhYnNfb3ZlcnZpZXdcIiwgW10sIHt9XV19LCB7XCJjYWxsc1wiOiBbW1wic2hvd19oZWxwXCIsIFtdLCB7fV1dfSwge1wiY2FsbHNcIjogW1tcIm9wZW5fc25pcHBldHNfZGlhbG9nXCIsIFtdLCB7fV1dfSwge1wiY2FsbHNcIjogW1tcIm5ld19sb2NhbF90YWJcIiwgW10sIHt9XV19LCB7XCJjYWxsc1wiOiBbW1wib3Blbl94dGVybV90YWJcIiwgW1wic2FmZVwiXSwge31dXX0sIHtcImNhbGxzXCI6IFtbXCJfb3Blbl93aXphcmRcIiwgW10sIHt9XV19LCB7XCJjYWxsc1wiOiBbW1wib3Blbl9haV9zZXNzaW9uX2hlcmVcIiwgW1wic2FmZVwiLCBcIiU0XCJdLCB7fV1dfSwge1wiY2FsbHNcIjogW1tcImNvcHlfdnRlX3NlbGVjdGlvblwiLCBbXSwge31dXX0sIHtcImNhbGxzXCI6IFtbXCJleGl0X2NvcHlfbW9kZVwiLCBbXSwge31dLCBbXCJwYXN0ZV9jbGlwYm9hcmRcIiwgW10sIHt9XV19LCB7XCJjYWxsc1wiOiBbW1wiY29weV9jbGF1ZGVfcmVwbHlcIiwgW10sIHt9XV19LCB7XCJjYWxsc1wiOiBbW1wid2luLm1heGltaXplXCIsIFtdLCB7fV1dfSwge1wiY2FsbHNcIjogW1tcInBhbmVkLnNldF9wb3NpdGlvblwiLCBbODA1XSwge31dXX0sIHtcImNhbGxzXCI6IFtbXCJHdGsubWFpbl9xdWl0XCIsIFtdLCB7fV1dfV1cbiIsInRyZWUiOnt9fQ=="
+}

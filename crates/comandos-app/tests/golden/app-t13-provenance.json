@@ -1,0 +1,26 @@
+{
+  "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+  "source_git_path": "bin/cc-app",
+  "source_sha256": "1b535bc6f4463959cc3ab992fa5a4ab859fbdaec43fcf628123cfede68b4ca6b",
+  "loader_path": "crates/comandos-app/tests/support/t13_oracle.rs:LOADER",
+  "loader_sha256": "622fc2c525c2d2d5c7229b9b86a59164fae7394490f4274f371af4501d22a65b",
+  "python": "Python3.10.12",
+  "goldens": 30,
+  "modes": {
+    "bridge": 11,
+    "commands": 9,
+    "fonts": 1,
+    "keys": 1,
+    "presence": 1,
+    "split": 1,
+    "ssh": 1,
+    "xterm": 5
+  },
+  "effects": "Exact original command/bridge/presence traces in stdout plus central private HOME tree; every recorded tree empty; no GTK,tmux,network or live HOME",
+  "case_identity": "source commit/SHA256 + LOADER SHA256 + mode + unchanged caller cases + before-tree SHA256",
+  "replay": "default central replay; source/git/python executed only in explicit record/check",
+  "path_normalization": [
+    "$T13_HOME",
+    "$T13_ROOT"
+  ]
+}

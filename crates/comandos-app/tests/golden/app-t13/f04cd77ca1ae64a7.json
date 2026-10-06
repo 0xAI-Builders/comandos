@@ -1,0 +1,126 @@
+{
+  "input": {
+    "case": {
+      "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83:bin/cc-app",
+      "source_sha256": "1b535bc6f4463959cc3ab992fa5a4ab859fbdaec43fcf628123cfede68b4ca6b",
+      "loader_sha256": "622fc2c525c2d2d5c7229b9b86a59164fae7394490f4274f371af4501d22a65b",
+      "mode": "split",
+      "cases": [
+        [
+          "safe",
+          "right",
+          false,
+          "%42",
+          "/private home/cwd"
+        ],
+        [
+          "ssh-private.host",
+          "right",
+          true,
+          "%42",
+          "/private home/cwd"
+        ],
+        [
+          "sshtab-host-name-3",
+          "right",
+          true,
+          "%42",
+          "/private home/cwd"
+        ],
+        [
+          "safe",
+          "right",
+          true,
+          "",
+          "/private home/cwd"
+        ],
+        [
+          "safe",
+          "left",
+          false,
+          "%42",
+          "/private home/cwd"
+        ],
+        [
+          "ssh-private.host",
+          "left",
+          true,
+          "%42",
+          "/private home/cwd"
+        ],
+        [
+          "sshtab-host-name-3",
+          "left",
+          true,
+          "%42",
+          "/private home/cwd"
+        ],
+        [
+          "safe",
+          "left",
+          true,
+          "",
+          "/private home/cwd"
+        ],
+        [
+          "safe",
+          "down",
+          false,
+          "%42",
+          "/private home/cwd"
+        ],
+        [
+          "ssh-private.host",
+          "down",
+          true,
+          "%42",
+          "/private home/cwd"
+        ],
+        [
+          "sshtab-host-name-3",
+          "down",
+          true,
+          "%42",
+          "/private home/cwd"
+        ],
+        [
+          "safe",
+          "down",
+          true,
+          "",
+          "/private home/cwd"
+        ],
+        [
+          "safe",
+          "up",
+          false,
+          "%42",
+          "/private home/cwd"
+        ],
+        [
+          "ssh-private.host",
+          "up",
+          true,
+          "%42",
+          "/private home/cwd"
+        ],
+        [
+          "sshtab-host-name-3",
+          "up",
+          true,
+          "%42",
+          "/private home/cwd"
+        ],
+        [
+          "safe",
+          "up",
+          true,
+          "",
+          "/private home/cwd"
+        ]
+      ]
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbe1wiY2FsbHNcIjogW1tcImRpc3BsYXktbWVzc2FnZVwiLCBcIi1wXCIsIFwiLXRcIiwgXCIlNDJcIiwgXCIje3BhbmVfY3VycmVudF9wYXRofVwiXSwgW1wic3BsaXQtd2luZG93XCIsIFwiLWhcIiwgXCItdFwiLCBcIiU0MlwiLCBcIi1jXCIsIFwiL3ByaXZhdGUgaG9tZS9jd2RcIl1dfSwge1wiY2FsbHNcIjogW1tcInNwbGl0LXdpbmRvd1wiLCBcIi1oXCIsIFwiLXRcIiwgXCIlNDJcIiwgXCJzc2ggcHJpdmF0ZS5ob3N0XCJdXX0sIHtcImNhbGxzXCI6IFtbXCJzcGxpdC13aW5kb3dcIiwgXCItaFwiLCBcIi10XCIsIFwiJTQyXCIsIFwic3NoIGhvc3QtbmFtZVwiXV19LCB7XCJjYWxsc1wiOiBbW1wiZGlzcGxheS1tZXNzYWdlXCIsIFwiLXBcIiwgXCItdFwiLCBcIj1zYWZlOlwiLCBcIiN7cGFuZV9jdXJyZW50X3BhdGh9XCJdLCBbXCJzcGxpdC13aW5kb3dcIiwgXCItaFwiLCBcIi10XCIsIFwiPXNhZmU6XCIsIFwiLWNcIiwgXCIvcHJpdmF0ZSBob21lL2N3ZFwiXV19LCB7XCJjYWxsc1wiOiBbW1wiZGlzcGxheS1tZXNzYWdlXCIsIFwiLXBcIiwgXCItdFwiLCBcIiU0MlwiLCBcIiN7cGFuZV9jdXJyZW50X3BhdGh9XCJdLCBbXCJzcGxpdC13aW5kb3dcIiwgXCItaFwiLCBcIi1iXCIsIFwiLXRcIiwgXCIlNDJcIiwgXCItY1wiLCBcIi9wcml2YXRlIGhvbWUvY3dkXCJdXX0sIHtcImNhbGxzXCI6IFtbXCJzcGxpdC13aW5kb3dcIiwgXCItaFwiLCBcIi1iXCIsIFwiLXRcIiwgXCIlNDJcIiwgXCJzc2ggcHJpdmF0ZS5ob3N0XCJdXX0sIHtcImNhbGxzXCI6IFtbXCJzcGxpdC13aW5kb3dcIiwgXCItaFwiLCBcIi1iXCIsIFwiLXRcIiwgXCIlNDJcIiwgXCJzc2ggaG9zdC1uYW1lXCJdXX0sIHtcImNhbGxzXCI6IFtbXCJkaXNwbGF5LW1lc3NhZ2VcIiwgXCItcFwiLCBcIi10XCIsIFwiPXNhZmU6XCIsIFwiI3twYW5lX2N1cnJlbnRfcGF0aH1cIl0sIFtcInNwbGl0LXdpbmRvd1wiLCBcIi1oXCIsIFwiLWJcIiwgXCItdFwiLCBcIj1zYWZlOlwiLCBcIi1jXCIsIFwiL3ByaXZhdGUgaG9tZS9jd2RcIl1dfSwge1wiY2FsbHNcIjogW1tcImRpc3BsYXktbWVzc2FnZVwiLCBcIi1wXCIsIFwiLXRcIiwgXCIlNDJcIiwgXCIje3BhbmVfY3VycmVudF9wYXRofVwiXSwgW1wic3BsaXQtd2luZG93XCIsIFwiLXZcIiwgXCItdFwiLCBcIiU0MlwiLCBcIi1jXCIsIFwiL3ByaXZhdGUgaG9tZS9jd2RcIl1dfSwge1wiY2FsbHNcIjogW1tcInNwbGl0LXdpbmRvd1wiLCBcIi12XCIsIFwiLXRcIiwgXCIlNDJcIiwgXCJzc2ggcHJpdmF0ZS5ob3N0XCJdXX0sIHtcImNhbGxzXCI6IFtbXCJzcGxpdC13aW5kb3dcIiwgXCItdlwiLCBcIi10XCIsIFwiJTQyXCIsIFwic3NoIGhvc3QtbmFtZVwiXV19LCB7XCJjYWxsc1wiOiBbW1wiZGlzcGxheS1tZXNzYWdlXCIsIFwiLXBcIiwgXCItdFwiLCBcIj1zYWZlOlwiLCBcIiN7cGFuZV9jdXJyZW50X3BhdGh9XCJdLCBbXCJzcGxpdC13aW5kb3dcIiwgXCItdlwiLCBcIi10XCIsIFwiPXNhZmU6XCIsIFwiLWNcIiwgXCIvcHJpdmF0ZSBob21lL2N3ZFwiXV19LCB7XCJjYWxsc1wiOiBbW1wiZGlzcGxheS1tZXNzYWdlXCIsIFwiLXBcIiwgXCItdFwiLCBcIiU0MlwiLCBcIiN7cGFuZV9jdXJyZW50X3BhdGh9XCJdLCBbXCJzcGxpdC13aW5kb3dcIiwgXCItdlwiLCBcIi1iXCIsIFwiLXRcIiwgXCIlNDJcIiwgXCItY1wiLCBcIi9wcml2YXRlIGhvbWUvY3dkXCJdXX0sIHtcImNhbGxzXCI6IFtbXCJzcGxpdC13aW5kb3dcIiwgXCItdlwiLCBcIi1iXCIsIFwiLXRcIiwgXCIlNDJcIiwgXCJzc2ggcHJpdmF0ZS5ob3N0XCJdXX0sIHtcImNhbGxzXCI6IFtbXCJzcGxpdC13aW5kb3dcIiwgXCItdlwiLCBcIi1iXCIsIFwiLXRcIiwgXCIlNDJcIiwgXCJzc2ggaG9zdC1uYW1lXCJdXX0sIHtcImNhbGxzXCI6IFtbXCJkaXNwbGF5LW1lc3NhZ2VcIiwgXCItcFwiLCBcIi10XCIsIFwiPXNhZmU6XCIsIFwiI3twYW5lX2N1cnJlbnRfcGF0aH1cIl0sIFtcInNwbGl0LXdpbmRvd1wiLCBcIi12XCIsIFwiLWJcIiwgXCItdFwiLCBcIj1zYWZlOlwiLCBcIi1jXCIsIFwiL3ByaXZhdGUgaG9tZS9jd2RcIl1dfV1cbiIsInRyZWUiOnt9fQ=="
+}
