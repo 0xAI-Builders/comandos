@@ -214,6 +214,78 @@ fn shadow_cancelled_or_replaced_destination_never_pastes() {
     );
 }
 #[test]
+fn live_snippet_crud_uses_existing_authorized_hooks_and_checks_domain_first() {
+    use comandos_app::{config::parse_args, guard::WriteGuard, state_files::StateFiles};
+    use comandos_store::unified::{self, Mode};
+    use std::os::unix::fs::PermissionsExt;
+    for (i, mode) in [Mode::Legacy, Mode::Mirror, Mode::Unified, Mode::Sealed]
+        .into_iter()
+        .enumerate()
+    {
+        let root = std::env::temp_dir().join(format!("t16-live-crud-{}-{i}", std::process::id()));
+        for d in ["home", "hooks", "run", "tmp"] {
+            std::fs::create_dir_all(root.join(d)).unwrap();
+            std::fs::set_permissions(root.join(d), std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let cfg = parse_args(
+            &[
+                "--mode".into(),
+                "live".into(),
+                "--hooks-dir".into(),
+                root.join("hooks").display().to_string(),
+            ],
+            false,
+            &|k| match k {
+                "HOME" => Some(root.join("home").display().to_string()),
+                "XDG_RUNTIME_DIR" => Some(root.join("run").display().to_string()),
+                "TMPDIR" => Some(root.join("tmp").display().to_string()),
+                _ => None,
+            },
+        )
+        .unwrap();
+        let guard = WriteGuard::from_config(&cfg, ":owned-private");
+        // The Live directory itself must remain outside the write whitelist.
+        assert!(guard.create_dir_all(cfg.hooks_dir(), 0o700).is_err());
+        let files = StateFiles::new(cfg.clone(), guard);
+        let db = unified::open_unified(&unified::unified_path(cfg.home())).unwrap();
+        unified::set_mode(&db, "ui-docs", mode, "fixture", 1).unwrap();
+        let first = vec![
+            json!({"id":"one","name":"first","body":"ñ😀\n","tags":[],"unknown":{"keep":true}}),
+        ];
+        let result = files.write_snippets_when(&[], &first, || true);
+        if mode != Mode::Legacy {
+            assert!(result.is_err());
+            assert!(!cfg.hooks_dir().join("snippets.json").exists());
+            assert!(!cfg.hooks_dir().join("snippets.json.lock").exists());
+            continue;
+        }
+        assert!(
+            result.unwrap(),
+            "Live Legacy save should use the existing hooks directory"
+        );
+        assert_eq!(files.read_snippets().unwrap(), first);
+        let next = edit_document(
+            &first,
+            Some("one"),
+            "edited",
+            "rust",
+            "exact\n",
+            2,
+            "unused",
+        )
+        .unwrap();
+        assert!(files.write_snippets_when(&first, &next, || true).unwrap());
+        assert!(!files.write_snippets_when(&first, &[], || true).unwrap());
+        assert_eq!(files.read_snippets().unwrap(), next);
+        assert_eq!(next[0]["unknown"], first[0]["unknown"]);
+        let deleted = delete_document(&next, "one");
+        assert!(files.write_snippets_when(&next, &deleted, || true).unwrap());
+        assert!(files.read_snippets().unwrap().is_empty());
+        assert!(!root.join("home/.comandos/store.lock").exists());
+    }
+}
+
+#[test]
 fn legacy_cas_preserves_python_json_and_refuses_nonlegacy_authority() {
     use comandos_app::{config::parse_args, guard::WriteGuard, state_files::StateFiles};
     use comandos_store::unified::{self, Mode};

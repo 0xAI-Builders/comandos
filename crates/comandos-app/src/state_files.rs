@@ -73,9 +73,11 @@ impl StateFiles {
         }
         .document("H/snippets.json", "ui-docs", path.clone());
         doc.with_legacy_authority(|| {
-            self.guard
-                .create_dir_all(self.config.hooks_dir(), 0o700)
-                .map_err(|e| comandos_store::Error::Validation(format!("{e:?}")))?;
+            if self.config.mode() == crate::config::RunMode::Sandbox {
+                self.guard
+                    .create_dir_all(self.config.hooks_dir(), 0o700)
+                    .map_err(|e| comandos_store::Error::Validation(format!("{e:?}")))?;
+            }
             let lock_path = self.config.hooks_dir().join("snippets.json.lock");
             let lock = self
                 .guard
