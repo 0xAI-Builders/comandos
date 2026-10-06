@@ -116,10 +116,13 @@ async fn send_notify(addr: SocketAddr, body: String) -> Option<hyper::StatusCode
         .ok()?;
     // La conexión se mueve aquí mismo y muere con este futuro: nada queda
     // vivo después del plazo.
-    tokio::pin!(conn);
+    let response = sender.send_request(request);
+    tokio::pin!(conn, response);
     tokio::select! {
-        response = sender.send_request(request) => response.ok().map(|r| r.status()),
-        _ = &mut conn => None,
+        result = &mut response => result.ok().map(|r| r.status()),
+        // Connection: close puede terminar el driver en la misma vuelta que
+        // entrega la respuesta. Recogerla; el timeout exterior sigue vigente.
+        _ = &mut conn => response.await.ok().map(|r| r.status()),
     }
 }
 

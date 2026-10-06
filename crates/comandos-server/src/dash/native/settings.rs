@@ -10,8 +10,8 @@
 //! - POST `/fs/mkdir`: carpetas solo dentro de `HOME` (`os.makedirs` portado).
 //! - POST `/open-path`, `/open-url`: `xdg-open` (o `wslview`) suelto.
 //! - POST `/notify-popup`: con «Popups de escritorio» apagado responde
-//!   `popup: false` sin red; encendido DECLINA antes del POST a cc-notifyd
-//!   hasta que `NotifyPost` devuelva el resultado (R4 del preflight).
+//!   `popup: false` sin red; encendido espera el resultado de cc-notifyd
+//!   en una tarea registrada, con plazo de dos segundos.
 //! - POST `/test`: el reproductor o la voz de una notificación real.
 //! - GET `/models/latest` (prefijo, 8534): `_read_json_quiet(MODEL_WATCH_FILE)
 //!   or {}` tal cual (el snapshot del vigilante de modelos, Tarea 6).
@@ -163,7 +163,7 @@ pub async fn answer(native: &Arc<Native>, route: SettingsRoute, request: &Reques
         SettingsRoute::FsMkdir => fs_mkdir_route(opts, data(request)?).await,
         SettingsRoute::OpenPath => open_path(native, data(request)?).await,
         SettingsRoute::OpenUrl => open_url_route(native, data(request)?).await,
-        SettingsRoute::NotifyPopup => notify_popup(opts, data(request)?).await,
+        SettingsRoute::NotifyPopup => notify_popup(native, data(request)?).await,
         SettingsRoute::Test => test(native, data(request)?).await,
         SettingsRoute::ModelsLatest => models_latest(opts).await,
     }
@@ -752,7 +752,7 @@ async fn open_url_route(native: &Arc<Native>, d: &Map<String, Value>) -> Answer 
 
 /// El cuerpo de `desktop_popup` (475) para `POST 127.0.0.1:4778/notify`:
 /// `json.dumps` con el orden de claves del Python y `ensure_ascii`. Lo usará
-/// la ruta cuando `NotifyPost` devuelva el resultado (R4 del preflight).
+/// la ruta a través de `NotifyPost::post_checked`.
 pub fn popup_payload(title: &str, body: &str, project: &str, kind: &str) -> Option<String> {
     let body = take_chars(body, 400);
     let payload = json!({
@@ -767,10 +767,10 @@ pub fn popup_payload(title: &str, body: &str, project: &str, kind: &str) -> Opti
     response_dumps(&payload).ok()
 }
 
-/// POST `/notify-popup` (8693). Con «Popups de escritorio» encendido
-/// (`DESKTOP_NOTIFY`, por omisión `"1"`) declina antes del POST: `NotifyPost`
-/// aún no dice si cc-notifyd respondió (R4).
-async fn notify_popup(opts: &NativeOptions, d: &Map<String, Value>) -> Answer {
+/// POST `/notify-popup`: sin fallback después de enviar. La tarea completa
+/// el envío aunque se cierre la conexión HTTP del solicitante.
+async fn notify_popup(native: &Arc<Native>, d: &Map<String, Value>) -> Answer {
+    let opts = native.options();
     let title = d.get("title").and_then(Value::as_str);
     let body = d.get("body").and_then(Value::as_str);
     if title.is_none_or(|t| strip(t).is_empty()) || body.is_none() {
@@ -781,7 +781,26 @@ async fn notify_popup(opts: &NativeOptions, d: &Map<String, Value>) -> Answer {
     if conf_get(&conf, "DESKTOP_NOTIFY").unwrap_or("1") != "1" {
         return reply(StatusCode::OK, &json!({"ok": true, "popup": false}));
     }
-    Err(Fault::Decline)
+    let project = str_or(d.get("project"), "ComandOS")?;
+    let kind = str_or(d.get("kind"), "waiting")?;
+    let payload = popup_payload(
+        title.ok_or(Fault::Error(HandlerError::Failure))?,
+        body.ok_or(Fault::Error(HandlerError::Failure))?,
+        &project,
+        &kind,
+    )
+    .ok_or(Fault::Decline)?;
+    let notify = Arc::clone(&opts.notifyd);
+    let job = native
+        .tasks()
+        .spawn_handle(async move {
+            notify
+                .post_checked(payload, std::time::Duration::from_secs(2))
+                .await
+        })
+        .map_err(|_| Fault::Error(HandlerError::Failure))?;
+    let shown = job.await.map_err(|_| Fault::Error(HandlerError::Failure))?;
+    reply(StatusCode::OK, &json!({"ok": true, "popup": shown}))
 }
 
 // ---------------------------------------------------------------------------

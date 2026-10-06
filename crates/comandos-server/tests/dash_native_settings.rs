@@ -6,7 +6,7 @@
 //! `pw-play`, `spd-say`, `piper`… son los falsos del `fakebin` que solo anotan
 //! (`<HOME>/fakebin.log`); `/bin/sh` real solo corre el guion de la voz, que
 //! llama a esos falsos. `/notify-popup` válido va con `DESKTOP_NOTIFY=0` (sin
-//! red en ningún lado: con popups encendidos el frente declina, R4).
+//! red en esas filas); el caso encendido usa un notifyd HTTP efímero privado.
 mod support;
 
 use comandos_server::dash::native::{files::FileLock, settings};
@@ -257,20 +257,102 @@ async fn conf_set_waits_for_lock() {
     fr.stop().await;
 }
 
-/// Con popups encendidos el frente declina ANTES de tocar la red (R4): el
-/// heredado recibe la petición tal cual.
+/// El popup usa exclusivamente un notifyd de prueba en puerto efímero.
 #[tokio::test]
-async fn notify_popup_enabled_declines_before_network() {
-    let home = TestHome::new("popup-on");
-    std::fs::write(home.hooks().join("cc-notify.conf"), "DESKTOP_NOTIFY=1\n").unwrap();
-    let legacy = FakeLegacy::start().await;
-    let fr = front(&home, legacy.port, home.options()).await;
-    let body = r#"{"title":"t","body":"b"}"#;
-    request_body(fr.port, "POST", "/notify-popup", "", body).await;
-    let seen = legacy.requests();
-    assert_eq!(seen.len(), 1, "{seen:?}");
-    assert!(seen.iter().all(|r| r.contains("/notify-popup")), "{seen:?}");
-    fr.stop().await;
+async fn notify_popup_enabled_matches_python_without_fallback() {
+    use comandos_server::dash::native::usage::pane_models::HyperNotify;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+    use support::twin::TwinOpts;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    for (status, stall) in [(204, false), (503, false), (200, true)] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let bodies = Arc::new(Mutex::new(Vec::new()));
+        let received = Arc::clone(&bodies);
+        let server = tokio::spawn(async move {
+            let mut jobs = tokio::task::JoinSet::new();
+            loop {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let received = Arc::clone(&received);
+                jobs.spawn(async move {
+                    let mut bytes = Vec::new();
+                    let mut chunk = [0; 1024];
+                    loop {
+                        let n = socket.read(&mut chunk).await.unwrap();
+                        if n == 0 {
+                            return;
+                        }
+                        bytes.extend_from_slice(&chunk[..n]);
+                        if let Some(end) = bytes.windows(4).position(|w| w == b"\r\n\r\n") {
+                            let headers = String::from_utf8_lossy(&bytes[..end]);
+                            let length: usize = headers
+                                .lines()
+                                .find_map(|h| {
+                                    h.to_ascii_lowercase()
+                                        .strip_prefix("content-length:")
+                                        .map(|s| s.trim().parse().unwrap())
+                                })
+                                .unwrap();
+                            if bytes.len() >= end + 4 + length {
+                                received.lock().unwrap().push(
+                                    String::from_utf8(bytes[end + 4..end + 4 + length].to_vec())
+                                        .unwrap(),
+                                );
+                                break;
+                            }
+                        }
+                    }
+                    if stall {
+                        tokio::time::sleep(Duration::from_secs(10)).await;
+                    }
+                    let reply = format!(
+                        "HTTP/1.1 {status} Test\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    );
+                    let _ = socket.write_all(reply.as_bytes()).await;
+                });
+            }
+        });
+        let twin = Twin::start_with("popup-native", |h| h.write("cc-notify.conf", "DESKTOP_NOTIFY=1\n"), TwinOpts {
+            front: Some(Box::new(move |opts| opts.notifyd = Arc::new(HyperNotify { addr }))),
+            allow_ports: vec![addr.port()],
+            python_prelude: format!(r#"
+_original_popup_urlopen = dash.urllib.request.urlopen
+def _popup_urlopen(req, **kwargs):
+    assert req.full_url == 'http://127.0.0.1:4778/notify'
+    req = dash.urllib.request.Request('http://127.0.0.1:{}/notify', data=req.data, headers=dict(req.header_items()))
+    return _original_popup_urlopen(req, **kwargs)
+dash.urllib.request.urlopen = _popup_urlopen
+"#, addr.port()),
+            ..Default::default()
+        }).await.expect("private popup oracle");
+        let body =
+            json!({"title":"Título ñ", "body":"b".repeat(430), "project":false, "kind":"other"})
+                .to_string();
+        let pair = twin.post("/notify-popup", &body).await;
+        pair.assert_same();
+        assert_eq!(pair.front.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&pair.front.text()).unwrap(),
+            json!({"ok":true,"popup":status == 204 && !stall})
+        );
+        let sent = bodies.lock().unwrap().clone();
+        assert_eq!(sent.len(), 2);
+        assert_eq!(sent[0], sent[1], "payload byte parity");
+        assert_eq!(
+            serde_json::from_str::<Value>(&sent[0]).unwrap()["project"],
+            "ComandOS"
+        );
+        for h in [&twin.a, &twin.b] {
+            h.write("cc-notify.conf", "DESKTOP_NOTIFY=0\n");
+        }
+        let disabled = twin.post("/notify-popup", &body).await;
+        disabled.assert_same();
+        assert!(disabled.front.text().contains("false"));
+        assert_eq!(bodies.lock().unwrap().len(), 2, "disabled: no network");
+        server.abort();
+        let _ = server.await;
+    }
 }
 
 /// El cuerpo para cc-notifyd, byte a byte el de `json.dumps` del Python.
