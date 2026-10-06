@@ -73,6 +73,9 @@ pub(crate) fn apply_with(
                 "dry-run: disable owned cc-telegram.service; archive its links; preserve credentials"
             );
         } else {
+            if let Some(j) = journal.as_deref_mut() {
+                j.prepare_unit_retirement(home, "cc-telegram.service", run)?;
+            }
             run(&Action::Systemctl {
                 home: home.into(),
                 args: vec![
@@ -108,7 +111,7 @@ pub(crate) fn apply_with(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::install::transaction::{Journal, finish};
+    use crate::install::transaction::Journal;
     use std::os::unix::fs::symlink;
     #[test]
     fn injected_reload_failure_restores_archive_without_real_service_commands() {
@@ -136,24 +139,62 @@ mod tests {
         let mut journal = Journal::default();
         journal.durable(&home).unwrap();
         let mut calls = Vec::new();
-        let result = apply_with(&home, false, Some(&mut journal), &mut |action| {
-            let Action::Systemctl { args, .. } = action else {
-                panic!("unexpected action");
-            };
-            calls.push(args.clone());
-            if args.iter().any(|arg| arg == "daemon-reload") {
-                Err("private runner reload failure".into())
-            } else {
+        let mut state = super::super::plan::UnitState {
+            enabled: true,
+            runtime: false,
+            active: true,
+        };
+        let mut run = |action: &Action| match action {
+            Action::SystemctlState { response, .. } => {
+                *response.borrow_mut() = Some(state.clone());
                 Ok(())
             }
-        });
-        let error = finish(journal, result).unwrap_err();
+            Action::Systemctl { args, .. } => {
+                calls.push(args.clone());
+                if args.iter().any(|arg| arg == "disable") {
+                    // Verify the prior state is durable before this mutation.
+                    let journals = home.join(".local/share/comandos/install-journals");
+                    let entry = fs::read_dir(journals)
+                        .unwrap()
+                        .next()
+                        .unwrap()
+                        .unwrap()
+                        .path();
+                    let manifest: serde_json::Value =
+                        serde_json::from_slice(&fs::read(entry.join("manifest.json")).unwrap())
+                            .unwrap();
+                    assert_eq!(manifest["runtime"][0]["before"]["enabled"], true);
+                    assert_eq!(manifest["runtime"][0]["before"]["active"], true);
+                    fs::remove_file(&wants).unwrap();
+                    state.enabled = false;
+                    state.active = false;
+                    Ok(())
+                } else if args.iter().any(|arg| arg == "daemon-reload") {
+                    Err("private runner reload failure".into())
+                } else if args.iter().any(|arg| arg == "enable") {
+                    state.enabled = true;
+                    Ok(())
+                } else if args.iter().any(|arg| arg == "start") {
+                    state.active = true;
+                    Ok(())
+                } else {
+                    panic!("unexpected action: {args:?}");
+                }
+            }
+            _ => panic!("unexpected action"),
+        };
+        let result = apply_with(&home, false, Some(&mut journal), &mut run);
+        let error = crate::install::transaction::finish_with_runtime(journal, result, &mut run)
+            .unwrap_err();
         assert_eq!(error, "private runner reload failure");
-        assert_eq!(calls.len(), 2);
+        assert!(state.enabled && state.active);
+        assert_eq!(calls.len(), 4);
         assert_eq!(
             calls[0],
             ["--user", "disable", "--now", "cc-telegram.service"]
         );
+        assert_eq!(calls[2], ["--user", "enable", "cc-telegram.service"]);
+        assert_eq!(calls[3], ["--user", "start", "cc-telegram.service"]);
         assert_eq!(
             fs::read_link(&unit).unwrap(),
             legacy.join("systemd/cc-telegram.service")

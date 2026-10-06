@@ -398,3 +398,130 @@ fn rollback_never_adopts_the_default_contents_of_a_custom_file_that_was_skipped(
     assert_eq!(fs::read(config).unwrap(), b"default");
     assert!(journal_path(&home.0).exists());
 }
+
+#[test]
+fn full_runtime_worker() {
+    let Some(home) = std::env::var_os("COMANDOS_RUNTIME_TX_FIXTURE").map(PathBuf::from) else {
+        return;
+    };
+    use comandos_cli::install::plan::UnitState;
+    let source = home.join("source");
+    put(&source.join("comandos"), b"old-main", 0o755);
+    release::stage_release(&home, &source.join("comandos"), &WebSource::None).unwrap();
+    let pointer = home.join(".local/share/comandos/bin/comandos");
+    let old_pointer = fs::read_link(&pointer).unwrap();
+    put(&source.join("comandos"), b"next-main", 0o755);
+    put(&source.join("comandos-app"), b"next-app", 0o755);
+    put(&source.join("cc-model-proxy"), b"next-proxy", 0o755);
+    let legacy = home.join("legacy");
+    for relative in [
+        "bin/cc-dash",
+        "lib/platform.sh",
+        "systemd/cc-telegram.service",
+    ] {
+        put(&legacy.join(relative), b"private fixture", 0o644);
+    }
+    let unit = home.join(".config/systemd/user/cc-telegram.service");
+    let wants = home.join(".config/systemd/user/default.target.wants/cc-telegram.service");
+    fs::create_dir_all(wants.parent().unwrap()).unwrap();
+    symlink(legacy.join("systemd/cc-telegram.service"), &unit).unwrap();
+    symlink("../cc-telegram.service", &wants).unwrap();
+    let before = UnitState {
+        enabled: true,
+        runtime: false,
+        active: true,
+    };
+    let mut state = before.clone();
+    let mut inverses = Vec::new();
+    let error = full::run_with(
+        &[
+            "--home".into(),
+            home.to_str().unwrap().into(),
+            "--release".into(),
+            source.to_str().unwrap().into(),
+        ],
+        &mut |action| {
+            match action {
+                Action::SystemctlState { unit, response, .. } => {
+                    assert_eq!(unit, "cc-telegram.service");
+                    *response.borrow_mut() = Some(state.clone());
+                }
+                Action::Systemctl { args, .. } if args.iter().any(|a| a == "disable") => {
+                    assert_eq!(args.last().unwrap(), "cc-telegram.service");
+                    let path = fs::read_dir(home.join(".local/share/comandos/install-journals"))
+                        .unwrap()
+                        .next()
+                        .unwrap()
+                        .unwrap()
+                        .path();
+                    let manifest: serde_json::Value =
+                        serde_json::from_slice(&fs::read(path.join("manifest.json")).unwrap())
+                            .unwrap();
+                    assert_eq!(manifest["runtime"][0]["before"]["enabled"], true);
+                    fs::remove_file(&wants).unwrap();
+                    state.enabled = false;
+                    state.active = false;
+                }
+                Action::Systemctl { args, .. }
+                    if args.iter().any(|a| a == "daemon-reload") && !state.enabled =>
+                {
+                    return Err("later Telegram reload failure".into());
+                }
+                Action::Systemctl { args, .. } if args.iter().any(|a| a == "enable") => {
+                    assert_eq!(
+                        fs::read_link(&unit).unwrap(),
+                        legacy.join("systemd/cc-telegram.service")
+                    );
+                    inverses.push(args.clone());
+                    state.enabled = true;
+                }
+                Action::Systemctl { args, .. } if args.iter().any(|a| a == "start") => {
+                    inverses.push(args.clone());
+                    state.active = true;
+                }
+                _ => {}
+            }
+            Ok(())
+        },
+    )
+    .unwrap_err();
+    assert!(error.contains("later Telegram reload failure"), "{error}");
+    assert!(!error.contains("rollback incomplete"), "{error}");
+    assert_eq!(state, before);
+    assert_eq!(
+        inverses,
+        [
+            vec!["--user", "enable", "cc-telegram.service"],
+            vec!["--user", "start", "cc-telegram.service"]
+        ]
+    );
+    assert_eq!(fs::read_link(pointer).unwrap(), old_pointer);
+    assert_eq!(
+        fs::read_link(wants).unwrap(),
+        Path::new("../cc-telegram.service")
+    );
+    assert!(
+        fs::read_dir(home.join(".local/share/comandos/install-journals"))
+            .unwrap()
+            .next()
+            .is_none()
+    );
+}
+
+#[test]
+fn full_late_runtime_failure_restores_files_and_runs_same_unit_inverse_in_private_worker() {
+    let home = Home::new();
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "full_runtime_worker", "--nocapture"])
+        .env("HOME", &home.0)
+        .env("COMANDOS_RUNTIME_TX_FIXTURE", &home.0)
+        .env("COMANDOS_RETIRE_TELEGRAM", "1")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

@@ -8,6 +8,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Supported reversible service state. Masked/static/transitional states require
+/// an explicit installer policy and are rejected before retirement.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UnitState {
+    pub enabled: bool,
+    pub runtime: bool,
+    pub active: bool,
+}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     Mkdir(PathBuf, u32),
@@ -37,6 +45,12 @@ pub enum Action {
     Systemctl {
         home: PathBuf,
         args: Vec<String>,
+    },
+    SystemctlState {
+        home: PathBuf,
+        unit: String,
+        require_loaded: bool,
+        response: std::rc::Rc<std::cell::RefCell<Option<UnitState>>>,
     },
     LaunchAgent(PathBuf),
 }
@@ -353,6 +367,7 @@ fn summary(action: &Action) -> String {
         Action::AgentsSetup(home) => format!("configure installed agents {}", home.display()),
         Action::InstallFonts(path) => format!("refresh font cache {}", path.display()),
         Action::Systemctl { args, .. } => format!("systemctl {}", args.join(" ")),
+        Action::SystemctlState { unit, .. } => format!("query enabled/active state {unit}"),
         Action::LaunchAgent(home) => format!("prepare LaunchAgent {}", home.display()),
     }
 }

@@ -158,7 +158,7 @@ pub fn run_with(
         if dry || source.is_some() || extensions || retarget.is_some() || cleanup {
             return Ok(2);
         }
-        super::transaction::recover(&home, &path)?;
+        super::transaction::recover_with(&home, &path, run_action)?;
         return Ok(0);
     }
     let platform = Platform::current();
@@ -218,13 +218,12 @@ pub fn run_with(
                 .into(),
         );
     }
-    if !dry && std::env::var("COMANDOS_RETIRE_TELEGRAM").as_deref() == Ok("1") {
-        external_effects.push("Telegram service enablement/activity is not compensated".into());
-    }
     let mut tracked_action = |action: &Action| {
         match action {
             Action::Systemctl { args, .. } => {
-                external_effects.push(format!("systemctl {}", args.join(" ")))
+                if args != &["--user", "disable", "--now", "cc-telegram.service"] {
+                    external_effects.push(format!("systemctl {}", args.join(" ")))
+                }
             }
             Action::LaunchAgent(_) => external_effects.push("LaunchAgent preparation".into()),
             Action::InstallFonts(_) => external_effects.push("font-cache refresh".into()),
@@ -383,7 +382,7 @@ pub fn run_with(
         Ok(0)
     })();
     let result = if let Some(journal) = journal {
-        super::transaction::finish(journal, result)
+        super::transaction::finish_with_runtime(journal, result, run_action)
     } else {
         result
     };
@@ -471,6 +470,33 @@ pub(super) fn external(action: &Action) -> Result<(), String> {
                 Duration::from_secs(30),
             )
         }
+        Action::SystemctlState {
+            home,
+            unit,
+            require_loaded,
+            response,
+        } => {
+            let program = find("systemctl").ok_or("systemctl query unavailable")?;
+            let output = capture(
+                home,
+                &program,
+                vec![
+                    "--user".into(),
+                    "show".into(),
+                    "--all".into(),
+                    unit.clone(),
+                    "--property=LoadState,UnitFileState,ActiveState".into(),
+                ],
+                Duration::from_secs(15),
+            )?;
+            if output.code != Some(0) {
+                return Err("systemctl state query failed".into());
+            }
+            let text = std::str::from_utf8(&output.stdout)
+                .map_err(|_| "systemctl state query is not UTF8")?;
+            *response.borrow_mut() = Some(parse_unit_state(text, *require_loaded)?);
+            Ok(())
+        }
         Action::Systemctl { home, args } => {
             let program =
                 find("systemctl").ok_or("systemctl unavailable; install units manually")?;
@@ -492,4 +518,82 @@ pub(super) fn find(name: &str) -> Option<PathBuf> {
                     .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
             })
     })
+}
+
+fn parse_unit_state(text: &str, require_loaded: bool) -> Result<super::plan::UnitState, String> {
+    let mut fields = std::collections::BTreeMap::new();
+    for line in text.lines() {
+        let (name, value) = line
+            .split_once('=')
+            .ok_or("invalid systemctl state query")?;
+        if fields.insert(name, value).is_some() {
+            return Err("duplicate systemctl state property".into());
+        }
+    }
+    if fields.get("LoadState") != Some(&"loaded")
+        && (require_loaded || fields.get("LoadState") != Some(&"not-found"))
+    {
+        return Err("runtime unit must be loaded before retirement".into());
+    }
+    let (enabled, runtime) = match fields.get("UnitFileState") {
+        Some(&"enabled") => (true, false),
+        Some(&"enabled-runtime") => (true, true),
+        Some(&"disabled") => (false, false),
+        Some(&"") if !require_loaded && fields.get("LoadState") == Some(&"not-found") => {
+            (false, false)
+        }
+        _ => return Err("unsupported unit enablement state; retirement refused".into()),
+    };
+    let active = match fields.get("ActiveState") {
+        Some(&"active") => true,
+        Some(&"inactive") => false,
+        _ => return Err("transitional/failed unit state; retirement refused".into()),
+    };
+    Ok(super::plan::UnitState {
+        enabled,
+        runtime,
+        active,
+    })
+}
+#[cfg(test)]
+mod runtime_state_tests {
+    use super::*;
+    #[test]
+    fn supported_state_and_archived_unit_absence_are_parsed_strictly() {
+        let state = parse_unit_state(
+            "ActiveState=active\nLoadState=loaded\nUnitFileState=enabled-runtime\n",
+            true,
+        )
+        .unwrap();
+        assert!(state.enabled && state.runtime && state.active);
+        let absent = "LoadState=not-found\nUnitFileState=\nActiveState=inactive\n";
+        assert!(parse_unit_state(absent, true).is_err());
+        assert_eq!(
+            parse_unit_state(absent, false).unwrap(),
+            super::super::plan::UnitState {
+                enabled: false,
+                runtime: false,
+                active: false
+            }
+        );
+        for enablement in ["masked", "static", "indirect", "linked", "unknown"] {
+            assert!(
+                parse_unit_state(
+                    &format!(
+                        "LoadState=loaded\nUnitFileState={enablement}\nActiveState=inactive\n"
+                    ),
+                    true
+                )
+                .is_err()
+            );
+        }
+        assert!(
+            parse_unit_state(
+                "LoadState=loaded\nUnitFileState=enabled\nActiveState=activating\n",
+                true
+            )
+            .is_err()
+        );
+        assert!(parse_unit_state("LoadState=loaded\nUnitFileState=enabled\nActiveState=active\nActiveState=inactive\n",true).is_err());
+    }
 }

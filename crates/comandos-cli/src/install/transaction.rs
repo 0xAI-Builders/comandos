@@ -22,6 +22,7 @@ pub(crate) struct Journal {
     observed: BTreeMap<PathBuf, Before>,
     durable: Option<PathBuf>,
     committed: bool,
+    runtime: Vec<RuntimeEffect>,
 }
 impl Journal {
     pub(crate) fn capture(&mut self, path: &Path) -> Result<(), String> {
@@ -110,7 +111,9 @@ impl Journal {
         for path in selected {
             let mut actual = Self::default();
             actual.capture(&path)?;
-            if actual.entries.get(&path) != self.observed.get(&path) {
+            if actual.entries.get(&path) != self.observed.get(&path)
+                && actual.entries.get(&path) != self.entries.get(&path)
+            {
                 return Err(format!("archive source changed: {}", path.display()));
             }
             let dest = target.join(path.strip_prefix(source).map_err(|e| e.to_string())?);
@@ -346,7 +349,9 @@ impl Journal {
     pub(crate) fn prepare(&mut self, action: &Action) -> Result<(), String> {
         match action {
             Action::Mkdir(path, mode) => {
-                if matches!(self.entries.get(path), Some(Before::Absent)) {
+                if matches!(self.entries.get(path), Some(Before::Absent))
+                    && path.symlink_metadata().is_err()
+                {
                     self.observed.insert(path.clone(), Before::Directory(*mode));
                 }
             }
@@ -432,6 +437,9 @@ impl Journal {
         Ok(())
     }
     pub(crate) fn rollback(self) -> Result<(), String> {
+        self.rollback_with(&mut |_| Err("runtime compensation runner unavailable".into()))
+    }
+    fn rollback_files(&self) -> Result<(), String> {
         let mut errors = Vec::new();
         // Newly created private trees have no pre-existing destination locks.
         // The shared installation lock covers recovery; avoid creating control
@@ -445,7 +453,7 @@ impl Journal {
             })
             .map(|(path, _)| path.clone())
             .collect::<Vec<_>>();
-        for (path, before) in self.entries.into_iter().rev() {
+        for (path, before) in self.entries.clone().into_iter().rev() {
             let private_parent = path
                 .parent()
                 .is_some_and(|parent| new_directories.iter().any(|dir| parent.starts_with(dir)));
@@ -497,9 +505,6 @@ impl Journal {
             }
         }
         if errors.is_empty() {
-            if let Some(path) = self.durable {
-                fs::remove_dir_all(path).map_err(|e| e.to_string())?;
-            }
             Ok(())
         } else {
             Err(format!(
@@ -700,7 +705,7 @@ impl Journal {
         if let Some(path) = self.durable {
             fs::remove_dir_all(&path).map_err(|e| {
                 format!(
-                    "installation committed; retained cleanup journal {}: {e}",
+                    "installation journal cleanup failed; retained journal {}: {e}",
                     path.display()
                 )
             })?;
@@ -742,7 +747,7 @@ impl Journal {
         }
         let path = root.join("manifest.json");
         let bytes = serde_json::to_vec(
-            &serde_json::json!({"version":1,"committed":self.committed,"entries":rows}),
+            &serde_json::json!({"version":1,"committed":self.committed,"entries":rows,"runtime":self.runtime}),
         )
         .map_err(|e| e.to_string())?;
         write_atomic(&path, &bytes).map_err(|e| e.to_string())?;
@@ -844,7 +849,17 @@ fn decode_before(root: &Path, value: &serde_json::Value) -> Result<Before, Strin
         _ => Err("journal kind".into()),
     }
 }
+#[cfg(test)]
 pub(crate) fn recover(home: &Path, path: &Path) -> Result<(), String> {
+    recover_with(home, path, &mut |_| {
+        Err("runtime compensation runner unavailable".into())
+    })
+}
+pub(crate) fn recover_with(
+    home: &Path,
+    path: &Path,
+    run: &mut dyn FnMut(&Action) -> Result<(), String>,
+) -> Result<(), String> {
     let parent = home.join(".local/share/comandos/install-journals");
     if path.parent() != Some(parent.as_path())
         || !path
@@ -879,6 +894,20 @@ pub(crate) fn recover(home: &Path, path: &Path) -> Result<(), String> {
         committed: value["committed"].as_bool().ok_or("journal commit state")?,
         ..Default::default()
     };
+    if let Some(runtime) = value.get("runtime") {
+        journal.runtime = serde_json::from_value(runtime.clone()).map_err(|e| e.to_string())?;
+        for effect in &journal.runtime {
+            if effect.home != home
+                || effect.unit != "cc-telegram.service"
+                || (!effect.before.enabled && effect.before.runtime)
+            {
+                return Err("unsupported runtime recovery effect".into());
+            }
+        }
+        if journal.runtime.len() > 1 {
+            return Err("duplicate runtime recovery effect".into());
+        }
+    }
     for row in value["entries"].as_array().ok_or("journal entries")? {
         let dest = PathBuf::from(row["path"].as_str().ok_or("journal destination")?);
         if !dest.starts_with(home) {
@@ -898,7 +927,7 @@ pub(crate) fn recover(home: &Path, path: &Path) -> Result<(), String> {
     if journal.committed {
         journal.discard()
     } else {
-        journal.rollback()
+        journal.rollback_with(run)
     }
 }
 #[cfg(test)]
@@ -948,6 +977,343 @@ mod durable_tests {
         assert!(error.contains("hash mismatch"));
         assert!(path.exists());
         assert_eq!(fs::read(file).unwrap(), b"original");
+        fs::remove_dir_all(home).unwrap();
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct RuntimeEffect {
+    home: PathBuf,
+    unit: String,
+    before: super::plan::UnitState,
+}
+pub(crate) fn query_unit(
+    home: &Path,
+    unit: &str,
+    require_loaded: bool,
+    run: &mut dyn FnMut(&Action) -> Result<(), String>,
+) -> Result<super::plan::UnitState, String> {
+    let response = std::rc::Rc::new(std::cell::RefCell::new(None));
+    run(&Action::SystemctlState {
+        home: home.into(),
+        unit: unit.into(),
+        require_loaded,
+        response: response.clone(),
+    })?;
+    let state = response
+        .borrow_mut()
+        .take()
+        .ok_or("runtime query capability did not return enabled/active state")?;
+    if !state.enabled && state.runtime {
+        return Err("invalid runtime enablement state".into());
+    }
+    Ok(state)
+}
+impl Journal {
+    pub(crate) fn prepare_unit_retirement(
+        &mut self,
+        home: &Path,
+        unit: &str,
+        run: &mut dyn FnMut(&Action) -> Result<(), String>,
+    ) -> Result<(), String> {
+        if unit != "cc-telegram.service" || !self.runtime.is_empty() {
+            return Err("unsupported/duplicate runtime retirement".into());
+        }
+        let before = query_unit(home, unit, true, run)?;
+        self.runtime.push(RuntimeEffect {
+            home: home.into(),
+            unit: unit.into(),
+            before,
+        });
+        // disable removes this owned enablement link before archive selection.
+        let wants = home.join(".config/systemd/user/default.target.wants/cc-telegram.service");
+        if matches!(self.entries.get(&wants), Some(Before::Link(_))) {
+            self.observed.insert(wants, Before::Absent);
+        }
+        self.persist()
+    }
+    fn runtime_error(&self, unit: &str, error: &str) -> String {
+        format!(
+            "{unit}: {error}; retained recovery journal: {}",
+            self.durable
+                .as_ref()
+                .map_or_else(|| "in-memory".into(), |p| p.display().to_string())
+        )
+    }
+    pub(crate) fn rollback_with(
+        mut self,
+        run: &mut dyn FnMut(&Action) -> Result<(), String>,
+    ) -> Result<(), String> {
+        for effect in &self.runtime {
+            let current = query_unit(&effect.home, &effect.unit, false, run)
+                .map_err(|error| self.runtime_error(&effect.unit, &error))?;
+            // disable --now can fail after either half. Admit only the original
+            // bits or their retired false values, never another enablement mode.
+            if (current.enabled
+                && (!effect.before.enabled || current.runtime != effect.before.runtime))
+                || (current.active && !effect.before.active)
+            {
+                return Err(self.runtime_error(
+                    &effect.unit,
+                    "runtime state changed outside retirement; preserved",
+                ));
+            }
+        }
+        self.rollback_files()?;
+        while let Some(effect) = self.runtime.last().cloned() {
+            let compensation: Result<(), String> = (|| {
+                let current = query_unit(&effect.home, &effect.unit, false, run)?;
+                if current == effect.before {
+                    return Ok(());
+                }
+                // This retirement only writes disabled/inactive. An unrelated
+                // state is preserved, not guessed into a prior configuration.
+                if (current.enabled
+                    && (!effect.before.enabled || current.runtime != effect.before.runtime))
+                    || (current.active && !effect.before.active)
+                {
+                    return Err("runtime state changed outside retirement; preserved".into());
+                }
+                let action = |args: Vec<String>| Action::Systemctl {
+                    home: effect.home.clone(),
+                    args,
+                };
+                if effect.before.enabled && !current.enabled {
+                    let mut args = vec!["--user".into()];
+                    if effect.before.runtime {
+                        args.push("--runtime".into());
+                    }
+                    args.extend(["enable".into(), effect.unit.clone()]);
+                    run(&action(args))?;
+                }
+                if effect.before.active && !current.active {
+                    run(&action(vec![
+                        "--user".into(),
+                        "start".into(),
+                        effect.unit.clone(),
+                    ]))?;
+                }
+                if query_unit(&effect.home, &effect.unit, false, run)? != effect.before {
+                    return Err("runtime compensation did not restore prior state".into());
+                }
+                Ok(())
+            })();
+            if let Err(error) = compensation {
+                return Err(format!(
+                    "{}: {error}; retained recovery journal: {}",
+                    effect.unit,
+                    self.durable
+                        .as_ref()
+                        .map_or_else(|| "in-memory".into(), |p| p.display().to_string())
+                ));
+            }
+            self.runtime.pop();
+            self.persist()?;
+        }
+        self.discard()
+    }
+}
+pub(crate) fn finish_with_runtime<T>(
+    mut journal: Journal,
+    result: Result<T, String>,
+    run: &mut dyn FnMut(&Action) -> Result<(), String>,
+) -> Result<T, String> {
+    match result {
+        Ok(value) => {
+            if let Err(error) = journal.commit() {
+                return finish_with_runtime(journal, Err(error), run);
+            }
+            journal.discard()?;
+            Ok(value)
+        }
+        Err(mut error) => {
+            if let Err(rollback) = journal.rollback_with(run) {
+                error.push_str(&format!("; installation rollback incomplete: {rollback}"));
+            }
+            Err(error)
+        }
+    }
+}
+
+#[cfg(test)]
+mod runtime_tests {
+    use super::*;
+    use crate::install::plan::UnitState;
+    fn home() -> PathBuf {
+        let mut id = [0u8; 8];
+        getrandom::fill(&mut id).unwrap();
+        let home =
+            std::env::temp_dir().join(format!("runtime-journal-{:x}", u64::from_ne_bytes(id)));
+        fs::create_dir(&home).unwrap();
+        home
+    }
+    struct Service {
+        state: UnitState,
+        calls: Vec<Vec<String>>,
+        fail_start: bool,
+    }
+    impl Service {
+        fn run(&mut self, action: &Action) -> Result<(), String> {
+            match action {
+                Action::SystemctlState { unit, response, .. } => {
+                    assert_eq!(unit, "cc-telegram.service");
+                    *response.borrow_mut() = Some(self.state.clone());
+                    Ok(())
+                }
+                Action::Systemctl { args, .. } => {
+                    assert_eq!(args.last().unwrap(), "cc-telegram.service");
+                    self.calls.push(args.clone());
+                    if args.iter().any(|a| a == "enable") {
+                        self.state.enabled = true;
+                        self.state.runtime = args.iter().any(|a| a == "--runtime");
+                    } else if args.iter().any(|a| a == "start") {
+                        if self.fail_start {
+                            return Err("private start failure".into());
+                        }
+                        self.state.active = true;
+                    } else {
+                        panic!("unexpected inverse: {args:?}");
+                    }
+                    Ok(())
+                }
+                _ => panic!("unexpected action"),
+            }
+        }
+    }
+    #[test]
+    fn late_failure_restores_all_supported_prior_states_on_same_unit_only() {
+        for (enabled, runtime) in [(false, false), (true, false), (true, true)] {
+            for active in [false, true] {
+                let home = home();
+                let before = UnitState {
+                    enabled,
+                    runtime,
+                    active,
+                };
+                let mut service = Service {
+                    state: before.clone(),
+                    calls: vec![],
+                    fail_start: false,
+                };
+                let mut journal = Journal::default();
+                journal.durable(&home).unwrap();
+                journal
+                    .prepare_unit_retirement(&home, "cc-telegram.service", &mut |a| service.run(a))
+                    .unwrap();
+                service.state = UnitState {
+                    enabled: false,
+                    runtime: false,
+                    active: false,
+                };
+                let error =
+                    finish_with_runtime::<()>(journal, Err("later phase".into()), &mut |a| {
+                        service.run(a)
+                    })
+                    .unwrap_err();
+                assert_eq!(error, "later phase");
+                assert_eq!(service.state, before);
+                assert_eq!(
+                    service.calls.len(),
+                    usize::from(enabled) + usize::from(active)
+                );
+                assert!(
+                    fs::read_dir(home.join(".local/share/comandos/install-journals"))
+                        .unwrap()
+                        .next()
+                        .is_none()
+                );
+                fs::remove_dir_all(home).unwrap();
+            }
+        }
+    }
+    #[test]
+    fn durable_recovery_retries_partial_inverse_without_repeating_completed_action() {
+        let home = home();
+        let before = UnitState {
+            enabled: true,
+            runtime: false,
+            active: true,
+        };
+        let mut service = Service {
+            state: before.clone(),
+            calls: vec![],
+            fail_start: true,
+        };
+        let mut journal = Journal::default();
+        journal.durable(&home).unwrap();
+        journal
+            .prepare_unit_retirement(&home, "cc-telegram.service", &mut |a| service.run(a))
+            .unwrap();
+        let path = journal.durable.clone().unwrap();
+        service.state = UnitState {
+            enabled: false,
+            runtime: false,
+            active: false,
+        };
+        drop(journal); // durable reload, with no live runtime process or service
+        let error = recover_with(&home, &path, &mut |a| service.run(a)).unwrap_err();
+        assert!(error.contains("retained recovery journal"));
+        assert!(path.is_dir());
+        assert!(service.state.enabled && !service.state.active);
+        service.fail_start = false;
+        recover_with(&home, &path, &mut |a| service.run(a)).unwrap();
+        assert_eq!(service.state, before);
+        assert!(!path.exists());
+        assert_eq!(
+            service
+                .calls
+                .iter()
+                .filter(|args| args.iter().any(|a| a == "enable"))
+                .count(),
+            1
+        );
+        fs::remove_dir_all(home).unwrap();
+    }
+    #[test]
+    fn unrelated_runtime_enablement_is_preserved_and_journal_retained() {
+        let home = home();
+        let mut service = Service {
+            state: UnitState {
+                enabled: false,
+                runtime: false,
+                active: false,
+            },
+            calls: vec![],
+            fail_start: false,
+        };
+        let mut journal = Journal::default();
+        journal.durable(&home).unwrap();
+        journal
+            .prepare_unit_retirement(&home, "cc-telegram.service", &mut |a| service.run(a))
+            .unwrap();
+        let path = journal.durable.clone().unwrap();
+        service.state.enabled = true;
+        let error =
+            finish_with_runtime::<()>(journal, Err("late failure".into()), &mut |a| service.run(a))
+                .unwrap_err();
+        assert!(error.contains("runtime state changed outside retirement"));
+        assert!(path.exists());
+        assert!(service.calls.is_empty());
+        assert!(service.state.enabled);
+        fs::remove_dir_all(home).unwrap();
+    }
+    #[test]
+    fn missing_query_capability_prevents_retirement_intent_and_commands() {
+        let home = home();
+        let mut journal = Journal::default();
+        journal.durable(&home).unwrap();
+        let mut calls = 0;
+        let error = journal
+            .prepare_unit_retirement(&home, "cc-telegram.service", &mut |action| {
+                assert!(matches!(action, Action::SystemctlState { .. }));
+                calls += 1;
+                Ok(())
+            })
+            .unwrap_err();
+        assert!(error.contains("query capability"));
+        assert_eq!(calls, 1);
+        assert!(journal.runtime.is_empty());
+        journal.rollback().unwrap();
         fs::remove_dir_all(home).unwrap();
     }
 }

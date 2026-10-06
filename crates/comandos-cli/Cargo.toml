@@ -27,6 +27,7 @@ comandos-acp = { path = "../comandos-acp" }
 comandos-server = { path = "../comandos-server" }
 sha2.workspace = true
 comandos-store = { path = "../comandos-store" }
+serde = { version = "1", features = ["derive"] }
 serde_json.workspace = true
 chrono.workspace = true
 regex = "=1.13.1"
