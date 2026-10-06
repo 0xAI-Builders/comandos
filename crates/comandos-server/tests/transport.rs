@@ -211,6 +211,7 @@ async fn review_stalled_reader_releases_stream_and_connection_capacity() {
             async move {
                 match receiver {
                     Some(receiver) => Ok(Reply {
+                        cache: comandos_server::ReplyCache::NoStore,
                         status: StatusCode::OK,
                         headers: http::HeaderMap::new(),
                         body: ReplyBody::Stream(receiver),
@@ -264,6 +265,7 @@ async fn review_quiet_event_stream_can_outlive_write_and_handler_timeouts() {
             let receiver = receiver.lock().unwrap().take().unwrap();
             async move {
                 Ok(Reply {
+                    cache: comandos_server::ReplyCache::NoStore,
                     status: StatusCode::OK,
                     headers: http::HeaderMap::new(),
                     body: ReplyBody::Stream(receiver),

@@ -12,13 +12,39 @@ impl Manifest {
         let manifest: comandos_core::web_assets::Manifest =
             serde_json::from_str(&text).map_err(|e| e.to_string())?;
         manifest.check_paths()?;
-        Ok(Self {
+        let loaded = Self {
             files: manifest.files,
-        })
+        };
+        loaded.check_files(web_dir)?;
+        Ok(loaded)
+    }
+
+    pub fn check_files(&self, web_dir: &Path) -> Result<(), String> {
+        for required in [
+            "comandos_web_boot.js",
+            "comandos_web.js",
+            "comandos_web_bg.wasm",
+        ] {
+            if !self.files.contains_key(required) {
+                return Err(format!("artefacto requerido ausente: {required}"));
+            }
+        }
+        for (logical, rel) in &self.files {
+            if !web_dir.join(rel).is_file() {
+                return Err(format!("artefacto ausente: {logical} → {rel}"));
+            }
+        }
+        Ok(())
     }
 
     pub fn path(&self, logical: &str) -> String {
         self.files.get(logical).cloned().unwrap_or_default()
+    }
+
+    pub fn is_versioned(&self, relative: &str) -> bool {
+        relative.split_once('/').is_some_and(|(hash, _)| {
+            hash.len() == 12 && hash.bytes().all(|b| b.is_ascii_hexdigit())
+        }) && self.files.values().any(|path| path == relative)
     }
 
     pub fn test() -> Self {

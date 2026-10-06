@@ -32,6 +32,10 @@ fn compositor_uses_the_boot_name_emitted_by_web_build() {
     let dir = std::env::temp_dir().join(format!("comandos-manifest-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("manifest.json"), r#"{"files":{"comandos_web_boot.js":"fedcba987654/boot.js","comandos_web.js":"fedcba987654/comandos_web.js","comandos_web_bg.wasm":"fedcba987654/comandos_web_bg.wasm"}}"#).unwrap();
+    std::fs::create_dir_all(dir.join("fedcba987654")).unwrap();
+    for name in ["boot.js", "comandos_web.js", "comandos_web_bg.wasm"] {
+        std::fs::write(dir.join("fedcba987654").join(name), b"fixture").unwrap();
+    }
     let assets = Manifest::load(&dir).unwrap();
     let src = "(function(){})()";
     let c = compose(
@@ -47,6 +51,56 @@ fn compositor_uses_the_boot_name_emitted_by_web_build() {
             .unwrap()
             .contains("/web/fedcba987654/boot.js")
     );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn manifest_with_a_missing_wasm_cannot_remove_the_original_javascript() {
+    let dir = std::env::temp_dir().join(format!("comandos-missing-wasm-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("fedcba987654")).unwrap();
+    std::fs::write(dir.join("manifest.json"), r#"{"files":{"comandos_web_boot.js":"fedcba987654/boot.js","comandos_web.js":"fedcba987654/comandos_web.js","comandos_web_bg.wasm":"fedcba987654/comandos_web_bg.wasm"}}"#).unwrap();
+    std::fs::write(dir.join("fedcba987654/boot.js"), b"fixture").unwrap();
+    std::fs::write(dir.join("fedcba987654/comandos_web.js"), b"fixture").unwrap();
+    assert!(
+        Manifest::load(&dir).is_err(),
+        "el manifiesto no prueba que el WASM exista"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn status_hashes_the_real_index_region_instead_of_an_empty_page() {
+    use comandos_server::{
+        ReplyBody,
+        dash::{
+            self,
+            web::{WebState, routes},
+        },
+    };
+    let dir = std::env::temp_dir().join(format!("comandos-web-status-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join(".claude/hooks")).unwrap();
+    std::fs::write(dir.join("index.html"), PAGE).unwrap();
+    std::fs::write(
+        dir.join(".claude/hooks/comandos-web.json"),
+        r#"{"on":["red"],"shadow":[]}"#,
+    )
+    .unwrap();
+    let mut cfg = dash::parse_args(&[], &dir, None).unwrap();
+    cfg.dash_dir = dir.clone();
+    cfg.web_dir = dir.clone();
+    std::fs::create_dir_all(dir.join("fedcba987654")).unwrap();
+    std::fs::write(dir.join("manifest.json"), r#"{"files":{"comandos_web_boot.js":"fedcba987654/boot.js","comandos_web.js":"fedcba987654/comandos_web.js","comandos_web_bg.wasm":"fedcba987654/comandos_web_bg.wasm"}}"#).unwrap();
+    for name in ["boot.js", "comandos_web.js", "comandos_web_bg.wasm"] {
+        std::fs::write(dir.join("fedcba987654").join(name), b"fixture").unwrap();
+    }
+    let mut web = WebState::new(&cfg);
+    web.registry = Resolved::in_memory(entries("x"), &[]);
+    let reply = routes::status(&web).unwrap();
+    let ReplyBody::Bytes(bytes) = reply.body else {
+        panic!("status bytes")
+    };
+    let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(value["components"]["red"]["state"], "on");
     std::fs::remove_dir_all(dir).unwrap();
 }
 

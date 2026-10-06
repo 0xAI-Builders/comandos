@@ -459,6 +459,7 @@ pub fn asset_exists(dash_dir: &Path) -> AssetExists {
 
 /// Estado compartido por las ramas del enrutador.
 pub struct DashState {
+    pub web: web::WebState,
     pub config: DashConfig,
     pub asset_exists: AssetExists,
     pub native: Option<Arc<native::Native>>,
@@ -475,8 +476,12 @@ pub fn handler(state: Arc<DashState>) -> Handler {
 
 async fn handle(state: &DashState, request: Request) -> Result<Reply, HandlerError> {
     if request.method == Method::GET && router::path_of(&request.target) == "/web/status" {
-        let web = web::WebState::new(&state.config);
-        return web::routes::status_with_term(&web, state.term_control.status());
+        return web::routes::status_with_term(&state.web, state.term_control.status());
+    }
+    // El handshake del arranque solo cambia memoria del frente. Debe liberar
+    // también la compuerta de la sombra, sin habilitar escrituras del tablero.
+    if request.method == Method::POST && router::path_of(&request.target) == "/web/ready" {
+        return web::routes::handle(state, web::WebRoute::Ready, &request).await;
     }
     if state.config.shadow_readonly && request.method != Method::GET {
         return Reply::json(
@@ -510,8 +515,7 @@ async fn handle(state: &DashState, request: Request) -> Result<Reply, HandlerErr
     {
         native.census().note(&request.method, &request.target);
     }
-    let web_state = web::WebState::new(&state.config);
-    let web_exists = web_state.route_exists();
+    let web_exists = state.web.route_exists();
     let class = router::classify_with_web(
         &request.method,
         &request.target,
@@ -606,6 +610,7 @@ fn assemble(
     });
     let term_control = Arc::new(term::lifecycle::Control::new(&cfg.home));
     let state = Arc::new(DashState {
+        web: web::WebState::new(&cfg),
         config: cfg,
         asset_exists: asset_exists.clone(),
         native: native.clone(),

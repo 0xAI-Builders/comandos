@@ -1,17 +1,12 @@
 use std::{
     collections::{HashMap, VecDeque},
-    sync::{Mutex, OnceLock},
+    sync::Mutex,
     time::{Duration, Instant},
 };
 use tokio::sync::watch;
 
 const CAP: usize = 256;
 const TTL: Duration = Duration::from_secs(10);
-
-pub fn global() -> &'static Gate {
-    static GATE: OnceLock<Gate> = OnceLock::new();
-    GATE.get_or_init(Gate::default)
-}
 
 #[derive(Default)]
 pub struct Gate {
@@ -38,7 +33,10 @@ impl Gate {
             inner.gate_full += 1;
             return Inserted::Full;
         }
-        let k = nonce();
+        let Some(k) = nonce() else {
+            inner.gate_full += 1;
+            return Inserted::Full;
+        };
         let (tx, _) = watch::channel(false);
         inner.nonces.insert(k.clone(), (Instant::now(), tx));
         inner.order.push_back(k.clone());
@@ -73,11 +71,9 @@ impl Gate {
     }
 
     pub fn finish(&self, k: &str) {
-        self.inner
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .nonces
-            .remove(k);
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        inner.nonces.remove(k);
+        inner.order.retain(|key| key != k);
     }
 }
 
@@ -99,10 +95,42 @@ impl Inner {
     }
 }
 
-fn nonce() -> String {
+fn nonce() -> Option<String> {
     let mut bytes = [0u8; 12];
-    if getrandom::fill(&mut bytes).is_err() {
-        return format!("{:?}", Instant::now());
+    getrandom::fill(&mut bytes).ok()?;
+    Some(bytes.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expired_nonce_is_rejected_and_releases_its_capacity() {
+        let gate = Gate::default();
+        let Inserted::Nonce(k) = gate.insert() else {
+            panic!("nonce")
+        };
+        {
+            let mut inner = gate.inner.lock().unwrap();
+            inner.nonces.get_mut(&k).unwrap().0 = Instant::now() - TTL - Duration::from_millis(1);
+        }
+        assert!(!gate.mark_ready(&k));
+        assert!(gate.subscribe(&k).is_none());
+        assert_eq!(gate.snapshot(), (0, 0));
+        assert!(matches!(gate.insert(), Inserted::Nonce(_)));
     }
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+
+    #[test]
+    fn finishing_drops_sender_and_removes_order_bookkeeping() {
+        let gate = Gate::default();
+        let Inserted::Nonce(k) = gate.insert() else {
+            panic!("nonce")
+        };
+        let receiver = gate.subscribe(&k).unwrap();
+        gate.finish(&k);
+        assert!(receiver.has_changed().is_err());
+        assert_eq!(gate.snapshot(), (0, 0));
+        assert!(gate.inner.lock().unwrap().order.is_empty());
+    }
 }

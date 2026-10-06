@@ -1,15 +1,21 @@
 //! Composición gradual del tablero web portado a Rust.
 pub mod assets;
 pub mod compose;
+mod file_stamp;
 pub mod gate;
 pub mod registry;
 pub mod routes;
 pub mod status;
 
 use crate::dash::DashConfig;
+use file_stamp::FileStamp;
 use http::Method;
 use registry::Resolved;
-use std::{path::PathBuf, sync::Mutex};
+use std::{
+    path::PathBuf,
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 
 pub use assets::Manifest;
 pub use compose::{ComponentState, Composed, Selection};
@@ -48,9 +54,11 @@ pub struct WebState {
     pub selection_path: PathBuf,
     pub repo_root: Option<PathBuf>,
     pub web_dir: PathBuf,
+    pub dash_dir: PathBuf,
     pub registry: Resolved,
-    pub manifest: Manifest,
-    pub selection: Mutex<Selection>,
+    pub gate: gate::Gate,
+    manifest: Mutex<(Option<FileStamp>, Manifest)>,
+    selection: Mutex<(Instant, Option<FileStamp>, Selection)>,
 }
 
 impl WebState {
@@ -62,12 +70,21 @@ impl WebState {
         let manifest = Manifest::load(&cfg.web_dir).unwrap_or_else(|_| Manifest::default());
         let selection_path = cfg.home.join(".claude/hooks/comandos-web.json");
         Self {
-            selection: Mutex::new(Selection::load(&selection_path)),
+            selection: Mutex::new((
+                Instant::now(),
+                FileStamp::read(&selection_path),
+                Selection::load(&selection_path),
+            )),
             selection_path,
             repo_root: cfg.repo_root.clone(),
             web_dir: cfg.web_dir.clone(),
+            dash_dir: cfg.dash_dir.clone(),
             registry,
-            manifest,
+            manifest: Mutex::new((
+                FileStamp::read(&cfg.web_dir.join(comandos_core::web_assets::MANIFEST_FILE)),
+                manifest,
+            )),
+            gate: gate::Gate::default(),
         }
     }
 
@@ -77,7 +94,29 @@ impl WebState {
 
     pub fn selection(&self) -> Selection {
         let mut sel = self.selection.lock().unwrap_or_else(|e| e.into_inner());
-        sel.refresh(&self.selection_path);
-        sel.clone()
+        if sel.0.elapsed() >= Duration::from_secs(1) {
+            let stamp = FileStamp::read(&self.selection_path);
+            if stamp != sel.1 {
+                sel.2 = Selection::load(&self.selection_path);
+                sel.1 = stamp;
+            }
+            sel.0 = Instant::now();
+        }
+        sel.2.clone()
+    }
+
+    pub fn manifest(&self) -> Manifest {
+        let mut cache = self.manifest.lock().unwrap_or_else(|e| e.into_inner());
+        let stamp = FileStamp::read(&self.web_dir.join(comandos_core::web_assets::MANIFEST_FILE));
+        if stamp != cache.0 || cache.1.check_files(&self.web_dir).is_err() {
+            cache.1 = Manifest::load(&self.web_dir).unwrap_or_default();
+            cache.0 = stamp;
+        }
+        // A manifest remaining unchanged cannot certify that artifacts are still
+        // present. Fail closed on deletion and recover when the build is restored.
+        if cache.1.check_files(&self.web_dir).is_err() {
+            return Manifest::default();
+        }
+        cache.1.clone()
     }
 }

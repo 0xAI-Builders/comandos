@@ -68,10 +68,18 @@ pub enum ReplyBody {
         receiver: mpsc::Receiver<io::Result<Bytes>>,
     },
 }
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ReplyCache {
+    #[default]
+    NoStore,
+    /// Only versioned build artifacts opt into persistent caching.
+    Immutable,
+}
 pub struct Reply {
     pub status: StatusCode,
     pub headers: HeaderMap,
     pub body: ReplyBody,
+    pub cache: ReplyCache,
 }
 impl Reply {
     pub fn bytes(status: StatusCode, content_type: &'static str, body: impl Into<Bytes>) -> Self {
@@ -84,6 +92,7 @@ impl Reply {
             status,
             headers,
             body: ReplyBody::Bytes(body.into()),
+            cache: ReplyCache::NoStore,
         }
     }
     pub fn json(status: StatusCode, value: &Value) -> Result<Self, HandlerError> {
@@ -225,7 +234,8 @@ fn response(reply: Reply, close: bool) -> http::Response<OutputBody> {
     *response.status_mut() = reply.status;
     *response.headers_mut() = reply.headers;
     // The maintained transport derives framing from the actual body. An adapter
-    // cannot accidentally send conflicting framing or make another response cacheable.
+    // cannot accidentally send conflicting framing. Cache policy is explicit;
+    // relayed Cache-Control headers never make an API response cacheable.
     let headers = response.headers_mut();
     match declared {
         // `insert` keeps a relayed header in its original position.
@@ -242,7 +252,10 @@ fn response(reply: Reply, close: bool) -> http::Response<OutputBody> {
     headers.remove(http::header::TRANSFER_ENCODING);
     headers.insert(
         http::header::CACHE_CONTROL,
-        http::HeaderValue::from_static("no-store"),
+        http::HeaderValue::from_static(match reply.cache {
+            ReplyCache::NoStore => "no-store",
+            ReplyCache::Immutable => "public, max-age=31536000, immutable",
+        }),
     );
     if close {
         headers.insert(

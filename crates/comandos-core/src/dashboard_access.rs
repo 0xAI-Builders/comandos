@@ -125,6 +125,7 @@ pub const API_GET: &[&str] = &[
     "/commands/catalog",
     "/chains",
     "/webterm-token",
+    "/web/status",
     "/news/source",
     "/news/chat",
     "/news/notes",

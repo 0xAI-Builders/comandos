@@ -68,6 +68,7 @@ pub async fn serve(dash_dir: &Path, request: &Request) -> Result<Reply, HandlerE
         .map_err(|_| HandlerError::Failure)?;
     match loaded {
         Ok(Loaded::NotModified) => Ok(Reply {
+            cache: crate::ReplyCache::NoStore,
             status: StatusCode::NOT_MODIFIED,
             headers: HeaderMap::new(),
             body: ReplyBody::Bytes(Bytes::new()),
