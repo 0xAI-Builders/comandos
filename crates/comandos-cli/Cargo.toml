@@ -26,6 +26,8 @@ comandos-store = { path = "../comandos-store" }
 serde_json.workspace = true
 regex = "=1.13.1"
 nix = { version = "=0.31.3", default-features = false, features = ["fs", "user"] }
+# Already pinned by comandos-runtime; resolve HTTP redirect references locally.
+url = "=2.5.8"
 
 [dev-dependencies]
 comandos-core = { path = "../comandos-core" }

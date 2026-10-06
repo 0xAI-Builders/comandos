@@ -275,6 +275,69 @@ fn line(reader: &mut BufReader<TcpStream>) -> Result<Vec<u8>, ApiError> {
 fn post(config: &Config, path: &str, payload: Value) -> Result<(), ApiError> {
     http(config, "POST", path, Some(&payload.to_string()), 0)
 }
+fn redirect_target(config: &Config, path: &str, location: &str) -> Option<String> {
+    // urllib treats escaped dots and literal backslashes as path data. Keep
+    // them opaque while the WHATWG resolver handles reference components.
+    let opaque = |value: &str| value.replace('%', "%25").replace('\\', "%5C");
+    let base =
+        url::Url::parse(&format!("http://127.0.0.1:{}{}", config.port, opaque(path))).ok()?;
+    let mut next = base.join(&opaque(location)).ok()?;
+    // Compare parsed origins, including scheme/host/port, before sending.
+    // Userinfo is outside the configured dash authority as well.
+    if next.origin() != base.origin() || !next.username().is_empty() || next.password().is_some() {
+        return None;
+    }
+    // urljoin preserves the supplied path when a reference carries authority.
+    // Validate that authority above, then retain its original request bytes.
+    let authority = location.strip_prefix("//").or_else(|| {
+        let (scheme, rest) = location.split_once(':')?;
+        if scheme.eq_ignore_ascii_case("http") {
+            rest.strip_prefix("//")
+        } else {
+            None
+        }
+    });
+    if let Some(authority) = authority {
+        let raw = authority
+            .find(['/', '?', '#'])
+            .map_or("", |at| &authority[at..]);
+        let raw = raw.split('#').next().unwrap_or("");
+        let mut target = if raw.starts_with('/') {
+            raw.to_owned()
+        } else {
+            format!("/{raw}")
+        };
+        if target
+            .split_once('?')
+            .is_some_and(|(_, query)| query.is_empty())
+        {
+            target.pop();
+        }
+        return Some(target);
+    }
+    // Empty-path references retain the raw base path, including dot segments
+    // preserved by an earlier authority-bearing redirect. Empty queries inherit.
+    let reference = location.split('#').next().unwrap_or("");
+    if reference.is_empty() || reference.starts_with('?') {
+        return Some(if reference.starts_with('?') && reference.len() > 1 {
+            format!("{}{reference}", path.split('?').next().unwrap_or("/"))
+        } else {
+            path.to_owned()
+        });
+    }
+    // urlunparse omits a trailing delimiter when a supplied path has no query.
+    if next.query() == Some("") {
+        next.set_query(None);
+    }
+    next.set_fragment(None);
+    // Restore generated backslashes before percents so an original literal
+    // %5C (protected as %255C) cannot turn into a backslash during restoration.
+    Some(
+        next[url::Position::BeforePath..]
+            .replace("%5C", "\\")
+            .replace("%25", "%"),
+    )
+}
 fn http(
     config: &Config,
     method: &str,
@@ -354,24 +417,8 @@ fn http(
             && redirects < 10
             && let Some(location) = location
         {
-            let authority = format!("http://127.0.0.1:{}", config.port);
-            let location = location.split('#').next().unwrap_or("");
-            let next = if let Some(relative) = location.strip_prefix(&authority) {
-                if relative.is_empty() {
-                    "/".to_owned()
-                } else if relative.starts_with('/') {
-                    relative.to_owned()
-                } else {
-                    return Err(ApiError::Http(format!("HTTP Error {code}: {reason}")));
-                }
-            } else if location.starts_with('/') && !location.starts_with("//") {
-                location.to_owned()
-            } else if !location.contains(':') && !location.starts_with("//") {
-                let parent = path.rsplit_once('/').map_or("", |(parent, _)| parent);
-                format!("{parent}/{location}")
-            } else {
-                return Err(ApiError::Http(format!("HTTP Error {code}: {reason}")));
-            };
+            let next = redirect_target(config, path, &location)
+                .ok_or_else(|| ApiError::Http(format!("HTTP Error {code}: {reason}")))?;
             return http(config, "GET", &next, None, redirects + 1);
         }
         return if (200..300).contains(&code) {

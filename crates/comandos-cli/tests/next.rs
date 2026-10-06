@@ -217,12 +217,8 @@ fn dry_preserves_python_nonfinite_large_integer_and_status_representation() {
     f.compare_dry(&["--dry"]);
 }
 
-fn serve(
-    responses: Vec<Vec<u8>>,
-) -> (
-    u16,
-    std::thread::JoinHandle<Vec<(String, serde_json::Value)>>,
-) {
+type Request = (String, String, serde_json::Value);
+fn serve(responses: Vec<Vec<u8>>) -> (u16, std::thread::JoinHandle<Vec<Request>>) {
     use std::{
         io::{Read, Write},
         net::TcpListener,
@@ -265,6 +261,13 @@ fn serve(
             let mut body = vec![0; len];
             stream.read_exact(&mut body).unwrap();
             calls.push((
+                text.lines()
+                    .next()
+                    .unwrap()
+                    .split_whitespace()
+                    .next()
+                    .unwrap()
+                    .into(),
                 text.lines()
                     .next()
                     .unwrap()
@@ -334,13 +337,330 @@ fn http_matches_original_focus_up_http_failures_disconnect_and_session_normaliza
         assert_eq!(server.join().unwrap(), expected_calls);
         assert_eq!(tree(&f.0), before);
         assert_eq!(
-            expected_calls[0].1["session"],
+            expected_calls[0].2["session"],
             project
                 .replace(['.', ':'], "-")
                 .chars()
                 .take(80)
                 .collect::<String>()
         );
+    }
+}
+
+fn redirect_server(
+    locations: &[&str],
+    targets: &[&str],
+) -> (u16, std::thread::JoinHandle<Vec<Request>>) {
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        time::{Duration, Instant},
+    };
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    assert_ne!(port, 4777);
+    listener.set_nonblocking(true).unwrap();
+    let locations = locations
+        .iter()
+        .map(|s| s.replace("{port}", &port.to_string()))
+        .collect::<Vec<_>>();
+    let targets = targets.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+    let server = std::thread::spawn(move || {
+        let mut calls = vec![];
+        for index in 0..=targets.len() {
+            let deadline = Instant::now() + Duration::from_secs(3);
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((s, _)) => break s,
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(
+                            Instant::now() < deadline,
+                            "missing private redirect request"
+                        );
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
+                    Err(e) => panic!("{e}"),
+                }
+            };
+            stream
+                .set_read_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
+            let mut head = vec![];
+            let mut byte = [0];
+            while !head.ends_with(b"\r\n\r\n") {
+                assert_eq!(stream.read(&mut byte).unwrap(), 1);
+                head.push(byte[0]);
+            }
+            let text = String::from_utf8(head).unwrap();
+            let mut first = text.lines().next().unwrap().split_whitespace();
+            let method = first.next().unwrap().to_owned();
+            let target = first.next().unwrap().to_owned();
+            let len = text
+                .lines()
+                .find_map(|s| s.strip_prefix("Content-Length: "))
+                .unwrap_or("0")
+                .parse::<usize>()
+                .unwrap();
+            let mut body = vec![0; len];
+            stream.read_exact(&mut body).unwrap();
+            let body = if body.is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::from_slice(&body).unwrap()
+            };
+            let matched = targets.get(index) == Some(&target)
+                && method == if index == 0 { "POST" } else { "GET" };
+            let up = target == "/up";
+            calls.push((method, target, body));
+            let response = if matched {
+                if let Some(location) = locations.get(index) {
+                    format!(
+                        "HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\n\r\n"
+                    )
+                } else {
+                    "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".into()
+                }
+            } else if up {
+                "HTTP/1.1 500 Failed\r\nContent-Length: 0\r\n\r\n".into()
+            } else {
+                "HTTP/1.1 404 Wrong target\r\nContent-Length: 0\r\n\r\n".into()
+            };
+            stream.write_all(response.as_bytes()).unwrap();
+            if (matched && index >= locations.len()) || up {
+                break;
+            }
+        }
+        calls
+    });
+    (port, server)
+}
+fn compare_redirects(locations: &[&str], targets: &[&str]) {
+    use comandos_cli::next::{Config, run};
+    use std::time::Duration;
+    let f = Fixture::new();
+    f.state(
+        "one.json",
+        r#"{"project":"review:session","status":"waiting","cwd":"/private"}"#,
+    );
+    let before = tree(&f.0);
+    let (port, server) = redirect_server(locations, targets);
+    let original = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bin/cc-next");
+    let oracle=f.command(Path::new("/usr/bin/python3")).arg("-c").arg("import runpy,sys,urllib.request; original=urllib.request.urlopen; port=sys.argv[2]; urllib.request.urlopen=lambda req,timeout: original(urllib.request.Request(req.full_url.replace(':4777', ':'+port),data=req.data,headers=req.headers),timeout=timeout); sys.argv=[sys.argv[1]]; runpy.run_path(sys.argv[0],run_name='__main__')").arg(original).arg(port.to_string()).output().unwrap();
+    let oracle_calls = server.join().unwrap();
+    assert_eq!(
+        oracle.status.code(),
+        Some(0),
+        "{locations:?}: {}",
+        String::from_utf8_lossy(&oracle.stdout)
+    );
+    assert_eq!(oracle_calls.len(), targets.len());
+    assert!(oracle_calls.iter().all(|(_, target, _)| target != "/up"));
+    assert_eq!(tree(&f.0), before);
+    let (port, server) = redirect_server(locations, targets);
+    let native = run(
+        &Config {
+            home: f.home(),
+            port,
+            timeout: Duration::from_secs(8),
+        },
+        &[],
+    );
+    let native_calls = server.join().unwrap();
+    assert_eq!(
+        native.code,
+        oracle.status.code().unwrap(),
+        "{locations:?}: calls={native_calls:?}"
+    );
+    assert_eq!(native.stdout.as_bytes(), oracle.stdout);
+    assert_eq!(native.stderr.as_bytes(), oracle.stderr);
+    assert_eq!(native_calls, oracle_calls, "{locations:?}");
+    assert_eq!(tree(&f.0), before);
+}
+#[test]
+fn local_query_only_redirect_matches_python_and_never_requests_up() {
+    compare_redirects(&["?retry=1"], &["/focus", "/focus?retry=1"]);
+}
+#[test]
+fn local_parent_segment_redirect_matches_python_and_never_requests_up() {
+    compare_redirects(&["../focus2"], &["/focus", "/focus2"]);
+}
+#[test]
+fn local_redirect_references_and_get_chains_match_python() {
+    for (location, target) in [
+        ("./directory/../focus2?x=1", "/focus2?x=1"),
+        ("#kept", "/focus"),
+        ("/root/../focus2?x=1#ignored", "/focus2?x=1"),
+        ("//127.0.0.1:{port}/focus2?x=1#ignored", "/focus2?x=1"),
+        ("http://127.0.0.1:{port}/focus2?x=1#ignored", "/focus2?x=1"),
+        ("", "/focus"),
+    ] {
+        compare_redirects(&[location], &["/focus", target]);
+    }
+    for prefix in ["http://127.0.0.1:{port}", "//127.0.0.1:{port}"] {
+        for suffix in [
+            "/a/../focus2",
+            "/a/../focus2?retry=1#ignored",
+            "/%2e/../%252e\\%5C?raw=%25%255C#ignored",
+        ] {
+            let location = format!("{prefix}{suffix}");
+            let target = suffix.split('#').next().unwrap();
+            compare_redirects(&[&location], &["/focus", target]);
+        }
+        for (suffix, target) in [
+            ("", "/"),
+            ("?value=%5C%25#ignored", "/?value=%5C%25"),
+            ("#ignored", "/"),
+            ("/a/../focus2?", "/a/../focus2"),
+        ] {
+            compare_redirects(&[&format!("{prefix}{suffix}")], &["/focus", target]);
+        }
+        let first = format!("{prefix}/a/../focus2?old=%5C%25");
+        compare_redirects(
+            &[&first, "?again=%252e#ignored", "#ignored", "?", "./end"],
+            &[
+                "/focus",
+                "/a/../focus2?old=%5C%25",
+                "/a/../focus2?again=%252e",
+                "/a/../focus2?again=%252e",
+                "/a/../focus2?again=%252e",
+                "/end",
+            ],
+        );
+    }
+    compare_redirects(
+        &[
+            "/dir/item?old=1",
+            "?retry=2",
+            "../focus2#drop",
+            "//127.0.0.1:{port}/tail?q=1",
+            "./end?final=1",
+        ],
+        &[
+            "/focus",
+            "/dir/item?old=1",
+            "/dir/item?retry=2",
+            "/focus2",
+            "/tail?q=1",
+            "/end?final=1",
+        ],
+    );
+}
+
+#[test]
+fn encoded_dot_segments_remain_literal_like_python() {
+    for (location, target) in [
+        ("./%2e/focus2", "/%2e/focus2"),
+        ("./%2E%2E/focus2", "/%2E%2E/focus2"),
+        ("../%2e%2e/focus2", "/%2e%2e/focus2"),
+    ] {
+        compare_redirects(&[location], &["/focus", target]);
+    }
+    for escape in [
+        "%5C",
+        "%5c",
+        "%25",
+        "%252e",
+        "%252E",
+        "%255C",
+        "%255c",
+        "%2e%2E",
+        "%25%5C%252e%255C",
+        "%23",
+        "%GG",
+        "%",
+    ] {
+        let location = format!("./literal/{escape}?value={escape}#ignored");
+        let target = format!("/literal/{escape}?value={escape}");
+        compare_redirects(&[&location], &["/focus", &target]);
+    }
+    compare_redirects(
+        &["./%2e/dir?key=%2e", "?retry=1#ignored", "../focus2"],
+        &["/focus", "/%2e/dir?key=%2e", "/%2e/dir?retry=1", "/focus2"],
+    );
+    compare_redirects(
+        &[
+            "/dir\\%5C/%25/%252e/%255C?mix=%2e%5c%25#ignored",
+            "?again=%255C#ignored",
+            "./end?literal=%5C%25%252e%255C",
+        ],
+        &[
+            "/focus",
+            "/dir\\%5C/%25/%252e/%255C?mix=%2e%5c%25",
+            "/dir\\%5C/%25/%252e/%255C?again=%255C",
+            "/dir\\%5C/%25/%252e/end?literal=%5C%25%252e%255C",
+        ],
+    );
+}
+#[test]
+fn local_backslashes_and_query_fragments_match_python() {
+    compare_redirects(
+        &["./dir\\focus2?retry=1#ignored"],
+        &["/focus", "/dir\\focus2?retry=1"],
+    );
+    compare_redirects(
+        &["./dir%5Cfocus2?token=%252e%5C#frag"],
+        &["/focus", "/dir%5Cfocus2?token=%252e%5C"],
+    );
+    compare_redirects(
+        &["/dir/item?old=1", "#ignored", "?", "?retry=2#frag"],
+        &[
+            "/focus",
+            "/dir/item?old=1",
+            "/dir/item?old=1",
+            "/dir/item?old=1",
+            "/dir/item?retry=2",
+        ],
+    );
+}
+
+#[test]
+fn redirects_outside_configured_authority_or_with_invalid_schemes_are_not_requested() {
+    use comandos_cli::next::{Config, run};
+    use std::{net::TcpListener, time::Duration};
+    let f = Fixture::new();
+    f.state("one.json", r#"{"project":"test","status":"waiting"}"#);
+    let foreign = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let other_port = foreign.local_addr().unwrap().port();
+    assert_ne!(other_port, 4777);
+    foreign.set_nonblocking(true).unwrap();
+    for location in [
+        format!("http://127.0.0.1:{other_port}/foreign"),
+        format!("//127.0.0.1:{other_port}/foreign"),
+        format!("https://127.0.0.1:{other_port}/foreign"),
+        "file:///private/never-opened".into(),
+        "javascript:alert(1)".into(),
+        "http://[invalid/".into(),
+    ] {
+        let before = tree(&f.0);
+        let response =
+            format!("HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\n\r\n");
+        let (port, server) = serve(vec![
+            response.into_bytes(),
+            b"HTTP/1.1 500 Failed\r\nContent-Length: 0\r\n\r\n".to_vec(),
+        ]);
+        let native = run(
+            &Config {
+                home: f.home(),
+                port,
+                timeout: Duration::from_secs(8),
+            },
+            &[],
+        );
+        assert_eq!(native.code, 1);
+        let calls = server.join().unwrap();
+        assert_eq!(
+            calls
+                .iter()
+                .map(|(method, target, _)| (method.as_str(), target.as_str()))
+                .collect::<Vec<_>>(),
+            vec![("POST", "/focus"), ("POST", "/up")],
+            "{location}"
+        );
+        assert_eq!(
+            foreign.accept().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+        assert_eq!(tree(&f.0), before);
     }
 }
 
