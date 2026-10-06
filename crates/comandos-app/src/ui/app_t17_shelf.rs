@@ -493,14 +493,6 @@ impl App {
             self.status.set_text("No tmux session");
             return;
         };
-        let target = if pane.is_empty() {
-            format!("={session}:")
-        } else if commands::valid_pane(pane) {
-            pane.into()
-        } else {
-            self.status.set_text("Invalid pane");
-            return;
-        };
         self.t17.wizard.advance();
         let ticket = self.t17.wizard.ticket();
         let worker_ticket = ticket.clone();
@@ -511,40 +503,11 @@ impl App {
         let weak = Rc::downgrade(self);
         self.jobs.spawn(
             move || -> Result<(String, String, String), String> {
-                if !worker_ticket.current()
-                    || closed.load(Ordering::Acquire)
-                    || worker_instance.load(Ordering::Acquire)
-                {
-                    return Err("Wizard cancelled".into());
-                }
-                let record = tmux
-                    .read(&[
-                        "display-message",
-                        "-p",
-                        "-t",
-                        &target,
-                        "#{session_name}\n#{pane_id}\n#{pane_current_path}",
-                    ])
-                    .map_err(|_| "No tmux session".to_string())?;
-                if !record.ok() {
-                    return Err("No tmux session".into());
-                }
-                let mut fields = record.stdout.splitn(3, '\n');
-                let current = fields.next().unwrap_or_default();
-                let actual_pane = fields.next().unwrap_or_default();
-                let cwd = fields.next().unwrap_or_default().trim().to_string();
-                if current != session
-                    || !commands::valid_pane(actual_pane)
-                    || (!pane.is_empty() && pane != actual_pane)
-                {
-                    return Err("Wizard pane changed".into());
-                }
-                ui::accounts::pane_identity_when(&tmux, &session, actual_pane, None, || {
+                ui::extensions::wizard_target_when(&tmux, &session, &pane, || {
                     worker_ticket.current()
                         && !closed.load(Ordering::Acquire)
                         && !worker_instance.load(Ordering::Acquire)
-                })?;
-                Ok((session, actual_pane.to_string(), cwd))
+                })
             },
             move |result| {
                 let Some(app) = weak.upgrade().filter(|a| a.writable()) else {

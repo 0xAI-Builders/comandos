@@ -177,7 +177,17 @@ pub fn deferred_arguments(name: &str, args: &Value) -> Result<Value, CommandErro
         }
         "mosaic_zoom" => json!({"session":args.get("session"),"zoom_session":args.get("session")}),
         "side_panel" => json!({"hidden":!args.get("on").is_some_and(comandos_core::json::truthy)}),
-        "start_ai_here" => json!({"session":args.get("session"),"pane":args.get("pane")}),
+        "start_ai_here" => {
+            // This command permits an omitted target (keyboard/current terminal).
+            // Preserve other invalid types so the consumer's string_arg rejects them.
+            let optional = |key| {
+                args.get(key)
+                    .filter(|v| !v.is_null())
+                    .cloned()
+                    .unwrap_or(json!(""))
+            };
+            json!({"session":optional("session"),"pane":optional("pane")})
+        }
         "open_switcher" | "tabs_overview" | "help" | "snippets" | "open_wizard"
         | "copy_selection" | "paste_clipboard" | "copy_reply" => json!({}),
         _ => return Err(CommandError::Unknown(name.into())),

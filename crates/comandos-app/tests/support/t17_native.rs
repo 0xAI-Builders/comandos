@@ -82,8 +82,6 @@ fn dependency(deps: &Path, app: &Path, name: &str) -> PathBuf {
     panic!("missing matched dependency {name}")
 }
 pub fn execute(input: &serde_json::Value) -> serde_json::Value {
-    let dir = std::env::temp_dir().join(format!("t17-native-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
     let mut methods = body(
         include_str!("../../src/ui/app_t17_panes.rs"),
         "fn pane_card(",
@@ -98,6 +96,11 @@ pub fn execute(input: &serde_json::Value) -> serde_json::Value {
             + &body(page, "impl Drop for OwnedPage {")),
     );
     let source = include_str!("t17_widgets.rs").replace("// ACTUAL_METHODS", &methods);
+    execute_source(&source, input)
+}
+pub fn execute_source(source: &str, input: &serde_json::Value) -> serde_json::Value {
+    let dir = std::env::temp_dir().join(format!("t17-native-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
     let rust = dir.join("probe.rs");
     let bin = dir.join("probe");
     std::fs::write(&rust, source).unwrap();
@@ -107,24 +110,45 @@ pub fn execute(input: &serde_json::Value) -> serde_json::Value {
         .unwrap()
         .to_path_buf();
     let app = library(&deps, "comandos_app");
+    let mut args = vec![
+        "--edition=2024".into(),
+        rust.display().to_string().into(),
+        "-o".into(),
+        bin.display().to_string().into(),
+        "-L".into(),
+        format!("dependency={}", deps.display()).into(),
+        "--extern".into(),
+        format!("comandos_app={}", app.display()).into(),
+        "--extern".into(),
+        format!(
+            "serde_json={}",
+            dependency(&deps, &app, "serde_json").display()
+        )
+        .into(),
+        "--extern".into(),
+        format!("glib={}", dependency(&deps, &app, "glib").display()).into(),
+    ];
+    let flags = run(&ProcSpec {
+        program: "pkg-config".into(),
+        args: vec!["--libs-only-L".into(), "webkit2gtk-4.1".into()],
+        stdin: None,
+        env: vec![],
+        clear_env: false,
+        env_remove: vec![],
+        cwd: None,
+        timeout: std::time::Duration::from_secs(5),
+    })
+    .unwrap();
+    assert_eq!(flags.code, Some(0));
+    for flag in String::from_utf8(flags.stdout).unwrap().split_whitespace() {
+        if let Some(path) = flag.strip_prefix("-L") {
+            args.push("-L".into());
+            args.push(format!("native={path}").into());
+        }
+    }
     let result = run(&ProcSpec {
         program: "rustc".into(),
-        args: vec![
-            "--edition=2024".into(),
-            rust.display().to_string().into(),
-            "-o".into(),
-            bin.display().to_string().into(),
-            "-L".into(),
-            format!("dependency={}", deps.display()).into(),
-            "--extern".into(),
-            format!(
-                "serde_json={}",
-                dependency(&deps, &app, "serde_json").display()
-            )
-            .into(),
-            "--extern".into(),
-            format!("glib={}", dependency(&deps, &app, "glib").display()).into(),
-        ],
+        args,
         stdin: None,
         env: vec![],
         clear_env: false,
@@ -133,6 +157,7 @@ pub fn execute(input: &serde_json::Value) -> serde_json::Value {
         timeout: std::time::Duration::from_secs(30),
     })
     .unwrap();
+    std::fs::write(dir.join("compile.log"), &result.stderr).unwrap();
     assert_eq!(
         result.code,
         Some(0),
@@ -150,6 +175,8 @@ pub fn execute(input: &serde_json::Value) -> serde_json::Value {
         timeout: std::time::Duration::from_secs(5),
     })
     .unwrap();
+    std::fs::write(dir.join("run.log"), &result.stderr).unwrap();
+    std::fs::write(dir.join("result.json"), &result.stdout).unwrap();
     assert_eq!(
         result.code,
         Some(0),

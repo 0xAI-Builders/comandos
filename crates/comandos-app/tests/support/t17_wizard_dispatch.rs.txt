@@ -1,0 +1,44 @@
+use comandos_app::ui::app_commands::{self as commands, Registry, CommandError};
+use comandos_app::ui::menu::Context;
+use serde_json::{json,Value};
+use std::{cell::{Cell,RefCell},rc::Rc};
+mod tab_actions { pub use comandos_app::tab_actions::valid_session; }
+struct App { current:RefCell<String>, calls:RefCell<Vec<Value>> }
+impl App {
+    fn current_session(&self)->Option<String>{Some(self.current.borrow().clone())}
+    fn start_ai_in_pane(&self,session:&str,pane:&str){self.calls.borrow_mut().push(json!([session,pane]));}
+    fn keyboard(&self)->(&'static str,Value) { // KEYBOARD_EXPRESSION }
+}
+fn main() {
+    let app=Rc::new(App{current:RefCell::new("fixture".into()),calls:RefCell::new(vec![])});
+    let closed=Rc::new(Cell::new(false));
+    let registry=Rc::new(Registry::default());
+    let weak=Rc::downgrade(&app);let stop=closed.clone();
+    registry.install("T17.start_ai_here",Rc::new(move |args| {
+        let app=weak.upgrade().filter(|_|!stop.get()).ok_or_else(||CommandError::Refused("application closed".into()))?;
+        // ACTUAL_HANDLER
+    }));
+    let next=registry.clone();registry.install("T14.start_ai_here",Rc::new(move|args|next.invoke("T17.start_ai_here",args)));
+    let next=registry.clone();registry.install("start_ai_here",Rc::new(move|args| {
+        let args=commands::deferred_arguments("start_ai_here",args)?;
+        next.invoke(commands::deferred_consumer("start_ai_here").unwrap(),&args)
+    }));
+    let ctx=Context{session:Some("fixture".into()),pane:Some("%2".into()),npanes:2,copy_pane:None,sessions:vec![],stamp:None};
+    // Simulate a different active pane without changing the menu's frozen Context.
+    let active_pane="%9"; assert_ne!(ctx.pane.as_deref(),Some(active_pane));
+    let (name,args):(&str,Value)= // MENU_EXPRESSION ;
+    registry.invoke(name,&args).unwrap();
+    let menu=app.calls.borrow_mut().pop().unwrap();
+    let (name,args)=app.keyboard();registry.invoke(name,&args).unwrap();
+    let keyboard=app.calls.borrow_mut().pop().unwrap();
+    registry.invoke("start_ai_here",&json!({"session":null,"pane":null})).unwrap();
+    let normalized=app.calls.borrow_mut().pop().unwrap();
+    let mut invalid=0;
+    for args in [json!({"pane":7}),json!({"session":true}),json!({"session":"bad:name"})] {
+        if registry.invoke("start_ai_here",&args).is_err(){invalid+=1;}
+    }
+    closed.set(true);
+    assert!(registry.invoke("start_ai_here",&json!({"session":"fixture","pane":"%2"})).is_err());
+    let closed=app.calls.borrow().len();
+    println!("{}",json!({"menu":menu,"keyboard":keyboard,"null":normalized,"invalid":invalid,"closed":closed}));
+}

@@ -108,6 +108,74 @@ pub fn read_inventory_when(
     super::accounts::pane_identity_when(tmux, session, pane, Some(&identity), allowed)?;
     Ok(data)
 }
+/// Resolve a keyboard target once, then pin its identity across the cwd lookup.
+/// An explicit menu pane never follows a later active-pane change.
+pub fn wizard_target_when(
+    tmux: &impl super::clipboard::TmuxIo,
+    session: &str,
+    pane: &str,
+    allowed: impl Fn() -> bool,
+) -> Result<(String, String, String), String> {
+    let socket = tmux.socket().to_path_buf();
+    let current = || allowed() && tmux.socket() == socket;
+    if !current() || !crate::tab_actions::valid_session(session) {
+        return Err("Wizard cancelled or invalid session".into());
+    }
+    let pane = if pane.is_empty() {
+        let target = format!("={session}:");
+        let out = tmux
+            .read(&[
+                "display-message",
+                "-p",
+                "-t",
+                &target,
+                "#{session_name}\n#{pane_id}",
+            ])
+            .map_err(|_| "No tmux session".to_string())?;
+        if !current() || !out.ok() {
+            return Err("Wizard cancelled or socket replaced".into());
+        }
+        let (actual_session, pane) = out
+            .stdout
+            .trim()
+            .split_once('\n')
+            .ok_or_else(|| "Wizard pane unavailable".to_string())?;
+        if actual_session != session || !super::app_commands::valid_pane(pane) {
+            return Err("Wizard pane changed".into());
+        }
+        pane.to_string()
+    } else if super::app_commands::valid_pane(pane) {
+        pane.to_string()
+    } else {
+        return Err("Invalid pane".into());
+    };
+    let identity = super::accounts::pane_identity_when(tmux, session, &pane, None, current)?;
+    if !current() {
+        return Err("Wizard cancelled or socket replaced".into());
+    }
+    let out = tmux
+        .read(&[
+            "display-message",
+            "-p",
+            "-t",
+            &pane,
+            "#{session_name}\n#{pane_id}\n#{pane_current_path}",
+        ])
+        .map_err(|_| "No tmux session".to_string())?;
+    if !current() || !out.ok() {
+        return Err("Wizard cancelled or socket replaced".into());
+    }
+    let mut fields = out.stdout.splitn(3, '\n');
+    if fields.next() != Some(session) || fields.next() != Some(pane.as_str()) {
+        return Err("Wizard pane changed".into());
+    }
+    let cwd = fields.next().unwrap_or_default().trim().to_string();
+    super::accounts::pane_identity_when(tmux, session, &pane, Some(&identity), current)?;
+    if !current() {
+        return Err("Wizard cancelled or socket replaced".into());
+    }
+    Ok((session.to_string(), pane, cwd))
+}
 pub fn extension_message(raw: &str) -> Result<Value, BridgeError> {
     if raw.len() > 8192 {
         return Err(BridgeError::Invalid(

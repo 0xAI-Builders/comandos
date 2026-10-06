@@ -984,7 +984,10 @@ impl App {
             _ => {
                 let (name, args) = match action {
                     MenuAction::ToggleWindow => ("toggle_window", json!({})),
-                    MenuAction::StartAI => ("start_ai_here", json!({"session":ctx.session})),
+                    MenuAction::StartAI => (
+                        "start_ai_here",
+                        json!({"session":ctx.session,"pane":ctx.pane}),
+                    ),
                     MenuAction::NewLocal => ("new_local_tab", json!({})),
                     MenuAction::NewXterm => ("open_xterm_tab", json!({"session":"local"})),
                     MenuAction::OpenProject => ("open_wizard", json!({})),
