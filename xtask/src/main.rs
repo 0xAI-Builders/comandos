@@ -55,9 +55,10 @@ fn main() {
         Some("web-build") => exit(xtask::web_build::main(&args[1..])),
         Some("web-inventory") => exit(xtask::web_inventory::main(&args[1..])),
         Some("web-port") => exit(xtask::web_port::main(&args[1..])),
+        Some("lint") => exit(xtask::lint::main(&args[1..])),
         _ => {
             eprintln!(
-                "subcomandos: rss, parity, poll, shots, png-diff, dom-diff, fixtures, web-build, web-inventory, web-port"
+                "subcomandos: rss, parity, poll, shots, png-diff, dom-diff, fixtures, web-build, web-inventory, web-port, lint"
             );
             exit(2);
         }
