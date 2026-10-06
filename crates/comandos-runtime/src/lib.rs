@@ -78,9 +78,9 @@ pub fn process_start_time(pid: &str) -> Option<u64> {
     #[cfg(target_os = "macos")]
     {
         use procs::ProcSource;
-        return procs::system()
+        procs::system()
             .process(i32::try_from(number).ok()?)
-            .map(|p| p.start);
+            .map(|p| p.start)
     }
     #[cfg(not(target_os = "macos"))]
     parse_process_stat(&std::fs::read_to_string(format!("/proc/{number}/stat")).ok()?)

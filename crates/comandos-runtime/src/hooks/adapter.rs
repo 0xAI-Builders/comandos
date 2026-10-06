@@ -200,7 +200,7 @@ pub fn proc_stat(pid: u32) -> Option<(u32, String)> {
     {
         use crate::procs::ProcSource;
         let p = crate::procs::system().process(i32::try_from(pid).ok()?)?;
-        return Some((u32::try_from(p.ppid).ok()?, p.start.to_string()));
+        Some((u32::try_from(p.ppid).ok()?, p.start.to_string()))
     }
     #[cfg(not(target_os = "macos"))]
     {

@@ -182,7 +182,7 @@ fn write_record(root: &Path, pid: u32, record: &Map<String, Value>) -> Option<()
 fn start_tick(pid: u32) -> Option<String> {
     #[cfg(target_os = "macos")]
     {
-        return crate::process_start_time(&pid.to_string()).map(|start| start.to_string());
+        crate::process_start_time(&pid.to_string()).map(|start| start.to_string())
     }
     #[cfg(not(target_os = "macos"))]
     {
