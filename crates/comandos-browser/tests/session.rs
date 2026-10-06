@@ -177,3 +177,29 @@ async fn notification_without_id_is_ignored_and_client_name_is_truncated() {
     assert_eq!(snapshots[0].client_name.chars().count(), 80);
     assert_eq!(c.released(), 0);
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn initialized_notification_does_not_wrap_pending_counter() {
+    let mut c = Harness::start().await;
+    let init = c
+        .request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"claude-code"}}}"#,
+        )
+        .await;
+    assert!(init.contains(r#""id":1"#));
+    c.send_line(r#"{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}"#)
+        .await;
+    let tools = c
+        .request(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#)
+        .await;
+    assert_eq!(
+        tools,
+        r#"{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"navigate_page"}]}}"#
+    );
+    let call = c
+        .request(
+            r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"navigate_page"}}"#,
+        )
+        .await;
+    assert_eq!(call, r#"{"jsonrpc":"2.0","id":3,"result":{"content":[]}}"#);
+}

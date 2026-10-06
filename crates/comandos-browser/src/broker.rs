@@ -6,7 +6,7 @@ use crate::{
 };
 use serde_json::Value;
 use std::{future::Future, io, path::Path, path::PathBuf, sync::Arc, time::Duration};
-use tokio::{net::TcpListener, sync::watch};
+use tokio::{net::TcpListener, sync::watch, task::JoinSet};
 
 pub struct Broker;
 
@@ -21,17 +21,21 @@ impl Broker {
         let backend: Arc<dyn ToolBackend> = Arc::new(pool.clone());
         let (tx, rx) = watch::channel(false);
         let house = tokio::spawn(housekeeping(pool.clone(), pool.state_dir(), rx));
+        let mut clients = JoinSet::new();
         tokio::pin!(shutdown);
         loop {
             tokio::select! {
                 _ = &mut shutdown => break,
+                Some(_) = clients.join_next() => {}
                 accepted = listener.accept() => {
                     let Ok((stream, _)) = accepted else { continue };
-                    tokio::spawn(handle_client(stream, catalog.clone(), backend.clone(), registry.clone()));
+                    clients.spawn(handle_client(stream, catalog.clone(), backend.clone(), registry.clone()));
                 }
             }
         }
         registry.close();
+        clients.abort_all();
+        while clients.join_next().await.is_some() {}
         pool.close_all().await;
         let _ = tx.send(true);
         let _ = house.await;

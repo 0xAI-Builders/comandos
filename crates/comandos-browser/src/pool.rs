@@ -16,7 +16,7 @@ use std::{
     },
     time::{Duration, Instant, SystemTime},
 };
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, Notify, mpsc};
 
 type CloseHook = Arc<dyn Fn() -> BoxFuture<'static, Result<(), CloseError>> + Send + Sync>;
 
@@ -30,6 +30,8 @@ struct Slot {
 struct State {
     slots: BTreeMap<SessionId, Slot>,
     stuck: Vec<Arc<Worker>>,
+    starting: usize,
+    closing: usize,
     waiters: usize,
 }
 
@@ -38,6 +40,7 @@ pub struct Pool {
     registry: Arc<Registry>,
     tools: BTreeSet<String>,
     state: Mutex<State>,
+    notify_capacity: Notify,
     close_hook: Mutex<Option<CloseHook>>,
     fail_next_close: AtomicBool,
 }
@@ -51,8 +54,11 @@ impl Pool {
             state: Mutex::new(State {
                 slots: BTreeMap::new(),
                 stuck: Vec::new(),
+                starting: 0,
+                closing: 0,
                 waiters: 0,
             }),
+            notify_capacity: Notify::new(),
             close_hook: Mutex::new(None),
             fail_next_close: AtomicBool::new(false),
         })
@@ -68,56 +74,126 @@ impl Pool {
     }
 
     async fn acquire(self: &Arc<Self>, session: &SessionId) -> Option<Arc<Worker>> {
+        let deadline = (self.cfg.queue_timeout > 0.0)
+            .then(|| Instant::now() + Duration::from_secs_f64(self.cfg.queue_timeout));
+        let mut registered_waiter = false;
         loop {
-            {
+            let profile = {
                 let mut state = self.state.lock().await;
                 if let Some(worker) = state
                     .slots
                     .get(session)
                     .and_then(|slot| slot.worker.as_ref().cloned())
                 {
+                    if registered_waiter {
+                        state.waiters = state.waiters.saturating_sub(1);
+                    }
                     return Some(worker);
                 }
                 if self.total_workers_locked(&state) < self.cfg.max_workers {
+                    state.starting += 1;
                     let profile = self.cfg.state_dir.join(format!("session-{}", session.0));
-                    let (tx, mut rx) = mpsc::channel(16);
-                    let registry = self.registry.clone();
-                    let notify_session = session.clone();
-                    tokio::spawn(async move {
-                        while let Some(value) = rx.recv().await {
-                            registry.notify(&notify_session, value).await;
+                    Some(profile)
+                } else {
+                    if self.cfg.queue_timeout <= 0.0 {
+                        return None;
+                    }
+                    if !registered_waiter {
+                        if state.waiters >= 16 {
+                            return None;
                         }
-                    });
-                    drop(state);
-                    let worker = match Worker::start(&self.cfg, profile, tx).await {
-                        Ok(worker) => Arc::new(worker),
-                        Err(_) => return None,
-                    };
-                    let mut state = self.state.lock().await;
-                    state.slots.insert(
-                        session.clone(),
-                        Slot {
-                            worker: Some(worker.clone()),
-                            expired: false,
-                            busy: false,
-                            last_used: Instant::now(),
-                        },
-                    );
-                    self.registry.set_worker(session, worker.pid(), false).await;
-                    return Some(worker);
+                        state.waiters += 1;
+                        registered_waiter = true;
+                    }
+                    None
                 }
-                if self.cfg.queue_timeout <= 0.0 || state.waiters >= 16 {
-                    return None;
+            };
+            if let Some(profile) = profile {
+                let (tx, mut rx) = mpsc::channel(16);
+                let registry = self.registry.clone();
+                let notify_session = session.clone();
+                tokio::spawn(async move {
+                    while let Some(value) = rx.recv().await {
+                        registry.notify(&notify_session, value).await;
+                    }
+                });
+                let worker = Worker::start(&self.cfg, profile, tx).await.map(Arc::new);
+                match worker {
+                    Ok(worker) => {
+                        let mut close_started = false;
+                        {
+                            let mut state = self.state.lock().await;
+                            state.starting = state.starting.saturating_sub(1);
+                            if registered_waiter {
+                                state.waiters = state.waiters.saturating_sub(1);
+                            }
+                            if let Some(slot) = state.slots.get_mut(session) {
+                                slot.worker = Some(worker.clone());
+                                slot.expired = false;
+                                slot.last_used = Instant::now();
+                            } else {
+                                state.closing += 1;
+                                close_started = true;
+                            }
+                        }
+                        if close_started {
+                            let _ = self.close_worker(worker).await;
+                            self.finish_closing(None).await;
+                            return None;
+                        }
+                        self.registry.set_worker(session, worker.pid(), true).await;
+                        return Some(worker);
+                    }
+                    Err(_) => {
+                        let mut state = self.state.lock().await;
+                        state.starting = state.starting.saturating_sub(1);
+                        if registered_waiter {
+                            state.waiters = state.waiters.saturating_sub(1);
+                        }
+                        drop(state);
+                        self.notify_capacity.notify_waiters();
+                        return None;
+                    }
                 }
-                state.waiters += 1;
             }
-            tokio::time::sleep(Duration::from_secs_f64(self.cfg.queue_timeout.min(0.05))).await;
-            let mut state = self.state.lock().await;
-            state.waiters = state.waiters.saturating_sub(1);
-            if self.total_workers_locked(&state) >= self.cfg.max_workers {
+            let Some(deadline) = deadline else {
+                if registered_waiter {
+                    let mut state = self.state.lock().await;
+                    state.waiters = state.waiters.saturating_sub(1);
+                }
+                return None;
+            };
+            let now = Instant::now();
+            if now >= deadline {
+                if registered_waiter {
+                    let mut state = self.state.lock().await;
+                    state.waiters = state.waiters.saturating_sub(1);
+                }
+                return None;
+            }
+            let wait = self.notify_capacity.notified();
+            if tokio::time::timeout(deadline.saturating_duration_since(now), wait)
+                .await
+                .is_err()
+            {
+                if registered_waiter {
+                    let mut state = self.state.lock().await;
+                    state.waiters = state.waiters.saturating_sub(1);
+                }
                 return None;
             }
         }
+    }
+
+    async fn finish_closing(&self, stuck: Option<Arc<Worker>>) {
+        {
+            let mut state = self.state.lock().await;
+            state.closing = state.closing.saturating_sub(1);
+            if let Some(worker) = stuck {
+                state.stuck.push(worker);
+            }
+        }
+        self.notify_capacity.notify_waiters();
     }
 
     async fn release_worker(
@@ -132,15 +208,20 @@ impl Pool {
             };
             slot.expired |= expired;
             slot.busy = false;
-            slot.worker.take()
+            let worker = slot.worker.take();
+            if worker.is_some() {
+                state.closing += 1;
+            }
+            worker
         };
         let Some(worker) = worker else {
             return Ok(());
         };
         let result = self.close_worker(worker.clone()).await;
         if result.is_err() {
-            let mut state = self.state.lock().await;
-            state.stuck.push(worker);
+            self.finish_closing(Some(worker)).await;
+        } else {
+            self.finish_closing(None).await;
         }
         self.registry.set_worker(session, None, false).await;
         result
@@ -181,12 +262,16 @@ impl Pool {
     pub async fn retry_stuck(self: &Arc<Self>) {
         let stuck = {
             let mut state = self.state.lock().await;
-            std::mem::take(&mut state.stuck)
+            let stuck = std::mem::take(&mut state.stuck);
+            state.closing += stuck.len();
+            stuck
         };
         for worker in stuck {
             if let Err(e) = self.close_worker(worker.clone()).await {
                 eprintln!("comandos-broker-mac: trabajador atascado sigue vivo: {e:?}");
-                self.state.lock().await.stuck.push(worker);
+                self.finish_closing(Some(worker)).await;
+            } else {
+                self.finish_closing(None).await;
             }
         }
     }
@@ -217,6 +302,8 @@ impl Pool {
             .filter(|slot| slot.worker.is_some())
             .count()
             + state.stuck.len()
+            + state.starting
+            + state.closing
             + self.fresh_python_workers()
     }
 
@@ -247,6 +334,7 @@ impl Pool {
     pub async fn disconnect(self: &Arc<Self>, session: SessionId) {
         let _ = self.release_worker(&session, false).await;
         self.state.lock().await.slots.remove(&session);
+        self.notify_capacity.notify_waiters();
     }
 
     pub async fn close_all(self: &Arc<Self>) {
@@ -299,6 +387,7 @@ impl ToolBackend for Arc<Pool> {
                     .slots
                     .entry(session.clone())
                     .and_modify(|slot| slot.busy = false);
+                pool.registry.set_worker(&session, None, false).await;
                 return tool_error(ERR_BUSY);
             };
             pool.registry.set_worker(&session, worker.pid(), true).await;
@@ -321,15 +410,25 @@ impl ToolBackend for Arc<Pool> {
                     tool_error(ERR_TIMEOUT)
                 }
             };
-            let mut state = pool.state.lock().await;
-            if let Some(slot) = state.slots.get_mut(&session) {
-                slot.busy = false;
-                slot.last_used = Instant::now();
+            let keep_worker = {
+                let mut state = pool.state.lock().await;
+                if let Some(slot) = state.slots.get_mut(&session) {
+                    slot.busy = false;
+                    slot.last_used = Instant::now();
+                    slot.worker
+                        .as_ref()
+                        .is_some_and(|current| Arc::ptr_eq(current, &worker))
+                } else {
+                    false
+                }
+            };
+            if keep_worker {
+                pool.registry
+                    .set_worker(&session, worker.pid(), false)
+                    .await;
+            } else {
+                pool.registry.set_worker(&session, None, false).await;
             }
-            drop(state);
-            pool.registry
-                .set_worker(&session, worker.pid(), false)
-                .await;
             value
         })
     }

@@ -21,6 +21,14 @@ fn main() {
         let id = msg.get("id").cloned();
         let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
         if method == "initialize" {
+            if let Ok(ms) = env::var("FAKE_INIT_DELAY_MS") {
+                if let Ok(ms) = ms.parse::<u64>() {
+                    thread::sleep(Duration::from_millis(ms));
+                }
+            }
+            if env::var("FAKE_INIT_FAIL").is_ok() {
+                break;
+            }
             write_json(
                 &mut stdout,
                 json!({"jsonrpc":"2.0","id":id,"result":{"protocolVersion":"2025-11-25"}}),
@@ -39,6 +47,17 @@ fn main() {
                     &mut stdout,
                     json!({"jsonrpc":"2.0","method":"notifications/message","params":{"x":1}}),
                 );
+            }
+            if let Some(count) = args
+                .and_then(|a| a.get("notify_count"))
+                .and_then(Value::as_u64)
+            {
+                for index in 0..count {
+                    write_json(
+                        &mut stdout,
+                        json!({"jsonrpc":"2.0","method":"notifications/message","params":{"index":index}}),
+                    );
+                }
             }
             if args
                 .and_then(|a| a.get("spawn_orphan"))

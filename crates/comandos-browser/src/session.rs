@@ -15,6 +15,7 @@ use std::{
 use tokio::{
     io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader},
     sync::{Mutex, mpsc},
+    task::JoinHandle,
 };
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -123,6 +124,9 @@ impl Registry {
             return None;
         }
         let mut entries = self.entries.lock().await;
+        if self.closing.load(Ordering::SeqCst) {
+            return None;
+        }
         if entries.len() >= 128 {
             return None;
         }
@@ -165,7 +169,7 @@ impl Registry {
             .get(id)
             .map(|entry| entry.notify.clone());
         if let Some(tx) = tx {
-            let _ = tx.send(value).await;
+            let _ = tx.try_send(value);
         }
     }
 
@@ -250,6 +254,24 @@ enum Incoming {
     Invalid(Value),
 }
 
+struct AbortOnDrop<T>(JoinHandle<T>);
+
+impl<T> AbortOnDrop<T> {
+    fn new(handle: JoinHandle<T>) -> Self {
+        Self(handle)
+    }
+
+    fn abort(&self) {
+        self.0.abort();
+    }
+}
+
+impl<T> Drop for AbortOnDrop<T> {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 pub async fn handle_client<S>(
     stream: S,
     catalog: Arc<Catalog>,
@@ -270,11 +292,12 @@ pub async fn handle_client<S>(
     let serve_registry = registry.clone();
     let serve_backend = backend.clone();
     let serve_pending = pending.clone();
-    let worker = tokio::spawn(async move {
+    let worker = AbortOnDrop::new(tokio::spawn(async move {
         let mut initialized = false;
         loop {
             tokio::select! {
                 Some(message) = rx.recv() => {
+                    let has_id = message.get("id").is_some();
                     dispatch_one(
                         serve_id.clone(),
                         &mut initialized,
@@ -284,7 +307,9 @@ pub async fn handle_client<S>(
                         serve_registry.clone(),
                         serve_writer.clone(),
                     ).await;
-                    serve_pending.fetch_sub(1, Ordering::SeqCst);
+                    if has_id {
+                        serve_pending.fetch_sub(1, Ordering::SeqCst);
+                    }
                     if serve_writer.closed() {
                         break;
                     }
@@ -295,7 +320,7 @@ pub async fn handle_client<S>(
                 else => break,
             }
         }
-    });
+    }));
 
     let mut reader = BufReader::new(reader);
     let mut buf = Vec::new();
@@ -318,7 +343,9 @@ pub async fn handle_client<S>(
                     match tx.try_send(message) {
                         Ok(()) => {}
                         Err(mpsc::error::TrySendError::Full(message)) => {
-                            pending.fetch_sub(1, Ordering::SeqCst);
+                            if message.get("id").is_some() {
+                                pending.fetch_sub(1, Ordering::SeqCst);
+                            }
                             if let Some(ident) = message.get("id").cloned() {
                                 writer
                                     .send(&error_response(

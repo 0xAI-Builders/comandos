@@ -19,7 +19,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin, Command},
     sync::{Mutex, mpsc, oneshot},
 };
@@ -79,6 +79,7 @@ impl Worker {
         cmd.stdin(std::process::Stdio::piped());
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
+        cmd.kill_on_drop(true);
         let mut child = cmd.spawn().map_err(|e| WorkerError::Io(e.to_string()))?;
         let stdout = child
             .stdout
@@ -114,7 +115,7 @@ impl Worker {
                             .and_then(Value::as_str)
                             .is_some_and(|method| method.starts_with("notifications/"))
                         {
-                            let _ = pump_notify.send(message).await;
+                            let _ = pump_notify.try_send(message);
                         }
                     }
                     Ok(Line::TooLarge | Line::Eof) | Err(_) => break,
@@ -127,22 +128,7 @@ impl Worker {
         let err_ring = stderr_ring.clone();
         let drain = tokio::spawn(async move {
             let mut reader = BufReader::new(stderr);
-            loop {
-                let mut chunk = Vec::new();
-                match reader.read_until(b'\n', &mut chunk).await {
-                    Ok(0) | Err(_) => break,
-                    Ok(_) => {
-                        if chunk.len() > 2048 {
-                            chunk.truncate(2048);
-                        }
-                        let mut ring = err_ring.lock().await;
-                        if ring.len() == 8 {
-                            ring.pop_front();
-                        }
-                        ring.push_back(String::from_utf8_lossy(&chunk).into_owned());
-                    }
-                }
-            }
+            drain_stderr(&mut reader, err_ring).await;
         });
         let worker = Self {
             inner: Arc::new(Mutex::new(Inner { child, stdin })),
@@ -158,40 +144,49 @@ impl Worker {
             "capabilities": {},
             "clientInfo": {"name":"comandos-browser","version":"1"}
         });
-        let response =
-            tokio::time::timeout(Duration::from_secs(20), worker.request("initialize", init))
+        let _response =
+            match tokio::time::timeout(Duration::from_secs(20), worker.request("initialize", init))
                 .await
-                .map_err(|_| WorkerError::Io("Worker initialization failed".to_owned()))??;
-        if response.get("error").is_some() {
-            return Err(WorkerError::Io("Worker initialization failed".to_owned()));
-        }
-        worker
+            {
+                Ok(Ok(response)) if response.get("error").is_none() => response,
+                _ => {
+                    let _ = Arc::new(worker).close(cfg.stop_grace).await;
+                    return Err(WorkerError::Io("Worker initialization failed".to_owned()));
+                }
+            };
+        if let Err(error) = worker
             .send_value(&json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
-            .await?;
+            .await
+        {
+            let _ = Arc::new(worker).close(cfg.stop_grace).await;
+            return Err(error);
+        }
         Ok(worker)
     }
 
     async fn send_value(&self, value: &Value) -> Result<(), WorkerError> {
         let bytes = encode_message(value).map_err(WorkerError::Json)?;
         let mut inner = self.inner.lock().await;
-        inner
-            .stdin
-            .write_all(&bytes)
-            .await
-            .map_err(|e| WorkerError::Io(e.to_string()))?;
-        inner
-            .stdin
-            .flush()
-            .await
-            .map_err(|e| WorkerError::Io(e.to_string()))
+        tokio::time::timeout(Duration::from_secs(10), async {
+            inner.stdin.write_all(&bytes).await?;
+            inner.stdin.flush().await
+        })
+        .await
+        .map_err(|_| WorkerError::Io("stdin write timed out".to_owned()))?
+        .map_err(|e| WorkerError::Io(e.to_string()))
     }
 
     pub async fn request(&self, method: &str, params: Value) -> Result<Value, WorkerError> {
         let id = self.counter.fetch_add(1, Ordering::SeqCst) + 1;
         let (tx, rx) = oneshot::channel();
         self.pending.lock().await.insert(id, tx);
-        self.send_value(&json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}))
-            .await?;
+        if let Err(error) = self
+            .send_value(&json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}))
+            .await
+        {
+            self.pending.lock().await.remove(&id);
+            return Err(error);
+        }
         let response = rx.await.map_err(|_| WorkerError::Disconnected)??;
         *self.last_used.lock().await = Instant::now();
         Ok(response)
@@ -274,6 +269,42 @@ fn remaining_live(proc_root: &Path, owned: &BTreeMap<i32, u64>) -> BTreeMap<i32,
             (state != "Z").then_some((*pid, *generation))
         })
         .collect()
+}
+
+async fn drain_stderr<R: AsyncBufRead + Unpin>(reader: &mut R, ring: Arc<Mutex<VecDeque<String>>>) {
+    let mut line = Vec::with_capacity(2048);
+    loop {
+        let available = match reader.fill_buf().await {
+            Ok(bytes) => bytes,
+            Err(_) => break,
+        };
+        if available.is_empty() {
+            if !line.is_empty() {
+                push_stderr(&ring, &line).await;
+            }
+            break;
+        }
+        let newline = available.iter().position(|&byte| byte == b'\n');
+        let count = newline.map_or(available.len(), |index| index + 1);
+        for &byte in &available[..count] {
+            if line.len() < 2048 {
+                line.push(byte);
+            }
+        }
+        reader.consume(count);
+        if newline.is_some() {
+            push_stderr(&ring, &line).await;
+            line.clear();
+        }
+    }
+}
+
+async fn push_stderr(ring: &Arc<Mutex<VecDeque<String>>>, chunk: &[u8]) {
+    let mut ring = ring.lock().await;
+    if ring.len() == 8 {
+        ring.pop_front();
+    }
+    ring.push_back(String::from_utf8_lossy(chunk).into_owned());
 }
 
 pub fn remote_error_text(value: &Value) -> String {
