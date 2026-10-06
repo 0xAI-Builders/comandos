@@ -11,6 +11,7 @@ pub mod router;
 pub mod statics;
 pub mod term;
 pub mod token;
+pub mod web;
 
 pub use token::{load_token, token_path};
 
@@ -57,6 +58,8 @@ pub struct DashConfig {
     pub home: PathBuf,
     /// Raíz de estáticos; sus entradas suelen ser symlinks al repositorio.
     pub dash_dir: PathBuf,
+    /// Artefactos web versionados de `xtask web-build`.
+    pub web_dir: PathBuf,
     pub token: Vec<u8>,
     /// `~/.claude/hooks/dash-token`: la puerta lo relee en cada petición (solo
     /// lo fija `from_env`; con `None` vale `token`, como en las pruebas).
@@ -89,6 +92,7 @@ impl fmt::Debug for DashConfig {
             .field("legacy_port", &self.legacy_port)
             .field("home", &self.home)
             .field("dash_dir", &self.dash_dir)
+            .field("web_dir", &self.web_dir)
             .field("token", &"<oculto>")
             .field("token_file", &self.token_file)
             .field("native", &self.native)
@@ -224,6 +228,7 @@ pub fn parse_args_env(
         legacy_port,
         home: home.to_path_buf(),
         dash_dir: default_dash_dir(home),
+        web_dir: PathBuf::from("target/web"),
         token: Vec::new(),
         token_file: None,
         native,
@@ -391,6 +396,16 @@ pub fn from_env(args: &[String]) -> Result<DashConfig, StartError> {
     let override_dir = std::env::var(DASH_DIR_ENV).ok();
     cfg.dash_dir = dash_dir(&home, override_dir.as_deref()).map_err(StartError::Config)?;
     cfg.repo_root = repo_root(&cfg.dash_dir, std::env::var(REPO_ENV).ok().as_deref());
+    let cwd = std::env::current_dir()
+        .map_err(|e| StartError::Config(format!("directorio actual: {e}")))?;
+    let workspace = cfg.repo_root.clone().unwrap_or_else(|| cwd.clone());
+    cfg.web_dir = comandos_core::web_assets::out_dir_from(
+        std::env::var_os("CARGO_TARGET_DIR")
+            .as_deref()
+            .map(Path::new),
+        &cwd,
+        &workspace,
+    );
     if std::env::var(NATIVE_ENV).is_ok_and(|v| v == "0") {
         cfg.native = false;
     }
@@ -460,7 +475,8 @@ pub fn handler(state: Arc<DashState>) -> Handler {
 
 async fn handle(state: &DashState, request: Request) -> Result<Reply, HandlerError> {
     if request.method == Method::GET && router::path_of(&request.target) == "/web/status" {
-        return term::lifecycle::reply_status(state, &request);
+        let web = web::WebState::new(&state.config);
+        return web::routes::status_with_term(&web, state.term_control.status());
     }
     if state.config.shadow_readonly && request.method != Method::GET {
         return Reply::json(
@@ -494,13 +510,17 @@ async fn handle(state: &DashState, request: Request) -> Result<Reply, HandlerErr
     {
         native.census().note(&request.method, &request.target);
     }
-    let class = router::classify_with(
+    let web_state = web::WebState::new(&state.config);
+    let web_exists = web_state.route_exists();
+    let class = router::classify_with_web(
         &request.method,
         &request.target,
         &*state.asset_exists,
         live.is_some(),
+        &web_exists,
     );
     match class {
+        RouteClass::Web(route) => web::routes::handle(state, route, &request).await,
         RouteClass::Native(route) => {
             let Some(native) = live else {
                 return forward_to_legacy(state, request).await;

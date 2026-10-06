@@ -27,6 +27,7 @@ fn main() {
         }),
         Command::Hook(args) => comandos_runtime::hooks::run(&args),
         Command::Dash(args) => comandos_server::dash::main(&args),
+        Command::Web(args) => comandos_cli::web::main(&args),
         Command::Webterm(args) => comandos_cli::webterm::main(&args),
         Command::WebtermAttach(args) => comandos_cli::webterm_attach::main(&args),
         Command::State(args) => comandos_cli::state::cli::main(&args),
@@ -36,7 +37,7 @@ fn main() {
         }
         Command::Help => {
             println!(
-                "uso: comandos <ext|hook|events|install|dash|webterm|webterm-attach|state|--version>"
+                "uso: comandos <ext|hook|events|install|dash|web|webterm|webterm-attach|state|--version>"
             );
             0
         }
