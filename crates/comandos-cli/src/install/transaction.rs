@@ -980,13 +980,21 @@ pub(crate) fn recover_with(
         journal.runtime = serde_json::from_value(runtime.clone()).map_err(|e| e.to_string())?;
         for effect in &journal.runtime {
             if effect.home != home
-                || effect.unit != "cc-telegram.service"
+                || !(effect.unit == "cc-telegram.service" && !effect.activation
+                    || effect.unit == "comandos-extensions-sync.timer" && effect.activation)
                 || (!effect.before.enabled && effect.before.runtime)
             {
                 return Err("unsupported runtime recovery effect".into());
             }
         }
-        if journal.runtime.len() > 1 {
+        if journal
+            .runtime
+            .iter()
+            .map(|e| &e.unit)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            != journal.runtime.len()
+        {
             return Err("duplicate runtime recovery effect".into());
         }
     }
@@ -1101,6 +1109,22 @@ struct RuntimeEffect {
     home: PathBuf,
     unit: String,
     before: super::plan::UnitState,
+    #[serde(default)]
+    activation: bool,
+    #[serde(default)]
+    compensating: bool,
+}
+impl RuntimeEffect {
+    fn admitted(&self, current: &super::plan::UnitState) -> bool {
+        if self.activation {
+            (!self.before.enabled || current.enabled || self.compensating)
+                && (!self.before.active || current.active)
+                && (!current.runtime || self.before.runtime)
+        } else {
+            (!current.enabled || self.before.enabled && current.runtime == self.before.runtime)
+                && (!current.active || self.before.active)
+        }
+    }
 }
 pub(crate) fn query_unit(
     home: &Path,
@@ -1131,7 +1155,7 @@ impl Journal {
         unit: &str,
         run: &mut dyn FnMut(&Action) -> Result<(), String>,
     ) -> Result<(), String> {
-        if unit != "cc-telegram.service" || !self.runtime.is_empty() {
+        if unit != "cc-telegram.service" || self.runtime.iter().any(|e| e.unit == unit) {
             return Err("unsupported/duplicate runtime retirement".into());
         }
         let before = query_unit(home, unit, true, run)?;
@@ -1139,12 +1163,61 @@ impl Journal {
             home: home.into(),
             unit: unit.into(),
             before,
+            activation: false,
+            compensating: false,
         });
         // disable removes this owned enablement link before archive selection.
         let wants = home.join(".config/systemd/user/default.target.wants/cc-telegram.service");
         if matches!(self.entries.get(&wants), Some(Before::Link(_))) {
             self.observed.insert(wants, Before::Absent);
         }
+        self.persist()
+    }
+    pub(crate) fn prepare_unit_activation(
+        &mut self,
+        home: &Path,
+        unit: &str,
+        run: &mut dyn FnMut(&Action) -> Result<(), String>,
+    ) -> Result<(), String> {
+        if unit != "comandos-extensions-sync.timer" || self.runtime.iter().any(|e| e.unit == unit) {
+            return Err("unsupported/duplicate runtime activation".into());
+        }
+        let before = query_unit(home, unit, false, run)?;
+        let wants = home
+            .join(".config/systemd/user/timers.target.wants")
+            .join(unit);
+        self.file(&wants)?;
+        let target = home.join(".config/systemd/user").join(unit);
+        match self.entries.get(&wants) {
+            Some(Before::Absent) => {
+                self.observed
+                    .insert(wants.clone(), Before::Link(target.clone()));
+            }
+            Some(Before::Link(link))
+                if *link == target || link == Path::new(&format!("../{unit}")) => {}
+            _ => {
+                return Err(format!(
+                    "custom timer enablement preserved: {}",
+                    wants.display()
+                ));
+            }
+        }
+        for (path, original) in &self.entries {
+            if wants.starts_with(path)
+                && path != &wants
+                && *original == Before::Absent
+                && path.symlink_metadata().is_err()
+            {
+                self.observed.insert(path.clone(), Before::Directory(0o755));
+            }
+        }
+        self.runtime.push(RuntimeEffect {
+            home: home.into(),
+            unit: unit.into(),
+            before,
+            activation: true,
+            compensating: false,
+        });
         self.persist()
     }
     fn runtime_error(&self, unit: &str, error: &str) -> String {
@@ -1186,14 +1259,38 @@ impl Journal {
                 .map_err(|error| self.runtime_error(&effect.unit, &error))?;
             // disable --now can fail after either half. Admit only the original
             // bits or their retired false values, never another enablement mode.
-            if (current.enabled
-                && (!effect.before.enabled || current.runtime != effect.before.runtime))
-                || (current.active && !effect.before.active)
-            {
+            if !effect.admitted(&current) {
                 return Err(self.runtime_error(
                     &effect.unit,
                     "runtime state changed outside retirement; preserved",
                 ));
+            }
+        }
+        // Stop newly activated timers before restoring their unit files. Persist
+        // inverse intent so a crash between disable and re-enable is recoverable.
+        for index in 0..self.runtime.len() {
+            if !self.runtime[index].activation {
+                continue;
+            }
+            self.runtime[index].compensating = true;
+            self.persist()?;
+            let effect = self.runtime[index].clone();
+            let current = query_unit(&effect.home, &effect.unit, false, run)?;
+            if current.active && !effect.before.active {
+                run(&Action::Systemctl {
+                    home: effect.home.clone(),
+                    args: vec!["--user".into(), "stop".into(), effect.unit.clone()],
+                })
+                .map_err(|e| self.runtime_error(&effect.unit, &e))?;
+            }
+            if current.enabled
+                && (!effect.before.enabled || current.runtime != effect.before.runtime)
+            {
+                run(&Action::Systemctl {
+                    home: effect.home.clone(),
+                    args: vec!["--user".into(), "disable".into(), effect.unit.clone()],
+                })
+                .map_err(|e| self.runtime_error(&effect.unit, &e))?;
             }
         }
         super::extension_mutations::rollback_documents(&self.documents)
@@ -1207,10 +1304,7 @@ impl Journal {
                 }
                 // This retirement only writes disabled/inactive. An unrelated
                 // state is preserved, not guessed into a prior configuration.
-                if (current.enabled
-                    && (!effect.before.enabled || current.runtime != effect.before.runtime))
-                    || (current.active && !effect.before.active)
-                {
+                if !effect.admitted(&current) {
                     return Err("runtime state changed outside retirement; preserved".into());
                 }
                 let action = |args: Vec<String>| Action::Systemctl {
@@ -1454,5 +1548,82 @@ mod runtime_tests {
         assert!(journal.runtime.is_empty());
         journal.rollback().unwrap();
         fs::remove_dir_all(home).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod timer_tests {
+    use super::*;
+    use crate::install::plan::UnitState;
+    #[test]
+    fn activation_failure_and_durable_recovery_restore_all_prior_timer_states() {
+        for (enabled, runtime) in [(false, false), (true, false), (true, true)] {
+            for active in [false, true] {
+                let home = std::env::temp_dir().join(format!(
+                    "timer-journal-{}-{enabled}-{runtime}-{active}",
+                    std::process::id()
+                ));
+                fs::create_dir(&home).unwrap();
+                let before = UnitState {
+                    enabled,
+                    runtime,
+                    active,
+                };
+                let mut state = before.clone();
+                let mut calls = Vec::new();
+                let mut run = |action: &Action| -> Result<(), String> {
+                    match action {
+                        Action::SystemctlState { unit, response, .. } => {
+                            assert_eq!(unit, "comandos-extensions-sync.timer");
+                            *response.borrow_mut() = Some(state.clone());
+                        }
+                        Action::Systemctl { args, .. } => {
+                            assert_eq!(args.last().unwrap(), "comandos-extensions-sync.timer");
+                            calls.push(args.clone());
+                            if args.iter().any(|a| a == "disable") {
+                                state.enabled = false;
+                                state.runtime = false;
+                            }
+                            if args.iter().any(|a| a == "enable") {
+                                state.enabled = true;
+                                state.runtime = args.iter().any(|a| a == "--runtime");
+                            }
+                            if args.iter().any(|a| a == "stop") {
+                                state.active = false;
+                            }
+                            if args.iter().any(|a| a == "start")
+                                || args.iter().any(|a| a == "--now")
+                            {
+                                state.active = true;
+                            }
+                        }
+                        _ => panic!("unexpected timer action"),
+                    }
+                    Ok(())
+                };
+                let mut journal = Journal::default();
+                journal.durable(&home).unwrap();
+                journal
+                    .prepare_unit_activation(&home, "comandos-extensions-sync.timer", &mut run)
+                    .unwrap();
+                let path = journal.durable.clone().unwrap();
+                run(&Action::Systemctl {
+                    home: home.clone(),
+                    args: vec![
+                        "--user".into(),
+                        "enable".into(),
+                        "--now".into(),
+                        "comandos-extensions-sync.timer".into(),
+                    ],
+                })
+                .unwrap();
+                drop(journal);
+                recover_with(&home, &path, &mut run).unwrap();
+                assert_eq!(state, before);
+                assert!(!path.exists());
+                assert!(!calls.is_empty());
+                fs::remove_dir_all(home).unwrap();
+            }
+        }
     }
 }

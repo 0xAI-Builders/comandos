@@ -215,7 +215,15 @@ pub fn run_with(
     let mut tracked_action = |action: &Action| {
         match action {
             Action::Systemctl { args, .. } => {
-                if args != &["--user", "disable", "--now", "cc-telegram.service"] {
+                if args != &["--user", "disable", "--now", "cc-telegram.service"]
+                    && args
+                        != &[
+                            "--user",
+                            "enable",
+                            "--now",
+                            "comandos-extensions-sync.timer",
+                        ]
+                {
                     external_effects.push(format!("systemctl {}", args.join(" ")))
                 }
             }

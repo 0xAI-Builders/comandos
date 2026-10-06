@@ -97,11 +97,22 @@ pub(crate) fn apply_with_journal(
             ));
         }
     }
+    if platform != Platform::Darwin {
+        journal.prepare_unit_activation(home, "comandos-extensions-sync.timer", run)?;
+    }
     for line in plan::apply_with_journal(&actions, run, journal)? {
         println!("{line}");
     }
     if platform != Platform::Darwin {
-        return Err("extension timer activation capability unavailable; transaction will restore admitted files/documents".into());
+        run(&Action::Systemctl {
+            home: home.into(),
+            args: vec![
+                "--user".into(),
+                "enable".into(),
+                "--now".into(),
+                "comandos-extensions-sync.timer".into(),
+            ],
+        })?;
     }
     Ok(())
 }

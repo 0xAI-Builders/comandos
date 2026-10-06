@@ -527,8 +527,7 @@ fn full_late_runtime_failure_restores_files_and_runs_same_unit_inverse_in_privat
 }
 
 #[test]
-fn full_extension_import_sync_nested_units_and_logical_rows_roll_back_before_unadmitted_timer_activation()
- {
+fn full_extension_import_sync_and_timer_partial_activation_roll_back_after_late_failure() {
     use comandos_store::unified::{self, Mode, Origin};
     for mode in [Mode::Legacy, Mode::Mirror, Mode::Unified, Mode::Sealed] {
         let home = Home::new();
@@ -571,6 +570,14 @@ fn full_extension_import_sync_nested_units_and_logical_rows_roll_back_before_una
         let before = unified::doc_get(&db, "state/extensions/snapshot.json").unwrap();
         drop(db);
         let mut calls = Vec::new();
+        let mut timer = comandos_cli::install::plan::UnitState {
+            enabled: false,
+            runtime: false,
+            active: false,
+        };
+        let wants = home
+            .0
+            .join(".config/systemd/user/timers.target.wants/comandos-extensions-sync.timer");
         let error = full::run_with(
             &[
                 "--home".into(),
@@ -580,22 +587,57 @@ fn full_extension_import_sync_nested_units_and_logical_rows_roll_back_before_una
                 "--extensions".into(),
             ],
             &mut |action| {
-                if let Action::Systemctl { args, .. } = action {
-                    calls.push(args.clone());
+                match action {
+                    Action::SystemctlState { unit, response, .. } => {
+                        assert_eq!(unit, "comandos-extensions-sync.timer");
+                        *response.borrow_mut() = Some(timer.clone());
+                    }
+                    Action::Systemctl { args, .. } => {
+                        calls.push(args.clone());
+                        if args.iter().any(|a| a == "enable") {
+                            fs::create_dir_all(wants.parent().unwrap()).unwrap();
+                            fs::set_permissions(
+                                wants.parent().unwrap(),
+                                fs::Permissions::from_mode(0o755),
+                            )
+                            .unwrap();
+                            symlink(
+                                home.0
+                                    .join(".config/systemd/user/comandos-extensions-sync.timer"),
+                                &wants,
+                            )
+                            .unwrap();
+                            timer.enabled = true;
+                            timer.active = true;
+                            return Err("private failure after timer activation".into());
+                        }
+                        if args.iter().any(|a| a == "stop") {
+                            timer.active = false;
+                        }
+                        if args.iter().any(|a| a == "disable") {
+                            fs::remove_file(&wants).unwrap();
+                            timer.enabled = false;
+                        }
+                    }
+                    _ => {}
                 }
                 Ok(())
             },
         )
         .unwrap_err();
         assert!(
-            error.contains("extension timer activation capability unavailable"),
+            error.contains("private failure after timer activation"),
             "mode={mode:?}: {error}"
         );
         assert!(
             !error.contains("rollback incomplete"),
             "mode={mode:?}: {error}"
         );
-        assert!(!calls.iter().any(|args| args.iter().any(|a| a == "enable")));
+        assert!(calls.iter().any(|args| args.iter().any(|a| a == "enable")));
+        assert!(calls.iter().any(|args| args.iter().any(|a| a == "stop")));
+        assert!(calls.iter().any(|args| args.iter().any(|a| a == "disable")));
+        assert!(!timer.enabled && !timer.active);
+        assert!(!wants.parent().unwrap().exists());
         assert_eq!(fs::read_link(pointer).unwrap(), old);
         assert_eq!(fs::read(config).unwrap(), config_bytes);
         assert_eq!(fs::read(oauth).unwrap(), oauth_bytes);
