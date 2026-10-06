@@ -46,6 +46,7 @@ pub enum Action {
         home: PathBuf,
         journal: PathBuf,
         operation: String,
+        quiescent: std::rc::Rc<std::cell::RefCell<bool>>,
     },
     Systemctl {
         home: PathBuf,

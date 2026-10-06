@@ -596,8 +596,13 @@ fn full_extension_import_sync_and_timer_partial_activation_roll_back_after_late_
                         home,
                         journal,
                         operation,
+                        quiescent,
                     } => {
-                        comandos_cli::install::extension_worker::execute(home, journal, operation)?;
+                        let result = comandos_cli::install::extension_worker::execute(
+                            home, journal, operation,
+                        );
+                        *quiescent.borrow_mut() = true;
+                        result?;
                     }
                     Action::SystemctlState { unit, response, .. } => {
                         assert_eq!(unit, "comandos-extensions-sync.timer");

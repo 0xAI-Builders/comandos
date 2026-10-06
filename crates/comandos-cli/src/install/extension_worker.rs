@@ -34,14 +34,31 @@ pub(crate) fn entry(args: &[String]) -> Result<i32, String> {
     let _guard = transaction::inherited_installation_lock(home)?;
     // This process watchdog also closes the lease if the parent disappears.
     // A blocked IO operation cannot continue in a detached mutation thread.
-    std::thread::spawn(|| {
-        std::thread::sleep(LIMIT);
-        std::process::exit(124);
-    });
+    start_watchdog(LIMIT)?;
     execute(home, Path::new(&args[1]), &args[2])?;
     Ok(0)
 }
-pub(crate) fn run(home: &Path, journal: &Path, operation: &str) -> Result<(), String> {
+fn start_watchdog(limit: Duration) -> Result<(), String> {
+    let group = nix::unistd::getpgrp();
+    if group != nix::unistd::getpid() {
+        return Err("worker is not its owned group leader".into());
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(limit);
+        // The live leader still owns/reserves this group; terminate descendants
+        // and ourselves together if the parent can no longer supervise us.
+        let _ = nix::sys::signal::killpg(group, nix::sys::signal::Signal::SIGKILL);
+        std::process::exit(124);
+    });
+    Ok(())
+}
+pub(crate) fn run(
+    home: &Path,
+    journal: &Path,
+    operation: &str,
+    quiescent: &Rc<RefCell<bool>>,
+) -> Result<(), String> {
+    *quiescent.borrow_mut() = true;
     let me = std::env::current_exe().map_err(|e| e.to_string())?;
     let mut command = Command::new(me);
     command
@@ -49,48 +66,75 @@ pub(crate) fn run(home: &Path, journal: &Path, operation: &str) -> Result<(), St
         .arg(home)
         .arg(journal)
         .arg(operation);
-    supervise(home, &mut command, LIMIT)
+    supervise_with_ack(home, &mut command, LIMIT, quiescent)
 }
+#[cfg(test)]
 fn supervise(home: &Path, command: &mut Command, limit: Duration) -> Result<(), String> {
+    supervise_with_ack(home, command, limit, &Rc::new(RefCell::new(false)))
+}
+fn supervise_with_ack(
+    home: &Path,
+    command: &mut Command,
+    limit: Duration,
+    quiescent: &Rc<RefCell<bool>>,
+) -> Result<(), String> {
+    *quiescent.borrow_mut() = true; // No worker exists on pre-spawn errors.
     let guard = transaction::installation_lock(home)?;
     command.env("HOME", home).current_dir(home);
     command
         .stdin(Stdio::from(guard.try_clone().map_err(|e| e.to_string())?))
         .process_group(0);
     let deadline = Instant::now() + limit;
-    let mut child = command.spawn().map_err(|e| e.to_string())?;
-    // Command retains configured Stdio after spawn. Drop its parent-side clone
-    // while the child keeps the inherited open description and this guard lives.
+    let spawned = command.spawn();
+    // Close Command's parent-side clone on spawn errors as well as success.
     command.stdin(Stdio::null());
+    let mut child = spawned.map_err(|e| e.to_string())?;
+    *quiescent.borrow_mut() = false;
     loop {
-        match child.try_wait() {
-            Ok(Some(status)) if status.success() => return Ok(()),
-            Ok(Some(status)) => return Err(format!("extension worker failed: {status}")),
-            Ok(None) => {}
-            Err(e) => {
-                let _ = nix::sys::signal::killpg(
-                    nix::unistd::Pid::from_raw(child.id() as i32),
-                    nix::sys::signal::Signal::SIGKILL,
-                );
-                child
-                    .wait()
-                    .map_err(|wait| format!("worker wait failed after {e}: {wait}"))?;
-                return Err(e.to_string());
-            }
+        let observed = comandos_runtime::procs::child_exited_unreaped(&child);
+        if observed
+            .as_ref()
+            .is_err_and(|e| e.kind() == std::io::ErrorKind::Interrupted)
+        {
+            continue;
         }
-        if Instant::now() >= deadline {
+        if observed
+            .as_ref()
+            .is_err_and(|e| e.raw_os_error() == Some(nix::libc::ECHILD))
+        {
+            // Ownership was lost to another reaper: never signal a reused group.
+            return Err(
+                "owned worker was reaped outside supervisor; group quiescence unproved".into(),
+            );
+        }
+        let timed_out = Instant::now() >= deadline;
+        if observed.as_ref().is_ok_and(|exited| *exited) || observed.is_err() || timed_out {
+            // WNOWAIT preserves the leader PID through this signal. No killpg
+            // is permitted after wait/reap, including normal success/error exits.
             let killed = nix::sys::signal::killpg(
                 nix::unistd::Pid::from_raw(child.id() as i32),
                 nix::sys::signal::Signal::SIGKILL,
             );
-            if killed.is_err() {
+            if let Err(error) = killed
+                && error != nix::errno::Errno::ESRCH
+            {
                 let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("owned worker group quiescence unproved: {error}"));
             }
-            child.wait().map_err(|e| e.to_string())?;
-            return Err(
-                "extension phase exceeded its 90-second deadline; owned worker killed and reaped"
-                    .into(),
-            );
+            let status = child.wait().map_err(|e| e.to_string())?;
+            *quiescent.borrow_mut() = true;
+            if let Err(error) = observed {
+                return Err(error.to_string());
+            }
+            if timed_out {
+                return Err("extension phase exceeded its 90-second deadline; owned worker killed and reaped".into());
+            }
+            return if status.success() {
+                Ok(())
+            } else {
+                Err(format!("extension worker failed: {status}"))
+            };
         }
         std::thread::sleep(Duration::from_millis(10));
     }
@@ -233,6 +277,122 @@ mod tests {
             fs::read(path.join("manifest.json")).unwrap(),
             b"invalid interrupted fixture"
         );
+        fs::remove_dir_all(home).unwrap();
+    }
+    #[test]
+    fn late_descendant_fixture() {
+        let Some(home) = std::env::var_os("COMANDOS_TEST_EXITED_LEADER_HOME") else {
+            return;
+        };
+        let home = std::path::PathBuf::from(home);
+        fs::write(home.join("descendant-ready"), b"ready").unwrap();
+        std::thread::sleep(Duration::from_millis(1000));
+        fs::write(home.join("descendant-late-write"), b"must not happen").unwrap();
+    }
+    #[test]
+    fn exited_leader_fixture() {
+        let Some(home) = std::env::var_os("COMANDOS_TEST_EXITED_LEADER_HOME") else {
+            return;
+        };
+        let home = std::path::PathBuf::from(home);
+        let child = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "install::extension_worker::tests::late_descendant_fixture",
+                "--nocapture",
+            ])
+            .stdin(Stdio::inherit())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !home.join("descendant-ready").exists() {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        drop(child); // The supervisor owns this inherited group, not this leader.
+        if std::env::var("COMANDOS_TEST_LEADER_EXIT").unwrap() == "watchdog" {
+            start_watchdog(Duration::from_millis(150)).unwrap();
+            std::thread::sleep(Duration::from_secs(60));
+        }
+        if std::env::var("COMANDOS_TEST_LEADER_EXIT").unwrap() == "17" {
+            std::process::exit(17);
+        }
+    }
+    #[test]
+    fn exited_success_and_error_leaders_cannot_leave_a_late_mutating_descendant() {
+        for code in ["0", "17", "watchdog"] {
+            let mut random = [0; 8];
+            getrandom::fill(&mut random).unwrap();
+            let home = std::env::temp_dir().join(format!(
+                "exited-extension-leader-{:x}",
+                u64::from_ne_bytes(random)
+            ));
+            fs::create_dir(&home).unwrap();
+            fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+            let mut command = Command::new(std::env::current_exe().unwrap());
+            command
+                .args([
+                    "--exact",
+                    "install::extension_worker::tests::exited_leader_fixture",
+                    "--nocapture",
+                ])
+                .env("COMANDOS_TEST_EXITED_LEADER_HOME", &home)
+                .env("COMANDOS_TEST_LEADER_EXIT", code);
+            let result = supervise(&home, &mut command, Duration::from_secs(3));
+            assert_eq!(result.is_ok(), code == "0");
+            assert!(home.join("descendant-ready").exists());
+            std::thread::sleep(Duration::from_millis(1200));
+            assert!(
+                !home.join("descendant-late-write").exists(),
+                "exited leader {code} left a mutating descendant"
+            );
+            fs::File::open(&home).unwrap().try_lock().unwrap();
+            fs::remove_dir_all(home).unwrap();
+        }
+    }
+    #[test]
+    fn unknown_worker_quiescence_retains_journal_and_prevents_file_rollback() {
+        let mut random = [0; 8];
+        getrandom::fill(&mut random).unwrap();
+        let home = std::env::temp_dir().join(format!(
+            "worker-quiescence-{:x}",
+            u64::from_ne_bytes(random)
+        ));
+        fs::create_dir(&home).unwrap();
+        let path = home.join("owned-file");
+        fs::write(&path, b"before").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let mut journal = transaction::Journal::default();
+        journal.file(&path).unwrap();
+        journal.durable(&home).unwrap();
+        journal.expect_file(&path, b"written", 0o600).unwrap();
+        fs::write(&path, b"written").unwrap();
+        let durable = journal.durable_path().unwrap().to_path_buf();
+        journal.refuse_rollback("owned worker group quiescence unproved");
+        assert!(
+            journal
+                .rollback()
+                .unwrap_err()
+                .contains("retained recovery journal")
+        );
+        assert!(durable.is_dir());
+        assert_eq!(fs::read(path).unwrap(), b"written");
+        fs::remove_dir_all(home).unwrap();
+    }
+    #[test]
+    fn failed_spawn_acknowledges_no_worker_and_drops_command_home_lease() {
+        let mut random = [0; 8];
+        getrandom::fill(&mut random).unwrap();
+        let home = std::env::temp_dir().join(format!(
+            "worker-spawn-failure-{:x}",
+            u64::from_ne_bytes(random)
+        ));
+        fs::create_dir(&home).unwrap();
+        let mut command = Command::new(home.join("absent-owned-program"));
+        let ack = Rc::new(RefCell::new(false));
+        assert!(supervise_with_ack(&home, &mut command, Duration::from_secs(1), &ack).is_err());
+        assert!(*ack.borrow());
+        fs::File::open(&home).unwrap().try_lock().unwrap();
         fs::remove_dir_all(home).unwrap();
     }
 }

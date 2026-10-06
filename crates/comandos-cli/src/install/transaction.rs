@@ -793,6 +793,9 @@ impl Journal {
             .as_deref()
             .ok_or_else(|| "durable extension journal absent".into())
     }
+    pub(crate) fn refuse_rollback(&mut self, error: &str) {
+        self.reload_error = Some(error.into());
+    }
     pub(crate) fn reload(&mut self, home: &Path) -> Result<(), String> {
         let loaded = match load_journal(home, self.durable_path()?) {
             Ok(journal) => journal,
