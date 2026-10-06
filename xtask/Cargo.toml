@@ -9,6 +9,7 @@ publish = false
 path = "src/lib.rs"
 
 [dependencies]
+comandos-runtime = { path = "../crates/comandos-runtime" }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json.workspace = true
 rusqlite.workspace = true

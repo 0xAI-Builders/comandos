@@ -20,3 +20,5 @@ pub mod web_port;
 pub use comandos_domdiff as dom_diff;
 
 pub mod mac;
+
+pub mod retire_check;

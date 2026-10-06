@@ -33,6 +33,8 @@ pub fn run(args: &[String]) -> Result<i32, String> {
     let mut extensions = false;
     let mut retarget = None;
     let mut restore = None;
+    let mut cleanup = false;
+    let mut cleanup_repo = None;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -52,6 +54,15 @@ pub fn run(args: &[String]) -> Result<i32, String> {
             }
             "--dry-run" if !dry => dry = true,
             "--extensions" if !extensions => extensions = true,
+            "--cleanup-legacy" if !cleanup => cleanup = true,
+            "--cleanup-repo" => {
+                let Some(value) = iter.next() else {
+                    return Ok(2);
+                };
+                if cleanup_repo.replace(PathBuf::from(value)).is_some() {
+                    return Ok(2);
+                }
+            }
             "--restore-legacy" => {
                 let Some(value) = iter.next() else {
                     return Ok(2);
@@ -78,6 +89,18 @@ pub fn run(args: &[String]) -> Result<i32, String> {
             "HOME must be an existing directory: {}",
             home.display()
         ));
+    }
+    if cleanup {
+        if source.is_some() || extensions || retarget.is_some() || restore.is_some() {
+            return Ok(2);
+        }
+        let Some(repo) = cleanup_repo else {
+            return Ok(2);
+        };
+        return super::retirement::run(&home, &repo, dry);
+    }
+    if cleanup_repo.is_some() {
+        return Ok(2);
     }
     if let Some(backup) = restore {
         if source.is_some() || extensions || retarget.is_some() {

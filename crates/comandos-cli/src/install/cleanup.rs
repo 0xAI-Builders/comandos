@@ -72,6 +72,16 @@ fn hash(path: &Path) -> Result<String, String> {
 }
 
 pub fn stage(home: &Path, paths: &[PathBuf], dry: bool) -> Result<Option<PathBuf>, String> {
+    stage_admitted(home, paths, dry, &mut || Ok(()))
+}
+
+/// Recheck consumers under the cleanup lock before recording or moving files.
+pub fn stage_admitted(
+    home: &Path,
+    paths: &[PathBuf],
+    dry: bool,
+    admission: &mut dyn FnMut() -> Result<(), String>,
+) -> Result<Option<PathBuf>, String> {
     super::release::check_app_parents(&home.join("placeholder"))?;
     let mut entries = Vec::new();
     for (i, path) in paths.iter().enumerate() {
@@ -92,10 +102,12 @@ pub fn stage(home: &Path, paths: &[PathBuf], dry: bool) -> Result<Option<PathBuf
         }
     }
     if dry || entries.is_empty() {
+        admission()?;
         return Ok(None);
     }
     let _lock = FileLock::exclusive(&home.join(".local/share/comandos/install-cleanup.lock"))
         .map_err(|e| e.to_string())?;
+    admission()?;
     let mut nonce = [0u8; 8];
     getrandom::fill(&mut nonce).map_err(|e| e.to_string())?;
     let id = format!(

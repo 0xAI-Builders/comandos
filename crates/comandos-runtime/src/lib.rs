@@ -140,3 +140,5 @@ pub mod mcp_descriptions;
 pub mod session_profiles;
 
 mod profile_yaml;
+
+pub mod retirement;

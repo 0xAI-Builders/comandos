@@ -96,6 +96,7 @@ fn main() {
         Some("lint") => exit(xtask::lint::main(&args[1..])),
         Some("css-orphans") => exit(xtask::css_orphans::main(&args[1..])),
         Some("cli-catalog") => exit(xtask::cli_catalog::main(&args[1..])),
+        Some("retire-check") => exit(xtask::retire_check::main(&args[1..])),
         _ => {
             eprintln!(
                 "subcomandos: rss, parity, poll, app-drift, app-shot, app-layout, shots, png-diff, dom-diff, fixtures, web-build, web-bench, web-inventory, web-port, browser-e2e, lint, css-orphans, cli-catalog, mac-check, mac-bundle, mac-sync"
