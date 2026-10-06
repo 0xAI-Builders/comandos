@@ -9,6 +9,7 @@ pub mod forward;
 pub mod native;
 pub mod router;
 pub mod statics;
+pub mod term;
 pub mod token;
 
 pub use token::{load_token, token_path};

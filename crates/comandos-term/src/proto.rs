@@ -54,9 +54,8 @@ const ROWS: std::ops::RangeInclusive<u16> = 1..=500;
 /// de json-c (`{ "k": v, … }`). Este literal se obtuvo de la libjson-c 0.15
 /// que enlaza `/usr/bin/ttyd` siguiendo ese mismo algoritmo.
 ///
-/// PROVISIONAL hasta que la prueba diferencial de A3
-/// (`crates/comandos-server/tests/term_ttyd_frames.rs`) lo compare con la
-/// trama de un ttyd real; desde entonces esa prueba lo vigila.
+/// La prueba diferencial del servidor contra ttyd 1.6.3 vigila este literal
+/// byte por byte (incluidos orden y espacios de json-c).
 pub const TTY_PREFS: &str = concat!(
     r##"{ "theme": { "background": "#0A0D13", "foreground": "#EAF0FB", "cursor": "#FFAE1A", "##,
     r##""selectionBackground": "#2E3852" }, "fontSize": 11, "##,

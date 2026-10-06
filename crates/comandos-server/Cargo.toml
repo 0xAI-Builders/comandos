@@ -6,6 +6,9 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+comandos-term = { path = "../comandos-term" }
+pty-process = { version = "=0.5.3", features = ["async"] }
+tokio-tungstenite = { version = "=0.30.0", default-features = false, features = ["handshake", "connect"] }
 comandos-core = { path = "../comandos-core" }
 comandos-store = { path = "../comandos-store" }
 comandos-runtime = { path = "../comandos-runtime" }
@@ -19,10 +22,10 @@ http-body = "=1.1.0"
 http-body-util = "=0.1.5"
 hyper = { version = "=1.11.1", default-features = false, features = ["server", "client", "http1"] }
 hyper-util = { version = "=0.1.21", default-features = false, features = ["tokio"] }
-tokio = { version = "=1.53.1", default-features = false, features = ["rt", "macros", "net", "sync", "time", "io-util", "signal", "process"] }
+tokio = { version = "=1.53.1", default-features = false, features = ["rt", "macros", "net", "sync", "time", "io-util", "signal", "process", "fs"] }
 sha2.workspace = true
 getrandom.workspace = true
-futures-util = { version = "=0.3.34", default-features = false, features = ["std", "async-await"] }
+futures-util = { version = "=0.3.34", default-features = false, features = ["std", "async-await", "sink"] }
 # `kill(pid, 0)` como el `os.kill` del Python; misma versión y rasgos que comandos-extensions.
 nix = { version = "0.31", features = ["signal", "process", "user", "fs", "resource"] }
 # Expresiones fijas de `read_states` (pista de Codex, Claude ocupado, modelos caros).
