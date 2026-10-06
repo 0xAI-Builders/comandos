@@ -1,0 +1,18 @@
+[package]
+name = "comandos-web-view"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Plantillas del tablero en Rust: maud y los escapes del JS heredado (puro, host y wasm32)."
+
+[dependencies]
+# Solo la macro y su escape: sin runtime ni dependencias web.
+maud = "=0.27.0"
+
+[dev-dependencies]
+comandos-domdiff = { path = "../comandos-domdiff" }
+scraper = { version = "=0.27.0", default-features = false }
+
+[lints]
+workspace = true

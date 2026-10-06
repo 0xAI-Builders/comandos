@@ -1,0 +1,29 @@
+[package]
+name = "comandos-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "WASM del tablero (Fase 3b): registro de componentes portados y arranque (`boot`)."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+comandos-web-dom = { path = "../comandos-web-dom" }
+comandos-web-view = { path = "../comandos-web-view" }
+# `Component::mount` devuelve `Result<(), JsValue>`: el tipo compila en host.
+wasm-bindgen = "=0.2.129"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "=0.3.106"
+web-sys = { version = "=0.3.106", features = ["Document", "Element", "HtmlMetaElement", "Window"] }
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.79"
+
+[lints]
+workspace = true

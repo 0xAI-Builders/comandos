@@ -1,0 +1,7 @@
+{
+  "page": "/",
+  "widths": [1400, 844, 390, 320],
+  "components": ["#topbar", "#tabbar", "#btn-terminal", "#btn-usage", "#btn-settings", "#limits-strip"],
+  "remote_only": ["#term-toolbar"],
+  "remote_query": "__devwebterm=1"
+}

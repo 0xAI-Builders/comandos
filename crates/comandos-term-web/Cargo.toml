@@ -1,0 +1,96 @@
+[package]
+name = "comandos-term-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Terminal de ComandOS en el navegador: renderizador canvas 2D por daños sobre comandos-term (sustituye xterm.js + addon-canvas)."
+
+[lib]
+# `cdylib` para `web-build`; `rlib` para las pruebas en host.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+comandos-term = { path = "../comandos-term" }
+comandos-web-dom = { path = "../comandos-web-dom" }
+serde_json.workspace = true
+wasm-bindgen-futures = "=0.4.79"
+wasm-bindgen = "=0.2.129"
+js-sys = "=0.3.106"
+web-sys = { version = "=0.3.106", features = [
+    "AddEventListenerOptions",
+    "BinaryType",
+    "WebSocket",
+    "MessageEvent",
+    "CloseEvent",
+    "Location",
+    "Url",
+    "UrlSearchParams",
+    "VisualViewport",
+    "Headers",
+    "RequestInit",
+    "RequestCache",
+    "Response",
+    "AbortController",
+    "AbortSignal",
+    "CanvasPattern",
+    "CanvasRenderingContext2d",
+    "Clipboard",
+    "ClipboardEvent",
+    "CompositionEvent",
+    "CssStyleDeclaration",
+    "DataTransfer",
+    "Document",
+    "DomRect",
+    "DomTokenList",
+    "Element",
+    "Event",
+    "EventTarget",
+    "FocusOptions",
+    "FontFace",
+    "FontFaceLoadStatus",
+    "FontFaceSet",
+    "HtmlAnchorElement",
+    "HtmlCanvasElement",
+    "HtmlDocument",
+    "HtmlElement",
+    "HtmlTextAreaElement",
+    "ImageData",
+    "InputEvent",
+    "KeyboardEvent",
+    "MouseEvent",
+    "Navigator",
+    "Node",
+    "Path2d",
+    "Performance",
+    "ResizeObserver",
+    "ResizeObserverBoxOptions",
+    "ResizeObserverOptions",
+    "TextMetrics",
+    "Touch",
+    "TouchEvent",
+    "TouchList",
+    "UiEvent",
+    "WheelEvent",
+    "Window",
+] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+serde_json.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.79"
+wasm-bindgen-futures = "=0.4.79"
+# Solo para construir eventos en las pruebas de navegador.
+web-sys = { version = "=0.3.106", features = [
+    "ClipboardEventInit",
+    "CompositionEventInit",
+    "InputEventInit",
+    "KeyboardEventInit",
+    "MouseEventInit",
+    "NodeList",
+    "WheelEventInit",
+] }
+
+[lints]
+workspace = true

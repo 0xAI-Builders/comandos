@@ -9,11 +9,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Directorio de artefactos web que `--stage` copia a la release (T4).
+const WEB_SOURCE_ENV: &str = "COMANDOS_WEB_SOURCE";
 const HOOK_NAMES: &[&str] = &["cc-notify.sh", "cc-status.sh", "cc-usage-tool.sh"];
-const USAGE: &str = "uso: comandos install [--home DIR] (--stage | --link NOMBRE | --rollback NOMBRE | --rollback-release | --releases)";
+const USAGE: &str = "uso: comandos install [--home DIR] (--stage [--web DIR] | --link NOMBRE | --rollback NOMBRE | --rollback-release | --releases)";
 
 enum Action {
-    Stage,
+    Stage(Option<PathBuf>),
     Link(String),
     Rollback(String),
     RollbackRelease,
@@ -28,10 +30,22 @@ pub fn run(args: &[String]) -> Result<i32, String> {
     };
     let staged = home.join(".local/share/comandos/bin/comandos");
     match action {
-        Action::Stage => {
+        Action::Stage(flag) => {
             let me = std::env::current_exe()
                 .map_err(|e| format!("no se pudo ubicar el ejecutable: {e}"))?;
-            release::stage_release(&home, &me)?;
+            let web = web_source(flag, &me);
+            let r = release::stage_release(&home, &me, &web)?;
+            match (&web, r.web_files) {
+                (
+                    release::WebSource::Explicit(p) | release::WebSource::OwnRelease { dir: p, .. },
+                    Some(n),
+                ) => {
+                    // Ruta canónica: el operador ve exactamente qué se instaló.
+                    let shown = fs::canonicalize(p).unwrap_or_else(|_| p.clone());
+                    println!("release {} (web: {}, {n} archivos)", r.id, shown.display())
+                }
+                _ => println!("release {} (sin web)", r.id),
+            }
         }
         Action::RollbackRelease => {
             let r = release::rollback_release(&home)?;
@@ -56,6 +70,7 @@ pub fn run(args: &[String]) -> Result<i32, String> {
 fn parse(args: &[String]) -> Option<(PathBuf, Action)> {
     let mut home = std::env::var("HOME").ok().map(PathBuf::from);
     let mut action = None;
+    let mut web = None;
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         let next = match arg.as_str() {
@@ -63,7 +78,14 @@ fn parse(args: &[String]) -> Option<(PathBuf, Action)> {
                 home = Some(PathBuf::from(it.next()?));
                 continue;
             }
-            "--stage" => Action::Stage,
+            "--web" => {
+                // Repetido es un error de uso: no gana el último en silencio.
+                if web.replace(PathBuf::from(it.next()?)).is_some() {
+                    return None;
+                }
+                continue;
+            }
+            "--stage" => Action::Stage(None),
             "--link" => Action::Link(it.next()?.clone()),
             "--rollback-release" => Action::RollbackRelease,
             "--releases" => Action::Releases,
@@ -74,7 +96,44 @@ fn parse(args: &[String]) -> Option<(PathBuf, Action)> {
             return None;
         }
     }
-    Some((home?, action?))
+    // `--web` solo acompaña a `--stage`.
+    let action = match (action?, web) {
+        (Action::Stage(_), web) => Action::Stage(web),
+        (_, Some(_)) => return None,
+        (other, None) => other,
+    };
+    Some((home?, action))
+}
+
+/// Origen de `web/` para `--stage` (T4). Siempre explícito: `--web DIR`, si no
+/// `COMANDOS_WEB_SOURCE` (vacío = sin web). Nunca se deduce de `../web` ni de otro
+/// vecino del binario: un `target/web` viejo o un `~/web` ajeno no deben colarse.
+/// Única excepción: re-instalar desde `releases/<id>/comandos`, cuyo `web/` hermano
+/// es de esa release (y `stage_release` comprueba que el id recalculado sea `<id>`).
+fn web_source(flag: Option<PathBuf>, exe: &Path) -> release::WebSource {
+    use release::WebSource;
+    if let Some(p) = flag {
+        return WebSource::Explicit(p);
+    }
+    if let Some(v) = std::env::var_os(WEB_SOURCE_ENV) {
+        return if v.is_empty() {
+            WebSource::None
+        } else {
+            WebSource::Explicit(PathBuf::from(v))
+        };
+    }
+    let own = exe.parent().and_then(|dir| {
+        let id = dir.file_name()?.to_str()?;
+        let in_releases = dir.parent()?.file_name()? == "releases";
+        let web = dir.join("web");
+        (in_releases && valid(id).is_ok() && web.symlink_metadata().is_ok()).then(|| {
+            WebSource::OwnRelease {
+                dir: web,
+                id: id.to_string(),
+            }
+        })
+    });
+    own.unwrap_or(WebSource::None)
 }
 
 fn valid(name: &str) -> Result<&str, String> {

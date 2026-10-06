@@ -1,0 +1,24 @@
+[
+  {
+    "id": "smoke",
+    "page": "/smoke.html",
+    "widths": [1400, 844, 390, 320],
+    "dpr": [1, 2],
+    "touch": false,
+    "selectors": ["#topbar", "#usage"],
+    "mask": ["#clock"],
+    "channel": 24,
+    "ratio": 0.001
+  },
+  {
+    "id": "smoke-touch",
+    "page": "/smoke.html",
+    "widths": [390],
+    "dpr": [2],
+    "touch": true,
+    "selectors": ["#usage"],
+    "mask": ["#clock"],
+    "channel": 24,
+    "ratio": 0.001
+  }
+]

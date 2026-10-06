@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/comandos-core", "crates/comandos-store", "crates/comandos-runtime", "crates/comandos-extensions", "crates/comandos-server", "crates/comandos-cli", "crates/comandos-notifyd", "crates/comandos-app", "xtask"]
+members = ["crates/comandos-core", "crates/comandos-store", "crates/comandos-runtime", "crates/comandos-extensions", "crates/comandos-server", "crates/comandos-cli", "crates/comandos-notifyd", "crates/comandos-app", "xtask", "crates/comandos-term", "crates/comandos-domdiff", "crates/comandos-term-web", "crates/comandos-web-view", "crates/comandos-web-dom", "crates/comandos-web"]
 resolver = "3"
 
 [workspace.package]
@@ -21,5 +21,18 @@ lto = "thin"
 codegen-units = 1
 strip = "symbols"
 
+# WASM de la Fase 3 (`cargo run -p xtask -- web-build`): tamaño ante todo.
+[profile.release-wasm]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
+
+# `alacritty_terminal` vendorizado con el parche wasm (vendor/alacritty_terminal/COMANDOS-PATCH.md).
+[patch.crates-io]
+alacritty_terminal = { path = "vendor/alacritty_terminal" }
