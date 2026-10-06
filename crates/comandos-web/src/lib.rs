@@ -67,6 +67,7 @@ pub mod components {
     #[cfg(target_arch = "wasm32")]
     pub(crate) mod web_support;
     pub mod work_marks;
+    pub mod workspace;
     pub mod workspace_layout;
 }
 
