@@ -3,7 +3,10 @@ use crate::{HandlerError, Reply, Request};
 use http::StatusCode;
 use linkify::{LinkFinder, LinkKind};
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd, html};
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::LazyLock,
+};
 
 pub const MAX_INPUT_BYTES: usize = 256 * 1024;
 #[derive(Debug, Clone, Copy)]
@@ -242,12 +245,11 @@ fn html_as_text(text: &str, options: Options) -> HtmlText {
     HtmlText { source, marker }
 }
 fn tail(text: &str, url: &str) -> String {
-    let Ok(pattern) =
+    static HOST_LABEL: LazyLock<regex::Regex> = LazyLock::new(|| {
         regex::Regex::new(r"(?i)^(?:https?://)?((?:[a-z0-9-]+\.)+[a-z]{2,})(?:[/:?#]\S*)?$")
-    else {
-        return String::new();
-    };
-    let label = pattern
+            .expect("valid static news host-label pattern")
+    });
+    let label = HOST_LABEL
         .captures(text.trim())
         .and_then(|c| c.get(1))
         .map(|m| m.as_str().trim_start_matches("www.").to_lowercase());
@@ -285,36 +287,66 @@ fn numeric_entity_end(text: &str, start: usize, end: usize) -> usize {
         end
     }
 }
+// LinkFinder accepts Unicode spaces inside URL paths. The original matcher
+// treats Unicode whitespace and C0/C1 controls as boundaries, but keeps FEFF
+// and ZWSP in the URL. Split before matching so punctuation trimming applies
+// at the real boundary and subsequent URLs are still visited. This streams
+// borrowed segments without allocating a collection of matches.
+fn autolinks<'a>(
+    text: &'a str,
+    finder: &'a LinkFinder,
+) -> impl Iterator<Item = std::ops::Range<usize>> + 'a {
+    let delimiter = |ch: char| ch.is_whitespace() || ch.is_control();
+    text.split_inclusive(delimiter)
+        .scan(0, move |at, segment| {
+            let start = *at;
+            *at += segment.len();
+            Some((start, segment.trim_end_matches(delimiter)))
+        })
+        .flat_map(move |(start, segment)| {
+            finder
+                .links(segment)
+                .map(move |link| start + link.start()..start + link.end())
+        })
+}
 fn linkified(text: &str) -> String {
     let mut finder = LinkFinder::new();
     finder.kinds(&[LinkKind::Url]).url_must_have_scheme(true);
     let mut out = String::new();
     let mut at = 0;
-    for link in finder.links(text) {
+    for link in autolinks(text, &finder) {
         // fuzzyEmail=false: a domain within an e-mail is not a link either.
-        if text.get(..link.start()).is_some_and(|s| s.ends_with('@')) {
+        if text.get(..link.start).is_some_and(|s| s.ends_with('@')) {
             continue;
         }
-        let end = numeric_entity_end(text, link.start(), link.end());
+        let end = numeric_entity_end(text, link.start, link.end);
         let visible = text
-            .get(link.start()..end)
+            .get(link.start..end)
             .unwrap_or_default()
             .split(['«', '»', '“', '”', '‘', '’', '…'])
             .next()
             .unwrap_or_default();
-        let href = if visible.contains("://") {
+        let mut href = if visible.contains("://") {
             visible.replace('\\', "%5C")
         } else {
             format!("http://{visible}")
         };
+        // These are non-delimiters. Preserve the original href spelling while
+        // leaving the displayed URL's Unicode text untouched.
+        if href.contains('\u{feff}') {
+            href = href.replace('\u{feff}', "%EF%BB%BF");
+        }
+        if href.contains('\u{200b}') {
+            href = href.replace('\u{200b}', "%E2%80%8B");
+        }
         if !http_url(&href) {
             continue;
         }
-        out.push_str(&esc(text.get(at..link.start()).unwrap_or_default()));
+        out.push_str(&esc(text.get(at..link.start).unwrap_or_default()));
         out.push_str(&anchor(&href, ""));
         out.push_str(&esc(visible));
         out.push_str("</a>");
-        at = link.start() + visible.len();
+        at = link.start + visible.len();
     }
     out.push_str(&esc(text.get(at..).unwrap_or_default()));
     out
@@ -361,18 +393,16 @@ fn restore_autolink_source(
     finder.kinds(&[LinkKind::Url]).url_must_have_scheme(true);
     let mut out = String::new();
     let mut at = 0;
-    for link in finder.links(&raw) {
-        if !(link.as_str().contains('\\') || link.as_str().contains("&#"))
-            || !http_url(link.as_str())
-        {
+    for link in autolinks(&raw, &finder) {
+        let matched = raw.get(link.clone()).unwrap_or_default();
+        if !(matched.contains('\\') || matched.contains("&#")) || !http_url(matched) {
             continue;
         }
-        if raw.get(..link.start()).is_some_and(|s| s.ends_with('@')) {
+        if raw.get(..link.start).is_some_and(|s| s.ends_with('@')) {
             continue;
         }
-        let mut end = numeric_entity_end(&raw, link.start(), link.end());
-        let (Some(source_start), Some(source_end)) = (source_at(link.start()), source_at(end))
-        else {
+        let mut end = numeric_entity_end(&raw, link.start, link.end);
+        let (Some(source_start), Some(source_end)) = (source_at(link.start), source_at(end)) else {
             continue;
         };
         let mut end_decoded = offset(source_end);
@@ -381,7 +411,7 @@ fn restore_autolink_source(
         // while linkified independently applies the contextual URL boundary.
         // This recovers raw bytes; it does not add the semicolon to the href.
         if end_decoded.is_none()
-            && numeric_entity_terminator(&raw, link.start(), end)
+            && numeric_entity_terminator(&raw, link.start, end)
             && let Some(decoded_end) = source_at(end + 1).and_then(offset)
         {
             end += 1;
@@ -400,7 +430,7 @@ fn restore_autolink_source(
             continue;
         }
         out.push_str(prefix);
-        out.push_str(raw.get(link.start()..end).unwrap_or_default());
+        out.push_str(raw.get(link.start..end).unwrap_or_default());
         at = end_decoded;
     }
     out.push_str(decoded.get(at..).unwrap_or_default());

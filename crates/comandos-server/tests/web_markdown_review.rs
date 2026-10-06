@@ -115,3 +115,19 @@ fn numeric_entity_url_boundaries_match_original_context() {
     }).collect::<Vec<_>>();
     assert!(differences.is_empty(), "{differences:?}");
 }
+
+#[test]
+fn unicode_autolink_delimiters_match_original_without_swallowing_suffixes() {
+    let cases: serde_json::Value =
+        serde_json::from_str(&comandos_web_view::utf16::json_to_unicode(include_str!(
+            "../../../xtask/web/fixtures/b8/review-v4-baselines.json"
+        )))
+        .unwrap();
+    let differences = cases["cases"].as_array().unwrap().iter().filter_map(|row| {
+        let source = row["text"].as_str().unwrap();
+        let candidate = render(source, Profile::News);
+        comandos_domdiff::first_difference(row["baseline"].as_str().unwrap(), &candidate)
+            .map(|difference| serde_json::json!({"text":source,"candidate":candidate,"difference":difference}))
+    }).collect::<Vec<_>>();
+    assert!(differences.is_empty(), "{differences:?}");
+}

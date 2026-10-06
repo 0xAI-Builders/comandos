@@ -55,7 +55,7 @@ try{
  const reviewOriginal=original.createRenderer(md,actualPurify);
  const reviewActual=NewsReader.createRenderer(undefined,undefined);
  const reviewPairs=[];
- for(const fixture of ['review-baselines.json','repair-grammar.json','review-v2-baselines.json','review-v3-baselines.json']){
+ for(const fixture of ['review-baselines.json','repair-grammar.json','review-v2-baselines.json','review-v3-baselines.json','review-v4-baselines.json']){
   const rows=JSON.parse(fs.readFileSync(repo+'/xtask/web/fixtures/b8/'+fixture,'utf8')).cases;
   for(const row of rows){
    assert.equal(reviewOriginal(row.text),row.baseline,'immutable original '+row.text);

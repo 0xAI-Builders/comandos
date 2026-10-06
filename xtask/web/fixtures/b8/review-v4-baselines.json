@@ -1,0 +1,475 @@
+{
+  "provenance": "Unchanged CJS originals from independent v4 review; 3 numeric entities x 31 delimiter contexts, including FEFF/ZWSP non-delimiters. Baselines are asserted against real markdown-it + DOMPurify on every actual-WASM run.",
+  "cases": [
+    {
+      "text": "<b>https://example.org/a_(x)&#8261;</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261;</a>&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261;\tend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>;\tend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261;\nend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>;\nend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>;&nbsp;end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261;﻿end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261;%EF%BB%BFend\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261;﻿end</a>&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261;​end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261;%E2%80%8Bend\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261;​end</a>&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261;\u0001end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>;\u0001end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045;</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045;</a>&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045;\tend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>;\tend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045;\nend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>;\nend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>;&nbsp;end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045;﻿end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045;%EF%BB%BFend\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045;﻿end</a>&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045;​end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045;%E2%80%8Bend\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045;​end</a>&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045;\u0001end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>;\u0001end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65;</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65;</a>&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65;\tend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>;\tend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65;\nend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>;\nend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>;&nbsp;end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65;﻿end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65;%EF%BB%BFend\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65;﻿end</a>&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65;​end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65;%E2%80%8Bend\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65;​end</a>&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65;\u0001end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>;\u0001end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261;\rend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>;\nend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261;\u000bend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>;\u000bend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261;\fend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>;\fend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261;　end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>;　end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261;end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>;end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261;\u001fend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>;\u001fend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261;end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>;end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045;\rend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>;\nend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045;\u000bend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>;\u000bend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045;\fend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>;\fend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045;　end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>;　end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045;end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>;end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045;\u001fend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>;\u001fend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045;end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045</a>;end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65;\rend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>;\nend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65;\u000bend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>;\u000bend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65;\fend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>;\fend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>; end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65;　end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>;　end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65;end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>;end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65;\u001fend</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>;\u001fend&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#65;end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#65\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#65</a>;end&lt;/b&gt;</p>\n",
+      "origin": "immutable independent review v4"
+    },
+    {
+      "text": "https://example.org/first end https://example.org/second",
+      "baseline": "<p><a href=\"https://example.org/first\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/first</a>&nbsp;end <a href=\"https://example.org/second\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/second</a></p>\n",
+      "origin": "original CJS + real DOMPurify, Unicode delimiter with second URL"
+    }
+  ]
+}
