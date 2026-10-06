@@ -21,6 +21,7 @@ use std::{
 pub type TextCallback = Rc<dyn Fn(&str)>;
 pub type ExitCallback = Rc<dyn Fn(i32)>;
 pub type ScrollCallback = Rc<dyn Fn(&str, i32, u16, u16)>;
+pub type ContextCallback = Rc<dyn Fn(&gdk::EventButton, (u16, u16))>;
 pub struct TermOptions {
     pub argv: Vec<String>,
     pub cwd: PathBuf,
@@ -82,6 +83,7 @@ struct Inner {
     write_source: RefCell<Option<SourceId>>,
     timer: RefCell<Option<SourceId>>,
     closed: Cell<bool>,
+    context_menu: RefCell<Option<ContextCallback>>,
 }
 pub struct TermView {
     inner: Rc<Inner>,
@@ -160,6 +162,7 @@ impl TermView {
             write_source: RefCell::new(None),
             timer: RefCell::new(None),
             closed: Cell::new(false),
+            context_menu: RefCell::new(None),
         });
         inner.configure_font();
         connect_events(&inner);
@@ -182,6 +185,19 @@ impl TermView {
             }
         }
         self.inner.model.borrow_mut().pty.take();
+    }
+    pub fn on_context_menu(&self, callback: ContextCallback) {
+        *self.inner.context_menu.borrow_mut() = Some(callback);
+    }
+    pub fn show_finished(&self, message: &str) {
+        self.shutdown();
+        self.inner
+            .model
+            .borrow_mut()
+            .engine
+            .feed(format!("\r\n{message}\r\n").as_bytes(), Instant::now());
+        self.inner.area.queue_draw();
+        self.inner.area.set_tooltip_text(Some(message));
     }
     pub fn widget(&self) -> &gtk::DrawingArea {
         &self.inner.area
@@ -838,6 +854,12 @@ fn connect_events(inner: &Rc<Inner>) {
         area.grab_focus();
         let (x, y) = event.position();
         let (col, row) = inner.point(x, y);
+        if event.button() == 3
+            && let Some(callback) = inner.context_menu.borrow().as_ref()
+        {
+            callback(event, (col, row));
+            return glib::Propagation::Stop;
+        }
         let mods = modifiers(event.state());
         if event.button() == 2
             && (mods.2 || inner.model.borrow().engine.modes().mouse == MouseMode::Off)

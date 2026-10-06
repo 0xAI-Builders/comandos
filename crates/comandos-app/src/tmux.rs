@@ -48,7 +48,6 @@ pub const MUTATE_VERBS: &[&str] = &[
 ];
 
 /// Shells cuya presencia exclusiva hace «ociosa» una sesión `term-*` (`close_tab`, 3386).
-const IDLE_SHELLS: &[&str] = &["zsh", "bash", "sh", "fish"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TmuxError {
@@ -338,8 +337,7 @@ impl TmuxCtl {
             "-F",
             "#{pane_current_command}",
         ])?;
-        let cmds: Vec<&str> = out.stdout.split_whitespace().collect();
-        if out.ok() && !cmds.is_empty() && cmds.iter().all(|c| IDLE_SHELLS.contains(c)) {
+        if crate::tab_actions::idle_scratch_commands(session, out.ok(), &out.stdout) {
             self.owned(session, true).map(Some)
         } else {
             Ok(None)

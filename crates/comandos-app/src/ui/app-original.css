@@ -1,0 +1,147 @@
+
+notebook > header { background: @BAR@; border: none; box-shadow: none; }
+/* Barra de pestañas propia (lib/gtk_tabstrip.py) = prototipo aprobado
+   (prototype-iguales.html, 30-sep), medida a medida: 44 px de alto, cada
+   pestaña mide su contenido (0 12 px de aire, 8 px entre piezas), separador
+   de 1 px, texto tenue que se aclara al pasar, activa con fondo levantado +
+   línea de acento abajo, ☆/✕ solo al pasar el cursor, ★ ámbar. El punto de
+   estado va donde iba el monito (1-oct). */
+.tabstrip { background: @BAR@; border-bottom: 1px solid @LINE@; min-height: 44px; }
+.tabstrip-tabs { background: @BAR@; }
+.strip-tab {
+  background-color: @BAR@; color: @DIM@; padding: 0 12px; min-height: 44px;
+  font-family: 'Inter', sans-serif; font-size: 13px;
+  border-right: 1px solid @LINE@;
+  transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+.strip-tab:hover { color: @TEXT@; }
+/* Menú «Cuenta» del pane (grill 2-oct) */
+popover.acct-pop { background-color: @BAR@; border: 1px solid @LINE2@; border-radius: 12px; }
+popover.acct-pop .acct-title { color: @DIM@; font-family: 'Ubuntu Sans Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 1px; margin: 2px 6px 4px; }
+popover.acct-pop .acct-row { padding: 8px 10px; border-radius: 9px; border: 1px solid transparent; background: none; color: @TEXT@; }
+popover.acct-pop .acct-row:hover { background-color: mix(@BAR@, @LINE2@, 0.4); }
+popover.acct-pop .acct-row.on { border-color: mix(@BRAND@, @BAR@, 0.5); }
+popover.acct-pop .acct-tag { color: @BRAND@; font-family: 'Ubuntu Sans Mono', monospace; font-size: 10px; font-weight: 600; }
+popover.acct-pop .acct-dim { color: @DIM@; font-family: 'Ubuntu Sans Mono', monospace; font-size: 11px; }
+popover.acct-pop .acct-note { color: @DIM@; font-size: 12px; margin: 4px 6px 2px; }
+popover.acct-pop .acct-note.acct-err { color: #f87171; }
+popover.acct-pop levelbar.acct-bar trough { min-height: 5px; padding: 0; border: none; border-radius: 3px; background-color: @LINE@; }
+popover.acct-pop levelbar.acct-bar block { min-height: 5px; border: none; border-radius: 3px; }
+popover.acct-pop levelbar.acct-bar block.filled { background-color: @BRAND@; }
+popover.acct-pop levelbar.acct-bar.warn block.filled { background-color: #fbbf24; }
+popover.acct-pop levelbar.acct-bar.full block.filled { background-color: #f87171; }
+popover.acct-pop levelbar.acct-bar block.empty { background-color: transparent; }
+.strip-tab.cur { color: @TEXT@; background-color: mix(@BAR@, @LINE2@, 0.35); box-shadow: inset 0 -2px 0 0 @BRAND@; }
+/* ⊞ «varias filas» (grill 1-oct): las MISMAS pestañas como chips de 28 px con
+   esquinas de 8 px, fondo del panel y 4 px entre ellas, envueltas en filas. */
+.tabstrip-rows, .tabstrip-rows viewport { background: @BAR@; border: none; }
+.tabstrip-rows .strip-tab { background-color: mix(@BAR@, @LINE2@, 0.18); min-height: 28px; border-radius: 8px; border-right: none; }
+.tabstrip-rows .strip-tab:hover { background-color: mix(@BAR@, @LINE2@, 0.35); }
+.tabstrip-rows .strip-tab.cur { background-color: mix(@BAR@, @LINE2@, 0.35); }
+.strip-tab label { color: inherit; }
+.strip-tab label.tab-name { font-weight: 600; }
+.strip-tab label.tab-model, .tab-model { color: @FAINT@; font-family: 'Ubuntu Sans Mono', monospace; font-size: 10px; font-weight: 600; }
+.strip-tab button {
+  color: @FAINT@; padding: 0; margin: 0; min-height: 14px; min-width: 14px;
+  border: none; background: none; background-image: none; box-shadow: none; opacity: 0;
+  transition: opacity 150ms ease, color 120ms ease;
+}
+.strip-tab:hover button, .strip-tab button.favorite, .strip-tab button.tab-suggest { opacity: 1; }
+.strip-tab button:hover { color: @TEXT@; }
+.strip-tab button.tabclose:hover { color: #ffffff; background-color: #FF6B6B; border-radius: 5px; }
+.strip-tab button.tabfav { font-size: 13px; min-width: 14px; }
+.strip-tab button.tabfav.favorite { color: #f5b83d; }
+.strip-tab label.tab-sticker { font-size: 10px; font-weight: 800; padding: 2px 5px; border-radius: 5px; margin: 0 2px; }
+.strip-tab label.tab-sticker.st-frozen { background: #1e3a5f; color: #9cd0ff; }
+.strip-tab label.tab-sticker.st-resolved { background: #1f5134; color: #b9ffd4; }
+.strip-tab label.tab-sticker.st-awaiting_reply { background: #5a4415; color: #ffe2a3; }
+.strip-tab button.tab-suggest { font-size: 10px; font-weight: 600; padding: 1px 7px; min-height: 0; border: 1px dashed #4ade80; border-radius: 999px; color: #4ade80; box-shadow: none; background: none; }
+/* Flechas de scroll de tabs: sin esto quedan pegadas a la primera pestana */
+/* Flechas nativas del notebook OCULTAS: navegacion por los botones
+   ‹ › propios del headerbar (misma familia que el "+"). */
+notebook > header > tabs > arrow {
+  min-width: 0; min-height: 0; padding: 0; margin: 0; opacity: 0;
+  -gtk-icon-source: none;
+}
+.strip-actions { padding: 0 6px 0 8px; border-left: 1px solid @LINE@; }
+.strip-actions button.cc-key { min-width: 32px; min-height: 32px; margin: 5px 3px 7px; }
+.tabnav { color: @DIM@; padding: 0; margin: 0; border: 0; background: none; box-shadow: none; border-radius: 0;
+  min-width: 36px; min-height: 40px; -gtk-icon-effect: none; }
+.tabnav:hover { color: @TEXT@; background: @LINE@; }
+.tabnav:active { color: @BRAND@; }
+.tabnav:disabled { opacity: .35; }
+.mosaic-head { background: @BAR@; border-bottom: 1px solid @LINE@; min-height: 30px; }
+.mosaic-cell { background: @BG@; border: 1px solid @LINE@; border-radius: 8px;
+  transition: border-color 160ms ease, background 160ms ease; }
+.mosaic-cell.focused { border-color: @BRAND@; }
+.mosaic-cell.tap { background: shade(@BG@, 1.18); }
+.mosaic-ph { color: @FAINT@; font-size: 18px; }
+.mosaic-cell-title { padding: 1px 4px; }
+.mosaic-zoom { background: @BG@; border: 2px solid @BRAND@; border-radius: 12px; }
+/* Grupo: cada terminal lleva su propia Tarjeta y marco (como una pestaña sola);
+   la cabecera de hoja queda como asa fina para arrastrarla fuera del grupo. */
+.ws-leaf-head { background: @BG@; padding: 0 12px; min-height: 22px; color: @FAINT@;
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; }
+.ws-leaf.focused .ws-leaf-head { color: @TEXT@; }
+paned.ws-paned > separator { background: @BG@; min-width: 8px; min-height: 8px; }
+notebook stack { background: @BG@; }
+.termwrap { background: @BG@; }
+/* Terminales de la barra (columna izquierda): UNA cabecera = agarre + pestañas +
+   «+ Terminal» + ▾, la misma que pinta la web en el remoto; arrastrarla fuera de
+   los botones cambia la altura (el separador del Paned queda invisible). */
+.side-head { background-color: @BAR@; border-top: 1px solid @LINE@; border-bottom: 1px solid @LINE@; }
+.side-grip { color: @FAINT@; font-size: 13px; padding: 0 4px 0 6px; }
+.side-head:hover .side-grip, .side-head.dragging .side-grip { color: @TEXT@; }
+.side-head.dragging { border-top-color: @BRAND@; }
+/* Píldoras con flechas (grill ronda 2, 1-oct): píldoras redondas en una pista que se
+   desplaza con ‹ › redondas (solo si no caben) y con la rueda; «+» redondo punteado. */
+.side-tab { background-color: mix(@BAR@, @TEXT@, 0.06); border: 1px solid @LINE@; border-radius: 999px; }
+.side-tab:hover { border-color: mix(@BAR@, @TEXT@, 0.17); }
+.side-tab.cur { background-color: mix(mix(@BAR@, @TEXT@, 0.06), @BRAND@, 0.16); border-color: mix(@BAR@, @BRAND@, 0.6); }
+.side-btn { background-color: transparent; background-image: none; color: @DIM@; padding: 0 9px; min-height: 26px;
+  border: 0; border-radius: 999px; box-shadow: none; outline: none; font-family: 'Inter', sans-serif; font-size: 12px; }
+.side-btn:hover, .side-tab.cur .side-btn { color: @TEXT@; }
+.side-tab.sel .side-name label { font-weight: 600; }
+.side-name { padding: 0 2px 0 10px; }
+.side-dot { color: @FAINT@; font-size: 8px; margin-right: 6px; }
+.side-tab.cur .side-dot { color: @BRAND@; }
+.side-x { padding: 0; min-width: 20px; min-height: 20px; margin: 3px 4px 3px 0; color: @FAINT@; font-size: 10px; }
+.side-x:hover { color: @TEXT@; background-color: mix(@BAR@, @TEXT@, 0.17); }
+.side-x.armed { color: #ff9e9e; background-color: mix(@BAR@, #ef6b6b, 0.24); font-size: 11px; font-weight: 600; padding: 0 8px; }
+.side-btn.side-arr { min-width: 24px; min-height: 24px; padding: 0; margin: 0 3px; color: @TEXT@; font-size: 14px;
+  background-color: mix(@BAR@, @TEXT@, 0.06); border: 1px solid mix(@BAR@, @TEXT@, 0.17); }
+.side-btn.side-arr:hover { color: @BRAND@; border-color: @BRAND@; }
+.side-btn.side-arr:disabled { opacity: 0.25; }
+.side-btn.side-plus { min-width: 26px; min-height: 26px; padding: 0; margin: 0 6px 0 3px; color: @BRAND@; font-size: 15px; font-weight: 700;
+  border: 1px dashed mix(@BAR@, @BRAND@, 0.45); }
+.side-btn.side-plus:hover { background-color: mix(@BAR@, @BRAND@, 0.12); }
+.side-btn.side-tog { border-left: 1px solid @LINE@; border-radius: 0; min-width: 40px; padding: 0; }
+.side-btn.side-tog:hover { background-color: mix(@BAR@, @LINE2@, 0.5); }
+.tabplus { color: @DIM@; padding: 4px 8px; margin: 0 1px; border: none; background: none;
+  border-radius: 8px; min-width: 28px; min-height: 28px; font-family: 'Ubuntu Sans Mono', monospace; font-size: 14px;
+  -gtk-icon-effect: none; }
+.tabplus:hover { color: @TEXT@; background: @LINE@; }
+.tabplus:active { color: @BRAND@; }
+.tabplus image { opacity: 0.92; }
+scrollbar { background: transparent; border: 0; box-shadow: none; }
+scrollbar trough { background: transparent; border: 0; min-width: 5px; min-height: 5px; }
+scrollbar slider { background: @LINE@; border: 0; border-radius: 6px;
+  min-width: 4px; min-height: 32px; margin: 0; }
+scrollbar slider:hover { background: @LINE2@; }
+scrollbar button { min-width: 0; min-height: 0; background: transparent; border: 0; }
+paned separator { background: @LINE@; min-width: 2px; }
+.helpwin { background: @BAR@; }
+.switcher { background: @BAR@; border: 1px solid @LINE2@; border-radius: 10px; }
+.switcher entry { background: @BG@; color: @TEXT@; border: 1px solid @LINE2@;
+  border-radius: 8px; padding: 8px 12px; caret-color: #FFAE1A;
+  font-family: 'Ubuntu Sans Mono', monospace; font-size: 13px; }
+.switcher list { background: transparent; }
+.switcher row { border-radius: 7px; color: @DIM@; }
+.switcher row:selected { background: @LINE@; color: @TEXT@; }
+.sw-meta { color: @FAINT@; font-size: 11px;
+  font-family: 'Ubuntu Sans Mono', monospace; }
+.help-h { color: @TEXT@; }
+.help-sec { color: @BRAND@; font-family: 'Ubuntu Sans Mono', monospace; font-size: 11px; }
+.help-key { color: #FFAE1A; font-family: 'Ubuntu Sans Mono', monospace; font-size: 13px; }
+.help-desc { color: @DIM@; font-size: 13px; }
+.help-hint { color: @FAINT@; }

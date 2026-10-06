@@ -25,8 +25,8 @@ fn config_themes_produce_desktop_tokens_for_all_nine_names() {
         assert_eq!(tokens.ansi.len(), 16);
         assert!(tokens.ansi.iter().all(|color| color.starts_with('#')));
         assert!(tokens.values.contains_key("name"));
-        assert!(theme_css(&tokens).contains("notebook > header"));
-        assert!(header_css(&tokens).contains(".tabstrip"));
+        assert!(!theme_css(&tokens).contains("@CC_THEME_"));
+        assert!(theme_css(&tokens).contains(".tabstrip"));
     }
 }
 
@@ -45,4 +45,78 @@ fn five_button_styles_and_fallback_emit_header_button_css() {
         assert!(css.contains("button.cc-key"));
         assert!(css.contains("scrollbar button"));
     }
+}
+
+#[test]
+fn header_and_five_button_styles_match_full_original_ast_for_all_themes() {
+    use comandos_app::proc::{ProcSpec, run};
+    use serde_json::json;
+    let themes = themes_from_file(Some(include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../config/themes.json"
+    ))));
+    let names = [
+        "noche",
+        "dia",
+        "calido",
+        "termius",
+        "bruno",
+        "superglass",
+        "neon",
+        "contraste",
+        "ubuntu",
+    ];
+    let tokens: Vec<_> = names
+        .iter()
+        .map(|name| desktop_theme(name, &themes).unwrap())
+        .collect();
+    let script = r#"import ast,json,sys
+nodes=ast.parse(open(sys.argv[1]).read()).body
+exec(compile(ast.Module(body=[n for n in nodes if isinstance(n,ast.FunctionDef) and n.name in {'_build_hb_css','button_style_css'}],type_ignores=[]),sys.argv[1],'exec'))
+out=[]
+for THEME in json.load(sys.stdin):
+ out.append({'header':_build_hb_css().decode(),'buttons':[button_style_css(style,THEME).decode() for style in ['sutil','arcade','tecla','pixel','consola']]})
+print(json.dumps(out))
+"#;
+    let out = run(&ProcSpec {
+        program: "python3".into(),
+        args: vec![
+            "-c".into(),
+            script.into(),
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../bin/cc-app").into(),
+        ],
+        stdin: Some(
+            serde_json::to_vec(&tokens.iter().map(|t| &t.values).collect::<Vec<_>>()).unwrap(),
+        ),
+        env: vec![
+            (
+                "HOME".into(),
+                "/tmp/comandos-theme-oracle-private-home".into(),
+            ),
+            ("PATH".into(), "/usr/bin:/bin".into()),
+        ],
+        clear_env: true,
+        env_remove: vec![],
+        cwd: None,
+        timeout: std::time::Duration::from_secs(5),
+    })
+    .unwrap();
+    assert_eq!(
+        out.code,
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let oracle: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let actual: Vec<_> = tokens
+        .iter()
+        .map(|t| {
+            let buttons: Vec<_> = ["sutil", "arcade", "tecla", "pixel", "consola"]
+                .iter()
+                .map(|style| button_style_css(style, t))
+                .collect();
+            json!({"header":header_css(t),"buttons":buttons})
+        })
+        .collect();
+    assert_eq!(json!(actual), oracle);
 }

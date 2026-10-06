@@ -6,7 +6,15 @@ use std::{
     collections::HashMap,
     rc::Rc,
 };
-type Resize = Rc<dyn Fn(&str, &[usize], f64)>;
+type Resize = Rc<dyn Fn(&[(String, Vec<usize>, f64)])>;
+type Header = Rc<dyn Fn(&str) -> gtk::Widget>;
+type PendingResize = std::collections::BTreeMap<(String, Vec<usize>), f64>;
+#[derive(Default)]
+struct RatioState {
+    ratio: Cell<f64>,
+    size: Cell<i32>,
+    programmatic: Cell<bool>,
+}
 pub struct GtkWorkspace {
     root: gtk::Notebook,
     pages: RefCell<HashMap<String, gtk::Widget>>,
@@ -15,6 +23,11 @@ pub struct GtkWorkspace {
     nodes: RefCell<HashMap<String, gtk::Widget>>,
     resize: Rc<RefCell<Option<Resize>>>,
     applying: Rc<Cell<bool>>,
+    header: RefCell<Option<Header>>,
+    group_pages: RefCell<Vec<(String, gtk::Widget)>>,
+    ratios: RefCell<HashMap<String, Rc<RatioState>>>,
+    pending_resize: Rc<RefCell<PendingResize>>,
+    resize_timer: Rc<RefCell<Option<glib::SourceId>>>,
 }
 impl GtkWorkspace {
     pub fn new() -> Self {
@@ -32,10 +45,49 @@ impl GtkWorkspace {
             nodes: RefCell::new(HashMap::new()),
             resize: Rc::new(RefCell::new(None)),
             applying: Rc::new(Cell::new(false)),
+            header: RefCell::new(None),
+            group_pages: RefCell::new(Vec::new()),
+            ratios: RefCell::new(HashMap::new()),
+            pending_resize: Rc::new(RefCell::new(Default::default())),
+            resize_timer: Rc::new(RefCell::new(None)),
         }
+    }
+    pub fn shutdown(&self) {
+        if let Some(source) = self.resize_timer.borrow_mut().take() {
+            source.remove();
+        }
+        self.pending_resize.borrow_mut().clear();
+        self.resize.borrow_mut().take();
     }
     pub fn widget(&self) -> &gtk::Notebook {
         &self.root
+    }
+    pub fn on_header(&self, callback: Header) {
+        *self.header.borrow_mut() = Some(callback);
+    }
+    pub fn group_of_page(&self, page: &gtk::Widget) -> Option<String> {
+        self.group_pages
+            .borrow()
+            .iter()
+            .find(|(_, w)| w == page)
+            .map(|(id, _)| id.clone())
+    }
+    pub fn select_group(&self, id: &str) -> bool {
+        if let Some((_, page)) = self.group_pages.borrow().iter().find(|(gid, _)| gid == id)
+            && let Some(index) = self.root.page_num(page)
+        {
+            self.root.set_current_page(Some(index));
+            true
+        } else {
+            false
+        }
+    }
+    pub fn leaf(&self, key: &str) -> Option<gtk::Widget> {
+        let widget = self.pages.borrow().get(key)?.clone();
+        let parent = widget
+            .parent()
+            .filter(|p| p.style_context().has_class("ws-leaf"));
+        Some(parent.unwrap_or(widget))
     }
     pub fn on_resize(&self, callback: Resize) {
         *self.resize.borrow_mut() = Some(callback);
@@ -46,7 +98,11 @@ impl GtkWorkspace {
         let key = key.into();
         let focus = self.focus.clone();
         let focus_key = key.clone();
-        widget.connect_focus_in_event(move |_, _| {
+        let root = self.root.downgrade();
+        widget.connect_focus_in_event(move |widget, _| {
+            if let Some(root) = root.upgrade() {
+                paint_leaf_focus(root.upcast_ref(), widget);
+            }
             *focus.borrow_mut() = Some(focus_key.clone());
             glib::Propagation::Proceed
         });
@@ -63,20 +119,7 @@ impl GtkWorkspace {
             detach(&widget);
         }
         self.nodes.borrow_mut().clear();
-        let mut doc = self.document.borrow().clone();
-        let present = self.pages.borrow().keys().cloned().collect();
-        if let Some(groups) = doc.get_mut("groups").and_then(Value::as_array_mut) {
-            for group in groups.iter_mut() {
-                if let Some(object) = group.as_object_mut() {
-                    let tree = object
-                        .get("tree")
-                        .map(|tree| crate::workspace_view::prune(tree, &present))
-                        .unwrap_or(Value::Null);
-                    object.insert("tree".into(), tree);
-                }
-            }
-            groups.retain(|group| !group["tree"].is_null());
-        }
+        let doc = self.document.borrow().clone();
         *self.document.borrow_mut() = Value::Null;
         self.apply(&doc);
     }
@@ -89,22 +132,29 @@ impl GtkWorkspace {
         }
         self.applying.set(true);
         let mut used = std::collections::HashSet::new();
+        let present = self.pages.borrow().keys().cloned().collect();
         if let Some(groups) = doc["groups"].as_array() {
             for group in groups {
                 collect_keys(
                     group["id"].as_str().unwrap_or("group"),
-                    &group["tree"],
+                    &crate::workspace_view::prune(&group["tree"], &present),
                     Vec::new(),
                     &mut used,
                 );
             }
         }
         self.nodes.borrow_mut().retain(|key, _| used.contains(key));
+        self.ratios.borrow_mut().retain(|key, _| used.contains(key));
         let group_shapes = |doc: &Value| {
             doc.get("groups").and_then(Value::as_array).map(|groups| {
                 groups
                     .iter()
-                    .map(|group| (group["id"].clone(), signature(&group["tree"])))
+                    .map(|group| {
+                        (
+                            group["id"].clone(),
+                            signature(&crate::workspace_view::prune(&group["tree"], &present)),
+                        )
+                    })
                     .collect::<Vec<_>>()
             })
         };
@@ -114,15 +164,38 @@ impl GtkWorkspace {
                 self.root.remove(&child);
             }
         }
+        self.group_pages.borrow_mut().clear();
         if let Some(groups) = doc["groups"].as_array() {
             for group in groups {
                 let group_id = group["id"].as_str().unwrap_or("group");
-                let node = self.build_node(group_id, &group["tree"], Vec::new());
-                if !same_shapes {
+                let present = self.pages.borrow().keys().cloned().collect();
+                let tree = crate::workspace_view::prune(&group["tree"], &present);
+                if tree.is_null() {
+                    continue;
+                }
+                let node = self.build_node(group_id, &tree, Vec::new());
+                self.group_pages
+                    .borrow_mut()
+                    .push((group_id.into(), node.clone()));
+                if !same_shapes || self.root.page_num(&node).is_none() {
                     detach(&node);
                     self.root
                         .append_page(&node, Some(&gtk::Label::new(Some(group_id))));
                 }
+            }
+        }
+        let documented = doc
+            .get("groups")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .flat_map(|g| comandos_core::workspace::tab_ids(&g["tree"]).unwrap_or_default())
+            .collect::<std::collections::BTreeSet<_>>();
+        for (key, widget) in self.pages.borrow().iter() {
+            if !documented.contains(key) && self.root.page_num(widget).is_none() {
+                detach(widget);
+                self.root
+                    .append_page(widget, Some(&gtk::Label::new(Some(key))));
             }
         }
         *self.document.borrow_mut() = doc.clone();
@@ -165,6 +238,18 @@ impl GtkWorkspace {
         }
         widget.grab_focus();
         *self.focus.borrow_mut() = Some(key.into());
+        for (id, page) in pages.iter() {
+            if let Some(leaf) = page
+                .parent()
+                .filter(|p| p.style_context().has_class("ws-leaf"))
+            {
+                if id == key {
+                    leaf.style_context().add_class("focused");
+                } else {
+                    leaf.style_context().remove_class("focused");
+                }
+            }
+        }
         true
     }
     pub fn commit(&self, doc: &Value, focus: Option<&str>) {
@@ -180,6 +265,12 @@ impl GtkWorkspace {
         let cache_key = format!("{group}:{path:?}:{}", signature(node));
         if let Some(widget) = self.nodes.borrow().get(&cache_key).cloned() {
             if let Some(paned) = widget.downcast_ref::<gtk::Paned>() {
+                if let Some(state) = self.ratios.borrow().get(&cache_key) {
+                    state
+                        .ratio
+                        .set(node["ratio"].as_f64().unwrap_or(0.5).clamp(0.1, 0.9));
+                    state.programmatic.set(true);
+                }
                 let size = if paned.orientation() == gtk::Orientation::Horizontal {
                     paned.allocated_width()
                 } else {
@@ -190,6 +281,9 @@ impl GtkWorkspace {
                         (f64::from(size) * node.get("ratio").and_then(Value::as_f64).unwrap_or(0.5))
                             .round() as i32,
                     );
+                }
+                if let Some(state) = self.ratios.borrow().get(&cache_key) {
+                    state.programmatic.set(false);
                 }
                 // Recurse to apply ratios of cached descendants without reparenting their leaves.
                 let mut first_path = path.clone();
@@ -211,7 +305,18 @@ impl GtkWorkspace {
                     .cloned()
                     .unwrap_or_else(|| gtk::Label::new(Some(key)).upcast());
                 detach(&widget);
-                widget
+                if path.is_empty() {
+                    widget
+                } else {
+                    let leaf = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                    leaf.style_context().add_class("ws-leaf");
+                    if let Some(header) = self.header.borrow().as_ref() {
+                        let header = header(key);
+                        leaf.pack_start(&header, false, false, 0);
+                    }
+                    leaf.pack_start(&widget, true, true, 0);
+                    leaf.upcast()
+                }
             }
             Some("split") => {
                 let orientation = if node["axis"] == "y" {
@@ -233,40 +338,78 @@ impl GtkWorkspace {
                 detach(&second);
                 paned.pack1(&first, true, false);
                 paned.pack2(&second, true, false);
-                let ratio = node["ratio"].as_f64().unwrap_or(0.5).clamp(0.1, 0.9);
-                let allocated = Rc::new(Cell::new(false));
-                let allocated_for_size = allocated.clone();
-                paned.connect_size_allocate(move |paned, allocation| {
-                    if !allocated_for_size.replace(true) {
+                let state = Rc::new(RatioState {
+                    ratio: Cell::new(node["ratio"].as_f64().unwrap_or(0.5).clamp(0.1, 0.9)),
+                    ..Default::default()
+                });
+                self.ratios
+                    .borrow_mut()
+                    .insert(cache_key.clone(), state.clone());
+                paned.connect_size_allocate({
+                    let state = state.clone();
+                    move |paned, allocation| {
                         let size = if orientation == gtk::Orientation::Horizontal {
                             allocation.width()
                         } else {
                             allocation.height()
                         };
-                        paned.set_position((f64::from(size) * ratio).round() as i32);
+                        if size > 1 && size != state.size.get() {
+                            state.programmatic.set(true);
+                            state.size.set(size);
+                            paned
+                                .set_position((f64::from(size) * state.ratio.get()).round() as i32);
+                            state.programmatic.set(false);
+                        }
                     }
                 });
                 let callback = self.resize.clone();
                 let applying = self.applying.clone();
                 let group = group.to_string();
-                paned.connect_button_release_event(move |paned, _| {
-                    if !applying.get() && allocated.get() {
-                        let size = if orientation == gtk::Orientation::Horizontal {
-                            paned.allocated_width()
-                        } else {
-                            paned.allocated_height()
-                        };
-                        if size > 0
-                            && let Some(callback) = callback.borrow().as_ref()
-                        {
-                            callback(
-                                &group,
-                                &path,
-                                (f64::from(paned.position()) / f64::from(size)).clamp(0.1, 0.9),
-                            );
-                        }
+                let pending = self.pending_resize.clone();
+                let timer = self.resize_timer.clone();
+                paned.connect_position_notify(move |paned| {
+                    let size = if orientation == gtk::Orientation::Horizontal {
+                        paned.allocated_width()
+                    } else {
+                        paned.allocated_height()
+                    };
+                    if applying.get()
+                        || state.programmatic.get()
+                        || size <= 1
+                        || size != state.size.get()
+                    {
+                        return;
                     }
-                    glib::Propagation::Proceed
+                    let ratio = (f64::from(paned.position()) / f64::from(size)).clamp(0.1, 0.9);
+                    if (ratio - state.ratio.get()).abs() < 0.005 {
+                        return;
+                    }
+                    state.ratio.set(ratio);
+                    pending
+                        .borrow_mut()
+                        .insert((group.clone(), path.clone()), ratio);
+                    if let Some(source) = timer.borrow_mut().take() {
+                        source.remove();
+                    }
+                    let pending = pending.clone();
+                    let callback = callback.clone();
+                    let weak_timer = Rc::downgrade(&timer);
+                    *timer.borrow_mut() = Some(glib::timeout_add_local_once(
+                        std::time::Duration::from_millis(400),
+                        move || {
+                            if let Some(timer) = weak_timer.upgrade() {
+                                timer.borrow_mut().take();
+                            }
+                            let updates = std::mem::take(&mut *pending.borrow_mut());
+                            let updates = updates
+                                .into_iter()
+                                .map(|((group, path), ratio)| (group, path, ratio))
+                                .collect::<Vec<_>>();
+                            if let Some(callback) = callback.borrow().as_ref() {
+                                callback(&updates);
+                            }
+                        },
+                    ));
                 });
                 paned.upcast()
             }
@@ -307,5 +450,20 @@ fn collect_keys(
         second.push(1);
         collect_keys(group, &node["first"], first, keys);
         collect_keys(group, &node["second"], second, keys);
+    }
+}
+
+fn paint_leaf_focus(root: &gtk::Widget, focused: &gtk::Widget) {
+    if root.style_context().has_class("ws-leaf") {
+        if focused.is_ancestor(root) {
+            root.style_context().add_class("focused");
+        } else {
+            root.style_context().remove_class("focused");
+        }
+    }
+    if let Some(container) = root.downcast_ref::<gtk::Container>() {
+        for child in container.children() {
+            paint_leaf_focus(&child, focused);
+        }
     }
 }

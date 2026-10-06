@@ -292,3 +292,117 @@ pub fn dock_hit(layout: &Value, x: f64, y: f64, moved: &BTreeSet<String>) -> Opt
     }
     None
 }
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum DragPhase {
+    #[default]
+    Idle,
+    Pressed,
+    Lifted,
+    Docking,
+    Cancelled,
+}
+#[derive(Debug, Default, Clone)]
+pub struct DragGesture {
+    pub phase: DragPhase,
+    pub source: Option<String>,
+    pub press_root: (f64, f64),
+    pub pointer: (f64, f64),
+    pub press_page: Option<u32>,
+}
+impl DragGesture {
+    pub fn press(&mut self, source: String, root: (f64, f64), page: Option<u32>) {
+        *self = Self {
+            phase: DragPhase::Pressed,
+            source: Some(source),
+            press_root: root,
+            pointer: root,
+            press_page: page,
+        };
+    }
+    pub fn motion(&mut self, root: (f64, f64), point: (f64, f64)) -> bool {
+        if self.phase == DragPhase::Pressed {
+            let dx = root.0 - self.press_root.0;
+            let dy = root.1 - self.press_root.1;
+            if dx * dx + dy * dy < 49. {
+                return false;
+            }
+            self.phase = DragPhase::Lifted;
+        }
+        if matches!(self.phase, DragPhase::Lifted | DragPhase::Docking) {
+            self.pointer = point;
+            true
+        } else {
+            false
+        }
+    }
+    pub fn docking(&mut self, present: bool) {
+        if self.source.is_some() && self.phase != DragPhase::Pressed {
+            self.phase = if present {
+                DragPhase::Docking
+            } else {
+                DragPhase::Lifted
+            };
+        }
+    }
+    pub fn cancel(&mut self) -> Option<u32> {
+        let page = self.press_page;
+        *self = Self {
+            phase: DragPhase::Cancelled,
+            ..Self::default()
+        };
+        page
+    }
+    pub fn finish(&mut self) -> Option<String> {
+        let source = self.source.take();
+        *self = Self::default();
+        source
+    }
+}
+pub fn root_to_layer(point: (f64, f64), window: (f64, f64), offset: (f64, f64)) -> (f64, f64) {
+    (point.0 - window.0 - offset.0, point.1 - window.1 - offset.1)
+}
+pub fn strip_edge_step(x: f64, width: f64) -> i32 {
+    if x < 56. {
+        -1
+    } else if x > width - 56. {
+        1
+    } else {
+        0
+    }
+}
+pub fn tray_rects(width: f64, height: f64) -> Vec<(String, [f64; 4])> {
+    let x = ((width - (4. * 112. + 3. * 12.)) / 2.).max(0.);
+    let y = (height - 80. - 70.).max(0.);
+    ["frozen", "awaiting_reply", "resolved", "none"]
+        .iter()
+        .enumerate()
+        .map(|(i, mark)| ((*mark).into(), [x + i as f64 * 124., y, 112., 70.]))
+        .collect()
+}
+pub fn tray_at(trays: &[(String, [f64; 4])], x: f64, y: f64, strip_bottom: f64) -> Option<String> {
+    if y < strip_bottom + 30. {
+        return None;
+    }
+    trays
+        .iter()
+        .find(|(_, [rx, ry, rw, rh])| {
+            *rx - 8. <= x && x <= *rx + *rw + 8. && *ry - 8. <= y && y <= *ry + *rh + 8.
+        })
+        .map(|(mark, _)| mark.clone())
+}
+pub fn wrap_rows(width: i32, widths: &[i32]) -> Vec<Vec<usize>> {
+    let mut rows: Vec<Vec<usize>> = Vec::new();
+    let mut used = 0;
+    for (i, w) in widths.iter().enumerate() {
+        if rows.is_empty() || (used > 0 && used + 4 + w > width) {
+            rows.push(Vec::new());
+            used = 0;
+        }
+        if let Some(row) = rows.last_mut() {
+            row.push(i);
+        }
+        used += (if used > 0 { 4 } else { 0 }) + w;
+    }
+    rows
+}

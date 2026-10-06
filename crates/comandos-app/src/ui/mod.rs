@@ -1,5 +1,7 @@
 pub mod app;
 pub mod confirm;
+pub mod drag;
+pub mod icons;
 pub mod tab_label;
 pub mod tabstrip;
 pub mod webview;

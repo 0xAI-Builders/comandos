@@ -26,6 +26,16 @@ pub struct Fixture {
 
 fn have_tmux() -> bool {
     Command::new("tmux")
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .env(
+            "HOME",
+            format!("/tmp/comandos-tmux-version-{}/home", std::process::id()),
+        )
+        .args([
+            "-S",
+            &format!("/tmp/comandos-tmux-version-{}/socket", std::process::id()),
+        ])
         .arg("-V")
         .output()
         .is_ok_and(|o| o.status.success())

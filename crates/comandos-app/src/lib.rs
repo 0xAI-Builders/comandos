@@ -6,6 +6,7 @@
 )]
 pub mod config;
 pub mod dash_client;
+pub mod fixture;
 pub mod guard;
 pub mod ipc;
 pub mod jobs;
@@ -16,6 +17,7 @@ pub mod restore;
 pub mod resume;
 pub mod snapshot;
 pub mod state_files;
+pub mod tab_actions;
 pub mod tabs;
 pub mod term;
 pub mod theme;

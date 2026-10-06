@@ -106,7 +106,7 @@ pub fn create(cfg: &AppConfig) -> Result<WebView, WebError> {
     Ok(webview)
 }
 
-fn encode_query(raw: &str) -> String {
+pub(crate) fn encode_query(raw: &str) -> String {
     let mut out = String::new();
     for byte in raw.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {

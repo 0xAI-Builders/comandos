@@ -336,6 +336,7 @@ dependencies = [
  "alacritty_terminal",
  "async-channel",
  "cairo-rs",
+ "chrono",
  "comandos-core",
  "comandos-notifyd",
  "comandos-runtime",

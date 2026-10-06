@@ -47,7 +47,22 @@ pub struct App {
     registry: RefCell<TabRegistry>,
     strip: RefCell<ui::tabstrip::TabStripNotebook>,
     terms: RefCell<BTreeMap<String, TermView>>,
-    labels: RefCell<BTreeMap<String, gtk::Box>>,
+    labels: RefCell<BTreeMap<String, ui::tab_label::TabLabel>>,
+    group_labels: RefCell<BTreeMap<String, ui::tab_label::TabLabel>>,
+    tab_layout: ui::tabstrip::TabStripLayout,
+    drag_layer: ui::drag::DragLayer,
+    previous_order: RefCell<Option<Vec<String>>>,
+    state_items: RefCell<BTreeMap<String, Value>>,
+    marks: RefCell<BTreeMap<String, Value>>,
+    quick: Arc<crate::tab_actions::QuickTerminal>,
+    quick_busy: Cell<bool>,
+    focus_ready: Cell<bool>,
+    focus_restoring: Cell<bool>,
+    interacted: Cell<bool>,
+    saved_focus: RefCell<Option<String>>,
+    pane_initialized: Cell<bool>,
+    pane_saved: Cell<Option<i32>>,
+    theme_provider: gtk::CssProvider,
     toolbar: gtk::Box,
     workspace: ui::workspace::GtkWorkspace,
     restore: RefCell<RestoreCoordinator>,
@@ -85,6 +100,11 @@ impl AppRuntime {
         }
         self.poller.stop();
         self.app.dash.cancel_pending();
+        self.app.cancel_drag();
+        self.app.workspace.shutdown();
+        if let Some(screen) = gdk::Screen::default() {
+            gtk::StyleContext::remove_provider_for_screen(&screen, &self.app.theme_provider);
+        }
         self.app.jobs.shutdown(Duration::from_secs(6));
         for term in self.app.terms.borrow().values() {
             term.shutdown();
@@ -95,6 +115,22 @@ impl App {
     fn install_foundation_handlers(self: &Rc<Self>) {
         use javascriptcore::ValueExt;
         use webkit2gtk::{UserContentManagerExt, WebViewExt};
+        let themes = crate::theme::themes_from_file(Some(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../config/themes.json"
+        ))));
+        if let Some(theme) = crate::theme::desktop_theme("bruno", &themes) {
+            let _ = self
+                .theme_provider
+                .load_from_data(crate::theme::theme_css(&theme).as_bytes());
+        }
+        if let Some(screen) = gdk::Screen::default() {
+            gtk::StyleContext::add_provider_for_screen(
+                &screen,
+                &self.theme_provider,
+                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
+        }
         let weak = Rc::downgrade(self);
         self.install_handler(
             "tabs",
@@ -104,7 +140,24 @@ impl App {
                 };
                 let args = message.get("args").unwrap_or(message);
                 let key = args.get("session").and_then(Value::as_str).unwrap_or("");
-                match message.get("command").and_then(Value::as_str) {
+                for (wire, pref) in [("buttonStyle", "button_style"), ("theme", "theme")] {
+                    if let Some(value) = message.get(wire).and_then(Value::as_str) {
+                        let mut prefs = app.preferences.borrow().clone();
+                        if let Some(object) = prefs.as_object_mut() {
+                            object.insert(pref.into(), json!(value));
+                        }
+                        app.poll(PollUpdate::Prefs {
+                            value: prefs,
+                            favorite_generation: app.generation.load(Ordering::Acquire),
+                        });
+                        return true;
+                    }
+                }
+                match message
+                    .get("command")
+                    .or_else(|| message.get("headerAction"))
+                    .and_then(Value::as_str)
+                {
                     Some("focus_page") if !key.is_empty() => {
                         if app.cfg.mode() == RunMode::Shadow {
                             return false;
@@ -126,6 +179,52 @@ impl App {
                         app.add_tab(&web_key, &format!("xterm · {session}"), false, None);
                         app.select(&web_key);
                         app.persist();
+                        true
+                    }
+                    Some("quick_terminal") | Some("quickTerminal") => {
+                        app.quick_terminal();
+                        true
+                    }
+                    Some("sort_tabs") => {
+                        app.sort_tabs(args.get("by").and_then(Value::as_str));
+                        true
+                    }
+                    Some("sortMenu") => {
+                        app.sort_menu(None);
+                        true
+                    }
+                    Some("close_split") if !key.is_empty() => {
+                        if let Some(pane) = args.get("pane").and_then(Value::as_str) {
+                            app.close_split(key, pane);
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    Some("open_tab") | None if !key.is_empty() => {
+                        if message.get("type").and_then(Value::as_str) == Some("rename") {
+                            if let Some(label) = args
+                                .get("label")
+                                .and_then(Value::as_str)
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                && let Some(tab) = app.labels.borrow().get(key)
+                            {
+                                tab.set_text(label);
+                                app.registry.borrow_mut().rename(key, label);
+                                app.persist();
+                            }
+                            return true;
+                        }
+                        app.open_tab(
+                            key,
+                            args.get("window")
+                                .or_else(|| args.get("win"))
+                                .and_then(Value::as_str)
+                                .unwrap_or("claude"),
+                            args.get("label").and_then(Value::as_str).unwrap_or(key),
+                            true,
+                        );
                         true
                     }
                     Some("new_local_tab") => {
@@ -153,17 +252,209 @@ impl App {
                 }
             });
         }
-        let plus = gtk::Button::with_label("+");
+        let plus = ui::icons::button("plus", 16, "Nueva sesión");
         let weak = Rc::downgrade(self);
         plus.connect_clicked(move |_| {
             if let Some(app) = weak.upgrade() {
                 app.new_terminal();
             }
         });
-        self.toolbar.pack_end(&plus, false, false, 0);
+        plus.style_context().add_class("cc-key");
+        plus.style_context().add_class("cc-key-plus");
+        self.tab_layout.actions().pack_start(&plus, false, false, 0);
+        let quick = ui::icons::button("terminal", 16, "Terminal en carpeta nueva fechada");
+        quick.style_context().add_class("cc-key");
+        quick.style_context().add_class("cc-key-term");
+        let weak = Rc::downgrade(self);
+        quick.connect_clicked(move |_| {
+            if let Some(app) = weak.upgrade() {
+                app.quick_terminal();
+            }
+        });
+        self.tab_layout
+            .actions()
+            .pack_start(&quick, false, false, 0);
+        self.tab_layout.actions().reorder_child(&quick, 0);
+        let sort = ui::icons::button("arrow-up-down", 16, "Ordenar pestañas una vez");
+        sort.style_context().add_class("cc-key");
+        sort.style_context().add_class("cc-key-sort");
+        let weak = Rc::downgrade(self);
+        sort.connect_clicked(move |button| {
+            if let Some(app) = weak.upgrade() {
+                app.sort_menu(Some(button.upcast_ref()));
+            }
+        });
+        self.tab_layout.actions().pack_start(&sort, false, false, 0);
+        let rows = ui::icons::button("rows", 18, "Varias filas");
+        rows.style_context().add_class("cc-key");
+        rows.style_context().add_class("cc-key-rows");
+        let weak = Rc::downgrade(self);
+        rows.connect_clicked(move |_| {
+            if let Some(app) = weak.upgrade().filter(|a| a.writable()) {
+                let mode = if app.tab_layout.rows() { "row" } else { "rows" };
+                app.tab_layout.set_rows(mode == "rows");
+                let dash = app.dash.clone();
+                app.jobs.spawn(
+                    move || {
+                        dash.post(
+                            "/prefs-set",
+                            &json!({"tabs_layout":mode}),
+                            Duration::from_secs(5),
+                        )
+                    },
+                    |result| {
+                        if let Err(e) = result {
+                            eprintln!("tabs_layout: {e:?}");
+                        }
+                    },
+                );
+            }
+        });
+        self.tab_layout.actions().pack_start(&rows, false, false, 0);
+        let left = ui::icons::button("panel-left", 18, "Mostrar/ocultar el panel izquierdo");
+        left.style_context().add_class("tabnav");
+        let weak = Rc::downgrade(self);
+        left.connect_clicked(move |_| {
+            if let Some(app) = weak.upgrade() {
+                app.webview.set_visible(!app.webview.is_visible());
+            }
+        });
+        self.tab_layout.start().pack_start(&left, false, false, 0);
+        for (glyph, delta) in [("‹", -1), ("›", 1)] {
+            let button = ui::icons::button(
+                if delta < 0 {
+                    "chevron-left"
+                } else {
+                    "chevron-right"
+                },
+                20,
+                glyph,
+            );
+            button.style_context().add_class("tab-cycle");
+            button.set_no_show_all(true);
+            button.show();
+            button.style_context().add_class("tabnav");
+            let weak = Rc::downgrade(self);
+            button.connect_clicked(move |_| {
+                if let Some(app) = weak.upgrade() {
+                    let notebook = if app.workspace_doc.borrow().is_null() {
+                        &app.notebook
+                    } else {
+                        app.workspace.widget()
+                    };
+                    let n = notebook.n_pages();
+                    if n > 0 {
+                        let current = notebook.current_page().unwrap_or(0) as i32;
+                        notebook
+                            .set_current_page(Some((current + delta).rem_euclid(n as i32) as u32));
+                    }
+                }
+            });
+            if delta < 0 {
+                self.tab_layout.start().pack_start(&button, false, false, 0);
+            } else {
+                self.tab_layout
+                    .actions()
+                    .pack_start(&button, false, false, 0);
+            }
+        }
+        self.tab_layout.widget().show_all();
+        let weak = Rc::downgrade(self);
+        self.workspace.on_header(Rc::new(move |key| {
+            let header = gtk::EventBox::new();
+            header.style_context().add_class("ws-leaf-head");
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            let grip = gtk::Label::new(Some("⠿"));
+            grip.style_context().add_class("dim-label");
+            row.pack_start(&grip, false, false, 0);
+            let label = weak
+                .upgrade()
+                .and_then(|a| {
+                    a.labels
+                        .borrow()
+                        .get(key)
+                        .map(|tab| tab.text.text().to_string())
+                })
+                .unwrap_or_else(|| key.into());
+            let name = gtk::Label::new(Some(&label));
+            name.set_xalign(0.);
+            name.set_ellipsize(pango::EllipsizeMode::End);
+            row.pack_start(&name, true, true, 0);
+            header.add(&row);
+            if let Some(app) = weak.upgrade() {
+                app.install_drag(key, header.upcast_ref());
+                let w = Rc::downgrade(&app);
+                let key_for_focus = key.to_string();
+                header.connect_button_press_event(move |_, _| {
+                    if let Some(app) = w.upgrade() {
+                        app.select(&key_for_focus);
+                    }
+                    glib::Propagation::Proceed
+                });
+            }
+            header.upcast()
+        }));
+        self.install_pane_position();
+        let weak = Rc::downgrade(self);
+        self.window.connect_button_press_event(move |_, _| {
+            if let Some(app) = weak.upgrade() {
+                app.interacted.set(true);
+            }
+            glib::Propagation::Proceed
+        });
+        let weak = Rc::downgrade(self);
+        self.window.connect_key_press_event(move |_, _| {
+            if let Some(app) = weak.upgrade() {
+                app.interacted.set(true);
+            }
+            glib::Propagation::Proceed
+        });
+        self.window.add_events(
+            gdk::EventMask::POINTER_MOTION_MASK
+                | gdk::EventMask::BUTTON_RELEASE_MASK
+                | gdk::EventMask::KEY_PRESS_MASK,
+        );
+        let weak = Rc::downgrade(self);
+        self.window.connect_motion_notify_event(move |_, e| {
+            if let Some(app) = weak.upgrade()
+                && app.drag_layer.active()
+            {
+                app.drag_motion(e.root());
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        let weak = Rc::downgrade(self);
+        self.window.connect_button_release_event(move |_, e| {
+            if e.button() == 1
+                && let Some(app) = weak.upgrade()
+                && app.drag_layer.active()
+            {
+                app.drop_drag(app.drag_target(app.layer_point(e.root())));
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        let weak = Rc::downgrade(self);
+        self.window.connect_key_press_event(move |_, e| {
+            if e.keyval() == gdk::keys::constants::Escape
+                && let Some(app) = weak.upgrade()
+                && app.drag_layer.active()
+            {
+                app.cancel_drag();
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
     }
 
     fn new_terminal(self: &Rc<Self>) {
+        self.new_terminal_in(false);
+    }
+    fn new_terminal_in(self: &Rc<Self>, fresh: bool) {
         if !self.writable() {
             return;
         }
@@ -184,25 +475,40 @@ impl App {
         let weak = Rc::downgrade(self);
         self.jobs.spawn(
             move || {
-                let cwd = selected
-                    .as_deref()
-                    .and_then(|session| {
-                        backend
-                            .tmux
-                            .read(&[
-                                "display-message",
-                                "-p",
-                                "-t",
-                                &format!("={session}:"),
-                                "#{pane_current_path}",
-                            ])
-                            .ok()
-                    })
-                    .filter(|out| out.ok())
-                    .map(|out| out.stdout.trim().to_string())
-                    .unwrap_or_else(|| home.display().to_string());
+                let cwd = if fresh {
+                    let now: chrono::DateTime<chrono::Utc> = std::time::SystemTime::now().into();
+                    comandos_runtime::quick_terminal::reserve_directory(
+                        &home.join("codebase/0xJesus/Terminal"),
+                        now.fixed_offset(),
+                    )
+                    .map_err(|e| e.to_string())?
+                    .display()
+                    .to_string()
+                } else {
+                    selected
+                        .as_deref()
+                        .and_then(|session| {
+                            backend
+                                .tmux
+                                .read(&[
+                                    "display-message",
+                                    "-p",
+                                    "-t",
+                                    &format!("={session}:"),
+                                    "#{pane_current_path}",
+                                ])
+                                .ok()
+                        })
+                        .filter(|out| out.ok())
+                        .map(|out| out.stdout.trim().to_string())
+                        .unwrap_or_else(|| home.display().to_string())
+                };
+                let label = std::path::Path::new(&cwd)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("Terminal");
                 let plan = restore::RestorePlan::build(
-                    &json!({key.clone():"Terminal"}),
+                    &json!({key.clone():label}),
                     &json!({key:{"cwd":cwd,"agent":""}}),
                     &BTreeSet::new(),
                     backend.tmux.mode(),
@@ -249,7 +555,7 @@ impl App {
             self.registry.borrow_mut().reorder(key, index);
             self.strip.borrow().reorder(key, index as u32);
             if let Some(label) = self.labels.borrow().get(key) {
-                self.toolbar.reorder_child(label, index as i32);
+                self.toolbar.reorder_child(&label.item, index as i32);
             }
             self.persist();
         }
@@ -267,7 +573,11 @@ impl App {
         webview: webkit2gtk::WebView,
     ) -> Rc<Self> {
         let toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        let tab_layout = ui::tabstrip::TabStripLayout::new(&toolbar);
+        let drag_layer = ui::drag::DragLayer::new();
         let status = gtk::Label::new(None);
+        status.set_no_show_all(true);
+        status.connect_label_notify(|label| label.set_visible(!label.text().is_empty()));
         let workspace = ui::workspace::GtkWorkspace::new();
         let state = StateFiles::new(cfg.clone(), guard.clone());
         let strip = RefCell::new(ui::tabstrip::TabStripNotebook::new(notebook.clone()));
@@ -292,6 +602,21 @@ impl App {
             handlers: RefCell::new(BTreeMap::new()),
             terms: RefCell::new(BTreeMap::new()),
             labels: RefCell::new(BTreeMap::new()),
+            group_labels: RefCell::new(BTreeMap::new()),
+            tab_layout,
+            drag_layer,
+            previous_order: RefCell::new(None),
+            state_items: RefCell::new(BTreeMap::new()),
+            marks: RefCell::new(BTreeMap::new()),
+            quick: Arc::new(crate::tab_actions::QuickTerminal::default()),
+            quick_busy: Cell::new(false),
+            focus_ready: Cell::new(false),
+            focus_restoring: Cell::new(false),
+            interacted: Cell::new(false),
+            saved_focus: RefCell::new(None),
+            pane_initialized: Cell::new(false),
+            pane_saved: Cell::new(None),
+            theme_provider: gtk::CssProvider::new(),
             restore: RefCell::new(RestoreCoordinator::default()),
             startup_valid: Cell::new(false),
             workspace_doc: RefCell::new(Value::Null),
@@ -405,14 +730,30 @@ impl App {
                 } else {
                     &restore::PaneScopes
                 };
-                Ok::<_, String>(restore::execute(&plan, &backend, launcher, &home))
+                let layout = if mode == RunMode::Sandbox {
+                    state.read("app-layout.json").ok()
+                } else {
+                    None
+                };
+                let fixture = if mode == RunMode::Sandbox {
+                    home.parent()
+                        .and_then(|root| std::fs::read(root.join("dashboard-fixture.json")).ok())
+                        .and_then(|bytes| comandos_core::json::workspace_loads_bytes(&bytes))
+                } else {
+                    None
+                };
+                Ok::<_, String>((
+                    restore::execute(&plan, &backend, launcher, &home),
+                    layout,
+                    fixture,
+                ))
             },
             move |result| {
                 let Some(app) = weak.upgrade().filter(|a| !a.closed.load(Ordering::Acquire)) else {
                     return;
                 };
                 match result {
-                    Ok(result) => {
+                    Ok((result, layout, fixture)) => {
                         app.startup_valid.set(true);
                         for tab in result.tabs {
                             app.add_tab(
@@ -425,13 +766,36 @@ impl App {
                             );
                         }
                         app.restore.borrow_mut().finish(result.result);
+                        if app.cfg.dash_url().is_none()
+                            && let Some(layout) = layout
+                        {
+                            app.apply_workspace(&layout);
+                        }
+                        if app.cfg.mode() == RunMode::Sandbox
+                            && app.cfg.dash_url().is_none()
+                            && let Some(fixture) = fixture
+                        {
+                            for (key, kind) in [("prefs", 0), ("state", 1), ("marks", 2)] {
+                                if let Some(value) = fixture.get(key) {
+                                    app.poll(match kind {
+                                        0 => PollUpdate::Prefs {
+                                            value: value.clone(),
+                                            favorite_generation: 0,
+                                        },
+                                        1 => PollUpdate::State(value.clone()),
+                                        _ => PollUpdate::Marks(value.clone()),
+                                    });
+                                }
+                            }
+                        }
                     }
                     Err(error) => {
                         app.status.set_text(&error);
                         app.restore.borrow_mut().finish(RestoreResult::Failed);
                     }
                 }
-                if let Some(doc) = app.pending_workspace.borrow_mut().take() {
+                let pending = app.pending_workspace.borrow_mut().take();
+                if let Some(doc) = pending {
                     app.apply_workspace(&doc);
                 }
                 app.persist();
@@ -535,7 +899,9 @@ impl App {
                 })
         })
     }
-    fn terminal(&self, key: &str) -> Result<TermView, String> {
+    fn terminal(self: &Rc<Self>, key: &str) -> Result<TermView, String> {
+        let weak = Rc::downgrade(self);
+        let ended_key = key.to_string();
         let home = self.private_home();
         let sandbox = self.cfg.mode() == RunMode::Sandbox;
         TermView::new(TermOptions {
@@ -580,7 +946,34 @@ impl App {
             tmux_size: None,
             before_spawn: None,
             on_title: None,
-            on_exit: None,
+            on_exit: Some(Rc::new(move |_| {
+                if let Some(app) = weak.upgrade().filter(|a| !a.closed.load(Ordering::Acquire)) {
+                    let tmux = app.tmux.clone();
+                    let key = ended_key.clone();
+                    let weak = Rc::downgrade(&app);
+                    app.jobs.spawn(
+                        move || {
+                            let alive = tmux
+                                .read(&["has-session", "-t", &format!("={key}")])
+                                .is_ok_and(|o| o.ok());
+                            (key, alive)
+                        },
+                        move |(key, alive)| {
+                            if !alive && let Some(app) = weak.upgrade() {
+                                if let Some(term) = app.terms.borrow().get(&key) {
+                                    term.show_finished(
+                                        "[sesión terminada — cierra esta pestaña con la x]",
+                                    );
+                                }
+                                if let Some(label) = app.labels.borrow().get(&key) {
+                                    label.item.style_context().add_class("closed");
+                                    label.set_state("dead");
+                                }
+                            }
+                        },
+                    );
+                }
+            })),
             on_bell: None,
             on_link: None,
             on_ssh_scroll: None,
@@ -610,6 +1003,13 @@ impl App {
         } else if attach {
             match self.terminal(key) {
                 Ok(term) => {
+                    let weak = Rc::downgrade(self);
+                    let session = key.to_string();
+                    term.on_context_menu(Rc::new(move |event, point| {
+                        if let Some(app) = weak.upgrade() {
+                            app.pane_menu(&session, event, point);
+                        }
+                    }));
                     let widget = term.widget().clone().upcast();
                     self.terms.borrow_mut().insert(key.into(), term);
                     widget
@@ -634,55 +1034,68 @@ impl App {
         };
         child.set_widget_name(&format!("tab-{key}"));
         self.workspace.register_tab(key, &child);
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 2);
-        row.style_context().add_class("strip-tab-label");
-        let favorite = gtk::Button::with_label("☆");
-        let name = gtk::Button::with_label(label);
-        let close = gtk::Button::with_label("×");
-        row.pack_start(&favorite, false, false, 0);
-        row.pack_start(&name, true, true, 0);
-        row.pack_start(&close, false, false, 0);
+        let tab = ui::tab_label::TabLabel::new(label, key == "local", key != "local");
+        self.install_drag(key, tab.name.upcast_ref());
+        self.install_drag(key, tab.item.upcast_ref());
         let weak = Rc::downgrade(self);
         let k = key.to_string();
-        name.connect_clicked(move |_| {
-            if let Some(a) = weak.upgrade() {
-                a.select(&k);
+        tab.item.connect_button_press_event(move |_, event| {
+            if event.button() == 1
+                && let Some(app) = weak.upgrade()
+            {
+                app.select(&k);
             }
+            glib::Propagation::Proceed
         });
         let weak = Rc::downgrade(self);
         let k = key.to_string();
-        favorite.connect_clicked(move |_| {
-            if let Some(a) = weak.upgrade() {
-                a.toggle_favorite(&k);
-            }
-        });
-        let weak = Rc::downgrade(self);
-        let k = key.to_string();
-        close.connect_clicked(move |_| {
-            if let Some(a) = weak.upgrade() {
-                a.close_tab(&k, true);
-            }
-        });
-        name.add_events(gdk::EventMask::BUTTON_PRESS_MASK);
-        let weak = Rc::downgrade(self);
-        let k = key.to_string();
-        name.connect_button_press_event(move |_, event| {
-            if event.event_type() == gdk::EventType::DoubleButtonPress {
-                if let Some(a) = weak.upgrade() {
-                    a.rename_tab(&k);
+        tab.name.connect_button_press_event(move |_, event| {
+            if let Some(app) = weak.upgrade() {
+                if event.button() == 1 {
+                    if event.event_type() == gdk::EventType::DoubleButtonPress {
+                        app.rename_tab(&k);
+                        return glib::Propagation::Stop;
+                    }
+                    app.select(&k);
+                } else if event.button() == 3 {
+                    app.tab_menu(&k, event);
+                    return glib::Propagation::Stop;
                 }
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
             }
+            glib::Propagation::Proceed
         });
-        self.install_drag(key, &name, &child);
+        if let Some(button) = &tab.favorite {
+            let weak = Rc::downgrade(self);
+            let k = key.to_string();
+            button.connect_clicked(move |_| {
+                if let Some(app) = weak.upgrade() {
+                    app.toggle_favorite(&k);
+                }
+            });
+        }
+        if let Some(button) = &tab.close {
+            let weak = Rc::downgrade(self);
+            let k = key.to_string();
+            button.connect_clicked(move |_| {
+                if let Some(app) = weak.upgrade() {
+                    app.close_tab(&k, true);
+                }
+            });
+        }
+        if let Some(button) = &tab.suggest {
+            let weak = Rc::downgrade(self);
+            let k = key.to_string();
+            button.connect_clicked(move |_| {
+                if let Some(app) = weak.upgrade() {
+                    app.set_mark(&k, "resolved");
+                }
+            });
+        }
         self.strip
             .borrow_mut()
             .insert(key.into(), &child, &gtk::Label::new(Some(label)).upcast());
-        self.toolbar.pack_start(&row, false, false, 0);
-        self.labels.borrow_mut().insert(key.into(), row);
-        self.toolbar.show_all();
+        self.labels.borrow_mut().insert(key.into(), tab);
+        self.sync_strip();
         self.notebook.show_all();
         if !self.workspace_doc.borrow().is_null() {
             self.workspace.refresh();
@@ -730,7 +1143,7 @@ impl App {
                             &widget,
                             &gtk::Label::new(Some(&label)).upcast(),
                         );
-                        app.install_drop_target(&key, &widget);
+
                         app.terms.borrow_mut().insert(key.clone(), term);
                         app.workspace.refresh();
                         app.notebook.show_all();
@@ -742,6 +1155,7 @@ impl App {
         );
     }
     fn select(&self, key: &str) {
+        self.paint_selected(key);
         if self.strip.borrow().focus(key) {
             if let Some(term) = self.terms.borrow().get(key) {
                 term.widget().grab_focus();
@@ -754,42 +1168,21 @@ impl App {
         if !self.writable() {
             return;
         }
-        let dialog = gtk::Dialog::with_buttons(
-            Some("Rename"),
-            Some(&self.window),
-            gtk::DialogFlags::MODAL,
-            &[
-                ("Cancel", gtk::ResponseType::Cancel),
-                ("Save", gtk::ResponseType::Accept),
-            ],
-        );
-        let entry = gtk::Entry::new();
-        entry.set_text(
-            self.registry
-                .borrow()
-                .to_json()
-                .get(key)
-                .unwrap_or(&Value::Null)
-                .as_str()
-                .unwrap_or(key),
-        );
-        dialog.content_area().add(&entry);
-        dialog.show_all();
-        if dialog.run() == gtk::ResponseType::Accept && !entry.text().is_empty() {
-            self.registry
-                .borrow_mut()
-                .rename(key, entry.text().as_str());
-            if let Some(row) = self.labels.borrow().get(key)
-                && let Some(name) = row
-                    .children()
-                    .get(1)
-                    .and_then(|w| w.clone().downcast::<gtk::Button>().ok())
-            {
-                name.set_label(entry.text().as_str());
-            }
-            self.persist();
+        let tab = self.labels.borrow().get(key).cloned();
+        if let Some(tab) = tab {
+            let weak = Rc::downgrade(self);
+            let k = key.to_string();
+            tab.begin_rename(Rc::new(move |text| {
+                if let Some(app) = weak.upgrade().filter(|a| a.writable()) {
+                    app.registry.borrow_mut().rename(&k, &text);
+                    if let Some(tab) = app.labels.borrow().get(&k) {
+                        tab.set_text(&text);
+                    }
+                    app.sync_strip();
+                    app.persist();
+                }
+            }));
         }
-        dialog.close();
     }
     fn toggle_favorite(self: &Rc<Self>, key: &str) {
         if !self.writable() {
@@ -825,18 +1218,8 @@ impl App {
     }
     fn paint_favorites(&self) {
         let favorites = self.registry.borrow().favorite_keys();
-        for (key, row) in self.labels.borrow().iter() {
-            if let Some(button) = row
-                .children()
-                .first()
-                .and_then(|w| w.clone().downcast::<gtk::Button>().ok())
-            {
-                button.set_label(if favorites.contains(key) {
-                    "★"
-                } else {
-                    "☆"
-                });
-            }
+        for (key, tab) in self.labels.borrow().iter() {
+            tab.set_favorite(favorites.contains(key));
         }
     }
     fn close_tab(self: &Rc<Self>, key: &str, confirm: bool) {
@@ -881,10 +1264,16 @@ impl App {
         }
         self.strip.borrow_mut().remove(key);
         self.workspace.remove_tab(key);
-        if let Some(row) = self.labels.borrow_mut().remove(key) {
-            self.toolbar.remove(&row);
+        if let Some(row) = self.labels.borrow_mut().remove(key)
+            && let Some(parent) = row
+                .item
+                .parent()
+                .and_then(|p| p.downcast::<gtk::Container>().ok())
+        {
+            parent.remove(&row.item);
         }
         self.registry.borrow_mut().archive(key, "closed");
+        self.sync_strip();
         self.persist();
     }
     fn poll(self: &Rc<Self>, update: PollUpdate) {
@@ -895,8 +1284,11 @@ impl App {
             } => {
                 if crate::poll::live_pref_snapshot(&self.preferences.borrow())
                     != crate::poll::live_pref_snapshot(&value)
+                    || self.preferences.borrow().get("button_style") != value.get("button_style")
                 {
                     *self.preferences.borrow_mut() = value.clone();
+                    self.tab_layout
+                        .set_rows(value.get("tabs_layout").and_then(Value::as_str) == Some("rows"));
                     let themes = crate::theme::themes_from_file(Some(include_bytes!(concat!(
                         env!("CARGO_MANIFEST_DIR"),
                         "/../../config/themes.json"
@@ -909,18 +1301,25 @@ impl App {
                         &themes,
                     );
                     if let Some(theme) = theme.as_ref() {
-                        let provider = gtk::CssProvider::new();
-                        if provider
-                            .load_from_data(crate::theme::theme_css(theme).as_bytes())
-                            .is_ok()
-                            && let Some(screen) = gdk::Screen::default()
-                        {
-                            gtk::StyleContext::add_provider_for_screen(
-                                &screen,
-                                &provider,
-                                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-                            );
-                        }
+                        self.drag_layer.colors(
+                            theme
+                                .values
+                                .get("bar")
+                                .and_then(Value::as_str)
+                                .unwrap_or("#161B22"),
+                            theme
+                                .values
+                                .get("brand")
+                                .and_then(Value::as_str)
+                                .unwrap_or("#8B7CF6"),
+                        );
+                        self.paint_theme(
+                            theme,
+                            value
+                                .get("button_style")
+                                .and_then(Value::as_str)
+                                .unwrap_or("sutil"),
+                        );
                     }
                     for term in self.terms.borrow().values() {
                         term.set_preferences(&value);
@@ -953,14 +1352,33 @@ impl App {
                     if let Some(key) = item.get("session").unwrap_or(&Value::Null).as_str()
                         && let Some(row) = self.labels.borrow().get(key)
                     {
-                        row.set_tooltip_text(item.get("status").unwrap_or(&Value::Null).as_str());
+                        row.set_state(
+                            item.get("status")
+                                .unwrap_or(&Value::Null)
+                                .as_str()
+                                .unwrap_or(""),
+                        );
+                        self.state_items
+                            .borrow_mut()
+                            .insert(key.into(), item.clone());
                     }
                 }
             }
-            PollUpdate::Marks(_) => {}
+            PollUpdate::Marks(value) => {
+                for mark in value
+                    .get("rows")
+                    .or_else(|| value.get("marks"))
+                    .and_then(Value::as_array)
+                    .or_else(|| value.as_array())
+                    .into_iter()
+                    .flatten()
+                {
+                    self.adopt_mark(mark);
+                }
+            }
         }
     }
-    fn apply_workspace(&self, value: &Value) {
+    fn apply_workspace(self: &Rc<Self>, value: &Value) {
         if !self.restore.borrow().ready() || self.posting.get() || self.dragging.get() {
             *self.pending_workspace.borrow_mut() = Some(value.clone());
             return;
@@ -978,8 +1396,10 @@ impl App {
         );
         self.workspace.apply(doc);
         *self.workspace_doc.borrow_mut() = doc.clone();
+        self.sync_strip();
         self.notebook.hide();
         self.workspace.widget().show_all();
+        self.restore_device_focus();
     }
     fn commit_workspace(self: &Rc<Self>, doc: Value, focus: Option<String>) {
         if self.posting.get() || !self.restore.borrow().ready() {
@@ -990,6 +1410,31 @@ impl App {
             return;
         }
         if !self.writable() {
+            return;
+        }
+        if self.cfg.mode() == RunMode::Sandbox && self.cfg.dash_url().is_none() {
+            let revision = self.revision.get().saturating_add(1);
+            let value = json!({"document":doc,"revision":revision});
+            self.apply_workspace(&value);
+            if let Some(focus) = focus.as_deref() {
+                self.select(focus);
+            }
+            let state = self.state.clone();
+            let closed = self.closed.clone();
+            self.jobs.spawn(
+                move || {
+                    if !closed.load(Ordering::Acquire) {
+                        state.write("app-layout.json", &value)
+                    } else {
+                        Ok(())
+                    }
+                },
+                |result| {
+                    if let Err(e) = result {
+                        eprintln!("workspace privado: {e:?}");
+                    }
+                },
+            );
             return;
         }
         let mut bytes = [0u8; 12];
@@ -1053,115 +1498,62 @@ impl App {
             },
         );
     }
-    fn install_drag(self: &Rc<Self>, key: &str, source: &gtk::Button, target: &gtk::Widget) {
-        let targets = [gtk::TargetEntry::new(
-            "application/x-comandos-tab",
-            gtk::TargetFlags::SAME_APP,
-            0,
-        )];
-        source.drag_source_set(
-            gdk::ModifierType::BUTTON1_MASK,
-            &targets,
-            gdk::DragAction::MOVE,
+    fn install_drag(self: &Rc<Self>, key: &str, source: &gtk::Widget) {
+        source.add_events(
+            gdk::EventMask::BUTTON_PRESS_MASK
+                | gdk::EventMask::BUTTON_RELEASE_MASK
+                | gdk::EventMask::POINTER_MOTION_MASK,
         );
+        let weak = Rc::downgrade(self);
         let k = key.to_string();
-        source.connect_drag_data_get(move |_, _, data, _, _| {
-            data.set_text(&k);
-        });
-        let weak = Rc::downgrade(self);
-        source.connect_drag_begin(move |source, _| {
-            if let Some(app) = weak.upgrade() {
-                app.dragging.set(true);
-                source.style_context().add_class("lifted");
-            }
-        });
-        let weak = Rc::downgrade(self);
-        source.connect_drag_end(move |source, _| {
-            source.style_context().remove_class("lifted");
-            if let Some(app) = weak.upgrade() {
-                app.finish_drag();
-            }
-        });
-        let weak = Rc::downgrade(self);
-        source.connect_drag_failed(move |source, _, _| {
-            source.style_context().remove_class("lifted");
-            if let Some(app) = weak.upgrade() {
-                app.finish_drag();
+        source.connect_button_press_event(move |_, event| {
+            if event.button() == 1
+                && event.event_type() == gdk::EventType::ButtonPress
+                && let Some(app) = weak
+                    .upgrade()
+                    .filter(|a| !a.workspace_doc.borrow().is_null() && !a.posting.get())
+            {
+                let same_press = {
+                    let gesture = app.drag_layer.0.gesture.borrow();
+                    gesture.phase == crate::workspace_view::DragPhase::Pressed
+                        && gesture.press_root == event.root()
+                };
+                if !same_press {
+                    app.drag_layer.0.gesture.borrow_mut().press(
+                        k.clone(),
+                        event.root(),
+                        app.workspace.widget().current_page(),
+                    );
+                }
             }
             glib::Propagation::Proceed
         });
-        self.install_drop_target(key, target);
-        self.install_drop_target(key, source.upcast_ref());
-    }
-    fn finish_drag(&self) {
-        self.dragging.set(false);
-        if !self.posting.get() {
-            let pending = self.pending_workspace.borrow_mut().take();
-            if let Some(pending) = pending {
-                self.apply_workspace(&pending);
-            }
-        }
-    }
-    fn install_drop_target(self: &Rc<Self>, key: &str, target: &gtk::Widget) {
-        let targets = [gtk::TargetEntry::new(
-            "application/x-comandos-tab",
-            gtk::TargetFlags::SAME_APP,
-            0,
-        )];
-        target.drag_dest_set(gtk::DestDefaults::ALL, &targets, gdk::DragAction::MOVE);
         let weak = Rc::downgrade(self);
-        let k = key.to_string();
-        target.connect_drag_data_received(move |widget, context, x, y, data, _, time| {
-            let success = if let (Some(app), Some(moved)) = (weak.upgrade(), data.text()) {
-                app.dragging.set(false);
-                let width = widget.allocated_width().max(1) as f64;
-                let height = widget.allocated_height().max(1) as f64;
-                let target = crate::workspace_view::dock_target(
-                    &json!({"groups":[{"id":"hit","tree":{"type":"tab","tabId":k}}]}),
-                    f64::from(x) / width,
-                    f64::from(y) / height,
-                    &BTreeSet::from([moved.to_string()]),
-                );
-                if let Some(target) = target {
-                    let edge = match target.edge {
-                        crate::workspace_view::DockEdge::Left => "left",
-                        crate::workspace_view::DockEdge::Right => "right",
-                        crate::workspace_view::DockEdge::Top => "top",
-                        crate::workspace_view::DockEdge::Bottom => "bottom",
-                        crate::workspace_view::DockEdge::Center => "right",
-                    };
-                    let index = app
-                        .registry
-                        .borrow()
-                        .ordered_keys()
-                        .iter()
-                        .position(|key| key == &k);
-                    if app.workspace_doc.borrow().is_null()
-                        && let Some(index) = index
-                    {
-                        app.reorder_tab(moved.as_str(), index);
-                        context.drag_finish(true, false, time);
-                        return;
-                    }
-                    let result = comandos_core::workspace::layout::move_tab(
-                        &app.workspace_doc.borrow(),
-                        moved.as_str(),
-                        &k,
-                        edge,
-                    );
-                    if let Ok(doc) = result {
-                        app.commit_workspace(doc, Some(moved.to_string()));
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
+        source.connect_motion_notify_event(move |_, event| {
+            if let Some(app) = weak.upgrade()
+                && event.state().contains(gdk::ModifierType::BUTTON1_MASK)
+                && app.drag_motion(event.root())
+            {
+                glib::Propagation::Stop
             } else {
-                false
-            };
-            context.drag_finish(success, false, time);
+                glib::Propagation::Proceed
+            }
+        });
+        let weak = Rc::downgrade(self);
+        source.connect_button_release_event(move |_, event| {
+            if event.button() == 1
+                && let Some(app) = weak.upgrade()
+                && app.drag_layer.active()
+            {
+                let point = app.layer_point(event.root());
+                app.drop_drag(app.drag_target(point));
+                glib::Propagation::Stop
+            } else {
+                if let Some(app) = weak.upgrade() {
+                    app.drag_layer.0.gesture.borrow_mut().finish();
+                }
+                glib::Propagation::Proceed
+            }
         });
     }
     fn snapshot(self: &Rc<Self>, tabs_only: bool) {
@@ -1366,6 +1758,14 @@ impl App {
         }
     }
     fn open_existing(self: &Rc<Self>, key: &str, label: &str, focus: bool) {
+        self.open_tab(key, "claude", label, focus);
+    }
+    fn open_tab(self: &Rc<Self>, key: &str, window: &str, label: &str, focus: bool) {
+        if !self.writable() || !crate::tab_actions::valid_session(key) {
+            return;
+        }
+        let window = window.to_string();
+        let previous = self.current_session();
         let tmux = self.tmux.clone();
         let key = key.to_string();
         let label = label.to_string();
@@ -1375,6 +1775,9 @@ impl App {
                 let exists = tmux
                     .read(&["has-session", "-t", &format!("={key}")])
                     .is_ok_and(|o| o.ok());
+                if exists {
+                    let _ = crate::tab_actions::select_window(&tmux, &key, &window);
+                }
                 (key, label, exists)
             },
             move |(key, label, exists)| {
@@ -1387,6 +1790,8 @@ impl App {
                     );
                     if focus {
                         app.select(&key);
+                    } else if let Some(previous) = previous.as_deref() {
+                        app.select(previous);
                     }
                     app.persist();
                 }
@@ -1476,29 +1881,37 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
             webview.clone(),
         );
         let terminals = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        terminals.pack_start(&app.toolbar, false, false, 0);
+        terminals.pack_start(app.tab_layout.widget(), false, false, 0);
         terminals.pack_start(&notebook, true, true, 0);
         terminals.pack_start(app.workspace.widget(), true, true, 0);
         terminals.pack_start(&app.status, false, false, 0);
         paned.pack1(&webview, true, false);
-        paned.pack2(&terminals, true, false);
+        let overlay = gtk::Overlay::new();
+        overlay.add(&terminals);
+        overlay.add_overlay(app.drag_layer.widget());
+        overlay.set_overlay_pass_through(app.drag_layer.widget(), true);
+        paned.pack2(&overlay, true, false);
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.pack_start(&ui::window::header(&window), false, false, 0);
         content.pack_start(&paned, true, true, 0);
         window.add(&content);
         app.install_foundation_handlers();
         let weak = Rc::downgrade(&app);
-        app.workspace.on_resize(Rc::new(move |group, path, ratio| {
+        app.workspace.on_resize(Rc::new(move |updates| {
             if let Some(app) = weak.upgrade() {
-                let result = comandos_core::workspace::layout::resize_split(
-                    &app.workspace_doc.borrow(),
-                    group,
-                    &json!(path),
-                    &json!(ratio),
-                );
-                if let Ok(doc) = result {
-                    app.commit_workspace(doc, None);
+                let mut doc = app.workspace_doc.borrow().clone();
+                for (group, path, ratio) in updates {
+                    match comandos_core::workspace::layout::resize_split(
+                        &doc,
+                        group,
+                        &json!(path),
+                        &json!(ratio),
+                    ) {
+                        Ok(changed) => doc = changed,
+                        Err(_) => return,
+                    }
                 }
+                app.commit_workspace(doc, None);
             }
         }));
         // Registro T13: bridge actions beyond the connected foundation.
@@ -1525,6 +1938,37 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
             }
         });
         let mut sources = vec![poll];
+        let weak = Rc::downgrade(&app);
+        sources.push(glib::timeout_add_local(
+            Duration::from_millis(260),
+            move || {
+                if let Some(app) = weak.upgrade() {
+                    app.drag_tick();
+                    glib::ControlFlow::Continue
+                } else {
+                    glib::ControlFlow::Break
+                }
+            },
+        ));
+        let epoch = std::time::Instant::now();
+        let weak = Rc::downgrade(&app);
+        sources.push(glib::timeout_add_local(
+            Duration::from_millis(80),
+            move || {
+                if let Some(app) = weak.upgrade() {
+                    for tab in app.labels.borrow().values() {
+                        tab.paint(epoch.elapsed().as_secs_f64());
+                    }
+                    if let Some(key) = app.current_session() {
+                        app.paint_selected(&key);
+                        app.save_device_focus(&key);
+                    }
+                    glib::ControlFlow::Continue
+                } else {
+                    glib::ControlFlow::Break
+                }
+            },
+        ));
         for (seconds, tabs_only) in [(5, false), (30, true)] {
             let weak = Rc::downgrade(&app);
             sources.push(glib::timeout_add_local(
@@ -1631,3 +2075,6 @@ fn parse_color(hex: &str) -> Option<[u8; 3]> {
         u8::from_str_radix(hex.get(4..6)?, 16).ok()?,
     ])
 }
+
+#[path = "app_foundation.rs"]
+mod foundation;
