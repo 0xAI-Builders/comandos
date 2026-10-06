@@ -8,6 +8,8 @@
     "device-drafts",
     "workspace-layout",
     "marks",
-    "pomodoro"
+    "pomodoro",
+    "analytics",
+    "notifications"
   ]
 }

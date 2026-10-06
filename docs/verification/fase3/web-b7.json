@@ -1,0 +1,45 @@
+{
+  "status": "implementation_native_and_actual_wasm_pass_browser_pending",
+  "artifact": "907d9739f301",
+  "budget": {
+    "raw_bytes": 1408758,
+    "gzip_bytes": 370583,
+    "limit_bytes": 614400
+  },
+  "actual_wasm": {
+    "original_cjs_suites": [
+      "analytics_parity_checks.cjs",
+      "analytics_ui_checks.cjs",
+      "analytics_agy_checks.cjs",
+      "notification_ui_checks.cjs"
+    ],
+    "exact_analytics_markup_cases": 21,
+    "notification_cases": 26,
+    "extra_complete_notification_markup_cases": 12,
+    "full_text_code_units": [
+      5000,
+      6516
+    ],
+    "owned_one_long_poll_and_dispose_settlement": true,
+    "negative_blank_analytics_exit": 1,
+    "prior_behavior_groups": 44,
+    "prior_utf16_and_audio_dispose": true,
+    "prior_b6_core_ui": true,
+    "binary_toFixed_differential_cases": 2,
+    "binary_toFixed_old_artifact_red_exit": 1
+  },
+  "native_and_wasm_clippy": "pass (comandos-web, comandos-web-view, comandos-web-dom)",
+  "legacy_policy_change": "Always Ver TODO with escaped complete provided excerpt/title; backend excerpt limit unchanged",
+  "source_sha256": {
+    "notifications": "5d0413b2f96eb6e794d5c3c87d64c4ffbb584bc45a50535a99804d39c23e2db7",
+    "analytics": "d76f554af3e4abeffd3560d935c8d605f3460807b0bac34740bb912350604851",
+    "analytics-render": "f3025e42ef03795c768f2cebd55aed6b0230fbee2fe2eb0d6aeca04dc95a83fa"
+  },
+  "browser_acceptance": "pending coordinated root private candidate refresh and chrome-bg capability; suites use original product DOM/controls, explicit web=off versus web=shadow, require real WASM provenance",
+  "external_acceptance": [
+    "native host runtime",
+    "human listening",
+    "24h readonly shadow",
+    "cutover/release"
+  ]
+}

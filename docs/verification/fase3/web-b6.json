@@ -12,7 +12,7 @@
     "prior_b5_edge_regression_pass": true
   },
   "native_tests": 7,
-  "browser_acceptance": "pending root private-front candidate refresh and actual DOM/negative/style proof",
+  "browser_acceptance": "pending: corrected private front 11d refreshed; final coordinated remote run timed out before its first crop",
   "external_acceptance": [
     "human listening",
     "native host runtime",
@@ -32,5 +32,10 @@
     "old_273_exit": 1,
     "corrected_11d_exit": 0,
     "contract": "original es-MX grouped XP preserved"
+  },
+  "final_remote_attempt": {
+    "report": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/web-functional/b6-final-product/report.json",
+    "crops": 0,
+    "error": "mcp tools/call: sin respuesta en 30 s"
   }
 }
