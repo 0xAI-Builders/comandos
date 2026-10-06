@@ -65,6 +65,24 @@ fn missing_build_artifacts_keep_the_original_page() {
     assert!(c.active.is_empty());
 }
 
+#[test]
+fn script_removal_matches_the_src_attribute_only() {
+    let src = "(function(){})()";
+    let page = "<script>const text='quick-terminal.js';</script>\n<script data-note='quick-terminal.js' src='/other.js'></script>\n<script src='/quick-terminal.js?v=1'></script>\n";
+    let c = compose(
+        page.as_bytes(),
+        &Resolved::in_memory(entries(&sha(src)), &[("dash/quick-terminal.js", src)]),
+        &sel(&["quick-terminal"]),
+        false,
+        &Manifest::test(),
+        "n1",
+    );
+    let result = String::from_utf8(c.html).unwrap();
+    assert!(result.contains("const text='quick-terminal.js'"));
+    assert!(result.contains("src='/other.js'"));
+    assert!(!result.contains("src='/quick-terminal.js?v=1'"));
+}
+
 fn entries(qt_sha: &str) -> Vec<Entry> {
     vec![
         Entry::script(

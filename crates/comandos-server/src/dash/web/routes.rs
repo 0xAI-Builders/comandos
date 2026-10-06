@@ -173,7 +173,7 @@ async fn asset(state: &DashState, rel: &str) -> Result<Reply, HandlerError> {
 }
 
 fn fallback() -> &'static str {
-    "if(!sessionStorage.cc_web_fallback){sessionStorage.cc_web_fallback=1;location.replace(location.pathname+'?web=off')}"
+    "if(!sessionStorage.cc_web_fallback){sessionStorage.cc_web_fallback=1;try{fetch('/ui-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({event:'web-gate-timeout'}),keepalive:true}).catch(()=>{})}catch(e){}const u=new URL(location.href);u.searchParams.set('web','off');location.replace(u.href)}"
 }
 
 fn query_value(target: &str, key: &str) -> Option<String> {
@@ -189,4 +189,32 @@ fn query_value(target: &str, key: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn fallback_preserves_application_query_hash_and_redirects_once() {
+        let fixture = "globalThis.sessionStorage={};globalThis.location={href:'http://127.0.0.1:7311/?app=1&anwin=1&token=fixture#tab',pathname:'/',replace(u){this.redirect=u;this.count=(this.count||0)+1}};globalThis.fetch=()=>Promise.resolve({});";
+        let script = format!(
+            "{fixture}{};{};console.log(JSON.stringify(location));",
+            super::fallback(),
+            super::fallback()
+        );
+        let output = std::process::Command::new("node")
+            .args(["-e", &script])
+            .output()
+            .expect("fixture Node de JS sin navegador");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            result["redirect"],
+            "http://127.0.0.1:7311/?app=1&anwin=1&token=fixture&web=off#tab"
+        );
+        assert_eq!(result["count"], 1);
+    }
 }

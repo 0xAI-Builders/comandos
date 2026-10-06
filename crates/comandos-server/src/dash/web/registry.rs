@@ -91,12 +91,26 @@ fn cut_script(html: &str, source: &str) -> String {
     let mut search_from = 0;
     while let Some(open_rel) = html[search_from..].find("<script") {
         let open = search_from + open_rel;
+        if html
+            .as_bytes()
+            .get(open + 7)
+            .is_some_and(|b| !b.is_ascii_whitespace() && *b != b'>')
+        {
+            search_from = open + 7;
+            continue;
+        }
         let Some(close_rel) = html[open..].find("</script>") else {
             break;
         };
         let close = open + close_rel + "</script>".len();
         let tag = &html[open..close];
-        if tag.contains(name) {
+        if script_src(tag).is_some_and(|src| {
+            src.split(['?', '#'])
+                .next()
+                .unwrap_or(src)
+                .trim_start_matches('/')
+                == name
+        }) {
             let end = close + html[close..].strip_prefix('\n').map_or(0, |_| 1);
             let mut out = String::with_capacity(html.len().saturating_sub(end - open));
             out.push_str(&html[..open]);
@@ -106,6 +120,56 @@ fn cut_script(html: &str, source: &str) -> String {
         search_from = close;
     }
     html.to_string()
+}
+
+/// Solo atributos del tag de apertura: nunca buscar el nombre en el cuerpo JS.
+fn script_src(tag: &str) -> Option<&str> {
+    let bytes = tag.as_bytes();
+    let mut i = 7;
+    while i < bytes.len() {
+        while bytes.get(i).is_some_and(u8::is_ascii_whitespace) {
+            i += 1;
+        }
+        if bytes.get(i).is_none_or(|b| *b == b'>') {
+            return None;
+        }
+        let start = i;
+        while bytes
+            .get(i)
+            .is_some_and(|b| !b.is_ascii_whitespace() && !matches!(b, b'=' | b'>'))
+        {
+            i += 1;
+        }
+        let key = tag.get(start..i)?;
+        while bytes.get(i).is_some_and(u8::is_ascii_whitespace) {
+            i += 1;
+        }
+        if bytes.get(i) != Some(&b'=') {
+            continue;
+        }
+        i += 1;
+        while bytes.get(i).is_some_and(u8::is_ascii_whitespace) {
+            i += 1;
+        }
+        let quote = bytes.get(i).copied().filter(|b| matches!(b, b'\'' | b'"'));
+        if quote.is_some() {
+            i += 1;
+        }
+        let value_start = i;
+        while bytes.get(i).is_some_and(|b| {
+            quote.map_or_else(|| !b.is_ascii_whitespace() && *b != b'>', |q| *b != q)
+        }) {
+            i += 1;
+        }
+        let value = tag.get(value_start..i)?;
+        if key.eq_ignore_ascii_case("src") {
+            return Some(value);
+        }
+        if quote.is_some() {
+            i += 1;
+        }
+    }
+    None
 }
 
 fn region_bounds(html: &str, start: &str, end: &str) -> Option<(usize, usize)> {
