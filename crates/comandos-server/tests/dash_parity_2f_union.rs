@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::{fs, path::Path};
 use support::{
     TestHome,
-    twin::{Twin, TwinOpts},
+    twin::{Twin, TwinOpts, TwinRun},
 };
 fn normalized(text: &str, home: &TestHome, volatile: &[Value]) -> String {
     let text = text.replace(home.root.to_str().unwrap(), "HOME");
@@ -61,13 +61,25 @@ async fn all_2f_fixtures_match_in_one_confined_campaign() {
                 .filter(|v| !v.is_null())
                 .map(Value::to_string)
                 .unwrap_or_default();
-            let pair = twin
-                .request(
+            let path = row["path"].as_str().unwrap();
+            let pair = TwinRun {
+                front: support::request_body(
+                    twin.front.port,
                     row["method"].as_str().unwrap(),
-                    row["path"].as_str().unwrap(),
+                    path,
+                    "",
                     &body,
                 )
-                .await;
+                .await,
+                oracle: support::request_body(
+                    twin.oracle.port,
+                    row["method"].as_str().unwrap(),
+                    row["oracle_path"].as_str().unwrap_or(path),
+                    "",
+                    &body,
+                )
+                .await,
+            };
             let volatile = row["volatile"].as_array().cloned().unwrap_or_default();
             let a = (
                 pair.front.status,
