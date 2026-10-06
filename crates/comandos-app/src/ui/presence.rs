@@ -2,6 +2,34 @@
 use crate::config::RunMode;
 use serde_json::{Value, json};
 use std::rc::Rc;
+use std::time::{Duration, Instant};
+
+pub const FOCUS_RETRY_DELAY: Duration = Duration::from_secs(5);
+
+/// Retry admission for the periodically saved device focus.
+#[derive(Default, Debug)]
+pub struct FocusRetry {
+    failed: Option<(String, Instant)>,
+}
+impl FocusRetry {
+    pub fn allows(&self, key: &str, now: Instant) -> bool {
+        self.failed
+            .as_ref()
+            .is_none_or(|(failed_key, at)| failed_key != key || now >= *at)
+    }
+    pub fn failed(&mut self, key: &str, now: Instant) {
+        self.failed = Some((key.into(), now + FOCUS_RETRY_DELAY));
+    }
+    pub fn succeeded(&mut self, key: &str) {
+        if self
+            .failed
+            .as_ref()
+            .is_some_and(|(failed_key, _)| failed_key == key)
+        {
+            self.failed = None;
+        }
+    }
+}
 #[derive(Default, Debug)]
 pub struct Presence {
     last: u64,

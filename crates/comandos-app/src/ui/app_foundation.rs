@@ -161,6 +161,10 @@ impl App {
         if !self.writable()
             || !self.focus_ready.get()
             || self.saved_focus.borrow().as_deref() == Some(key)
+            || !self
+                .focus_retry
+                .borrow()
+                .allows(key, std::time::Instant::now())
         {
             return;
         }
@@ -180,10 +184,16 @@ impl App {
             move || dash.post("/workspace/client", &body, Duration::from_secs(3)),
             move |result| {
                 if let Some(app) = weak.upgrade()
-                    && !matches!(result, Ok((200, _)))
                     && app.saved_focus.borrow().as_deref() == Some(&key)
                 {
-                    app.saved_focus.borrow_mut().take();
+                    if matches!(result, Ok((200, _))) {
+                        app.focus_retry.borrow_mut().succeeded(&key);
+                    } else {
+                        app.focus_retry
+                            .borrow_mut()
+                            .failed(&key, std::time::Instant::now());
+                        app.saved_focus.borrow_mut().take();
+                    }
                 }
             },
         );
