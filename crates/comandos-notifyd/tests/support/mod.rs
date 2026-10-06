@@ -26,6 +26,7 @@ impl Drop for TempDir {
 }
 
 pub fn tempdir() -> TempDir {
+    use std::os::unix::fs::DirBuilderExt;
     use std::sync::atomic::{AtomicU32, Ordering};
     static NEXT: AtomicU32 = AtomicU32::new(0);
     let nanos = std::time::SystemTime::now()
@@ -37,8 +38,29 @@ pub fn tempdir() -> TempDir {
         std::process::id(),
         NEXT.fetch_add(1, Ordering::SeqCst)
     ));
-    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::DirBuilder::new().mode(0o700).create(&dir).unwrap();
     TempDir(dir)
+}
+
+fn private_env(home: &Path) -> Vec<(&'static str, PathBuf)> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut env = vec![("HOME", home.to_path_buf())];
+    for (key, name) in [
+        ("XDG_CONFIG_HOME", "config"),
+        ("XDG_DATA_HOME", "data"),
+        ("XDG_CACHE_HOME", "cache"),
+        ("XDG_STATE_HOME", "state"),
+        ("XDG_RUNTIME_DIR", "run"),
+        ("TMPDIR", "tmp"),
+    ] {
+        let dir = home.join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        env.push((key, dir));
+    }
+    env.push(("TMP", home.join("tmp")));
+    env.push(("TEMP", home.join("tmp")));
+    env
 }
 
 /// Respuesta tal como llegó por el socket.
@@ -118,7 +140,7 @@ impl Daemon {
         std::fs::create_dir_all(&runtime).unwrap();
         command
             .env_clear()
-            .env("HOME", home.path())
+            .envs(private_env(home.path()))
             .env("PATH", &fakebin)
             .env("XDG_RUNTIME_DIR", &runtime)
             .env("LC_ALL", "C.UTF-8")
@@ -343,7 +365,7 @@ pub fn python_eval(hooks: &Path, env: &[(&str, &str)], expr: &str) -> Option<ser
         .arg(script)
         .args(["--eval", expr])
         .env_clear()
-        .env("HOME", home.path())
+        .envs(private_env(home.path()))
         .env("PATH", &fakebin)
         .env("XDG_RUNTIME_DIR", &runtime)
         .env("LC_ALL", "C.UTF-8")

@@ -12,6 +12,7 @@ pub mod guard;
 pub mod ipc;
 pub mod jobs;
 pub mod layout_dump;
+pub mod notifyd;
 pub mod poll;
 pub mod proc;
 pub mod restore;
