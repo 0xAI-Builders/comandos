@@ -1,0 +1,12 @@
+{
+  "id": "work-marks",
+  "kind": "script",
+  "source": "dash/work-marks.js",
+  "sha256": "5f1e14513ec7af3ad0d6f1d5ee92173fbbbf447d715e41cf548de2d5bf74da84",
+  "exports": [
+    "WorkMarks"
+  ],
+  "deps": [
+    "ui-sounds"
+  ]
+}

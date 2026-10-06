@@ -6,6 +6,10 @@
     "session-config",
     "quick-terminal",
     "device-drafts",
-    "workspace-layout"
+    "workspace-layout",
+    "marks",
+    "pomodoro",
+    "analytics",
+    "notifications"
   ]
 }

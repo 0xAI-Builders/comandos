@@ -1,10 +1,9 @@
 {
   "generator": "cargo run -p xtask -- web-inventory",
   "source": {
-    "head": "38c91676b67140ed0df87860810f204f8b7e7f5d",
+    "head": "aaa8a20aaacbc990c62b87bf08a5120686450d57",
     "dirty": [
-      "?? dash/prototypes/prototype-analytics.html",
-      "?? dash/prototypes/prototype-usage-cards.html"
+      "M dash/notifications.js"
     ]
   },
   "pages": {
@@ -2604,8 +2603,8 @@
       "script_index": 1,
       "marker_start": "// ---------- Analytics (grill 1–2 oct): Cuentas · Comparar · Pomodoro ----------",
       "marker_end": "</script>",
-      "sha256": "36a26a68b417b69305c8de329483c7abed8498e52a74093387f02f1d24aad894",
-      "lines": 46,
+      "sha256": "09b95a3a4322e3edc6e3c1627d5d5d08efc7e7318d627e9836ca22fba128e013",
+      "lines": 50,
       "line_start": 5816,
       "defines": [
         "ANALYTICS_DEMO",
@@ -2615,10 +2614,16 @@
         "openAnalytics",
         "openAnalyticsTab",
         "reloadDashboard",
-        "focusVisibleTerm"
+        "focusVisibleTerm",
+        "__comandosState",
+        "__comandosTranslate",
+        "__comandosIcon"
       ],
       "define_kinds": {
         "ANALYTICS_DEMO": "const",
+        "__comandosIcon": "window",
+        "__comandosState": "window",
+        "__comandosTranslate": "window",
         "analytics": "function",
         "analyticsPhone": "let",
         "analyticsView": "let",
@@ -2630,6 +2635,7 @@
       "uses_globals": [
         "$",
         "Analytics",
+        "S",
         "activeTerm",
         "api",
         "applyAppLayout",
@@ -2638,7 +2644,9 @@
         "openTerms",
         "restoreSplitLeft",
         "setSplitLeft",
-        "snipDlg"
+        "snipDlg",
+        "svg",
+        "tf"
       ],
       "mutates_globals": [
         "setSplitLeft"
@@ -3156,8 +3164,8 @@
       "script_index": null,
       "marker_start": null,
       "marker_end": null,
-      "sha256": "34b7ff059cc4cdbcabd6bd7c184dfd04d6c4a1d485291e15dd9bdd1db6e50923",
-      "lines": 851,
+      "sha256": "5d0413b2f96eb6e794d5c3c87d64c4ffbb584bc45a50535a99804d39c23e2db7",
+      "lines": 852,
       "line_start": 1,
       "defines": [
         "ComandosNotices"
@@ -3184,7 +3192,7 @@
       "post_messages": [],
       "message_types": [],
       "intervals_ms": [],
-      "strings": 380,
+      "strings": 382,
       "warnings": []
     },
     {
@@ -3200,7 +3208,7 @@
       "marker_end": "</script>",
       "sha256": "e1bf12aee4a1a1456a10da513de1193a6b088485be5e97b5157d4d4015b92cab",
       "lines": 79,
-      "line_start": 5877,
+      "line_start": 5881,
       "defines": [
         "selectPaneInFrame"
       ],

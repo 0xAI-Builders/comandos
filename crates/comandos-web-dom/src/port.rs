@@ -47,6 +47,39 @@ pub fn to_json(v: &JsValue) -> serde_json::Value {
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or(serde_json::Value::Null)
 }
+pub fn to_utf16_json(v: &JsValue) -> serde_json::Value {
+    js_sys::JSON::stringify(v)
+        .ok()
+        .and_then(|s| s.as_string())
+        .and_then(|s| serde_json::from_str(&comandos_web_view::utf16::json_to_unicode(&s)).ok())
+        .unwrap_or(serde_json::Value::Null)
+}
+pub fn from_utf16_json(v: &serde_json::Value) -> Result<JsValue, JsValue> {
+    js_sys::JSON::parse(&comandos_web_view::utf16::json_to_javascript(
+        &v.to_string(),
+    ))
+}
+pub fn utf16_value(text: &str) -> JsValue {
+    let units = comandos_web_view::utf16::decode(text);
+    let mut value = js_sys::JsString::from("");
+    for chunk in units.chunks(2048) {
+        value = value.concat(&js_sys::JsString::from_char_code(chunk).into());
+    }
+    value.into()
+}
+pub fn utf16_string(v: &JsValue) -> String {
+    invoke(&get(&js_sys::global(), "String"), std::slice::from_ref(v))
+        .ok()
+        .map(|v| comandos_web_view::utf16::encode(js_sys::JsString::from(v).iter()))
+        .unwrap_or_default()
+}
+/// Property names here use the same internal encoding as utf16_string/JSON.
+pub fn utf16_get(o: &JsValue, key: &str) -> JsValue {
+    Reflect::get(o, &utf16_value(key)).unwrap_or(JsValue::UNDEFINED)
+}
+pub fn utf16_set(o: &JsValue, key: &str, value: &JsValue) -> Result<(), JsValue> {
+    Reflect::set(o, &utf16_value(key), value).map(|_| ())
+}
 pub fn string(v: &JsValue) -> String {
     invoke(&get(&js_sys::global(), "String"), std::slice::from_ref(v))
         .ok()

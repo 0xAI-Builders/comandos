@@ -1,0 +1,66 @@
+{
+  "status": "implementation_and_node_checks_pass_browser_pending",
+  "artifact": "cd7e5eea705c",
+  "scope": "work-marks and manual Pomodoro; server authority and current polling preserved",
+  "plan_discrepancy": "Current original source uses pixel-art hourglass and six styles; preserving current source and CJS contracts over obsolete plan ring wording",
+  "node": {
+    "pure_differential_groups": 8,
+    "server_authority_sync_cases": 9,
+    "original_ui_contract_cases": 17,
+    "actual_wasm_fake_view_cases_within_ui_contract": 8,
+    "negative_exit": 1,
+    "prior_b5_edge_regression_pass": true
+  },
+  "native_tests": 7,
+  "browser_acceptance": "pending Root coordinated refresh/review and chrome-bg capacity; no new browser run during remote outage; explicit web=off baseline versus verified actual WASM web=shadow candidate required",
+  "external_acceptance": [
+    "human listening",
+    "native host runtime",
+    "24h readonly shadow",
+    "cutover/release"
+  ],
+  "browser_smoke": {
+    "original": "web=off",
+    "candidate": "web=shadow actual 273329a58105",
+    "crops": 10,
+    "identical": 6,
+    "failed": 4,
+    "finding": "XP locale numeric boxing; fixed and actual-WASM red/green verified; fresh product capture pending",
+    "report": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/web-functional/b6-smoke/report.json"
+  },
+  "locale_red_green": {
+    "old_273_exit": 1,
+    "corrected_11d_exit": 0,
+    "contract": "original es-MX grouped XP preserved"
+  },
+  "final_remote_attempt": {
+    "report": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/web-functional/b6-final-product/report.json",
+    "crops": 0,
+    "error": "mcp tools/call: sin respuesta en 30 s"
+  },
+  "review_repairs": {
+    "numeric_object_key_order": "canonical JS array indices first; stable insertion ordering for other keys and ties",
+    "utf16_boundary": "explicit lossless B6/B7 adapter; high/low lone surrogates, paired text and private-use collisions preserved; existing B4/B5 adapter unchanged",
+    "supplied_actual_wasm_cases": 9,
+    "supplied_cases_all_equal": true,
+    "all_four_boundary_consumers_tested": [
+      "analytics",
+      "notifications",
+      "pomodoro",
+      "work-marks"
+    ],
+    "old_907d_red_exit": 1,
+    "final_7c658_green_exit": 0,
+    "consumer_v2": {
+      "supplied_cases": 22,
+      "all_equal": true,
+      "extended_cases": 57,
+      "workmarks_identity_request_and_real_suggestion_click": true,
+      "analytics_real_popover_and_tooltip_handlers": true,
+      "notices_group_read_and_watch_revision": true,
+      "pomodoro_send_error_identity": true,
+      "old_7c658_red_exit": 1,
+      "final_cd7e5_green_exit": 0
+    }
+  }
+}
