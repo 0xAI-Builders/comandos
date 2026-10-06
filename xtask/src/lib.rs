@@ -3,6 +3,7 @@
 //! WASM de la Fase 3 (T4). `web_inventory` y `web_port` inventarían la
 //! interfaz y vigilan la deriva de lo portado (B3).
 pub mod fixtures;
+pub mod browser_e2e;
 pub mod lint;
 pub mod mcp;
 pub mod png_diff;

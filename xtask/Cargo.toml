@@ -27,3 +27,11 @@ tokio = { version = "=1.53.1", default-features = false, features = ["rt", "net"
 # `web-build` (T4): hash de contenido y medida gzip del presupuesto.
 sha2.workspace = true
 flate2 = "=1.1.10"
+
+[dev-dependencies]
+comandos-browser = { path = "../crates/comandos-browser" }
+
+[[bin]]
+name = "browser-e2e-worker-fixture"
+path = "tests/support/browser_worker.rs"
+test = false
