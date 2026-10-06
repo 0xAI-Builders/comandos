@@ -78,6 +78,8 @@ fn main() {
         Some("dom-diff") => exit(web::dom_diff(&args[1..])),
         Some("fixtures") => exit(web::fixtures(&args[1..])),
         Some("mac-check") => exit(xtask::mac::main(&args[1..])),
+        Some("mac-bundle") => exit(xtask::mac::bundle_main(&args[1..])),
+        Some("mac-sync") => exit(xtask::mac::sync_main(&args[1..])),
         Some("web-build") => exit(xtask::web_build::main(&args[1..])),
         Some("app-layout") => exit(xtask::app_layout::main(&args[1..])),
         Some("browser-e2e") => exit(xtask::browser_e2e::main(&args[1..])),
@@ -89,7 +91,7 @@ fn main() {
         Some("cli-catalog") => exit(xtask::cli_catalog::main(&args[1..])),
         _ => {
             eprintln!(
-                "subcomandos: rss, parity, poll, app-drift, app-shot, app-layout, shots, png-diff, dom-diff, fixtures, web-build, web-bench, web-inventory, web-port, browser-e2e, lint, css-orphans, cli-catalog, mac-check"
+                "subcomandos: rss, parity, poll, app-drift, app-shot, app-layout, shots, png-diff, dom-diff, fixtures, web-build, web-bench, web-inventory, web-port, browser-e2e, lint, css-orphans, cli-catalog, mac-check, mac-bundle, mac-sync"
             );
             exit(2);
         }

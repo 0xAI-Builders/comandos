@@ -1,4 +1,5 @@
 //! Instalación en paralelo del binario: `--stage`, `--link` y `--rollback`, sin cutover implícito.
+pub mod darwin;
 pub mod manifest;
 mod record;
 pub mod release;
@@ -14,11 +15,13 @@ use std::{
 /// Directorio de artefactos web que `--stage` copia a la release (T4).
 const WEB_SOURCE_ENV: &str = "COMANDOS_WEB_SOURCE";
 const HOOK_NAMES: &[&str] = &["cc-notify.sh", "cc-status.sh", "cc-usage-tool.sh"];
-const USAGE: &str = "uso: comandos install [--home DIR] [--dry-run] (--stage [--web DIR] | --stage-app RUTA_ABSOLUTA | --link NOMBRE | --rollback NOMBRE | --rollback-release | --releases)";
+const USAGE: &str = "uso: comandos install [--home DIR] [--dry-run] (--stage [--web DIR] | --stage-app RUTA_ABSOLUTA | --link NOMBRE | --darwin-agent [--no-launchctl] | --app RUTA.app | --rollback NOMBRE [--no-launchctl] | --rollback-release | --releases)";
 
 enum Action {
     Stage(Option<PathBuf>),
     StageApp(PathBuf),
+    DarwinAgent,
+    DarwinApp(PathBuf),
     Link(String),
     Rollback(String),
     RollbackRelease,
@@ -27,12 +30,14 @@ enum Action {
 
 /// Devuelve el código de salida; los errores de uso salen con 2 y los de operación con `Err`.
 pub fn run(args: &[String]) -> Result<i32, String> {
-    let Some((home, action, dry_run)) = parse(args) else {
+    let Some((home, action, dry_run, no_launchctl)) = parse(args) else {
         eprintln!("{USAGE}");
         return Ok(2);
     };
     let staged = home.join(".local/share/comandos/bin/comandos");
     match action {
+        Action::DarwinAgent => darwin::agent(&home, dry_run, no_launchctl)?,
+        Action::DarwinApp(source) => darwin::install_app(&home, &source, dry_run)?,
         Action::Stage(flag) => {
             let me = std::env::current_exe()
                 .map_err(|e| format!("no se pudo ubicar el ejecutable: {e}"))?;
@@ -114,6 +119,14 @@ pub fn run(args: &[String]) -> Result<i32, String> {
             }
         }
         Action::Rollback(name) => {
+            if name == darwin::AGENT_NAME {
+                darwin::rollback_agent(&home, dry_run, no_launchctl)?;
+                return Ok(0);
+            }
+            if name == "ComandOS.app" {
+                darwin::rollback_app(&home, dry_run)?;
+                return Ok(0);
+            }
             let name = valid(&name)?;
             if name == "cc-app" {
                 check_app_rollback(&home)?;
@@ -135,11 +148,12 @@ pub fn run(args: &[String]) -> Result<i32, String> {
     Ok(0)
 }
 
-fn parse(args: &[String]) -> Option<(PathBuf, Action, bool)> {
+fn parse(args: &[String]) -> Option<(PathBuf, Action, bool, bool)> {
     let mut home = std::env::var("HOME").ok().map(PathBuf::from);
     let mut action = None;
     let mut web = None;
     let mut dry_run = false;
+    let mut no_launchctl = false;
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         let next = match arg.as_str() {
@@ -162,6 +176,15 @@ fn parse(args: &[String]) -> Option<(PathBuf, Action, bool)> {
                 continue;
             }
             "--stage" => Action::Stage(None),
+            "--darwin-agent" => Action::DarwinAgent,
+            "--app" => Action::DarwinApp(PathBuf::from(it.next()?)),
+            "--no-launchctl" => {
+                if no_launchctl {
+                    return None;
+                }
+                no_launchctl = true;
+                continue;
+            }
             "--stage-app" => {
                 let p = PathBuf::from(it.next()?);
                 if !p.is_absolute() {
@@ -187,11 +210,17 @@ fn parse(args: &[String]) -> Option<(PathBuf, Action, bool)> {
     };
     let home = home?;
     let app_action = matches!(&action, Action::StageApp(_))
-        || matches!(&action, Action::Link(n) | Action::Rollback(n) if n == "cc-app");
+        || matches!(&action, Action::DarwinAgent | Action::DarwinApp(_))
+        || matches!(&action, Action::Link(n) | Action::Rollback(n) if n == "cc-app" || n == darwin::AGENT_NAME || n == "ComandOS.app");
+    let agent_action = matches!(&action, Action::DarwinAgent)
+        || matches!(&action, Action::Rollback(n) if n == darwin::AGENT_NAME);
+    if no_launchctl && !agent_action {
+        return None;
+    }
     if (dry_run || app_action) && !home.is_absolute() {
         return None;
     }
-    Some((home, action, dry_run))
+    Some((home, action, dry_run, no_launchctl))
 }
 
 /// Origen de `web/` para `--stage` (T4). Siempre explícito: `--web DIR`, si no
