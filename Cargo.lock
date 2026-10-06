@@ -363,6 +363,7 @@ dependencies = [
  "cairo-rs",
  "chrono",
  "comandos-core",
+ "comandos-desktop",
  "comandos-notifyd",
  "comandos-runtime",
  "comandos-store",
@@ -430,6 +431,18 @@ dependencies = [
  "serde",
  "serde_json",
  "subtle",
+]
+
+[[package]]
+name = "comandos-desktop"
+version = "0.1.0"
+dependencies = [
+ "comandos-core",
+ "comandos-store",
+ "nix",
+ "regex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -563,7 +576,7 @@ dependencies = [
  "chrono-tz",
  "comandos-core",
  "getrandom 0.3.4",
- "nix 0.31.3",
+ "nix",
  "rusqlite",
  "serde_json",
  "sha2",

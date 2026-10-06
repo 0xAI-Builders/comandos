@@ -11,20 +11,7 @@ pub fn idle_scratch_commands(session: &str, success: bool, commands: &str) -> bo
             .iter()
             .all(|c| matches!(*c, "zsh" | "bash" | "sh" | "fish"))
 }
-pub fn valid_session(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 80
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
-}
-pub fn valid_window(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 32
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
-}
+pub use comandos_desktop::validation::{valid_session, valid_window};
 pub fn select_window<T: RestoreTmux>(tmux: &T, session: &str, window: &str) -> Result<(), String> {
     if tmux.mode() == RunMode::Shadow {
         return Err("Selección de tmux rechazada en sombra".into());

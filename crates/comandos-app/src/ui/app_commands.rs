@@ -1,6 +1,6 @@
 //! The original thirty command names share one registry with later UI slices.
 use serde_json::{Value, json};
-use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
+use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 pub const COMMAND_NAMES: [&str; 30] = [
     "split",
@@ -39,20 +39,7 @@ pub struct AppCommand {
     pub name: String,
     pub args: Value,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CommandError {
-    Invalid(String),
-    Unknown(String),
-    MissingConsumer(String),
-    Refused(String),
-    Failed(String),
-}
-impl fmt::Display for CommandError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-impl std::error::Error for CommandError {}
+pub use comandos_desktop::command::{CommandError, string_arg};
 pub type Handler = Rc<dyn Fn(&Value) -> Result<(), CommandError>>;
 #[derive(Default)]
 pub struct Registry {
@@ -196,17 +183,6 @@ pub fn deferred_arguments(name: &str, args: &Value) -> Result<Value, CommandErro
 pub fn valid_pane(pane: &str) -> bool {
     pane.strip_prefix('%')
         .is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
-}
-pub fn string_arg<'a>(
-    args: &'a Value,
-    key: &str,
-    default: &'a str,
-) -> Result<&'a str, CommandError> {
-    match args.get(key) {
-        None => Ok(default),
-        Some(Value::String(value)) => Ok(value),
-        _ => Err(CommandError::Invalid(format!("{key} must be a string"))),
-    }
 }
 pub fn session_arg<'a>(args: &'a Value, default: &'a str) -> Result<&'a str, CommandError> {
     let value = args

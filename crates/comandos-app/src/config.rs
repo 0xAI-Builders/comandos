@@ -16,19 +16,10 @@
 use std::ffi::OsString;
 use std::fs::{DirBuilder, Metadata};
 use std::io::ErrorKind;
-use std::ops::RangeInclusive;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 use std::path::{Component, Path, PathBuf};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RunMode {
-    /// tmux propio (`-L`), hooks temporales: desarrollo y pruebas.
-    Sandbox,
-    /// tmux del usuario con clientes de solo lectura; ninguna escritura.
-    Shadow,
-    /// Sustituto real de `cc-app`.
-    Live,
-}
+pub use comandos_desktop::mode::RunMode;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Entry {
@@ -121,7 +112,6 @@ const DEFAULT_DASH: &str = "http://127.0.0.1:4777";
 const SANDBOX_NAME: &str = "comandos-app-sbx";
 const SHADOW_NAME: &str = "comandos-app-shadow";
 /// Banda de `devhost`: el sandbox nunca habla con el tablero real (4777–4782).
-const SANDBOX_DASH_PORTS: RangeInclusive<u16> = 7200..=7399;
 const USAGE: &str = "uso: comandos-app [--mode sandbox|shadow|live] [--tmux-socket NOMBRE] \
                      [--hooks-dir DIR] [--dash-url http://127.0.0.1:PUERTO] [--repo DIR]";
 
@@ -243,37 +233,7 @@ impl AppConfig {
 }
 
 /// `http://127.0.0.1:PUERTO[/]` → (URL normalizada, puerto).
-pub(crate) fn loopback_only(url: &str) -> Result<(String, u16), String> {
-    loopback_from(url, "--dash-url")
-}
-
-/// Igual que [`loopback_only`]; `origin` nombra de dónde vino el valor en el error.
-fn loopback_from(url: &str, origin: &str) -> Result<(String, u16), String> {
-    let rest = url
-        .strip_prefix("http://127.0.0.1:")
-        .ok_or_else(|| format!("{origin} solo acepta http://127.0.0.1:PUERTO, no {url}"))?;
-    let digits = rest.strip_suffix('/').unwrap_or(rest);
-    let port = digits
-        .parse::<u16>()
-        .ok()
-        .filter(|p| *p != 0 && digits.chars().all(|c| c.is_ascii_digit()))
-        .ok_or_else(|| format!("{origin} con puerto inválido: {url}"))?;
-    Ok((format!("http://127.0.0.1:{port}"), port))
-}
-
-pub(crate) fn sandbox_dash(url: &str) -> Result<String, String> {
-    let (url, port) = loopback_only(url)?;
-    if SANDBOX_DASH_PORTS.contains(&port) {
-        Ok(url)
-    } else {
-        Err(format!(
-            "en sandbox --dash-url usa la banda {}–{} de devhost (4777–4782 son del \
-             tablero real), no {port}",
-            SANDBOX_DASH_PORTS.start(),
-            SANDBOX_DASH_PORTS.end()
-        ))
-    }
-}
+pub(crate) use comandos_desktop::dash_client::{loopback_from, loopback_only, sandbox_dash};
 
 /// Absoluta respecto al directorio actual; error si no se puede saber cuál es.
 fn absolute(path: &Path) -> Result<PathBuf, String> {
@@ -676,12 +636,7 @@ pub fn ui_lang(hooks_dir: &Path, lang_env: Option<&str>) -> &'static str {
         .ok()
         .and_then(|pairs| pairs.into_iter().find(|(k, _)| k == "CC_LANG"))
         .map(|(_, v)| v);
-    match cc_lang.as_deref() {
-        Some("es") => "es",
-        Some("en") => "en",
-        _ if lang_env.is_some_and(|l| l.to_lowercase().starts_with("es")) => "es",
-        _ => "en",
-    }
+    comandos_desktop::lang::ui_lang(cc_lang.as_deref(), lang_env.unwrap_or("")).as_str()
 }
 
 #[cfg(test)]

@@ -18,3 +18,5 @@ pub mod web_port;
 
 /// DOM normalizado: vive en `comandos-domdiff` (preflight R12).
 pub use comandos_domdiff as dom_diff;
+
+pub mod mac;

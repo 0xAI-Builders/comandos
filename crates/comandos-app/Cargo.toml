@@ -20,6 +20,7 @@ harness = false
 # `javascriptcore-rs = "=1.1.2"` entran en la Tarea 7, su primer consumidor
 # (necesitan `libwebkit2gtk-4.1-dev`).
 [dependencies]
+comandos-desktop = { path = "../comandos-desktop" }
 comandos-core = { path = "../comandos-core" }
 comandos-store = { path = "../comandos-store" }
 comandos-runtime = { path = "../comandos-runtime" }

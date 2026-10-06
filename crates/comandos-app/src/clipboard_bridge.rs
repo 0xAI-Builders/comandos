@@ -1,6 +1,6 @@
 //! Automatic tmux buffers only. A single numeric watermark, no buffer cache.
 use crate::{config::RunMode, tmux::TmuxError};
-pub const MAX_BYTES: usize = 8 * 1024 * 1024;
+pub use comandos_desktop::state_files::MAX_BYTES;
 pub const LIST_FORMAT: &str = "#{buffer_name}\t#{buffer_size}";
 pub const POLL_MS: u64 = 350;
 fn number_cmp(a: &str, b: &str) -> std::cmp::Ordering {

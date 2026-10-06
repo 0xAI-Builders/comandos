@@ -1,0 +1,20 @@
+[package]
+name = "comandos-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+comandos-core = { path = "../comandos-core" }
+comandos-store = { path = "../comandos-store" }
+serde_json.workspace = true
+serde = { version = "=1.0.229", features = ["derive"] }
+regex = "=1.13.1"
+nix = { version = "=0.31.3", default-features = false, features = ["fs"] }
+
+[dev-dependencies]
+nix = { version = "=0.31.3", default-features = false, features = ["fs", "process", "signal"] }

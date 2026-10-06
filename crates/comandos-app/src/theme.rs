@@ -4,7 +4,7 @@ use serde_json::{Map, Value};
 
 pub use comandos_notifyd::theme::{themes_from_file, tokens};
 
-pub const DEFAULT_THEME: &str = "noche";
+pub use comandos_desktop::DEFAULT_THEME;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThemeTokens {
