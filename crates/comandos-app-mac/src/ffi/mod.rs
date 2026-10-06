@@ -1,7 +1,9 @@
 //! D1 boundary: retained Objective-C objects stay on the AppKit thread.
 #![allow(unsafe_code)]
 #![deny(unsafe_op_in_unsafe_fn)]
+mod alert;
 mod delegate;
+mod menu;
 mod webview;
 mod window;
 use crate::{
@@ -26,7 +28,12 @@ thread_local! {static OWNER:RefCell<Option<(u64,Weak<RefCell<Native>>)>>=const {
 static NEXT_OWNER: AtomicU64 = AtomicU64::new(1);
 pub(super) struct Native {
     cfg: AppConfig,
-    model: App,
+    model: crate::tabs_ops::TabsOps,
+    menus: Option<menu::Menus>,
+    alert: Option<alert::AlertHandle>,
+    dialogs: crate::dialogs::DialogOwner,
+    ipc: Option<crate::ipc::Ipc>,
+    ipc_timer: Option<Retained<objc2_foundation::NSTimer>>,
     views: Option<Views>,
     jobs: Option<Jobs>,
     delegate: Option<Retained<Delegate>>,
@@ -34,6 +41,7 @@ pub(super) struct Native {
     closed: bool,
     id: u64,
     dump_started: bool,
+    next_local: u64,
 }
 pub fn run(cfg: AppConfig) -> Result<(), String> {
     let mtm = MainThreadMarker::new().ok_or("AppKit requiere el hilo principal")?;
@@ -42,10 +50,15 @@ pub fn run(cfg: AppConfig) -> Result<(), String> {
     let id = NEXT_OWNER.fetch_add(1, Ordering::Relaxed);
     let native = Rc::new(RefCell::new(Native {
         cfg,
-        model: App::new(
+        model: crate::tabs_ops::TabsOps::new(App::new(
             "noche",
             comandos_desktop::ui_lang(None, &std::env::var("LANG").unwrap_or_default()),
-        ),
+        )),
+        menus: None,
+        alert: None,
+        dialogs: Default::default(),
+        ipc: None,
+        ipc_timer: None,
         views: None,
         jobs: None,
         delegate: None,
@@ -53,6 +66,7 @@ pub fn run(cfg: AppConfig) -> Result<(), String> {
         closed: false,
         id,
         dump_started: false,
+        next_local: 0,
     }));
     OWNER.with(|slot| *slot.borrow_mut() = Some((id, Rc::downgrade(&native))));
     let delegate = Delegate::new(mtm, Rc::downgrade(&native));
@@ -61,6 +75,7 @@ pub fn run(cfg: AppConfig) -> Result<(), String> {
         let mut owner = native.borrow_mut();
         owner.jobs = Some(jobs);
         owner.views = Some(Views::new(&owner.cfg, &delegate, owner.model.lang, mtm)?);
+        owner.menus = Some(menu::Menus::install(&delegate, owner.model.lang, mtm));
         owner.delegate = Some(delegate.clone());
     }
     let app = NSApplication::sharedApplication(mtm);
@@ -207,13 +222,18 @@ impl Native {
         if let Some(views) = &self.views {
             views.show(self.mtm);
         }
-        let home = std::env::var_os("HOME")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_default();
+        let home = self.home();
         let hooks = match &self.cfg.mode {
             RunMode::Sandbox { hooks, .. } => hooks.clone(),
             RunMode::Live => home.join(".claude/hooks"),
         };
+        self.ipc = Some(crate::ipc::Ipc::new(hooks.clone()));
+        if let Some(delegate) = &self.delegate {
+            // SEGURIDAD: Owned timer targets the retained main-thread delegate; close invalidates it.
+            self.ipc_timer = Some(unsafe {
+                objc2_foundation::NSTimer::scheduledTimerWithTimeInterval_target_selector_userInfo_repeats(0.5,delegate,objc2::sel!(checkIPC:),None,true)
+            });
+        }
         self.submit(Task::Preferences {
             env_lang: std::env::var("LANG").unwrap_or_default(),
         });
@@ -244,16 +264,17 @@ impl Native {
             self.dispatch(action);
         }
     }
-    fn dispatch(&self, action: Action) {
-        match action {
-            Action::Open { ref session, .. } => {
-                let existing = self.model.tabs().iter().any(|tab| tab.key == *session);
-                self.submit(Task::Open { action, existing });
+    fn dispatch(&mut self, action: Action) {
+        match &action {
+            Action::Open { session, .. } | Action::OpenBackground { session, .. } => {
+                let key = session.clone();
+                let existing = self.model.tabs().iter().any(|tab| tab.key == key);
+                if existing && matches!(action, Action::OpenBackground { .. }) {
+                    return;
+                }
+                self.scoped(&key, Task::Open { action, existing });
             }
             Action::NewLocal => {
-                let home = std::env::var_os("HOME")
-                    .map(std::path::PathBuf::from)
-                    .unwrap_or_default();
                 let active = self
                     .model
                     .tabs()
@@ -264,23 +285,75 @@ impl Native {
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_secs();
-                self.submit(Task::NewLocal {
-                    home,
-                    active,
-                    epoch,
-                    pid: std::process::id(),
-                });
+                let Some(next) = self.next_local.checked_add(1) else {
+                    return;
+                };
+                self.next_local = next;
+                self.scoped(
+                    &format!("\0new-local-{next}"),
+                    Task::NewLocal {
+                        home: self.home(),
+                        active,
+                        epoch,
+                        pid: std::process::id(),
+                    },
+                );
             }
         }
+    }
+    fn home(&self) -> std::path::PathBuf {
+        match &self.cfg.mode {
+            RunMode::Sandbox { hooks, .. } => {
+                hooks.parent().unwrap_or(std::path::Path::new("/")).into()
+            }
+            RunMode::Live => std::env::var_os("HOME")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_default(),
+        }
+    }
+    fn scoped(&mut self, key: &str, work: Task) -> bool {
+        if self.closed {
+            return false;
+        }
+        let operation = self.model.start_operation(key);
+        let result = self
+            .jobs
+            .as_ref()
+            .ok_or_else(|| "worker unavailable".to_string())
+            .and_then(|jobs| {
+                jobs.submit(
+                    self.model.ticket(),
+                    Task::Scoped {
+                        key: key.into(),
+                        operation: operation.clone(),
+                        work: Box::new(work),
+                    },
+                )
+            });
+        if let Err(error) = result {
+            self.model.cancel_operation(key);
+            eprintln!("ComandOS: {error}");
+            false
+        } else {
+            true
+        }
+    }
+    fn save(&mut self) {
+        let value = self.model.save_value();
+        self.scoped("\0save", Task::Save { value });
     }
     pub(super) fn receive(&mut self, body: serde_json::Value) {
         let Some(message) = comandos_desktop::parse_bridge(&body) else {
             return;
         };
+        let rename = matches!(message, comandos_desktop::BridgeMessage::Rename { .. });
         match self.model.receive_bridge(message) {
             Ok(actions) => {
                 for action in actions {
                     self.dispatch(action);
+                }
+                if rename {
+                    self.save();
                 }
                 self.sync();
             }
@@ -296,25 +369,100 @@ impl Native {
             if !delivery.ticket.current() {
                 continue;
             }
-            match delivery.result {
-                Ok(ResultData::Preferences { theme, lang }) => {
-                    self.model.lang = lang;
-                    self.model.initial_theme(&theme);
-                }
-                Ok(ResultData::Boot { token, hub }) => {
-                    let actions = self.model.finish_boot(&delivery.ticket, &token);
-                    self.add_opened(hub);
-                    for action in actions {
-                        self.dispatch(action);
-                    }
-                }
-                Ok(ResultData::Opened(opened)) => self.add_opened(opened),
-                Ok(ResultData::Dumped) => {}
-                Ok(ResultData::States(value)) => self.model.update_states(&value),
-                Err(error) => eprintln!("ComandOS: {error}"),
-            }
+            self.result(&delivery.ticket, delivery.result);
         }
         self.sync();
+    }
+    fn result(&mut self, ticket: &crate::app::Ticket, result: Result<ResultData, String>) {
+        if !self.model.owns_ticket(ticket) {
+            return;
+        }
+        match result {
+            Ok(ResultData::Scoped {
+                key,
+                operation,
+                result,
+            }) => {
+                if operation.ticket_for(ticket).is_none() {
+                    return;
+                }
+                self.model.finish_operation(&key, &operation);
+                if key == "\0restore" && result.is_err() {
+                    self.fail_restore(ticket);
+                }
+                self.result(ticket, *result);
+            }
+            Ok(ResultData::Preferences { theme, lang }) => {
+                self.model.lang = lang;
+                self.model.initial_theme(&theme);
+            }
+            Ok(ResultData::Boot {
+                token,
+                hub,
+                saved,
+                metadata,
+            }) => {
+                self.model.begin_restore(saved.clone());
+                self.model.finish_boot(ticket, &token);
+                self.add_opened(hub);
+                if !self.scoped(
+                    "\0restore",
+                    Task::Restore {
+                        saved,
+                        metadata,
+                        home: self.home(),
+                        state: self.model.restore.clone(),
+                    },
+                ) {
+                    self.fail_restore(ticket);
+                }
+            }
+            Ok(ResultData::Restored(tabs)) => {
+                for tab in tabs {
+                    if !self.model.restore_cancelled(&tab.original)
+                        && !self.model.restore_cancelled(&tab.opened.session)
+                        && !self
+                            .model
+                            .tabs()
+                            .iter()
+                            .any(|t| t.key == tab.opened.session)
+                    {
+                        self.add_opened(tab.opened);
+                    }
+                }
+                self.finish_restore(ticket);
+            }
+            Ok(ResultData::Opened(opened)) => {
+                let new = !self
+                    .model
+                    .tabs()
+                    .iter()
+                    .any(|t| t.session == opened.session);
+                self.add_opened(opened);
+                if new {
+                    self.save();
+                }
+            }
+            Ok(ResultData::States(value)) => self.model.update_states(&value),
+            Ok(
+                ResultData::Dumped | ResultData::Saved | ResultData::Closed | ResultData::Renamed,
+            ) => {}
+            Err(error) => eprintln!("ComandOS: {error}"),
+        }
+    }
+    fn fail_restore(&mut self, ticket: &crate::app::Ticket) {
+        let pending = self.model.fail_restore(ticket);
+        self.save();
+        for action in pending {
+            self.dispatch(action);
+        }
+    }
+    fn finish_restore(&mut self, ticket: &crate::app::Ticket) {
+        let pending = self.model.finish_restore(ticket);
+        self.save();
+        for action in pending {
+            self.dispatch(action);
+        }
     }
     fn add_opened(&mut self, opened: crate::jobs::Opened) {
         if opened.raise
@@ -334,7 +482,12 @@ impl Native {
             eprintln!("ComandOS: {error}");
             return;
         }
-        self.model.select_tab(key);
+        if opened.metadata.is_some() {
+            self.model.set_metadata(key, opened.metadata);
+        }
+        if opened.select {
+            self.model.select_tab(key);
+        }
     }
     pub(super) fn select(&mut self, instance: u64) {
         let key = self
@@ -352,6 +505,9 @@ impl Native {
         if self.closed {
             return;
         }
+        if let (Some(menus), Some(delegate)) = (&mut self.menus, &self.delegate) {
+            menus.refresh(delegate, self.model.lang, self.mtm);
+        }
         let focus = self.model.take_focus_request();
         if let (Some(views), Some(delegate)) = (&mut self.views, &self.delegate)
             && let Err(error) = views.sync(&self.model, focus, &self.cfg, delegate, self.mtm)
@@ -365,6 +521,18 @@ impl Native {
         }
         self.closed = true;
         self.model.shutdown();
+        if let Some(timer) = self.ipc_timer.take() {
+            timer.invalidate();
+        }
+        self.ipc.take();
+        self.dialogs.shutdown();
+        if let (Some(alert), Some(views)) = (self.alert.take(), &self.views) {
+            alert.cancel(&views.window, self.mtm);
+        }
+        if let Some(menus) = &mut self.menus {
+            menus.detach(self.mtm);
+        }
+        self.menus.take();
         if let Some(jobs) = &mut self.jobs {
             jobs.close();
         }
@@ -372,5 +540,249 @@ impl Native {
             views.close();
         }
         self.jobs.take();
+    }
+}
+
+impl Native {
+    pub(super) fn menu_action(&mut self, action: crate::strip::MenuAction) {
+        use crate::strip::MenuAction;
+        match action {
+            MenuAction::Quit => {} // Main menu's Quit targets NSApplication directly.
+            MenuAction::Reload => {
+                if let Some(views) = &self.views {
+                    views.reload();
+                }
+            }
+            MenuAction::Toggle => {
+                self.model.term_visible = !self.model.term_visible;
+                if let Some(views) = &self.views {
+                    views.toggle(self.model.term_visible);
+                }
+            }
+            MenuAction::ZoomIn | MenuAction::ZoomOut | MenuAction::ZoomReset => {
+                if let Some(views) = &self.views {
+                    views.zoom(
+                        self.model
+                            .active_key()
+                            .and_then(|key| self.model.tabs().iter().find(|t| t.key == key))
+                            .map(|t| t.instance),
+                        match action {
+                            MenuAction::ZoomIn => 1.1,
+                            MenuAction::ZoomOut => 1. / 1.1,
+                            _ => 0.,
+                        },
+                    );
+                }
+            }
+            MenuAction::NewLocal => self.action(Action::NewLocal),
+            MenuAction::Close => {
+                if let Some(tab) = self
+                    .model
+                    .tabs()
+                    .iter()
+                    .find(|t| Some(t.key.as_str()) == self.model.active_key())
+                {
+                    self.prompt(
+                        crate::dialogs::TabScope {
+                            key: tab.key.clone(),
+                            instance: tab.instance,
+                        },
+                        false,
+                    );
+                }
+            }
+            MenuAction::Next | MenuAction::Previous => {
+                self.model
+                    .cycle_tab(if action == MenuAction::Next { 1 } else { -1 });
+                self.sync();
+            }
+        }
+    }
+    pub(super) fn prompt(&mut self, scope: crate::dialogs::TabScope, rename: bool) {
+        if self.closed || self.alert.is_some() {
+            return;
+        }
+        let Some(tab) =
+            self.model.tabs().iter().find(|t| {
+                t.key == scope.key && t.instance == scope.instance && (!t.is_hub || rename)
+            })
+        else {
+            return;
+        };
+        let Some(views) = &self.views else {
+            return;
+        };
+        let Some(dialog_id) = self.dialogs.begin(scope.clone()) else {
+            return;
+        };
+        let id = self.id;
+        let ticket = self.model.ticket();
+        let complete = move |outcome: crate::dialogs::DialogOutcome| {
+            let ticket = ticket.clone();
+            let block = RcBlock::new(move || {
+                if MainThreadMarker::new().is_none() || !ticket.current() {
+                    return;
+                }
+                let owner = OWNER.with(|slot| {
+                    slot.borrow()
+                        .as_ref()
+                        .filter(|(current, _)| *current == id)
+                        .and_then(|(_, weak)| weak.upgrade())
+                });
+                if let Some(owner) = owner
+                    && let Ok(mut owner) = owner.try_borrow_mut()
+                    && owner.model.owns_ticket(&ticket)
+                {
+                    owner.dialog(dialog_id, outcome.clone());
+                }
+            });
+            // SEGURIDAD: AppKit completion copies a Send-data block onto main. It
+            // resolves only this weak owner after any sheet-ending borrow has ended.
+            unsafe {
+                NSOperationQueue::mainQueue().addOperationWithBlock(&block);
+            }
+        };
+        self.alert = Some(if rename {
+            alert::prompt_rename(
+                &views.window,
+                scope,
+                &tab.label,
+                self.model.lang,
+                self.mtm,
+                complete,
+            )
+        } else {
+            alert::prompt_close(
+                &views.window,
+                scope,
+                &tab.label,
+                self.model.lang,
+                self.mtm,
+                complete,
+            )
+        });
+    }
+    fn dialog(&mut self, id: crate::dialogs::DialogId, outcome: crate::dialogs::DialogOutcome) {
+        if !self.dialogs.finish(id) {
+            return;
+        }
+        self.alert.take();
+        match outcome {
+            crate::dialogs::DialogOutcome::Close {
+                scope,
+                confirmed: true,
+            } => self.close_tab(&scope.key, scope.instance),
+            crate::dialogs::DialogOutcome::Rename {
+                scope,
+                label: Some(label),
+            } if self.model.rename(&scope.key, scope.instance, &label) => {
+                self.scoped(
+                    &scope.key,
+                    Task::Rename {
+                        session: scope.key.clone(),
+                        label,
+                    },
+                );
+                self.save();
+                self.sync();
+            }
+            _ => {}
+        }
+    }
+    fn close_tab(&mut self, key: &str, instance: u64) {
+        if let Some(tab) = self.model.close_model(key, instance) {
+            if self.dialogs.cancel(&crate::dialogs::TabScope {
+                key: key.into(),
+                instance,
+            }) && let (Some(alert), Some(views)) = (self.alert.take(), &self.views)
+            {
+                alert.cancel(&views.window, self.mtm);
+            }
+            self.scoped(key, Task::ArchiveClose { tab });
+            self.save();
+            self.sync();
+        }
+    }
+    pub(super) fn check_ipc(&mut self) {
+        if self.closed {
+            return;
+        }
+        let events = self
+            .ipc
+            .as_mut()
+            .map(crate::ipc::Ipc::poll)
+            .unwrap_or_default();
+        for (kind, body) in events {
+            let Some(session) = body
+                .get("session")
+                .and_then(serde_json::Value::as_str)
+                .filter(|s| comandos_desktop::validation::valid_session(s))
+            else {
+                continue;
+            };
+            let label = body
+                .get("label")
+                .and_then(serde_json::Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            match kind {
+                crate::ipc::Kind::Focus => {
+                    if ["local", "hub", "control"].contains(&session) {
+                        continue;
+                    }
+                    let win = body
+                        .get("win")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("claude");
+                    if !comandos_desktop::validation::valid_window(win) {
+                        continue;
+                    }
+                    self.action(Action::Open {
+                        session: session.into(),
+                        win: win.into(),
+                        label,
+                    });
+                    if let Some(views) = &self.views {
+                        views.show(self.mtm);
+                    }
+                }
+                crate::ipc::Kind::Open => {
+                    if session != "__hub__" {
+                        self.action(Action::OpenBackground {
+                            session: session.into(),
+                            label,
+                        });
+                    }
+                }
+                crate::ipc::Kind::Close => {
+                    let queued = self.model.cancel_pending(session);
+                    let restoring = self.model.cancel_restore(session);
+                    let current = self.model.current_session(session);
+                    self.model.cancel_operation(session);
+                    if current != session {
+                        self.model.cancel_operation(&current);
+                    }
+                    let scope = self
+                        .model
+                        .tabs()
+                        .iter()
+                        .find(|t| t.key == session || t.key == current)
+                        .map(|t| (t.key.clone(), t.instance));
+                    if let Some((key, instance)) = scope {
+                        self.close_tab(&key, instance);
+                    } else if restoring || queued {
+                        if restoring {
+                            self.save();
+                        }
+                        self.scoped(
+                            session,
+                            Task::RemoveMetadata {
+                                session: session.into(),
+                            },
+                        );
+                    }
+                }
+            }
+        }
     }
 }

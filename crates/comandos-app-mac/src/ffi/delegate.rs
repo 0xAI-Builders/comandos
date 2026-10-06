@@ -2,7 +2,7 @@ use super::{Native, webview};
 use crate::app::Action;
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, rc::Retained};
 use objc2_app_kit::{
-    NSApplication, NSApplicationDelegate, NSButton, NSWindowDelegate, NSWorkspace,
+    NSApplication, NSApplicationDelegate, NSButton, NSMenuItem, NSWindowDelegate, NSWorkspace,
 };
 use objc2_foundation::{
     MainThreadMarker, NSError, NSJSONSerialization, NSJSONWritingOptions, NSNotification, NSObject,
@@ -69,10 +69,43 @@ define_class!(
  impl Delegate {
   // SEGURIDAD: Both button target/action methods use NSButton* sender signatures.
   #[unsafe(method(newLocalTab:))]
-  fn new_local(&self,_sender:&NSButton){self.with_owner(|owner|owner.action(Action::NewLocal));}
+  fn new_local(&self,_sender:Option<&objc2::runtime::AnyObject>){self.with_owner(|owner|owner.action(Action::NewLocal));}
   // SEGURIDAD: An owned NSButton invokes this selector synchronously on main.
   #[unsafe(method(tabClicked:))]
   fn tab_clicked(&self,sender:&NSButton){if let Ok(instance)=u64::try_from(sender.tag()){self.with_owner(|owner|owner.select(instance));}}
+  // SEGURIDAD: Main menu target/action accepts a nullable Objective-C sender on main.
+  #[unsafe(method(reloadDashboard:))]
+  fn reload_menu(&self,_sender:Option<&objc2::runtime::AnyObject>){self.with_owner(|owner|owner.menu_action(crate::strip::MenuAction::Reload));}
+  // SEGURIDAD: Main menu target/action accepts a nullable Objective-C sender on main.
+  #[unsafe(method(toggleTermPane:))]
+  fn toggle_menu(&self,_sender:Option<&objc2::runtime::AnyObject>){self.with_owner(|owner|owner.menu_action(crate::strip::MenuAction::Toggle));}
+  // SEGURIDAD: Main menu target/action accepts a nullable Objective-C sender on main.
+  #[unsafe(method(zoomIn:))]
+  fn zoom_in(&self,_sender:Option<&objc2::runtime::AnyObject>){self.with_owner(|owner|owner.menu_action(crate::strip::MenuAction::ZoomIn));}
+  // SEGURIDAD: Main menu target/action accepts a nullable Objective-C sender on main.
+  #[unsafe(method(zoomOut:))]
+  fn zoom_out(&self,_sender:Option<&objc2::runtime::AnyObject>){self.with_owner(|owner|owner.menu_action(crate::strip::MenuAction::ZoomOut));}
+  // SEGURIDAD: Main menu target/action accepts a nullable Objective-C sender on main.
+  #[unsafe(method(zoomReset:))]
+  fn zoom_reset(&self,_sender:Option<&objc2::runtime::AnyObject>){self.with_owner(|owner|owner.menu_action(crate::strip::MenuAction::ZoomReset));}
+  // SEGURIDAD: Main menu target/action accepts a nullable Objective-C sender on main.
+  #[unsafe(method(closeCurrentTab:))]
+  fn close_current(&self,_sender:Option<&objc2::runtime::AnyObject>){self.with_owner(|owner|owner.menu_action(crate::strip::MenuAction::Close));}
+  // SEGURIDAD: Main menu target/action accepts a nullable Objective-C sender on main.
+  #[unsafe(method(nextTab:))]
+  fn next_tab(&self,_sender:Option<&objc2::runtime::AnyObject>){self.with_owner(|owner|owner.menu_action(crate::strip::MenuAction::Next));}
+  // SEGURIDAD: Main menu target/action accepts a nullable Objective-C sender on main.
+  #[unsafe(method(prevTab:))]
+  fn prev_tab(&self,_sender:Option<&objc2::runtime::AnyObject>){self.with_owner(|owner|owner.menu_action(crate::strip::MenuAction::Previous));}
+  // SEGURIDAD: Owned contextual NSMenuItem carries an NSString key and instance tag.
+  #[unsafe(method(renameTabFromMenu:))]
+  fn rename_from_menu(&self,sender:Option<&NSMenuItem>){if let Some(scope)=sender.and_then(menu_scope){self.with_owner(|owner|owner.prompt(scope,true));}}
+  // SEGURIDAD: Owned contextual NSMenuItem carries an NSString key and instance tag.
+  #[unsafe(method(closeTabFromMenu:))]
+  fn close_from_menu(&self,sender:Option<&NSMenuItem>){if let Some(scope)=sender.and_then(menu_scope){self.with_owner(|owner|owner.prompt(scope,false));}}
+  // SEGURIDAD: The owned 500ms timer passes NSTimer on main; shutdown invalidates it.
+  #[unsafe(method(checkIPC:))]
+  fn check_ipc(&self,_timer:&NSTimer){self.with_owner(|owner|owner.check_ipc());}
   // SEGURIDAD: The registered target/action uses NSTimer* exactly.
   #[unsafe(method(retryDash:))]
   fn retry(&self,_timer:&NSTimer){self.retry_dashboard();}
@@ -242,4 +275,13 @@ impl Delegate {
             }
         });
     }
+}
+
+fn menu_scope(sender: &NSMenuItem) -> Option<crate::dialogs::TabScope> {
+    // SEGURIDAD: Retained representedObject is read synchronously on main, then
+    // copied into Rust. A stale menu's tag never resolves a replacement instance.
+    let object = sender.representedObject()?;
+    let key = object.downcast_ref::<NSString>()?.to_string();
+    let instance = u64::try_from(sender.tag()).ok()?;
+    Some(crate::dialogs::TabScope { key, instance })
 }

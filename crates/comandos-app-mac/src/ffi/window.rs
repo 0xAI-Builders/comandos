@@ -16,12 +16,14 @@ pub(super) struct Views {
     pub dash: Retained<WKWebView>,
     pub ucc: Retained<WKUserContentController>,
     pool: Retained<WKProcessPool>,
+    split: Retained<NSSplitView>,
     strip: Retained<NSView>,
     scroll: Retained<NSScrollView>,
     term: Retained<NSView>,
     plus: Retained<NSButton>,
     tabs: Vec<TabView>,
     theme: String,
+    lang: comandos_desktop::Lang,
     pub retry: Option<Retained<objc2_foundation::NSTimer>>,
 }
 fn rect(x: f64, y: f64, w: f64, h: f64) -> NSRect {
@@ -47,7 +49,7 @@ impl Views {
         app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
         // SEGURIDAD: AppKit globals and all retained views are accessed on mtm's thread.
         // The window has an owned Retained reference, so auto-release on close is disabled.
-        let (window, pool, ucc, dash, strip, scroll, term, plus) = unsafe {
+        let (window, pool, ucc, dash, strip, scroll, term, plus, split) = unsafe {
             app.setAppearance(NSAppearance::appearanceNamed(NSAppearanceNameDarkAqua).as_deref());
             let window = NSWindow::initWithContentRect_styleMask_backing_defer(
                 NSWindow::alloc(mtm),
@@ -127,11 +129,13 @@ impl Views {
             split.addSubview(&right);
             content.addSubview(&split);
             split.setPosition_ofDividerAtIndex((size.width * spec.left_fraction).floor(), 0);
-            (window, pool, ucc, dash, strip, scroll, term, plus)
+            (window, pool, ucc, dash, strip, scroll, term, plus, split)
         };
         Ok(Self {
             window,
             pool,
+            split,
+            lang,
             ucc,
             dash,
             strip,
@@ -159,11 +163,34 @@ impl Views {
         // SEGURIDAD: Each button and web view is retained by this owner and kept in its
         // superview. Targets refer to the retained delegate; tab tags are instance ids.
         unsafe {
+            self.tabs.retain(|view| {
+                if app.tabs().iter().any(|tab| tab.instance == view.instance) {
+                    return true;
+                }
+                if let Some(web) = &view.web {
+                    web.stopLoading();
+                    web.setUIDelegate(None);
+                    web.removeFromSuperview();
+                }
+                view.button.setTarget(None);
+                clear_context(&view.button);
+                view.button.removeFromSuperview();
+                false
+            });
             let mut x = 6.;
             for tab in app.tabs() {
                 if !self.tabs.iter().any(|view| view.instance == tab.instance) {
                     let b = button(&tab.label, delegate, sel!(tabClicked:), mtm);
                     b.setTag(isize::try_from(tab.instance).map_err(|e| e.to_string())?);
+                    b.setMenu(Some(&super::menu::tab_context(
+                        delegate,
+                        &crate::dialogs::TabScope {
+                            key: tab.key.clone(),
+                            instance: tab.instance,
+                        },
+                        app.lang,
+                        mtm,
+                    )));
                     self.strip.addSubview(&b);
                     self.tabs.push(TabView {
                         instance: tab.instance,
@@ -178,6 +205,18 @@ impl Views {
                 else {
                     continue;
                 };
+                if self.lang != app.lang {
+                    clear_context(&view.button);
+                    view.button.setMenu(Some(&super::menu::tab_context(
+                        delegate,
+                        &crate::dialogs::TabScope {
+                            key: tab.key.clone(),
+                            instance: tab.instance,
+                        },
+                        app.lang,
+                        mtm,
+                    )));
+                }
                 set_title(&view.button, &tab.label, tab.dot_color);
                 view.button.sizeToFit();
                 let width = (view.button.frame().size.width + 14.).max(64.);
@@ -232,8 +271,39 @@ impl Views {
                 30.,
             ));
             self.theme = app.theme().into();
+            self.lang = app.lang;
         }
         Ok(())
+    }
+    pub fn reload(&self) {
+        // SEGURIDAD: Owned dashboard accessed on its owning main thread.
+        unsafe {
+            self.dash.reload();
+        }
+    }
+    pub fn toggle(&self, visible: bool) {
+        // SEGURIDAD: Split view has exactly two retained subviews; divider 0 is valid.
+        let width = self.split.bounds().size.width;
+        self.split.setPosition_ofDividerAtIndex(
+            if visible {
+                (width * 0.52).floor()
+            } else {
+                width
+            },
+            0,
+        );
+    }
+    pub fn zoom(&self, active: Option<u64>, factor: f64) {
+        let Some(web) = active
+            .and_then(|id| self.tabs.iter().find(|t| t.instance == id))
+            .and_then(|t| t.web.as_deref())
+        else {
+            return;
+        };
+        // SEGURIDAD: pageZoom uses the generated CGFloat signatures on a retained WKWebView.
+        unsafe {
+            web.setPageZoom(crate::strip::zoom(web.pageZoom(), factor));
+        }
     }
     pub fn close(&mut self) {
         if let Some(timer) = self.retry.take() {
@@ -253,6 +323,7 @@ impl Views {
                     web.setUIDelegate(None);
                     web.removeFromSuperview();
                 }
+                clear_context(&tab.button);
                 tab.button.setTarget(None);
                 tab.button.removeFromSuperview();
             }
@@ -324,5 +395,23 @@ fn set_title(button: &NSButton, label: &str, color: &str) {
         title.appendAttributedString(&dot);
         title.appendAttributedString(&text);
         button.setAttributedTitle(&title);
+    }
+}
+
+fn clear_context(button: &NSButton) {
+    if let Some(menu) = button.menu() {
+        for item in menu.itemArray() {
+            // SEGURIDAD: This is the owned button's menu, whose targets refer to
+            // Delegate. Clear every target/action before releasing or replacing it,
+            // including items AppKit may retain while a context menu is tracking.
+            unsafe {
+                item.setTarget(None);
+                item.setAction(None);
+            }
+        }
+    }
+    // SEGURIDAD: Release this owned button's context menu only after clearing its targets.
+    unsafe {
+        button.setMenu(None);
     }
 }

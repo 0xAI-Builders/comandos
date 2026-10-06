@@ -404,6 +404,7 @@ dependencies = [
  "block2",
  "comandos-core",
  "comandos-desktop",
+ "comandos-store",
  "nix",
  "objc2",
  "objc2-app-kit",

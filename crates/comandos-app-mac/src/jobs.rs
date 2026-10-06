@@ -17,6 +17,34 @@ use std::{
     time::{Duration, Instant},
 };
 pub trait Backend: Send + Sync {
+    fn post_timeout(&self, path: &str, body: &Value, _timeout: Duration) -> Result<Value, String> {
+        self.post(path, body)
+    }
+    fn saved_tabs(&self) -> Result<comandos_desktop::mac_tabs::SavedTabs, String> {
+        Ok(vec![])
+    }
+    fn metadata(
+        &self,
+    ) -> Result<std::collections::BTreeMap<String, comandos_desktop::TabMeta>, String> {
+        Ok(Default::default())
+    }
+    fn saved_label(&self, session: &str) -> Result<Option<String>, String> {
+        Ok(self
+            .saved_tabs()?
+            .into_iter()
+            .find(|(s, _)| s == session)
+            .and_then(|(_, label)| label.as_str().filter(|s| !s.is_empty()).map(str::to_string)))
+    }
+    fn project_dir(&self, _session: &str) -> Option<String> {
+        None
+    }
+    fn save_tabs(&self, _value: &Value, _allowed: &dyn Fn() -> bool) -> Result<(), String> {
+        Err("tab persistence backend unavailable".into())
+    }
+    fn archive(&self, _item: &Value, _allowed: &dyn Fn() -> bool) -> Result<(), String> {
+        Err("history backend unavailable".into())
+    }
+
     fn get(&self, path: &str) -> Result<Value, String>;
     fn post(&self, path: &str, body: &Value) -> Result<Value, String>;
     fn tmux(&self, args: &[&str], allowed: &dyn Fn() -> bool) -> Result<ProcOutput, String>;
@@ -25,6 +53,8 @@ pub trait Backend: Send + Sync {
 pub struct SystemBackend {
     client: DashClient,
     tmux: Box<dyn TmuxRunner>,
+    files: crate::files::MacFiles,
+    home: std::path::PathBuf,
 }
 impl SystemBackend {
     pub fn new(cfg: &AppConfig) -> Result<Self, String> {
@@ -33,13 +63,66 @@ impl SystemBackend {
         } else {
             comandos_desktop::mode::RunMode::Sandbox
         };
+        let (home, hooks) = match &cfg.mode {
+            RunMode::Live => {
+                let home = std::env::var_os("HOME")
+                    .map(std::path::PathBuf::from)
+                    .ok_or("HOME unavailable")?;
+                let hooks = home.join(".claude/hooks");
+                (home, hooks)
+            }
+            RunMode::Sandbox { hooks, .. } => (
+                hooks
+                    .parent()
+                    .ok_or("sandbox scope unavailable")?
+                    .to_path_buf(),
+                hooks.clone(),
+            ),
+        };
         Ok(Self {
+            files: crate::files::MacFiles::new(home.clone(), hooks).map_err(|e| e.to_string())?,
+            home,
             client: DashClient::new(Some(&cfg.dash_url), mode).map_err(dash_error)?,
             tmux: runner(&cfg.mode),
         })
     }
 }
 impl Backend for SystemBackend {
+    fn saved_tabs(&self) -> Result<comandos_desktop::mac_tabs::SavedTabs, String> {
+        self.files.load_saved().map_err(|e| e.to_string())
+    }
+    fn metadata(
+        &self,
+    ) -> Result<std::collections::BTreeMap<String, comandos_desktop::TabMeta>, String> {
+        self.files.metadata().map_err(|e| e.to_string())
+    }
+    fn saved_label(&self, session: &str) -> Result<Option<String>, String> {
+        self.files.saved_label(session).map_err(|e| e.to_string())
+    }
+    fn project_dir(&self, session: &str) -> Option<String> {
+        comandos_desktop::find_project_dir(&self.home.join("codebase"), session)
+            .map(|p| p.to_string_lossy().into_owned())
+    }
+    fn save_tabs(&self, value: &Value, allowed: &dyn Fn() -> bool) -> Result<(), String> {
+        self.files
+            .save_tabs(value, allowed, now_ms())
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+    fn archive(&self, item: &Value, allowed: &dyn Fn() -> bool) -> Result<(), String> {
+        self.files
+            .archive(item, allowed, now_ms())
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+    fn post_timeout(&self, path: &str, body: &Value, timeout: Duration) -> Result<Value, String> {
+        let (status, value) = self.client.post(path, body, timeout).map_err(dash_error)?;
+        if !(200..300).contains(&status) {
+            return Err(format!("HTTP {status}"));
+        }
+        Ok(value)
+    }
+
     fn get(&self, path: &str) -> Result<Value, String> {
         self.client
             .get(path, Duration::from_secs(3))
@@ -68,6 +151,8 @@ pub struct Opened {
     pub label: String,
     pub is_hub: bool,
     pub raise: bool,
+    pub select: bool,
+    pub metadata: Option<comandos_desktop::TabMeta>,
 }
 pub fn execute_open(
     backend: &dyn Backend,
@@ -75,13 +160,14 @@ pub fn execute_open(
     existing: bool,
     ticket: &Ticket,
 ) -> Result<Opened, String> {
-    let Action::Open {
-        session,
-        win,
-        label,
-    } = action
-    else {
-        return Err("acción no abrible".into());
+    let (session, win, label, background) = match action {
+        Action::Open {
+            session,
+            win,
+            label,
+        } => (session, win.as_str(), label, false),
+        Action::OpenBackground { session, label } => (session, "claude", label, true),
+        _ => return Err("acción no abrible".into()),
     };
     check(ticket)?;
     if !existing {
@@ -92,9 +178,23 @@ pub fn execute_open(
     check(ticket)?;
     Ok(Opened {
         session: session.clone(),
-        label: label.clone().unwrap_or_else(|| session.clone()),
+        label: if existing {
+            session.clone()
+        } else {
+            label
+                .clone()
+                .filter(|s| !s.is_empty())
+                .or(backend.saved_label(session)?)
+                .unwrap_or_else(|| session.clone())
+        },
         is_hub: false,
-        raise: true,
+        raise: !background,
+        select: !background,
+        metadata: if existing {
+            None
+        } else {
+            Some(publish_metadata(backend, session, None, ticket)?)
+        },
     })
 }
 fn select_window(
@@ -103,10 +203,25 @@ fn select_window(
     win: &str,
     ticket: &Ticket,
 ) -> Result<(), String> {
+    select_window_when(backend, session, win, ticket, &|| ticket.current())
+}
+fn select_window_when(
+    backend: &dyn Backend,
+    session: &str,
+    win: &str,
+    ticket: &Ticket,
+    allowed: &dyn Fn() -> bool,
+) -> Result<(), String> {
     check(ticket)?;
+    if !allowed() {
+        return Err("operación cancelada".into());
+    }
     let target = format!("={session}:{win}");
-    let first = backend.tmux(&["select-window", "-t", &target], &|| ticket.current())?;
+    let first = backend.tmux(&["select-window", "-t", &target], allowed)?;
     check(ticket)?;
+    if !allowed() {
+        return Err("operación cancelada".into());
+    }
     if first.code == Some(0) {
         return Ok(());
     }
@@ -123,9 +238,12 @@ fn select_window(
             "-F",
             "#{window_index}|#{pane_current_command}",
         ],
-        &|| ticket.current(),
+        allowed,
     )?;
     check(ticket)?;
+    if !allowed() {
+        return Err("operación cancelada".into());
+    }
     let output = String::from_utf8_lossy(&output.stdout);
     let index = output
         .lines()
@@ -136,8 +254,12 @@ fn select_window(
         })
         .unwrap_or("^");
     let target = format!("={session}:{index}");
-    backend.tmux(&["select-window", "-t", &target], &|| ticket.current())?;
-    check(ticket)
+    backend.tmux(&["select-window", "-t", &target], allowed)?;
+    check(ticket)?;
+    if !allowed() {
+        return Err("operación cancelada".into());
+    }
+    Ok(())
 }
 fn check(ticket: &Ticket) -> Result<(), String> {
     if ticket.current() {
@@ -147,6 +269,31 @@ fn check(ticket: &Ticket) -> Result<(), String> {
     }
 }
 pub enum Task {
+    Scoped {
+        key: String,
+        operation: crate::tabs_ops::Operation,
+        work: Box<Task>,
+    },
+    Save {
+        value: Value,
+    },
+    RemoveMetadata {
+        session: String,
+    },
+    ArchiveClose {
+        tab: crate::app::Tab,
+    },
+    Rename {
+        session: String,
+        label: String,
+    },
+    Restore {
+        saved: comandos_desktop::mac_tabs::SavedTabs,
+        metadata: std::collections::BTreeMap<String, comandos_desktop::TabMeta>,
+        home: std::path::PathBuf,
+        state: Arc<std::sync::Mutex<crate::tabs_ops::RestoreState>>,
+    },
+
     Preferences {
         env_lang: String,
     },
@@ -170,8 +317,26 @@ pub enum Task {
     },
 }
 pub enum ResultData {
-    Preferences { theme: String, lang: Lang },
-    Boot { token: String, hub: Opened },
+    Scoped {
+        key: String,
+        operation: crate::tabs_ops::Operation,
+        result: Box<Result<ResultData, String>>,
+    },
+    Saved,
+    Closed,
+    Renamed,
+    Restored(Vec<RestoreOpened>),
+
+    Preferences {
+        theme: String,
+        lang: Lang,
+    },
+    Boot {
+        token: String,
+        hub: Opened,
+        saved: comandos_desktop::mac_tabs::SavedTabs,
+        metadata: std::collections::BTreeMap<String, comandos_desktop::TabMeta>,
+    },
     Opened(Opened),
     Dumped,
     States(Value),
@@ -205,10 +370,19 @@ impl Jobs {
             .spawn(move || {
                 let mut poll: Option<Ticket> = None;
                 let mut next_poll = Instant::now() + Duration::from_secs(3);
-                let publish = |delivery: Delivery| {
-                    if out.try_send(delivery).is_err() {
-                        eprintln!("cola de resultados de ComandOS llena");
-                        return;
+                let publish = |mut delivery: Delivery| {
+                    loop {
+                        if flag.load(Ordering::Acquire) || !delivery.ticket.current() {
+                            return;
+                        }
+                        match out.try_send(delivery) {
+                            Ok(()) => break,
+                            Err(mpsc::TrySendError::Full(pending_delivery)) => {
+                                delivery = pending_delivery;
+                                thread::sleep(Duration::from_millis(2));
+                            }
+                            Err(mpsc::TrySendError::Disconnected(_)) => return,
+                        }
                     }
                     if !pending.swap(true, Ordering::AcqRel) {
                         notify();
@@ -286,6 +460,50 @@ impl Drop for Jobs {
 }
 fn execute_task(backend: &dyn Backend, task: Task, ticket: &Ticket) -> Result<ResultData, String> {
     match task {
+        Task::Scoped {
+            key,
+            operation,
+            work,
+        } => {
+            let result = match operation.ticket_for(ticket) {
+                Some(scoped) => execute_task(backend, *work, &scoped),
+                None => Err("operation instance unavailable".into()),
+            };
+            Ok(ResultData::Scoped {
+                key,
+                operation,
+                result: Box::new(result),
+            })
+        }
+        Task::RemoveMetadata { session } => {
+            check(ticket)?;
+            backend.post("/tab-metadata-remove", &json!({"session":session}))?;
+            check(ticket)?;
+            Ok(ResultData::Closed)
+        }
+        Task::Save { value } => {
+            check(ticket)?;
+            backend.save_tabs(&value, &|| ticket.current())?;
+            check(ticket)?;
+            Ok(ResultData::Saved)
+        }
+        Task::Rename { session, label } => {
+            check(ticket)?;
+            backend.post("/rename", &json!({"session":session,"label":label}))?;
+            check(ticket)?;
+            Ok(ResultData::Renamed)
+        }
+        Task::ArchiveClose { tab } => {
+            close_work(backend, &tab, ticket)?;
+            Ok(ResultData::Closed)
+        }
+        Task::Restore {
+            saved,
+            metadata,
+            home,
+            state,
+        } => restore_work(backend, &saved, &metadata, &home, &state, ticket)
+            .map(ResultData::Restored),
         Task::Dump { path, html } => {
             write_dom(&path, &html, ticket)?;
             Ok(ResultData::Dumped)
@@ -338,13 +556,21 @@ fn execute_task(backend: &dyn Backend, task: Task, ticket: &Ticket) -> Result<Re
                     return Err("no pude crear hub local".into());
                 }
             }
+            let saved = backend.saved_tabs()?;
+            check(ticket)?;
+            let metadata = backend.metadata()?;
+            check(ticket)?;
             Ok(ResultData::Boot {
+                saved,
+                metadata,
                 token,
                 hub: Opened {
                     session: "local".into(),
                     label: "local".into(),
                     is_hub: true,
                     raise: false,
+                    select: true,
+                    metadata: None,
                 },
             })
         }
@@ -390,10 +616,21 @@ fn execute_task(backend: &dyn Backend, task: Task, ticket: &Ticket) -> Result<Re
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| "term".into());
             Ok(ResultData::Opened(Opened {
-                session,
+                session: session.clone(),
                 label,
                 is_hub: false,
                 raise: false,
+                select: true,
+                metadata: Some(publish_metadata(
+                    backend,
+                    &session,
+                    Some(comandos_desktop::TabMeta {
+                        kind: comandos_desktop::TabKind::Scratch,
+                        host: None,
+                        cwd: Some(cwd),
+                    }),
+                    ticket,
+                )?),
             }))
         }
     }
@@ -481,4 +718,350 @@ fn dash_error(error: comandos_desktop::dash_client::DashError) -> String {
         DashError::Disconnected => "tablero desconectado".into(),
         _ => "fallo de comunicación con el tablero".into(),
     }
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+}
+
+#[derive(Debug, Clone)]
+pub struct RestoreOpened {
+    pub original: String,
+    pub opened: Opened,
+}
+fn publish_metadata(
+    backend: &dyn Backend,
+    session: &str,
+    explicit: Option<comandos_desktop::TabMeta>,
+    ticket: &Ticket,
+) -> Result<comandos_desktop::TabMeta, String> {
+    publish_metadata_when(backend, session, explicit, ticket, &|| ticket.current())
+}
+fn publish_metadata_when(
+    backend: &dyn Backend,
+    session: &str,
+    explicit: Option<comandos_desktop::TabMeta>,
+    ticket: &Ticket,
+    allowed: &dyn Fn() -> bool,
+) -> Result<comandos_desktop::TabMeta, String> {
+    check(ticket)?;
+    if !allowed() {
+        return Err("operación cancelada".into());
+    }
+    let saved = backend.metadata()?.remove(session);
+    check(ticket)?;
+    if !allowed() {
+        return Err("operación cancelada".into());
+    }
+    let mut meta = explicit.unwrap_or_else(|| {
+        saved.clone().unwrap_or(comandos_desktop::TabMeta {
+            kind: comandos_desktop::TabKind::Shell,
+            host: None,
+            cwd: None,
+        })
+    });
+    if let Some(saved) = saved {
+        if meta.host.as_deref().is_none_or(str::is_empty) {
+            meta.host = saved.host;
+        }
+        if meta.cwd.as_deref().is_none_or(str::is_empty) {
+            meta.cwd = saved.cwd;
+        }
+    }
+    backend.post("/tab-metadata",&json!({"session":session,"kind":meta.kind,"host":meta.host.as_deref().unwrap_or(""),"cwd":meta.cwd.as_deref().unwrap_or("")}))?;
+    check(ticket)?;
+    if !allowed() {
+        return Err("operación cancelada".into());
+    }
+    Ok(meta)
+}
+fn restore_work(
+    backend: &dyn Backend,
+    saved: &comandos_desktop::mac_tabs::SavedTabs,
+    metadata: &std::collections::BTreeMap<String, comandos_desktop::TabMeta>,
+    home: &std::path::Path,
+    state: &std::sync::Mutex<crate::tabs_ops::RestoreState>,
+    ticket: &Ticket,
+) -> Result<Vec<RestoreOpened>, String> {
+    use comandos_desktop::{TabKind, TabMeta, restore_tab_spec};
+    let mut seen = std::collections::BTreeSet::new();
+    let mut result = vec![];
+    for (key, label) in saved {
+        check(ticket)?;
+        let raw = key.split(':').next().unwrap_or("");
+        if raw.is_empty() || !comandos_desktop::validation::valid_session(raw) {
+            continue;
+        }
+        let project = if metadata.contains_key(raw) {
+            None
+        } else {
+            backend.project_dir(raw)
+        };
+        let spec = restore_tab_spec(key, metadata, project.as_deref().unwrap_or(""));
+        let original = spec.session.clone();
+        let mut session = original.clone();
+        let mut label = label.as_str().filter(|s| !s.is_empty()).map(str::to_string);
+        if spec.kind == TabKind::Xterm || !seen.insert(original.clone()) {
+            continue;
+        }
+        let allowed = || {
+            ticket.current()
+                && state
+                    .lock()
+                    .is_ok_and(|s| !s.cancelled(&original) && !s.cancelled(&session))
+        };
+        if !allowed() {
+            continue;
+        }
+        let has = backend.tmux(&["has-session", "-t", &format!("={session}")], &allowed)?;
+        check(ticket)?;
+        if !allowed() {
+            continue;
+        }
+        if has.code != Some(0) {
+            let response = if matches!(spec.kind, TabKind::Scratch | TabKind::Shell) {
+                let cwd = if !spec.cwd.is_empty() && std::path::Path::new(&spec.cwd).is_dir() {
+                    std::path::Path::new(&spec.cwd)
+                } else {
+                    home
+                };
+                let out = backend.tmux(
+                    &[
+                        "new-session",
+                        "-d",
+                        "-s",
+                        &session,
+                        "-c",
+                        &cwd.to_string_lossy(),
+                    ],
+                    &allowed,
+                )?;
+                if out.code != Some(0) {
+                    eprintln!("no pude restaurar {key}: tmux fallo");
+                    continue;
+                }
+                Ok(Value::Null)
+            } else if matches!(spec.kind, TabKind::Ssh | TabKind::SshTab) && !spec.host.is_empty() {
+                backend.post_timeout(
+                    if spec.kind == TabKind::Ssh {
+                        "/ssh-connect"
+                    } else {
+                        "/ssh-new-tab"
+                    },
+                    &json!({"host":spec.host}),
+                    Duration::from_secs(20),
+                )
+            } else {
+                backend.post(
+                    "/ensure",
+                    &json!({"session":session,"cwd":spec.cwd,"win":"claude"}),
+                )
+            };
+            check(ticket)?;
+            match response {
+                Ok(value) => {
+                    if let Some(actual) = value
+                        .get("session")
+                        .and_then(Value::as_str)
+                        .filter(|s| !s.is_empty())
+                    {
+                        if !comandos_desktop::validation::valid_session(actual) {
+                            continue;
+                        }
+                        session = actual.into();
+                        if let Ok(mut state) = state.lock() {
+                            state.record_alias(&original, &session);
+                        } else {
+                            return Err("restore lock poisoned".into());
+                        }
+                    }
+                    if spec.kind == TabKind::SshTab {
+                        label = value
+                            .get("label")
+                            .and_then(Value::as_str)
+                            .filter(|s| !s.is_empty())
+                            .map(str::to_string)
+                            .or(label);
+                    }
+                }
+                Err(error) => {
+                    eprintln!("no pude restaurar {key}: {error}");
+                    continue;
+                }
+            }
+            let allowed = || {
+                ticket.current()
+                    && state
+                        .lock()
+                        .is_ok_and(|s| !s.cancelled(&original) && !s.cancelled(&session))
+            };
+            if !allowed() {
+                continue;
+            }
+            if backend
+                .tmux(&["has-session", "-t", &format!("={session}")], &allowed)?
+                .code
+                != Some(0)
+            {
+                continue;
+            }
+        }
+        let allowed = || {
+            ticket.current()
+                && state
+                    .lock()
+                    .is_ok_and(|s| !s.cancelled(&original) && !s.cancelled(&session))
+        };
+        if !allowed()
+            || result
+                .iter()
+                .any(|tab: &RestoreOpened| tab.opened.session == session)
+        {
+            continue;
+        }
+        if select_window_when(backend, &session, "claude", ticket, &allowed).is_err() {
+            if !allowed() {
+                continue;
+            }
+            return Err("restore selection failed".into());
+        }
+        if !allowed() {
+            continue;
+        }
+        let meta = match publish_metadata_when(
+            backend,
+            &session,
+            Some(TabMeta {
+                kind: spec.kind,
+                host: (!spec.host.is_empty()).then_some(spec.host),
+                cwd: (!spec.cwd.is_empty()).then_some(spec.cwd),
+            }),
+            ticket,
+            &allowed,
+        ) {
+            Ok(meta) => meta,
+            Err(_) if !allowed() => continue,
+            Err(error) => return Err(error),
+        };
+        if !allowed() {
+            continue;
+        }
+        result.push(RestoreOpened {
+            original,
+            opened: Opened {
+                label: label.unwrap_or_else(|| session.clone()),
+                session,
+                is_hub: false,
+                raise: false,
+                select: false,
+                metadata: Some(meta),
+            },
+        });
+    }
+    check(ticket)?;
+    Ok(result)
+}
+fn close_work(backend: &dyn Backend, tab: &crate::app::Tab, ticket: &Ticket) -> Result<(), String> {
+    check(ticket)?;
+    let target = format!("={}", tab.session);
+    let pane = format!("{target}:");
+    let identity = || -> Result<Option<String>, String> {
+        check(ticket)?;
+        let out = backend.tmux(
+            &[
+                "display-message",
+                "-p",
+                "-t",
+                &target,
+                "#{pid}|#{session_id}|#{session_created}|#{session_name}",
+            ],
+            &|| ticket.current(),
+        )?;
+        check(ticket)?;
+        if out.code != Some(0) {
+            return Ok(None);
+        }
+        let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let fields: Vec<_> = text.splitn(4, '|').collect();
+        Ok((fields.len() == 4
+            && fields[0].parse::<u32>().is_ok_and(|n| n > 0)
+            && fields[1]
+                .strip_prefix('$')
+                .is_some_and(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
+            && fields[2].parse::<u64>().is_ok()
+            && fields[3] == tab.session)
+            .then_some(text))
+    };
+    let pinned = if tab
+        .metadata
+        .as_ref()
+        .is_some_and(|meta| meta.kind == comandos_desktop::TabKind::Scratch)
+    {
+        identity()?
+    } else {
+        None
+    };
+    let mut texts = vec![];
+    for format in ["#{pane_current_path}", "#{pane_current_command}"] {
+        check(ticket)?;
+        let out = backend.tmux(&["display-message", "-p", "-t", &pane, format], &|| {
+            ticket.current()
+        })?;
+        check(ticket)?;
+        texts.push(if out.code == Some(0) {
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        } else {
+            String::new()
+        });
+    }
+    let item = comandos_desktop::mac_tabs::history_item(
+        &tab.key,
+        &tab.label,
+        &texts[0],
+        &texts[1],
+        "closed",
+        now_ms() / 1000,
+    );
+    backend.archive(&item, &|| ticket.current())?;
+    check(ticket)?;
+    backend.post("/tab-metadata-remove", &json!({"session":tab.key}))?;
+    check(ticket)?;
+    if tab
+        .metadata
+        .as_ref()
+        .is_none_or(|meta| meta.kind != comandos_desktop::TabKind::Scratch)
+    {
+        return Ok(());
+    }
+    let Some(pinned) = pinned else {
+        return Ok(());
+    };
+    let out = backend.tmux(
+        &[
+            "list-panes",
+            "-s",
+            "-t",
+            &target,
+            "-F",
+            "#{pane_current_command}",
+        ],
+        &|| ticket.current(),
+    )?;
+    check(ticket)?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let commands: Vec<_> = text.split_whitespace().collect();
+    if out.code == Some(0)
+        && !commands.is_empty()
+        && commands
+            .iter()
+            .all(|cmd| ["zsh", "bash", "sh", "fish"].contains(cmd))
+        && identity()?.as_ref() == Some(&pinned)
+    {
+        check(ticket)?;
+        backend.tmux(&["kill-session", "-t", &target], &|| ticket.current())?;
+        check(ticket)?;
+    }
+    Ok(())
 }

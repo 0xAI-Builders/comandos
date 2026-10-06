@@ -167,8 +167,8 @@
       "line": 475,
       "end_line": 497,
       "ast_sha256": "11d25867a3a7db38f7ac2029a2b4978a7a123a6d4dce28af497936fda0d58156",
-      "scope": "M3 + M4",
-      "consumer": "M3 window/boot/poll lifecycle; M4 menu, restore and IPC"
+      "scope": "M3 + M4 consumer",
+      "consumer": "Native::{launch,result,finish_restore} / jobs::Boot / TabsOps::finish_restore"
     },
     {
       "qualified": "AppController.applicationShouldTerminateAfterLastWindowClosed_",
@@ -223,16 +223,16 @@
       "line": 653,
       "end_line": 696,
       "ast_sha256": "434b2d7e58dcb2a4d4455dd860c3c44e2ffe14c0b49c1eefec6cf54719253bcc",
-      "scope": "M3 + M4",
-      "consumer": "M3 button + lazy WK view; M4 metadata + persistence"
+      "scope": "M3 + M4 consumer",
+      "consumer": "jobs::{execute_open,publish_metadata} / Native::add_opened / Views::sync"
     },
     {
       "qualified": "AppController._tab_context_menu",
       "line": 699,
       "end_line": 712,
       "ast_sha256": "372d94b9f61438163f70ba0abb48bd5e6e6ddd05363778bcc3b452e476c9b0b4",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "strip::menu_spec / ffi::menu::{Menus,tab_context}"
     },
     {
       "qualified": "AppController._tab_for_button",
@@ -271,80 +271,80 @@
       "line": 745,
       "end_line": 748,
       "ast_sha256": "6f511f1e4e6982b7eebbc70fe7596bee40e458d71d59b7f5eb19bb23b3a421eb",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "dialogs::{TabScope,DialogOutcome} / ffi::alert async sheet / Native::{prompt,dialog}"
     },
     {
       "qualified": "AppController.closeTabFromMenu_",
       "line": 750,
       "end_line": 753,
       "ast_sha256": "2ac22e51119dede7ad596f390d8e79f5bbf6ac816b70474375b5a4f02d3c91f6",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "dialogs::{TabScope,DialogOutcome} / ffi::alert async sheet / Native::{prompt,dialog}"
     },
     {
       "qualified": "AppController._build_menu",
       "line": 757,
       "end_line": 809,
       "ast_sha256": "52b28aaf273da28339cde61578672e75a08612a77ddd655bd35db2520c5519c2",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "strip::menu_spec / ffi::menu::{Menus,tab_context}"
     },
     {
       "qualified": "AppController._mi",
       "line": 812,
       "end_line": 816,
       "ast_sha256": "43543f40ab22149d30598a11aa1174502621249c1f54c963f5263777bbe5b792",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "strip::menu_spec / ffi::menu::{Menus,tab_context}"
     },
     {
       "qualified": "AppController.reloadDashboard_",
       "line": 819,
       "end_line": 820,
       "ast_sha256": "feb506b29d5f69737cd77df19e84dd8b7705a5f186709955361e248c765d438f",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "Delegate original selector -> Native::menu_action / App::cycle_tab / Views::{reload,toggle,zoom}"
     },
     {
       "qualified": "AppController.toggleTermPane_",
       "line": 822,
       "end_line": 826,
       "ast_sha256": "3d88a8a0bdd5feb7dab2ba9d2aa8235059e78a58a50fc2c41d0a0378853ab670",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "Delegate original selector -> Native::menu_action / App::cycle_tab / Views::{reload,toggle,zoom}"
     },
     {
       "qualified": "AppController.zoomIn_",
       "line": 828,
       "end_line": 829,
       "ast_sha256": "5cbc7272ecda536badca434c0a45e9e26f36e3f513d1e8081e685946c4bd1472",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "Delegate original selector -> Native::menu_action / App::cycle_tab / Views::{reload,toggle,zoom}"
     },
     {
       "qualified": "AppController.zoomOut_",
       "line": 831,
       "end_line": 832,
       "ast_sha256": "d72a09d0f6d5b543765acb8dd25ca0bee8ad5883de3d94c07d51baa96e7201df",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "Delegate original selector -> Native::menu_action / App::cycle_tab / Views::{reload,toggle,zoom}"
     },
     {
       "qualified": "AppController.zoomReset_",
       "line": 834,
       "end_line": 840,
       "ast_sha256": "9810b88955005f635bb6fa96f73b9ba6da8b917d45408b0bd07fd35b26817df7",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "Delegate original selector -> Native::menu_action / App::cycle_tab / Views::{reload,toggle,zoom}"
     },
     {
       "qualified": "AppController._zoom_active",
       "line": 843,
       "end_line": 853,
       "ast_sha256": "870caf527853f790d1506f8b568caa2ff61fdc28f72f233df75ff372725778e4",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "Delegate original selector -> Native::menu_action / App::cycle_tab / Views::{reload,toggle,zoom}"
     },
     {
       "qualified": "AppController.newLocalTab_",
@@ -359,32 +359,32 @@
       "line": 867,
       "end_line": 870,
       "ast_sha256": "ad2a331bdb351f5b69767540aa7e2c7d45e006f831aad1a72f453d0eb8879784",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "Delegate original selector -> Native::menu_action / App::cycle_tab / Views::{reload,toggle,zoom}"
     },
     {
       "qualified": "AppController.nextTab_",
       "line": 872,
       "end_line": 873,
       "ast_sha256": "13af187e7a788662c2815c58ff4d5947c86e41a85ab15ab0ccc6902737d9ef50",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "Delegate original selector -> Native::menu_action / App::cycle_tab / Views::{reload,toggle,zoom}"
     },
     {
       "qualified": "AppController.prevTab_",
       "line": 875,
       "end_line": 876,
       "ast_sha256": "997e9e387b3eedbdea50fda2f1001aadf783ff057ddab42a2bdb43e5cb31028f",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "Delegate original selector -> Native::menu_action / App::cycle_tab / Views::{reload,toggle,zoom}"
     },
     {
       "qualified": "AppController._cycle_tab",
       "line": 879,
       "end_line": 884,
       "ast_sha256": "1e55afa2c452d6306a722fe14603a45be9354096f6b0ea6baa29201a5ab11f5b",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "Delegate original selector -> Native::menu_action / App::cycle_tab / Views::{reload,toggle,zoom}"
     },
     {
       "qualified": "AppController._current_cwd",
@@ -407,8 +407,8 @@
       "line": 914,
       "end_line": 935,
       "ast_sha256": "3723ac66004c6b1a641ede74beaac9e1f044dc13721c449a2cde686882f2fb60",
-      "scope": "M3 + M4",
-      "consumer": "M3 ensure/select/open/raise; M4 saved labels + metadata + persistence"
+      "scope": "M3 + M4 consumer",
+      "consumer": "jobs::{execute_open,publish_metadata} / Native::add_opened / Views::sync"
     },
     {
       "qualified": "AppController.renameTab_to_",
@@ -423,32 +423,32 @@
       "line": 946,
       "end_line": 963,
       "ast_sha256": "fabd48db725ddadc0196a26a8d32cfee3bcda39d48a4243577ea4662680676f5",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "dialogs::{TabScope,DialogOutcome} / ffi::alert async sheet / Native::{prompt,dialog}"
     },
     {
       "qualified": "AppController._close_tab",
       "line": 966,
       "end_line": 1002,
       "ast_sha256": "0aa7d2c96546f09dc8b9078381945240e334e749dd691ae19ea85273e1ae37ea",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "Native::close_tab / jobs::close_work / MacFiles::archive / exact tmux identity recheck"
     },
     {
       "qualified": "AppController._save_tabs",
       "line": 1005,
       "end_line": 1018,
       "ast_sha256": "4157387561262f8f2e517cfc73346ffd95e0eb8b1f6a13b2f4c33e39f38f71f2",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "TabsOps::save_value / MacFiles::save_tabs / Store DocHandle authority+CAS"
     },
     {
       "qualified": "AppController._boot_terminals",
       "line": 1022,
       "end_line": 1028,
       "ast_sha256": "3fcb5fab5d7ec4a21720b1a19372c78dae17b09cdc420bd8686e2c4e02ce95e0",
-      "scope": "M3 + M4",
-      "consumer": "M3 token and authenticated hub; M4 restore"
+      "scope": "M3 + M4 consumer",
+      "consumer": "Native::{launch,result,finish_restore} / jobs::Boot / TabsOps::finish_restore"
     },
     {
       "qualified": "AppController._defer_terminal_action",
@@ -471,72 +471,72 @@
       "line": 1049,
       "end_line": 1056,
       "ast_sha256": "122b4adecef5088f0991ccb5ce51c42024a7d98bab3cba09a68ae7173a2bc6c7",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "App::cancel_pending / Native::check_ipc"
     },
     {
       "qualified": "AppController._record_restore_alias",
       "line": 1059,
       "end_line": 1064,
       "ast_sha256": "7e3e9d717f72e3f2887dc76bedfc1afbeb41c6d5ade7229431925e93e4877d7c",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "tabs_ops::RestoreState / Native::check_ipc"
     },
     {
       "qualified": "AppController._restore_current_session",
       "line": 1067,
       "end_line": 1070,
       "ast_sha256": "19d20748fcf24960a195ea40108ad3865e2d6e936a60e6bc525ab6b73a0feb50",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "tabs_ops::RestoreState / Native::check_ipc"
     },
     {
       "qualified": "AppController._cancel_pending_restore",
       "line": 1073,
       "end_line": 1083,
       "ast_sha256": "3c18090c544afd8339e52a5a8567e8b62c45e8aa247f46f91d76b1e012cf1f9a",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "tabs_ops::RestoreState / Native::check_ipc"
     },
     {
       "qualified": "AppController._restore_is_cancelled",
       "line": 1086,
       "end_line": 1088,
       "ast_sha256": "1076d77fa2365a2448c357f3071918a26740890edfc65796c3a83c584589353d",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "tabs_ops::RestoreState / Native::check_ipc"
     },
     {
       "qualified": "AppController._create_hub_and_restore",
       "line": 1091,
       "end_line": 1110,
       "ast_sha256": "725047043e0a99fdd7d5b891694a3aeee7bce8fb5a7ff757c6c92fdba773b753",
-      "scope": "M3 + M4",
-      "consumer": "M3 authenticated hub; M4 snapshot restoration"
+      "scope": "M3 + M4 consumer",
+      "consumer": "Native::{launch,result,finish_restore} / jobs::Boot / TabsOps::finish_restore"
     },
     {
       "qualified": "AppController._restore_saved",
       "line": 1113,
       "end_line": 1172,
       "ast_sha256": "e8dd8a6be44daebec252190ff641129091a231b8c4eff608bfd0935332093ded",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "jobs::restore_work / Native::result Restored (per-original/current cancellation)"
     },
     {
       "qualified": "AppController._finish_restore",
       "line": 1175,
       "end_line": 1181,
       "ast_sha256": "f3842676579a7bb6b69c28038e20ac68801f2b46efb9d51dbabd48fe6e43a2c1",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "Native::{launch,result,finish_restore} / jobs::Boot / TabsOps::finish_restore"
     },
     {
       "qualified": "AppController._restore_one",
       "line": 1184,
       "end_line": 1193,
       "ast_sha256": "051e6b26f95b94c6878f978d927ae9e5f36f41765457ed3edc3229ff36edf1bc",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "jobs::restore_work / Native::result Restored (per-original/current cancellation)"
     },
     {
       "qualified": "AppController._raise",
@@ -567,48 +567,48 @@
       "line": 1220,
       "end_line": 1226,
       "ast_sha256": "ea9cf5bb6930ca0ee66e22c6d201333fc9f0b4c335c271504b9d156d940cb2dc",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "ipc::Ipc / Delegate::checkIPC: / Native::check_ipc (500ms, owned timer)"
     },
     {
       "qualified": "AppController._mtime",
       "line": 1229,
       "end_line": 1233,
       "ast_sha256": "5d2d7dfc43d18e3c52f6cf49c09d08b549fb8a9dd986207a4649f7b8fd6dba70",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "ipc::Ipc / Delegate::checkIPC: / Native::check_ipc (500ms, owned timer)"
     },
     {
       "qualified": "AppController.checkIPC_",
       "line": 1235,
       "end_line": 1246,
       "ast_sha256": "dd1910c63e17052cff2c7d050bd709ac6e365b9570f3d1516e1a08c343ae9e12",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "ipc::Ipc / Delegate::checkIPC: / Native::check_ipc (500ms, owned timer)"
     },
     {
       "qualified": "AppController._on_focus",
       "line": 1249,
       "end_line": 1255,
       "ast_sha256": "19087391c3c22b9e2218d571aabd38b40a8919d8b384bb404ec54e3e32499efe",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "ipc::Ipc / Delegate::checkIPC: / Native::check_ipc (500ms, owned timer)"
     },
     {
       "qualified": "AppController._on_open",
       "line": 1258,
       "end_line": 1273,
       "ast_sha256": "2cd9f11c75051bfdb48cc5a347f1cdfacbdba37e91cf951dddbace28c269f72f",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "ipc::Ipc / Delegate::checkIPC: / Native::check_ipc (500ms, owned timer)"
     },
     {
       "qualified": "AppController._on_close",
       "line": 1276,
       "end_line": 1289,
       "ast_sha256": "f67ce708f7d7e9e1e69bb896008ec50db34e7cf8e85719236b37979fef81fd9b",
-      "scope": "M4 pending",
-      "consumer": "M4 checkpoint; not claimed in M3"
+      "scope": "M4 consumer",
+      "consumer": "ipc::Ipc / Delegate::checkIPC: / Native::check_ipc (500ms, owned timer)"
     },
     {
       "qualified": "AppController.applyTheme_",
@@ -676,5 +676,6 @@
     }
   ],
   "all_function_nodes": 84,
-  "gui_gate": "pending native Mac execution; Apple checks do not initialize AppKit"
+  "gui_gate": "pending native Mac execution; Apple checks do not initialize AppKit",
+  "verification_scope": "M4 whole sources; Linux behavior/actual-source oracles + Apple type checks. Native GUI/link/performance remain pending Root."
 }

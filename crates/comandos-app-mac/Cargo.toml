@@ -8,6 +8,7 @@ publish.workspace = true
 [dependencies]
 comandos-desktop = { path = "../comandos-desktop" }
 comandos-core = { path = "../comandos-core" }
+comandos-store = { path = "../comandos-store" }
 serde_json.workspace = true
 nix = { version = "=0.31.3", default-features = false, features = ["user"] }
 

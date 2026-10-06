@@ -87,20 +87,28 @@ impl Default for WindowSpec {
 pub struct Ticket {
     generation: u64,
     current: Arc<AtomicU64>,
-    stopped: Option<Arc<std::sync::atomic::AtomicBool>>,
+    stopped: [Option<Arc<std::sync::atomic::AtomicBool>>; 2],
 }
 impl Ticket {
     pub(crate) fn with_stop(mut self, stop: Arc<std::sync::atomic::AtomicBool>) -> Self {
-        self.stopped = Some(stop);
+        if let Some(slot) = self.stopped.iter_mut().find(|slot| slot.is_none()) {
+            *slot = Some(stop);
+        } else {
+            self.generation = 0;
+        }
         self
+    }
+    pub(crate) fn same_owner(&self, other: &Ticket) -> bool {
+        Arc::ptr_eq(&self.current, &other.current) && self.generation == other.generation
     }
     pub fn current(&self) -> bool {
         self.generation != 0
             && self.current.load(Ordering::Acquire) == self.generation
             && !self
                 .stopped
-                .as_ref()
-                .is_some_and(|s| s.load(Ordering::Acquire))
+                .iter()
+                .flatten()
+                .any(|s| s.load(Ordering::Acquire))
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,6 +116,10 @@ pub enum Action {
     Open {
         session: String,
         win: String,
+        label: Option<String>,
+    },
+    OpenBackground {
+        session: String,
         label: Option<String>,
     },
     NewLocal,
@@ -120,6 +132,7 @@ pub struct Tab {
     pub is_hub: bool,
     pub loaded: bool,
     pub instance: u64,
+    pub metadata: Option<comandos_desktop::TabMeta>,
     pub dot_color: &'static str,
 }
 pub struct App {
@@ -130,6 +143,7 @@ pub struct App {
     pub term_visible: bool,
     token: String,
     ready: bool,
+    restoring: bool,
     pending: VecDeque<Action>,
     generation: Arc<AtomicU64>,
     closed: bool,
@@ -152,6 +166,7 @@ impl App {
             term_visible: true,
             token: String::new(),
             ready: false,
+            restoring: false,
             pending: VecDeque::new(),
             generation: Arc::new(AtomicU64::new(1)),
             closed: false,
@@ -164,7 +179,7 @@ impl App {
         Ticket {
             generation: self.generation.load(Ordering::Acquire),
             current: self.generation.clone(),
-            stopped: None,
+            stopped: [None, None],
         }
     }
     pub fn restart_boot(&mut self) -> Ticket {
@@ -196,7 +211,7 @@ impl App {
         }
     }
     pub fn ready(&self) -> bool {
-        self.ready && !self.closed
+        self.ready && !self.closed && !self.restoring
     }
     pub fn finish_boot(&mut self, ticket: &Ticket, token: &str) -> Vec<Action> {
         if !Arc::ptr_eq(&self.generation, &ticket.current)
@@ -208,7 +223,72 @@ impl App {
         }
         self.token = token.into();
         self.ready = true;
+        if self.restoring {
+            Vec::new()
+        } else {
+            self.pending.drain(..).collect()
+        }
+    }
+    pub fn owns_ticket(&self, ticket: &Ticket) -> bool {
+        Arc::ptr_eq(&self.generation, &ticket.current) && ticket.current() && !self.closed
+    }
+    pub fn begin_restore(&mut self) {
+        if !self.closed {
+            self.restoring = true;
+        }
+    }
+    pub fn finish_restore(&mut self, ticket: &Ticket) -> Vec<Action> {
+        if !self.owns_ticket(ticket) {
+            return vec![];
+        }
+        self.restoring = false;
         self.pending.drain(..).collect()
+    }
+    pub fn cancel_pending(&mut self, session: &str) -> bool {
+        let before = self.pending.len();
+        self.pending.retain(|a|!matches!(a,Action::Open{session:s,..}|Action::OpenBackground{session:s,..} if s==session));
+        self.pending.len() != before
+    }
+    pub fn close_tab(&mut self, key: &str, instance: u64) -> Option<Tab> {
+        if self.closed {
+            return None;
+        }
+        let index = self
+            .tabs
+            .iter()
+            .position(|t| t.key == key && t.instance == instance && !t.is_hub)?;
+        let tab = self.tabs.remove(index);
+        if let Some(last) = self.tabs.last() {
+            let key = last.key.clone();
+            self.select_tab(&key);
+        } else {
+            self.active = None;
+            self.focus_request = None;
+        }
+        Some(tab)
+    }
+    pub fn cycle_tab(&mut self, delta: i8) {
+        if self.tabs.is_empty() {
+            return;
+        }
+        let index = self
+            .tabs
+            .iter()
+            .position(|t| Some(t.key.as_str()) == self.active_key())
+            .unwrap_or(0);
+        let index = if delta < 0 {
+            if index == 0 {
+                self.tabs.len() - 1
+            } else {
+                index - 1
+            }
+        } else {
+            (index + 1) % self.tabs.len()
+        };
+        if let Some(tab) = self.tabs.get(index) {
+            let key = tab.key.clone();
+            self.select_tab(&key);
+        }
     }
     pub fn token(&self) -> &str {
         &self.token
@@ -306,7 +386,7 @@ impl App {
         session: &str,
         is_hub: bool,
     ) -> Result<(), String> {
-        if !self.ready() {
+        if !self.ready || self.closed {
             return Err("terminal token unavailable".into());
         }
         if self.tabs.iter().any(|t| t.key == key) {
@@ -320,9 +400,27 @@ impl App {
             is_hub,
             loaded: false,
             instance: self.next_tab,
+            metadata: None,
             dot_color: comandos_desktop::DOT_IDLE,
         });
         Ok(())
+    }
+    pub fn set_metadata(&mut self, key: &str, metadata: Option<comandos_desktop::TabMeta>) {
+        if let Some(tab) = self.tabs.iter_mut().find(|t| t.key == key) {
+            tab.metadata = metadata;
+        }
+    }
+    pub fn rename(&mut self, key: &str, instance: u64, label: &str) -> bool {
+        if let Some(tab) = self
+            .tabs
+            .iter_mut()
+            .find(|t| t.key == key && t.instance == instance)
+        {
+            tab.label = label.into();
+            true
+        } else {
+            false
+        }
     }
     pub fn update_states(&mut self, value: &Value) {
         let Some(rows) = value.as_array() else {

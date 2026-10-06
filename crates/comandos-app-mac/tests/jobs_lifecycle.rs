@@ -239,3 +239,50 @@ fn startup_preferences_arrive_even_when_terminal_authentication_fails() {
     assert!(app.token().is_empty());
     jobs.close();
 }
+
+struct Fast;
+impl Backend for Fast {
+    fn get(&self, _: &str) -> Result<Value, String> {
+        Ok(json!({}))
+    }
+    fn post(&self, _: &str, _: &Value) -> Result<Value, String> {
+        panic!("preferences cannot POST")
+    }
+    fn tmux(&self, _: &[&str], _: &dyn Fn() -> bool) -> Result<ProcOutput, String> {
+        panic!("preferences cannot invoke tmux")
+    }
+    fn cancel(&self) {}
+}
+#[test]
+fn queued_actions_are_not_lost_when_main_temporarily_stalls_delivery() {
+    use comandos_app_mac::jobs::ResultData;
+    let mut jobs = Jobs::new(Arc::new(Fast), Arc::new(|| {})).unwrap();
+    let app = App::new("noche", Lang::Es);
+    let deadline = Instant::now() + Duration::from_secs(2);
+    for _ in 0..16 {
+        while jobs
+            .submit(
+                app.ticket(),
+                Task::Preferences {
+                    env_lang: "es".into(),
+                },
+            )
+            .is_err()
+        {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+    std::thread::sleep(Duration::from_millis(20));
+    let mut delivered = 0;
+    while delivered < 16 && Instant::now() < deadline {
+        delivered += jobs
+            .drain()
+            .into_iter()
+            .filter(|d| matches!(d.result, Ok(ResultData::Preferences { .. })))
+            .count();
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    jobs.close();
+    assert_eq!(delivered, 16);
+}
