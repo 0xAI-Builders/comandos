@@ -24,6 +24,7 @@ comandos-server = { path = "../comandos-server" }
 sha2.workspace = true
 comandos-store = { path = "../comandos-store" }
 serde_json.workspace = true
+regex = "=1.13.1"
 nix = { version = "=0.31.3", default-features = false, features = ["fs", "user"] }
 
 [dev-dependencies]

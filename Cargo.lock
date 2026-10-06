@@ -381,6 +381,7 @@ dependencies = [
  "comandos-store",
  "getrandom 0.3.4",
  "nix",
+ "regex",
  "serde_json",
  "sha2",
  "toml",
