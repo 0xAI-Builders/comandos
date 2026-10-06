@@ -354,10 +354,59 @@ pub fn domain(name: &str) -> Option<&'static Domain> {
 /// La base de destino y sus controles nunca son fuentes de una migración.
 /// Se compara también con COMANDOS_DB, incluso cuando cae dentro de H o STATE.
 pub fn is_unified_control_file(path: &std::path::Path, db: &std::path::Path) -> bool {
-    match (control_path_identity(path), control_path_identity(db)) {
-        (Ok(path), Ok(db)) => control_suffix(&path, &db),
-        // Sin identidad fiable no se permite proponer el archivo como fuente.
-        _ => true,
+    // Sin identidad fiable no se permite proponer el archivo como fuente.
+    UnifiedControlFiles::inspect(db)
+        .and_then(|controls| controls.is_control(path))
+        .unwrap_or(true)
+}
+
+/// Identidades de control reunidas una vez antes de recorrer fuentes.
+/// Solo se comparan inodos de entradas regulares, nunca destinos de symlinks finales.
+pub struct UnifiedControlFiles {
+    db: std::path::PathBuf,
+    regular: std::collections::BTreeSet<(u64, u64)>,
+}
+impl UnifiedControlFiles {
+    pub fn inspect(db: &std::path::Path) -> std::io::Result<Self> {
+        use std::os::unix::fs::MetadataExt;
+        let db = control_path_identity(db)?;
+        let mut regular = std::collections::BTreeSet::new();
+        let parent = db
+            .parent()
+            .ok_or_else(|| std::io::Error::other("control sin padre"))?;
+        match std::fs::read_dir(parent) {
+            Ok(entries) => {
+                for entry in entries {
+                    let path = entry?.path();
+                    if control_suffix(&path, &db) {
+                        let metadata = std::fs::symlink_metadata(path)?;
+                        if metadata.is_file() {
+                            regular.insert((metadata.dev(), metadata.ino()));
+                        }
+                    }
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+        Ok(Self { db, regular })
+    }
+    pub fn database_path(&self) -> &std::path::Path {
+        &self.db
+    }
+    pub fn is_control(&self, path: &std::path::Path) -> std::io::Result<bool> {
+        use std::os::unix::fs::MetadataExt;
+        let path = control_path_identity(path)?;
+        if control_suffix(&path, &self.db) {
+            return Ok(true);
+        }
+        match std::fs::symlink_metadata(path) {
+            Ok(metadata) => {
+                Ok(metadata.is_file() && self.regular.contains(&(metadata.dev(), metadata.ino())))
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error),
+        }
     }
 }
 

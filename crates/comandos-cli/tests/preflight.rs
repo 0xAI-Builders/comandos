@@ -223,3 +223,16 @@ fn external_python_script_does_not_become_repo_writer_from_data() {
     assert!(f.check("tabs").is_ok());
     assert!(f.check("logs").is_ok());
 }
+
+#[test]
+fn stdin_after_option_terminator_blocks_with_external_cwd() {
+    let f = Fixture::new("stdin-terminator");
+    f.process(
+        123,
+        &PathBuf::from("/usr/bin/python3"),
+        &["python3", "--", "-"],
+    );
+    fs::remove_file(f.proc.join("123/cwd")).unwrap();
+    symlink(&f.home, f.proc.join("123/cwd")).unwrap();
+    assert!(f.check("logs").is_err());
+}

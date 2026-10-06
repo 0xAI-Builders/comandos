@@ -1,5 +1,5 @@
 use comandos_store::domains::catalog::{
-    control_path_identity, file_classification, is_unified_control_file, source,
+    UnifiedControlFiles, control_path_identity, file_classification, source,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -7,6 +7,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     io::Read,
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
 };
@@ -14,9 +15,10 @@ use std::{
 pub fn inventory(home: &Path) -> Result<Value, String> {
     let mut files = Vec::new();
     let mut errors = Vec::new();
-    let db = control_path_identity(&comandos_store::unified::unified_path(home))
+    let controls = UnifiedControlFiles::inspect(&comandos_store::unified::unified_path(home))
         .map_err(|e| e.to_string())?;
-    let mut seen = BTreeSet::new();
+    let db = controls.database_path();
+    let mut seen = InventorySeen::default();
     for (prefix, relative) in [
         ("H", ".claude/hooks"),
         ("STATE", ".local/state/comandos"),
@@ -24,7 +26,7 @@ pub fn inventory(home: &Path) -> Result<Value, String> {
     ] {
         let dir = home.join(relative);
         if dir.exists() {
-            walk(&dir, prefix, &db, &mut files, &mut errors, &mut seen)?;
+            walk(&dir, prefix, &controls, &mut files, &mut errors, &mut seen)?;
         }
     }
     // COMANDOS_DB puede estar fuera de las raíces inventariadas. Solo sus
@@ -35,9 +37,19 @@ pub fn inventory(home: &Path) -> Result<Value, String> {
                 for entry in entries {
                     let entry = entry.map_err(|e| format!("{}: {e}", parent.display()))?;
                     let path = entry.path();
-                    if is_unified_control_file(&path, &db) {
+                    if controls
+                        .is_control(&path)
+                        .map_err(|e| format!("{}: {e}", path.display()))?
+                    {
                         let symbolic = format!("CONTROL/{}", entry.file_name().to_string_lossy());
-                        record(&path, &symbolic, &db, &mut files, &mut errors, &mut seen)?;
+                        record(
+                            &path,
+                            &symbolic,
+                            &controls,
+                            &mut files,
+                            &mut errors,
+                            &mut seen,
+                        )?;
                     }
                 }
             }
@@ -68,13 +80,19 @@ pub fn inventory(home: &Path) -> Result<Value, String> {
     )
 }
 
+#[derive(Default)]
+struct InventorySeen {
+    paths: BTreeSet<PathBuf>,
+    control_inodes: BTreeSet<(u64, u64)>,
+}
+
 fn walk(
     dir: &Path,
     prefix: &str,
-    db: &Path,
+    controls: &UnifiedControlFiles,
     files: &mut Vec<Value>,
     errors: &mut Vec<String>,
-    seen: &mut BTreeSet<PathBuf>,
+    seen: &mut InventorySeen,
 ) -> Result<(), String> {
     let entries = fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     for entry in entries {
@@ -87,28 +105,33 @@ fn walk(
         let path = entry.path();
         let before = fs::symlink_metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         if before.is_dir() {
-            walk(&path, &symbolic, db, files, errors, seen)?;
+            walk(&path, &symbolic, controls, files, errors, seen)?;
             continue;
         }
-        record(&path, &symbolic, db, files, errors, seen)?;
+        record(&path, &symbolic, controls, files, errors, seen)?;
     }
     Ok(())
 }
 fn record(
     path: &Path,
     symbolic: &str,
-    db: &Path,
+    controls: &UnifiedControlFiles,
     files: &mut Vec<Value>,
     errors: &mut Vec<String>,
-    seen: &mut BTreeSet<PathBuf>,
+    seen: &mut InventorySeen,
 ) -> Result<(), String> {
     let identity = control_path_identity(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    if !seen.insert(identity) {
+    if !seen.paths.insert(identity) {
         return Ok(());
     }
     let before = fs::symlink_metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let symlink = before.file_type().is_symlink();
-    let control = is_unified_control_file(path, db);
+    let control = controls
+        .is_control(path)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    if control && before.is_file() && !seen.control_inodes.insert((before.dev(), before.ino())) {
+        return Ok(());
+    }
     let spec = if control { None } else { source(symbolic) };
     let class = if control {
         "metadatos-control"

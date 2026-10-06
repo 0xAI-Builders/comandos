@@ -152,10 +152,14 @@ fn python_entrypoint(argv: &[String]) -> Result<&str, String> {
         match arg.as_str() {
             "-c" | "-m" | "-" => return Err("entrypoint Python dinámico; alcance ambiguo".into()),
             "--" => {
-                return args
+                let script = args
                     .next()
                     .map(String::as_str)
-                    .ok_or_else(|| "entrypoint Python ausente".into());
+                    .ok_or_else(|| "entrypoint Python ausente".to_string())?;
+                if script == "-" {
+                    return Err("entrypoint Python dinámico; alcance ambiguo".into());
+                }
+                return Ok(script);
             }
             "-W" | "-X" | "--check-hash-based-pycs" => {
                 args.next()

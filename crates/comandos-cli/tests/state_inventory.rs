@@ -195,3 +195,68 @@ fn missing_destination_and_sidecars_use_equivalent_parent_identity() {
     }
     assert!(!hooks.join("prefs.json").exists());
 }
+
+#[test]
+fn hardlinked_destination_and_controls_never_become_sources() {
+    use comandos_store::domains::catalog::is_unified_control_file;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let home = Home::new();
+    let hooks = home.0.join(".claude/hooks");
+    fs::set_permissions(&hooks, fs::Permissions::from_mode(0o700)).unwrap();
+    let source = hooks.join("prefs.json");
+    let connection = comandos_store::unified::open_unified(&source).unwrap();
+    drop(connection);
+    let outside = home.0.join("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::set_permissions(&outside, fs::Permissions::from_mode(0o700)).unwrap();
+    let db = outside.join("state.sqlite3");
+    fs::hard_link(&source, &db).unwrap();
+    let connection = comandos_store::unified::open_unified(&db).unwrap();
+    drop(connection);
+    let guard = outside.join("state.sqlite3.sealed-ui-docs");
+    fs::write(&guard, b"private-control").unwrap();
+    fs::hard_link(&guard, hooks.join("snippets.json")).unwrap();
+    std::os::unix::fs::symlink(&db, hooks.join("model-watch.json")).unwrap();
+    assert!(is_unified_control_file(&source, &db));
+    assert!(is_unified_control_file(&hooks.join("snippets.json"), &db));
+    assert!(!is_unified_control_file(
+        &hooks.join("model-watch.json"),
+        &db
+    ));
+    let output = Command::new(env!("CARGO_BIN_EXE_comandos"))
+        .args(["state", "inventory", "--json", "--home"])
+        .arg(&home.0)
+        .env("COMANDOS_DB", &db)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let rows = value["files"].as_array().unwrap();
+    for control in [&db, &guard] {
+        let meta = fs::symlink_metadata(control).unwrap();
+        let equivalent: Vec<_> = rows
+            .iter()
+            .filter(|row| {
+                let candidate = fs::symlink_metadata(row["path"].as_str().unwrap()).unwrap();
+                candidate.is_file()
+                    && (candidate.dev(), candidate.ino()) == (meta.dev(), meta.ino())
+            })
+            .collect();
+        assert_eq!(equivalent.len(), 1, "duplicate controls: {equivalent:?}");
+        for row in equivalent {
+            assert_eq!(row["classification"], "metadatos-control");
+            assert!(row["domain"].is_null());
+        }
+    }
+    let link = rows
+        .iter()
+        .find(|r| r["source"] == "H/model-watch.json")
+        .unwrap();
+    assert_eq!(link["symlink"], true);
+    assert!(link["sha256"].is_null());
+    assert_ne!(link["classification"], "metadatos-control");
+}
