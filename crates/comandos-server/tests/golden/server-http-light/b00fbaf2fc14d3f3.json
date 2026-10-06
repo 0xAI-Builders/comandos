@@ -1,0 +1,26 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "clock_ms": 1791115200000,
+      "request": {
+        "method": "GET",
+        "target": "/tabs",
+        "extra": "",
+        "body": ""
+      },
+      "effect_files": [
+        "prefs.json",
+        "prefs.json.lock",
+        "app-tabs.json",
+        "app-tabs-history.json",
+        "app-tab-models.json",
+        "app-tab-active.json"
+      ]
+    },
+    "before_sha256": "a9789696b608cfca38667efafa659661e03e7d92afa1e72252f7381fdfa5f1fa"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjoyMDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCIyXCJdXSxcImJvZHlcIjpbOTEsOTNdfSIsInRyZWUiOnsiYXBwLXRhYi1hY3RpdmUuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJleUp3WVc1bElqb2dJbmdpTENBaWMyVnpjMmx2YmlJNklDSnpNU0o5In0sImFwcC10YWItbW9kZWxzLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXlKdFlXeGhJam9nV3pGZExDQWlkbUZqYVdFaU9pQjdmU3dnSW5SbGVIUnZJam9nSW5naUxDQWlZMlZ5YnlJNklEQXNJQ0p1ZFd4dklqb2diblZzYkN3Z0luTnBiaUk2SUhzaWNHRnVaWE1pT2lBd2ZTd2dJbTlySWpvZ2V5SndZVzVsY3lJNklGc3hMQ0FpdzdFaVhYMTkifSwiYXBwLXRhYnMtaGlzdG9yeS5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6Ilczc2ljMlZ6YzJsdmJpSTZJQ0p6TVNKOUxDQjdJbk5sYzNOcGIyNGlPaUFpZUNKOUxDQjdJbk5sYzNOcGIyNGlPaUFpYUhWaUluMWQifSwiYXBwLXRhYnMuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJiblZzYkE9PSJ9LCJwcmVmcy5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImV5Sm1ZWFp2Y21sMFpYTWlPaUJiSW5NeElsMTkifX19"
+}

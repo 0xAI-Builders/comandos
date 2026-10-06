@@ -1,0 +1,26 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "clock_ms": 1791115200000,
+      "request": {
+        "method": "GET",
+        "target": "/tmux-mouse?session=nope",
+        "extra": "",
+        "body": ""
+      },
+      "effect_files": [
+        "prefs.json",
+        "prefs.json.lock",
+        "app-tabs.json",
+        "app-tabs-history.json",
+        "app-tab-models.json",
+        "app-tab-active.json"
+      ]
+    },
+    "before_sha256": "003f3f0f2910875838048d7cc3030377bb5beff7eeb078b36b51e5c7e25ca93b"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjo0MDQsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCIzOFwiXV0sXCJib2R5XCI6WzEyMywzNCwxMDEsMTE0LDExNCwxMTEsMTE0LDM0LDU4LDMyLDM0LDc4LDExMSwzMiwxMDQsOTcsMTIxLDMyLDExNSwxMDEsMTE1LDEwNSwxMTEsMTEwLDMyLDExNiwxMDksMTE3LDEyMCwzMiwzOSwxMTAsMTExLDExMiwxMDEsMzksMzQsMTI1XX0iLCJ0cmVlIjp7ImFwcC10YWItYWN0aXZlLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXlKelpYTnphVzl1SWpvZ0luTXhJbjA9In0sImFwcC10YWItbW9kZWxzLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXlKek1TSTZJSHNpY0dGdVpYTWlPaUJiZXlKd1lXNWxJam9nSWlVd0lpd2dJbTF2WkdWc0lqb2dJc094SW4xZGZYMD0ifSwiYXBwLXRhYnMtaGlzdG9yeS5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6Ilczc2ljMlZ6YzJsdmJpSTZJQ0oyYVdWcVlTSXNJQ0owY3lJNklETjlYUT09In0sImFwcC10YWJzLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXlKek1TSTZJQ0pWYm04Z3c3RWlmUT09In0sInByZWZzLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXlKbVlYWnZjbWwwWlhNaU9pQmJJbk14SWwwc0lDSjBhR1Z0WlNJNklDSnVaVzl1SW4wPSJ9fX0="
+}

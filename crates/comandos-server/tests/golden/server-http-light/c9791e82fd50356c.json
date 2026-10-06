@@ -1,0 +1,26 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "clock_ms": 1791115200000,
+      "request": {
+        "method": "GET",
+        "target": "/active-tab",
+        "extra": "",
+        "body": ""
+      },
+      "effect_files": [
+        "prefs.json",
+        "prefs.json.lock",
+        "app-tabs.json",
+        "app-tabs-history.json",
+        "app-tab-models.json",
+        "app-tab-active.json"
+      ]
+    },
+    "before_sha256": "003f3f0f2910875838048d7cc3030377bb5beff7eeb078b36b51e5c7e25ca93b"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjoyMDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCIzMVwiXV0sXCJib2R5XCI6WzEyMywzNCwxMTUsMTAxLDExNSwxMTUsMTA1LDExMSwxMTAsMzQsNTgsMzIsMzQsMTE1LDQ5LDM0LDQ0LDMyLDM0LDExMiw5NywxMTAsMTAxLDM0LDU4LDMyLDM0LDM3LDQ5LDM0LDEyNV19IiwidHJlZSI6eyJhcHAtdGFiLWFjdGl2ZS5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImV5SnpaWE56YVc5dUlqb2dJbk14SW4wPSJ9LCJhcHAtdGFiLW1vZGVscy5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImV5SnpNU0k2SUhzaWNHRnVaWE1pT2lCYmV5SndZVzVsSWpvZ0lpVXdJaXdnSW0xdlpHVnNJam9nSXNPeEluMWRmWDA9In0sImFwcC10YWJzLWhpc3RvcnkuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJXM3NpYzJWemMybHZiaUk2SUNKMmFXVnFZU0lzSUNKMGN5STZJRE45WFE9PSJ9LCJhcHAtdGFicy5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImV5SnpNU0k2SUNKVmJtOGd3N0VpZlE9PSJ9LCJwcmVmcy5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImV5Sm1ZWFp2Y21sMFpYTWlPaUJiSW5NeElsMHNJQ0owYUdWdFpTSTZJQ0p1Wlc5dUluMD0ifX19"
+}
