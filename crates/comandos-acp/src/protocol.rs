@@ -1,5 +1,12 @@
 //! Bounded JSON-lines transport, owned child cleanup, and JSON-RPC request identity.
 use super::Result;
+use nix::{
+    sys::{
+        signal::{Signal, killpg},
+        wait::{Id, WaitPidFlag, WaitStatus, waitid},
+    },
+    unistd::Pid,
+};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -73,21 +80,54 @@ enum Line {
     Eof,
     Error(String),
 }
-struct OwnedChild(Option<Child>);
+pub(crate) struct OwnedChild(pub(crate) Option<Child>);
 impl OwnedChild {
+    pub(crate) fn alive(&self) -> bool {
+        let Some(child) = self.0.as_ref() else {
+            return false;
+        };
+        let Ok(pid) = i32::try_from(child.id()) else {
+            return false;
+        };
+        // Observe without reaping: the leader PID keeps this private group
+        // reserved until close has signalled its remaining descendants.
+        matches!(
+            waitid(
+                Id::Pid(Pid::from_raw(pid)),
+                WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT
+            ),
+            Ok(WaitStatus::StillAlive)
+        )
+    }
     fn close(&mut self) {
         let Some(mut child) = self.0.take() else {
             return;
         };
         drop(child.stdin.take());
-        let deadline = Instant::now() + Duration::from_millis(100);
-        while Instant::now() < deadline {
-            if child.try_wait().ok().flatten().is_some() {
-                return;
+        if let Ok(pid) = i32::try_from(child.id())
+            && pid > 1
+        {
+            let group = Pid::from_raw(pid);
+            let _ = killpg(group, Signal::SIGTERM);
+            let deadline = Instant::now() + Duration::from_millis(100);
+            while Instant::now() < deadline {
+                if !matches!(
+                    waitid(
+                        Id::Pid(group),
+                        WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT
+                    ),
+                    Ok(WaitStatus::StillAlive)
+                ) {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(2));
             }
-            thread::sleep(Duration::from_millis(2));
+            // Never reap before this signal: even an exited leader still
+            // protects the group identity while TERM-resistant children close.
+            let _ = killpg(group, Signal::SIGKILL);
+        } else {
+            let _ = child.kill();
         }
-        let _ = child.kill();
         let _ = child.wait();
     }
 }
@@ -263,10 +303,7 @@ impl Process {
         }
     }
     fn alive(&mut self) -> bool {
-        self.child
-            .0
-            .as_mut()
-            .is_some_and(|child| matches!(child.try_wait(), Ok(None)))
+        self.child.alive()
     }
     fn close(&mut self) {
         drop(self.stdin.take());

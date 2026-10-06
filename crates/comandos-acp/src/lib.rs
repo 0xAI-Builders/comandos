@@ -24,42 +24,75 @@ pub struct Program {
     pub path: PathBuf,
     pub prefix: Vec<OsString>,
 }
+
 impl Program {
     fn call(&self, args: &[&str], payload: Option<&Value>) -> Result<()> {
-        let mut child = Command::new(&self.path)
-            .args(&self.prefix)
-            .args(args)
-            .env("HARNESS", "acp")
-            .stdin(if payload.is_some() {
-                Stdio::piped()
-            } else {
-                Stdio::null()
-            })
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
+        use std::os::{fd::AsFd, unix::process::CommandExt};
+        let bytes = payload
+            .map(serde_json::to_vec)
+            .transpose()
             .map_err(|e| e.to_string())?;
-        if let Some(payload) = payload {
-            let bytes = serde_json::to_vec(payload).map_err(|e| e.to_string())?;
-            let result = child
-                .stdin
-                .take()
-                .ok_or("hook sin stdin")?
-                .write_all(&bytes);
-            if result.is_err() {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err("hook cerró stdin".into());
-            }
+        if bytes
+            .as_ref()
+            .is_some_and(|bytes| bytes.len() > protocol::MAX_LINE)
+        {
+            return Err("entrada de helper ACP excede 4 MiB".into());
         }
         let deadline = Instant::now() + Duration::from_secs(5);
+        let mut child = protocol::OwnedChild(Some(
+            Command::new(&self.path)
+                .args(&self.prefix)
+                .args(args)
+                .env("HARNESS", "acp")
+                .stdin(if payload.is_some() {
+                    Stdio::piped()
+                } else {
+                    Stdio::null()
+                })
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .process_group(0)
+                .spawn()
+                .map_err(|e| e.to_string())?,
+        ));
+        if let Some(bytes) = bytes {
+            let mut stdin = child
+                .0
+                .as_mut()
+                .ok_or("helper ausente")?
+                .stdin
+                .take()
+                .ok_or("hook sin stdin")?;
+            let flags = nix::fcntl::fcntl(stdin.as_fd(), nix::fcntl::FcntlArg::F_GETFL)
+                .map_err(|e| e.to_string())?;
+            nix::fcntl::fcntl(
+                stdin.as_fd(),
+                nix::fcntl::FcntlArg::F_SETFL(
+                    nix::fcntl::OFlag::from_bits_truncate(flags) | nix::fcntl::OFlag::O_NONBLOCK,
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+            let mut remaining = bytes.as_slice();
+            while !remaining.is_empty() {
+                if Instant::now() >= deadline {
+                    return Err("timeout escribiendo al helper ACP".into());
+                }
+                match stdin.write(remaining) {
+                    Ok(0) => return Err("hook cerró stdin".into()),
+                    Ok(count) => remaining = &remaining[count..],
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(2))
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+                    Err(_) => return Err("hook cerró stdin".into()),
+                }
+            }
+        }
         loop {
-            if child.try_wait().map_err(|e| e.to_string())?.is_some() {
+            if !child.alive() {
                 return Ok(());
             }
             if Instant::now() >= deadline {
-                let _ = child.kill();
-                let _ = child.wait();
                 return Err("timeout de helper ACP".into());
             }
             thread::sleep(Duration::from_millis(5));
@@ -813,4 +846,31 @@ pub fn main(args: &[String]) -> i32 {
     );
     signal_hook::low_level::unregister(signal);
     code
+}
+
+#[cfg(test)]
+mod helper_tests {
+    use super::*;
+    use std::os::unix::fs::DirBuilderExt;
+
+    #[test]
+    fn stalled_helper_stdin_cannot_outlive_the_operation_deadline() {
+        let root = env::temp_dir().join(format!("acp-stalled-helper-{}", std::process::id()));
+        fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        let script = root.join("helper.py");
+        fs::write(&script, "import time\ntime.sleep(6)\n").unwrap();
+        let helper = Program {
+            path: "/usr/bin/python3".into(),
+            prefix: vec![script.into_os_string()],
+        };
+        let started = Instant::now();
+        let result = helper.call(&[], Some(&json!({"private":"x".repeat(512 * 1024)})));
+        let elapsed = started.elapsed();
+        fs::remove_dir_all(&root).unwrap();
+        assert!(result.is_err());
+        assert!(
+            elapsed < Duration::from_millis(5750),
+            "helper stdin blocked past its deadline: {elapsed:?}"
+        );
+    }
 }
