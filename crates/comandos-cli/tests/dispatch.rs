@@ -123,3 +123,18 @@ fn dispatch_acp_alias_and_explicit_preserve_values() {
         );
     }
 }
+
+#[test]
+fn dispatch_mobile_alias_and_explicit_preserve_arguments() {
+    for argv0 in ["comandos", "/private/bin/cc-mobile"] {
+        let args = if argv0 == "comandos" {
+            v(&["mobile", "off", "--dry-run"])
+        } else {
+            v(&["off", "--dry-run"])
+        };
+        assert_eq!(
+            resolve(argv0, &args),
+            Command::Mobile(v(&["off", "--dry-run"]))
+        );
+    }
+}
