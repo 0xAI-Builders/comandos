@@ -30,9 +30,11 @@ fn main() {
  let mut log = fs::OpenOptions::new().create(true).append(true).open(root.join("powershell.log")).unwrap();
  writeln!(log, "{}", a[3]).unwrap();
  if a[3].contains("Write($env:APPDATA)") {
-  if !root.join("empty-appdata").exists() { print!("C:\\Users\\Fixture\\AppData\\Roaming\r\n"); } return;
+  if root.join("query-warning").exists() {eprintln!("app warning");}
+  if !root.join("empty-appdata").exists() { print!("C:\\Users\\Fixture\\AppData\\Roaming\r\n"); }
+  if root.join("repeated-crlf").exists() {print!("\r\n");} return;
  }
- if a[3].contains("Write($env:LOCALAPPDATA)") { print!("C:\\Users\\Fixture\\AppData\\Local\r\n"); return; }
+ if a[3].contains("Write($env:LOCALAPPDATA)") { print!("C:\\Users\\Fixture\\AppData\\Local\r\n"); if root.join("repeated-crlf").exists() {print!("\r\n");} return; }
  if root.join("bad-create").exists() { eprintln!("fixture PowerShell error"); std::process::exit(9); }
  let properties: Vec<&str> = a[3].lines().map(str::trim).filter(|x| !x.is_empty()).collect();
  fs::write(root.join("properties"), properties.join("\n")).unwrap();
@@ -214,6 +216,42 @@ fn command_and_alias_reject_real_non_wsl_host_without_writing_home() {
         assert!(!f.0.join("powershell.log").exists());
         assert!(!f.0.join("roaming").exists());
         assert!(!f.0.join("local").exists());
+    }
+}
+
+#[test]
+fn windows_query_repeated_crlf_matches_shell_cleanup() {
+    let f = Fixture::new("crlf");
+    fs::write(f.0.join("repeated-crlf"), b"").unwrap();
+    f.compare(&[], "Ubuntu");
+}
+
+#[test]
+fn preserves_prior_query_warning_on_lookup_and_local_failures() {
+    for tag in ["warn-tool", "warn-file"] {
+        let f = Fixture::new(tag);
+        fs::write(f.0.join("query-warning"), b"").unwrap();
+        if tag == "warn-tool" {
+            fs::remove_file(f.0.join("bin/wslpath")).unwrap();
+        } else {
+            fs::create_dir_all(f.0.join("local")).unwrap();
+            fs::write(f.0.join("local/ComandOS"), b"blocker").unwrap();
+        }
+        let config = Config {
+            kernel_release: "microsoft".into(),
+            distro: "Ubuntu".into(),
+            user: "fixture".into(),
+            home: f.0.clone(),
+            path: f.0.join("bin").into_os_string(),
+        };
+        let result = run(&config, &[]);
+        assert_ne!(result.code, 0);
+        assert!(
+            result.stderr.starts_with("app warning\n"),
+            "{}",
+            result.stderr
+        );
+        assert!(!f.0.join("properties").exists());
     }
 }
 

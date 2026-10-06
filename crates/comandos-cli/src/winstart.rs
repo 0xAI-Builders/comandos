@@ -32,6 +32,11 @@ impl Outcome {
             stderr: message.into(),
         }
     }
+
+    fn with_prior(mut self, prior: &str) -> Self {
+        self.stderr.insert_str(0, prior);
+        self
+    }
 }
 
 fn tool(config: &Config, name: &str, args: &[&str]) -> Result<Output, Outcome> {
@@ -56,7 +61,7 @@ fn captured(
     args: &[&str],
     stderr: &mut String,
 ) -> Result<String, Outcome> {
-    let output = tool(config, name, args)?;
+    let output = tool(config, name, args).map_err(|error| error.with_prior(stderr))?;
     stderr.push_str(&String::from_utf8_lossy(&output.stderr));
     if !output.status.success() {
         return Err(Outcome {
@@ -105,7 +110,7 @@ pub fn run(config: &Config, args: &[String]) -> Outcome {
         &["-NoProfile", "-Command", "[Console]::Write($env:APPDATA)"],
         &mut stderr,
     ) {
-        Ok(path) => path.replace('\r', ""),
+        Ok(path) => path.replace('\r', "").trim_end_matches('\n').to_owned(),
         Err(error) => return error,
     };
     let localdata = match captured(
@@ -118,7 +123,7 @@ pub fn run(config: &Config, args: &[String]) -> Outcome {
         ],
         &mut stderr,
     ) {
-        Ok(path) => path.replace('\r', ""),
+        Ok(path) => path.replace('\r', "").trim_end_matches('\n').to_owned(),
         Err(error) => return error,
     };
     if appdata.is_empty() || localdata.is_empty() {
@@ -146,7 +151,8 @@ pub fn run(config: &Config, args: &[String]) -> Outcome {
         if let Err(error) = fs::remove_file(&lnk_wsl)
             && error.kind() != std::io::ErrorKind::NotFound
         {
-            return Outcome::fail(format!("cc-winstart: {}: {error}\n", lnk_wsl.display()));
+            return Outcome::fail(format!("cc-winstart: {}: {error}\n", lnk_wsl.display()))
+                .with_prior(&stderr);
         }
         return Outcome {
             code: 0,
@@ -159,7 +165,7 @@ pub fn run(config: &Config, args: &[String]) -> Outcome {
         .and_then(|()| fs::create_dir_all(&sm_dir))
         .and_then(|()| fs::write(icon_dir.join("comandos.ico"), ICON))
     {
-        return Outcome::fail(format!("cc-winstart: {error}\n"));
+        return Outcome::fail(format!("cc-winstart: {error}\n")).with_prior(&stderr);
     }
     let lnk_win =
         format!("{appdata}\\Microsoft\\Windows\\Start Menu\\Programs\\{distro}\\{link_name}");
@@ -180,7 +186,7 @@ pub fn run(config: &Config, args: &[String]) -> Outcome {
         &["-NoProfile", "-Command", &script],
     ) {
         Ok(output) => output,
-        Err(error) => return error,
+        Err(error) => return error.with_prior(&stderr),
     };
     stderr.push_str(&String::from_utf8_lossy(&output.stderr));
     let mut stdout = String::from_utf8_lossy(&output.stdout).into_owned();
