@@ -92,7 +92,7 @@ pub(crate) fn expand(value: &str, paths: &Paths) -> PathBuf {
         paths.cwd.join(p)
     })
 }
-fn jsonc(text: &str) -> Option<Value> {
+pub(crate) fn jsonc(text: &str) -> Option<Value> {
     let re = regex::Regex::new(r#""(?:\\.|[^"\\])*"|//[^\n]*|/\*[\s\S]*?\*/"#).ok()?;
     let clean = re.replace_all(text, |c: &regex::Captures<'_>| {
         if c[0].starts_with('"') {

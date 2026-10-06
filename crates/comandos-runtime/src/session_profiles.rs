@@ -90,7 +90,7 @@ fn skill_path(v: &Value, base: &Path, paths: &Paths) -> Option<PathBuf> {
         c::resolved(&if p.is_absolute() { p } else { base.join(p) })
     })
 }
-fn skill_roots(
+pub(crate) fn skill_roots(
     ctx: &mut Context,
     paths: &Paths,
 ) -> Vec<(PathBuf, String, String, Option<c::Plugin>)> {
@@ -350,7 +350,7 @@ fn frontmatter(path: &Path) -> Option<Value> {
     Some(crate::profile_yaml::parse(&m[1]))
 }
 
-fn skills(ctx: &mut Context, caps: &Value, paths: &Paths) -> Vec<Value> {
+pub(crate) fn skills(ctx: &mut Context, caps: &Value, paths: &Paths) -> Vec<Value> {
     let policy_pattern =
         regex::Regex::new(r"(?m)^\s+allow_implicit_invocation:\s*false\s*(?:#.*)?$").ok();
     let ovs = if ctx.harness == "codex" {
