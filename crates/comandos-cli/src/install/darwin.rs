@@ -281,21 +281,48 @@ fn change_agent(
     if read(path, false)? != before {
         return Err("LaunchAgent changed before publication".into());
     }
-    publish(path, &after)?;
-    if let Some(tool) = launch.as_mut() {
-        let _ = tool("unload", path);
-        if after.is_some()
-            && let Err(e) = tool("load", path)
+    let Some(tool) = launch.as_mut() else {
+        return publish(path, &after);
+    };
+    // Legacy launchctl unload reads the plist to find the registered label.
+    // Keep it present until the service has stopped, including rollback to absence.
+    if before.is_some() {
+        tool("unload", path)
+            .map_err(|e| format!("launchctl unload failed; previous file unchanged: {e}"))?;
+    }
+    if let Err(e) = publish(path, &after) {
+        // Publication can fail after rename (for example, while syncing the parent).
+        // Restore bytes before attempting to restart the previous service.
+        publish(path, &before).map_err(|restore| format!("{e}; restore failed: {restore}"))?;
+        if before.is_some()
+            && let Err(reload) = tool("load", path)
         {
-            publish(path, &before).map_err(|restore| format!("{e}; restore failed: {restore}"))?;
-            let _ = tool("unload", path);
-            if before.is_some() {
-                let _ = tool("load", path);
-            }
             return Err(format!(
-                "launchctl load failed; previous file restored: {e}"
+                "{e}; previous file restored; service reload failed: {reload}"
             ));
         }
+        return Err(e);
+    }
+    if after.is_some()
+        && let Err(e) = tool("load", path)
+    {
+        // A failed load may still have registered a service. Attempt cleanup while
+        // its plist remains readable, and retain any failure in the returned error.
+        let cleanup = tool("unload", path).err();
+        publish(path, &before).map_err(|restore| format!("{e}; restore failed: {restore}"))?;
+        let reload = if before.is_some() {
+            tool("load", path).err()
+        } else {
+            None
+        };
+        let mut message = format!("launchctl load failed; previous file restored: {e}");
+        if let Some(cleanup) = cleanup {
+            message.push_str(&format!("; failed service unload: {cleanup}"));
+        }
+        if let Some(reload) = reload {
+            message.push_str(&format!("; previous service reload failed: {reload}"));
+        }
+        return Err(message);
     }
     Ok(())
 }
@@ -387,6 +414,11 @@ pub fn rollback_agent(home: &Path, dry: bool, no_launchctl: bool) -> Result<(), 
     if !dry && !no_launchctl && !cfg!(target_os = "macos") {
         return Err("LaunchAgent activation requires Darwin; --no-launchctl is available for private fixtures".into());
     }
+    let mut tool = launchctl;
+    rollback_agent_with(home, dry, if no_launchctl { None } else { Some(&mut tool) })
+}
+/// Injected platform boundary: tests never execute launchctl.
+pub fn rollback_agent_with(home: &Path, dry: bool, launch: Launch<'_>) -> Result<(), String> {
     home_check(home)?;
     let inspect = || -> Result<AgentRollback, String> {
         let s = state(home)?.ok_or("no Darwin LaunchAgent rollback")?;
@@ -407,13 +439,7 @@ pub fn rollback_agent(home: &Path, dry: bool, no_launchctl: bool) -> Result<(), 
         current: before,
         original: after,
     } = inspect()?;
-    let mut tool = launchctl;
-    change_agent(
-        &agent_path(home),
-        before,
-        after,
-        if no_launchctl { None } else { Some(&mut tool) },
-    )
+    change_agent(&agent_path(home), before, after, launch)
 }
 
 struct Tree {

@@ -44,7 +44,6 @@ fn bundle_has_exact_executable_plist_and_valid_512_png_icns() {
         binary.to_str().unwrap(),
         "--out",
         out.to_str().unwrap(),
-        "--adhoc",
     ]);
     assert!(
         result.status.success(),

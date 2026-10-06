@@ -124,6 +124,67 @@ fn failed_launch_load_restores_prior_bytes_and_keeps_first_backup() {
     assert_eq!(fs::read(orig(&home.0)).unwrap(), b"old agent");
 }
 #[test]
+fn first_agent_rollback_unloads_before_removing_its_plist() {
+    let home = Home::new();
+    comandos_cli::install::darwin::agent_with(&home.0, false, None).unwrap();
+    let installed = fs::read(plist(&home.0)).unwrap();
+    let mut calls = Vec::new();
+    let mut unloaded = false;
+    let mut fake = |action: &str, path: &Path| -> Result<(), String> {
+        calls.push(action.to_string());
+        // launchctl unload needs the plist to determine the registered label.
+        let bytes = fs::read(path).map_err(|e| e.to_string())?;
+        assert_eq!(bytes, installed);
+        unloaded = true;
+        Ok(())
+    };
+    comandos_cli::install::darwin::rollback_agent_with(&home.0, false, Some(&mut fake)).unwrap();
+    assert_eq!(calls, ["unload"]);
+    assert!(
+        unloaded,
+        "registered service must be stopped before its plist is removed"
+    );
+    assert!(!plist(&home.0).exists());
+}
+#[test]
+fn failed_agent_unload_preserves_the_current_plist_and_reports_failure() {
+    let home = Home::new();
+    comandos_cli::install::darwin::agent_with(&home.0, false, None).unwrap();
+    let installed = fs::read(plist(&home.0)).unwrap();
+    let mut fake = |action: &str, _: &Path| -> Result<(), String> {
+        assert_eq!(action, "unload");
+        Err("owned unload failure".into())
+    };
+    let error = comandos_cli::install::darwin::rollback_agent_with(&home.0, false, Some(&mut fake))
+        .unwrap_err();
+    assert!(error.contains("owned unload failure"));
+    assert_eq!(fs::read(plist(&home.0)).unwrap(), installed);
+}
+#[test]
+fn failed_agent_recovery_load_is_reported_with_the_restored_file() {
+    let home = Home::new();
+    fs::create_dir_all(plist(&home.0).parent().unwrap()).unwrap();
+    fs::write(plist(&home.0), b"old agent").unwrap();
+    let mut loads = 0;
+    let mut fake = |action: &str, _: &Path| -> Result<(), String> {
+        if action == "load" {
+            loads += 1;
+            return Err(if loads == 1 {
+                "new load failure"
+            } else {
+                "old reload failure"
+            }
+            .into());
+        }
+        Ok(())
+    };
+    let error =
+        comandos_cli::install::darwin::agent_with(&home.0, false, Some(&mut fake)).unwrap_err();
+    assert!(error.contains("new load failure"));
+    assert!(error.contains("old reload failure"));
+    assert_eq!(fs::read(plist(&home.0)).unwrap(), b"old agent");
+}
+#[test]
 fn concurrent_agent_installs_share_one_original_and_leave_complete_plist() {
     let home = Home::new();
     fs::create_dir_all(plist(&home.0).parent().unwrap()).unwrap();
