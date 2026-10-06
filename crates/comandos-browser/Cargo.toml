@@ -28,3 +28,6 @@ getrandom.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+comandos-oracle = { path = "../comandos-oracle" }

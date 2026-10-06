@@ -405,6 +405,7 @@ dependencies = [
  "block2",
  "comandos-core",
  "comandos-desktop",
+ "comandos-oracle",
  "comandos-store",
  "nix",
  "objc2",
@@ -419,6 +420,7 @@ name = "comandos-browser"
 version = "0.1.0"
 dependencies = [
  "comandos-core",
+ "comandos-oracle",
  "getrandom 0.3.4",
  "nix",
  "serde_json",

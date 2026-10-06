@@ -1,0 +1,1 @@
+{"source_commit":"2674f36","source_path":"bin/cc-app-mac","source_sha256":"79670ba87d6be456c73059dba36f9c358838ca7fb8ce8fb2eb33424f92ad53bb","record_interpreter":"CPython 3.10.12","record_scope":"Original AST methods with the existing inert AppKit harness; no GUI or native framework initialization"}

@@ -58,17 +58,32 @@ fn encoding_matches_python_including_order_unicode_and_float_spelling() {
         } else {
             "import json,sys;sys.stdout.write(json.dumps(json.loads(sys.argv[1])))"
         };
-        let oracle = std::process::Command::new("python3")
-            .env_clear()
-            .args(["-c", script, &input])
-            .output()
-            .unwrap();
-        assert!(oracle.status.success());
+        let oracle = comandos_oracle::oracle_at(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+            "browser-wire",
+            &json!({"source":"CPython stdlib json", "raw": input, "compact": compact, "script": script}),
+            || {
+                let output = std::process::Command::new(
+                    std::env::var("COMANDOS_BROWSER_ORACLE_PYTHON")
+                        .unwrap_or_else(|_| "python3".into()),
+                )
+                .env_clear()
+                .env("PYTHONIOENCODING", "utf-8")
+                .args(["-c", script, &input])
+                .output()
+                .map_err(|e| e.to_string())?;
+                if output.status.success() {
+                    Ok(output.stdout)
+                } else {
+                    Err(String::from_utf8_lossy(&output.stderr).into_owned())
+                }
+            },
+        );
         let actual = if compact {
             encode_message(&value).unwrap()
         } else {
             encode_status(&value).unwrap().into_bytes()
         };
-        assert_eq!(actual, oracle.stdout);
+        assert_eq!(actual, oracle);
     }
 }

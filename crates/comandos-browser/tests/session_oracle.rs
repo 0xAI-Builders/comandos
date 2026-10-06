@@ -80,48 +80,12 @@ impl Drop for ChildGuard {
 
 #[tokio::test(flavor = "current_thread")]
 async fn rust_session_matches_python_for_basic_dispatch_sequence() {
-    if Command::new("python3")
-        .arg("--version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_err()
-    {
-        eprintln!("SKIP: python3 no disponible para session_oracle");
-        return;
-    }
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .unwrap()
-        .to_path_buf();
-    let py_port = free_port();
     let rust_port = free_port();
-    let py_dir = temp_dir("python");
     let rust_dir = temp_dir("rust");
-    let config = json!({
-        "command":[env!("CARGO_BIN_EXE_fake-mcp-worker")],
-        "state_dir":py_dir,
-        "catalog":{"protocolVersion":"2025-11-25","tools":[{"name":"navigate_page"}]},
-        "port":py_port
-    });
-    let config_path = py_dir.join("config.json");
-    std::fs::write(&config_path, config.to_string()).unwrap();
-    let python = Command::new("python3")
-        .arg(root.join("services/browser/broker.py"))
-        .arg("--config")
-        .arg(&config_path)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    let _python = ChildGuard(python);
-    wait_port(py_port);
-
     let cfg = BrokerConfig::from_value(
         json!({
             "command":[env!("CARGO_BIN_EXE_fake-mcp-worker")],
-            "state_dir":rust_dir,
+            "state_dir":&rust_dir,
             "catalog":{"protocolVersion":"2025-11-25","tools":[{"name":"navigate_page"}]},
             "port":rust_port
         }),
@@ -143,9 +107,47 @@ async fn rust_session_matches_python_for_basic_dispatch_sequence() {
         r#"{"jsonrpc":"2.0","id":4,"method":"unknown"}"#,
     ];
     let py_sequence = sequence;
-    let py = tokio::task::spawn_blocking(move || exchange("python", py_port, &py_sequence))
-        .await
-        .unwrap();
+    let py = tokio::task::spawn_blocking(move || {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let bytes = comandos_oracle::oracle_at(
+            &root.join("tests/golden"),
+            "browser-session",
+            &json!({"source_ref":"2674f36",
+                "source_sha256":"184ef7da4b7c017d477c85570e33ebcb6e298d4722d67ecc0a41cef2190fa338",
+                "catalog":{"protocolVersion":"2025-11-25","tools":[{"name":"navigate_page"}]},
+                "worker":include_str!("support/fake_worker.rs"), "sequence":py_sequence}),
+            || {
+                let py_port = free_port();
+                let py_dir = temp_dir("python");
+                let config_path = py_dir.join("config.json");
+                std::fs::write(&config_path, json!({
+                    "command":[env!("CARGO_BIN_EXE_fake-mcp-worker")], "state_dir":py_dir,
+                    "catalog":{"protocolVersion":"2025-11-25","tools":[{"name":"navigate_page"}]},
+                    "port":py_port
+                }).to_string()).map_err(|e| e.to_string())?;
+                let python = Command::new(
+                    std::env::var("COMANDOS_BROWSER_ORACLE_PYTHON")
+                        .unwrap_or_else(|_| "python3".into()),
+                )
+                .arg(root.join("tests/oracle-src/broker.py"))
+                .arg("--config")
+                .arg(&config_path)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .map_err(|e| e.to_string())?;
+                let python = ChildGuard(python);
+                wait_port(py_port);
+                let responses = exchange("python", py_port, &py_sequence);
+                drop(python);
+                std::fs::remove_dir_all(py_dir).map_err(|e| e.to_string())?;
+                serde_json::to_vec(&responses).map_err(|e| e.to_string())
+            },
+        );
+        serde_json::from_slice::<Vec<String>>(&bytes).unwrap()
+    })
+    .await
+    .unwrap();
     let rust_sequence = sequence;
     let rust = tokio::task::spawn_blocking(move || exchange("rust", rust_port, &rust_sequence))
         .await
@@ -153,4 +155,5 @@ async fn rust_session_matches_python_for_basic_dispatch_sequence() {
     let _ = tx.send(());
     server.await.unwrap().unwrap();
     assert_eq!(rust, py);
+    std::fs::remove_dir_all(rust_dir).unwrap();
 }

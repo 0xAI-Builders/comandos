@@ -1,0 +1,9 @@
+{
+  "input": {
+    "source": "CPython stdlib json",
+    "raw": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"t\":\"ñ🙂 : , \\\\\\\"\",\"n\":1.0,\"e\":1e-7}}",
+    "compact": false,
+    "script": "import json,sys;sys.stdout.write(json.dumps(json.loads(sys.argv[1])))"
+  },
+  "output_b64": "eyJqc29ucnBjIjogIjIuMCIsICJpZCI6IDEsICJyZXN1bHQiOiB7InQiOiAiXHUwMGYxXHVkODNkXHVkZTQyIDogLCBcXFwiIiwgIm4iOiAxLjAsICJlIjogMWUtMDd9fQ=="
+}

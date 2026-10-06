@@ -21,3 +21,6 @@ block2 = "=0.6.1"
 
 [lints.rust]
 unsafe_code = "deny"
+
+[dev-dependencies]
+comandos-oracle = { path = "../comandos-oracle" }
