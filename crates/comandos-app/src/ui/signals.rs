@@ -96,12 +96,26 @@ pub fn debug_script(path: &Path, uid: u32) -> std::io::Result<String> {
     if !dir.is_dir() || dir.uid() != uid || dir.mode() & 0o777 != 0o700 {
         return Err(std::io::Error::other("debug directory must be owned0700"));
     }
+    let expected = std::fs::symlink_metadata(path)?;
+    if !expected.is_file() || expected.uid() != uid {
+        return Err(std::io::Error::other(
+            "debug file must be regular and owned",
+        ));
+    }
     let file = std::fs::OpenOptions::new()
         .read(true)
-        .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC)
+        .custom_flags(
+            nix::libc::O_NOFOLLOW
+                | nix::libc::O_CLOEXEC
+                | nix::libc::O_NONBLOCK
+                | nix::libc::O_NOCTTY,
+        )
         .open(path)?;
     let metadata = file.metadata()?;
-    if !metadata.is_file() || metadata.uid() != uid {
+    if !metadata.is_file()
+        || metadata.uid() != uid
+        || (metadata.dev(), metadata.ino()) != (expected.dev(), expected.ino())
+    {
         return Err(std::io::Error::other("debug file owner changed"));
     }
     let mut bytes = Vec::new();
