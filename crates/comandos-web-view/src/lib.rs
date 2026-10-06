@@ -43,3 +43,5 @@ pub mod analytics;
 
 pub mod notifications;
 pub mod utf16;
+
+pub mod news;

@@ -1,0 +1,26 @@
+
+  <header class="nr-header">
+    <button type="button" class="nr-close" aria-label="Cerrar resúmenes">←<span class="nr-close-label"> Volver</span></button>
+    <strong class="nr-title">Resúmenes</strong>
+    <div class="nr-mobile-switch" role="group" aria-label="Vista">
+      <button type="button" data-pane="terminal">Terminal</button>
+      <button type="button" data-pane="reader">Resúmenes</button>
+    </div>
+    <button type="button" class="nr-saved-btn" aria-pressed="false">Guardados <i class="nr-count" data-count="saved"></i></button>
+    <button type="button" class="nr-notes-btn">Mis notas <i class="nr-count" data-count="notes"></i></button>
+    <button type="button" class="nr-terminal-toggle" aria-pressed="false">Ver terminal</button>
+    <div class="nr-font" role="group" aria-label="Tamaño del texto">
+      <button type="button" data-font="-1" aria-label="Reducir tamaño del texto">A−</button>
+      <button type="button" data-font="1" aria-label="Aumentar tamaño del texto">A+</button>
+    </div>
+  </header>
+  <div class="nr-stage">
+    <section class="nr-terminal" aria-label="Terminal" hidden><div class="nr-terminal-host"></div></section>
+    <div class="nr-edition-divider" role="separator" aria-orientation="vertical" aria-label="Ajustar ancho"
+      aria-valuemin="40" aria-valuemax="70" tabindex="0" hidden></div>
+    <section class="nr-reader" aria-label="Resumen">
+      <div class="nr-reader-body" tabindex="-1"><nav class="nr-day" aria-label="Resúmenes del día"></nav><div class="nr-edition"></div></div>
+      <aside class="nr-panel" aria-label="Noticia" hidden></aside>
+    </section>
+  </div>
+  <div class="nr-toast" role="status" aria-live="polite"></div>

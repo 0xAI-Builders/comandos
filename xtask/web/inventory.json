@@ -1,9 +1,10 @@
 {
   "generator": "cargo run -p xtask -- web-inventory",
   "source": {
-    "head": "aaa8a20aaacbc990c62b87bf08a5120686450d57",
+    "head": "9832653012e3248847a4288aa96f58f5cef9c2bf",
     "dirty": [
-      "M dash/notifications.js"
+      "M dash/index.html",
+      "M dash/news-reader.js"
     ]
   },
   "pages": {
@@ -50,8 +51,8 @@
       "script:work-marks.js",
       "script:ui-sounds.js",
       "script:pomodoro.js",
-      "external:/vendor/markdown-it-15.0.2.umd.min.js",
-      "external:/vendor/purify-3.4.16.min.js",
+      "script:vendor/markdown-it-15.0.2.umd.min.js",
+      "script:vendor/purify-3.4.16.min.js",
       "script:news-reader.js",
       "script:push-settings.js",
       "script:notifications.js",
@@ -2603,8 +2604,8 @@
       "script_index": 1,
       "marker_start": "// ---------- Analytics (grill 1–2 oct): Cuentas · Comparar · Pomodoro ----------",
       "marker_end": "</script>",
-      "sha256": "09b95a3a4322e3edc6e3c1627d5d5d08efc7e7318d627e9836ca22fba128e013",
-      "lines": 50,
+      "sha256": "3d0a198eda5b59be9edd554e61f3b65cffad4f7f96f57b61f0e6ff68c9f99262",
+      "lines": 51,
       "line_start": 5816,
       "defines": [
         "ANALYTICS_DEMO",
@@ -2617,11 +2618,13 @@
         "focusVisibleTerm",
         "__comandosState",
         "__comandosTranslate",
-        "__comandosIcon"
+        "__comandosIcon",
+        "__comandosNewsTerminal"
       ],
       "define_kinds": {
         "ANALYTICS_DEMO": "const",
         "__comandosIcon": "window",
+        "__comandosNewsTerminal": "window",
         "__comandosState": "window",
         "__comandosTranslate": "window",
         "analytics": "function",
@@ -2636,10 +2639,12 @@
         "$",
         "Analytics",
         "S",
+        "TERM_BASE",
         "activeTerm",
         "api",
         "applyAppLayout",
         "closeSnippets",
+        "curTheme",
         "openSnippets",
         "openTerms",
         "restoreSplitLeft",
@@ -3044,6 +3049,72 @@
       "warnings": []
     },
     {
+      "id": "script:vendor/markdown-it-15.0.2.umd.min.js",
+      "kind": "script",
+      "component": "vendor-markdown-it",
+      "source": "dash/vendor/markdown-it-15.0.2.umd.min.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "635972b985228e8af9f0143647c68616b7a3bb09f6946e7e4a52e43dcf5e7be5",
+      "lines": 14,
+      "line_start": 1,
+      "defines": [],
+      "define_kinds": {},
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
+      "dom_ids": [],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 861,
+      "warnings": []
+    },
+    {
+      "id": "script:vendor/purify-3.4.16.min.js",
+      "kind": "script",
+      "component": "vendor-purify",
+      "source": "dash/vendor/purify-3.4.16.min.js",
+      "pages": [
+        "index.html"
+      ],
+      "script_index": null,
+      "marker_start": null,
+      "marker_end": null,
+      "sha256": "2c90a9b46d6463f26038a29b686e82bc91de01fdac9d5229e7cfe3b360134ea2",
+      "lines": 7,
+      "line_start": 1,
+      "defines": [],
+      "define_kinds": {},
+      "uses_globals": [],
+      "mutates_globals": [],
+      "parent_refs": [],
+      "patches": [],
+      "child_refs": [],
+      "child_writes": [],
+      "child_dom_access": false,
+      "fallbacks": [],
+      "dom_ids": [],
+      "routes": [],
+      "storage_keys": [],
+      "post_messages": [],
+      "message_types": [],
+      "intervals_ms": [],
+      "strings": 341,
+      "warnings": []
+    },
+    {
       "id": "script:news-reader.js",
       "kind": "script",
       "component": "news-reader",
@@ -3054,8 +3125,8 @@
       "script_index": null,
       "marker_start": null,
       "marker_end": null,
-      "sha256": "d1ff9081995ae4337b8fe7ab37abff92500b6b904e38aa3e6e4199a6070f107a",
-      "lines": 1204,
+      "sha256": "54024241c4f88930671a069b1b84f2aa39752702716b2ac906b1929bc2ccf25b",
+      "lines": 1205,
       "line_start": 1,
       "defines": [
         "NewsReader"
@@ -3103,7 +3174,7 @@
         "text"
       ],
       "intervals_ms": [],
-      "strings": 820,
+      "strings": 822,
       "warnings": []
     },
     {
@@ -3208,7 +3279,7 @@
       "marker_end": "</script>",
       "sha256": "e1bf12aee4a1a1456a10da513de1193a6b088485be5e97b5157d4d4015b92cab",
       "lines": 79,
-      "line_start": 5881,
+      "line_start": 5882,
       "defines": [
         "selectPaneInFrame"
       ],
@@ -3565,6 +3636,18 @@
       "level": 0,
       "units": [
         "script:ui-sounds.js"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "script:vendor/markdown-it-15.0.2.umd.min.js"
+      ]
+    },
+    {
+      "level": 0,
+      "units": [
+        "script:vendor/purify-3.4.16.min.js"
       ]
     },
     {

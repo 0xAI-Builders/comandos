@@ -421,6 +421,7 @@
     "used_by": [
       "region:app-combinada",
       "region:barra-de-comandos",
+      "region:analytics",
       "script:news-reader.js"
     ],
     "mutated_by": [],
@@ -1072,6 +1073,7 @@
     "used_by": [
       "region:app-combinada",
       "region:barra-de-comandos",
+      "region:analytics",
       "script:news-reader.js"
     ],
     "mutated_by": [],

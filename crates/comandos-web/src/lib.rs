@@ -57,6 +57,7 @@ pub mod registry;
 pub mod components {
     pub mod analytics;
     pub mod device_drafts;
+    pub mod news_reader;
     pub mod notifications;
     pub mod pomodoro;
     pub mod push_settings;

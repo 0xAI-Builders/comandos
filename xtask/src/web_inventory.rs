@@ -460,6 +460,14 @@ fn dash_scripts(layout: &Layout) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default();
+    for vendor in [
+        "vendor/markdown-it-15.0.2.umd.min.js",
+        "vendor/purify-3.4.16.min.js",
+    ] {
+        if layout.dash.join(vendor).is_file() {
+            v.push(vendor.into());
+        }
+    }
     v.sort();
     v
 }
@@ -470,7 +478,12 @@ fn script_draft(layout: &Layout, name: &str) -> Option<Draft> {
     let mut d = draft(
         format!("script:{name}"),
         Kind::Script,
-        name.trim_end_matches(".js").to_string(),
+        match name {
+            "vendor/markdown-it-15.0.2.umd.min.js" => "vendor-markdown-it",
+            "vendor/purify-3.4.16.min.js" => "vendor-purify",
+            _ => name.trim_end_matches(".js"),
+        }
+        .to_string(),
         format!("{}{name}", layout.prefix),
         &text,
         1,
@@ -497,7 +510,16 @@ fn scan_all(repo: &Path) -> Scan {
         let mut inline_n = 0;
         for tag in script_tags(&html) {
             if let Some(src) = &tag.src {
-                let base = src_basename(src).to_string();
+                let path = src
+                    .split(['?', '#'])
+                    .next()
+                    .unwrap_or(src)
+                    .trim_start_matches('/');
+                let base = if scripts.iter().any(|s| s == path) {
+                    path.to_owned()
+                } else {
+                    src_basename(src).to_string()
+                };
                 if !scripts.contains(&base) {
                     entries.push(PageEntry::External(src.clone()));
                     continue;

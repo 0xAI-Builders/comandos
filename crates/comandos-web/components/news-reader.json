@@ -1,0 +1,10 @@
+{
+  "id": "news-reader",
+  "kind": "script",
+  "source": "dash/news-reader.js",
+  "sha256": "54024241c4f88930671a069b1b84f2aa39752702716b2ac906b1929bc2ccf25b",
+  "exports": [
+    "NewsReader"
+  ],
+  "deps": []
+}
