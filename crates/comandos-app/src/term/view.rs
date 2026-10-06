@@ -248,6 +248,9 @@ impl TermView {
             serde_json::json!({"grid":model.engine.diagnostic_grid(100_000)?,"font":font,"font_scale":model.font_scale,"cell_metrics":{"width":model.geom.cell_w,"height":model.geom.cell_h,"origin_x":model.geom.origin_x,"origin_y":model.geom.origin_y,"dpr":model.geom.dpr,"font_size_px":model.geom.font_size},"opacity":model.opacity,"focused":model.focused,"closed":self.inner.closed.get(),"selection_text":self.inner.selection_text(),"preedit":model.preedit,"cursor":{"row":cursor.line,"col":cursor.col,"shape":format!("{shape:?}").to_lowercase(),"visible":cursor.visible,"painted":cursor.visible && (!blink || !model.focused || model.blink_visible),"wide":cursor.wide}}),
         )
     }
+    pub fn font_scale(&self) -> f64 {
+        self.inner.model.borrow().font_scale
+    }
     pub fn set_font_scale(&self, scale: f64) {
         if scale.is_finite() {
             self.inner.model.borrow_mut().font_scale = scale.clamp(0.5, 3.);

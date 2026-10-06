@@ -31,7 +31,7 @@ use std::{
     time::Duration,
 };
 
-type Handler = Rc<dyn Fn(&Value) -> bool>;
+type Handler = ui::app_commands::Handler;
 pub struct App {
     pub cfg: AppConfig,
     pub tmux: TmuxCtl,
@@ -42,7 +42,14 @@ pub struct App {
     pub paned: gtk::Paned,
     pub notebook: gtk::Notebook,
     pub webview: webkit2gtk::WebView,
-    handlers: RefCell<BTreeMap<&'static str, Handler>>,
+    handlers: ui::app_commands::Registry,
+    protocol_signals: RefCell<Vec<(glib::Object, glib::SignalHandlerId)>>,
+    protocol_cancellable: gio::Cancellable,
+    interaction_controllers: RefCell<Vec<gtk::EventController>>,
+    presence: RefCell<ui::presence::Presence>,
+    presence_visible: Cell<bool>,
+    bridge_queue: RefCell<ui::bridge::BridgeQueue>,
+    mru_pages: RefCell<Vec<String>>,
     state: StateFiles,
     registry: RefCell<TabRegistry>,
     strip: RefCell<ui::tabstrip::TabStripNotebook>,
@@ -99,6 +106,7 @@ struct AppRuntime {
 impl AppRuntime {
     fn shutdown(self) {
         self.app.closed.store(true, Ordering::Release);
+        self.app.shutdown_protocol();
         for source in self.sources {
             source.remove();
         }
@@ -121,8 +129,6 @@ impl AppRuntime {
 }
 impl App {
     fn install_foundation_handlers(self: &Rc<Self>) {
-        use javascriptcore::ValueExt;
-        use webkit2gtk::{UserContentManagerExt, WebViewExt};
         let themes = crate::theme::themes_from_file(Some(include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../config/themes.json"
@@ -142,127 +148,6 @@ impl App {
                 &self.theme_provider,
                 gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
             );
-        }
-        let weak = Rc::downgrade(self);
-        self.install_handler(
-            "tabs",
-            Rc::new(move |message| {
-                let Some(app) = weak.upgrade() else {
-                    return false;
-                };
-                let args = message.get("args").unwrap_or(message);
-                let key = args.get("session").and_then(Value::as_str).unwrap_or("");
-                for (wire, pref) in [("buttonStyle", "button_style"), ("theme", "theme")] {
-                    if let Some(value) = message.get(wire).and_then(Value::as_str) {
-                        let mut prefs = app.preferences.borrow().clone();
-                        if let Some(object) = prefs.as_object_mut() {
-                            object.insert(pref.into(), json!(value));
-                        }
-                        app.poll(PollUpdate::Prefs {
-                            value: prefs,
-                            favorite_generation: app.generation.load(Ordering::Acquire),
-                        });
-                        return true;
-                    }
-                }
-                match message
-                    .get("command")
-                    .or_else(|| message.get("headerAction"))
-                    .and_then(Value::as_str)
-                {
-                    Some("focus_page") if !key.is_empty() => {
-                        if app.cfg.mode() == RunMode::Shadow {
-                            return false;
-                        }
-                        app.select(key);
-                        true
-                    }
-                    Some("tab_reorder") if !key.is_empty() => {
-                        let index = args.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
-                        app.reorder_tab(key, index);
-                        true
-                    }
-                    Some("open_xterm_tab") => {
-                        if !app.writable() {
-                            return false;
-                        }
-                        let session = if key.is_empty() { "local" } else { key };
-                        let web_key = format!("xterm-{session}");
-                        app.add_tab(&web_key, &format!("xterm · {session}"), false, None);
-                        app.select(&web_key);
-                        app.persist();
-                        true
-                    }
-                    Some("quick_terminal") | Some("quickTerminal") => {
-                        app.quick_terminal();
-                        true
-                    }
-                    Some("sort_tabs") => {
-                        app.sort_tabs(args.get("by").and_then(Value::as_str));
-                        true
-                    }
-                    Some("sortMenu") => {
-                        app.sort_menu(None);
-                        true
-                    }
-                    Some("close_split") if !key.is_empty() => {
-                        if let Some(pane) = args.get("pane").and_then(Value::as_str) {
-                            app.close_split(key, pane);
-                            true
-                        } else {
-                            false
-                        }
-                    }
-                    Some("open_tab") | None if !key.is_empty() => {
-                        if message.get("type").and_then(Value::as_str) == Some("rename") {
-                            if let Some(label) = args
-                                .get("label")
-                                .and_then(Value::as_str)
-                                .map(str::trim)
-                                .filter(|s| !s.is_empty())
-                                && let Some(tab) = app.labels.borrow().get(key)
-                            {
-                                tab.set_text(label);
-                                app.registry.borrow_mut().rename(key, label);
-                                app.persist();
-                            }
-                            return true;
-                        }
-                        app.open_tab(
-                            key,
-                            args.get("window")
-                                .or_else(|| args.get("win"))
-                                .and_then(Value::as_str)
-                                .unwrap_or("claude"),
-                            args.get("label").and_then(Value::as_str).unwrap_or(key),
-                            true,
-                        );
-                        true
-                    }
-                    Some("new_local_tab") => {
-                        app.new_terminal();
-                        true
-                    }
-                    _ => false,
-                }
-            }),
-        );
-        if let Some(content) = self.webview.user_content_manager() {
-            let weak = Rc::downgrade(self);
-            content.connect_script_message_received(Some("centro"), move |_, result| {
-                let Some(app) = weak.upgrade() else {
-                    return;
-                };
-                if app.cfg.mode() == RunMode::Shadow {
-                    return;
-                }
-                if let Some(js) = result.js_value()
-                    && let Ok(message) = serde_json::from_str::<Value>(js.to_str().as_str())
-                    && !app.dispatch(&message)
-                {
-                    app.status.set_text("Unrecognized dashboard message");
-                }
-            });
         }
         let plus = ui::icons::button("plus", 16, "Nueva sesión");
         let weak = Rc::downgrade(self);
@@ -349,11 +234,7 @@ impl App {
             let weak = Rc::downgrade(self);
             button.connect_clicked(move |_| {
                 if let Some(app) = weak.upgrade() {
-                    let notebook = if app.workspace_doc.borrow().is_null() {
-                        &app.notebook
-                    } else {
-                        app.workspace.widget()
-                    };
+                    let notebook = app.active_notebook();
                     let n = notebook.n_pages();
                     if n > 0 {
                         let current = notebook.current_page().unwrap_or(0) as i32;
@@ -407,20 +288,6 @@ impl App {
             header.upcast()
         }));
         self.install_pane_position();
-        let weak = Rc::downgrade(self);
-        self.window.connect_button_press_event(move |_, _| {
-            if let Some(app) = weak.upgrade() {
-                app.interacted.set(true);
-            }
-            glib::Propagation::Proceed
-        });
-        let weak = Rc::downgrade(self);
-        self.window.connect_key_press_event(move |_, _| {
-            if let Some(app) = weak.upgrade() {
-                app.interacted.set(true);
-            }
-            glib::Propagation::Proceed
-        });
         self.window.add_events(
             gdk::EventMask::POINTER_MOTION_MASK
                 | gdk::EventMask::BUTTON_RELEASE_MASK
@@ -613,7 +480,14 @@ impl App {
             registry: RefCell::new(
                 TabRegistry::from_json(&json!({})).unwrap_or_else(|_| unreachable!()),
             ),
-            handlers: RefCell::new(BTreeMap::new()),
+            handlers: ui::app_commands::Registry::default(),
+            protocol_signals: RefCell::new(Vec::new()),
+            protocol_cancellable: gio::Cancellable::new(),
+            interaction_controllers: RefCell::new(Vec::new()),
+            presence: RefCell::new(ui::presence::Presence::default()),
+            presence_visible: Cell::new(true),
+            bridge_queue: RefCell::new(ui::bridge::BridgeQueue::default()),
+            mru_pages: RefCell::new(Vec::new()),
             terms: RefCell::new(BTreeMap::new()),
             labels: RefCell::new(BTreeMap::new()),
             group_labels: RefCell::new(BTreeMap::new()),
@@ -656,13 +530,17 @@ impl App {
         })
     }
     pub fn install_handler(&self, name: &'static str, callback: Handler) {
-        self.handlers.borrow_mut().insert(name, callback);
+        self.handlers.install(name, callback);
     }
-    pub fn dispatch(&self, message: &Value) -> bool {
+    pub fn dispatch(self: &Rc<Self>, message: &Value) -> bool {
         if self.closed.load(Ordering::Acquire) || !self.restore.borrow().ready() {
             return false;
         }
-        self.handlers.borrow().values().any(|h| h(message))
+        if let Err(error) = self.dispatch_message(message) {
+            self.status.set_text(&error.to_string());
+        }
+        // A consumed command, including a reported error, must not be replayed by IPC.
+        true
     }
     fn writable(&self) -> bool {
         self.cfg.writes_allowed()
@@ -842,12 +720,7 @@ impl App {
             return;
         };
         let session = key.strip_prefix("xterm-").unwrap_or("local").to_string();
-        if session.is_empty()
-            || session.len() > 32
-            || !session
-                .bytes()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-'))
-        {
+        if !ui::app_commands::valid_xterm_session(&session) {
             slot.add(&gtk::Label::new(Some("Invalid web terminal session")));
             return;
         }
@@ -1122,6 +995,7 @@ impl App {
             self.workspace.refresh();
             self.notebook.hide();
         }
+        self.remember_current_navigation_page();
     }
     fn attach_selected(self: &Rc<Self>, key: &str) {
         if self.cfg.mode() != RunMode::Shadow || self.terms.borrow().contains_key(key) {
@@ -1285,6 +1159,7 @@ impl App {
         }
         self.strip.borrow_mut().remove(key);
         self.workspace.remove_tab(key);
+        self.forget_navigation_page(key);
         if let Some(row) = self.labels.borrow_mut().remove(key)
             && let Some(parent) = row
                 .item
@@ -1424,6 +1299,7 @@ impl App {
         );
         self.workspace.apply(doc);
         *self.workspace_doc.borrow_mut() = doc.clone();
+        self.remember_current_navigation_page();
         self.sync_strip();
         self.notebook.hide();
         self.workspace.widget().show_all();
@@ -1975,6 +1851,8 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
         content.pack_start(&paned, true, true, 0);
         window.add(&content);
         app.install_foundation_handlers();
+        ui::app_commands::install(&app);
+        let bridge_source = ui::bridge::install(&app);
         let weak = Rc::downgrade(&app);
         app.workspace.on_resize(Rc::new(move |updates| {
             if let Some(app) = weak.upgrade().filter(|a| !a.closed.load(Ordering::Acquire)) {
@@ -1989,12 +1867,6 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
                 app.flush_resize();
             }
         }));
-        // Registro T13: bridge actions beyond the connected foundation.
-        // Registro T14: advanced quick/local commands.
-        // Registro T15: extensions.
-        // Registro T16: visual snapshots.
-        // Registro T17: operator actions.
-        // Registro T18: native notifications.
         let (poller, rx) = Poller::start(dash, app.generation.clone());
         let weak = Rc::downgrade(&app);
         let poll = glib::timeout_add_local(Duration::from_millis(100), move || {
@@ -2012,7 +1884,7 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
                 glib::ControlFlow::Break
             }
         });
-        let mut sources = vec![poll];
+        let mut sources = vec![poll, bridge_source, ui::presence::install(&app)];
         if let Some(source) = app.install_layout_diagnostic() {
             sources.push(source);
         }
@@ -2097,6 +1969,14 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
             monitors,
             _lock: lock,
         })));
+        let shutdown_runtime = Rc::downgrade(&runtime);
+        application.connect_shutdown(move |_| {
+            if let Some(runtime) = shutdown_runtime.upgrade()
+                && let Some(runtime) = runtime.borrow_mut().take()
+            {
+                runtime.shutdown();
+            }
+        });
         let close_runtime = runtime.clone();
         window.connect_delete_event(move |_, _| {
             if let Some(runtime) = close_runtime.borrow_mut().take() {
@@ -2158,3 +2038,6 @@ fn parse_color(hex: &str) -> Option<[u8; 3]> {
 mod diagnostics;
 #[path = "app_foundation.rs"]
 mod foundation;
+
+#[path = "app_t13.rs"]
+mod protocol;

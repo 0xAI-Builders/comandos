@@ -111,21 +111,8 @@ impl App {
             }
         }
     }
-    fn device_id(&self) -> String {
-        format!(
-            "desktop-{}",
-            glib::host_name()
-                .chars()
-                .map(
-                    |c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
-                        c
-                    } else {
-                        '-'
-                    }
-                )
-                .take(60)
-                .collect::<String>()
-        )
+    pub(super) fn device_id(&self) -> String {
+        ui::presence::device_id(glib::host_name().as_str())
     }
     pub(super) fn restore_device_focus(self: &Rc<Self>) {
         if self.focus_restoring.replace(true) {
@@ -164,7 +151,14 @@ impl App {
         }
         *self.saved_focus.borrow_mut() = Some(key.into());
         let key = key.to_string();
-        let body = json!({"deviceId":self.device_id(),"activeTabId":key});
+        let Some(body) = ui::presence::Presence::focus_payload(
+            &self.device_id(),
+            &key,
+            self.focus_ready.get(),
+            self.cfg.mode(),
+        ) else {
+            return;
+        };
         let dash = self.dash.clone();
         let weak = Rc::downgrade(self);
         self.jobs.spawn(
