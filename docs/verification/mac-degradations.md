@@ -136,3 +136,43 @@ test original de exceso de salida. El repro extraído limita exclusivamente el
 slice de lectura a 512 bytes para ejercitar lecturas cortas deterministas; no
 cambia el lector productivo de 8192 bytes. La repetición nativa del test Mac
 original queda a cargo de Root.
+
+### C5: EPERM en un grupo propio que sólo contiene zombies
+
+Darwin puede devolver EPERM al señalar un grupo que conserva el líder
+terminado sin recoger. XNU omite los zombies y devuelve EPERM si no encontró
+miembros elegibles; ese errno también puede indicar falta real de permisos
+([Apple XNU](https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/bsd/kern/kern_sig.c)).
+C5 conserva el rechazo genérico: únicamente tras EOF y waitid/NOWAIT del hijo
+propio, un EPERM de SIGKILL puede verificarse con una consulta dirigida.
+
+La verificación toma prestado Child y comprueba que sigue sin recoger.
+El llamador estableció el grupo propio con process_group(0) al crear el hijo;
+la fila del líder en ps debe confirmar que PGID coincide con PID. No usa
+getpgid sobre el zombie: Darwin puede devolver ESRCH aunque ps aún muestre
+esa fila, por lo que ese syscall no prueba la ausencia del grupo
+([Apple proc_find](https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/bsd/kern/kern_proc.c)).
+Ejecuta sólo /bin/ps con COMMAND_MODE=unix2003,
+selector -g único y columnas pid=,pgid=,stat=. Ese selector se traduce a
+KERN_PROC_PGRP; -G seleccionaría grupos de usuario y no sirve para esta prueba
+([Apple ps](https://raw.githubusercontent.com/apple-oss-distributions/adv_cmds/main/ps/ps.c)).
+Exige salida completa, UTF-8, exit 0, líder Z presente, PGID exacto, PID
+únicos y todas las filas Z con flags válidos. Vacío, filas omitidas del líder,
+malformación, miembro vivo, timeout, exceso de salida, cancelación o error
+rechazan la excepción. No lee un inventario global ni da autoridad para
+señalar PID observados. El grupo se cierra antes de recoger al líder;
+la consulta leaf no usa el transporte C5 y no tiene recursión de limpieza.
+
+NativeTools conserva internamente el exit status para esta autoridad, pero
+Tools::run sigue devolviendo stdout parcial con exit distinto de cero, como
+requiere el contrato previo. Se mantienen 4 MiB, lectura sin pausa por
+fragmento, comprobaciones de plazo/cancelación y RAII del grupo propio.
+
+La prueba de cancelación del instalador usa un canal Unix privado R/EOF del
+mismo vendor en Linux y Darwin. La espera de readiness cubre el deadline de
+help productivo de 15 segundos; el plazo desde TERM hasta salir sigue siendo
+dos segundos. No interpreta la ausencia de /proc en Mac como prueba de cierre.
+Una prueba nativa adicional consulta sólo grupos creados por el test: líder Z
+y líder Z con descendiente propio vivo. Las comprobaciones cruzadas validan
+compilación; Root debe ejecutar ese caso y el instalador real sobre fixtures
+privadas en el Mac antes de aceptar el gate nativo.

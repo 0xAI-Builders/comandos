@@ -433,12 +433,30 @@ fn shell_path_with_spaces_apostrophe_and_substitution_stays_literal() {
 }
 #[test]
 fn cancellation_during_vendor_help_reaps_owned_child_before_installing() {
-    use std::process::Stdio;
-    use std::time::{Duration, Instant};
+    use std::{
+        io::{ErrorKind, Read},
+        os::unix::{fs::DirBuilderExt, net::UnixListener},
+        process::Stdio,
+        time::{Duration, Instant},
+    };
     let f = Fixture::new();
+    // A short private socket path also fits Darwin's sockaddr_un limit when
+    // the harness supplies a long TMPDIR. This channel belongs to this exact
+    // vendor instance; EOF cannot be confused with a recycled PID or /proc.
+    let channel = PathBuf::from("/tmp").join(format!("codex-cancel-owned-{}", std::process::id()));
+    fs::DirBuilder::new().mode(0o700).create(&channel).unwrap();
+    struct Channel(PathBuf);
+    impl Drop for Channel {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    let _channel = Channel(channel.clone());
+    let socket = channel.join("ready.sock");
+    let listener = UnixListener::bind(&socket).unwrap();
+    listener.set_nonblocking(true).unwrap();
     let vendor = f.root.join("bin/stalled-vendor");
-    let pidfile = f.root.join("owned-help-pid");
-    fs::write(&vendor,format!("#!/usr/bin/python3\nimport os,time\nopen({:?},'w').write(str(os.getpid()))\ntime.sleep(60)\n",pidfile.to_str().unwrap())).unwrap();
+    fs::write(&vendor,format!("#!/usr/bin/python3\nimport socket\ns=socket.socket(socket.AF_UNIX);s.connect({:?});s.sendall(b'R');s.recv(1)\n",socket.to_str().unwrap())).unwrap();
     fs::set_permissions(&vendor, fs::Permissions::from_mode(0o700)).unwrap();
     let mut child = f
         .command(&["yolo-install", "--executable", vendor.to_str().unwrap()])
@@ -446,12 +464,42 @@ fn cancellation_during_vendor_help_reaps_owned_child_before_installing() {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(2);
-    while !pidfile.exists() && Instant::now() < deadline {
+    // Readiness covers interpreter startup and uses the production help
+    // deadline (15 s). Cancellation latency still has the original 2 s bound.
+    let startup_end = Instant::now() + Duration::from_secs(15);
+    let mut connection = loop {
+        match listener.accept() {
+            Ok((connection, _)) => break connection,
+            Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+            Err(e) => panic!("owned readiness channel: {e}"),
+        }
+        if child.try_wait().unwrap().is_some() {
+            let o = child.wait_with_output().unwrap();
+            panic!(
+                "CLI exited before vendor readiness: {}",
+                String::from_utf8_lossy(&o.stderr)
+            );
+        }
+        if Instant::now() >= startup_end {
+            nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(child.id() as i32),
+                nix::sys::signal::Signal::SIGTERM,
+            )
+            .unwrap();
+            let o = child.wait_with_output().unwrap();
+            panic!(
+                "vendor readiness exceeded production deadline: {}",
+                String::from_utf8_lossy(&o.stderr)
+            );
+        }
         std::thread::sleep(Duration::from_millis(5));
-    }
-    assert!(pidfile.exists());
-    let pid = fs::read_to_string(&pidfile).unwrap();
+    };
+    connection
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    let mut ready = [0];
+    assert_eq!(connection.read(&mut ready).unwrap(), 1);
+    assert_eq!(ready, [b'R']);
     nix::sys::signal::kill(
         nix::unistd::Pid::from_raw(child.id() as i32),
         nix::sys::signal::Signal::SIGTERM,
@@ -461,10 +509,19 @@ fn cancellation_during_vendor_help_reaps_owned_child_before_installing() {
     while child.try_wait().unwrap().is_none() && start.elapsed() < Duration::from_secs(2) {
         std::thread::sleep(Duration::from_millis(5));
     }
+    if start.elapsed() >= Duration::from_secs(2) {
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("cancellation exceeded unchanged two-second deadline");
+    }
     let o = child.wait_with_output().unwrap();
     assert_eq!(o.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&o.stderr).contains("cancelado"));
-    assert!(!PathBuf::from("/proc").join(pid).exists());
+    assert_eq!(
+        connection.read(&mut ready).unwrap(),
+        0,
+        "owned vendor still holds readiness channel"
+    );
     assert!(!f.root.join("home/.local").exists());
 }
 #[test]

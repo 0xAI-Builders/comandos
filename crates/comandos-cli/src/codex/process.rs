@@ -132,15 +132,27 @@ pub(super) fn run_when(
             && comandos_runtime::procs::child_exited_unreaped(&owned.child)
                 .map_err(|e| e.to_string())?
         {
-            killpg(pid, Signal::SIGKILL)
-                .or_else(|e| {
-                    if e == nix::errno::Errno::ESRCH {
-                        Ok(())
-                    } else {
-                        Err(e)
-                    }
-                })
-                .map_err(|e| e.to_string())?;
+            if let Err(error) = killpg(pid, Signal::SIGKILL) {
+                #[cfg(target_os = "macos")]
+                let zombie_only = if error == nix::errno::Errno::EPERM {
+                    comandos_runtime::procs::macos::exited_child_group_is_zombie_only(
+                        &owned.child,
+                        deadline.saturating_duration_since(Instant::now()),
+                        cancel,
+                    )
+                    .map_err(|e| e.to_string())?
+                } else {
+                    false
+                };
+                #[cfg(not(target_os = "macos"))]
+                let zombie_only = false;
+                if cancel.load(Ordering::SeqCst) {
+                    return Err("mantenimiento cancelado".into());
+                }
+                if error != nix::errno::Errno::ESRCH && !zombie_only {
+                    return Err(error.to_string());
+                }
+            }
             let status = owned.child.wait().map_err(|e| e.to_string())?;
             owned.finished = true;
             return Ok(Output {
