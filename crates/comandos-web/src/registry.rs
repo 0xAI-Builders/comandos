@@ -75,6 +75,16 @@ pub const COMPONENTS: &[Component] = &[
         attach: Some(crate::components::theme_preferences::attach_preview),
     },
     Component {
+        id: "conmutador-ctrl-k",
+        mount: crate::components::foundation_navigation::mount_switcher,
+        attach: Some(crate::components::foundation_navigation::attach_switcher),
+    },
+    Component {
+        id: "iconos",
+        mount: crate::components::foundation_navigation::mount_icons,
+        attach: Some(crate::components::foundation_navigation::attach_icons),
+    },
+    Component {
         id: "app-nativa",
         mount: crate::components::foundation_lifecycle::mount_app,
         attach: Some(crate::components::foundation_lifecycle::attach_app),
