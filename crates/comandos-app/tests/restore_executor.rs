@@ -320,11 +320,58 @@ fn remap_matches_python_tmux_snapshot_oracle() {
     let s = snapshot();
     let layout = s["windows"][0]["layout"].as_str().unwrap();
     let map = BTreeMap::from([("%1".into(), "%110".into()), ("%2".into(), "%120".into())]);
-    let result=std::process::Command::new("python3").args(["-c","import json,sys; sys.path.insert(0, sys.argv[3]); import tmux_snapshot; print(tmux_snapshot.remap_layout(sys.argv[1],json.loads(sys.argv[2])))",layout,&serde_json::to_string(&map).unwrap(),concat!(env!("CARGO_MANIFEST_DIR"),"/../../lib")]).env_clear().env("PATH","/usr/bin:/bin").env("HOME","/tmp/comandos-python-oracle-private-home").output().unwrap();
-    assert!(result.status.success());
+    let reference = "2674f366bb01b9db42f6f64b728929b3acfe8b83:lib/tmux_snapshot.py";
+    let bytes = comandos_oracle::oracle_at(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "app-restore-remap",
+        &json!({"source":reference,"layout":layout,"mapping":map}),
+        || {
+            use std::{
+                io::Write,
+                process::{Command, Stdio},
+            };
+            let source = Command::new("git")
+                .args(["show", reference])
+                .current_dir(env!("CARGO_MANIFEST_DIR"))
+                .output()
+                .map_err(|e| e.to_string())?;
+            if !source.status.success() {
+                return Err("original tmux_snapshot source unavailable".into());
+            }
+            let python =
+                std::env::var_os("COMANDOS_APP_ORACLE_PYTHON").unwrap_or_else(|| "python3".into());
+            let mut child = Command::new(python)
+                .args([
+                    "-c",
+                    "import json,sys; ns={'__name__':'tmux_snapshot_oracle'}; exec(compile(sys.stdin.read(), 'frozen-tmux-snapshot', 'exec'),ns); print(ns['remap_layout'](sys.argv[1],json.loads(sys.argv[2])))",
+                    layout,
+                    &serde_json::to_string(&map).unwrap(),
+                ])
+                .env_clear()
+                .env("PATH", "/usr/bin:/bin")
+                .env("HOME", "/tmp/comandos-python-oracle-private-home")
+                .env("PYTHONDONTWRITEBYTECODE", "1")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|e| e.to_string())?;
+            let write = child
+                .stdin
+                .take()
+                .ok_or("Python stdin unavailable")?
+                .write_all(&source.stdout);
+            let output = child.wait_with_output().map_err(|e| e.to_string())?;
+            write.map_err(|e| e.to_string())?;
+            if !output.status.success() {
+                return Err(String::from_utf8_lossy(&output.stderr).into_owned());
+            }
+            Ok(output.stdout)
+        },
+    );
     assert_eq!(
         remap_layout(layout, &map).unwrap(),
-        String::from_utf8(result.stdout).unwrap().trim()
+        String::from_utf8(bytes).unwrap().trim()
     );
 }
 
