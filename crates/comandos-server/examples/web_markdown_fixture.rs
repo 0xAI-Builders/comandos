@@ -8,12 +8,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         use std::io::Read;
         let mut source = String::new();
         std::io::stdin().read_to_string(&mut source)?;
-        let pairs: Vec<serde_json::Value> = serde_json::from_str(&source)?;
+        // Node JSON.stringify preserves lone UTF-16 units; retain them on
+        // both sides of this test-only DOM comparison boundary as well.
+        let pairs: Vec<serde_json::Value> =
+            serde_json::from_str(&comandos_web_view::utf16::json_to_unicode(&source))?;
         let out=pairs.iter().map(|p| {
             let baseline=p["baseline"].as_str().unwrap_or("");let candidate=p["candidate"].as_str().unwrap_or("");
             serde_json::json!({"id":p["id"],"difference":comandos_domdiff::first_difference(baseline,candidate)})
         }).collect::<Vec<_>>();
-        println!("{}", serde_json::to_string(&out)?);
+        println!(
+            "{}",
+            comandos_web_view::utf16::json_to_javascript(&serde_json::to_string(&out)?)
+        );
         return Ok(());
     }
     let listener = TcpListener::bind("127.0.0.1:0").await?;
