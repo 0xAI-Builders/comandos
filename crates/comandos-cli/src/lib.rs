@@ -4,6 +4,7 @@ pub mod browser;
 pub mod codex;
 pub mod dispatch;
 pub mod doctor;
+pub mod extension_session;
 pub mod install;
 pub mod keys;
 pub mod mobile;

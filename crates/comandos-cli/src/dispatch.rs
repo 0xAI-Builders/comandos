@@ -2,6 +2,7 @@
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Ext(Vec<String>),
+    ExtensionSession(Vec<String>),
     Hook(Vec<String>),
     Events(Vec<String>),
     Install(Vec<String>),
@@ -31,6 +32,7 @@ pub enum Command {
 /// Nombres heredados (symlinks `cc-*`) y el subcomando al que corresponden.
 const ALIASES: &[(&str, &[&str])] = &[
     ("cc-extensions", &["ext"]),
+    ("cc-extension-session", &["extension-session"]),
     ("cc-notify.sh", &["hook", "claude"]),
     ("cc-usage-tool.sh", &["hook", "claude-usage"]),
     ("cc-status.sh", &["hook", "claude-status"]),
@@ -82,6 +84,7 @@ pub fn resolve(argv0: &str, args: &[String]) -> Command {
     words.extend(args.iter().cloned());
     match words.first().map(String::as_str) {
         Some("ext") => Command::Ext(words[1..].to_vec()),
+        Some("extension-session") => Command::ExtensionSession(words[1..].to_vec()),
         Some("hook") => Command::Hook(words[1..].to_vec()),
         Some("events") => Command::Events(words[1..].to_vec()),
         Some("install") => Command::Install(words[1..].to_vec()),

@@ -682,6 +682,7 @@ fn recovery_waits_for_a_briefly_lingering_wrapper() {
 fn extension_prepare_claims_revision_errors_and_builds_private_shell_launch() {
     use comandos_runtime::{pane_extensions::ExtensionStore, session_operations::Adapter};
     let lab = OpsLab::start("extprepare").expect("private tmux laboratory required");
+    ops_lab::install_extension_launcher(&lab.home);
     let identity = sc::pane_identity(&lab.env(), "audit", &lab.other).unwrap();
     let key = sc::identity_key(&identity);
     let conn = open_journal(&lab.journal()).unwrap();
@@ -715,6 +716,7 @@ fn extension_prepare_claims_revision_errors_and_builds_private_shell_launch() {
 fn extension_apply_relaunches_only_private_stub_and_preserves_selection_on_model_change() {
     use comandos_runtime::{pane_extensions::ExtensionStore, session_operations::Adapter};
     let lab = OpsLab::start("extapply").expect("private tmux laboratory required");
+    ops_lab::install_extension_launcher(&lab.home);
     let env = lab.env();
     let identity = lab.identity();
     let key = sc::identity_key(&identity);

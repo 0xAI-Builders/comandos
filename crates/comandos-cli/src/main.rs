@@ -20,6 +20,7 @@ fn main() {
             eprintln!("{e}");
             1
         }),
+        Command::ExtensionSession(args) => comandos_cli::extension_session::main(&args),
         Command::Events(args) => comandos_runtime::events_cli::run(&args).unwrap_or_else(|e| {
             eprintln!("event_intake: {e}");
             1
@@ -53,7 +54,7 @@ fn main() {
         }
         Command::Help => {
             println!(
-                "uso: comandos <ext|hook|events|install|dash|browser|web|webterm|webterm-attach|state|keys|x|raise|winstart|next|pane-model|snapshot|agents|doctor|acp|mobile|codex|--version>"
+                "uso: comandos <ext|extension-session|hook|events|install|dash|browser|web|webterm|webterm-attach|state|keys|x|raise|winstart|next|pane-model|snapshot|agents|doctor|acp|mobile|codex|--version>"
             );
             0
         }

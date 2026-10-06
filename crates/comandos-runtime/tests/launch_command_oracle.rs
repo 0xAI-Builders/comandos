@@ -719,7 +719,9 @@ fn wrap_command_matches_python() {
         ("OPENCODE_CONFIG_CONTENT='{roto' opencode", &open.bundle),
     ];
     let environ: HashMap<String, String> = support::oracle_environ(&home).into_iter().collect();
-    let helper = extension_launch::helper(&support::repo());
+    // Route changed in O5. Pin the legacy route only for exact quoting/error parity;
+    // extension_executor.rs independently proves installed-native selection/admission.
+    let helper = support::repo().join("bin/cc-extension-session");
     let mut ours = Vec::new();
     let mut calls = Vec::new();
     for (command, bundle) in &cases {

@@ -2,6 +2,21 @@
 mod python;
 use comandos_runtime::{capabilities::Paths, extension_launch as e};
 use serde_json::{Value, json};
+fn install_private_native_fixture(root: &std::path::Path) {
+    use std::os::unix::fs::symlink;
+    let native = root.join(".local/share/comandos/bin/comandos");
+    let alias = e::helper_for_home(root);
+    std::fs::create_dir_all(native.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(alias.parent().unwrap()).unwrap();
+    std::fs::copy(std::env::current_exe().unwrap(), &native).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&native, std::fs::Permissions::from_mode(0o700)).unwrap();
+    symlink(&native, &alias).unwrap();
+}
+fn remove_private_native_fixture(root: &std::path::Path) {
+    std::fs::remove_file(e::helper_for_home(root)).unwrap();
+    std::fs::remove_file(root.join(".local/share/comandos/bin/comandos")).unwrap();
+}
 fn normalize(v: &mut Value, private: &str) {
     match v {
         Value::String(s) => *s = s.replace(private, "PRIVATE"),
@@ -84,10 +99,12 @@ p=pathlib.Path(b['manifest']);data=json.loads(p.read_text());print(json.dumps([b
             .unwrap(),
         )
         .unwrap();
+        install_private_native_fixture(&root);
         let b = e::prepare_launch(
             &r, h, "main", &root, &selection, &runtime, "test-op", &paths,
         )
         .unwrap();
+        remove_private_native_fixture(&root);
         let manifest: Value =
             serde_json::from_slice(&std::fs::read(b["manifest"].as_str().unwrap()).unwrap())
                 .unwrap();
@@ -194,6 +211,7 @@ print(json.dumps([error,files],ensure_ascii=False))"#;
         )
         .unwrap();
         let native_runtime = root.join(format!("native-{h}"));
+        install_private_native_fixture(&root);
         let error = match e::prepare_launch(
             &registry,
             h,
@@ -208,6 +226,7 @@ print(json.dumps([error,files],ensure_ascii=False))"#;
             Err(e::LaunchError::Value(s)) => s,
             Err(e) => panic!("{e:?}"),
         };
+        remove_private_native_fixture(&root);
         let private = std::fs::read_dir(&native_runtime)
             .unwrap()
             .map(|e| e.unwrap().path())
@@ -253,6 +272,7 @@ fn private_runtime_root_symlink_is_rejected_without_chmod_of_its_target() {
     std::fs::set_permissions(root.join("target"), std::fs::Permissions::from_mode(0o755)).unwrap();
     symlink(root.join("target"), root.join("runtime")).unwrap();
     let registry = json!({"harnesses":{"codex":{"defaultHome":root.join(".codex")}}});
+    install_private_native_fixture(&root);
     let paths = Paths::new(&root, &root);
     assert_eq!(
         e::prepare_launch(

@@ -5,8 +5,8 @@
 //! (`launch_from_pid`, `verify_launch`, `configuration_status`), normalizar una
 //! selección y leer la configuración TOML (`_read`, `_parse_toml`).
 //!
-//! El lanzador sigue siendo el Python (`bin/cc-extension-session`, O5): este
-//! módulo construye la misma orden con la misma ruta, nunca lo ejecuta.
+//! O5 ejecuta el lanzador nativo en `executor`; los wrappers conservan argv
+//! y validaciones, con el alias instalado en lugar del script del repositorio.
 //!
 //! Errores: `Value(texto)` es un `ValueError` del Python con su texto; `Other`
 //! cualquier otra excepción (`OSError`, `KeyError`, `TypeError`,
@@ -37,6 +37,8 @@ use std::{
 };
 use toml_edit::{DocumentMut, Item, Value as Tv};
 use toml_parser::{Source, lexer::TokenKind};
+
+pub mod executor;
 
 pub const MARKER: &str = "COMANDOS_EXTENSION_OPERATION_ID";
 pub const MANIFEST_ENV: &str = "COMANDOS_EXTENSION_MANIFEST";
@@ -97,9 +99,61 @@ impl From<Fail> for LaunchError {
     }
 }
 
-/// `HELPER`: `<repo>/bin/cc-extension-session` (con `repo_root` resuelto).
-pub fn helper(repo_root: &Path) -> PathBuf {
-    repo_root.join("bin/cc-extension-session")
+/// Installed alias for an explicitly injected HOME; never selects repo/bin.
+pub fn helper_for_home(home: &Path) -> PathBuf {
+    home.join(".local/bin/cc-extension-session")
+}
+/// Compatibility signature. `repo_root` no longer selects an executable.
+/// HOME selects the native alias; absent HOME, an executable sibling fails closed.
+pub fn helper(_repo_root: &Path) -> PathBuf {
+    if let Some(home) = std::env::var_os("HOME").filter(|h| !h.is_empty()) {
+        helper_for_home(Path::new(&home))
+    } else {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.join("cc-extension-session")))
+            .unwrap_or_else(|| PathBuf::from("/nonexistent/comandos/cc-extension-session"))
+    }
+}
+/// Refuse before stopping an agent unless the alias resolves to the installed native binary.
+pub fn require_helper(home: &Path) -> Result<PathBuf, LaunchError> {
+    let refused = || {
+        LaunchError::Value(
+            "El lanzador nativo de extensiones no está instalado; el agente sigue abierto.".into(),
+        )
+    };
+    let alias = helper_for_home(home);
+    let resolved = fs::canonicalize(&alias).map_err(|_| refused())?;
+    let binary =
+        fs::canonicalize(home.join(".local/share/comandos/bin/comandos")).map_err(|_| refused())?;
+    let meta = fs::metadata(&resolved).map_err(|_| refused())?;
+    if resolved != binary
+        || !meta.is_file()
+        || (meta.uid() != uid() && meta.uid() != 0)
+        || meta.mode() & 0o022 != 0
+        || meta.mode() & 0o111 == 0
+    {
+        return Err(refused());
+    }
+    let mut magic = [0; 4];
+    let mut file = fs::File::open(&resolved).map_err(|_| refused())?;
+    file.read_exact(&mut magic).map_err(|_| refused())?;
+    let native = magic == *b"\x7fELF"
+        || matches!(
+            magic,
+            [0xfe, 0xed, 0xfa, 0xce]
+                | [0xce, 0xfa, 0xed, 0xfe]
+                | [0xfe, 0xed, 0xfa, 0xcf]
+                | [0xcf, 0xfa, 0xed, 0xfe]
+                | [0xca, 0xfe, 0xba, 0xbe]
+                | [0xbe, 0xba, 0xfe, 0xca]
+                | [0xca, 0xfe, 0xba, 0xbf]
+                | [0xbf, 0xba, 0xfe, 0xca]
+        );
+    if !native {
+        return Err(refused());
+    }
+    Ok(alias)
 }
 
 // ------------------------------------------------------------------ texto
@@ -1978,6 +2032,7 @@ pub fn prepare_launch(
             "Identificador de operación inválido.".into(),
         ));
     }
+    require_helper(&paths.home)?;
     let (mut ctx, inv) = internal_inventory(registry, harness, account, cwd, paths)?;
     let chosen = normalize(&inv, selection)?;
     if !ctx.errors.is_empty() {

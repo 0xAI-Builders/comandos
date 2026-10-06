@@ -1726,7 +1726,7 @@ impl SessionConfiguration {
             command = extension_launch::wrap_command(
                 &command,
                 launch,
-                &extension_launch::helper(&self.env.repo_root),
+                &extension_launch::require_helper(&self.env.home)?,
                 &self.env.environ,
             )?;
         }
@@ -1734,7 +1734,7 @@ impl SessionConfiguration {
             command = extension_launch::wrap_environment(
                 &command,
                 environment,
-                &extension_launch::helper(&self.env.repo_root),
+                &extension_launch::require_helper(&self.env.home)?,
             )?;
         }
         let unchanged = bundle.is_some() && loaded.as_ref().is_some_and(|v| python_eq(v, &chosen));
@@ -2252,7 +2252,7 @@ impl SessionConfiguration {
         let command = extension_launch::wrap_command(
             &as_text(get(plan, "command"))?,
             &launch,
-            &extension_launch::helper(&self.env.repo_root),
+            &extension_launch::require_helper(&self.env.home)?,
             &self.env.environ,
         )?;
         plan.insert("extensionLaunch".into(), launch);
@@ -2462,7 +2462,17 @@ impl SessionConfiguration {
             Value::Null
         };
         origin.insert("extensionLaunch".into(), launch);
-        let helper = extension_launch::helper(&self.env.repo_root);
+        let helper = if frm == "opencode"
+            || truthy(&get(&plan, "returnOrigin")["opencodeEnvironment"])
+            || truthy(get(&origin, "extensionLaunch"))
+            || truthy(get(&plan, "extensionLaunch"))
+            || truthy(get(&plan, "opencodeEnvironment"))
+            || truthy(get(&origin, "opencodeEnvironment"))
+        {
+            extension_launch::require_helper(&self.env.home)?
+        } else {
+            extension_launch::helper_for_home(&self.env.home)
+        };
         let return_origin = get(&plan, "returnOrigin").clone();
         if truthy(&return_origin) {
             let to_acp = is(get(&plan, "to"), "acp");
@@ -2777,7 +2787,7 @@ impl SessionConfiguration {
                 extension_launch::wrap_command(
                     &command,
                     &bundle,
-                    &extension_launch::helper(&self.env.repo_root),
+                    &extension_launch::require_helper(&self.env.home)?,
                     &self.env.environ,
                 )?
             } else {

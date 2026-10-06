@@ -166,3 +166,25 @@ fn dispatch_codex_alias_and_explicit_preserve_literal_arguments() {
         Command::Codex(tail)
     );
 }
+
+#[test]
+fn dispatch_extension_session_preserves_manifest_and_literal_args() {
+    let args = v(&[
+        "--manifest",
+        "/private/manifest 雪.json",
+        "--",
+        "env",
+        "A=two words",
+        "codex",
+    ]);
+    assert_eq!(
+        resolve("/private/bin/cc-extension-session", &args),
+        Command::ExtensionSession(args.clone())
+    );
+    let mut explicit = v(&["extension-session"]);
+    explicit.extend(args.clone());
+    assert_eq!(
+        resolve("comandos", &explicit),
+        Command::ExtensionSession(args)
+    );
+}

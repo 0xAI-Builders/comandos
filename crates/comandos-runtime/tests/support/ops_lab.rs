@@ -338,3 +338,32 @@ pub fn seed_registry(home: &Path) -> Value {
     }
     registry
 }
+
+/// The extension tests require the real native executor already built beside tests,
+/// or an explicitly supplied native fixture. It is linked only into this private HOME.
+pub fn install_extension_launcher(home: &Path) {
+    let native = std::env::var_os("COMANDOS_EXTENSION_SESSION_NATIVE_FIXTURE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join("comandos")
+        });
+    assert!(
+        native.is_file(),
+        "build comandos-cli first or provide COMANDOS_EXTENSION_SESSION_NATIVE_FIXTURE for the private extension fixture"
+    );
+    let installed = home.join(".local/share/comandos/bin/comandos");
+    let alias = comandos_runtime::extension_launch::helper_for_home(home);
+    std::fs::create_dir_all(installed.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(alias.parent().unwrap()).unwrap();
+    std::fs::copy(native, &installed).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&installed, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::os::unix::fs::symlink(installed, &alias).unwrap();
+    comandos_runtime::extension_launch::require_helper(home).unwrap();
+}
