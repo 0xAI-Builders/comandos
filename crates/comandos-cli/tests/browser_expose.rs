@@ -294,3 +294,30 @@ fn ssh_output_is_drained_and_deadline_kills_and_reaps_the_fake_child() {
     assert!(before.elapsed() < Duration::from_secs(18));
     fs::remove_dir_all(home).unwrap();
 }
+
+#[test]
+fn expose_help_matches_argparse_without_creating_state_or_invoking_ssh() {
+    let home = tempdir();
+    let state = home.join("absent-state");
+    for args in [
+        vec!["--help"],
+        vec!["-h"],
+        vec!["start", "--help"],
+        vec!["start", "-h"],
+        vec!["stop", "--help"],
+        vec!["stop", "-h"],
+        vec!["status", "--help"],
+        vec!["status", "-h"],
+    ] {
+        let py = command(&home, &state, false, &args);
+        let rs = command(&home, &state, true, &args);
+        assert_eq!(
+            (rs.status.code(), rs.stdout, rs.stderr),
+            (py.status.code(), py.stdout, py.stderr),
+            "{args:?}"
+        );
+        assert!(!state.exists());
+        assert!(!home.join("ssh.log").exists());
+    }
+    fs::remove_dir_all(home).unwrap();
+}

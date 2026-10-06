@@ -454,3 +454,68 @@ fn symlink_input_and_concurrent_config_change_are_rejected_without_mutation() {
     }
     std::fs::remove_dir_all(home).unwrap();
 }
+
+#[test]
+fn plan_ancestor_symlink_and_hardlink_aliases_preserve_input_identity() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let home = tempdir();
+    let real = home.join("real");
+    std::fs::create_dir(&real).unwrap();
+    let alias = home.join("alias");
+    std::os::unix::fs::symlink(&real, &alias).unwrap();
+    let cfg = real.join("config.json");
+    let hardlink = home.join("hardlink.json");
+    let text = r#"{"secret":"private","mcpServers":{"chrome-bg":{"command":"old"}}}"#;
+    for (config, plan) in [
+        (cfg.clone(), alias.join("config.json")),
+        (alias.join("config.json"), cfg.clone()),
+        (real.join("../real/config.json"), alias.join("config.json")),
+        (cfg.clone(), hardlink.clone()),
+    ] {
+        std::fs::write(&cfg, text).unwrap();
+        std::fs::set_permissions(&cfg, std::fs::Permissions::from_mode(0o640)).unwrap();
+        if plan == hardlink {
+            std::fs::hard_link(&cfg, &hardlink).unwrap();
+        }
+        let before = std::fs::metadata(&cfg).unwrap();
+        let out = migration_command(
+            &home,
+            true,
+            &[
+                "dry-run",
+                "--config",
+                config.to_str().unwrap(),
+                "--wrapper",
+                "/client",
+                "--plan",
+                plan.to_str().unwrap(),
+            ],
+        );
+        let after = std::fs::metadata(&cfg).unwrap();
+        let actual = (
+            out.status.code(),
+            std::fs::read(&cfg).unwrap(),
+            after.permissions().mode() & 0o7777,
+            after.ino(),
+            after.dev(),
+        );
+        assert_eq!(
+            actual,
+            (
+                Some(1),
+                text.as_bytes().to_vec(),
+                0o640,
+                before.ino(),
+                before.dev()
+            ),
+            "config={} plan={}",
+            config.display(),
+            plan.display()
+        );
+        assert_eq!(
+            out.stderr,
+            b"Plan path must be separate from configurations and not a symlink\n"
+        );
+    }
+    std::fs::remove_dir_all(home).unwrap();
+}

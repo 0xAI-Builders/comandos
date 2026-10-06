@@ -110,19 +110,15 @@ fn dry_run(args: &[String], home: &Path) -> Result<(), MigrationError> {
     if configs.is_empty() {
         return Err(MigrationError("falta --config".into()));
     }
-    let plan_absolute = lexical_absolute(&plan_path)?;
-    if plan_path.is_symlink()
-        || configs
-            .iter()
-            .any(|p| lexical_absolute(p).ok().as_ref() == Some(&plan_absolute))
-    {
-        return Err(MigrationError(
-            "Plan path must be separate from configurations and not a symlink".into(),
-        ));
-    }
+    let destination = validate_plan_destination(&plan_path, &configs)?;
     let plan = build_plan(&configs, &wrapper)?;
+    // Revalidate immediately before writing, and use the resolved directory entry
+    // rather than following the original parent aliases again.
+    if validate_plan_destination(&plan_path, &configs)? != destination {
+        return Err(plan_destination_error());
+    }
     private_write(
-        &plan_path,
+        &destination,
         (pretty(&plan).unwrap() + "\n").as_bytes(),
         0o600,
     )?;
@@ -137,6 +133,42 @@ fn dry_run(args: &[String], home: &Path) -> Result<(), MigrationError> {
         pretty(&json!({"plan":plan_path.display().to_string(),"files":files})).unwrap()
     );
     Ok(())
+}
+
+fn plan_destination_error() -> MigrationError {
+    MigrationError("Plan path must be separate from configurations and not a symlink".into())
+}
+
+// Resolve only the ancestors. Configuration leaf admission still uses O_NOFOLLOW.
+fn resolved_entry(path: &Path) -> Result<PathBuf, MigrationError> {
+    let absolute = std::path::absolute(path).map_err(|_| plan_destination_error())?;
+    let leaf = absolute.file_name().ok_or_else(plan_destination_error)?;
+    let parent = fs::canonicalize(absolute.parent().ok_or_else(plan_destination_error)?)
+        .map_err(|_| plan_destination_error())?;
+    Ok(parent.join(leaf))
+}
+
+fn validate_plan_destination(plan: &Path, configs: &[PathBuf]) -> Result<PathBuf, MigrationError> {
+    let destination = resolved_entry(plan)?;
+    let metadata = fs::symlink_metadata(&destination).ok();
+    if metadata.as_ref().is_some_and(|m| m.is_symlink()) {
+        return Err(plan_destination_error());
+    }
+    for config in configs {
+        let config_entry = resolved_entry(&lexical_absolute(config)?)?;
+        if destination == config_entry {
+            return Err(plan_destination_error());
+        }
+        // Hardlinks have distinct directory entries but the same file identity.
+        if let (Some(plan_meta), Ok(config_meta)) = (&metadata, fs::symlink_metadata(&config_entry))
+            && config_meta.is_file()
+            && plan_meta.dev() == config_meta.dev()
+            && plan_meta.ino() == config_meta.ino()
+        {
+            return Err(plan_destination_error());
+        }
+    }
+    Ok(destination)
 }
 
 fn apply_cmd(args: &[String]) -> Result<(), MigrationError> {

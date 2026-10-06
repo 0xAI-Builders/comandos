@@ -14,6 +14,10 @@ use std::{
 struct ForwardError(String);
 
 pub fn run(args: &[String], home: impl AsRef<Path>) -> i32 {
+    if let Some(help) = help_text(args) {
+        print!("{help}");
+        return 0;
+    }
     if let Err((usage, message)) = validate_args(args) {
         eprintln!(
             "usage: {usage}\ncc-browser-expose{}: error: {message}",
@@ -387,6 +391,35 @@ fn open_private(path: &Path, truncate: bool, mode: u32) -> Result<File, ForwardE
 
 fn current_uid() -> u32 {
     nix::unistd::Uid::current().as_raw()
+}
+
+fn help_text(args: &[String]) -> Option<&'static str> {
+    let action = match args.first()?.as_str() {
+        "-h" | "--help" => None,
+        action @ ("start" | "stop" | "status")
+            if args[1..]
+                .iter()
+                .any(|arg| matches!(arg.as_str(), "-h" | "--help")) =>
+        {
+            Some(action)
+        }
+        _ => return None,
+    };
+    Some(match action {
+        None => {
+            "usage: cc-browser-expose [-h] {start,stop,status} ...\n\nExpose a local development port to the Mac browser over an owned SSH tunnel.\n\npositional arguments:\n  {start,stop,status}\n\noptions:\n  -h, --help           show this help message and exit\n"
+        }
+        Some("start") => {
+            "usage: cc-browser-expose start [-h] local_port [remote_port]\n\npositional arguments:\n  local_port\n  remote_port\n\noptions:\n  -h, --help   show this help message and exit\n"
+        }
+        Some("stop") => {
+            "usage: cc-browser-expose stop [-h] remote_port\n\npositional arguments:\n  remote_port\n\noptions:\n  -h, --help   show this help message and exit\n"
+        }
+        Some("status") => {
+            "usage: cc-browser-expose status [-h]\n\noptions:\n  -h, --help  show this help message and exit\n"
+        }
+        _ => unreachable!(),
+    })
 }
 
 fn validate_args(args: &[String]) -> Result<(), (String, String)> {
