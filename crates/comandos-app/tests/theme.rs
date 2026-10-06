@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 use comandos_app::theme::{
-    button_style_css, desktop_theme, header_css, theme_css, themes_from_file,
+    base_css, button_style_css, desktop_theme, header_css, theme_css, themes_from_file,
 };
 
 #[test]
@@ -48,7 +48,7 @@ fn five_button_styles_and_fallback_emit_header_button_css() {
 }
 
 #[test]
-fn header_and_five_button_styles_match_full_original_ast_for_all_themes() {
+fn three_css_layers_match_full_original_ast_for_all_themes() {
     use comandos_app::proc::{ProcSpec, run};
     use serde_json::json;
     let themes = themes_from_file(Some(include_bytes!(concat!(
@@ -72,10 +72,12 @@ fn header_and_five_button_styles_match_full_original_ast_for_all_themes() {
         .collect();
     let script = r#"import ast,json,sys
 nodes=ast.parse(open(sys.argv[1]).read()).body
-exec(compile(ast.Module(body=[n for n in nodes if isinstance(n,ast.FunctionDef) and n.name in {'_build_hb_css','button_style_css'}],type_ignores=[]),sys.argv[1],'exec'))
+exec(compile(ast.Module(body=[n for n in nodes if isinstance(n,ast.FunctionDef) and n.name in {'_build_hb_css','button_style_css','theme_css'}],type_ignores=[]),sys.argv[1],'exec'))
+APP_CSS=ast.literal_eval(next(n.value for n in nodes if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='APP_CSS' for t in n.targets)))
+_ICONS_DIR=sys.argv[2]
 out=[]
 for THEME in json.load(sys.stdin):
- out.append({'header':_build_hb_css().decode(),'buttons':[button_style_css(style,THEME).decode() for style in ['sutil','arcade','tecla','pixel','consola']]})
+ out.append({'app':theme_css(THEME),'header':_build_hb_css().decode(),'buttons':[button_style_css(style,THEME).decode() for style in ['sutil','arcade','tecla','pixel','consola']]})
 print(json.dumps(out))
 "#;
     let out = run(&ProcSpec {
@@ -84,6 +86,7 @@ print(json.dumps(out))
             "-c".into(),
             script.into(),
             concat!(env!("CARGO_MANIFEST_DIR"), "/../../bin/cc-app").into(),
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../dash/icons").into(),
         ],
         stdin: Some(
             serde_json::to_vec(&tokens.iter().map(|t| &t.values).collect::<Vec<_>>()).unwrap(),
@@ -115,7 +118,7 @@ print(json.dumps(out))
                 .iter()
                 .map(|style| button_style_css(style, t))
                 .collect();
-            json!({"header":header_css(t),"buttons":buttons})
+            json!({"app":base_css(t),"header":header_css(t),"buttons":buttons})
         })
         .collect();
     assert_eq!(json!(actual), oracle);

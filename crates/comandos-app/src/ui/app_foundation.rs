@@ -77,14 +77,23 @@ impl App {
             },
         );
     }
+    pub(super) fn apply_theme_layers(
+        &self,
+        theme: &crate::theme::ThemeTokens,
+        style: &str,
+    ) -> Result<(), glib::Error> {
+        let layers = ui::theme_layers::ThemeLayers::new(theme, style)?;
+        self.theme_layers.borrow_mut().take();
+        layers.install();
+        *self.theme_layers.borrow_mut() = Some(layers);
+        *self.applied_theme.borrow_mut() = Some(theme.clone());
+        *self.applied_button_style.borrow_mut() = Some(style.to_string());
+        Ok(())
+    }
     pub(super) fn paint_theme(&self, theme: &crate::theme::ThemeTokens, style: &str) {
-        let mut css = crate::theme::theme_css(theme);
-        css.push_str(&crate::theme::button_style_css(style, theme));
-        if let Err(error) = self.theme_provider.load_from_data(css.as_bytes()) {
+        if let Err(error) = self.apply_theme_layers(theme, style) {
             self.status.set_text(&format!("Tema: {error}"));
-        } else {
-            *self.applied_theme.borrow_mut() = Some(theme.clone());
-            *self.applied_button_style.borrow_mut() = Some(style.to_string());
+            return;
         }
         self.header.paint(theme);
         let dim = theme

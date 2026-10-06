@@ -13,6 +13,7 @@ pub mod presence;
 pub mod switcher;
 pub mod tab_label;
 pub mod tabstrip;
+mod theme_layers;
 pub mod webview;
 pub mod window;
 pub mod workspace;

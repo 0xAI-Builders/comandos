@@ -87,7 +87,7 @@ pub struct App {
     saved_focus: RefCell<Option<String>>,
     pane_initialized: Cell<bool>,
     pane_saved: Cell<Option<i32>>,
-    theme_provider: gtk::CssProvider,
+    theme_layers: RefCell<Option<ui::theme_layers::ThemeLayers>>,
     applied_theme: RefCell<Option<crate::theme::ThemeTokens>>,
     applied_button_style: RefCell<Option<String>>,
     toolbar: gtk::Box,
@@ -138,9 +138,7 @@ impl AppRuntime {
         self.app.cancel_drag();
         self.app.workspace.shutdown();
         self.app.resize_queue.borrow_mut().cancel();
-        if let Some(screen) = gdk::Screen::default() {
-            gtk::StyleContext::remove_provider_for_screen(&screen, &self.app.theme_provider);
-        }
+        self.app.theme_layers.borrow_mut().take();
         self.app.jobs.shutdown(Duration::from_secs(6));
         for term in self.app.terms.borrow().values() {
             term.shutdown();
@@ -154,20 +152,9 @@ impl App {
             "/../../config/themes.json"
         ))));
         if let Some(theme) = crate::theme::desktop_theme(crate::theme::DEFAULT_THEME, &themes)
-            && self
-                .theme_provider
-                .load_from_data(crate::theme::theme_css(&theme).as_bytes())
-                .is_ok()
+            && let Err(error) = self.apply_theme_layers(&theme, "sutil")
         {
-            *self.applied_theme.borrow_mut() = Some(theme);
-            *self.applied_button_style.borrow_mut() = Some("sutil".into());
-        }
-        if let Some(screen) = gdk::Screen::default() {
-            gtk::StyleContext::add_provider_for_screen(
-                &screen,
-                &self.theme_provider,
-                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-            );
+            self.status.set_text(&format!("Tema: {error}"));
         }
         let plus = ui::icons::button("plus", 16, "Nueva sesión");
         let weak = Rc::downgrade(self);
@@ -556,7 +543,7 @@ impl App {
             saved_focus: RefCell::new(None),
             pane_initialized: Cell::new(false),
             pane_saved: Cell::new(None),
-            theme_provider: gtk::CssProvider::new(),
+            theme_layers: RefCell::new(None),
             applied_theme: RefCell::new(None),
             applied_button_style: RefCell::new(None),
             restore: RefCell::new(RestoreCoordinator::default()),

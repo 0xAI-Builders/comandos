@@ -31,7 +31,7 @@ pub fn desktop_theme(name: &str, _themes: &Value) -> Option<ThemeTokens> {
     Some(ThemeTokens { ansi, values })
 }
 
-pub fn theme_css(theme: &ThemeTokens) -> String {
+pub fn base_css(theme: &ThemeTokens) -> String {
     let t = &theme.values;
     let mut css = include_str!("ui/app-original.css").to_string();
     for (placeholder, key) in [
@@ -50,8 +50,12 @@ pub fn theme_css(theme: &ThemeTokens) -> String {
         "@ICONS@",
         concat!(env!("CARGO_MANIFEST_DIR"), "/../../dash/icons"),
     );
-    css.push_str(&header_css(theme));
-    css.push_str(&button_style_css("sutil", theme));
+    css
+}
+
+pub fn theme_css(theme: &ThemeTokens) -> String {
+    let t = &theme.values;
+    let mut css = base_css(theme);
     css.push_str(&format!(
         "
 window {{ background-color: {}; color: {}; }}
