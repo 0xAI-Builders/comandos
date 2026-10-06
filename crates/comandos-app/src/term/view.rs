@@ -652,7 +652,10 @@ impl Inner {
         } else {
             100
         };
-        if let Some(paint) = m.schedule.next_delay_ms(now) {
+        if let Some(paint) = m
+            .schedule
+            .next_delay_ms_if_mapped(now, self.area.is_mapped())
+        {
             delay = delay.min(paint);
         }
         if m.pty.is_none() {
@@ -746,12 +749,13 @@ impl Inner {
             .unwrap_or(true);
         let synchronized = m.engine.next_deadline().is_some();
         m.schedule.set_synchronized(synchronized);
-        if blink && m.schedule.blink_due(now) {
+        let mapped = self.area.is_mapped();
+        if mapped && blink && m.schedule.blink_due(now) {
             m.blink_visible = !m.blink_visible;
             m.schedule.blinked(now);
             self.area.queue_draw();
         }
-        if m.schedule.next_delay_ms(now) == Some(0) {
+        if m.schedule.queue_due_paint(now, mapped) {
             self.area.queue_draw();
         }
         let ssh = if m.ssh_at.is_some_and(|at| now >= at) {
@@ -952,6 +956,21 @@ fn connect_events(inner: &Rc<Inner>) {
             inner.draw(context);
         }
         glib::Propagation::Stop
+    });
+    let weak = Rc::downgrade(inner);
+    inner.area.connect_map(move |_| {
+        if let Some(inner) = weak.upgrade().filter(|inner| !inner.closed.get()) {
+            inner.model.borrow_mut().schedule.reset_queued_paint();
+            inner.area.queue_draw();
+            inner.arm();
+        }
+    });
+    let weak = Rc::downgrade(inner);
+    inner.area.connect_unmap(move |_| {
+        if let Some(inner) = weak.upgrade().filter(|inner| !inner.closed.get()) {
+            inner.model.borrow_mut().schedule.reset_queued_paint();
+            inner.arm();
+        }
     });
     let weak = Rc::downgrade(inner);
     inner.im.connect_preedit_start(move |_| {
