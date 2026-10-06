@@ -181,6 +181,19 @@ fn immutable_uri(path: &Path) -> Result<String> {
     uri.push_str("?immutable=1");
     Ok(uri)
 }
+fn open_wal_snapshot(staged: &Path) -> Result<Connection> {
+    let conn = Connection::open(staged)?;
+    // La copia se elimina tras inspeccionarla. Checkpoint al cerrar reescribe
+    // todas sus páginas WAL, aunque nunca se publicará esa base temporal.
+    conn.set_db_config(
+        rusqlite::config::DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+        true,
+    )?;
+    // Sólo la copia temporal: su recuperación/cierre no requiere durabilidad.
+    conn.pragma_update(None, "synchronous", "OFF")?;
+    conn.pragma_update(None, "query_only", true)?;
+    Ok(conn)
+}
 fn read_snapshot<T>(
     path: &Path,
     home: Option<&Path>,
@@ -209,10 +222,7 @@ fn read_snapshot<T>(
         let walpath = suffix(path, "-wal");
         let walhash = copy(&walpath, &suffix(&staged, "-wal"), wal)?;
         source.check(path)?;
-        let conn = Connection::open(&staged)?;
-        // Sólo la copia temporal: su recuperación/cierre no requiere durabilidad.
-        conn.pragma_update(None, "synchronous", "OFF")?;
-        conn.pragma_update(None, "query_only", true)?;
+        let conn = open_wal_snapshot(&staged)?;
         let value = body(&conn)?;
         // Comprobar bytes además de identidad después de interpretar el WAL.
         if transfer(path, None, db)? != dbhash || transfer(&walpath, None, wal)? != walhash {
@@ -305,6 +315,49 @@ pub(super) fn accept(path: &Path) -> Result<Connection> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn private_wal_reader_does_not_checkpoint_staged_database() {
+        let scratch = Scratch::new_outside(Path::new("/tmp/nonexistent-db"), None).unwrap();
+        let source = scratch.0.join("source/db.sqlite3");
+        let writer = crate::unified::open_unified(&source).unwrap();
+        writer.execute_batch("CREATE TABLE snapshot_value(value TEXT); INSERT INTO snapshot_value VALUES('from WAL')").unwrap();
+        let stamp = StableSource::capture(&source).unwrap();
+        let staged = scratch.0.join("staged.sqlite3");
+        copy(&source, &staged, stamp.db.as_ref().unwrap()).unwrap();
+        let staged_wal = suffix(&staged, "-wal");
+        copy(
+            &suffix(&source, "-wal"),
+            &staged_wal,
+            stamp.wal.as_ref().unwrap(),
+        )
+        .unwrap();
+        let before_db = fs::read(&staged).unwrap();
+        let before_wal = fs::read(&staged_wal).unwrap();
+        let reader = open_wal_snapshot(&staged).unwrap();
+        assert_eq!(
+            reader
+                .query_row("SELECT value FROM snapshot_value", [], |r| r
+                    .get::<_, String>(0))
+                .unwrap(),
+            "from WAL"
+        );
+        assert!(
+            reader
+                .execute("INSERT INTO snapshot_value VALUES('forbidden')", [])
+                .is_err()
+        );
+        drop(reader);
+        assert!(
+            fs::read(&staged).unwrap() == before_db,
+            "snapshot close must not copy WAL pages into its disposable DB"
+        );
+        assert!(
+            fs::read(&staged_wal).unwrap() == before_wal,
+            "snapshot close must not remove or reset its disposable WAL"
+        );
+        stamp.check(&source).unwrap();
+        drop(writer);
+    }
     #[test]
     fn stable_source_rejects_replacement_and_new_wal() {
         let scratch = Scratch::new_outside(Path::new("/tmp/nonexistent-db"), None).unwrap();
