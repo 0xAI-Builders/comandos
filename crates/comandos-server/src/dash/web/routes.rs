@@ -29,7 +29,8 @@ async fn index(state: &DashState, request: &Request) -> Result<Reply, HandlerErr
     if query_value(&request.target, "web").as_deref() == Some("off") {
         return statics::serve(&state.config.dash_dir, request).await;
     }
-    let page = fs::read(state.config.dash_dir.join("index.html")).map_err(|_| HandlerError::Failure)?;
+    let page =
+        fs::read(state.config.dash_dir.join("index.html")).map_err(|_| HandlerError::Failure)?;
     let shadow = query_value(&request.target, "web").as_deref() == Some("shadow")
         || request
             .headers
@@ -84,14 +85,19 @@ async fn gate(_state: &DashState, request: &Request) -> Result<Reply, HandlerErr
                 return true;
             }
             if rx.changed().await.is_err() {
-                return true;
+                return false;
             }
         }
     })
     .await
     .unwrap_or(false);
+    super::gate::global().finish(&k);
     if ready {
-        Ok(Reply::bytes(StatusCode::OK, "text/javascript", Bytes::new()))
+        Ok(Reply::bytes(
+            StatusCode::OK,
+            "text/javascript",
+            Bytes::new(),
+        ))
     } else {
         Ok(Reply::bytes(StatusCode::OK, "text/javascript", fallback()))
     }
@@ -155,7 +161,9 @@ async fn asset(state: &DashState, rel: &str) -> Result<Reply, HandlerError> {
     }
     let web = super::WebState::new(&state.config);
     let path = web.web_dir.join(rel);
-    let bytes = tokio::fs::read(&path).await.map_err(|_| HandlerError::Failure)?;
+    let bytes = tokio::fs::read(&path)
+        .await
+        .map_err(|_| HandlerError::Failure)?;
     let mut reply = Reply::bytes(StatusCode::OK, statics::mime_for(rel), bytes);
     reply.headers.insert(
         header::CACHE_CONTROL,
@@ -165,11 +173,15 @@ async fn asset(state: &DashState, rel: &str) -> Result<Reply, HandlerError> {
 }
 
 fn fallback() -> &'static str {
-    "if(!sessionStorage.cc_web_fallback){sessionStorage.cc_web_fallback=1;location.replace(location.pathname+'?web=off')}"
+    "if(!sessionStorage.cc_web_fallback){sessionStorage.cc_web_fallback=1;try{fetch('/ui-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({event:'web-gate-timeout'}),keepalive:true}).catch(()=>{})}catch(e){}const u=new URL(location.href);u.searchParams.set('web','off');location.replace(u.href)}"
 }
 
 fn query_value(target: &str, key: &str) -> Option<String> {
-    let query = target.split_once('?')?.1.split_once('#').map_or(target.split_once('?')?.1, |(q, _)| q);
+    let query = target
+        .split_once('?')?
+        .1
+        .split_once('#')
+        .map_or(target.split_once('?')?.1, |(q, _)| q);
     for pair in query.split('&') {
         let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
         if k == key {
@@ -177,4 +189,32 @@ fn query_value(target: &str, key: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn fallback_preserves_application_query_hash_and_redirects_once() {
+        let fixture = "globalThis.sessionStorage={};globalThis.location={href:'http://127.0.0.1:7311/?app=1&anwin=1&token=fixture#tab',pathname:'/',replace(u){this.redirect=u;this.count=(this.count||0)+1}};globalThis.fetch=()=>Promise.resolve({});";
+        let script = format!(
+            "{fixture}{};{};console.log(JSON.stringify(location));",
+            super::fallback(),
+            super::fallback()
+        );
+        let output = std::process::Command::new("node")
+            .args(["-e", &script])
+            .output()
+            .expect("fixture Node de JS sin navegador");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            result["redirect"],
+            "http://127.0.0.1:7311/?app=1&anwin=1&token=fixture&web=off#tab"
+        );
+        assert_eq!(result["count"], 1);
+    }
 }

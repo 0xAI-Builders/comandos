@@ -48,10 +48,15 @@ impl Gate {
     pub fn mark_ready(&self, k: &str) -> bool {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         inner.sweep();
-        let Some((_, tx)) = inner.nonces.remove(k) else {
+        let Some((_, tx)) = inner.nonces.get(k) else {
             return false;
         };
-        let _ = tx.send(true);
+        if *tx.borrow() {
+            return false;
+        }
+        // `send` pierde el valor si todavía no hay receptor. El módulo async
+        // puede terminar antes de que el navegador pida el script bloqueante.
+        tx.send_replace(true);
         true
     }
 
@@ -65,6 +70,14 @@ impl Gate {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         inner.sweep();
         (inner.nonces.len(), inner.gate_full)
+    }
+
+    pub fn finish(&self, k: &str) {
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .nonces
+            .remove(k);
     }
 }
 

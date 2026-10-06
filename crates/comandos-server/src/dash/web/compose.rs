@@ -1,4 +1,7 @@
-use super::{Manifest, registry::{Entry, Kind, Resolved}};
+use super::{
+    Manifest,
+    registry::{Entry, Kind, Resolved},
+};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -91,17 +94,28 @@ pub fn compose(
         };
         states.insert(e.id.clone(), state);
     }
+    if assets.path("comandos_web_boot.js").is_empty() {
+        for state in states.values_mut() {
+            if matches!(state, ComponentState::On | ComponentState::Shadow) {
+                *state = ComponentState::MissingDep("comandos_web_boot.js".into());
+            }
+        }
+    }
     loop {
         let mut changed = false;
         for e in reg.entries() {
-            if !matches!(states.get(&e.id), Some(ComponentState::On | ComponentState::Shadow)) {
+            if !matches!(
+                states.get(&e.id),
+                Some(ComponentState::On | ComponentState::Shadow)
+            ) {
                 continue;
             }
-            if let Some(dep) = e
-                .deps
-                .iter()
-                .find(|d| !matches!(states.get(*d), Some(ComponentState::On | ComponentState::Shadow)))
-            {
+            if let Some(dep) = e.deps.iter().find(|d| {
+                !matches!(
+                    states.get(*d),
+                    Some(ComponentState::On | ComponentState::Shadow)
+                )
+            }) {
                 states.insert(e.id.clone(), ComponentState::MissingDep(dep.clone()));
                 changed = true;
             }
@@ -113,7 +127,12 @@ pub fn compose(
     let active: Vec<&Entry> = reg
         .entries()
         .iter()
-        .filter(|e| matches!(states.get(&e.id), Some(ComponentState::On | ComponentState::Shadow)))
+        .filter(|e| {
+            matches!(
+                states.get(&e.id),
+                Some(ComponentState::On | ComponentState::Shadow)
+            )
+        })
         .collect();
     if active.is_empty() {
         return Composed {
@@ -130,7 +149,7 @@ pub fn compose(
     let head = format!(
         "<meta name=\"comandos-web\" content=\"{}\">\n<script type=\"module\" async src=\"/web/{}\" data-k=\"{nonce}\"></script>\n<script src=\"/web/gate.js?k={nonce}\"></script>\n",
         ids.join(" "),
-        assets.path("boot.js")
+        assets.path("comandos_web_boot.js")
     );
     let html = match text.split_once("<meta charset=\"utf-8\">\n") {
         Some((before, after)) => format!("{before}<meta charset=\"utf-8\">\n{head}{after}"),

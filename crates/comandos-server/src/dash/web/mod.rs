@@ -24,7 +24,11 @@ pub enum WebRoute {
 }
 
 impl WebRoute {
-    pub fn route(method: &Method, target: &str, asset_exists: &dyn Fn(&str) -> bool) -> Option<Self> {
+    pub fn route(
+        method: &Method,
+        target: &str,
+        asset_exists: &dyn Fn(&str) -> bool,
+    ) -> Option<Self> {
         let path = crate::dash::router::path_of(target);
         match (method, path) {
             (&Method::GET, "/") | (&Method::GET, "/index.html") => Some(Self::Index),

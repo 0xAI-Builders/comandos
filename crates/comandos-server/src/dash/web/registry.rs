@@ -1,6 +1,10 @@
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeMap, fs, path::{Path, PathBuf}};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
     let mut h = Sha256::new();
@@ -11,7 +15,10 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Kind {
     Script,
-    Region { marker_start: String, marker_end: String },
+    Region {
+        marker_start: String,
+        marker_end: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,13 +32,7 @@ pub struct Entry {
 }
 
 impl Entry {
-    pub fn script(
-        id: &str,
-        source: &str,
-        sha256: &str,
-        exports: &[&str],
-        deps: &[&str],
-    ) -> Self {
+    pub fn script(id: &str, source: &str, sha256: &str, exports: &[&str], deps: &[&str]) -> Self {
         Self {
             id: id.to_string(),
             source: source.to_string(),
@@ -67,18 +68,20 @@ impl Entry {
     pub fn cut(&self, html: &str) -> String {
         match &self.kind {
             Kind::Script => cut_script(html, &self.source),
-            Kind::Region { marker_start, marker_end } => {
-                cut_region(html, marker_start, marker_end).unwrap_or_else(|| html.to_string())
-            }
+            Kind::Region {
+                marker_start,
+                marker_end,
+            } => cut_region(html, marker_start, marker_end).unwrap_or_else(|| html.to_string()),
         }
     }
 
     pub fn hash_in_page(&self, html: &str) -> Option<String> {
         match &self.kind {
             Kind::Script => None,
-            Kind::Region { marker_start, marker_end } => {
-                region_text(html, marker_start, marker_end).map(|s| sha256_hex(s.as_bytes()))
-            }
+            Kind::Region {
+                marker_start,
+                marker_end,
+            } => region_text(html, marker_start, marker_end).map(|s| sha256_hex(s.as_bytes())),
         }
     }
 }
@@ -88,10 +91,26 @@ fn cut_script(html: &str, source: &str) -> String {
     let mut search_from = 0;
     while let Some(open_rel) = html[search_from..].find("<script") {
         let open = search_from + open_rel;
-        let Some(close_rel) = html[open..].find("</script>") else { break };
+        if html
+            .as_bytes()
+            .get(open + 7)
+            .is_some_and(|b| !b.is_ascii_whitespace() && *b != b'>')
+        {
+            search_from = open + 7;
+            continue;
+        }
+        let Some(close_rel) = html[open..].find("</script>") else {
+            break;
+        };
         let close = open + close_rel + "</script>".len();
         let tag = &html[open..close];
-        if tag.contains(name) {
+        if script_src(tag).is_some_and(|src| {
+            src.split(['?', '#'])
+                .next()
+                .unwrap_or(src)
+                .trim_start_matches('/')
+                == name
+        }) {
             let end = close + html[close..].strip_prefix('\n').map_or(0, |_| 1);
             let mut out = String::with_capacity(html.len().saturating_sub(end - open));
             out.push_str(&html[..open]);
@@ -101,6 +120,56 @@ fn cut_script(html: &str, source: &str) -> String {
         search_from = close;
     }
     html.to_string()
+}
+
+/// Solo atributos del tag de apertura: nunca buscar el nombre en el cuerpo JS.
+fn script_src(tag: &str) -> Option<&str> {
+    let bytes = tag.as_bytes();
+    let mut i = 7;
+    while i < bytes.len() {
+        while bytes.get(i).is_some_and(u8::is_ascii_whitespace) {
+            i += 1;
+        }
+        if bytes.get(i).is_none_or(|b| *b == b'>') {
+            return None;
+        }
+        let start = i;
+        while bytes
+            .get(i)
+            .is_some_and(|b| !b.is_ascii_whitespace() && !matches!(b, b'=' | b'>'))
+        {
+            i += 1;
+        }
+        let key = tag.get(start..i)?;
+        while bytes.get(i).is_some_and(u8::is_ascii_whitespace) {
+            i += 1;
+        }
+        if bytes.get(i) != Some(&b'=') {
+            continue;
+        }
+        i += 1;
+        while bytes.get(i).is_some_and(u8::is_ascii_whitespace) {
+            i += 1;
+        }
+        let quote = bytes.get(i).copied().filter(|b| matches!(b, b'\'' | b'"'));
+        if quote.is_some() {
+            i += 1;
+        }
+        let value_start = i;
+        while bytes.get(i).is_some_and(|b| {
+            quote.map_or_else(|| !b.is_ascii_whitespace() && *b != b'>', |q| *b != q)
+        }) {
+            i += 1;
+        }
+        let value = tag.get(value_start..i)?;
+        if key.eq_ignore_ascii_case("src") {
+            return Some(value);
+        }
+        if quote.is_some() {
+            i += 1;
+        }
+    }
+    None
 }
 
 fn region_bounds(html: &str, start: &str, end: &str) -> Option<(usize, usize)> {
@@ -131,7 +200,11 @@ pub struct Resolved {
 
 impl Resolved {
     pub fn from_repo(entries: Vec<Entry>, repo: &Path) -> Self {
-        Self { entries, repo: Some(repo.to_path_buf()), sources: BTreeMap::new() }
+        Self {
+            entries,
+            repo: Some(repo.to_path_buf()),
+            sources: BTreeMap::new(),
+        }
     }
 
     pub fn from_components_dir(repo: Option<PathBuf>, dir: &Path) -> Self {
@@ -139,7 +212,10 @@ impl Resolved {
         if let Ok(read) = fs::read_dir(dir) {
             let mut files: Vec<PathBuf> = read.filter_map(Result::ok).map(|e| e.path()).collect();
             files.sort();
-            for path in files.into_iter().filter(|p| p.extension().is_some_and(|e| e == "json")) {
+            for path in files
+                .into_iter()
+                .filter(|p| p.extension().is_some_and(|e| e == "json"))
+            {
                 if let Ok(text) = fs::read_to_string(&path)
                     && let Ok(value) = serde_json::from_str::<Value>(&text)
                     && let Some(entry) = entry_from_json(&value)
@@ -148,7 +224,11 @@ impl Resolved {
                 }
             }
         }
-        Self { entries, repo, sources: BTreeMap::new() }
+        Self {
+            entries,
+            repo,
+            sources: BTreeMap::new(),
+        }
     }
 
     pub fn in_memory(entries: Vec<Entry>, sources: &[(&str, &str)]) -> Self {
