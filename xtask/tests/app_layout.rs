@@ -36,6 +36,13 @@ fn declared_capture_metadata_and_one_css_pixel_rounding_are_ignored() {
 }
 
 #[test]
+fn large_widget_dimensions_do_not_lose_integer_precision() {
+    let reference = json!({"widgets":[{"geometry":{"width":18014398509481984_u64}}]});
+    let candidate = json!({"widgets":[{"geometry":{"width":18014398509481986_u64}}]});
+    assert!(!compare_layout(&reference, &candidate).unwrap().matches());
+}
+
+#[test]
 fn semantic_order_labels_selection_identity_and_split_ratio_remain_exact() {
     let reference = fixture();
     let alternatives = [
@@ -106,6 +113,29 @@ fn non_finite_json_numbers_are_rejected_even_in_declared_capture_metadata() {
     let invalid: Value =
         serde_json::from_str(r#"{"tabs":[],"capture":{"captured_at_unix_ms":1e999}}"#).unwrap();
     assert!(compare_layout(&invalid, &invalid).is_err());
+}
+
+#[test]
+fn geometry_tolerance_never_reaches_nested_models_or_semantic_children() {
+    for (reference, candidate) in [
+        (
+            json!({"widgets":[{"role":"canvas","model":{"geometry":{"width":600}}}]}),
+            json!({"widgets":[{"role":"canvas","model":{"geometry":{"width":601}}}]}),
+        ),
+        (
+            json!({"workspace":{"children":[{"geometry":{"width":600}}]}}),
+            json!({"workspace":{"children":[{"geometry":{"width":601}}]}}),
+        ),
+        (
+            json!({"widgets":{"0":{"geometry":{"width":600}}}}),
+            json!({"widgets":{"0":{"geometry":{"width":601}}}}),
+        ),
+    ] {
+        assert!(!compare_layout(&reference, &candidate).unwrap().matches());
+    }
+    let reference = json!({"children":[{"children":[{"geometry":{"width":600}}]}]});
+    let candidate = json!({"children":[{"children":[{"geometry":{"width":601}}]}]});
+    assert!(compare_layout(&reference, &candidate).unwrap().matches());
 }
 
 #[test]

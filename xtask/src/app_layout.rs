@@ -41,7 +41,13 @@ pub fn compare_layout(reference: &Value, candidate: &Value) -> Result<LayoutDiff
         finite_numbers(value, name)?;
     }
     let mut differences = Vec::new();
-    compare(reference, candidate, &mut Vec::new(), &mut differences);
+    compare(
+        reference,
+        candidate,
+        Context::Root,
+        &mut Vec::new(),
+        &mut differences,
+    );
     Ok(LayoutDiff {
         geometry_tolerance_css_px: 1,
         differences,
@@ -63,20 +69,42 @@ fn ephemeral(path: &[String]) -> bool {
     matches!(path, [parent, key] if parent == "capture" && matches!(key.as_str(), "captured_at_unix_ms" | "process_pid" | "window_handle"))
 }
 
-fn geometry(path: &[String]) -> bool {
-    path.len() >= 4
-        && path
-            .iter()
-            .any(|part| part == "widgets" || part == "children")
-        && matches!(
-            path.iter()
-                .rev()
-                .take(2)
-                .map(String::as_str)
-                .collect::<Vec<_>>()
-                .as_slice(),
-            ["x" | "y" | "width" | "height", "geometry"]
-        )
+#[derive(Clone, Copy)]
+enum Context {
+    Root,
+    Data,
+    WidgetList,
+    Widget,
+    Geometry,
+    Coordinate,
+}
+
+fn child_context(parent: Context, key: &str, value: &Value) -> Context {
+    match parent {
+        Context::Root if matches!(key, "widgets" | "children") && value.is_array() => {
+            Context::WidgetList
+        }
+        Context::Widget if key == "children" && value.is_array() => Context::WidgetList,
+        Context::Widget if key == "geometry" && value.is_object() => Context::Geometry,
+        Context::Geometry if matches!(key, "x" | "y" | "width" | "height") => Context::Coordinate,
+        _ => Context::Data,
+    }
+}
+
+fn within_rounding(a: &serde_json::Number, b: &serde_json::Number) -> bool {
+    let integer = |n: &serde_json::Number| {
+        n.as_i64()
+            .map(i128::from)
+            .or_else(|| n.as_u64().map(i128::from))
+    };
+    if let Some((a, b)) = integer(a).zip(integer(b)) {
+        return (a - b).abs() <= 1;
+    }
+    a.as_f64().zip(b.as_f64()).is_some_and(|(a, b)| {
+        a.abs() <= 9_007_199_254_740_991.0
+            && b.abs() <= 9_007_199_254_740_991.0
+            && (a - b).abs() <= 1.0
+    })
 }
 
 fn pointer(path: &[String]) -> String {
@@ -103,6 +131,7 @@ fn difference(
 fn compare(
     reference: &Value,
     candidate: &Value,
+    context: Context,
     path: &mut Vec<String>,
     out: &mut Vec<LayoutDifference>,
 ) {
@@ -115,7 +144,9 @@ fn compare(
                 path.push(key.clone());
                 if !ephemeral(path) {
                     match (a.get(key), b.get(key)) {
-                        (Some(a), Some(b)) => compare(a, b, path, out),
+                        (Some(a), Some(b)) => {
+                            compare(a, b, child_context(context, key, a), path, out)
+                        }
                         (a, b) => difference(path, a, b, out),
                     }
                 }
@@ -126,18 +157,24 @@ fn compare(
             for index in 0..a.len().max(b.len()) {
                 path.push(index.to_string());
                 match (a.get(index), b.get(index)) {
-                    (Some(a), Some(b)) => compare(a, b, path, out),
+                    (Some(a), Some(b)) => compare(
+                        a,
+                        b,
+                        if matches!(context, Context::WidgetList) {
+                            Context::Widget
+                        } else {
+                            Context::Data
+                        },
+                        path,
+                        out,
+                    ),
                     (a, b) => difference(path, a, b, out),
                 }
                 path.pop();
             }
         }
-        (Value::Number(a), Value::Number(b)) if geometry(path) => {
-            if !a
-                .as_f64()
-                .zip(b.as_f64())
-                .is_some_and(|(a, b)| (a - b).abs() <= 1.0)
-            {
+        (Value::Number(a), Value::Number(b)) if matches!(context, Context::Coordinate) => {
+            if !within_rounding(a, b) {
                 difference(path, Some(reference), Some(candidate), out);
             }
         }
