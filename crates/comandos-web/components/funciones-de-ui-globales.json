@@ -1,0 +1,26 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- funciones de UI globales ----------",
+  "marker_end": "// ---------- Analytics (grill 1–2 oct): Cuentas · Comparar · Pomodoro ----------",
+  "sha256": "e27194bf5f3a0e7947d5672252508a846952fdc773a274c092294b8c37b847c8",
+  "id": "funciones-de-ui-globales",
+  "exports": [
+    "opFavorite",
+    "setPollSeconds",
+    "setBrowserNotifications",
+    "nfDismiss",
+    "nfPin",
+    "nfUnpin",
+    "nfSnooze",
+    "closeAllPanels",
+    "swOpenWith",
+    "nsOpenPrefilled"
+  ],
+  "deps": [
+    "prelude",
+    "i18n",
+    "red"
+  ]
+}

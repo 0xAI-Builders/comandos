@@ -40,6 +40,31 @@ pub struct Component {
 /// Componentes que este WASM sabe montar. Crece con cada port (B4…B13).
 pub const COMPONENTS: &[Component] = &[
     Component {
+        id: "app-combinada",
+        mount: crate::components::app_coordinator::mount_app,
+        attach: None,
+    },
+    Component {
+        id: "identidad-de-fila",
+        mount: crate::components::app_coordinator::mount_identity,
+        attach: None,
+    },
+    Component {
+        id: "barra-de-comandos",
+        mount: crate::components::app_coordinator::mount_sidebar,
+        attach: None,
+    },
+    Component {
+        id: "render",
+        mount: crate::components::app_coordinator::mount_render,
+        attach: None,
+    },
+    Component {
+        id: "servidores",
+        mount: crate::components::servers::mount,
+        attach: Some(crate::components::servers::attach),
+    },
+    Component {
         id: "notificaciones-del-sistema",
         mount: crate::components::foundation_system::mount_notifications,
         attach: Some(crate::components::foundation_system::attach_notifications),
@@ -88,6 +113,21 @@ pub const COMPONENTS: &[Component] = &[
         id: "preview-de-tipografia",
         mount: crate::components::theme_preferences::mount_preview,
         attach: Some(crate::components::theme_preferences::attach_preview),
+    },
+    Component {
+        id: "ui-general",
+        mount: crate::components::foundation_ui::mount_ui,
+        attach: Some(crate::components::foundation_ui::attach_ui),
+    },
+    Component {
+        id: "funciones-de-ui-globales",
+        mount: crate::components::foundation_ui::mount_globals,
+        attach: None,
+    },
+    Component {
+        id: "analytics-inline",
+        mount: crate::components::foundation_ui::mount_analytics,
+        attach: Some(crate::components::foundation_ui::attach_analytics),
     },
     Component {
         id: "conmutador-ctrl-k",

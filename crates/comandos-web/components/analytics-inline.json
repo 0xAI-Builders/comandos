@@ -1,0 +1,30 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- Analytics (grill 1–2 oct): Cuentas · Comparar · Pomodoro ----------",
+  "marker_end": "</script>",
+  "sha256": "3d0a198eda5b59be9edd554e61f3b65cffad4f7f96f57b61f0e6ff68c9f99262",
+  "id": "analytics-inline",
+  "exports": [
+    "ANALYTICS_DEMO",
+    "analyticsView",
+    "analyticsPhone",
+    "analytics",
+    "openAnalytics",
+    "openAnalyticsTab",
+    "reloadDashboard",
+    "focusVisibleTerm",
+    "__comandosState",
+    "__comandosTranslate",
+    "__comandosIcon",
+    "__comandosNewsTerminal"
+  ],
+  "deps": [
+    "prelude",
+    "i18n",
+    "red",
+    "iconos",
+    "app-combinada"
+  ]
+}

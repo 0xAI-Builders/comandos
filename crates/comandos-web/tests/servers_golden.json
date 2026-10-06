@@ -1,0 +1,252 @@
+[
+  {
+    "name": "hosts",
+    "data": {
+      "count": "Servidores (1)",
+      "chips": [
+        [
+          "<safe>",
+          "dev@example.org:22"
+        ]
+      ],
+      "rows": [
+        [
+          "<safe>",
+          "dev@example.org:22"
+        ]
+      ]
+    }
+  },
+  {
+    "name": "edit",
+    "data": {
+      "host": "<safe>",
+      "orig": "<safe>",
+      "remember": false,
+      "title": "Editar <safe>",
+      "cancelHidden": false
+    }
+  },
+  {
+    "name": "cancel",
+    "data": {
+      "host": "",
+      "orig": "",
+      "remember": true
+    }
+  },
+  {
+    "name": "update",
+    "data": {
+      "request": [
+        "/ssh-update",
+        {
+          "host": "renamed",
+          "hostname": "new",
+          "user": "user",
+          "port": "2222",
+          "identity": "key",
+          "orig": "old"
+        }
+      ],
+      "resetHost": ""
+    }
+  },
+  {
+    "name": "add-remember",
+    "data": {
+      "request": [
+        "/ssh-add",
+        {
+          "host": "new",
+          "hostname": "newhost",
+          "user": "",
+          "port": "",
+          "identity": ""
+        }
+      ],
+      "setup": [
+        "/ssh-key-setup",
+        {
+          "host": "new"
+        }
+      ]
+    }
+  },
+  {
+    "name": "delete-arm",
+    "data": {
+      "armed": true,
+      "text": "Seguro?",
+      "deleteCalls": 0
+    }
+  },
+  {
+    "name": "delete-confirm",
+    "data": [
+      "/ssh-del",
+      {
+        "host": "<safe>"
+      }
+    ]
+  },
+  {
+    "name": "delete-expiry",
+    "data": {
+      "armed": false,
+      "text": "Borrar",
+      "ms": 3000
+    }
+  },
+  {
+    "name": "ssh-routing",
+    "data": {
+      "opens": [
+        [
+          "app",
+          "ssh-s",
+          "ssh"
+        ],
+        [
+          "web",
+          "ssh-s",
+          "label"
+        ],
+        [
+          "web",
+          "ssh-s",
+          "setup web"
+        ]
+      ],
+      "focus": [
+        [
+          "/focus",
+          {
+            "session": "ssh-s"
+          }
+        ],
+        [
+          "/focus",
+          {
+            "session": "ssh-s"
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "new-session",
+    "data": {
+      "activeView": "panel",
+      "intoPane": null,
+      "open": [
+        "wizard"
+      ]
+    }
+  },
+  {
+    "name": "native-capture",
+    "data": {
+      "bridge": [
+        {
+          "headerAction": "newSession"
+        },
+        {
+          "headerAction": "quickTerminal"
+        },
+        {
+          "headerAction": "notices"
+        },
+        {
+          "leftPanel": "toggle"
+        }
+      ],
+      "bubbleCalls": 0
+    }
+  },
+  {
+    "name": "terminal-busy",
+    "data": {
+      "disabled": true,
+      "busy": "true"
+    }
+  },
+  {
+    "name": "terminal-complete",
+    "data": {
+      "disabled": false,
+      "busy": null
+    }
+  },
+  {
+    "name": "rows-rollback",
+    "data": {
+      "rows": false,
+      "toast": [
+        "rows failed",
+        true
+      ]
+    }
+  },
+  {
+    "name": "hide-start",
+    "data": {
+      "hidden": false,
+      "duration": 220
+    }
+  },
+  {
+    "name": "hide-end",
+    "data": {
+      "hidden": true,
+      "resizes": 1,
+      "fx": null
+    }
+  },
+  {
+    "name": "show-start",
+    "data": {
+      "hidden": false,
+      "duration": 240
+    }
+  },
+  {
+    "name": "reduced",
+    "data": {
+      "hidden": true,
+      "animations": 4
+    }
+  },
+  {
+    "name": "menu-position",
+    "data": {
+      "hidden": false,
+      "expanded": "true",
+      "top": "48px",
+      "left": "812px"
+    }
+  },
+  {
+    "name": "detached-path",
+    "data": false
+  },
+  {
+    "name": "menu-escape",
+    "data": {
+      "hidden": true,
+      "focused": "btn-menu"
+    }
+  },
+  {
+    "name": "menu-outside",
+    "data": true
+  },
+  {
+    "name": "servers-open",
+    "data": {
+      "hidden": false,
+      "bar": true,
+      "expanded": "true"
+    }
+  }
+]

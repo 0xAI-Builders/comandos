@@ -56,6 +56,7 @@ pub mod registry;
 
 pub mod components {
     pub mod analytics;
+    pub mod app_coordinator;
     pub mod chain_builder;
     pub mod command_sidebar;
     pub mod device_drafts;
@@ -66,11 +67,13 @@ pub mod components {
     pub mod foundation_navigation;
     pub mod foundation_remote;
     pub mod foundation_system;
+    pub mod foundation_ui;
     pub mod news_reader;
     pub mod notifications;
     pub mod pomodoro;
     pub mod push_settings;
     pub mod quick_terminal;
+    pub mod servers;
     pub mod session_config;
     pub mod theme_preferences;
     pub mod ui_sounds;

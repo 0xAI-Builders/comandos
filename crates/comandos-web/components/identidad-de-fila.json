@@ -1,0 +1,13 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- identidad de fila (sesión|pane) ----------",
+  "marker_end": "// ---------- barra de comandos (S1, dash/command-sidebar.js) ----------",
+  "sha256": "b69c8bd99fa95ba58b43bb68852006502ba4c47fd8a1336ed590d72ac1a26d1c",
+  "id": "identidad-de-fila",
+  "exports": [
+    "rowKey"
+  ],
+  "deps": []
+}
