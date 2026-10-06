@@ -157,9 +157,13 @@ fn spawn_state_prefs(
     let spawn = std::thread::Builder::new()
         .name("app-poll-state-prefs".into())
         .spawn(move || {
+            let mut last_state: Option<Value> = None;
             let mut last_prefs: Option<Value> = None;
             while !stop.load(Ordering::Acquire) {
-                if let Ok(value) = client.get("/state", intervals.state_timeout) {
+                if let Ok(value) = client.get("/state", intervals.state_timeout)
+                    && last_state.as_ref() != Some(&value)
+                {
+                    last_state = Some(value.clone());
                     let _ = tx.send(PollUpdate::State(value));
                 }
                 let favorite_generation = generation.load(Ordering::Acquire);

@@ -47,6 +47,10 @@ impl RestorePlan {
                 continue;
             }
             let snapshot = snapshots.get(key).cloned().unwrap_or(Value::Null);
+            actions.push(RestoreAction::CreatePlaceholder {
+                key: key.clone(),
+                label,
+            });
             if snapshot.get("windows").is_some() {
                 actions.push(RestoreAction::RestoreLayout {
                     key: key.clone(),
@@ -62,11 +66,6 @@ impl RestorePlan {
                 actions.push(RestoreAction::ResumeExact {
                     key: key.clone(),
                     snapshot,
-                });
-            } else {
-                actions.push(RestoreAction::CreatePlaceholder {
-                    key: key.clone(),
-                    label,
                 });
             }
         }

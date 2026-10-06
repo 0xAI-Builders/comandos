@@ -67,6 +67,58 @@ fn poll_update_derives_debug_and_partial_eq() {
 }
 
 #[test]
+fn poller_coalesces_repeated_state_and_live_prefs() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let _server = std::thread::spawn(move || {
+        for stream in listener.incoming().take(32) {
+            let mut stream = stream.unwrap();
+            let mut buf = [0u8; 1024];
+            let n = std::io::Read::read(&mut stream, &mut buf).unwrap_or(0);
+            let request = String::from_utf8_lossy(&buf[..n]);
+            let body = if request.contains("/state") {
+                r#"{"status":"same"}"#
+            } else if request.contains("/prefs") {
+                r#"{"theme":"noche","button_style":"ignored"}"#
+            } else if request.contains("/notices/watch") {
+                r#"{"rev":"r1","badge":7}"#
+            } else {
+                "null"
+            };
+            let response = format!(
+                "HTTP/1.0 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = std::io::Write::write_all(&mut stream, response.as_bytes());
+        }
+    });
+    let client = DashClient::new(Some(&format!("http://127.0.0.1:{port}")), RunMode::Live).unwrap();
+    let intervals = PollIntervals {
+        state_prefs: Duration::from_millis(20),
+        workspace: Duration::from_millis(100),
+        marks: Duration::from_millis(100),
+        notices_backoff: Duration::from_millis(20),
+        notices_timeout: Duration::from_millis(50),
+        ..PollIntervals::default()
+    };
+    let (poller, rx) = Poller::start_with_intervals(client, Arc::new(AtomicU64::new(3)), intervals);
+    std::thread::sleep(Duration::from_millis(90));
+    poller.stop();
+    let updates: Vec<_> = rx.try_iter().collect();
+    let state_count = updates
+        .iter()
+        .filter(|u| matches!(u, PollUpdate::State(_)))
+        .count();
+    let prefs_count = updates
+        .iter()
+        .filter(|u| matches!(u, PollUpdate::Prefs { .. }))
+        .count();
+    assert_eq!(state_count, 1, "{updates:?}");
+    assert_eq!(prefs_count, 1, "{updates:?}");
+}
+
+#[test]
 fn poller_stop_cancels_blocked_notice_worker_under_500ms() {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
