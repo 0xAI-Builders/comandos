@@ -166,26 +166,17 @@ fn shadow_attach_keeps_session_size() {
         return;
     };
     f.tmux.new_session("big", 163, 44);
-    let argv = f.ctl.attach_argv("big");
     assert!(
-        argv[2].contains("attach -f read-only,ignore-size -t '=big'"),
-        "{argv:?}"
+        f.ctl.attach_argv("big").is_empty(),
+        "Shadow never constructs an attach command"
     );
-    // Cliente real de 80×24 a través de `script` (un PTY): la sesión no encoge.
-    let mut child = std::process::Command::new("script")
-        .args([
-            "-qfec",
-            &format!("stty cols 80 rows 24; {}", argv[2]),
-            "/dev/null",
-        ])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::null())
-        .spawn()
-        .unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(600));
-    assert_eq!(f.tmux.session_size("big"), (163, 44));
-    let _ = child.kill();
-    let _ = child.wait();
+    let before = f.tmux.raw(&["list-clients"]).stdout;
+    for _ in 0..3 {
+        let frame = comandos_app::term::shadow::capture_when(&f.ctl, "big", &|| true).unwrap();
+        assert_eq!((frame.cols, frame.rows), (163, 44));
+        assert_eq!(f.tmux.session_size("big"), (163, 44));
+        assert_eq!(f.tmux.raw(&["list-clients"]).stdout, before);
+    }
 }
 
 #[test]

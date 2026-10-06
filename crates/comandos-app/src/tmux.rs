@@ -3,7 +3,7 @@
 //! El modo decide qué se puede hacer: la sombra solo lee.
 use crate::config::{AppConfig, RunMode, TmuxServer};
 use crate::guard::{GuardError, WriteGuard};
-use crate::proc::{ProcSpec, run};
+use crate::proc::{ProcSpec, run_when};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -251,6 +251,19 @@ impl TmuxCtl {
     }
 
     fn exec(&self, args: &[&str], stdin: Option<&[u8]>) -> Result<TmuxOut, TmuxError> {
+        self.exec_when(args, stdin, TMUX_TIMEOUT, &|| true)
+    }
+
+    fn exec_when(
+        &self,
+        args: &[&str],
+        stdin: Option<&[u8]>,
+        timeout: Duration,
+        allowed: &dyn Fn() -> bool,
+    ) -> Result<TmuxOut, TmuxError> {
+        if !allowed() {
+            return Err(TmuxError::Forbidden("cancelled".into()));
+        }
         let mut argv: Vec<OsString> = vec!["-S".into(), self.socket.clone().into_os_string()];
         if self.mode == RunMode::Sandbox {
             // The private environment has no inherited locale. Force tmux's
@@ -277,9 +290,12 @@ impl TmuxCtl {
             clear_env: self.mode == RunMode::Sandbox,
             env_remove: vec!["TMUX".into(), "TMUX_PANE".into()],
             cwd: None,
-            timeout: TMUX_TIMEOUT,
+            timeout,
         };
-        let out = run(&spec).map_err(|e| TmuxError::Spawn(format!("{e:?}")))?;
+        let out = run_when(&spec, allowed).map_err(|e| TmuxError::Spawn(format!("{e:?}")))?;
+        if out.truncated {
+            return Err(TmuxError::Spawn("tmux output exceeded limit".into()));
+        }
         if out.timed_out {
             return Err(TmuxError::Timeout(args.join(" ")));
         }
@@ -293,6 +309,28 @@ impl TmuxCtl {
     pub fn read(&self, args: &[&str]) -> Result<TmuxOut, TmuxError> {
         check_read_args(args)?;
         self.exec(args, None)
+    }
+
+    /// Group individually validated read commands into one process, never shell input.
+    pub(crate) fn read_batch_when(
+        &self,
+        commands: &[Vec<String>],
+        timeout: Duration,
+        allowed: &dyn Fn() -> bool,
+    ) -> Result<TmuxOut, TmuxError> {
+        if commands.is_empty() {
+            return Err(TmuxError::BadArgs("empty read batch".into()));
+        }
+        let mut args = Vec::new();
+        for command in commands {
+            let refs: Vec<_> = command.iter().map(String::as_str).collect();
+            check_read_args(&refs)?;
+            if !args.is_empty() {
+                args.push(";");
+            }
+            args.extend(refs);
+        }
+        self.exec_when(&args, None, timeout, allowed)
     }
 
     fn check_mutate(&self, args: &[&str]) -> Result<(), TmuxError> {
@@ -513,15 +551,14 @@ impl TmuxCtl {
         Ok(())
     }
 
-    /// Mismo comando que `open_tab` (3611) con `-S`; la sombra se engancha en
-    /// solo lectura y sin cambiar el tamaño de la sesión.
+    /// Native interactive attach is unavailable in Shadow: even ignore-size
+    /// changes a window when it is the only client. Shadow uses captures.
     pub fn attach_argv(&self, session: &str) -> Vec<String> {
+        if self.mode == RunMode::Shadow {
+            return Vec::new();
+        }
         let quote = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
-        let flags = if self.mode == RunMode::Shadow {
-            "-f read-only,ignore-size "
-        } else {
-            ""
-        };
+        let flags = "";
         let sandbox_prefix = self.sandbox_home.as_ref().map_or_else(String::new, |home| format!(
             "env -i HOME={} PATH=/usr/bin:/bin SHELL=/bin/sh TERM=xterm-256color XDG_CONFIG_HOME={} ",
             quote(&home.display().to_string()), quote(&home.join(".config").display().to_string())

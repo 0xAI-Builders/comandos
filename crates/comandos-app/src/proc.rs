@@ -70,6 +70,14 @@ fn drain(mut src: impl Read, deadline: Instant) -> (Vec<u8>, bool) {
 }
 
 pub fn run(spec: &ProcSpec) -> Result<ProcOutput, ProcError> {
+    run_when(spec, &|| true)
+}
+
+/// A cancellable owned process group. Keep the leader unreaped until cleanup.
+pub fn run_when(spec: &ProcSpec, allowed: &dyn Fn() -> bool) -> Result<ProcOutput, ProcError> {
+    if !allowed() {
+        return Err(ProcError::Spawn("cancelled".into()));
+    }
     use std::os::unix::process::CommandExt;
     let deadline = Instant::now()
         .checked_add(spec.timeout)
@@ -151,30 +159,29 @@ pub fn run(spec: &ProcSpec) -> Result<ProcOutput, ProcError> {
         let out = stdout.map(|p| scope.spawn(move || drain(p, deadline)));
         let err = stderr.map(|p| scope.spawn(move || drain(p, deadline)));
         let mut result = ProcOutput::default();
+        let mut cancelled = false;
         loop {
-            match child.try_wait() {
-                Ok(Some(status)) => {
-                    result.code = status.code();
-                    break;
-                }
-                Ok(None) if Instant::now() >= deadline => {
-                    let _ = nix::sys::signal::killpg(group, nix::sys::signal::Signal::SIGKILL);
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    result.timed_out = true;
-                    break;
-                }
-                Ok(None) => std::thread::sleep(Duration::from_millis(2)),
-                Err(_) => {
-                    let _ = nix::sys::signal::killpg(group, nix::sys::signal::Signal::SIGKILL);
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    break;
-                }
+            use nix::sys::wait::{Id, WaitPidFlag, WaitStatus, waitid};
+            let status = waitid(
+                Id::Pid(group),
+                WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT,
+            );
+            if matches!(
+                status,
+                Ok(WaitStatus::Exited(..) | WaitStatus::Signaled(..))
+            ) {
+                break;
             }
+            cancelled = !allowed();
+            if cancelled || Instant::now() >= deadline || status.is_err() {
+                result.timed_out = !cancelled && Instant::now() >= deadline;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
         }
         // También cierra los pipes heredados por nietos cuando el líder termina.
         let _ = nix::sys::signal::killpg(group, nix::sys::signal::Signal::SIGKILL);
+        result.code = child.wait().ok().and_then(|status| status.code());
         if let Some((bytes, cut)) = out.and_then(|h| h.join().ok()) {
             result.stdout = bytes;
             result.truncated |= cut;
@@ -183,7 +190,11 @@ pub fn run(spec: &ProcSpec) -> Result<ProcOutput, ProcError> {
             result.stderr = bytes;
             result.truncated |= cut;
         }
-        Ok(result)
+        if cancelled {
+            Err(ProcError::Spawn("cancelled".into()))
+        } else {
+            Ok(result)
+        }
     })
 }
 

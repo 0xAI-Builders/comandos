@@ -36,6 +36,7 @@ pub struct TermOptions {
     pub environment: Vec<(String, String)>,
     pub clear_env: bool,
     pub tmux_size: Option<(u16, u16)>,
+    pub shadow_tmux: Option<crate::tmux::TmuxCtl>,
     pub before_spawn: Option<Rc<dyn Fn() -> Result<(), String>>>,
     pub on_title: Option<TextCallback>,
     pub on_exit: Option<ExitCallback>,
@@ -47,12 +48,16 @@ pub struct TermOptions {
 pub enum TermViewError {
     GtkUnavailable,
     UnsafeEnvironment,
+    ShadowSource(String),
     Pty(PtyError),
 }
 struct Model {
     engine: TermEngine,
     frame: FrameCache,
     pty: Option<PtySession>,
+    shadow: Option<super::shadow::ShadowReader>,
+    shadow_frame: Option<super::shadow::ShadowFrame>,
+    shadow_at: u64,
     drain: PtyDrain,
     geom: CellGeom,
     font: pango::FontDescription,
@@ -111,6 +116,20 @@ impl TermView {
         if options.mode == RunMode::Sandbox && !options.clear_env {
             return Err(TermViewError::UnsafeEnvironment);
         }
+        let shadow = if options.mode == RunMode::Shadow {
+            let ctl = options.shadow_tmux.clone().ok_or_else(|| {
+                TermViewError::ShadowSource("Shadow requires a readonly source".into())
+            })?;
+            let session = options.session.clone().ok_or_else(|| {
+                TermViewError::ShadowSource("Shadow requires an existing session".into())
+            })?;
+            Some(
+                super::shadow::ShadowReader::new(ctl, session)
+                    .map_err(|e| TermViewError::ShadowSource(format!("{e:?}")))?,
+            )
+        } else {
+            None
+        };
         let area = gtk::DrawingArea::new();
         area.set_can_focus(true);
         area.set_hexpand(true);
@@ -148,6 +167,9 @@ impl TermView {
                 ),
                 frame: FrameCache::default(),
                 pty: None,
+                shadow,
+                shadow_frame: None,
+                shadow_at: 0,
                 drain: PtyDrain::default(),
                 geom: CellGeom {
                     cell_w: 8.,
@@ -200,7 +222,7 @@ impl TermView {
         connect_events(&inner);
         inner.arm();
         // Standalone terminals start immediately; session clients wait for size.
-        if inner.options.session.is_none() {
+        if inner.options.mode != RunMode::Shadow && inner.options.session.is_none() {
             inner.spawn().map_err(TermViewError::Pty)?;
         }
         Ok(Self { inner })
@@ -229,6 +251,7 @@ impl TermView {
             }
         }
         self.inner.model.borrow_mut().pty.take();
+        self.inner.model.borrow_mut().shadow.take();
     }
     pub fn on_app_key(&self, callback: AppKeyCallback) {
         *self.inner.app_key.borrow_mut() = Some(callback);
@@ -374,7 +397,8 @@ impl TermView {
     }
     pub fn diagnostic_ready(&self) -> bool {
         let model = self.inner.model.borrow();
-        (model.pty.is_some() || self.inner.closed.get()) && model.engine.next_deadline().is_none()
+        (model.pty.is_some() || model.shadow_frame.is_some() || self.inner.closed.get())
+            && model.engine.next_deadline().is_none()
     }
     pub fn diagnostic_snapshot(&self) -> Result<Value, String> {
         let model = self.inner.model.borrow();
@@ -497,6 +521,9 @@ impl Inner {
         self.arm();
     }
     fn resize(&self, cols: u16, rows: u16) -> Result<(), PtyError> {
+        if self.options.mode == RunMode::Shadow {
+            return Ok(());
+        }
         let mut m = self.model.borrow_mut();
         if let Some(p) = &m.pty {
             p.resize(cols, rows)?;
@@ -510,6 +537,9 @@ impl Inner {
         Ok(())
     }
     fn spawn(self: &Rc<Self>) -> Result<(), PtyError> {
+        if self.options.mode == RunMode::Shadow {
+            return Err(PtyError::Spawn("Shadow cannot attach a PTY".into()));
+        }
         if let Some(before) = &self.options.before_spawn {
             before().map_err(PtyError::Spawn)?;
         }
@@ -551,6 +581,9 @@ impl Inner {
         Ok(())
     }
     fn send(self: &Rc<Self>, bytes: &[u8]) -> Result<(), PtyError> {
+        if self.options.mode == RunMode::Shadow || self.closed.get() {
+            return Err(PtyError::Io("terminal is read-only or closed".into()));
+        }
         let mut m = self.model.borrow_mut();
         let Some(p) = m.pty.as_mut() else {
             return Err(PtyError::Io("PTY not attached".into()));
@@ -561,6 +594,9 @@ impl Inner {
         Ok(())
     }
     fn send_event(self: &Rc<Self>, bytes: &[u8]) {
+        if self.options.mode == RunMode::Shadow || self.closed.get() {
+            return;
+        }
         if let Err(error) = self.send(bytes) {
             let message = format!("terminal input: {error:?}");
             if let Some(callback) = &self.options.on_title {
@@ -677,7 +713,7 @@ impl Inner {
         {
             delay = delay.min(paint);
         }
-        if m.pty.is_none() {
+        if self.options.mode != RunMode::Shadow && m.pty.is_none() {
             let at = m.respawn_at.or_else(|| m.settle.next_check_ms(now));
             if let Some(at) = at {
                 delay = delay.min(at.saturating_sub(now));
@@ -710,7 +746,8 @@ impl Inner {
     fn tick(self: &Rc<Self>) {
         let now = self.ms();
         let mut m = self.model.borrow_mut();
-        let spawn = m.respawn.may_start()
+        let spawn = self.options.mode != RunMode::Shadow
+            && m.respawn.may_start()
             && m.pty.is_none()
             && (m.respawn_at.is_some_and(|at| now >= at)
                 || (m.respawn_at.is_none() && m.settle.due(now)));
@@ -758,6 +795,7 @@ impl Inner {
             }
             m = self.model.borrow_mut();
         }
+        self.poll_shadow(&mut m, now);
         m.engine.tick(Instant::now());
         let mut lines = Vec::new();
         m.engine.take_dirty(&mut lines);
@@ -797,6 +835,43 @@ impl Inner {
                 (&self.options.on_ssh_scroll, self.options.session.as_deref())
         {
             callback(session, delta, col, row);
+        }
+    }
+    fn poll_shadow(&self, m: &mut Model, now: u64) {
+        if self.options.mode == RunMode::Shadow {
+            let mapped = self.area.is_mapped();
+            let selecting = m.selection.is_some();
+            let frame = if let Some(reader) = &mut m.shadow {
+                reader.set_visible(mapped && !selecting);
+                reader.take()
+            } else {
+                None
+            };
+            if let Some(Err(_)) = &frame {
+                self.area.set_tooltip_text(Some(
+                    "Read-only snapshot unavailable; showing the last captured frame",
+                ));
+            }
+            if let Some(Ok(frame)) = frame {
+                self.area.set_tooltip_text(Some("Read-only snapshot"));
+                if m.shadow_frame.as_ref() != Some(&frame) {
+                    let px = (
+                        m.geom.cell_w.round().max(1.) as u16,
+                        m.geom.cell_h.round().max(1.) as u16,
+                    );
+                    m.engine.resize(frame.cols, frame.rows, px);
+                    m.engine.feed(&frame.bytes, Instant::now());
+                    // A captured audit frame never sends engine replies or OSC callbacks.
+                    m.engine.drain();
+                    m.shadow_frame = Some(frame);
+                }
+            }
+            if now >= m.shadow_at {
+                if let Some(reader) = &mut m.shadow {
+                    reader.request();
+                }
+                m.shadow_at = now.saturating_add(super::shadow::REFRESH_MS);
+            }
         }
     }
     fn forward_key(self: &Rc<Self>, event: &gdk::EventKey) -> glib::Propagation {
@@ -869,6 +944,7 @@ impl Drop for Inner {
             }
         }
         self.model.get_mut().pty.take();
+        self.model.get_mut().shadow.take();
     }
 }
 
@@ -900,6 +976,7 @@ fn connect_events(inner: &Rc<Inner>) {
                 }
             }
             inner.model.borrow_mut().pty.take();
+            inner.model.borrow_mut().shadow.take();
         }
     });
     let weak = Rc::downgrade(inner);
@@ -991,6 +1068,9 @@ fn connect_events(inner: &Rc<Inner>) {
     inner.area.connect_unmap(move |_| {
         if let Some(inner) = weak.upgrade().filter(|inner| !inner.closed.get()) {
             inner.model.borrow_mut().schedule.reset_queued_paint();
+            if let Some(reader) = &mut inner.model.borrow_mut().shadow {
+                reader.set_visible(false);
+            }
             inner.arm();
         }
     });
@@ -1287,7 +1367,11 @@ fn connect_events(inner: &Rc<Inner>) {
             .session
             .as_deref()
             .is_some_and(|s| s.starts_with("ssh-") || s.starts_with("sshtab-"));
-        if ssh && m.selection.is_none() && inner.options.on_ssh_scroll.is_some() {
+        if inner.options.mode != RunMode::Shadow
+            && ssh
+            && m.selection.is_none()
+            && inner.options.on_ssh_scroll.is_some()
+        {
             m.ssh_delta = (m.ssh_delta + amount).clamp(-24., 24.);
             m.ssh_point = (col, row);
             if m.ssh_at.is_none() {

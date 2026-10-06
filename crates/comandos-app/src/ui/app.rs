@@ -884,6 +884,7 @@ impl App {
                 vec![]
             },
             tmux_size: None,
+            shadow_tmux: (self.cfg.mode() == RunMode::Shadow).then(|| self.tmux.clone()),
             before_spawn: None,
             on_title: None,
             on_exit: Some(Rc::new(move |_| {

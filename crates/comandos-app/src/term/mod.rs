@@ -11,3 +11,5 @@ pub mod schedule;
 
 pub mod lifecycle;
 pub mod view;
+
+pub mod shadow;
