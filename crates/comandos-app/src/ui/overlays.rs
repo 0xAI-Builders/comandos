@@ -171,9 +171,18 @@ pub fn read_geometry_when(
     }
     let socket = tmux.socket().to_path_buf();
     let target = format!("={session}");
+    // tmux 3.2a can crash when session_created uses a bare session target
+    // before any client attaches. Provide its explicit current window context.
+    let identity_target = format!("={session}:");
     let identity_format = "#{pid}|#{session_id}|#{session_created}|#{session_name}";
     let pin = tmux
-        .read(&["display-message", "-p", "-t", &target, identity_format])
+        .read(&[
+            "display-message",
+            "-p",
+            "-t",
+            &identity_target,
+            identity_format,
+        ])
         .map_err(|_| "Session unavailable".to_string())?;
     let fields = pin.stdout.trim().split('|').collect::<Vec<_>>();
     if !pin.ok()
@@ -201,7 +210,13 @@ pub fn read_geometry_when(
         return Err("Pane geometry cancelled".into());
     }
     let now = tmux
-        .read(&["display-message", "-p", "-t", &target, identity_format])
+        .read(&[
+            "display-message",
+            "-p",
+            "-t",
+            &identity_target,
+            identity_format,
+        ])
         .map_err(|_| "Session unavailable".to_string())?;
     if !now.ok() || pin.stdout.trim() != now.stdout.trim() || !allowed() || tmux.socket() != socket
     {
