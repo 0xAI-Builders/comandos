@@ -229,6 +229,7 @@ pub enum StartError {
 pub fn limits() -> Limits {
     Limits {
         connections: 256,
+        websockets: 64,
         header_bytes: 64 * 1024,
         buffered_wire_bytes: 20_000_000 + 64 * 1024,
         header_timeout: Duration::from_secs(30),
@@ -341,6 +342,7 @@ pub fn build(
         native: native.clone(),
     });
     let config = Config {
+        websocket: None,
         token,
         asset_exists,
         handler: handler(state),
