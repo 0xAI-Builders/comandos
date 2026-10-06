@@ -14,7 +14,8 @@ use std::{
 fn private(home: &Path) -> Result<(), String> {
     if !home.is_absolute()
         || home == std::env::temp_dir()
-        || !home.starts_with(std::env::temp_dir())
+        || !(home.starts_with(std::env::temp_dir())
+            || (home.starts_with("/tmp") && home != Path::new("/tmp")))
         || !fs::symlink_metadata(home)
             .map_err(|e| e.to_string())?
             .is_dir()
@@ -56,6 +57,7 @@ fn walk(
         let m = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
         let mode = m.permissions().mode() & 0o7777;
         if m.is_dir() {
+            out.insert(key, json!({"kind":"directory","mode":mode}));
             walk(home, &path, roots, out)?;
         } else if m.file_type().is_symlink() {
             let target = fs::read_link(&path).map_err(|e| e.to_string())?;
@@ -165,22 +167,79 @@ pub fn restore_tree(home: &Path, tree: &Value, roots: &[(&str, &Path)]) -> Resul
     private(home)?;
     let tree = tree.as_object().ok_or("árbol de artefactos inválido")?;
     let current = snapshot_tree(home, roots)?;
-    for key in current.as_object().ok_or("árbol actual inválido")?.keys() {
+    let mut old: Vec<_> = current
+        .as_object()
+        .ok_or("árbol actual inválido")?
+        .iter()
+        .collect();
+    old.sort_by_key(|(key, _)| std::cmp::Reverse(key.len()));
+    for (key, value) in old {
         if !tree.contains_key(key) {
-            fs::remove_file(destination(home, key)?).map_err(|e| e.to_string())?;
+            let path = destination(home, key)?;
+            if value.get("kind").and_then(Value::as_str) == Some("directory") {
+                fs::remove_dir(path).map_err(|e| e.to_string())?;
+            } else {
+                fs::remove_file(path).map_err(|e| e.to_string())?;
+            }
         }
     }
+    restore_entries(home, tree, roots)
+}
+pub(crate) fn apply_delta(
+    home: &Path,
+    before: &Value,
+    after: &Value,
+    roots: &[(&str, &Path)],
+) -> Result<(), String> {
+    private(home)?;
+    let before = before.as_object().ok_or("árbol inicial inválido")?;
+    let after = after.as_object().ok_or("árbol final inválido")?;
+    let mut removed: Vec<_> = before
+        .iter()
+        .filter(|(key, _)| !after.contains_key(*key))
+        .collect();
+    removed.sort_by_key(|(key, _)| std::cmp::Reverse(key.len()));
+    for (key, value) in removed {
+        let path = destination(home, key)?;
+        if value.get("kind").and_then(Value::as_str) == Some("directory") {
+            fs::remove_dir(path).map_err(|e| e.to_string())?;
+        } else {
+            fs::remove_file(path).map_err(|e| e.to_string())?;
+        }
+    }
+    let changed = after
+        .iter()
+        .filter(|(key, value)| before.get(*key) != Some(*value))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    restore_entries(home, &changed, roots)
+}
+fn restore_entries(
+    home: &Path,
+    tree: &serde_json::Map<String, Value>,
+    roots: &[(&str, &Path)],
+) -> Result<(), String> {
     for (key, value) in tree {
         let path = destination(home, key)?;
         match fs::symlink_metadata(&path) {
             Ok(m) if m.is_file() || m.file_type().is_symlink() => {
                 fs::remove_file(&path).map_err(|e| e.to_string())?
             }
+            Ok(m)
+                if m.is_dir() && value.get("kind").and_then(Value::as_str) == Some("directory") => {
+            }
             Ok(_) => return Err("destino de artefacto no regular".into()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(e.to_string()),
         }
         match value.get("kind").and_then(Value::as_str) {
+            Some("directory") => {
+                fs::DirBuilder::new()
+                    .mode(0o700)
+                    .recursive(true)
+                    .create(&path)
+                    .map_err(|e| e.to_string())?;
+            }
             Some("symlink") => {
                 let target = value
                     .get("target")

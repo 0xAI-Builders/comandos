@@ -4,6 +4,7 @@ mod parity;
 mod poll;
 mod rss;
 mod state_drill;
+mod test_map;
 mod web;
 
 use std::{io::Write, process::exit};
@@ -32,6 +33,10 @@ fn main() {
     match args.first().map(String::as_str) {
         Some("state-drill") => exit(state_drill::main(&args[1..])),
         Some("rss") => {}
+        Some("test-map") => {
+            let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+            test_map::run(&root).unwrap_or_else(|e| fail(e));
+        }
         Some("parity") => {
             // Falla cerrado: sin namespace de red propio no se lanza el oráculo.
             parity::ensure_isolated().unwrap_or_else(|e| fail(e));

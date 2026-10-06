@@ -180,3 +180,48 @@ pub fn golden_root(manifest_dir: &Path) -> PathBuf {
 }
 mod tree;
 pub use tree::{restore_tree, snapshot_tree};
+
+/// Graba stdout y efectos del HOME privado; replay conserva las aserciones de archivos.
+pub fn text_with_tree_at(
+    root: &Path,
+    name: &str,
+    input: &Value,
+    home: &Path,
+    roots: &[(&str, &Path)],
+    run: impl FnOnce() -> Result<String, String>,
+) -> Result<String, String> {
+    text_with_tree_at_with_mode(root, name, input, home, roots, Mode::environment()?, run)
+}
+pub fn text_with_tree_at_with_mode(
+    root: &Path,
+    name: &str,
+    input: &Value,
+    home: &Path,
+    roots: &[(&str, &Path)],
+    mode: Mode,
+    run: impl FnOnce() -> Result<String, String>,
+) -> Result<String, String> {
+    let before = snapshot_tree(home, roots)?;
+    let input = json!({"case": input, "before_sha256": key(&before)?});
+    let bytes = try_oracle_at_with_mode(root, name, &input, mode, || {
+        let stdout = run()?;
+        let stdout =
+            String::from_utf8(normalize(stdout.as_bytes(), roots)).map_err(|e| e.to_string())?;
+        serde_json::to_vec(&json!({"stdout":stdout,"tree":snapshot_tree(home,roots)?}))
+            .map_err(|e| e.to_string())
+    })?;
+    let artifact: Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    if mode == Mode::Replay {
+        tree::apply_delta(
+            home,
+            &before,
+            artifact.get("tree").ok_or("dorado sin árbol")?,
+            roots,
+        )?;
+    }
+    let stdout = artifact
+        .get("stdout")
+        .and_then(Value::as_str)
+        .ok_or("dorado sin stdout")?;
+    String::from_utf8(restore(stdout.as_bytes(), roots)).map_err(|e| e.to_string())
+}

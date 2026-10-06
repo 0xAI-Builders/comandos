@@ -94,6 +94,7 @@ fn snapshots_replay_files_symlinks_and_sqlite_without_corrupting_path_lengths() 
     )
     .unwrap();
     drop(c);
+    fs::create_dir(home.join("empty")).unwrap();
     let tree = comandos_oracle::snapshot_tree(&home, &[("<HOME>", &home)]).unwrap();
     fs::write(home.join("state.json"), b"changed").unwrap();
     let replay = f.0.join("a-longer-replay-home");
@@ -104,6 +105,7 @@ fn snapshots_replay_files_symlinks_and_sqlite_without_corrupting_path_lengths() 
             .unwrap()
             .contains(replay.to_str().unwrap())
     );
+    assert!(replay.join("empty").is_dir());
     let c = rusqlite::Connection::open(replay.join("state.sqlite")).unwrap();
     assert_eq!(
         c.query_row("SELECT value FROM records", [], |r| r.get::<_, String>(0))
@@ -118,5 +120,52 @@ fn snapshots_replay_files_symlinks_and_sqlite_without_corrupting_path_lengths() 
     assert_eq!(
         fs::read_link(replay.join("link")).unwrap(),
         std::path::Path::new("state.json")
+    );
+}
+#[test]
+fn replay_applies_only_oracle_changes_and_keeps_unchanged_sqlite_inode() {
+    use std::os::unix::fs::MetadataExt;
+    let f = Fixture::new();
+    let golden = f.0.join("golden");
+    let home = f.0.join("record-home");
+    let replay = f.0.join("longer-replay-home");
+    for h in [&home, &replay] {
+        fs::create_dir(h).unwrap();
+        let c = rusqlite::Connection::open(h.join("native.sqlite")).unwrap();
+        c.execute_batch("CREATE TABLE x(value TEXT);INSERT INTO x VALUES('native')")
+            .unwrap();
+        fs::write(h.join("deleted"), "old").unwrap();
+    }
+    comandos_oracle::text_with_tree_at_with_mode(
+        &golden,
+        "delta",
+        &json!({}),
+        &home,
+        &[("<HOME>", &home)],
+        Mode::Record,
+        || {
+            fs::remove_file(home.join("deleted")).unwrap();
+            fs::write(home.join("created"), home.to_string_lossy().as_bytes()).unwrap();
+            Ok(home.display().to_string())
+        },
+    )
+    .unwrap();
+    let inode = fs::metadata(replay.join("native.sqlite")).unwrap().ino();
+    let result = comandos_oracle::text_with_tree_at_with_mode(
+        &golden,
+        "delta",
+        &json!({}),
+        &replay,
+        &[("<HOME>", &replay)],
+        Mode::Replay,
+        || panic!("Python must never execute"),
+    )
+    .unwrap();
+    assert_eq!(result, replay.display().to_string());
+    assert_eq!(fs::read_to_string(replay.join("created")).unwrap(), result);
+    assert!(!replay.join("deleted").exists());
+    assert_eq!(
+        fs::metadata(replay.join("native.sqlite")).unwrap().ino(),
+        inode
     );
 }
