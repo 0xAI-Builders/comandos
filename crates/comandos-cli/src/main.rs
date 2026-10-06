@@ -27,12 +27,13 @@ fn main() {
         }),
         Command::Hook(args) => comandos_runtime::hooks::run(&args),
         Command::Dash(args) => comandos_server::dash::main(&args),
+        Command::Browser(args) => comandos_cli::browser::run(&args),
         Command::Version => {
             println!("comandos {}", env!("CARGO_PKG_VERSION"));
             0
         }
         Command::Help => {
-            println!("uso: comandos <ext|hook|events|install|dash|--version>");
+            println!("uso: comandos <ext|hook|events|install|dash|browser|--version>");
             0
         }
         Command::Unknown(w) => {

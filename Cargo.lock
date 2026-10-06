@@ -270,6 +270,8 @@ dependencies = [
  "comandos-extensions",
  "comandos-runtime",
  "comandos-server",
+ "nix",
+ "serde_json",
  "sha2",
 ]
 
