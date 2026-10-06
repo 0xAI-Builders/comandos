@@ -38,7 +38,13 @@ pub struct Component {
 }
 
 /// Componentes que este WASM sabe montar. Crece con cada port (B4…B13).
-pub const COMPONENTS: &[Component] = &[];
+pub const COMPONENTS: &[Component] = &[
+    Component {
+        id: "ui-sounds",
+        mount: crate::components::ui_sounds::mount,
+        attach: None,
+    }
+];
 
 /// Error de un id que la página pide y este WASM no tiene.
 pub const UNKNOWN: &str = "componente desconocido en este WASM";

@@ -54,5 +54,9 @@
 
 pub mod registry;
 
+pub mod components {
+    pub mod ui_sounds;
+}
+
 #[cfg(target_arch = "wasm32")]
 pub use registry::boot;

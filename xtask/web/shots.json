@@ -1,0 +1,8 @@
+{
+  "suites": [
+    "boot",
+    "settings-sounds",
+    "push-settings",
+    "session-config"
+  ]
+}

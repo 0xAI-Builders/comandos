@@ -1,0 +1,55 @@
+{
+  "base": "http://127.0.0.1:7307",
+  "status": "deferred",
+  "reason": "audio-diff needs chrome-bg/macmini runtime; local browser execution is forbidden in this worktree",
+  "cues": [
+    {
+      "cue": "open",
+      "max_abs_diff": null,
+      "same_duration": null,
+      "status": "requires chrome-bg fixture evaluation"
+    },
+    {
+      "cue": "close",
+      "max_abs_diff": null,
+      "same_duration": null,
+      "status": "requires chrome-bg fixture evaluation"
+    },
+    {
+      "cue": "complete",
+      "max_abs_diff": null,
+      "same_duration": null,
+      "status": "requires chrome-bg fixture evaluation"
+    },
+    {
+      "cue": "success",
+      "max_abs_diff": null,
+      "same_duration": null,
+      "status": "requires chrome-bg fixture evaluation"
+    },
+    {
+      "cue": "level-up",
+      "max_abs_diff": null,
+      "same_duration": null,
+      "status": "requires chrome-bg fixture evaluation"
+    },
+    {
+      "cue": "notification",
+      "max_abs_diff": null,
+      "same_duration": null,
+      "status": "requires chrome-bg fixture evaluation"
+    },
+    {
+      "cue": "error",
+      "max_abs_diff": null,
+      "same_duration": null,
+      "status": "requires chrome-bg fixture evaluation"
+    },
+    {
+      "cue": "warning",
+      "max_abs_diff": null,
+      "same_duration": null,
+      "status": "requires chrome-bg fixture evaluation"
+    }
+  ]
+}

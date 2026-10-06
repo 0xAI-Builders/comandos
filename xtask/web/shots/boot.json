@@ -1,0 +1,13 @@
+[
+  {
+    "id": "boot",
+    "page": "/sounds/index.html",
+    "widths": [1400, 390],
+    "dpr": [1, 2],
+    "touch": false,
+    "selectors": ["body"],
+    "mask": [],
+    "channel": 24,
+    "ratio": 0.001
+  }
+]
