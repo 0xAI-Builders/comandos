@@ -28,6 +28,8 @@ chrono = "0.4"
 nix = { version = "0.31", features = ["signal", "process", "user", "fs", "resource"] }
 
 [dev-dependencies]
+rustls = "=0.23.45"
+tokio-rustls = "=0.26.6"
 comandos-oracle = { path = "../comandos-oracle" }
 # Upstream MCP falso de las pruebas de paridad; ya entran por reqwest, aquí solo
 # se habilita la parte servidor.
@@ -42,3 +44,8 @@ rustix = { version = "=1.1.5", features = ["fs"] }
 
 [lints]
 workspace = true
+
+[[test]]
+name = "native_o2"
+path = "tests/native_o2.rs"
+harness = false

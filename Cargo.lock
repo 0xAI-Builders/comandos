@@ -503,11 +503,13 @@ dependencies = [
  "reqwest",
  "rustc-hash",
  "rustix",
+ "rustls",
  "serde",
  "serde_json",
  "sha2",
  "tiktoken-rs",
  "tokio",
+ "tokio-rustls",
  "toml_edit 0.25.15+spec-1.1.0",
  "toml_parser",
  "url",
@@ -2916,6 +2918,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
 dependencies = [
  "aws-lc-rs",
+ "log",
  "once_cell",
  "rustls-pki-types",
  "rustls-webpki",
