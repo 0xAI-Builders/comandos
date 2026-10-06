@@ -1,5 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 use comandos_app::ui::header::{HEADER_ACTIONS, badge_text, tween};
+#[path = "support/header_models_oracle.rs"]
+mod header_original;
 #[test]
 fn all_original_header_actions_keep_their_owners() {
     assert_eq!(
@@ -27,10 +29,7 @@ fn exact_owned_callbacks_keep_guards_generations_and_window_ownership() {
 }
 
 fn compare_original_header(native: &serde_json::Value) {
-    use comandos_app::{
-        proc::{ProcSpec, run},
-        theme::{button_style_css, desktop_theme, header_css, themes_from_file},
-    };
+    use comandos_app::theme::{button_style_css, desktop_theme, header_css, themes_from_file};
     use serde_json::json;
     let script = r#"import ast,json,sys,os,types
 import gi
@@ -63,26 +62,7 @@ out['tween']=values;out['done']=done
 visible=[];scripts=[];ns['nb']=types.SimpleNamespace(set_visible=visible.append);ns['wv']=types.SimpleNamespace(run_javascript=lambda script,*args:scripts.append(script));ns['_open_wizard']();out['wizard']=[visible,scripts]
 print(json.dumps(out))
 "#;
-    let path = std::env::var("COMANDOS_CC_APP_ORACLE")
-        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../bin/cc-app").into());
-    let out = run(&ProcSpec {
-        program: "/usr/bin/python3".into(),
-        args: vec!["-c".into(), script.into(), path.into()],
-        stdin: None,
-        env: vec![],
-        clear_env: false,
-        env_remove: vec![],
-        cwd: None,
-        timeout: std::time::Duration::from_secs(15),
-    })
-    .unwrap();
-    assert_eq!(
-        out.code,
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let expected: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let expected = header_original::oracle(script);
     assert_eq!(json!(HEADER_ACTIONS), expected["actions"]);
     let rasters = native["rasters"].as_array().unwrap();
     assert_eq!(rasters.len(), 504);

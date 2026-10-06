@@ -1,0 +1,69 @@
+{
+  "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+  "source_git_path": "bin/cc-app",
+  "source_sha256": "1b535bc6f4463959cc3ab992fa5a4ab859fbdaec43fcf628123cfede68b4ca6b",
+  "icons": [
+    [
+      "plus",
+      "3dbae7b965cd7f0a11e915d598119a6995c58e12f4fc22f5e45d13012ed09610"
+    ],
+    [
+      "terminal",
+      "ab4f89e7f1d5d91ee5b2f623d2e4315bc29c89c6c7273a0660623ec443f422a2"
+    ],
+    [
+      "arrow-up-down",
+      "a309ef38fee944d8207e2cf454bbe45dd55357d7c10badf4c4fe7584f2405232"
+    ],
+    [
+      "rows",
+      "3cc331676ff68f2b1740834841431e1aeb5c78e01a2ca50ee7b4a768c0d7a3e5"
+    ],
+    [
+      "chevron-left",
+      "2cd702996a1c80b5aa0aee0945077f097f62193d9b3960ee233e2905399371d4"
+    ],
+    [
+      "chevron-right",
+      "b41463133a1153b3c174a93180e96043a96c2920c356e5c9ee9cb80f41d39959"
+    ],
+    [
+      "panel-left",
+      "d10b914e1fd53c0f6740fcdec975a4758e0a93134742b48dc9f29c9d52808f79"
+    ],
+    [
+      "close",
+      "b539936cce2e62742db5807ce003494810900aee9b1010c27047a3e47f7f86c4"
+    ],
+    [
+      "minimize",
+      "3ad613a8ec36c7183ec211dce5ca7d0c0c6502092857405b8cd394a147f72a32"
+    ],
+    [
+      "maximize",
+      "75d9c307026f6de9cb6cc7ac7816f1dc50fe6ac6c5fa36065dabbc6b6a84528a"
+    ],
+    [
+      "timer",
+      "a5d58702028690698c45092cddde40bb6a83a5946c6ef9331adee812e7709785"
+    ],
+    [
+      "bell",
+      "7a4293638b36d5d57441ad5f6c894d97e440fc33b4192d6ca661b209a850dcbb"
+    ],
+    [
+      "settings",
+      "d84eaf051fae371363304d8f8b061e27bd7918c9341f9a86dcba190db3dc48b6"
+    ],
+    [
+      "sparkles",
+      "8267b313f98380b3e00759937fba9101a3f44f8b75c5a961d547fd5db388c6e7"
+    ]
+  ],
+  "rasters": 504,
+  "raster_contract": "9 themes ×14 icons ×4 sizes; theme/name/size/dimensions/exactRGBA bytes preserved",
+  "runtime": "GdkPixbuf2.42.8; unchanged SVG loader; no Gtk module/window/display, Gtk Image factory remains original fixture stub",
+  "case_identity": "frozen source+14iconSHA256s and unchanged reference script SHA256",
+  "effects": "original stdout plus central private HOME tree",
+  "default_mode": "replay; source/assets/git/Python read or executed only for explicit record/check"
+}
