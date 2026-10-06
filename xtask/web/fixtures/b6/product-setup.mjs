@@ -25,7 +25,12 @@ export async function prepareB6(){
   ComandosPomodoro.ui.client.accept(snap,T0);ComandosPomodoro.ui.state.seenCompletion=null;ComandosPomodoro.ui.state.banner='';ComandosPomodoro.ui.state.mode='focus';ComandosPomodoro.ui.state.rulerPreview=null;ComandosPomodoro.ui.state.flipAt=null;
   const panel=document.querySelector('#pomo-panel');if(!panel.classList.contains('hidden'))panel.classList.add('hidden');document.querySelector('#btn-pomo').click();ComandosPomodoro.ui.render();
   if(kind==='idle'){ComandosPomodoro.ui.setMinutes(45,false);if(requests.some(r=>r.body?.action==='start'))throw new Error('Pomodoro automatically started');}
-  if(q.has('__negative')&&q.get('web')!=='off')panel.querySelector('#pp-go').remove();
+  if(q.has('__negative')&&q.get('web')!=='off'){
+   // Product polling renders again while captures settle. Keep this deliberate
+   // loss of the critical button visible through every subsequent render.
+   const failure=document.createElement('style');failure.dataset.b6Negative='persistent-control-loss';
+   failure.textContent='#pomo-panel #pp-go{visibility:hidden!important}';document.head.append(failure);
+  }
   productApiCalls.push('actual server snapshot/client.accept + product panel button + ui.render');
   window.productProof={consumer:'original Pomodoro panel and actual client/render/handlers',status:ComandosPomodoro.ui.client.view().status,remaining:ComandosPomodoro.ui.client.view().remainingMs,mode:ComandosPomodoro.ui.state.mode,actions:requests.filter(r=>r.body?.action)};
   if(done&&productProof.mode!=='break')throw new Error('Completion did not suggest manual break');if(productProof.actions.length)throw new Error('Rendering initiated an automatic block');
@@ -58,5 +63,9 @@ export async function prepareB6(){
  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
  productProof.captureAssets=assets;
  productProof.captureClock={now:T0,frame:clockFrame,stableSamples:stable,animations:document.getAnimations().map(a=>({name:a.animationName||null,state:a.playState,time:a.currentTime}))};
+ if(q.has('__negative')&&q.get('web')!=='off'&&kind!=='marks'){
+  const control=document.querySelector('#pp-go');
+  productProof.negative={selector:'#pp-go',visibility:control?getComputedStyle(control).visibility:'absent',persistent:true};
+ }
  return productProof;
 }
