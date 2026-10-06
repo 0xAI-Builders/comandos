@@ -610,6 +610,9 @@ pub const REAL_TOOLS: &[&str] = &[
     "clear",
     "which",
     "python3",
+    // The Python 3.10 oracle delegates TOML decoding to its installed 3.11
+    // interpreter. It still inherits the confined HOME and executable path.
+    "python3.11",
     "fc-list",
     "qrencode",
     "ssh-keygen",

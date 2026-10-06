@@ -7,3 +7,5 @@
 {"name":"o-session-profiles-get","method":"GET","path":"/session-profiles?harness=shell","headers":{"Host":"127.0.0.1"},"volatile":[],"expect":"same"}
 {"name":"o-session-profile-apply-inexistente","method":"POST","path":"/session-profile-apply","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"profileId":"nadie"},"volatile":[],"expect":"same"}
 {"name":"o-session-profiles-post-invalido","method":"POST","path":"/session-profiles","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"name":""},"volatile":[],"expect":"same"}
+{"name":"o-pane-extensions-sin-pane","method":"GET","path":"/pane-extensions?session=s","headers":{"Host":"127.0.0.1"},"volatile":[],"expect":"same"}
+{"name":"o-pane-extensions-campos","method":"POST","path":"/pane-extensions","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"unexpected":true},"volatile":[],"expect":"same"}

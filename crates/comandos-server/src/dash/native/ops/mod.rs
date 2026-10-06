@@ -1,5 +1,6 @@
 //! Corte ops: configuración del pane exacto y resultados durables.
 pub mod configure;
+pub mod extensions;
 pub mod profiles;
 pub mod results;
 
@@ -17,6 +18,8 @@ pub enum OpsRoute {
     ProfilesGet,
     ProfilesPost,
     ProfileApply,
+    ExtensionsGet,
+    ExtensionsWrite(extensions::Action),
 }
 impl OpsRoute {
     pub const fn path(self) -> &'static str {
@@ -26,17 +29,29 @@ impl OpsRoute {
             Self::ModelSwitch => "/model/switch",
             Self::ProfilesGet | Self::ProfilesPost => "/session-profiles",
             Self::ProfileApply => "/session-profile-apply",
+            Self::ExtensionsGet => "/pane-extensions",
+            Self::ExtensionsWrite(action) => action.path(),
         }
     }
 }
 const fn entry(route: OpsRoute) -> Entry {
     Entry {
         verb: Verb::Post,
-        key: Key::Path(route.path()),
+        key: Key::Raw(route.path()),
         route: NativeRoute::Ops(route),
     }
 }
 pub const ROUTES: &[Entry] = &[
+    Entry {
+        verb: Verb::Get,
+        key: Key::Prefix("/pane-extensions"),
+        route: NativeRoute::Ops(OpsRoute::ExtensionsGet),
+    },
+    entry(OpsRoute::ExtensionsWrite(extensions::Action::Save)),
+    entry(OpsRoute::ExtensionsWrite(extensions::Action::Apply)),
+    entry(OpsRoute::ExtensionsWrite(extensions::Action::Template)),
+    entry(OpsRoute::ExtensionsWrite(extensions::Action::Cancel)),
+    entry(OpsRoute::ExtensionsWrite(extensions::Action::Recover)),
     entry(OpsRoute::SessionConfigure),
     entry(OpsRoute::AccountSwitch),
     entry(OpsRoute::ModelSwitch),
@@ -98,6 +113,12 @@ pub async fn answer(native: &Arc<Native>, route: OpsRoute, request: &Request) ->
         OpsRoute::ProfilesGet | OpsRoute::ProfilesPost | OpsRoute::ProfileApply
     ) {
         return profiles::answer(native, route, request).await;
+    }
+    if matches!(
+        route,
+        OpsRoute::ExtensionsGet | OpsRoute::ExtensionsWrite(_)
+    ) {
+        return extensions::answer(native, route, request).await;
     }
     let data = light::data(request)?.clone();
     // El task guard mantiene vivo el trabajo si el cliente cierra la conexión.
