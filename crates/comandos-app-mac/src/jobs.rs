@@ -7,6 +7,8 @@ use crate::{
 use comandos_desktop::{Lang, dash_client::DashClient, proc::ProcOutput};
 use serde_json::{Value, json};
 use std::{
+    cell::RefCell,
+    collections::VecDeque,
     io::Read,
     sync::{
         Arc,
@@ -352,6 +354,34 @@ pub struct Jobs {
     stop: Arc<AtomicBool>,
     notified: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
+    admission: RefCell<Admission>,
+}
+/// Main-thread overflow retains the same 128 actions accepted by App during
+/// restore. A separate, coalesced save slot cannot be displaced by that burst.
+#[derive(Default)]
+struct Admission {
+    tasks: VecDeque<(Ticket, Task)>,
+    save: Option<(Ticket, Task)>,
+}
+fn work_current(ticket: &Ticket, task: &Task) -> bool {
+    ticket.current()
+        && match task {
+            Task::Scoped { operation, .. } => operation.current(),
+            _ => true,
+        }
+}
+impl Admission {
+    fn prune(&mut self) {
+        self.tasks
+            .retain(|(ticket, task)| work_current(ticket, task));
+        if self
+            .save
+            .as_ref()
+            .is_some_and(|(ticket, task)| !work_current(ticket, task))
+        {
+            self.save.take();
+        }
+    }
 }
 impl Jobs {
     pub fn new(
@@ -370,6 +400,11 @@ impl Jobs {
             .spawn(move || {
                 let mut poll: Option<Ticket> = None;
                 let mut next_poll = Instant::now() + Duration::from_secs(3);
+                let signal = || {
+                    if !pending.swap(true, Ordering::AcqRel) {
+                        notify();
+                    }
+                };
                 let publish = |mut delivery: Delivery| {
                     loop {
                         if flag.load(Ordering::Acquire) || !delivery.ticket.current() {
@@ -384,9 +419,7 @@ impl Jobs {
                             Err(mpsc::TrySendError::Disconnected(_)) => return,
                         }
                     }
-                    if !pending.swap(true, Ordering::AcqRel) {
-                        notify();
-                    }
+                    signal();
                 };
                 while !flag.load(Ordering::Acquire) {
                     if poll.as_ref().is_some_and(Ticket::current) && Instant::now() >= next_poll {
@@ -412,6 +445,9 @@ impl Jobs {
                         Err(mpsc::RecvTimeoutError::Timeout) => continue,
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
                     };
+                    // Even a cancelled request frees an admission slot. Wake main
+                    // to refill it without waiting for a result that may not exist.
+                    signal();
                     if !ticket.current() {
                         continue;
                     }
@@ -431,7 +467,58 @@ impl Jobs {
             stop,
             notified,
             worker: Some(worker),
+            admission: RefCell::new(Admission::default()),
         })
+    }
+    /// Accept UI work without blocking AppKit when the eight-slot worker channel
+    /// is full. Call drain on notifications to retry bounded pending work.
+    pub fn enqueue(&self, ticket: Ticket, task: Task) -> Result<(), String> {
+        if self.sender.is_none() {
+            return Err("worker cerrado".into());
+        }
+        {
+            let mut admission = self.admission.borrow_mut();
+            admission.prune();
+            if matches!(&task, Task::Scoped { key, .. } if key == "\0save") {
+                admission.save = Some((ticket, task));
+            } else {
+                if admission.tasks.len() >= 128 {
+                    return Err("cola de operaciones llena".into());
+                }
+                admission.tasks.push_back((ticket, task));
+            }
+        }
+        self.flush()
+    }
+    fn flush(&self) -> Result<(), String> {
+        let sender = self.sender.as_ref().ok_or("worker cerrado")?;
+        let mut admission = self.admission.borrow_mut();
+        admission.prune();
+        loop {
+            let is_save = admission.tasks.is_empty();
+            let Some(work) = (if is_save {
+                admission.save.take()
+            } else {
+                admission.tasks.pop_front()
+            }) else {
+                return Ok(());
+            };
+            match sender.try_send(work) {
+                Ok(()) => {}
+                Err(mpsc::TrySendError::Full(work)) => {
+                    if is_save {
+                        admission.save = Some(work);
+                    } else {
+                        admission.tasks.push_front(work);
+                    }
+                    return Ok(());
+                }
+                Err(mpsc::TrySendError::Disconnected(_)) => {
+                    *admission = Admission::default();
+                    return Err("worker cerrado".into());
+                }
+            }
+        }
     }
     pub fn submit(&self, ticket: Ticket, task: Task) -> Result<(), String> {
         self.sender
@@ -442,12 +529,15 @@ impl Jobs {
     }
     pub fn drain(&self) -> Vec<Delivery> {
         self.notified.store(false, Ordering::Release);
-        self.receiver.try_iter().collect()
+        let deliveries = self.receiver.try_iter().collect();
+        let _ = self.flush();
+        deliveries
     }
     pub fn close(&mut self) {
         self.stop.store(true, Ordering::Release);
         self.backend.cancel();
         self.sender.take();
+        *self.admission.borrow_mut() = Admission::default();
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
@@ -1060,7 +1150,10 @@ fn close_work(backend: &dyn Backend, tab: &crate::app::Tab, ticket: &Ticket) -> 
         && identity()?.as_ref() == Some(&pinned)
     {
         check(ticket)?;
-        backend.tmux(&["kill-session", "-t", &target], &|| ticket.current())?;
+        // Session names can be reused between the identity check and this call.
+        // The captured tmux ID remains unique for this server's lifetime.
+        let session_id = pinned.split('|').nth(1).ok_or("invalid session identity")?;
+        backend.tmux(&["kill-session", "-t", session_id], &|| ticket.current())?;
         check(ticket)?;
     }
     Ok(())

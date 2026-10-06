@@ -22,6 +22,8 @@ struct Fake {
     swapped: bool,
     identity: Mutex<u32>,
     commands: String,
+    swap_after_check: bool,
+    identity_reads: Mutex<u32>,
 }
 impl Fake {
     fn new() -> Self {
@@ -33,6 +35,8 @@ impl Fake {
             swapped: false,
             identity: Mutex::new(1),
             commands: "zsh\nbash\n".into(),
+            swap_after_check: false,
+            identity_reads: Mutex::new(0),
         }
     }
 }
@@ -82,7 +86,13 @@ impl Backend for Fake {
                 String::new()
             }
             "display-message" if args.last().unwrap().starts_with("#{pid}") => {
-                format!("991|${}|3|{}", self.identity.lock().unwrap(), session)
+                let mut reads = self.identity_reads.lock().unwrap();
+                *reads += 1;
+                let result = format!("991|${}|3|{}", self.identity.lock().unwrap(), session);
+                if self.swap_after_check && *reads == 2 {
+                    *self.identity.lock().unwrap() = 2;
+                }
+                result
             }
             "display-message" if args.last() == Some(&"#{pane_current_path}") => "/own/cwd".into(),
             "display-message" => "node".into(),
@@ -100,6 +110,40 @@ impl Backend for Fake {
         self.calls.lock().unwrap().push(json!(["archive", item]));
         Ok(())
     }
+}
+#[test]
+fn replacement_after_last_identity_check_is_never_targeted_by_name() {
+    let mut fake = Fake::new();
+    fake.swap_after_check = true;
+    let fake = Arc::new(fake);
+    let mut model = App::new("noche", Lang::En);
+    let ticket = model.ticket();
+    model.finish_boot(&ticket, "owned");
+    model.add_tab("term-own", "Own", "term-own", false).unwrap();
+    model.set_metadata(
+        "term-own",
+        Some(TabMeta {
+            kind: TabKind::Scratch,
+            host: None,
+            cwd: None,
+        }),
+    );
+    execute(
+        fake.clone(),
+        Task::ArchiveClose {
+            tab: model.tabs()[0].clone(),
+        },
+    );
+    assert_eq!(*fake.identity.lock().unwrap(), 2);
+    let calls = fake.calls.lock().unwrap();
+    let kill = calls
+        .iter()
+        .find(|v| v[0] == "tmux" && v[1][0] == "kill-session")
+        .unwrap();
+    assert_eq!(
+        kill[1][2], "$1",
+        "the replacement named term-own is $2 and must survive"
+    );
 }
 fn execute(fake: Arc<Fake>, task: Task) -> ResultData {
     let model = App::new("noche", Lang::En);

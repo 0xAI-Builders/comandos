@@ -244,7 +244,7 @@ impl Native {
             return;
         }
         if let Some(jobs) = &self.jobs
-            && let Err(error) = jobs.submit(self.model.ticket(), task)
+            && let Err(error) = jobs.enqueue(self.model.ticket(), task)
         {
             eprintln!("ComandOS: {error}");
         }
@@ -321,7 +321,7 @@ impl Native {
             .as_ref()
             .ok_or_else(|| "worker unavailable".to_string())
             .and_then(|jobs| {
-                jobs.submit(
+                jobs.enqueue(
                     self.model.ticket(),
                     Task::Scoped {
                         key: key.into(),
