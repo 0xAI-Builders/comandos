@@ -186,6 +186,35 @@ where
                             skip_lf,
                         });
                     }
+                    if byte == 3 {
+                        send(sink, proto::output(b"^C\r\n"), stop).await?;
+                        return Err(io::Error::new(
+                            io::ErrorKind::Interrupted,
+                            "selector interrupted",
+                        ));
+                    }
+                    if matches!(byte, 21 | 23) {
+                        let old_len = digits.len();
+                        if byte == 21 {
+                            digits.clear();
+                        } else {
+                            while digits.last().is_some_and(u8::is_ascii_whitespace) {
+                                digits.pop();
+                            }
+                            while digits.last().is_some_and(|b| !b.is_ascii_whitespace()) {
+                                digits.pop();
+                            }
+                        }
+                        if old_len > digits.len() {
+                            send(
+                                sink,
+                                proto::output(&b"\x08 \x08".repeat(old_len - digits.len())),
+                                stop,
+                            )
+                            .await?;
+                        }
+                        continue;
+                    }
                     if matches!(byte, 8 | 127) {
                         if digits.pop().is_some() {
                             send(sink, proto::output(b"\x08 \x08"), stop).await?;
@@ -270,6 +299,17 @@ where
                     let _ = tokio::time::timeout(
                         Duration::from_millis(200),
                         sink.send(Message::Close(Some(frame))),
+                    )
+                    .await;
+                    return Ok(stats);
+                }
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => {
+                    let _ = tokio::time::timeout(
+                        Duration::from_millis(200),
+                        sink.send(Message::Close(Some(CloseFrame {
+                            code: CloseCode::Normal,
+                            reason: "selector interrupted".into(),
+                        }))),
                     )
                     .await;
                     return Ok(stats);

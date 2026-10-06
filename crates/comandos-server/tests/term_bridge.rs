@@ -799,3 +799,89 @@ async fn child_exit_drains_final_pty_bytes_before_close() {
             .child_reaped
     );
 }
+#[tokio::test]
+async fn selector_ctrl_u_ctrl_w_and_ctrl_c_do_not_open_wrong_shell() {
+    for input in [b"099\x151\r".as_slice(), b"01 88\x17\x08\r".as_slice()] {
+        let Some(tmux) = private_tmux::PrivateTmux::start(&["t1"]) else {
+            return;
+        };
+        let (server, mut client) = pair().await;
+        let (_stop, rx) = watch::channel(false);
+        let task = tokio::spawn(run_bridge(
+            server,
+            Dialect::Tty,
+            init(),
+            Source::Pty {
+                target: tmux.target(),
+                session: Some("missing".into()),
+            },
+            BridgeLimits::default(),
+            rx,
+        ));
+        let mut text = String::new();
+        timeout(WAIT, async {
+            while !text.contains("Numero") {
+                text.push_str(&String::from_utf8_lossy(
+                    &client.next().await.unwrap().unwrap().into_data(),
+                ));
+            }
+        })
+        .await
+        .unwrap();
+        client.send(Message::binary(input.to_vec())).await.unwrap();
+        wait_clients(&tmux, 1).await;
+        drop(client);
+        assert!(
+            timeout(WAIT, task)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap()
+                .child_reaped
+        );
+    }
+    let Some(tmux) = private_tmux::PrivateTmux::start(&["t1"]) else {
+        return;
+    };
+    let (server, mut client) = pair().await;
+    let (_stop, rx) = watch::channel(false);
+    let task = tokio::spawn(run_bridge(
+        server,
+        Dialect::Tty,
+        init(),
+        Source::Pty {
+            target: tmux.target(),
+            session: Some("missing".into()),
+        },
+        BridgeLimits::default(),
+        rx,
+    ));
+    let mut text = String::new();
+    timeout(WAIT, async {
+        while !text.contains("Numero") {
+            text.push_str(&String::from_utf8_lossy(
+                &client.next().await.unwrap().unwrap().into_data(),
+            ));
+        }
+    })
+    .await
+    .unwrap();
+    client
+        .send(Message::binary(b"01\x03\rprintf should-not-run\r".to_vec()))
+        .await
+        .unwrap();
+    let close = timeout(WAIT, async {
+        loop {
+            if let Some(Ok(Message::Close(Some(frame)))) = client.next().await {
+                break frame;
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(u16::from(close.code), 1000);
+    let stats = timeout(WAIT, task).await.unwrap().unwrap().unwrap();
+    assert_eq!(stats.child_pid, None);
+    assert_eq!(tmux.clients(), 0);
+    assert!(tmux.tmux(&["has-session", "-t", "=t1"]).status.success());
+}
