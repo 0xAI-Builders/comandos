@@ -392,7 +392,11 @@ pub(super) fn cli(args: &[String]) -> Result<i32> {
     Ok(0)
 }
 pub(super) fn launch(args: &[String]) -> Result<i32> {
-    let artifact = std::env::current_exe().map_err(|e| e.to_string())?;
+    // Darwin may report the invoking symlink. Locate recovery metadata beside
+    // its actual target, then retain the regular-file/hash/manifest checks.
+    let artifact = std::env::current_exe()
+        .and_then(fs::canonicalize)
+        .map_err(|e| e.to_string())?;
     let dir = artifact.parent().ok_or("launcher sin directorio")?;
     let m: Value = serde_json::from_slice(&regular(&dir.join("launcher.json"), 1024 * 1024)?)
         .map_err(|e| e.to_string())?;

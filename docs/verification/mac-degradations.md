@@ -176,3 +176,17 @@ Una prueba nativa adicional consulta sólo grupos creados por el test: líder Z
 y líder Z con descendiente propio vivo. Las comprobaciones cruzadas validan
 compilación; Root debe ejecutar ese caso y el instalador real sobre fixtures
 privadas en el Mac antes de aceptar el gate nativo.
+
+### C5: aliases del launcher en Darwin
+
+El launcher resuelve el destino real de current_exe antes de buscar su
+launcher.json. Esa API puede devolver la ruta del symlink que lo invocó
+([contrato Rust](https://doc.rust-lang.org/std/env/fn.current_exe.html));
+buscar al lado de bin/codex o del wrapper producía missing en el caso nativo.
+La autoridad sigue viniendo de current_exe, nunca de argv[0]. Después se
+conservan las lecturas regulares acotadas, manifiesto v2/tipo/ruta/hash,
+original y rechazo de recursión. El fixture ejecuta entry, wrapper y artefacto
+directo, y comprueba argv literal, cuenta y primer backup. La probe Linux
+extrae la función real y sólo sustituye current_exe por el alias observado:
+RED missing pasa a GREEN sin cambiar lectores ni política. La repetición
+nativa sobre este pin reparado sigue a cargo de Root.

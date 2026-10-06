@@ -204,36 +204,49 @@ fn installed_native_launcher_preserves_origin_accounts_symlinks_and_first_backup
         fs::read(d.join("zshrc.before")).unwrap(),
         b"# untouched\nexport OLD=yes\n"
     );
-    let mut c = Command::new(&entry);
-    c.env_clear();
-    for (k, v) in f.command(&[]).get_envs() {
-        if let Some(v) = v {
-            c.env(k, v);
-        }
-    }
     let account = f.root.join("account literal '");
-    c.env("CODEX_HOME", &account).args([
-        "resume",
-        "sid",
-        "--yolo",
-        "-a",
-        "on-request",
-        "literal '$() 雪",
-    ]);
-    let output = c.output().unwrap();
-    ok(&output);
-    let v: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(v["account"], account.to_str().unwrap());
-    assert_eq!(
-        v["args"],
-        json!([
+    // Execute the actual launcher through both symlink levels and directly.
+    // current_exe differs across Linux/Darwin; argv[0] supplies no authority.
+    for launcher in [
+        entry.clone(),
+        home.join(".local/bin/codex"),
+        d.join("codex-yolo"),
+    ] {
+        let mut c = Command::new(&launcher);
+        c.env_clear();
+        for (k, v) in f.command(&[]).get_envs() {
+            if let Some(v) = v {
+                c.env(k, v);
+            }
+        }
+        c.env("CODEX_HOME", &account).args([
             "resume",
-            "--no-daemon",
-            "--dangerously-bypass-approvals-and-sandbox",
             "sid",
-            "literal '$() 雪"
-        ])
-    );
+            "--yolo",
+            "-a",
+            "on-request",
+            "literal '$() 雪",
+        ]);
+        let output = c.output().unwrap();
+        assert!(
+            output.status.success(),
+            "launcher {}: {}",
+            launcher.display(),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let v: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(v["account"], account.to_str().unwrap());
+        assert_eq!(
+            v["args"],
+            json!([
+                "resume",
+                "--no-daemon",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "sid",
+                "literal '$() 雪"
+            ])
+        );
+    }
     fs::write(&z, format!("{}# later\n", fs::read_to_string(&z).unwrap())).unwrap();
     let second = f.run(&["yolo-install"]);
     ok(&second);
@@ -309,6 +322,7 @@ fn installed_launcher_rejects_tamper_remote_and_unknown_manifest_before_vendor()
         .unwrap();
     assert_eq!(o.status.code(), Some(2));
     assert!(o.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&o.stderr).contains("hash"));
     let o = f.run(&["yolo-install"]);
     assert_eq!(o.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&o.stderr).contains("hash"));
