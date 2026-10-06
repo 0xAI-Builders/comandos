@@ -1,0 +1,127 @@
+{
+  "provenance": "Immutable independent B8 review v2 original CJS + authentic DOMPurify outputs. NUL is the independently identified preexisting difference, preserved and asserted separately; no oracle mutation.",
+  "cases": [
+    {
+      "text": "https://example.org/path_\\(x\\).",
+      "baseline": "<p><a href=\"https://example.org/path_%5C(x%5C)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/path_\\(x\\)</a>.</p>\n"
+    },
+    {
+      "text": "https://example.org/path_\\(x\\). next https://example.org/a_(b)",
+      "baseline": "<p><a href=\"https://example.org/path_%5C(x%5C)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/path_\\(x\\)</a>. next <a href=\"https://example.org/a_(b)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(b)</a></p>\n"
+    },
+    {
+      "text": "plain \\*stars\\* https://example.org/path_\\(x\\). and \\_literal\\_",
+      "baseline": "<p>plain *stars* <a href=\"https://example.org/path_%5C(x%5C)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/path_\\(x\\)</a>. and _literal_</p>\n"
+    },
+    {
+      "text": "**https://example.org/path_\\(x\\)**",
+      "baseline": "<p><strong><a href=\"https://example.org/path_%5C(x%5C)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/path_\\(x\\)</a></strong></p>\n"
+    },
+    {
+      "text": "[explicit](https://example.org/path_\\(x\\)) and `https://example.org/code_\\(x\\)`",
+      "baseline": "<p><a href=\"https://example.org/path_(x)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">explicit</a> and <code>https://example.org/code_\\(x\\)</code></p>\n"
+    },
+    {
+      "text": "<script>\n<strong>safe</strong>\n</script>",
+      "baseline": "<p>&lt;script&gt;\n&lt;strong&gt;safe&lt;/strong&gt;\n&lt;/script&gt;</p>\n"
+    },
+    {
+      "text": "<div>\n- item\n- **next**\n</div>",
+      "baseline": "<p>&lt;div&gt;</p>\n<ul>\n<li>item</li>\n<li><strong>next</strong>\n&lt;/div&gt;</li>\n</ul>\n"
+    },
+    {
+      "text": "<div>\n```\n<code>\n```\n</div>",
+      "baseline": "<p>&lt;div&gt;</p>\n<pre><code>&lt;code&gt;\n</code></pre>\n<p>&lt;/div&gt;</p>\n"
+    },
+    {
+      "text": "\u2045\u2046\u2047\u2048 literal <b>*word*</b>",
+      "baseline": "<p>\u2045\u2046\u2047\u2048 literal &lt;b&gt;<em>word</em>&lt;/b&gt;</p>\n"
+    },
+    {
+      "text": "<b>\u0000\u0001\u001f\u007f</b>",
+      "baseline": "<p>&lt;b&gt;\ufffd\u0001\u001f\u007f&lt;/b&gt;</p>\n",
+      "knownPreexistingNul": true,
+      "knownCandidate": "<p>&lt;b&gt;\u0001\u001f\u007f&lt;/b&gt;</p>\n"
+    },
+    {
+      "text": "<b>&#x2045;</b>",
+      "baseline": "<p>&lt;b&gt;\u2045&lt;/b&gt;</p>\n"
+    },
+    {
+      "text": "<div>\n&#8261;\n</div>",
+      "baseline": "<p>&lt;div&gt;\n\u2045\n&lt;/div&gt;</p>\n"
+    },
+    {
+      "text": "\u2045 literal <b>&#x2045;&#x2046;&#x2046;&#x2046;&#x2046;</b>",
+      "baseline": "<p>\u2045 literal &lt;b&gt;\u2045\u2046\u2046\u2046\u2046&lt;/b&gt;</p>\n"
+    },
+    {
+      "text": "<b>&#x2045;&#x2046;&#x2046;&#x2046;&#x2046;</b>",
+      "baseline": "<p>&lt;b&gt;\u2045\u2046\u2046\u2046\u2046&lt;/b&gt;</p>\n"
+    },
+    {
+      "text": "<b>one</b>\n\n`&#x2045;`",
+      "baseline": "<p>&lt;b&gt;one&lt;/b&gt;</p>\n<p><code>&amp;#x2045;</code></p>\n"
+    },
+    {
+      "text": "<script>\n&#x2045; https://example.org/a_(x)\n</script>",
+      "baseline": "<p>&lt;script&gt;\n\u2045 <a href=\"https://example.org/a_(x)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)</a>\n&lt;/script&gt;</p>\n"
+    },
+    {
+      "text": "<b> <https://example.org/path_(x)> </b>",
+      "baseline": "<p>&lt;b&gt; <a href=\"https://example.org/path_(x)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/path_(x)</a> &lt;/b&gt;</p>\n"
+    },
+    {
+      "text": "~one~ ~~two~~ ~three **four**~",
+      "baseline": "<p>~one~ <s>two</s> ~three <strong>four</strong>~</p>\n"
+    },
+    {
+      "text": "~https://example.org/a_(x)~",
+      "baseline": "<p>~<a href=\"https://example.org/a_(x)~\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)~</a></p>\n"
+    },
+    {
+      "text": "<script>\nhigh\ud800 low\udc00 marker\ue000\udb80\udc00\n</script>",
+      "baseline": "<p>&lt;script&gt;\nhigh\ud800 low\udc00 marker\ue000\udb80\udc00\n&lt;/script&gt;</p>\n"
+    },
+    {
+      "text": "<span title=\"<b>&#x2045;\">**safe**</span>",
+      "baseline": "<p>&lt;span title=\"&lt;b&gt;\u2045\"&gt;<strong>safe</strong>&lt;/span&gt;</p>\n"
+    },
+    {
+      "text": "literal &lt;span&gt; &lt;script&gt; \n\n<b>safe</b>",
+      "baseline": "<p>literal &lt;span&gt; &lt;script&gt;</p>\n<p>&lt;b&gt;safe&lt;/b&gt;</p>\n"
+    },
+    {
+      "text": "<b>*&#x2045;*</b>",
+      "baseline": "<p>&lt;b&gt;<em>\u2045</em>&lt;/b&gt;</p>\n"
+    },
+    {
+      "text": "<b>***x***</b>",
+      "baseline": "<p>&lt;b&gt;<em><strong>x</strong></em>&lt;/b&gt;</p>\n"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x2045;</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x2045;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x2045;</a>&lt;/b&gt;</p>\n"
+    },
+    {
+      "text": "\u2045\u2046\u2046\u2046\u2046 literal\n\u2045\u2046\u2046\u2046\u2047 literal\n<b>x</b>",
+      "baseline": "<p>\u2045\u2046\u2046\u2046\u2046 literal\n\u2045\u2046\u2046\u2046\u2047 literal\n&lt;b&gt;x&lt;/b&gt;</p>\n"
+    },
+    {
+      "text": "[Unicode](HTTPS://\u30e6\u30fc\u30b6\u30fc.example:8080/Path_(x))",
+      "baseline": "<p><a href=\"HTTPS://%E3%83%A6%E3%83%BC%E3%82%B6%E3%83%BC.example:8080/Path_(x)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">Unicode</a></p>\n"
+    },
+    {
+      "text": "<script>\n[explicit](https://example.org/x)\n</script>",
+      "baseline": "<p>&lt;script&gt;\n<a href=\"https://example.org/x\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">explicit</a>\n&lt;/script&gt;</p>\n"
+    },
+    {
+      "text": "<div>\n# title\n\nparagraph\n</div>",
+      "baseline": "<p>&lt;div&gt;</p>\n<h1>title</h1>\n<p>paragraph\n&lt;/div&gt;</p>\n"
+    },
+    {
+      "text": "<!-- <script>\n**safe**\n</script> -->",
+      "baseline": "<p>&lt;!-- &lt;script&gt;\n<strong>safe</strong>\n&lt;/script&gt; --&gt;</p>\n"
+    }
+  ]
+}

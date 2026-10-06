@@ -54,7 +54,7 @@ try{
  const reviewOriginal=original.createRenderer(md,actualPurify);
  const reviewActual=NewsReader.createRenderer(undefined,undefined);
  const reviewPairs=[];
- for(const fixture of ['review-baselines.json','repair-grammar.json']){
+ for(const fixture of ['review-baselines.json','repair-grammar.json','review-v2-baselines.json']){
   const rows=JSON.parse(fs.readFileSync(repo+'/xtask/web/fixtures/b8/'+fixture,'utf8')).cases;
   for(const row of rows){
    assert.equal(reviewOriginal(row.text),row.baseline,'immutable original '+row.text);
@@ -62,15 +62,18 @@ try{
    const template=purifyDOM.window.document.createElement('template');template.innerHTML=candidate;
    assert.equal(template.content.querySelectorAll('img,script,svg,[onerror],[onload]').length,0);
    for(const link of template.content.querySelectorAll('a')){assert.match(link.getAttribute('href'),/^https?:\/\//i);assert.equal(link.target,'_blank');assert.equal(link.rel,'noopener noreferrer nofollow');}
-   reviewPairs.push({id:fixture+':'+reviewPairs.length,text:row.text,baseline:row.baseline,candidate});
+   reviewPairs.push({id:fixture+':'+reviewPairs.length,text:row.text,baseline:row.baseline,candidate,knownPreexistingNul:row.knownPreexistingNul===true});
+   if(row.knownPreexistingNul)assert.equal(candidate,row.knownCandidate,'preexisting NUL remains outside repair');
   }
  }
  const reviewNormalized=spawnSync(executable,['--normalize'],{input:JSON.stringify(reviewPairs),encoding:'utf8',timeout:10000});assert.equal(reviewNormalized.status,0,reviewNormalized.stderr);
- const reviewDifferences=JSON.parse(reviewNormalized.stdout).filter(row=>row.difference);
+ const allReviewDifferences=JSON.parse(reviewNormalized.stdout).filter(row=>row.difference);
+ const knownReviewDifferences=allReviewDifferences.filter(row=>reviewPairs.find(pair=>pair.id===row.id)?.knownPreexistingNul);assert.equal(knownReviewDifferences.length,1,'preexisting NUL calibration');
+ const reviewDifferences=allReviewDifferences.filter(row=>!reviewPairs.find(pair=>pair.id===row.id)?.knownPreexistingNul);
  let alphabet='';for(let u=0xd800;u<=0xdfff;u++)alphabet+='x'+String.fromCharCode(u)+'y';for(let u=0xf0000;u<0xf0800;u++)alphabet+='x\ue000'+String.fromCodePoint(u)+'y';alphabet+='\ue000\ue000\ue000';
  assert.equal(NewsReader.inlineText(alphabet),original.inlineText(alphabet));
  assert.equal((await reviewActual(alphabet)).trim(),'<p>'+original.inlineText(alphabet)+'</p>');reviewActual.dispose();
- const review={actualWasm:artifacts,pairs:reviewPairs,differences:reviewDifferences,utf16:{loneSurrogates:2048,literalSentinelScalars:2048,equal:true},sanitizerNegative:true};
+ const review={actualWasm:artifacts,pairs:reviewPairs,differences:reviewDifferences,knownPreexistingDifferences:knownReviewDifferences,utf16:{loneSurrogates:2048,literalSentinelScalars:2048,equal:true},sanitizerNegative:true};
  fs.writeFileSync(process.env.B8_REVIEW_OUTPUT||temp+'/review-results.json',JSON.stringify(review,null,2));assert.equal(reviewDifferences.length,0,JSON.stringify(reviewDifferences));result.push({name:'independent originals + repair grammar actual WASM, full UTF16 alphabets',equal:true});
  const domResult=await runDOM(repo,original,NewsReader,md,async(path,body)=>{const r=await fetchNative(url+path,{method:'POST',headers:{'X-Comandos-Token':'b8-disposable-fixture','Content-Type':'application/json'},body:JSON.stringify(body)});if(!r.ok)throw new Error('Markdown fixture '+r.status);return r.json();});
  const domPairs=domResult.cases.flatMap(row=>['edition','panel'].map(part=>({id:row.name+' '+part,baseline:row.baselineHTML[part],candidate:row.candidateHTML[part]})));const domNormalized=spawnSync(executable,['--normalize'],{input:JSON.stringify(domPairs),encoding:'utf8',timeout:10000});if(domNormalized.status!==0)throw new Error(domNormalized.stderr);domResult.domDifferences=JSON.parse(domNormalized.stdout).filter(row=>row.difference);

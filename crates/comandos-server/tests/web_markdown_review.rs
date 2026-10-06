@@ -74,3 +74,28 @@ fn additional_original_grammar_preserves_code_links_and_literal_masks() {
     );
     assert!(differences.is_empty(), "{differences:?}");
 }
+
+#[test]
+fn independent_entity_masks_preserve_original_text_and_destinations() {
+    let cases: serde_json::Value =
+        serde_json::from_str(&comandos_web_view::utf16::json_to_unicode(include_str!(
+            "../../../xtask/web/fixtures/b8/review-v2-baselines.json"
+        )))
+        .unwrap();
+    let mut differences = Vec::new();
+    for row in cases["cases"].as_array().unwrap() {
+        let source = row["text"].as_str().unwrap();
+        let candidate = render(source, Profile::News);
+        let difference =
+            comandos_domdiff::first_difference(row["baseline"].as_str().unwrap(), &candidate);
+        if row["knownPreexistingNul"] == true {
+            assert!(difference.is_some(), "preexisting NUL calibration");
+            assert_eq!(candidate, row["knownCandidate"].as_str().unwrap());
+        } else if let Some(difference) = difference {
+            differences.push(
+                serde_json::json!({"text":source,"difference":difference,"candidate":candidate}),
+            );
+        }
+    }
+    assert!(differences.is_empty(), "{differences:?}");
+}
