@@ -32,6 +32,9 @@ regex = "=1.13.1"
 nix = { version = "=0.31.3", default-features = false, features = ["fs", "user"] }
 # Already pinned by comandos-runtime; resolve HTTP redirect references locally.
 url = "=2.5.8"
+# Existing pinned safe APIs: exact-process signals and maintenance cancellation.
+rustix = { version = "=1.1.5", features = ["process"] }
+signal-hook = "=0.4.5"
 
 [dev-dependencies]
 comandos-core = { path = "../comandos-core" }

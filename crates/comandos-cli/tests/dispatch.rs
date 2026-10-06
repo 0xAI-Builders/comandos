@@ -138,3 +138,31 @@ fn dispatch_mobile_alias_and_explicit_preserve_arguments() {
         );
     }
 }
+
+#[test]
+fn dispatch_codex_alias_and_explicit_preserve_literal_arguments() {
+    let tail = v(&[
+        "full-access",
+        "--retry-report",
+        "/private/report literal ' 雪.json",
+    ]);
+    assert_eq!(
+        resolve(
+            "comandos",
+            &v(&[
+                "codex",
+                "full-access",
+                "--retry-report",
+                "/private/report literal ' 雪.json"
+            ])
+        ),
+        Command::Codex(tail.clone())
+    );
+    assert_eq!(
+        resolve(
+            "/private/bin/cc-codex-full-access",
+            &v(&["--retry-report", "/private/report literal ' 雪.json"])
+        ),
+        Command::Codex(tail)
+    );
+}

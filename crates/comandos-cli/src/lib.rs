@@ -1,6 +1,7 @@
 pub use comandos_acp as acp;
 pub mod agents;
 pub mod browser;
+pub mod codex;
 pub mod dispatch;
 pub mod doctor;
 pub mod install;

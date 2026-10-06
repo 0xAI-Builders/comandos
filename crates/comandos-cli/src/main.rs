@@ -12,6 +12,9 @@ fn main() {
     let (argv0, args) = argv
         .split_first()
         .map_or(("comandos", &[][..]), |(a, r)| (&**a, r));
+    if matches!(argv0.rsplit('/').next(), Some("codex" | "codex-yolo")) {
+        std::process::exit(comandos_cli::codex::launch(args));
+    }
     let code = match resolve(argv0, args) {
         Command::Ext(args) => comandos_extensions::cli::run(args).unwrap_or_else(|e| {
             eprintln!("{e}");
@@ -42,13 +45,14 @@ fn main() {
         Command::Doctor(args) => comandos_cli::doctor::main(&args),
         Command::Acp(args) => comandos_cli::acp::main(&args),
         Command::Mobile(args) => comandos_cli::mobile::main(&args),
+        Command::Codex(args) => comandos_cli::codex::main(&args),
         Command::Version => {
             println!("comandos {}", env!("CARGO_PKG_VERSION"));
             0
         }
         Command::Help => {
             println!(
-                "uso: comandos <ext|hook|events|install|dash|browser|web|webterm|webterm-attach|state|keys|x|raise|winstart|next|snapshot|agents|doctor|acp|mobile|--version>"
+                "uso: comandos <ext|hook|events|install|dash|browser|web|webterm|webterm-attach|state|keys|x|raise|winstart|next|snapshot|agents|doctor|acp|mobile|codex|--version>"
             );
             0
         }
