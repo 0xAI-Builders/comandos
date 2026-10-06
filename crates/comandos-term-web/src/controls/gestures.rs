@@ -53,10 +53,16 @@ fn cell(ui: &Ui, t: &JsValue) -> Option<Cell> {
         return None;
     }
     Some(Cell {
-        col: (((num(t, "clientX") - num(&r, "left")) / (w / cols)).floor() + 1.).clamp(1., cols)
-            as i32,
-        row: (((num(t, "clientY") - num(&r, "top")) / (h / rows)).floor() + 1.).clamp(1., rows)
-            as i32,
+        col: crate::number_text::clamp(
+            ((num(t, "clientX") - num(&r, "left")) / (w / cols)).floor() + 1.,
+            1.,
+            cols,
+        ) as i32,
+        row: crate::number_text::clamp(
+            ((num(t, "clientY") - num(&r, "top")) / (h / rows)).floor() + 1.,
+            1.,
+            rows,
+        ) as i32,
     })
 }
 fn mouse_on(ui: &Ui) -> bool {

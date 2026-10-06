@@ -150,7 +150,7 @@ pub fn fit(
         let n = (avail / cell).floor();
         if n.is_finite() {
             // `clamp` deja el valor en el rango de u16 antes de convertir.
-            (n.clamp(f64::from(min), f64::from(u16::MAX)) as u16).max(min)
+            (crate::number_text::clamp(n, f64::from(min), f64::from(u16::MAX)) as u16).max(min)
         } else {
             min
         }
@@ -200,7 +200,7 @@ pub fn measure(
     style.set_property("white-space", "pre")?;
     style.set_property("font-kerning", "none")?;
     style.set_property("font-family", family)?;
-    style.set_property("font-size", &format!("{size}px"))?;
+    style.set_property("font-size", &crate::number_text::px(size))?;
     container.append_child(&span)?;
     let w = f64::from(span.offset_width()) / 32.0;
     let h = f64::from(span.offset_height());
@@ -220,7 +220,7 @@ fn measure_canvas(
         return Ok(None);
     };
     let ctx: CanvasRenderingContext2d = ctx.dyn_into()?;
-    ctx.set_font(&format!("{size}px {family}"));
+    ctx.set_font(&format!("{} {family}", crate::number_text::px(size)));
     let metrics = ctx.measure_text("W")?;
     // Sin `fontBoundingBox*` (navegadores viejos) xterm.js usa el DOM.
     if !js_sys::Reflect::has(&metrics, &JsValue::from_str("fontBoundingBoxAscent"))? {

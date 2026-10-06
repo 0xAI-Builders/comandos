@@ -1,4 +1,5 @@
 use super::*;
+use crate::number_text::decimal;
 use comandos_web_dom::{events, timers};
 use js_sys::{Array, Function, Promise, Reflect};
 use serde_json::json;
@@ -60,11 +61,7 @@ fn js(v: &Value) -> JsValue {
     js_sys::JSON::parse(&v.to_string()).unwrap_or(JsValue::NULL)
 }
 fn val(v: &JsValue) -> Value {
-    js_sys::JSON::stringify(v)
-        .ok()
-        .and_then(|s| s.as_string())
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or(Value::Null)
+    comandos_web_dom::port::to_json(v)
 }
 fn error(e: JsValue) -> String {
     get(&e, "message")
@@ -225,8 +222,10 @@ fn draw(rc: &Shared) {
             } else {
                 ""
             },
-            x1 - x0,
-            y1 - y0
+            decimal(x1 - x0),
+            decimal(y1 - y0),
+            x0 = decimal(x0),
+            y0 = decimal(y0)
         );
         let Some(m) = s.models.iter().find(|m| text(m, "pane") == id) else {
             continue;
@@ -253,12 +252,14 @@ fn draw(rc: &Shared) {
         let hh = (rail_ch - hy).max(18.);
         output += &format!(
             "<div class=\"pc-head\" style=\"left:{}px;top:{hy}px;width:{}px;height:{hh}px\">{}<b>{}</b><span class=\"pc-sep\"></span><span class=\"pc-logo\" style=\"background:{color}\">{}</span><span class=\"pc-model\">{}</span>",
-            x0 + 1.,
-            x1 - x0 - 2.,
+            decimal(x0 + 1.),
+            decimal(x1 - x0 - 2.),
             ai(&s, &id),
             escape(&label(&s)),
             escape(letter),
-            escape(&model)
+            escape(&model),
+            hy = decimal(hy),
+            hh = decimal(hh)
         );
         let effort = text(m, "effort");
         if !effort.is_empty() {
@@ -304,10 +305,10 @@ fn draw_grip(rc: &Shared) {
         output = format!(
             "<div class=\"pc-grip {o}{}\" style=\"left:{}px;top:{}px;width:{}px;height:{}px\"><span class=\"ln\"></span><span class=\"pill\"></span>",
             if s.drag.is_some() { " drag" } else { "" },
-            g.x,
-            g.y,
-            g.w,
-            g.h
+            decimal(g.x),
+            decimal(g.y),
+            decimal(g.w),
+            decimal(g.h)
         );
         if s.drag.is_some() {
             let measure = s
@@ -319,10 +320,18 @@ fn draw_grip(rc: &Shared) {
                     let v = number(p, key);
                     let nb = neighbor(&s.panes, g)
                         .map(|p| {
-                            format!(" {} {}", if g.vertical { "|" } else { "/" }, number(p, key))
+                            format!(
+                                " {} {}",
+                                if g.vertical { "|" } else { "/" },
+                                decimal(number(p, key))
+                            )
                         })
                         .unwrap_or_default();
-                    format!("{v}{nb} {}", if g.vertical { "col" } else { "filas" })
+                    format!(
+                        "{}{nb} {}",
+                        decimal(v),
+                        if g.vertical { "col" } else { "filas" }
+                    )
                 })
                 .unwrap_or_default();
             output += &format!("<span class=\"tip\">{}</span>", escape(&measure));
@@ -544,7 +553,10 @@ fn open_accounts(rc: &Shared, btn: &Element) {
             .min(rect(&s.layer, "width") - 308.)
             .max(8.);
         let y = rect(btn, "bottom") - rect(&s.layer, "top") + 6.;
-        let _ = box_.set_attribute("style", &format!("left:{x}px;top:{y}px"));
+        let _ = box_.set_attribute(
+            "style",
+            &format!("left:{}px;top:{}px", decimal(x), decimal(y)),
+        );
         box_.set_inner_html(
             "<h4>CUENTA DE ESTE PANE</h4><p class=\"msg\">Consultando cuentas…</p>",
         );
@@ -612,7 +624,8 @@ fn open_accounts(rc: &Shared, btn: &Element) {
                                 "warn"
                             } else {
                                 ""
-                            }
+                            },
+                            p = decimal(p)
                         );
                     }
                     if !bars.is_empty() {

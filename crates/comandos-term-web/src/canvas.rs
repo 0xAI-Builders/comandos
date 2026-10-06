@@ -487,10 +487,10 @@ impl Fonts {
     fn new(family: &str, size: f64, dpr: f64) -> Fonts {
         let px = size * dpr;
         let text = [
-            format!(" normal {px}px {family}"),
-            format!(" bold {px}px {family}"),
-            format!("italic normal {px}px {family}"),
-            format!("italic bold {px}px {family}"),
+            format!(" normal {} {family}", crate::number_text::px(px)),
+            format!(" bold {} {family}", crate::number_text::px(px)),
+            format!("italic normal {} {family}", crate::number_text::px(px)),
+            format!("italic bold {} {family}", crate::number_text::px(px)),
         ];
         let js = [
             JsValue::from_str(&text[0]),
@@ -1766,8 +1766,8 @@ impl Painter for Canvas2d {
         self.canvas.set_height(h);
         let style = self.canvas.style();
         let r = style
-            .set_property("width", &format!("{css_w}px"))
-            .and_then(|()| style.set_property("height", &format!("{css_h}px")));
+            .set_property("width", &crate::number_text::px(css_w))
+            .and_then(|()| style.set_property("height", &crate::number_text::px(css_h)));
         self.note(r);
         self.size_cursor_layer(w, h);
         self.current_fill = None;

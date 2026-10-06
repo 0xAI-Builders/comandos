@@ -270,7 +270,7 @@ pub fn utf16_lossy(units: &[u16]) -> String {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use web::{auth_token, get, post};
+pub use web::{auth_token, get, post, serialized_value};
 
 #[cfg(target_arch = "wasm32")]
 mod web {
@@ -408,7 +408,26 @@ export function api_read_ok(j) { return j.ok; }
     }
 
     /// Un valor de JS como lo vería `JSON.stringify` (ver [`super::from_tree`]).
+    fn json_string(v: &JsValue, policy: Option<bool>) -> Result<String, ApiError> {
+        let s: &JsString = v.unchecked_ref();
+        if policy == Some(true) {
+            return Ok(comandos_web_view::utf16::encode(s.iter()));
+        }
+        if s.is_valid_utf16() {
+            return Ok(String::from(s));
+        }
+        if policy == Some(false) {
+            return Err(ApiError {
+                message: "JSON contiene un sustituto UTF-16 suelto".into(),
+            });
+        }
+        Ok(utf16_lossy(&s.iter().collect::<Vec<_>>()))
+    }
+
     fn inspect(v: &JsValue) -> Result<Node<JsValue>, ApiError> {
+        inspect_with_strings(v, None)
+    }
+    fn inspect_with_strings(v: &JsValue, policy: Option<bool>) -> Result<Node<JsValue>, ApiError> {
         if v.is_null() {
             return Ok(Node::Null);
         }
@@ -424,12 +443,8 @@ export function api_read_ok(j) { return j.ok; }
                 message: ["número de JS sin forma JSON: ", &text].concat(),
             });
         }
-        if let Some(s) = v.dyn_ref::<JsString>() {
-            if s.is_valid_utf16() {
-                return Ok(Node::Str(String::from(s)));
-            }
-            let units: Vec<u16> = s.iter().collect();
-            return Ok(Node::Str(utf16_lossy(&units)));
+        if v.dyn_ref::<JsString>().is_some() {
+            return json_string(v, policy).map(Node::Str);
         }
         if Array::is_array(v) {
             let a: &Array = v.unchecked_ref();
@@ -446,9 +461,41 @@ export function api_read_ok(j) { return j.ok; }
         let mut fields = Vec::new();
         for key in Object::keys(obj).iter() {
             let val = Reflect::get(obj, &key).map_err(|e| from_js(&e))?;
-            fields.push((crate::bridge::js_text(&key), val));
+            fields.push((json_string(&key, policy)?, val));
         }
         Ok(Node::Object(fields))
+    }
+
+    /// Convert a JSON.stringify result using the engine and the existing tree
+    /// walker. Unlike API responses, this keeps serde_json's 127-container
+    /// limit and either rejects lone surrogates or uses the lossless encoding.
+    pub fn serialized_value(text: &str, lossless_utf16: bool) -> Option<Value> {
+        let root = JSON::parse(text).ok()?;
+        from_tree((root, 0usize), |(v, depth)| {
+            let node = inspect_with_strings(v, Some(lossless_utf16))?;
+            Ok::<_, ApiError>(match node {
+                Node::Array(items) if *depth < 127 => {
+                    Node::Array(items.into_iter().map(|v| (v, depth + 1)).collect())
+                }
+                Node::Object(fields) if *depth < 127 => Node::Object(
+                    fields
+                        .into_iter()
+                        .map(|(k, v)| (k, (v, depth + 1)))
+                        .collect(),
+                ),
+                Node::Array(_) | Node::Object(_) => {
+                    return Err(ApiError {
+                        message: "JSON demasiado anidado".into(),
+                    });
+                }
+                Node::Null => Node::Null,
+                Node::Bool(v) => Node::Bool(v),
+                Node::Number(v) => Node::Number(v),
+                Node::Str(v) => Node::Str(v),
+                Node::Skip => Node::Skip,
+            })
+        })
+        .ok()
     }
 
     fn to_value(j: &JsValue) -> Result<Value, ApiError> {

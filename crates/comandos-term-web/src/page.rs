@@ -789,7 +789,7 @@ async fn pane_request(
     drop(timeout);
     let result = js_sys::JSON::stringify(&data)?
         .as_string()
-        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .and_then(|s| comandos_web_dom::api::serialized_value(&s, false))
         .ok_or_else(|| JsValue::from_str("No se pudo consultar el estado de los paneles"))?;
     if !response.ok() || result["ok"] != true || !result["panes"].is_array() {
         return Err(result["error"]
@@ -1036,7 +1036,7 @@ fn attach_main() -> Result<(), JsValue> {
             .unwrap_or_else(|| "sutil".into()),
     );
     let host = element("term").ok_or_else(|| JsValue::from_str("sin #term"))?;
-    let opts=value(&json!({"fontFamily":FONT,"fontSize":14,"lineHeight":1.2,"letterSpacing":0,"cursorBlink":true,"scrollback":10000,"theme":serde_json::from_str::<Value>(crate::page_theme::theme(&theme).unwrap_or(crate::page_theme::THEMES.first().map_or("{}",|(_,v)|v))).unwrap_or(Value::Null)}).to_string());
+    let opts=value(&json!({"fontFamily":FONT,"fontSize":14,"lineHeight":1.2,"letterSpacing":0,"cursorBlink":true,"scrollback":10000,"theme":comandos_web_dom::port::to_json(&value(crate::page_theme::theme(&theme).unwrap_or(crate::page_theme::THEMES.first().map_or("{}",|(_,v)|v))))}).to_string());
     let term = Rc::new(RefCell::new(WebTerm::new(host.clone(), opts)?));
     let page = Rc::new(RefCell::new(Page {
         term: Some(term.clone()),
@@ -1171,7 +1171,7 @@ fn attach_main() -> Result<(), JsValue> {
         if let Ok(data) = js_sys::JSON::stringify(&event.data())
             && let Some(data) = data
                 .as_string()
-                .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+                .and_then(|s| comandos_web_dom::api::serialized_value(&s, false))
             && let Some(command) = parent::command(&data)
         {
             handle(&page, command);

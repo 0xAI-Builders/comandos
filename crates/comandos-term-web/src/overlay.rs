@@ -359,8 +359,11 @@ mod web {
             let cell_w = css_canvas.0 / f64::from(cols);
             let cell_h = css_canvas.1 / f64::from(n_rows);
             let baseline = super::liga_baseline(font_size, cell_h);
-            self.ctx
-                .set_font(&format!("{font_size}px {}", super::LIGA_FAMILY));
+            self.ctx.set_font(&format!(
+                "{} {}",
+                crate::number_text::px(font_size),
+                super::LIGA_FAMILY
+            ));
             self.ctx.set_text_baseline("alphabetic");
             self.ctx.set_text_align("left");
             let (bg, fg) = colors;

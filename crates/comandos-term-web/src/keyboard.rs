@@ -425,7 +425,7 @@ mod web {
                 return;
             };
             let col = c.col.min(self.size.cols.saturating_sub(1));
-            let px = |v: f64| format!("{v}px");
+            let px = |v: f64| crate::number_text::px(v);
             let (left, top) = (px(f64::from(col) * cw), px(c.line as f64 * ch));
             let font = px(self.opts.font_size);
             set_styles(

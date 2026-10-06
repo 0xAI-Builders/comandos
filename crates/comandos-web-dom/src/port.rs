@@ -44,14 +44,14 @@ pub fn to_json(v: &JsValue) -> serde_json::Value {
     js_sys::JSON::stringify(v)
         .ok()
         .and_then(|s| s.as_string())
-        .and_then(|s| serde_json::from_str(&s).ok())
+        .and_then(|s| crate::api::serialized_value(&s, false))
         .unwrap_or(serde_json::Value::Null)
 }
 pub fn to_utf16_json(v: &JsValue) -> serde_json::Value {
     js_sys::JSON::stringify(v)
         .ok()
         .and_then(|s| s.as_string())
-        .and_then(|s| serde_json::from_str(&comandos_web_view::utf16::json_to_unicode(&s)).ok())
+        .and_then(|s| crate::api::serialized_value(&s, true))
         .unwrap_or(serde_json::Value::Null)
 }
 pub fn from_utf16_json(v: &serde_json::Value) -> Result<JsValue, JsValue> {

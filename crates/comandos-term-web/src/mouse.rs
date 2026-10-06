@@ -46,8 +46,8 @@ pub fn coords_cell(x: f64, y: f64, cell: (f64, f64), cols: u16, rows: u16) -> Op
     if !(w > 0.0 && h > 0.0 && x.is_finite() && y.is_finite()) || cols == 0 || rows == 0 {
         return None;
     }
-    let col = (x / w).ceil().clamp(1.0, f64::from(cols));
-    let row = (y / h).ceil().clamp(1.0, f64::from(rows));
+    let col = crate::number_text::clamp((x / w).ceil(), 1.0, f64::from(cols));
+    let row = crate::number_text::clamp((y / h).ceil(), 1.0, f64::from(rows));
     Some((col as u16 - 1, row as u16 - 1))
 }
 
@@ -65,8 +65,8 @@ pub fn selection_point(
     if !(w > 0.0 && h > 0.0 && x.is_finite() && y.is_finite()) || cols == 0 || rows == 0 {
         return None;
     }
-    let col = ((x + w / 2.0) / w).ceil().clamp(1.0, f64::from(cols) + 1.0);
-    let row = (y / h).ceil().clamp(1.0, f64::from(rows));
+    let col = crate::number_text::clamp(((x + w / 2.0) / w).ceil(), 1.0, f64::from(cols) + 1.0);
+    let row = crate::number_text::clamp((y / h).ceil(), 1.0, f64::from(rows));
     Some((col as u16 - 1, row as u16 - 1))
 }
 
@@ -230,7 +230,7 @@ impl Wheel {
             Some((y, p)) if y == ydisp => p,
             _ => snapped,
         };
-        let pos = (pos + px).clamp(0.0, max_ydisp as f64 * row_h);
+        let pos = crate::number_text::clamp(pos + px, 0.0, max_ydisp as f64 * row_h);
         let next = (js_round(pos / row_h).max(0.0) as usize).min(max_ydisp);
         let pos = if next == ydisp {
             pos
@@ -955,7 +955,7 @@ mod web {
         /// botón central caigan en él.
         fn textarea_under(&mut self, me: &MouseEvent) {
             let (x, y) = self.screen_xy(me);
-            let px = |v: f64| format!("{v}px");
+            let px = |v: f64| crate::number_text::px(v);
             set_styles(
                 &self.dom.textarea,
                 &[

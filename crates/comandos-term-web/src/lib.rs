@@ -38,6 +38,7 @@ pub mod keyboard;
 pub mod links;
 pub mod metrics;
 pub mod mouse;
+mod number_text;
 pub mod overlay;
 #[cfg(target_arch = "wasm32")]
 pub mod page;
@@ -56,7 +57,7 @@ use comandos_term::{
 use metrics::CellMetrics;
 use paint::{Blink, CursorInput, Painter, Scheduler};
 use std::rc::Weak;
-use std::{cell::RefCell, fmt::Write as _, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 use theme::{ANSI_NAMES, Theme};
 use wasm_bindgen::{JsCast, JsValue, closure::Closure, prelude::wasm_bindgen};
 use web_sys::{
@@ -1049,7 +1050,7 @@ impl Inner {
         }
         self.textarea_at = Some(key);
         let width = if c.wide { 2.0 } else { 1.0 };
-        let px = |v: f64| format!("{v}px");
+        let px = |v: f64| crate::number_text::px(v);
         set_styles(
             &self.dom.textarea,
             &[
@@ -1243,7 +1244,7 @@ impl Inner {
         if layout_changed {
             let height = metrics::js_round(row_h * buffer_len as f64) + (viewport_h - css_canvas_h);
             self.css_buf.clear();
-            let _ = write!(self.css_buf, "{height}px");
+            self.css_buf.push_str(&crate::number_text::px(height));
             let _ = self
                 .dom
                 .scroll_area
@@ -1294,8 +1295,8 @@ impl Inner {
         self.scheduler.resize(size.rows);
         let (w, h) = self.metrics.css_canvas(size.cols, size.rows);
         let style = self.dom.screen.style();
-        let _ = style.set_property("width", &format!("{w}px"));
-        let _ = style.set_property("height", &format!("{h}px"));
+        let _ = style.set_property("width", &crate::number_text::px(w));
+        let _ = style.set_property("height", &crate::number_text::px(h));
         self.scroll_sync = ScrollSync::default();
         self.touch();
     }
@@ -1648,7 +1649,7 @@ impl WebTerm {
     fn watch_font(&self) {
         let Some((promise, weak)) = self.with(|i| {
             let px = i.opts.font_size;
-            let spec = format!("{px}px {}", i.opts.font_family);
+            let spec = format!("{} {}", crate::number_text::px(px), i.opts.font_family);
             (i.document.fonts().load(&spec), Rc::downgrade(&self.inner))
         }) else {
             return;

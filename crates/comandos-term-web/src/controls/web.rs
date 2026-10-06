@@ -174,12 +174,12 @@ fn typography(ui: &Ui) {
     let size = number(&get(&opts, "fontSize")).max(if touch { 16. } else { 12. });
     let ch = number(&get(&term, "cellHeight"));
     let _ = set(&style, "fontFamily", &get(&opts, "fontFamily"));
-    let _ = set(&style, "fontSize", &format!("{size}px").into());
+    let _ = set(&style, "fontSize", &crate::number_text::px(size).into());
     let _ = set(
         &style,
         "lineHeight",
         &if ch.is_finite() && ch > 0. {
-            format!("{}px", ch.max(if touch { 22. } else { 16. }))
+            crate::number_text::px(ch.max(if touch { 22. } else { 16. }))
         } else {
             "normal".into()
         }
@@ -188,7 +188,7 @@ fn typography(ui: &Ui) {
     let _ = set(
         &style,
         "letterSpacing",
-        &format!("{}px", number(&get(&opts, "letterSpacing"))).into(),
+        &crate::number_text::px(number(&get(&opts, "letterSpacing"))).into(),
     );
 }
 fn inset() {
@@ -201,7 +201,7 @@ fn inset() {
     let _ = set(
         &get(&id("terminal-history"), "style"),
         "bottom",
-        &format!("{height}px").into(),
+        &crate::number_text::px(height).into(),
     );
 }
 fn set_mobile(ui: &Ui, on: bool) {
