@@ -212,12 +212,6 @@ pub fn run_with(
         j.durable(&home)?;
     }
     let mut external_effects = Vec::new();
-    if extensions && !dry {
-        external_effects.push(
-            "optional extension import/sync destinations are outside the managed-file journal"
-                .into(),
-        );
-    }
     let mut tracked_action = |action: &Action| {
         match action {
             Action::Systemctl { args, .. } => {
@@ -352,23 +346,37 @@ pub fn run_with(
             if dry {
                 println!("dry-run: extensions import/sync");
             } else {
-                let catalog = home.join(".config/comandos/extensions/catalog.json");
-                if !catalog.exists() {
-                    command(
+                let owned = std::rc::Rc::new(std::cell::RefCell::new(
+                    journal.take().ok_or("extension journal absent")?,
+                ));
+                let adapter = std::rc::Rc::new(std::cell::RefCell::new(
+                    super::extension_mutations::Adapter {
+                        journal: owned.clone(),
+                    },
+                ));
+                let result = comandos_extensions::mutations::with(adapter, || {
+                    let catalog = home.join(".config/comandos/extensions/catalog.json");
+                    if !catalog.exists() {
+                        comandos_extensions::cli::catalog_command(&home, None, "import")?;
+                    }
+                    comandos_extensions::cli::catalog_command(&home, None, "sync")?;
+                    super::extensions::apply_with_journal(
                         &home,
-                        &staged.path,
-                        ["ext", "import"].into_iter().map(String::from).collect(),
-                        Duration::from_secs(90),
-                    )?;
-                }
-                command(
-                    &home,
-                    &staged.path,
-                    ["ext", "sync"].into_iter().map(String::from).collect(),
-                    Duration::from_secs(90),
-                )?;
+                        platform,
+                        &mut owned.borrow_mut(),
+                        &mut tracked_action,
+                    )
+                });
+                journal = Some(
+                    std::rc::Rc::try_unwrap(owned)
+                        .map_err(|_| "extension journal adapter lease leaked")?
+                        .into_inner(),
+                );
+                result?;
             }
-            super::extensions::apply(&home, platform, dry)?;
+            if dry {
+                super::extensions::apply(&home, platform, true)?;
+            }
         }
         if std::env::var("COMANDOS_RETIRE_TELEGRAM").as_deref() == Ok("1") {
             super::telegram::apply_with(&home, dry, journal.as_mut(), &mut tracked_action)?;

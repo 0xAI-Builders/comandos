@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod cli;
+pub mod mutations;
 pub mod python_json;
 use serde_json::Value;
 use std::{env, path::PathBuf, process::Command};

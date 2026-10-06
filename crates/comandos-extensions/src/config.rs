@@ -22,11 +22,15 @@ pub fn err(path: &Path) -> String {
     format!("Invalid configuration: {}", path.display())
 }
 pub fn private_dir(path: &Path) -> Result<()> {
+    if path.symlink_metadata().is_err() {
+        crate::mutations::before(crate::mutations::Mutation::Directory { path, mode: 0o700 })?;
+    }
     fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
         .create(path)
-        .map_err(|_| err(path))
+        .map_err(|_| err(path))?;
+    crate::mutations::after(path)
 }
 pub fn temporary(parent: &Path, prefix: &str) -> PathBuf {
     parent.join(format!(
@@ -41,6 +45,7 @@ impl SyncLock {
         let root = state_dir(home);
         private_dir(&root)?;
         let p = root.join("sync.lock");
+        crate::mutations::before(crate::mutations::Mutation::Control { path: &p })?;
         let f = OpenOptions::new()
             .read(true)
             .write(true)
@@ -135,6 +140,9 @@ pub(crate) fn write_state_with(
 ) -> Result<()> {
     let mut lock = path.as_os_str().to_owned();
     lock.push(".lock");
+    crate::mutations::before(crate::mutations::Mutation::Control {
+        path: Path::new(&lock),
+    })?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -145,24 +153,32 @@ pub(crate) fn write_state_with(
         Path::new(&lock),
         || legacy().map_err(comandos_store::Error::Validation),
         |db, origin| {
-            comandos_store::unified::doc_put(
-                db,
-                name,
-                "extensions",
-                bytes,
-                origin,
-                i64::try_from(now).unwrap_or(i64::MAX),
-            )
-            .map(|_| ())
+            let now = i64::try_from(now).unwrap_or(i64::MAX);
+            crate::mutations::document(home, db, name, bytes, origin, now)
+                .map_err(comandos_store::Error::Validation)?;
+            comandos_store::unified::doc_put(db, name, "extensions", bytes, origin, now).map(|_| ())
         },
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    crate::mutations::document_committed(name)
 }
 fn legacy_private_write(path: &Path, bytes: &[u8]) -> Result<()> {
+    crate::mutations::before(crate::mutations::Mutation::File {
+        path,
+        bytes,
+        mode: 0o600,
+    })?;
     let parent = path.parent().ok_or_else(|| err(path))?;
     private_dir(parent)?;
     let (tmp, mut file) = loop {
         let tmp = temporary(parent, "comandos");
+        if tmp.symlink_metadata().is_err() {
+            crate::mutations::before(crate::mutations::Mutation::File {
+                path: &tmp,
+                bytes,
+                mode: 0o600,
+            })?;
+        }
         match OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -178,13 +194,19 @@ fn legacy_private_write(path: &Path, bytes: &[u8]) -> Result<()> {
         file.write_all(bytes)
             .and_then(|_| file.sync_all())
             .map_err(|_| err(path))?;
+        crate::mutations::after(&tmp)?;
+        crate::mutations::before(crate::mutations::Mutation::Move {
+            source: &tmp,
+            target: path,
+        })?;
         fs::rename(&tmp, path).map_err(|_| err(path))?;
         File::open(parent)
             .and_then(|f| f.sync_all())
             .map_err(|_| err(path))
     })();
     let _ = fs::remove_file(tmp);
-    result
+    result?;
+    crate::mutations::after(path)
 }
 pub fn save_json(path: &Path, value: &Value) -> Result<()> {
     private_write(path, &json_bytes(value)?)
@@ -222,6 +244,13 @@ pub fn replace_config(
             "{name}.{}",
             &format!("{:x}", Sha256::digest(before))[..16]
         ));
+        if backup.symlink_metadata().is_err() {
+            crate::mutations::before(crate::mutations::Mutation::File {
+                path: &backup,
+                bytes: before,
+                mode: 0o600,
+            })?;
+        }
         match OpenOptions::new()
             .write(true)
             .create_new(true)

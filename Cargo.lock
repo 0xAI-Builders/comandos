@@ -506,6 +506,7 @@ dependencies = [
  "num-traits",
  "regex",
  "reqwest",
+ "rusqlite",
  "rustc-hash",
  "rustix",
  "rustls",

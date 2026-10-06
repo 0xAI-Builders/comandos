@@ -3,6 +3,7 @@ pub mod assets;
 pub mod cleanup;
 pub mod components;
 pub mod darwin;
+mod extension_mutations;
 pub mod extensions;
 pub mod full;
 pub mod guard;

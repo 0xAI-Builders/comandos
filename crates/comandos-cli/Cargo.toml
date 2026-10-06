@@ -14,6 +14,7 @@ name = "comandos"
 path = "src/main.rs"
 
 [dependencies]
+rusqlite.workspace = true
 # `install --stage` valida el `manifest.json` de `web/` (T4).
 comandos-core = { path = "../comandos-core" }
 comandos-desktop = { path = "../comandos-desktop" }

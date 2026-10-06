@@ -525,3 +525,118 @@ fn full_late_runtime_failure_restores_files_and_runs_same_unit_inverse_in_privat
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn full_extension_import_sync_nested_units_and_logical_rows_roll_back_before_unadmitted_timer_activation()
+ {
+    use comandos_store::unified::{self, Mode, Origin};
+    for mode in [Mode::Legacy, Mode::Mirror, Mode::Unified, Mode::Sealed] {
+        let home = Home::new();
+        let source = home.0.join("source");
+        put(&source.join("comandos"), b"old-main", 0o755);
+        release::stage_release(&home.0, &source.join("comandos"), &WebSource::None).unwrap();
+        let pointer = home.0.join(".local/share/comandos/bin/comandos");
+        let old = fs::read_link(&pointer).unwrap();
+        put(&source.join("comandos"), b"new-main", 0o755);
+        put(&source.join("comandos-app"), b"app", 0o755);
+        put(&source.join("cc-model-proxy"), b"proxy", 0o755);
+        let config = home.0.join(".claude.json");
+        let config_bytes=b"{\"mcpServers\":{\"demo\":{\"type\":\"http\",\"url\":\"https://example.test/mcp\"}}}\n";
+        put(&config, config_bytes, 0o640);
+        let oauth = home.0.join(".claude/.credentials.json");
+        let oauth_bytes=b"{\"mcpOAuth\":{\"one\":{\"serverName\":\"demo\",\"serverUrl\":\"https://example.test/mcp\",\"accessToken\":\"private-fixture-token\"}}}\n";
+        put(&oauth, oauth_bytes, 0o600);
+        let skill = home.0.join(".claude/skills/demo/SKILL.md");
+        put(&skill, b"private skill resource", 0o640);
+        let snapshot = home
+            .0
+            .join(".local/state/comandos/extensions/snapshot.json");
+        put(&snapshot, b"{}\n", 0o640);
+        fs::set_permissions(
+            home.0.join(".local/share/comandos"),
+            fs::Permissions::from_mode(0o700),
+        )
+        .unwrap();
+        let db = unified::open_unified(&unified::unified_path(&home.0)).unwrap();
+        unified::doc_put(
+            &db,
+            "state/extensions/snapshot.json",
+            "extensions",
+            b"{}\n",
+            Origin::Import,
+            77,
+        )
+        .unwrap();
+        unified::set_mode(&db, "extensions", mode, "private", 1).unwrap();
+        let before = unified::doc_get(&db, "state/extensions/snapshot.json").unwrap();
+        drop(db);
+        let mut calls = Vec::new();
+        let error = full::run_with(
+            &[
+                "--home".into(),
+                home.0.to_str().unwrap().into(),
+                "--release".into(),
+                source.to_str().unwrap().into(),
+                "--extensions".into(),
+            ],
+            &mut |action| {
+                if let Action::Systemctl { args, .. } = action {
+                    calls.push(args.clone());
+                }
+                Ok(())
+            },
+        )
+        .unwrap_err();
+        assert!(
+            error.contains("extension timer activation capability unavailable"),
+            "mode={mode:?}: {error}"
+        );
+        assert!(
+            !error.contains("rollback incomplete"),
+            "mode={mode:?}: {error}"
+        );
+        assert!(!calls.iter().any(|args| args.iter().any(|a| a == "enable")));
+        assert_eq!(fs::read_link(pointer).unwrap(), old);
+        assert_eq!(fs::read(config).unwrap(), config_bytes);
+        assert_eq!(fs::read(oauth).unwrap(), oauth_bytes);
+        assert_eq!(fs::read(skill).unwrap(), b"private skill resource");
+        assert!(!home.0.join(".claude/skills/demo").is_symlink());
+        assert!(
+            !home
+                .0
+                .join(".config/comandos/extensions/catalog.json")
+                .exists()
+        );
+        assert!(
+            !home
+                .0
+                .join(".config/comandos/extensions/credentials.json")
+                .exists()
+        );
+        assert!(
+            !home
+                .0
+                .join(".config/systemd/user/comandos-extensions-sync.timer")
+                .exists()
+        );
+        assert!(
+            !home
+                .0
+                .join(".config/systemd/user/comandos-extensions-sync.service")
+                .exists()
+        );
+        assert!(!home.0.join(".agents/skills/demo").exists());
+        assert_eq!(fs::read(snapshot).unwrap(), b"{}\n");
+        let access =
+            comandos_store::domains::caller::CallerAccess::open(&home.0, "extensions").unwrap();
+        assert_eq!(
+            unified::doc_get(access.db().unwrap(), "state/extensions/snapshot.json").unwrap(),
+            before
+        );
+        assert!(
+            unified::doc_get(access.db().unwrap(), "state/extensions/skills.json")
+                .unwrap()
+                .is_none()
+        );
+    }
+}

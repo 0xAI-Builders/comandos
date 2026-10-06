@@ -6,11 +6,11 @@ use std::{
     collections::BTreeMap,
     fs, io,
     io::Read,
-    os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt, symlink},
+    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt, symlink},
     path::{Path, PathBuf},
 };
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Before {
+pub(super) enum Before {
     Absent,
     File(Vec<u8>, u32),
     Link(PathBuf),
@@ -18,13 +18,20 @@ enum Before {
 }
 #[derive(Default)]
 pub(crate) struct Journal {
-    entries: BTreeMap<PathBuf, Before>,
-    observed: BTreeMap<PathBuf, Before>,
+    pub(super) entries: BTreeMap<PathBuf, Before>,
+    pub(super) observed: BTreeMap<PathBuf, Before>,
+    pub(super) pending: BTreeMap<PathBuf, Before>,
+    pub(super) extensions: bool,
+    pub(super) extension_trees: Vec<PathBuf>,
     durable: Option<PathBuf>,
     committed: bool,
     runtime: Vec<RuntimeEffect>,
+    pub(super) documents: Vec<super::extension_mutations::DocumentEffect>,
 }
 impl Journal {
+    pub(super) fn install_home(&self) -> Option<&Path> {
+        self.durable.as_ref()?.ancestors().nth(5)
+    }
     pub(crate) fn capture(&mut self, path: &Path) -> Result<(), String> {
         if self.entries.contains_key(path) {
             return Ok(());
@@ -184,7 +191,7 @@ impl Journal {
         }
         Ok(())
     }
-    fn tree(&mut self, path: &Path) -> Result<(), String> {
+    pub(crate) fn tree(&mut self, path: &Path) -> Result<(), String> {
         self.file(path)?;
         if path.symlink_metadata().is_ok_and(|m| m.is_dir()) {
             for entry in fs::read_dir(path).map_err(|e| e.to_string())? {
@@ -193,7 +200,7 @@ impl Journal {
         }
         Ok(())
     }
-    fn overlay(&mut self, source: &Path, dest: &Path) -> Result<(), String> {
+    pub(crate) fn overlay(&mut self, source: &Path, dest: &Path) -> Result<(), String> {
         self.file(dest)?;
         if source.symlink_metadata().is_ok_and(|m| m.is_dir()) {
             for entry in fs::read_dir(source).map_err(|e| e.to_string())? {
@@ -277,17 +284,26 @@ impl Journal {
             let mut snapshot = Self::default();
             snapshot.capture(path)?;
             if let Some(after) = snapshot.entries.remove(path) {
+                let same_directory = matches!((&after,self.observed.get(path),self.entries.get(path)),(Before::Directory(actual),Some(Before::Directory(requested)),Some(Before::Absent)) if actual & requested == *actual);
                 let same_bytes = matches!((&after,self.observed.get(path)),(Before::File(a,_),Some(Before::File(b,_))) if a==b);
                 if Some(&after) != self.observed.get(path)
                     && Some(&after) != self.entries.get(path)
                     && !same_bytes
+                    && !same_directory
                 {
+                    let modes = match (&after, self.observed.get(path)) {
+                        (Before::Directory(a), Some(Before::Directory(b))) => {
+                            format!(" (directory actual={a:o} expected={b:o})")
+                        }
+                        _ => String::new(),
+                    };
                     return Err(format!(
-                        "{} differs from the state written by installation; journal retained",
+                        "{} differs from the state written by installation; journal retained{modes}",
                         path.display()
                     ));
                 }
                 self.observed.insert(path.clone(), after);
+                self.pending.remove(path);
             }
         }
         self.persist()
@@ -441,6 +457,40 @@ impl Journal {
     }
     fn rollback_files(&self) -> Result<(), String> {
         let mut errors = Vec::new();
+        // Restore admitted directory parents before their child paths: skills
+        // may have replaced an original tree root with our canonical symlink.
+        for (path, before) in &self.entries {
+            let Before::Directory(mode) = before else {
+                continue;
+            };
+            let mut actual = Self::default();
+            if let Err(e) = actual.capture(path) {
+                errors.push(e);
+                continue;
+            }
+            let current = actual.entries.get(path);
+            if matches!(
+                current,
+                Some(Before::Absent | Before::Link(_) | Before::File(_, _))
+            ) {
+                if current != self.observed.get(path) {
+                    errors.push(format!(
+                        "{} directory parent changed; preserved",
+                        path.display()
+                    ));
+                    continue;
+                }
+                if !matches!(current, Some(Before::Absent))
+                    && let Err(e) = fs::remove_file(path)
+                {
+                    errors.push(format!("{}: {e}", path.display()));
+                    continue;
+                }
+                if let Err(e) = fs::DirBuilder::new().mode(*mode).create(path) {
+                    errors.push(format!("{}: {e}", path.display()));
+                }
+            }
+        }
         // Newly created private trees have no pre-existing destination locks.
         // The shared installation lock covers recovery; avoid creating control
         // files inside trees whose empty directories must be removed below.
@@ -457,25 +507,30 @@ impl Journal {
             let private_parent = path
                 .parent()
                 .is_some_and(|parent| new_directories.iter().any(|dir| parent.starts_with(dir)));
-            let _file_guard = if !private_parent && path.parent().is_some_and(Path::is_dir) {
-                let name = path
-                    .file_name()
-                    .ok_or("rollback destination name")?
-                    .to_string_lossy();
-                Some(
-                    match comandos_store::files::FileLock::exclusive(
-                        &path.with_file_name(format!("{name}.install.lock")),
-                    ) {
-                        Ok(guard) => guard,
-                        Err(e) => {
-                            errors.push(format!("{} rollback lock: {e}", path.display()));
-                            continue;
-                        }
-                    },
-                )
-            } else {
-                None
-            };
+            let extension_tree = self
+                .extension_trees
+                .iter()
+                .any(|root| path.starts_with(root));
+            let _file_guard =
+                if !private_parent && !extension_tree && path.parent().is_some_and(Path::is_dir) {
+                    let name = path
+                        .file_name()
+                        .ok_or("rollback destination name")?
+                        .to_string_lossy();
+                    Some(
+                        match comandos_store::files::FileLock::exclusive(
+                            &path.with_file_name(format!("{name}.install.lock")),
+                        ) {
+                            Ok(guard) => guard,
+                            Err(e) => {
+                                errors.push(format!("{} rollback lock: {e}", path.display()));
+                                continue;
+                            }
+                        },
+                    )
+                } else {
+                    None
+                };
             let mut now = Self::default();
             let captured = now.capture(&path);
             if now.entries.get(&path) == Some(&before) {
@@ -493,12 +548,31 @@ impl Journal {
                 }
                 continue;
             }
-            if captured.is_err() || now.entries.get(&path) != self.observed.get(&path) {
+            if captured.is_err()
+                || (now.entries.get(&path) != self.observed.get(&path)
+                    && now.entries.get(&path) != self.pending.get(&path))
+            {
                 errors.push(format!(
                     "{} differs from the state written by installation; preserved",
                     path.display()
                 ));
                 continue;
+            }
+            if !matches!(before, Before::Absent) {
+                for parent in path
+                    .ancestors()
+                    .skip(1)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                {
+                    if let Some(Before::Directory(mode)) = self.entries.get(parent)
+                        && parent.symlink_metadata().is_err()
+                        && let Err(e) = fs::DirBuilder::new().mode(*mode).create(parent)
+                    {
+                        errors.push(format!("{}: {e}", parent.display()));
+                    }
+                }
             }
             if let Err(e) = restore(&path, before) {
                 errors.push(format!("{}: {e}", path.display()));
@@ -737,7 +811,7 @@ impl Journal {
         }
         Ok(())
     }
-    fn persist(&self) -> Result<(), String> {
+    pub(crate) fn persist(&self) -> Result<(), String> {
         let Some(root) = &self.durable else {
             return Ok(());
         };
@@ -745,9 +819,13 @@ impl Journal {
         for (path, before) in &self.entries {
             rows.push(serde_json::json!({"path":path.to_str().ok_or("journal requires UTF8 destination")?,"before":encode_before(root,before)?,"written":encode_before(root,self.observed.get(path).ok_or("journal written state")?)?}));
         }
+        let mut pending = Vec::new();
+        for (path, before) in &self.pending {
+            pending.push(serde_json::json!({"path":path.to_str().ok_or("pending path requires UTF8")?,"before":encode_before(root,before)?}));
+        }
         let path = root.join("manifest.json");
         let bytes = serde_json::to_vec(
-            &serde_json::json!({"version":1,"committed":self.committed,"entries":rows,"runtime":self.runtime}),
+            &serde_json::json!({"version":1,"committed":self.committed,"entries":rows,"runtime":self.runtime,"documents":self.documents,"pending":pending,"extensions":self.extensions,"extension_trees":self.extension_trees}),
         )
         .map_err(|e| e.to_string())?;
         write_atomic(&path, &bytes).map_err(|e| e.to_string())?;
@@ -894,6 +972,10 @@ pub(crate) fn recover_with(
         committed: value["committed"].as_bool().ok_or("journal commit state")?,
         ..Default::default()
     };
+    if let Some(documents) = value.get("documents") {
+        journal.documents = serde_json::from_value(documents.clone()).map_err(|e| e.to_string())?;
+        super::extension_mutations::validate_documents(home, &journal.documents)?;
+    }
     if let Some(runtime) = value.get("runtime") {
         journal.runtime = serde_json::from_value(runtime.clone()).map_err(|e| e.to_string())?;
         for effect in &journal.runtime {
@@ -923,6 +1005,39 @@ pub(crate) fn recover_with(
         journal
             .observed
             .insert(dest, decode_before(path, &row["written"])?);
+    }
+    journal.extensions = value
+        .get("extensions")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    if let Some(trees) = value.get("extension_trees") {
+        journal.extension_trees =
+            serde_json::from_value(trees.clone()).map_err(|e| e.to_string())?;
+        for root in &journal.extension_trees {
+            if !root.starts_with(home)
+                || !matches!(journal.entries.get(root), Some(Before::Directory(_)))
+            {
+                return Err("invalid extension tree scope".into());
+            }
+        }
+    }
+    if !journal.extension_trees.is_empty() && !journal.extensions {
+        return Err("extension tree without mutation scope".into());
+    }
+    if let Some(pending) = value.get("pending") {
+        for row in pending.as_array().ok_or("pending journal entries")? {
+            let path = PathBuf::from(row["path"].as_str().ok_or("pending journal path")?);
+            if !journal.entries.contains_key(&path) || journal.pending.contains_key(&path) {
+                return Err("invalid pending journal destination".into());
+            }
+            journal.pending.insert(
+                path,
+                decode_before(
+                    journal.durable.as_ref().ok_or("pending journal missing")?,
+                    &row["before"],
+                )?,
+            );
+        }
     }
     if journal.committed {
         journal.discard()
@@ -1044,6 +1159,28 @@ impl Journal {
         mut self,
         run: &mut dyn FnMut(&Action) -> Result<(), String>,
     ) -> Result<(), String> {
+        let _extension_locks = if self.extensions {
+            let home = self.install_home().ok_or("extension journal home absent")?;
+            let state = comandos_extensions::config::state_dir(home);
+            super::release::check_app_parents(&state.join("sync.lock"))?;
+            for name in ["sync.lock", "credentials.lock"] {
+                if state
+                    .join(name)
+                    .symlink_metadata()
+                    .is_ok_and(|m| !m.is_file())
+                {
+                    return Err(self.runtime_error("extension lock", "control path retargeted"));
+                }
+            }
+            Some((
+                comandos_extensions::config::SyncLock::new(home)
+                    .map_err(|e| self.runtime_error("extension sync", &e))?,
+                comandos_extensions::auth::credential_lock(home)
+                    .map_err(|e| self.runtime_error("extension credentials", &e))?,
+            ))
+        } else {
+            None
+        };
         for effect in &self.runtime {
             let current = query_unit(&effect.home, &effect.unit, false, run)
                 .map_err(|error| self.runtime_error(&effect.unit, &error))?;
@@ -1059,6 +1196,8 @@ impl Journal {
                 ));
             }
         }
+        super::extension_mutations::rollback_documents(&self.documents)
+            .map_err(|e| self.runtime_error("extension documents", &e))?;
         self.rollback_files()?;
         while let Some(effect) = self.runtime.last().cloned() {
             let compensation: Result<(), String> = (|| {

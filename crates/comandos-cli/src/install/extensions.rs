@@ -71,3 +71,37 @@ pub fn apply(home: &Path, platform: Platform, dry: bool) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// Nested extension units share the full install preimages and runtime runner.
+/// Timer activation is refused until its own durable prior-state adapter exists.
+pub(crate) fn apply_with_journal(
+    home: &Path,
+    platform: Platform,
+    journal: &mut super::transaction::Journal,
+    run: &mut dyn FnMut(&Action) -> Result<(), String>,
+) -> Result<(), String> {
+    let actions = actions(home, platform);
+    for action in &actions {
+        if let Action::WriteUnit {
+            path,
+            bytes,
+            original,
+        } = action
+            && let Ok(raw) = std::fs::read(path)
+            && raw != *bytes
+            && raw != *original
+        {
+            return Err(format!(
+                "custom extension unit preserved: {}",
+                path.display()
+            ));
+        }
+    }
+    for line in plan::apply_with_journal(&actions, run, journal)? {
+        println!("{line}");
+    }
+    if platform != Platform::Darwin {
+        return Err("extension timer activation capability unavailable; transaction will restore admitted files/documents".into());
+    }
+    Ok(())
+}
