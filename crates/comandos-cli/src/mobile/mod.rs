@@ -2,7 +2,7 @@
 mod backup;
 mod config;
 mod process;
-use comandos_server::dash::token::{access_token_at, load_token, token_path};
+use comandos_server::dash::token::{base64_urlsafe, token_path};
 use comandos_store::domains::DomainStore;
 use serde_json::Value;
 use std::{
@@ -113,22 +113,82 @@ fn existing_token(home: &Path) -> Result<Option<String>, String> {
 fn token(home: &Path) -> Result<String, String> {
     authority(home)?;
     let existing = existing_token(home)?;
-    if existing.is_none() {
-        let hooks = token_path(home)
-            .parent()
-            .ok_or("token sin directorio")?
-            .to_owned();
-        use std::os::unix::fs::DirBuilderExt;
-        fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(&hooks)
-            .map_err(|e| format!("{}: {e}", hooks.display()))?;
-        let token = load_token(home).map_err(|e| format!("dash-token: {e}"))?;
-        String::from_utf8(token).map_err(|_| "dash-token no es UTF-8".into())
-    } else {
-        access_token_at(&token_path(home)).map_err(|e| format!("dash-token: {e}"))
+    finish_token(home, existing)
+}
+fn finish_token(home: &Path, existing: Option<String>) -> Result<String, String> {
+    if let Some(token) = existing {
+        // Publish the bytes actually validated, without a pathname reopen.
+        return Ok(token);
     }
+    use std::{
+        io::{Read, Seek, SeekFrom, Write},
+        os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
+    };
+    let path = token_path(home);
+    backup::parents(&path)?;
+    let hooks = path.parent().ok_or("token sin directorio")?;
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(hooks)
+        .map_err(|e| format!("{}: {e}", hooks.display()))?;
+    let flags = nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK | nix::libc::O_NOCTTY;
+    let opened = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .custom_flags(flags)
+        .open(&path);
+    let file = match opened {
+        Ok(file) => file,
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(flags)
+            .open(&path)
+            .map_err(|e| format!("{}: {e}", path.display()))?,
+        Err(e) => return Err(format!("{}: {e}", path.display())),
+    };
+    let mut file = nix::fcntl::Flock::lock(file, nix::fcntl::FlockArg::LockExclusiveNonblock)
+        .map_err(|(_, e)| e.to_string())?;
+    let held = file.metadata().map_err(|e| e.to_string())?;
+    if !held.is_file() || held.permissions().mode() & 0o7777 != 0o600 {
+        return Err("dash-token requiere archivo regular 0600".into());
+    }
+    let still_owned = || -> Result<(), String> {
+        let entry = path.symlink_metadata().map_err(|e| e.to_string())?;
+        if !entry.is_file() || (entry.dev(), entry.ino()) != (held.dev(), held.ino()) {
+            return Err("dash-token cambió durante generación".into());
+        }
+        backup::parents(&path)
+    };
+    still_owned()?;
+    let mut bytes = Vec::new();
+    Read::by_ref(&mut *file)
+        .take(1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() > 1024 * 1024 {
+        return Err("dash-token supera 1 MiB".into());
+    }
+    let text = String::from_utf8(bytes).map_err(|_| "dash-token no es UTF-8".to_owned())?;
+    let text = comandos_core::text::strip(&text);
+    if !text.is_empty() {
+        still_owned()?;
+        return Ok(text.to_owned());
+    }
+    let mut random = [0; 32];
+    getrandom::fill(&mut random).map_err(|e| e.to_string())?;
+    let token = base64_urlsafe(&random);
+    still_owned()?;
+    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+    file.set_len(0).map_err(|e| e.to_string())?;
+    file.write_all(token.as_bytes())
+        .and_then(|()| file.sync_all())
+        .map_err(|e| e.to_string())?;
+    still_owned()?;
+    Ok(token)
 }
 fn hostname(status: &Value, on: bool) -> Result<String, String> {
     if status.get("BackendState").and_then(Value::as_str) != Some("Running") {
@@ -383,5 +443,152 @@ pub fn main(args: &[String]) -> i32 {
             eprintln!("\x1b[31m✗\x1b[0m {e}");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod token_tests {
+    use super::*;
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, symlink};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    struct Fixture(PathBuf);
+    impl Fixture {
+        fn new() -> Self {
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
+            let p = std::env::temp_dir().join(format!(
+                "mobile-token-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::DirBuilder::new().mode(0o700).create(&p).unwrap();
+            let f = Self(p);
+            fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(f.path().parent().unwrap())
+                .unwrap();
+            f
+        }
+        fn path(&self) -> PathBuf {
+            token_path(&self.0)
+        }
+        fn put(&self, value: &[u8]) {
+            fs::write(self.path(), value).unwrap();
+            fs::set_permissions(self.path(), fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        fn replace_with_symlink(&self) -> PathBuf {
+            let outside = self.0.join("own-outside");
+            fs::write(&outside, b"own-outside-sentinel").unwrap();
+            if self.path().exists() {
+                fs::remove_file(self.path()).unwrap();
+            }
+            symlink(&outside, self.path()).unwrap();
+            outside
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    #[test]
+    fn validated_token_is_not_reopened_after_path_replacement() {
+        let f = Fixture::new();
+        f.put(b"validated-own-token\n");
+        let validated = existing_token(&f.0).unwrap();
+        let outside = f.replace_with_symlink();
+        assert_eq!(
+            finish_token(&f.0, validated).unwrap(),
+            "validated-own-token"
+        );
+        assert_eq!(fs::read(outside).unwrap(), b"own-outside-sentinel");
+    }
+    #[test]
+    fn absent_or_empty_token_replacement_cannot_write_through_a_symlink() {
+        for empty in [false, true] {
+            let f = Fixture::new();
+            if empty {
+                f.put(b" \n");
+            }
+            let validated = existing_token(&f.0).unwrap();
+            assert!(validated.is_none());
+            let outside = f.replace_with_symlink();
+            assert!(finish_token(&f.0, validated).is_err());
+            assert_eq!(fs::read(outside).unwrap(), b"own-outside-sentinel");
+            assert!(f.path().symlink_metadata().unwrap().is_symlink());
+        }
+    }
+    #[test]
+    fn generation_preserves_token_encoding_and_private_mode_without_database() {
+        for empty in [false, true] {
+            let f = Fixture::new();
+            if empty {
+                f.put(b" \n");
+            }
+            let generated = token(&f.0).unwrap();
+            assert_eq!(generated.len(), 43);
+            assert!(
+                generated
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+            );
+            assert_eq!(fs::read(f.path()).unwrap(), generated.as_bytes());
+            assert_eq!(
+                f.path().metadata().unwrap().permissions().mode() & 0o7777,
+                0o600
+            );
+            assert!(!comandos_store::unified::unified_path(&f.0).exists());
+        }
+    }
+    #[test]
+    fn existing_token_reuse_preserves_inode_mode_mtime_and_bytes() {
+        let f = Fixture::new();
+        f.put(b"\xc2\xa0 validated-own-token\n");
+        let stamp = || {
+            let m = f.path().metadata().unwrap();
+            (
+                m.dev(),
+                m.ino(),
+                m.mode(),
+                m.len(),
+                m.mtime(),
+                m.mtime_nsec(),
+            )
+        };
+        let before = stamp();
+        let bytes = fs::read(f.path()).unwrap();
+        assert_eq!(token(&f.0).unwrap(), "validated-own-token");
+        assert_eq!(stamp(), before);
+        assert_eq!(fs::read(f.path()).unwrap(), bytes);
+    }
+    #[test]
+    fn generation_rejects_a_fifo_substituted_after_empty_validation() {
+        let f = Fixture::new();
+        f.put(b"");
+        let validated = existing_token(&f.0).unwrap();
+        fs::remove_file(f.path()).unwrap();
+        nix::unistd::mkfifo(
+            &f.path(),
+            nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
+        )
+        .unwrap();
+        let begin = std::time::Instant::now();
+        assert!(finish_token(&f.0, validated).is_err());
+        assert!(begin.elapsed() < Duration::from_millis(100));
+    }
+    #[test]
+    fn generation_fails_promptly_if_another_writer_holds_the_owned_token() {
+        let f = Fixture::new();
+        f.put(b"");
+        let validated = existing_token(&f.0).unwrap();
+        let _lock = nix::fcntl::Flock::lock(
+            fs::File::open(f.path()).unwrap(),
+            nix::fcntl::FlockArg::LockExclusive,
+        )
+        .unwrap();
+        let begin = std::time::Instant::now();
+        assert!(finish_token(&f.0, validated).is_err());
+        assert!(begin.elapsed() < Duration::from_millis(100));
+        assert_eq!(fs::read(f.path()).unwrap(), b"");
     }
 }

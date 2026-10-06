@@ -39,11 +39,14 @@ pub(super) fn private_regular(path: &Path) -> Result<Vec<u8>, String> {
     }
     let mut f = fs::OpenOptions::new()
         .read(true)
-        .custom_flags(nix::libc::O_NOFOLLOW)
+        .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK | nix::libc::O_NOCTTY)
         .open(path)
         .map_err(|e| format!("{}: {e}", path.display()))?;
     let held = f.metadata().map_err(|e| e.to_string())?;
-    if (meta.dev(), meta.ino()) != (held.dev(), held.ino()) {
+    if !held.is_file()
+        || held.permissions().mode() & 0o7777 != 0o600
+        || (meta.dev(), meta.ino()) != (held.dev(), held.ino())
+    {
         return Err("archivo cambió durante lectura".into());
     }
     let mut bytes = Vec::new();
