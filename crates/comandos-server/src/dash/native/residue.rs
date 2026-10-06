@@ -116,9 +116,9 @@ pub(super) fn ordered_get_route(target: &str) -> Option<NativeRoute> {
     super::route_in_tables(&Method::GET, canonical)
 }
 
-// Comparaciones literales de Handler.do_POST: protección provisional para
-// que una rama aún no fusionada nunca se convierta aquí en un 404.
-const PENDING_POST: &[&str] = &[
+// Comparaciones literales de Handler.do_POST, conservadas como gate de cobertura.
+#[cfg(test)]
+const CANONICAL_POST: &[&str] = &[
     "/pane-extensions",
     "/pane-extensions/apply",
     "/pane-extensions/template",
@@ -224,18 +224,10 @@ pub async fn answer(native: &Arc<Native>, route: ResidueRoute, request: &Request
     }
     match route {
         ResidueRoute::GetFallback | ResidueRoute::HeadFallback => {
-            if route == ResidueRoute::GetFallback
-                && crate::dash::router::is_dynamic_get(&request.target)
-            {
-                return Err(Fault::Decline);
-            }
             let root = native.options().dash_dir.as_deref().ok_or(Fault::Decline)?;
             static_response(root, request).await
         }
         ResidueRoute::PostUnknown => {
-            if PENDING_POST.contains(&request.target.as_str()) {
-                return Err(Fault::Decline);
-            }
             let data = request
                 .data
                 .as_ref()
@@ -248,6 +240,35 @@ pub async fn answer(native: &Arc<Native>, route: ResidueRoute, request: &Request
         ResidueRoute::DeleteUnknown => {
             super::delete_body(request)?;
             reply(StatusCode::NOT_FOUND, &json!({"error":"No encontrado"}))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn every_merged_dynamic_branch_has_a_domain_owner() {
+        for key in GET_ORDER {
+            let path = match key {
+                Key::Path(p) | Key::Raw(p) | Key::Prefix(p) | Key::ExactOrQuery(p) => *p,
+            };
+            assert!(
+                !matches!(
+                    super::super::route(&Method::GET, path),
+                    None | Some(NativeRoute::Residue(_))
+                ),
+                "GET {path}"
+            );
+        }
+        for path in CANONICAL_POST {
+            assert!(
+                !matches!(
+                    super::super::route(&Method::POST, path),
+                    None | Some(NativeRoute::Residue(_))
+                ),
+                "POST {path}"
+            );
         }
     }
 }
