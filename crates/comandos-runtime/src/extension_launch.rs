@@ -1658,8 +1658,28 @@ pub fn inventory(
                 .unwrap_or_else(|| vec![None; texts.len()]),
         )
     };
-    let mut cache = m::SkillMetadataCache::default();
-    let mut future = Box::pin(cache.measure(&rows, &paths.home, 0.0, &counter));
+    // Retain only bounded file identities and counts, never tokenizer tables.
+    type MetadataCaches = std::collections::BTreeMap<(PathBuf, PathBuf), m::SkillMetadataCache>;
+    static CACHES: std::sync::OnceLock<std::sync::Mutex<MetadataCaches>> =
+        std::sync::OnceLock::new();
+    let mut caches = CACHES
+        .get_or_init(|| std::sync::Mutex::new(MetadataCaches::new()))
+        .lock()
+        .map_err(|_| LaunchError::Unsure)?;
+    let cache_key = (paths.home.clone(), cache_path.clone());
+    if !caches.contains_key(&cache_key)
+        && caches.len() >= 8
+        && let Some(oldest) = caches.keys().next().cloned()
+    {
+        caches.remove(&oldest);
+    }
+    let cache = caches.entry(cache_key).or_default();
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let at = START
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_secs_f64();
+    let mut future = Box::pin(cache.measure(&rows, &paths.home, at, &counter));
     let mut task = std::task::Context::from_waker(std::task::Waker::noop());
     let details = match std::future::Future::poll(future.as_mut(), &mut task) {
         std::task::Poll::Ready(v) => v,
