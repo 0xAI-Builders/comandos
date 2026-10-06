@@ -12,6 +12,7 @@ import {JSDOM} from 'jsdom';
 import {runDOM} from './dom-check.mjs';
 const repo=fileURLToPath(new URL('../../../../',import.meta.url));
 const [artifacts,executable]=process.argv.slice(2);
+const focused=process.argv.includes('--focused');
 if(!artifacts||!executable)throw new Error('Pass actual artifact directory and built web_markdown_fixture executable');
 const require=createRequire(import.meta.url);
 const original=require(repo+'/dash/news-reader.js');
@@ -54,7 +55,7 @@ try{
  const reviewOriginal=original.createRenderer(md,actualPurify);
  const reviewActual=NewsReader.createRenderer(undefined,undefined);
  const reviewPairs=[];
- for(const fixture of ['review-baselines.json','repair-grammar.json','review-v2-baselines.json']){
+ for(const fixture of ['review-baselines.json','repair-grammar.json','review-v2-baselines.json','review-v3-baselines.json']){
   const rows=JSON.parse(fs.readFileSync(repo+'/xtask/web/fixtures/b8/'+fixture,'utf8')).cases;
   for(const row of rows){
    assert.equal(reviewOriginal(row.text),row.baseline,'immutable original '+row.text);
@@ -75,6 +76,7 @@ try{
  assert.equal((await reviewActual(alphabet)).trim(),'<p>'+original.inlineText(alphabet)+'</p>');reviewActual.dispose();
  const review={actualWasm:artifacts,pairs:reviewPairs,differences:reviewDifferences,knownPreexistingDifferences:knownReviewDifferences,utf16:{loneSurrogates:2048,literalSentinelScalars:2048,equal:true},sanitizerNegative:true};
  fs.writeFileSync(process.env.B8_REVIEW_OUTPUT||temp+'/review-results.json',JSON.stringify(review,null,2));assert.equal(reviewDifferences.length,0,JSON.stringify(reviewDifferences));result.push({name:'independent originals + repair grammar actual WASM, full UTF16 alphabets',equal:true});
+ if(!focused){
  const domResult=await runDOM(repo,original,NewsReader,md,async(path,body)=>{const r=await fetchNative(url+path,{method:'POST',headers:{'X-Comandos-Token':'b8-disposable-fixture','Content-Type':'application/json'},body:JSON.stringify(body)});if(!r.ok)throw new Error('Markdown fixture '+r.status);return r.json();});
  const domPairs=domResult.cases.flatMap(row=>['edition','panel'].map(part=>({id:row.name+' '+part,baseline:row.baselineHTML[part],candidate:row.candidateHTML[part]})));const domNormalized=spawnSync(executable,['--normalize'],{input:JSON.stringify(domPairs),encoding:'utf8',timeout:10000});if(domNormalized.status!==0)throw new Error(domNormalized.stderr);domResult.domDifferences=JSON.parse(domNormalized.stdout).filter(row=>row.difference);
  fs.writeFileSync(process.env.B8_DOM_OUTPUT||temp+'/dom-results.json',JSON.stringify(domResult,null,2));assert.equal(domResult.domDifferences.length,0,JSON.stringify(domResult.domDifferences));result.push({name:'original product DOM actual handler comparisons',equal:true});
@@ -92,5 +94,6 @@ try{
  fs.writeFileSync(process.env.B8_CORPUS_OUTPUT||temp+'/corpus-results.json',JSON.stringify({provenance:corpus.provenance,actualWasm:artifacts,normalizedCases:normalized.length,exactPreWhitespace:true,synthetic:200,realDerived:200,realManifestSha256:createHash('sha256').update(fs.readFileSync(repo+'/xtask/web/fixtures/markdown/corpus/manifest.json')).digest('hex'),policyCorrection:{beforeSha256:createHash('sha256').update(fs.readFileSync(repo+'/xtask/web/fixtures/b8/news-reader-before-link-policy.cjs')).digest('hex'),afterSha256:createHash('sha256').update(fs.readFileSync(repo+'/dash/news-reader.js')).digest('hex'),beforeLink,afterLink,beforeDifferences},jsdomVersion,domPurifySupported:actualPurify.isSupported,domPurifySha256:createHash('sha256').update(fs.readFileSync(repo+'/dash/vendor/purify-3.4.16.min.js')).digest('hex'),differences},null,2));
  assert.equal(differences.length,0,'Synthetic corpus DOM differences: '+JSON.stringify(differences.slice(0,8).map(r=>({id:r.id,kind:r.kind,difference:r.difference}))));
  result.push({name:'200 synthetic + 200 real-derived original-Markdown/server actual WASM normalized DOM cases',equal:true});
- console.log(JSON.stringify({artifact:artifacts,wasmSha256:createHash('sha256').update(fs.readFileSync(artifacts+'/comandos_web_bg.wasm')).digest('hex'),originalSha256:createHash('sha256').update(fs.readFileSync(repo+'/dash/news-reader.js')).digest('hex'),results:result,routeCalls:requests.filter(r=>r.path==='/web/markdown').length},null,2));
+ }
+ console.log(JSON.stringify({focused,review:{pairs:reviewPairs.length,unexpectedDifferences:reviewDifferences.length,knownPreexistingDifferences:knownReviewDifferences.length},artifact:artifacts,wasmSha256:createHash('sha256').update(fs.readFileSync(artifacts+'/comandos_web_bg.wasm')).digest('hex'),originalSha256:createHash('sha256').update(fs.readFileSync(repo+'/dash/news-reader.js')).digest('hex'),results:result,routeCalls:requests.filter(r=>r.path==='/web/markdown').length},null,2));
 }finally{processFixture.stdin.end();await new Promise(resolve=>{if(processFixture.exitCode!==null)resolve();else processFixture.once('exit',resolve);});purifyDOM.window.close();fs.rmSync(temp,{recursive:true,force:true});}

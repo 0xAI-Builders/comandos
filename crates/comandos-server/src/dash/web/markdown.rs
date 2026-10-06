@@ -258,10 +258,8 @@ fn tail(text: &str, url: &str) -> String {
         String::new()
     }
 }
-// Linkify trims punctuation at URL ends. Markdown-it retains the semicolon
-// completing a numeric entity in a bare URL, before entity decoding runs.
-fn numeric_entity_end(text: &str, start: usize, end: usize) -> usize {
-    if text.get(end..).is_some_and(|tail| tail.starts_with(';'))
+fn numeric_entity_terminator(text: &str, start: usize, end: usize) -> bool {
+    text.get(end..).is_some_and(|tail| tail.starts_with(';'))
         && text
             .get(start..end)
             .and_then(|url| url.rsplit_once("&#"))
@@ -272,6 +270,15 @@ fn numeric_entity_end(text: &str, start: usize, end: usize) -> usize {
                     !digits.is_empty() && digits.bytes().all(|ch| ch.is_ascii_digit())
                 }
             })
+}
+// Markdown-it's raw URL matcher retains a semicolon only when followed by
+// something other than whitespace, a control character or end of input.
+fn numeric_entity_end(text: &str, start: usize, end: usize) -> usize {
+    if numeric_entity_terminator(text, start, end)
+        && text
+            .get(end + 1..)
+            .and_then(|tail| tail.chars().next())
+            .is_some_and(|next| !next.is_whitespace() && !next.is_control())
     {
         end + 1
     } else {
@@ -363,12 +370,24 @@ fn restore_autolink_source(
         if raw.get(..link.start()).is_some_and(|s| s.ends_with('@')) {
             continue;
         }
-        let end = numeric_entity_end(&raw, link.start(), link.end());
+        let mut end = numeric_entity_end(&raw, link.start(), link.end());
         let (Some(source_start), Some(source_end)) = (source_at(link.start()), source_at(end))
         else {
             continue;
         };
-        let (Some(start), Some(end_decoded)) = (offset(source_start), offset(source_end)) else {
+        let mut end_decoded = offset(source_end);
+        // A URL may end inside a source entity whose decoded Text token is
+        // indivisible. Restore that whole token, including its punctuation,
+        // while linkified independently applies the contextual URL boundary.
+        // This recovers raw bytes; it does not add the semicolon to the href.
+        if end_decoded.is_none()
+            && numeric_entity_terminator(&raw, link.start(), end)
+            && let Some(decoded_end) = source_at(end + 1).and_then(offset)
+        {
+            end += 1;
+            end_decoded = Some(decoded_end);
+        }
+        let (Some(start), Some(end_decoded)) = (offset(source_start), end_decoded) else {
             continue;
         };
         if start < at {

@@ -99,3 +99,19 @@ fn independent_entity_masks_preserve_original_text_and_destinations() {
     }
     assert!(differences.is_empty(), "{differences:?}");
 }
+
+#[test]
+fn numeric_entity_url_boundaries_match_original_context() {
+    let cases: serde_json::Value =
+        serde_json::from_str(&comandos_web_view::utf16::json_to_unicode(include_str!(
+            "../../../xtask/web/fixtures/b8/review-v3-baselines.json"
+        )))
+        .unwrap();
+    let differences = cases["cases"].as_array().unwrap().iter().filter_map(|row| {
+        let source = row["text"].as_str().unwrap();
+        let candidate = render(source, Profile::News);
+        comandos_domdiff::first_difference(row["baseline"].as_str().unwrap(), &candidate)
+            .map(|difference| serde_json::json!({"text":source,"candidate":candidate,"difference":difference}))
+    }).collect::<Vec<_>>();
+    assert!(differences.is_empty(), "{differences:?}");
+}
