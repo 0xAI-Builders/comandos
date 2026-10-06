@@ -1,6 +1,6 @@
 pub const ENABLED_KEY: &str = "comandos.push.enabled";
 pub const DEVICE_KEY: &str = "comandos.deviceId";
-pub const DENIED_HELP: &str = "El permiso de notificaciones esta bloqueado para este sitio. Activalo en los ajustes del navegador (candado de la barra de direcciones > Notificaciones) y vuelve a pulsar Activar.";
+pub const DENIED_HELP: &str = "El permiso de notificaciones está bloqueado para este sitio. Actívalo en los ajustes del navegador (candado de la barra de direcciones > Notificaciones) y vuelve a pulsar Activar.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Support {
@@ -8,7 +8,12 @@ pub struct Support {
     pub reason: &'static str,
 }
 
-pub fn support(secure: bool, service_worker: bool, push_manager: bool, notification: bool) -> Support {
+pub fn support(
+    secure: bool,
+    service_worker: bool,
+    push_manager: bool,
+    notification: bool,
+) -> Support {
     if !secure {
         return Support {
             ok: false,
@@ -33,7 +38,10 @@ pub fn support(secure: bool, service_worker: bool, push_manager: bool, notificat
             reason: "Este navegador no permite notificaciones.",
         };
     }
-    Support { ok: true, reason: "" }
+    Support {
+        ok: true,
+        reason: "",
+    }
 }
 
 pub fn url_base64_to_bytes(value: &str) -> Vec<u8> {
@@ -82,7 +90,11 @@ fn base64_decode(s: &str) -> Option<Vec<u8>> {
 pub fn event_url_after_routing(path: &str, query: &str, hash: &str) -> (Option<String>, String) {
     let mut kept = Vec::new();
     let mut event = None;
-    for pair in query.trim_start_matches('?').split('&').filter(|s| !s.is_empty()) {
+    for pair in query
+        .trim_start_matches('?')
+        .split('&')
+        .filter(|s| !s.is_empty())
+    {
         let mut parts = pair.splitn(2, '=');
         let key = parts.next().unwrap_or_default();
         let value = parts.next().unwrap_or_default();
@@ -129,11 +141,10 @@ fn hex(b: u8) -> Option<u8> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn mount() -> Result<(), wasm_bindgen::JsValue> {
-    use comandos_web_dom::bridge::global_set;
-    use js_sys::Object;
-    global_set("PushSettings", &Object::new().into())
-}
+#[path = "push_settings_web.rs"]
+mod web;
+#[cfg(target_arch = "wasm32")]
+pub use web::{attach, mount};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn mount() -> Result<(), wasm_bindgen::JsValue> {
@@ -166,4 +177,9 @@ mod tests {
         assert_eq!(event.as_deref(), Some("ev 42"));
         assert_eq!(url, "/?x=1");
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn attach() -> Result<(), wasm_bindgen::JsValue> {
+    Ok(())
 }

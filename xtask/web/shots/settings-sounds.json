@@ -1,11 +1,21 @@
 [
   {
     "id": "settings-sounds",
-    "page": "/sounds/index.html",
-    "widths": [1400, 390],
-    "dpr": [1, 2],
+    "page": "/xtask/web/fixtures/sounds/parity.html",
+    "widths": [
+      1400,
+      844,
+      390,
+      320
+    ],
+    "dpr": [
+      1,
+      2
+    ],
     "touch": false,
-    "selectors": ["#sound-settings"],
+    "selectors": [
+      "#sound-settings"
+    ],
     "mask": [],
     "channel": 24,
     "ratio": 0.001

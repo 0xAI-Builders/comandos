@@ -3,6 +3,9 @@
     "boot",
     "settings-sounds",
     "push-settings",
-    "session-config"
+    "session-config",
+    "quick-terminal",
+    "device-drafts",
+    "workspace-layout"
   ]
 }

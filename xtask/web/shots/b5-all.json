@@ -1,6 +1,6 @@
 [
   {
-    "id": "push-settings",
+    "id": "b5-all",
     "page": "/xtask/web/fixtures/sounds/parity.html",
     "widths": [
       1400,
@@ -14,7 +14,12 @@
     ],
     "touch": false,
     "selectors": [
-      "#push-fixture"
+      "#quick-terminal",
+      "#device-drafts",
+      "#session-config",
+      "#workspace-layout",
+      "#push-fixture",
+      "#sound-settings"
     ],
     "mask": [],
     "channel": 24,

@@ -1,0 +1,1548 @@
+[
+  {
+    "function": "draft",
+    "args": [
+      {
+        "agent": "claude",
+        "model": "opus",
+        "effort": "high",
+        "account": "main"
+      }
+    ],
+    "expected": {
+      "toHarness": "claude",
+      "motor": "claude",
+      "model": "opus",
+      "effort": "high",
+      "harnessAccount": "main",
+      "motorAccount": "main",
+      "interrupt": false
+    }
+  },
+  {
+    "function": "update",
+    "args": [
+      {
+        "harnesses": {
+          "claude": {
+            "accounts": [
+              {
+                "alias": "main",
+                "selectable": true
+              }
+            ]
+          },
+          "codex": {
+            "accounts": [
+              {
+                "alias": "work",
+                "selectable": true
+              }
+            ]
+          }
+        },
+        "motors": {
+          "claude": {
+            "models": [
+              {
+                "id": "opus",
+                "efforts": [
+                  "high"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6-astra",
+                "efforts": [
+                  "high",
+                  "ultra"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          }
+        },
+        "matrix": [
+          {
+            "harness": "claude",
+            "motor": "claude",
+            "selectable": true
+          },
+          {
+            "harness": "codex",
+            "motor": "codex",
+            "selectable": true
+          }
+        ]
+      },
+      {
+        "toHarness": "claude",
+        "motor": "claude",
+        "model": "opus",
+        "effort": "high",
+        "harnessAccount": "main",
+        "motorAccount": "main",
+        "interrupt": false
+      },
+      "toHarness",
+      "codex"
+    ],
+    "expected": {
+      "toHarness": "codex",
+      "motor": "codex",
+      "model": "gpt-6-astra",
+      "effort": "high",
+      "harnessAccount": "main",
+      "motorAccount": "main",
+      "interrupt": false
+    }
+  },
+  {
+    "function": "validate",
+    "args": [
+      {
+        "harnesses": {
+          "claude": {
+            "accounts": [
+              {
+                "alias": "main",
+                "selectable": true
+              }
+            ]
+          },
+          "codex": {
+            "accounts": [
+              {
+                "alias": "work",
+                "selectable": true
+              }
+            ]
+          }
+        },
+        "motors": {
+          "claude": {
+            "models": [
+              {
+                "id": "opus",
+                "efforts": [
+                  "high"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6-astra",
+                "efforts": [
+                  "high",
+                  "ultra"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          }
+        },
+        "matrix": [
+          {
+            "harness": "claude",
+            "motor": "claude",
+            "selectable": true
+          },
+          {
+            "harness": "codex",
+            "motor": "codex",
+            "selectable": true
+          }
+        ]
+      },
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "main",
+        "motorAccount": "main",
+        "interrupt": false
+      }
+    ],
+    "expected": "Selecciona una cuenta con sesión iniciada"
+  },
+  {
+    "function": "update",
+    "args": [
+      {
+        "harnesses": {
+          "claude": {
+            "accounts": [
+              {
+                "alias": "main",
+                "selectable": true
+              }
+            ]
+          },
+          "codex": {
+            "accounts": [
+              {
+                "alias": "work",
+                "selectable": true
+              }
+            ]
+          }
+        },
+        "motors": {
+          "claude": {
+            "models": [
+              {
+                "id": "opus",
+                "efforts": [
+                  "high"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6-astra",
+                "efforts": [
+                  "high",
+                  "ultra"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          }
+        },
+        "matrix": [
+          {
+            "harness": "claude",
+            "motor": "claude",
+            "selectable": true
+          },
+          {
+            "harness": "codex",
+            "motor": "codex",
+            "selectable": true
+          }
+        ]
+      },
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "main",
+        "motorAccount": "main",
+        "interrupt": false
+      },
+      "harnessAccount",
+      "work"
+    ],
+    "expected": {
+      "toHarness": "codex",
+      "motor": "codex",
+      "model": "gpt-6-astra",
+      "effort": "high",
+      "harnessAccount": "work",
+      "motorAccount": "work",
+      "interrupt": false
+    }
+  },
+  {
+    "function": "update",
+    "args": [
+      {
+        "harnesses": {
+          "claude": {
+            "accounts": [
+              {
+                "alias": "main",
+                "selectable": true
+              }
+            ]
+          },
+          "codex": {
+            "accounts": [
+              {
+                "alias": "work",
+                "selectable": true
+              }
+            ]
+          }
+        },
+        "motors": {
+          "claude": {
+            "models": [
+              {
+                "id": "opus",
+                "efforts": [
+                  "high"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6-astra",
+                "efforts": [
+                  "high",
+                  "ultra"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          }
+        },
+        "matrix": [
+          {
+            "harness": "claude",
+            "motor": "claude",
+            "selectable": true
+          },
+          {
+            "harness": "codex",
+            "motor": "codex",
+            "selectable": true
+          }
+        ]
+      },
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      },
+      "effort",
+      "ultra"
+    ],
+    "expected": {
+      "toHarness": "codex",
+      "motor": "codex",
+      "model": "gpt-6-astra",
+      "effort": "ultra",
+      "harnessAccount": "work",
+      "motorAccount": "work",
+      "interrupt": false
+    }
+  },
+  {
+    "function": "validate",
+    "args": [
+      {
+        "harnesses": {
+          "claude": {
+            "accounts": [
+              {
+                "alias": "main",
+                "selectable": true
+              }
+            ]
+          },
+          "codex": {
+            "accounts": [
+              {
+                "alias": "work",
+                "selectable": true
+              }
+            ]
+          }
+        },
+        "motors": {
+          "claude": {
+            "models": [
+              {
+                "id": "opus",
+                "efforts": [
+                  "high"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6-astra",
+                "efforts": [
+                  "high",
+                  "ultra"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          }
+        },
+        "matrix": [
+          {
+            "harness": "claude",
+            "motor": "claude",
+            "selectable": true
+          },
+          {
+            "harness": "codex",
+            "motor": "codex",
+            "selectable": true
+          }
+        ]
+      },
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "ultra",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      }
+    ],
+    "expected": ""
+  },
+  {
+    "function": "changed",
+    "args": [
+      {
+        "toHarness": "claude",
+        "motor": "claude",
+        "model": "opus",
+        "effort": "high",
+        "harnessAccount": "main",
+        "motorAccount": "main",
+        "interrupt": false
+      },
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "ultra",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      }
+    ],
+    "expected": true
+  },
+  {
+    "function": "draft",
+    "args": [
+      {
+        "agent": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "account": "work"
+      }
+    ],
+    "expected": {
+      "toHarness": "codex",
+      "motor": "codex",
+      "model": "gpt-6-astra",
+      "effort": "high",
+      "harnessAccount": "work",
+      "motorAccount": "work",
+      "interrupt": false
+    }
+  },
+  {
+    "function": "changed",
+    "args": [
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      },
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": true
+      }
+    ],
+    "expected": false
+  },
+  {
+    "function": "validate",
+    "args": [
+      {
+        "harnesses": {
+          "claude": {
+            "accounts": [
+              {
+                "alias": "main",
+                "selectable": true
+              }
+            ]
+          },
+          "codex": {
+            "accounts": [
+              {
+                "alias": "work",
+                "selectable": true
+              }
+            ]
+          }
+        },
+        "motors": {
+          "claude": {
+            "models": [
+              {
+                "id": "opus",
+                "efforts": [
+                  "high"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6-astra",
+                "efforts": [
+                  "high",
+                  "ultra"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          }
+        },
+        "matrix": [
+          {
+            "harness": "claude",
+            "motor": "claude",
+            "selectable": true
+          },
+          {
+            "harness": "codex",
+            "motor": "codex",
+            "selectable": true
+          }
+        ]
+      },
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "nonsense",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      }
+    ],
+    "expected": "Selecciona un esfuerzo compatible"
+  },
+  {
+    "function": "draft",
+    "args": [
+      {
+        "agent": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "account": "work"
+      }
+    ],
+    "expected": {
+      "toHarness": "codex",
+      "motor": "codex",
+      "model": "gpt-6-astra",
+      "effort": "high",
+      "harnessAccount": "work",
+      "motorAccount": "work",
+      "interrupt": false
+    }
+  },
+  {
+    "function": "update",
+    "args": [
+      {
+        "harnesses": {
+          "claude": {
+            "accounts": [
+              {
+                "alias": "main",
+                "selectable": true
+              }
+            ]
+          },
+          "codex": {
+            "accounts": [
+              {
+                "alias": "work",
+                "selectable": true
+              }
+            ]
+          },
+          "acp": {}
+        },
+        "motors": {
+          "claude": {
+            "models": [
+              {
+                "id": "opus",
+                "efforts": [
+                  "high"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6-astra",
+                "efforts": [
+                  "high",
+                  "ultra"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          }
+        },
+        "matrix": [
+          {
+            "harness": "claude",
+            "motor": "claude",
+            "selectable": true
+          },
+          {
+            "harness": "codex",
+            "motor": "codex",
+            "selectable": true
+          },
+          {
+            "harness": "acp",
+            "motor": "codex",
+            "selectable": true
+          }
+        ]
+      },
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      },
+      "toHarness",
+      "acp"
+    ],
+    "expected": {
+      "toHarness": "acp",
+      "motor": "codex",
+      "model": "gpt-6-astra",
+      "effort": "high",
+      "harnessAccount": "main",
+      "motorAccount": "work",
+      "interrupt": false
+    }
+  },
+  {
+    "function": "update",
+    "args": [
+      {
+        "harnesses": {
+          "claude": {
+            "accounts": [
+              {
+                "alias": "main",
+                "selectable": true
+              }
+            ]
+          },
+          "codex": {
+            "accounts": [
+              {
+                "alias": "work",
+                "selectable": true
+              }
+            ]
+          },
+          "acp": {}
+        },
+        "motors": {
+          "claude": {
+            "models": [
+              {
+                "id": "opus",
+                "efforts": [
+                  "high"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6-astra",
+                "efforts": [
+                  "high",
+                  "ultra"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          }
+        },
+        "matrix": [
+          {
+            "harness": "claude",
+            "motor": "claude",
+            "selectable": true
+          },
+          {
+            "harness": "codex",
+            "motor": "codex",
+            "selectable": true
+          },
+          {
+            "harness": "acp",
+            "motor": "codex",
+            "selectable": true
+          }
+        ]
+      },
+      {
+        "toHarness": "acp",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "main",
+        "motorAccount": "work",
+        "interrupt": false
+      },
+      "motorAccount",
+      "work"
+    ],
+    "expected": {
+      "toHarness": "acp",
+      "motor": "codex",
+      "model": "gpt-6-astra",
+      "effort": "high",
+      "harnessAccount": "main",
+      "motorAccount": "work",
+      "interrupt": false
+    }
+  },
+  {
+    "function": "validate",
+    "args": [
+      {
+        "harnesses": {
+          "claude": {
+            "accounts": [
+              {
+                "alias": "main",
+                "selectable": true
+              }
+            ]
+          },
+          "codex": {
+            "accounts": [
+              {
+                "alias": "work",
+                "selectable": true
+              }
+            ]
+          },
+          "acp": {}
+        },
+        "motors": {
+          "claude": {
+            "models": [
+              {
+                "id": "opus",
+                "efforts": [
+                  "high"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6-astra",
+                "efforts": [
+                  "high",
+                  "ultra"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          }
+        },
+        "matrix": [
+          {
+            "harness": "claude",
+            "motor": "claude",
+            "selectable": true
+          },
+          {
+            "harness": "codex",
+            "motor": "codex",
+            "selectable": true
+          },
+          {
+            "harness": "acp",
+            "motor": "codex",
+            "selectable": true
+          }
+        ]
+      },
+      {
+        "toHarness": "acp",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "main",
+        "motorAccount": "work",
+        "interrupt": false
+      }
+    ],
+    "expected": ""
+  },
+  {
+    "function": "draft",
+    "args": [
+      {
+        "agent": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "account": "work"
+      }
+    ],
+    "expected": {
+      "toHarness": "codex",
+      "motor": "codex",
+      "model": "gpt-6-astra",
+      "effort": "high",
+      "harnessAccount": "work",
+      "motorAccount": "work",
+      "interrupt": false
+    }
+  },
+  {
+    "function": "fieldOptions",
+    "args": [
+      {
+        "harnesses": {
+          "claude": {
+            "accounts": [
+              {
+                "alias": "main",
+                "selectable": true
+              }
+            ]
+          },
+          "codex": {
+            "accounts": [
+              {
+                "alias": "work",
+                "selectable": true
+              },
+              {
+                "alias": "logged-out",
+                "selectable": false
+              }
+            ]
+          }
+        },
+        "motors": {
+          "claude": {
+            "models": [
+              {
+                "id": "opus",
+                "efforts": [
+                  "high"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6-astra",
+                "efforts": [
+                  "high",
+                  "ultra"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "future",
+                "soon": true,
+                "efforts": [
+                  "high"
+                ]
+              }
+            ]
+          }
+        },
+        "matrix": [
+          {
+            "harness": "claude",
+            "motor": "claude",
+            "selectable": true
+          },
+          {
+            "harness": "codex",
+            "motor": "codex",
+            "selectable": true
+          }
+        ]
+      },
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      },
+      "model"
+    ],
+    "expected": [
+      {
+        "value": "gpt-6-astra",
+        "label": "gpt-6-astra",
+        "disabled": false,
+        "reason": ""
+      },
+      {
+        "value": "future",
+        "label": "future",
+        "disabled": true,
+        "reason": "Próximamente"
+      }
+    ]
+  },
+  {
+    "function": "cycle",
+    "args": [
+      {
+        "harnesses": {
+          "claude": {
+            "accounts": [
+              {
+                "alias": "main",
+                "selectable": true
+              }
+            ]
+          },
+          "codex": {
+            "accounts": [
+              {
+                "alias": "work",
+                "selectable": true
+              },
+              {
+                "alias": "logged-out",
+                "selectable": false
+              }
+            ]
+          }
+        },
+        "motors": {
+          "claude": {
+            "models": [
+              {
+                "id": "opus",
+                "efforts": [
+                  "high"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6-astra",
+                "efforts": [
+                  "high",
+                  "ultra"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "future",
+                "soon": true,
+                "efforts": [
+                  "high"
+                ]
+              }
+            ]
+          }
+        },
+        "matrix": [
+          {
+            "harness": "claude",
+            "motor": "claude",
+            "selectable": true
+          },
+          {
+            "harness": "codex",
+            "motor": "codex",
+            "selectable": true
+          }
+        ]
+      },
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      },
+      "model",
+      1
+    ],
+    "expected": null
+  },
+  {
+    "function": "fieldOptions",
+    "args": [
+      {
+        "harnesses": {
+          "claude": {
+            "accounts": [
+              {
+                "alias": "main",
+                "selectable": true
+              }
+            ]
+          },
+          "codex": {
+            "accounts": [
+              {
+                "alias": "work",
+                "selectable": true
+              },
+              {
+                "alias": "logged-out",
+                "selectable": false
+              }
+            ]
+          }
+        },
+        "motors": {
+          "claude": {
+            "models": [
+              {
+                "id": "opus",
+                "efforts": [
+                  "high"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6-astra",
+                "efforts": [
+                  "high",
+                  "ultra"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "future",
+                "soon": true,
+                "efforts": [
+                  "high"
+                ]
+              }
+            ]
+          }
+        },
+        "matrix": [
+          {
+            "harness": "claude",
+            "motor": "claude",
+            "selectable": true
+          },
+          {
+            "harness": "codex",
+            "motor": "codex",
+            "selectable": true
+          }
+        ]
+      },
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      },
+      "harnessAccount"
+    ],
+    "expected": [
+      {
+        "value": "work",
+        "label": "work",
+        "detail": "",
+        "disabled": false,
+        "reason": "Cuenta sin sesión compatible"
+      },
+      {
+        "value": "logged-out",
+        "label": "logged-out",
+        "detail": "",
+        "disabled": true,
+        "reason": "Cuenta sin sesión compatible"
+      }
+    ]
+  },
+  {
+    "function": "validate",
+    "args": [
+      {
+        "harnesses": {
+          "claude": {
+            "accounts": [
+              {
+                "alias": "main",
+                "selectable": true
+              }
+            ]
+          },
+          "codex": {
+            "accounts": [
+              {
+                "alias": "work",
+                "selectable": true
+              },
+              {
+                "alias": "logged-out",
+                "selectable": false
+              }
+            ]
+          }
+        },
+        "motors": {
+          "claude": {
+            "models": [
+              {
+                "id": "opus",
+                "efforts": [
+                  "high"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6-astra",
+                "efforts": [
+                  "high",
+                  "ultra"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "future",
+                "soon": true,
+                "efforts": [
+                  "high"
+                ]
+              }
+            ]
+          }
+        },
+        "matrix": [
+          {
+            "harness": "claude",
+            "motor": "claude",
+            "selectable": true
+          },
+          {
+            "harness": "codex",
+            "motor": "codex",
+            "selectable": true
+          }
+        ]
+      },
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "future",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      }
+    ],
+    "expected": "Selecciona un modelo disponible"
+  },
+  {
+    "function": "draft",
+    "args": [
+      {
+        "agent": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "account": "work",
+        "observedConfig": {
+          "identity": {
+            "pid": 99
+          },
+          "conversationId": "live-conversation"
+        }
+      }
+    ],
+    "expected": {
+      "toHarness": "codex",
+      "motor": "codex",
+      "model": "gpt-6-astra",
+      "effort": "high",
+      "harnessAccount": "work",
+      "motorAccount": "work",
+      "interrupt": false,
+      "expectedIdentity": {
+        "pid": 99
+      },
+      "expectedConversationId": "live-conversation"
+    }
+  },
+  {
+    "function": "recommendations",
+    "args": [
+      {
+        "harnesses": {
+          "claude": {
+            "accounts": [
+              {
+                "alias": "main",
+                "selectable": true
+              }
+            ]
+          },
+          "codex": {
+            "accounts": [
+              {
+                "alias": "work",
+                "selectable": true
+              }
+            ]
+          }
+        },
+        "motors": {
+          "claude": {
+            "models": [
+              {
+                "id": "opus",
+                "efforts": [
+                  "high"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "codex": {
+            "models": [
+              {
+                "id": "gpt-6-astra",
+                "efforts": [
+                  "high",
+                  "ultra"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          }
+        },
+        "matrix": [
+          {
+            "harness": "claude",
+            "motor": "claude",
+            "selectable": true
+          },
+          {
+            "harness": "codex",
+            "motor": "codex",
+            "selectable": true
+          }
+        ]
+      },
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false,
+        "expectedIdentity": {
+          "pid": 99
+        },
+        "expectedConversationId": "live-conversation"
+      },
+      [
+        {
+          "config": {
+            "toHarness": "codex",
+            "motor": "codex",
+            "model": "gpt-6-astra",
+            "effort": "ultra",
+            "harnessAccount": "work",
+            "motorAccount": "work",
+            "interrupt": true,
+            "expectedIdentity": {
+              "pid": 99
+            },
+            "expectedConversationId": "old"
+          },
+          "count": 3,
+          "lastUsed": 3
+        },
+        {
+          "config": {
+            "toHarness": "codex",
+            "motor": "codex",
+            "model": "gpt-6-astra",
+            "effort": "ultra",
+            "harnessAccount": "work",
+            "motorAccount": "work",
+            "interrupt": true,
+            "expectedIdentity": {
+              "pid": 99
+            },
+            "expectedConversationId": "old"
+          },
+          "count": 1,
+          "lastUsed": 1
+        },
+        {
+          "config": {
+            "toHarness": "codex",
+            "motor": "codex",
+            "model": "gpt-6-astra",
+            "effort": "ultra",
+            "harnessAccount": "logged-out",
+            "motorAccount": "work",
+            "interrupt": true,
+            "expectedIdentity": {
+              "pid": 99
+            },
+            "expectedConversationId": "old"
+          },
+          "count": 10,
+          "lastUsed": 5
+        },
+        {
+          "config": {
+            "toHarness": "codex",
+            "motor": "codex",
+            "model": "gpt-6-astra",
+            "effort": "high",
+            "harnessAccount": "work",
+            "motorAccount": "work",
+            "interrupt": false,
+            "expectedIdentity": {
+              "pid": 99
+            },
+            "expectedConversationId": "live-conversation"
+          },
+          "count": 20,
+          "lastUsed": 4
+        }
+      ],
+      {
+        "agent": "codex"
+      }
+    ],
+    "expected": [
+      {
+        "config": {
+          "toHarness": "codex",
+          "motor": "codex",
+          "model": "gpt-6-astra",
+          "effort": "ultra",
+          "harnessAccount": "work",
+          "motorAccount": "work",
+          "interrupt": false,
+          "expectedIdentity": {
+            "pid": 99
+          },
+          "expectedConversationId": "live-conversation"
+        },
+        "count": 3,
+        "lastUsed": 3
+      }
+    ]
+  },
+  {
+    "function": "draft",
+    "args": [
+      {
+        "agent": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "account": "work"
+      }
+    ],
+    "expected": {
+      "toHarness": "codex",
+      "motor": "codex",
+      "model": "gpt-6-astra",
+      "effort": "high",
+      "harnessAccount": "work",
+      "motorAccount": "work",
+      "interrupt": false
+    }
+  },
+  {
+    "function": "requiresConfirmation",
+    "args": [
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      },
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "ultra",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      }
+    ],
+    "expected": false
+  },
+  {
+    "function": "requiresConfirmation",
+    "args": [
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      },
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "other",
+        "motorAccount": "work",
+        "interrupt": false
+      }
+    ],
+    "expected": false
+  },
+  {
+    "function": "requiresConfirmation",
+    "args": [
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      },
+      {
+        "toHarness": "claude",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      }
+    ],
+    "expected": true
+  },
+  {
+    "function": "requiresConfirmation",
+    "args": [
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      },
+      {
+        "toHarness": "codex",
+        "motor": "claude",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      }
+    ],
+    "expected": true
+  },
+  {
+    "function": "requiresConfirmation",
+    "args": [
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": false
+      },
+      {
+        "toHarness": "codex",
+        "motor": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "harnessAccount": "work",
+        "motorAccount": "work",
+        "interrupt": true
+      }
+    ],
+    "expected": true
+  }
+]

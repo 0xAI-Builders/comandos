@@ -7,7 +7,7 @@ pub const LOOP_CUES: &[&str] = &[
     "scanning",
     "streaming",
 ];
-pub const MAX_VOLUME: f32 = 0.3;
+pub const MAX_VOLUME: f64 = 0.3;
 
 #[derive(Debug, Clone)]
 pub struct Controller {
@@ -85,19 +85,10 @@ pub fn resolve(cue: &str) -> Option<String> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn mount() -> Result<(), wasm_bindgen::JsValue> {
-    use comandos_web_dom::bridge::global_set;
-    use js_sys::{Array, Object, Reflect};
-    use wasm_bindgen::JsValue;
-    let api = Object::new();
-    let cues = Array::new();
-    for (cue, _) in DEFAULT_CATALOG {
-        cues.push(&JsValue::from(*cue));
-    }
-    Reflect::set(&api, &"DEFAULT_CATALOG".into(), &cues)?;
-    global_set("ComandosUISounds", &api.clone().into())?;
-    global_set("uiSounds", &api.into())
-}
+#[path = "ui_sounds_web.rs"]
+mod web;
+#[cfg(target_arch = "wasm32")]
+pub use web::mount;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn mount() -> Result<(), wasm_bindgen::JsValue> {

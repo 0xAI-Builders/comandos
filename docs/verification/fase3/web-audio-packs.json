@@ -1,0 +1,97 @@
+{
+  "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+  "rows": [
+    {
+      "pack": "minimal",
+      "cue": "open",
+      "same_duration": true,
+      "max_abs_diff": 0
+    },
+    {
+      "pack": "soft",
+      "cue": "open",
+      "same_duration": true,
+      "max_abs_diff": 0
+    },
+    {
+      "pack": "glass",
+      "cue": "open",
+      "same_duration": true,
+      "max_abs_diff": 0
+    },
+    {
+      "pack": "arcade",
+      "cue": "open",
+      "same_duration": true,
+      "max_abs_diff": 0
+    },
+    {
+      "pack": "mechanical",
+      "cue": "open",
+      "same_duration": true,
+      "max_abs_diff": 0
+    },
+    {
+      "pack": "organic",
+      "cue": "open",
+      "same_duration": true,
+      "max_abs_diff": 0
+    },
+    {
+      "pack": "dreamy",
+      "cue": "open",
+      "same_duration": true,
+      "max_abs_diff": 0
+    },
+    {
+      "pack": "scifi",
+      "cue": "open",
+      "same_duration": true,
+      "max_abs_diff": 0
+    },
+    {
+      "pack": "rubber",
+      "cue": "open",
+      "same_duration": true,
+      "max_abs_diff": 0
+    },
+    {
+      "pack": "cinematic",
+      "cue": "open",
+      "same_duration": true,
+      "max_abs_diff": 0
+    },
+    {
+      "pack": "studio",
+      "cue": "open",
+      "same_duration": true,
+      "max_abs_diff": 0
+    },
+    {
+      "pack": "zen",
+      "cue": "notification",
+      "same_duration": true,
+      "max_abs_diff": 0
+    },
+    {
+      "pack": "zen",
+      "cue": "swipe",
+      "same_duration": true,
+      "max_abs_diff": 0
+    },
+    {
+      "pack": "arcade",
+      "cue": "press",
+      "same_duration": true,
+      "max_abs_diff": 0
+    },
+    {
+      "pack": "rubber",
+      "cue": "level-up",
+      "same_duration": true,
+      "max_abs_diff": 0
+    }
+  ],
+  "pass": true,
+  "scope": "one representative cue per pack, zen material kernels, custom arcade press and rubber reward, both stereo channels"
+}

@@ -290,14 +290,17 @@ fn js_list(items: &[String]) -> String {
     Value::Array(items.iter().cloned().map(Value::String).collect()).to_string()
 }
 
-const READY_JS: &str = "() => !!window.__comandosReady || document.readyState === 'complete'";
+const READY_JS: &str = "async () => { if (window.fixtureReady) { await window.fixtureReady; const mode=new URLSearchParams(location.search).get('web'); if ((mode==='on'||mode==='shadow') && (!window.__comandosReady || !window.fixtureWasmUrl || !window.fixtureVisualReady)) throw new Error('fixture candidate did not load/actions actual WASM'); return true; } return !!window.__comandosReady || document.readyState === 'complete'; }";
 
 /// Espera la marca de listo: reintentos cada 100 ms hasta 10 s.
 fn wait_ready(page: &mut Page<'_>) -> Result<(), String> {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
-        if page.eval(READY_JS)? == Value::Bool(true) {
-            return Ok(());
+        match page.eval(READY_JS) {
+            Ok(Value::Bool(true)) => return Ok(()),
+            Ok(_) => {}
+            Err(e) if e.contains("Execution context was destroyed") => {}
+            Err(e) => return Err(e),
         }
         if Instant::now() >= deadline {
             return Err("la página no marcó listo en 10 s".into());
@@ -316,6 +319,7 @@ struct Element {
 struct Capture {
     image: Rgba,
     scale: f64,
+    proof: Value,
     elements: Vec<Vec<Element>>,
 }
 
@@ -334,7 +338,7 @@ fn capture(page: &mut Page<'_>, url: &str, entry: &PairEntry) -> Result<Capture,
         "() => {{ const box = e => {{ const r = e.getBoundingClientRect(); \
          return [r.x + scrollX, r.y + scrollY, r.width, r.height]; }}; \
          const all = s => [...document.querySelectorAll(s)]; \
-         return {{ scale: devicePixelRatio, \
+         return {{ scale: devicePixelRatio, proof: {{wasm_url:window.fixtureWasmUrl || null, actions:window.fixtureApiCalls || null}}, \
          sel: {sel}.map(s => all(s).map(e => [box(e), e.outerHTML])), \
          mask: {mask}.map(s => all(s).map(box)) }}; }}",
         sel = js_list(&entry.selectors),
@@ -377,6 +381,7 @@ fn capture(page: &mut Page<'_>, url: &str, entry: &PairEntry) -> Result<Capture,
     Ok(Capture {
         image,
         scale,
+        proof: data.get("proof").cloned().unwrap_or(Value::Null),
         elements,
     })
 }
@@ -540,6 +545,7 @@ fn pair_combos(
                         },
                         "touch_mode": if mode == EmulationMode::ResizeOnly { "OMITIDO" } else { "emulado" },
                         "legacy_url": legacy_url, "web_url": web_url,
+                        "legacy_proof":legacy.proof, "web_proof":web.proof,
                     });
                     for index in 0..entry.selectors.len() {
                         rows.extend(compare_selector(

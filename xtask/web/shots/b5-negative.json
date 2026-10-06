@@ -1,12 +1,9 @@
 [
   {
-    "id": "push-settings",
-    "page": "/xtask/web/fixtures/sounds/parity.html",
+    "id": "workspace-negative",
+    "page": "/xtask/web/fixtures/sounds/parity.html?__negative=1",
     "widths": [
-      1400,
-      844,
-      390,
-      320
+      390
     ],
     "dpr": [
       1,
@@ -14,7 +11,7 @@
     ],
     "touch": false,
     "selectors": [
-      "#push-fixture"
+      "#workspace-layout"
     ],
     "mask": [],
     "channel": 24,

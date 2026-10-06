@@ -4,7 +4,8 @@ use comandos_web_dom::drafts::{AnchorMemory, DraftMemory, line_at};
 fn restore_writes_the_saved_text_into_the_composer_and_sends_nothing_to_the_pty() {
     let mut d = DraftMemory::new("tab:alpha");
     let mut composer = String::new();
-    let state = r#"{"drafts":{"tab:alpha":{"text":"git commit -m \"wip","selStart":3,"selEnd":3}}}"#;
+    let state =
+        r#"{"drafts":{"tab:alpha":{"text":"git commit -m \"wip","selStart":3,"selEnd":3}}}"#;
     let r = d.restore(state, &composer);
     assert_eq!(r.state, "restored");
     composer = r.text.unwrap_or_default();
@@ -51,4 +52,9 @@ fn reading_anchor_is_found_by_its_line_text_or_reported_missing() {
 fn line_at_matches_the_original_top_line_rule() {
     assert_eq!(line_at("uno\ndos\ntres\n", 5), "dos");
     assert_eq!(line_at("uno\ndos", 0), "uno");
+}
+
+#[test]
+fn line_at_uses_javascript_utf16_offsets_after_emoji() {
+    assert_eq!(line_at("🙂uno\ndos\ntres", 7), "dos");
 }

@@ -1,11 +1,21 @@
 [
   {
     "id": "session-config",
-    "page": "/sounds/session-config.html",
-    "widths": [1400, 390],
-    "dpr": [1, 2],
+    "page": "/xtask/web/fixtures/sounds/parity.html",
+    "widths": [
+      1400,
+      844,
+      390,
+      320
+    ],
+    "dpr": [
+      1,
+      2
+    ],
     "touch": false,
-    "selectors": ["#session-config"],
+    "selectors": [
+      "#session-config"
+    ],
     "mask": [],
     "channel": 24,
     "ratio": 0.001

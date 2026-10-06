@@ -67,7 +67,7 @@ pub const COMPONENTS: &[Component] = &[
     Component {
         id: "push-settings",
         mount: crate::components::push_settings::mount,
-        attach: None,
+        attach: Some(crate::components::push_settings::attach),
     },
 ];
 

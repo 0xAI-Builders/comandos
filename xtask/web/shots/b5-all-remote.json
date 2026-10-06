@@ -1,0 +1,19 @@
+{
+  "page": "/xtask/web/fixtures/sounds/parity.html",
+  "widths": [
+    1400,
+    844,
+    390,
+    320
+  ],
+  "components": [
+    "#quick-terminal",
+    "#device-drafts",
+    "#session-config",
+    "#workspace-layout",
+    "#push-fixture",
+    "#sound-settings"
+  ],
+  "remote_only": [],
+  "remote_query": "web=shadow"
+}

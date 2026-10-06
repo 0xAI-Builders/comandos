@@ -1,6 +1,6 @@
 [
   {
-    "id": "push-settings",
+    "id": "workspace-layout",
     "page": "/xtask/web/fixtures/sounds/parity.html",
     "widths": [
       1400,
@@ -14,7 +14,7 @@
     ],
     "touch": false,
     "selectors": [
-      "#push-fixture"
+      "#workspace-layout"
     ],
     "mask": [],
     "channel": 24,

@@ -115,7 +115,7 @@ pub fn move_tab(document: &Value, src: &str, target_id: &str, edge: &str) -> Res
         "right" => ("x", false),
         "top" => ("y", true),
         "bottom" => ("y", false),
-        _ => return fail("Borde invalido"),
+        _ => return fail("Borde inválido"),
     };
     let moved = source(document, src)?;
     let ids = tab_ids(&moved);
@@ -128,7 +128,10 @@ pub fn move_tab(document: &Value, src: &str, target_id: &str, edge: &str) -> Res
                 .then(|| group.get("tree").cloned())
                 .flatten()
         } else {
-            group.get("tree").and_then(|t| find_leaf(t, target_id)).cloned()
+            group
+                .get("tree")
+                .and_then(|t| find_leaf(t, target_id))
+                .cloned()
         };
         let Some(kept) = kept else {
             continue;
@@ -168,7 +171,7 @@ fn with_groups(document: &Value, groups: Vec<Value>) -> Value {
 
 pub fn detach_tab(document: &Value, src: &str, index: i64) -> Result<Value, String> {
     if index < 0 {
-        return fail("Posicion invalida");
+        return fail("Posición inválida");
     }
     let doc_groups = groups(document);
     let before = doc_groups
@@ -211,7 +214,11 @@ pub fn detach_tab(document: &Value, src: &str, index: i64) -> Result<Value, Stri
     };
     let at = before
         .as_deref()
-        .and_then(|id| next_groups.iter().position(|g| g.get("id").and_then(Value::as_str) == Some(id)))
+        .and_then(|id| {
+            next_groups
+                .iter()
+                .position(|g| g.get("id").and_then(Value::as_str) == Some(id))
+        })
         .unwrap_or(next_groups.len());
     next_groups.insert(at, entry);
     let out = with_groups(document, next_groups);
@@ -224,32 +231,47 @@ pub fn detach_tab(document: &Value, src: &str, index: i64) -> Result<Value, Stri
 fn new_group_id(groups: &[Value], tab_id: &str) -> String {
     let mut id = format!("group-{tab_id}");
     let mut n = 1;
-    while groups.iter().any(|g| g.get("id").and_then(Value::as_str) == Some(id.as_str())) {
+    while groups
+        .iter()
+        .any(|g| g.get("id").and_then(Value::as_str) == Some(id.as_str()))
+    {
         n += 1;
         id = format!("group-{tab_id}-{n}");
     }
     id
 }
 
-pub fn resize_split(document: &Value, group_id: &str, path: &[String], ratio: f64) -> Result<Value, String> {
+pub fn resize_split(
+    document: &Value,
+    group_id: &str,
+    path: &[String],
+    ratio: f64,
+) -> Result<Value, String> {
     if !ratio.is_finite() {
-        return fail("Proporcion invalida");
+        return fail("Proporción inválida");
     }
     let mut out = document.clone();
     let group = out
         .get_mut("groups")
         .and_then(Value::as_array_mut)
-        .and_then(|gs| gs.iter_mut().find(|g| g.get("id").and_then(Value::as_str) == Some(group_id)))
+        .and_then(|gs| {
+            gs.iter_mut()
+                .find(|g| g.get("id").and_then(Value::as_str) == Some(group_id))
+        })
         .ok_or_else(|| "Grupo inexistente".to_string())?;
-    let mut node = group.get_mut("tree").ok_or_else(|| "Ruta invalida".to_string())?;
+    let mut node = group
+        .get_mut("tree")
+        .ok_or_else(|| "Ruta inválida".to_string())?;
     for step in path {
         if step != "first" && step != "second" || typ(node) != "split" {
-            return fail("Ruta invalida");
+            return fail("Ruta inválida");
         }
-        node = node.get_mut(step).ok_or_else(|| "Ruta invalida".to_string())?;
+        node = node
+            .get_mut(step)
+            .ok_or_else(|| "Ruta inválida".to_string())?;
     }
     if typ(node) != "split" {
-        return fail("La ruta no es una division");
+        return fail("La ruta no es una división");
     }
     if let Some(o) = node.as_object_mut() {
         o.insert("ratio".into(), json!(ratio.clamp(MIN_RATIO, MAX_RATIO)));
@@ -259,9 +281,49 @@ pub fn resize_split(document: &Value, group_id: &str, path: &[String], ratio: f6
 
 #[cfg(target_arch = "wasm32")]
 pub fn mount() -> Result<(), wasm_bindgen::JsValue> {
-    use comandos_web_dom::bridge::global_set;
-    use js_sys::Object;
-    global_set("WorkspaceLayout", &Object::new().into())
+    use comandos_web_dom::{bridge::global_set, port::*};
+    let api = object();
+    set(
+        &api,
+        "EDGES",
+        &from_json(
+            &json!({"left":["x",true],"right":["x",false],"top":["y",true],"bottom":["y",false]}),
+        )?,
+    )?;
+    set(&api, "MIN_RATIO", &MIN_RATIO.into())?;
+    set(&api, "MAX_RATIO", &MAX_RATIO.into())?;
+    for name in ["tabIds", "moveTab", "detachTab", "resizeSplit"] {
+        method(&api, name, move |args| {
+            let doc = to_json(&args.get(0));
+            let src = string(&args.get(1));
+            let result = match name {
+                "tabIds" => Ok(json!(tab_ids(&doc))),
+                "moveTab" => move_tab(&doc, &src, &string(&args.get(2)), &string(&args.get(3))),
+                "detachTab" => {
+                    let n = args.get(2).as_f64().unwrap_or(f64::NAN);
+                    if !n.is_finite() || n.fract() != 0.0 || n < 0.0 {
+                        Err("Posición inválida".into())
+                    } else {
+                        detach_tab(&doc, &src, n as i64)
+                    }
+                }
+                "resizeSplit" => {
+                    let path = to_json(&args.get(2))
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .map(|v| v.as_str().unwrap_or("").into())
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+                    resize_split(&doc, &src, &path, args.get(3).as_f64().unwrap_or(f64::NAN))
+                }
+                _ => Err("Operación desconocida".into()),
+            };
+            from_json(&result.map_err(|e| js_sys::Error::new(&e))?)
+        })?;
+    }
+    global_set("WorkspaceLayout", &api)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -276,9 +338,10 @@ mod tests {
 
     #[test]
     fn workspace_layout_checks() {
-        let cases: Value =
-            serde_json::from_str(include_str!("../../../../tests/fixtures/workspace_layout.json"))
-                .unwrap();
+        let cases: Value = serde_json::from_str(include_str!(
+            "../../../../tests/fixtures/workspace_layout.json"
+        ))
+        .unwrap();
         for case in cases.as_array().unwrap() {
             let doc = &case["doc"];
             let before = doc.clone();
@@ -298,7 +361,12 @@ mod tests {
                         .iter()
                         .map(|v| v.as_str().unwrap().to_string())
                         .collect::<Vec<_>>();
-                    resize_split(doc, args[0].as_str().unwrap(), &path, args[2].as_f64().unwrap())
+                    resize_split(
+                        doc,
+                        args[0].as_str().unwrap(),
+                        &path,
+                        args[2].as_f64().unwrap(),
+                    )
                 }
                 _ => unreachable!(),
             };
