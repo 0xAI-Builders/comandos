@@ -75,3 +75,18 @@ fn dispatch_browser_aliases_and_explicit() {
         matches!(resolve("cc-browser-npx-guard", &v(&["chrome-devtools-mcp"])), Command::Browser(a) if a == v(&["npx-guard", "chrome-devtools-mcp"]))
     );
 }
+
+#[test]
+fn dispatch_winstart_alias_and_explicit() {
+    for argv0 in ["comandos", "/private/bin/cc-winstart"] {
+        let args = if argv0 == "comandos" {
+            v(&["winstart", "--uninstall"])
+        } else {
+            v(&["--uninstall"])
+        };
+        assert_eq!(
+            format!("{:?}", resolve(argv0, &args)),
+            "Winstart([\"--uninstall\"])"
+        );
+    }
+}
