@@ -160,6 +160,11 @@ fn logical_absolute(cwd: &Path, input: &Path) -> PathBuf {
 
 fn directories(root: &Path) -> Vec<PathBuf> {
     let mut paths = Vec::new();
+    // GNU find -P does not traverse a symlink even at its starting point.
+    // Direct requested paths are resolved separately and retain Bash's behavior.
+    if !fs::symlink_metadata(root).is_ok_and(|metadata| metadata.is_dir()) {
+        return paths;
+    }
     let Ok(entries) = fs::read_dir(root) else {
         return paths;
     };
@@ -185,96 +190,14 @@ fn directories(root: &Path) -> Vec<PathBuf> {
     paths
 }
 
-fn glob_pattern(pattern: &str) -> Option<regex::Regex> {
-    let chars = pattern.chars().collect::<Vec<_>>();
-    let mut expression = String::from("\\A");
-    let mut index = 0;
-    while index < chars.len() {
-        match chars[index] {
-            '*' => expression.push_str(".*"),
-            '?' => expression.push('.'),
-            '\\' if index + 1 < chars.len() => {
-                index += 1;
-                expression.push_str(&regex::escape(&chars[index].to_string()));
-            }
-            '[' => {
-                let start = index;
-                let mut end = index + 1;
-                if chars.get(end).is_some_and(|c| matches!(c, '!' | '^')) {
-                    end += 1;
-                }
-                if chars.get(end) == Some(&']') {
-                    end += 1;
-                }
-                while end < chars.len() && chars[end] != ']' {
-                    // POSIX character classes contain their own closing bracket.
-                    if chars[end] == '[' && chars.get(end + 1) == Some(&':') {
-                        end += 2;
-                        while end + 1 < chars.len() && !(chars[end] == ':' && chars[end + 1] == ']')
-                        {
-                            end += 1;
-                        }
-                        end += 2;
-                    } else if chars[end] == '\\' {
-                        end += 2;
-                    } else {
-                        end += 1;
-                    }
-                }
-                if end >= chars.len() {
-                    expression.push_str("\\[");
-                } else {
-                    expression.push('[');
-                    let mut item = start + 1;
-                    if matches!(chars[item], '!' | '^') {
-                        expression.push('^');
-                        item += 1;
-                    }
-                    if chars[item] == ']' {
-                        expression.push_str("\\]");
-                        item += 1;
-                    }
-                    while item < end {
-                        if chars[item] == '\\' && item + 1 < end {
-                            item += 1;
-                            if "[]\\^-&~".contains(chars[item]) {
-                                expression.push('\\');
-                            }
-                            expression.push(chars[item]);
-                        } else if chars[item] == '[' && chars.get(item + 1) == Some(&':') {
-                            // Preserve the complete POSIX class inside the outer set.
-                            while item < end {
-                                expression.push(chars[item]);
-                                if chars[item] == ']' {
-                                    break;
-                                }
-                                item += 1;
-                            }
-                        } else if matches!(chars[item], '[' | '^' | '&' | '~') {
-                            expression.push('\\');
-                            expression.push(chars[item]);
-                        } else {
-                            expression.push(chars[item]);
-                        }
-                        item += 1;
-                    }
-                    expression.push(']');
-                    index = end;
-                }
-            }
-            literal => expression.push_str(&regex::escape(&literal.to_string())),
-        }
-        index += 1;
-    }
-    expression.push_str("\\z");
-    regex::RegexBuilder::new(&expression)
-        .case_insensitive(true)
-        .dot_matches_new_line(true)
-        .build()
-        .ok()
+#[path = "x/glob.rs"]
+mod glob;
+
+fn glob_pattern(pattern: &str) -> Option<glob::Pattern> {
+    glob::Pattern::compile(pattern)
 }
 
-fn name_matches(path: &Path, pattern: Option<&regex::Regex>) -> bool {
+fn name_matches(path: &Path, pattern: Option<&glob::Pattern>) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .zip(pattern)
