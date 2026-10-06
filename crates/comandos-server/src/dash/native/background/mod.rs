@@ -127,6 +127,7 @@ impl Owner {
     pub(crate) fn start(native: &Arc<Native>) -> Self {
         let common = start(native);
         super::remote::start(native);
+        super::ops::start(native);
         let news = super::news::scheduler::start(native);
         Self {
             common,

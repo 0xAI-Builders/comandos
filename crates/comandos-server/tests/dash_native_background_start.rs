@@ -6,7 +6,8 @@ use support::TestHome;
 
 #[tokio::test]
 async fn start_is_owned_idempotent_and_shutdown_wakes_waiters() {
-    for (mode, count) in [(Background::legacy(), 1), (Background::front(), 4)] {
+    for (mode, initial_count, count) in [(Background::legacy(), 1, 1), (Background::front(), 5, 4)]
+    {
         let home = TestHome::new("background-owner");
         let mut opts = home.options();
         opts.background = mode;
@@ -14,9 +15,17 @@ async fn start_is_owned_idempotent_and_shutdown_wakes_waiters() {
         let native = Arc::new(Native::new(opts));
         assert!(native.ready().await);
         native.start_background();
-        assert_eq!(native.tasks().len(), count);
+        assert_eq!(native.tasks().len(), initial_count);
         native.start_background();
-        assert_eq!(native.tasks().len(), count);
+        assert_eq!(native.tasks().len(), initial_count);
+        // The one-shot operations recovery finishes; the four loop owners stay.
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while native.tasks().len() != count {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
         tokio::time::sleep(Duration::from_millis(30)).await;
         assert_eq!(native.tasks().len(), count, "news Runner must stay alive");
         native.shutdown().await;
@@ -103,4 +112,49 @@ async fn shutdown_does_not_join_unbounded_registered_operations() {
     );
     task.abort();
     let _ = task.await;
+}
+
+#[tokio::test]
+async fn native_start_recovers_ops_queue_only_for_its_enabled_front_owner() {
+    for (mode, off, expected) in [
+        (Background::legacy(), false, false),
+        (Background::front(), true, false),
+        (Background::front(), false, true),
+    ] {
+        let home = TestHome::new("background-ops-owner");
+        home.write("motor-queue.json", r#"{"audit|%0":{}}"#);
+        let mut opts = home.options();
+        opts.background = mode;
+        opts.usage_state_native = false;
+        opts.cuts_off.extend([Cut::Services, Cut::News]);
+        if off {
+            opts.cuts_off.insert(Cut::Ops);
+        }
+        let native = Arc::new(Native::new(opts));
+        native.start_background();
+        if expected {
+            tokio::time::timeout(Duration::from_secs(2), async {
+                while !home.hooks().join("motor-results.json").exists() {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .unwrap();
+            let results =
+                comandos_server::dash::native::ops::results::MotorResults::shared(native.options())
+                    .all();
+            assert_eq!(results["audit|%0"]["ok"], false);
+            assert!(
+                results["audit|%0"]["detail"]
+                    .as_str()
+                    .unwrap()
+                    .contains("sin snapshot")
+            );
+        } else {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            assert!(!home.hooks().join("motor-results.json").exists());
+            assert!(!home.journal_db().exists());
+        }
+        native.shutdown().await;
+    }
 }
