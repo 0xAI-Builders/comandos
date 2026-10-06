@@ -1,5 +1,4 @@
-//! Residuo parcial de 2f-3/T7. Las ramas dinámicas pendientes declinan;
-//! la reconciliación final del orden requiere fusionar todos los cortes.
+//! Orden GET del Python y residuo estático/desconocido de 2f-3/T7.
 mod static_files;
 use super::{Answer, Entry, Fault, Key, Native, NativeRoute, Verb, reply, retired, target};
 use crate::{HandlerError, Request};
@@ -27,6 +26,96 @@ pub const ROUTES: &[Entry] = &[
     entry(Verb::Post, ResidueRoute::PostUnknown),
     entry(Verb::Delete, ResidueRoute::DeleteUnknown),
 ];
+
+/// Orden de `_do_GET`, antes de agrupar por dominio. La retirada deliberada
+/// de `/proxy` conserva también consultas; `/events/v2` precede a `/events`.
+const GET_ORDER: &[Key] = &[
+    Key::Prefix("/operator"),
+    Key::Path("/session-config-history"),
+    Key::Prefix("/pane-extensions"),
+    Key::Prefix("/webterm-token"),
+    Key::Prefix("/state"),
+    Key::Prefix("/accounts"),
+    Key::Prefix("/providers"),
+    Key::Prefix("/optimization/plans"),
+    Key::Prefix("/opencode/models"),
+    Key::Prefix("/model-tiers"),
+    Key::Prefix("/tab-models"),
+    Key::Prefix("/active-tab"),
+    Key::Prefix("/dedication"),
+    Key::Prefix("/analytics/week"),
+    Key::Prefix("/pomodoro/report"),
+    Key::Raw("/pomodoro"),
+    Key::Raw("/sovereignty"),
+    Key::Prefix("/model/status"),
+    Key::Path("/proxy"),
+    Key::Prefix("/ui-log/summary"),
+    Key::Prefix("/session-profiles"),
+    Key::Prefix("/extension-usage"),
+    Key::Prefix("/session-brain"),
+    Key::Prefix("/usage/guard"),
+    Key::Prefix("/usage/changes"),
+    Key::Prefix("/notifs/count"),
+    Key::Prefix("/news/latest"),
+    Key::Path("/push/key"),
+    Key::Path("/news/editions"),
+    Key::Prefix("/news/media/"),
+    Key::Path("/news/source"),
+    Key::Path("/news/chat"),
+    Key::Path("/news/notes"),
+    Key::Path("/news/saved"),
+    Key::Path("/news/edition"),
+    Key::Prefix("/models/latest"),
+    Key::Prefix("/fs/dirs"),
+    Key::Prefix("/usage/provider-compare"),
+    Key::Prefix("/usage/experiments"),
+    Key::Prefix("/usage/analytics"),
+    Key::Prefix("/usage/interactions"),
+    Key::Prefix("/usage/state"),
+    Key::Prefix("/project-profiles"),
+    Key::Prefix("/ssh"),
+    Key::Prefix("/conf"),
+    Key::Prefix("/prefs"),
+    Key::ExactOrQuery("/tmux-mouse"),
+    Key::Path("/workspace"),
+    Key::Path("/notices/watch"),
+    Key::Path("/notices"),
+    Key::Path("/notices/prefs"),
+    Key::Path("/workspace/close-group"),
+    Key::Path("/workspace/client"),
+    Key::Prefix("/tabs"),
+    Key::Prefix("/tab-history"),
+    Key::Prefix("/remote-state"),
+    Key::Prefix("/remote-qr.png"),
+    Key::Path("/work-marks"),
+    Key::Path("/events/v2"),
+    Key::Prefix("/events"),
+    Key::Prefix("/commands/catalog"),
+    Key::Raw("/snippets"),
+    Key::Raw("/chains"),
+];
+
+pub(super) fn canonical_get_target(target: &str) -> Option<&'static str> {
+    GET_ORDER.iter().find_map(|key| {
+        if !key.matches(target) {
+            return None;
+        }
+        Some(match key {
+            Key::Path(path) | Key::Raw(path) | Key::Prefix(path) | Key::ExactOrQuery(path) => *path,
+        })
+    })
+}
+
+pub(super) fn ordered_get_route(target: &str) -> Option<NativeRoute> {
+    let canonical = canonical_get_target(target)?;
+    if canonical == "/operator" {
+        return Some(NativeRoute::Retired);
+    }
+    // Solo busca la tabla canónica, sin volver a aplicar GET_ORDER. El
+    // despachador recibe la ruta original y conserva el corte de su dueño.
+    super::route_in_tables(&Method::GET, canonical)
+}
+
 // Comparaciones literales de Handler.do_POST: protección provisional para
 // que una rama aún no fusionada nunca se convierta aquí en un 404.
 const PENDING_POST: &[&str] = &[

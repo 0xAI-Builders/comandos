@@ -170,9 +170,10 @@ async fn incomplete_routes_and_disabled_residue_still_forward() {
     // cut must still forward them rather than let residue turn them into404.
     opts.cuts_off.insert(Cut::Ops);
     let rust = front(&home, legacy.port, opts).await;
-    for path in ["/pane-extensionsX", "/eventsX"] {
-        assert_eq!(get(rust.port, path).await.text(), r#"{"legacy": true}"#);
-    }
+    assert_eq!(
+        get(rust.port, "/pane-extensionsX").await.text(),
+        r#"{"legacy": true}"#
+    );
     assert_eq!(
         request_body(rust.port, "POST", "/pane-extensions/recover", "", "{}")
             .await
@@ -278,4 +279,81 @@ fn mime_table_matches_python_for_checkout_extensions() {
             "{ext}"
         );
     }
+}
+
+#[tokio::test]
+async fn prefix_quirks_match_python_and_retired_variants_never_forward() {
+    use comandos_server::dash::native::{NativeRoute, route};
+    use support::{FakeLegacy, front, get, twin::Twin};
+    let Some(twin) = Twin::start_with("residue-prefixes", |_| {}, support::twin::TwinOpts {
+        fakebin_extra: vec![("fc-list".into(), "#!/bin/sh\nexit 0\n".into())],
+            python_prelude: format!("_week = dash.analytics_week_payload\ndash.analytics_week_payload = lambda offset, now=None, **kw: _week(offset, now={}, **kw)\n", support::NOW_MS as f64 / 1000.0),
+        ..Default::default()
+    }).await else {
+        return;
+    };
+    // Every former unmatched, still-live RawPrefix branch. No CLI/process mutation.
+    for prefix in [
+        "/state",
+        "/accounts",
+        "/providers",
+        "/optimization/plans",
+        "/model-tiers",
+        "/tab-models",
+        "/active-tab",
+        "/analytics/week",
+        "/model/status",
+        "/extension-usage",
+        "/notifs/count",
+        "/usage/state",
+        "/prefs",
+        "/tabs",
+        "/tab-history",
+    ] {
+        for suffix in ["X", "/x"] {
+            let path = format!("{prefix}{suffix}");
+            let pair = twin.get(&path).await;
+            if prefix == "/usage/state" {
+                assert_eq!(pair.front.status, pair.oracle.status, "{path}");
+                let mut a: Value = serde_json::from_slice(&pair.front.body).unwrap();
+                let mut b: Value = serde_json::from_slice(&pair.oracle.body).unwrap();
+                // Only the wall-clock field differs; fixture usage tables are empty.
+                assert!(a["generated_at"].is_number() && b["generated_at"].is_number());
+                a["generated_at"] = 0.into();
+                b["generated_at"] = 0.into();
+                assert_eq!(a.to_string(), b.to_string(), "{path}");
+            } else {
+                pair.assert_same();
+            }
+        }
+    }
+    // Retirements intentionally differ from Python; assert the native410 with a
+    // poison relay instead of declaring them equal to the old live endpoint.
+    let home = TestHome::new("residue-retired-prefixes");
+    let legacy = FakeLegacy::start().await;
+    let app = front(&home, legacy.port, home.options()).await;
+    for prefix in [
+        "/dedication",
+        "/pomodoro/report",
+        "/ui-log/summary",
+        "/session-brain",
+        "/usage/guard",
+        "/usage/changes",
+        "/usage/provider-compare",
+        "/usage/experiments",
+        "/usage/analytics",
+        "/usage/interactions",
+        "/project-profiles",
+        "/events",
+        "/operator",
+    ] {
+        for suffix in ["X", "/x", "X?x=1"] {
+            let path = format!("{prefix}{suffix}");
+            assert_eq!(route(&Method::GET, &path), Some(NativeRoute::Retired));
+            assert_eq!(get(app.port, &path).await.status, 410, "{path}");
+        }
+    }
+    assert_eq!(get(app.port, "/proxy?x=1").await.status, 410);
+    assert!(legacy.requests().is_empty());
+    app.stop().await;
 }

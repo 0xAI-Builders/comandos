@@ -126,12 +126,50 @@ pub fn answer(method: &Method, path: &str) -> Answer {
 /// primera vez que se pisa, basta para notarlo en el journal.
 fn note_first_hit(method: &Method, path: &str) {
     static SEEN: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
-    let key = format!("{method} {path}");
+    let key = log_key(method, path);
     let seen = SEEN.get_or_init(|| Mutex::new(BTreeSet::new()));
     let Ok(mut seen) = seen.lock() else {
         return;
     };
     if seen.insert(key.clone()) {
         eprintln!("comandos dash: ruta retirada pisada por primera vez: {key} → 410");
+    }
+}
+
+fn log_key(method: &Method, path: &str) -> String {
+    let (verb, canonical) = if *method == Method::GET {
+        (
+            "GET",
+            super::residue::canonical_get_target(path).unwrap_or("unknown"),
+        )
+    } else if *method == Method::POST {
+        let canonical = if path.starts_with("/operator") {
+            "/operator"
+        } else {
+            POST_PATHS
+                .iter()
+                .copied()
+                .find(|p| *p == path)
+                .unwrap_or("unknown")
+        };
+        ("POST", canonical)
+    } else {
+        ("OTHER", "unknown")
+    };
+    // Finite labels only: queries and arbitrary suffixes never grow SEEN.
+    format!("{verb} {canonical}")
+}
+#[cfg(test)]
+mod log_tests {
+    use super::*;
+    #[test]
+    fn logging_keeps_only_canonical_retired_branches() {
+        let mut seen = BTreeSet::new();
+        for n in 0..10_000 {
+            seen.insert(log_key(&Method::GET, &format!("/operator/{n}?q={n}")));
+            seen.insert(log_key(&Method::GET, &format!("/proxy?q={n}")));
+            seen.insert(log_key(&Method::GET, &format!("/eventsX/{n}")));
+        }
+        assert_eq!(seen.len(), 3);
     }
 }

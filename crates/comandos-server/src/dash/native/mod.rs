@@ -311,6 +311,15 @@ const TABLES: &[&[Entry]] = &[
 const BASE_TABLES: usize = 15;
 
 pub fn route(method: &Method, target: &str) -> Option<NativeRoute> {
+    if *method == Method::GET
+        && let Some(route) = residue::ordered_get_route(target)
+    {
+        return Some(route);
+    }
+    route_in_tables(method, target)
+}
+
+fn route_in_tables(method: &Method, target: &str) -> Option<NativeRoute> {
     let verb = if *method == Method::GET {
         Verb::Get
     } else if *method == Method::POST {
