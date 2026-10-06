@@ -22,6 +22,14 @@ fn registry_preserves_labels_and_orders_local_favorites_first() {
 }
 
 #[test]
+fn favorites_preserve_python_stable_document_order() {
+    let mut registry =
+        TabRegistry::from_json(&json!({"z": "Zed", "b": "Bee", "a": "Aye"})).unwrap();
+    registry.apply_favorites(&json!(["a", "b"]), 1);
+    assert_eq!(registry.ordered_keys(), vec!["b", "a", "z"]);
+}
+
+#[test]
 fn stale_favorite_generation_is_ignored() {
     let mut registry = TabRegistry::from_json(&json!({"a": "A", "b": "B"})).unwrap();
     registry.apply_favorites(&json!(["a"]), 10);

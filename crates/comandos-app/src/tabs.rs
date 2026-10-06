@@ -57,17 +57,17 @@ impl TabRegistry {
     }
 
     pub fn ordered_keys(&self) -> Vec<String> {
-        let mut keys: Vec<_> = self.records.iter().map(|r| r.key.clone()).collect();
-        keys.sort_by_key(|key| {
-            if key == "local" {
-                (0, 0, key.clone())
-            } else if self.records.iter().any(|r| r.key == *key && r.favorite) {
-                (1, 0, key.clone())
+        let mut records: Vec<_> = self.records.iter().collect();
+        records.sort_by_key(|record| {
+            if record.key == "local" {
+                0
+            } else if record.favorite {
+                1
             } else {
-                (2, 0, key.clone())
+                2
             }
         });
-        keys
+        records.into_iter().map(|r| r.key.clone()).collect()
     }
 
     pub fn insert(&mut self, record: TabRecord) {

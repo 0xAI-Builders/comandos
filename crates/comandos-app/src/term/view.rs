@@ -523,10 +523,10 @@ impl Inner {
         }
         if m.drain.has_exited() && m.drain.finished().is_none() {
             drop(m);
-            if !self.read(IOCondition::empty()) {
-                if let Some(source) = self.read_source.borrow_mut().take() {
-                    source.remove();
-                }
+            if !self.read(IOCondition::empty())
+                && let Some(source) = self.read_source.borrow_mut().take()
+            {
+                source.remove();
             }
             m = self.model.borrow_mut();
         }

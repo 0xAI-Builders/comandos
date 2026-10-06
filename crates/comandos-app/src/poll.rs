@@ -55,7 +55,7 @@ impl Default for PollIntervals {
 
 pub struct Poller {
     stop: Arc<AtomicBool>,
-    client: DashClient,
+    clients: Vec<DashClient>,
     threads: Mutex<Vec<JoinHandle<()>>>,
 }
 
@@ -75,15 +75,19 @@ impl Poller {
         let (tx, rx) = mpsc::channel();
         let stop = Arc::new(AtomicBool::new(false));
         let mut threads = Vec::new();
+        let state_client = client.isolated();
+        let workspace_client = client.isolated();
+        let marks_client = client.isolated();
+        let notices_client = client.isolated();
         threads.push(spawn_state_prefs(
-            client.isolated(),
+            state_client.clone(),
             generation,
             tx.clone(),
             stop.clone(),
             intervals,
         ));
         threads.push(spawn_simple(
-            client.isolated(),
+            workspace_client.clone(),
             tx.clone(),
             stop.clone(),
             "/workspace",
@@ -92,7 +96,7 @@ impl Poller {
             PollUpdate::Workspace,
         ));
         threads.push(spawn_simple(
-            client.isolated(),
+            marks_client.clone(),
             tx.clone(),
             stop.clone(),
             "/marks",
@@ -101,7 +105,7 @@ impl Poller {
             PollUpdate::Marks,
         ));
         threads.push(spawn_notices(
-            client.isolated(),
+            notices_client.clone(),
             tx,
             stop.clone(),
             intervals.notices_wait_secs,
@@ -111,7 +115,13 @@ impl Poller {
         (
             Poller {
                 stop,
-                client,
+                clients: vec![
+                    client,
+                    state_client,
+                    workspace_client,
+                    marks_client,
+                    notices_client,
+                ],
                 threads: Mutex::new(threads),
             },
             rx,
@@ -120,7 +130,9 @@ impl Poller {
 
     pub fn stop(&self) {
         self.stop.store(true, Ordering::Release);
-        self.client.cancel_pending();
+        for client in &self.clients {
+            client.cancel_pending();
+        }
         if let Ok(mut threads) = self.threads.lock() {
             for thread in threads.drain(..) {
                 let _ = thread.join();
@@ -142,7 +154,7 @@ fn spawn_state_prefs(
     stop: Arc<AtomicBool>,
     intervals: PollIntervals,
 ) -> JoinHandle<()> {
-    std::thread::Builder::new()
+    let spawn = std::thread::Builder::new()
         .name("app-poll-state-prefs".into())
         .spawn(move || {
             let mut last_prefs: Option<Value> = None;
@@ -163,8 +175,11 @@ fn spawn_state_prefs(
                 }
                 sleep_cancel(&stop, intervals.state_prefs);
             }
-        })
-        .expect("poll state thread")
+        });
+    match spawn {
+        Ok(thread) => thread,
+        Err(error) => panic!("poll state thread: {error}"),
+    }
 }
 
 fn spawn_simple(
@@ -176,7 +191,7 @@ fn spawn_simple(
     timeout: Duration,
     wrap: fn(Value) -> PollUpdate,
 ) -> JoinHandle<()> {
-    std::thread::Builder::new()
+    let spawn = std::thread::Builder::new()
         .name(format!("app-poll-{path}"))
         .spawn(move || {
             while !stop.load(Ordering::Acquire) {
@@ -185,8 +200,11 @@ fn spawn_simple(
                 }
                 sleep_cancel(&stop, interval);
             }
-        })
-        .expect("poll simple thread")
+        });
+    match spawn {
+        Ok(thread) => thread,
+        Err(error) => panic!("poll simple thread: {error}"),
+    }
 }
 
 fn spawn_notices(
@@ -197,7 +215,7 @@ fn spawn_notices(
     timeout: Duration,
     backoff: Duration,
 ) -> JoinHandle<()> {
-    std::thread::Builder::new()
+    let spawn = std::thread::Builder::new()
         .name("app-poll-notices".into())
         .spawn(move || {
             let mut rev = String::new();
@@ -220,8 +238,11 @@ fn spawn_notices(
                     Err(_) => sleep_cancel(&stop, backoff),
                 }
             }
-        })
-        .expect("poll notices thread")
+        });
+    match spawn {
+        Ok(thread) => thread,
+        Err(error) => panic!("poll notices thread: {error}"),
+    }
 }
 
 pub fn live_pref_snapshot(value: &Value) -> Value {
