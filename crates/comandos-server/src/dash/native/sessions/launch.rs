@@ -14,10 +14,11 @@
 //! reproducen igual, matando solo la sesión recién creada), los archivos del
 //! registro de pestañas, los `.claude.json` de la herencia de confianza y los
 //! `settings.json` de la siembra. Lo que este port no reproduce declina antes:
-//! un `profileId` (los perfiles de lanzamiento siguen en el heredado), los
-//! harnesses `acp`, `opencode` y `agy` (su comando lo porta 2f-2/T1), un
-//! carril de uso apagado cuando hay que registrar la configuración y un
+//! un carril de uso apagado cuando hay que registrar la configuración y un
 //! `.worktreeinclude` con patrones que no son `*`/`?` de un solo nivel.
+//! Los perfiles se leen de usage, se mezclan con el cuerpo (gana el cuerpo)
+//! y añaden argumentos por lanzamiento sin cambiar la configuración global.
+//! ACP usa la cuenta del motor; OpenCode/AGY resuelven su binario y catálogo.
 //!
 //! Efectos en vivo (los del Python, en su orden): `/session-new` — worktree
 //! (`git worktree add` en `<cwd>/.claude/worktrees/wt-<n>` y copia de los
@@ -49,8 +50,9 @@ use crate::dash::native::{Answer, states::gather, tmux::run_program};
 use comandos_core::json::{indent_dumps, python_eq, truthy};
 use comandos_core::text::shlex_quote;
 use comandos_runtime::{
-    accounts, claude_trust, launch_command,
+    accounts, capabilities, claude_trust, launch_command,
     providers::{grok_models, harness_has_accounts, proxy_port, validate_selection},
+    session_profiles,
 };
 use serde_json::{Map, Value, json};
 use std::{
@@ -649,6 +651,7 @@ struct AgentSpec<'a> {
     model: &'a str,
     effort: &'a str,
     alias: &'a str,
+    motor_alias: &'a str,
     prefix: &'a str,
     danger: bool,
 }
@@ -741,8 +744,35 @@ fn agent_command(
             }
             cmd + &flag
         }
-        // `_acp_launch_cmd` y `_harness_launch_cmd`: 2f-2/T1.
-        "acp" | "opencode" | "agy" => return Err(Fault::Decline),
+        "acp" => {
+            let motor = spec
+                .route
+                .and_then(|r| r.get("motor"))
+                .and_then(Value::as_str)
+                .unwrap_or("claude");
+            launch_command::acp_launch_command(
+                registry,
+                motor,
+                model,
+                effort,
+                spec.motor_alias,
+                spec.danger,
+            )
+            .map_err(decline)?
+        }
+        "opencode" | "agy" => {
+            let ctx = launch_command::Ctx {
+                registry: registry.clone(),
+                home: opts.home.clone(),
+                cwd: opts.cwd.clone(),
+                search_path: opts.search_path.clone(),
+                proxy_port: 0,
+                repo_root: opts.repo_root.clone().ok_or(Fault::Decline)?,
+            };
+            launch_command::native_harness_command(&ctx, spec.agent, model, effort)
+                .map_err(decline)?
+                + &flag
+        }
         _ => String::new(),
     };
     Ok(Launch::Command(command))
@@ -750,14 +780,41 @@ fn agent_command(
 
 // ---------------------------------------------------------- /session-new
 
+fn profile_unavailable(message: &str) -> Answer {
+    reply(
+        StatusCode::CONFLICT,
+        &json!({"error":message,"code":"profile_unavailable"}),
+    )
+}
+
 /// POST `/session-new` (9333).
 pub(super) async fn session_new(native: &Native, data: &Map<String, Value>) -> Answer {
     const PATH: &str = "/session-new";
     let opts = native.options();
-    // Los perfiles de lanzamiento (`session_profile_store`) siguen en el heredado.
-    if data.get("profileId").is_some_and(truthy) {
-        return Err(Fault::Decline);
-    }
+    let mut merged = data.clone();
+    let profile = if let Some(id) = data.get("profileId").filter(|v| truthy(v)).cloned() {
+        let found = native
+            .usage
+            .with(move |b| comandos_store::session_profiles::get_profile(&b.conn, &id))
+            .await?;
+        let profile = match found {
+            Ok(p) => p,
+            Err(comandos_store::session_profiles::Fault::Invalid(message)) => {
+                return profile_unavailable(&message);
+            }
+            Err(comandos_store::session_profiles::Fault::Uncertain(_)) => {
+                return Err(Fault::Decline);
+            }
+            Err(_) => return Err(failure()),
+        };
+        let draft = session_profiles::launch_draft(&profile).map_err(decline)?;
+        merged = draft.as_object().cloned().ok_or(Fault::Decline)?;
+        merged.extend(data.clone());
+        Some(profile)
+    } else {
+        None
+    };
+    let data = &merged;
     let requested_agent = match data.get("agent") {
         None => "shell".to_owned(),
         Some(v) => py::take_chars(&str_of(v)?, 24),
@@ -866,7 +923,12 @@ pub(super) async fn session_new(native: &Native, data: &Map<String, Value>) -> A
     let launch = {
         let (reads, reg, route, agent) =
             (opts.clone(), registry.clone(), route.clone(), agent.clone());
-        let (model, effort, alias) = (model.clone(), effort.clone(), alias.clone());
+        let (model, effort, alias, motor_alias) = (
+            model.clone(),
+            effort.clone(),
+            alias.clone(),
+            motor_alias.clone(),
+        );
         let prefix = match &account {
             Some(Ok(prefix)) => prefix.clone(),
             _ => String::new(),
@@ -879,6 +941,7 @@ pub(super) async fn session_new(native: &Native, data: &Map<String, Value>) -> A
                 model: &model,
                 effort: &effort,
                 alias: &alias,
+                motor_alias: &motor_alias,
                 prefix: &prefix,
                 danger,
             };
@@ -911,6 +974,34 @@ pub(super) async fn session_new(native: &Native, data: &Map<String, Value>) -> A
         },
         None => (cwd.clone(), false),
     };
+    let profile_flags = if let Some(profile) = &profile {
+        let mut profile = profile.clone();
+        profile["harness"] = json!(agent);
+        profile["harnessAccount"] = json!(alias);
+        let (registry, reads, cwd) = (registry.clone(), opts.clone(), final_cwd.clone());
+        // launch_args puede escribir una configuración privada de Claude.
+        // Desde aquí, un error incierto jamás debe repetir la petición en Python.
+        mark_effect();
+        match blocking(move || {
+            Ok(session_profiles::launch_args(
+                &profile,
+                &registry,
+                Path::new(&cwd),
+                &reads.hooks.join("profile-launches"),
+                false,
+                &capabilities::Paths::new(&reads.home, &reads.cwd),
+            ))
+        })
+        .await?
+        {
+            Ok(flags) => flags,
+            Err(capabilities::Fault::Invalid(message)) => return profile_unavailable(&message),
+            Err(capabilities::Fault::Io(error)) => return profile_unavailable(&error.to_string()),
+            Err(capabilities::Fault::Uncertain(_)) => return Err(failure()),
+        }
+    } else {
+        Vec::new()
+    };
     let n = (now(opts).floor() as i64).rem_euclid(100_000);
     let new_sess = free_session(opts, n).await?;
     let out = mutate(
@@ -934,13 +1025,22 @@ pub(super) async fn session_new(native: &Native, data: &Map<String, Value>) -> A
             &json!({"error": message, "code": "account_invalid"}),
         );
     }
-    let command = match launch {
+    let mut command = match launch {
         Launch::Kill(status, body) => {
             kill_new(opts, &new_sess).await?;
             return reply(status, &body);
         }
         Launch::Command(command) => command,
     };
+    if !command.is_empty()
+        && let Some(profile) = &profile
+    {
+        let id = profile["id"].as_str().ok_or_else(failure)?;
+        command = format!("COMANDOS_SESSION_PROFILE={} {command}", shlex_quote(id));
+        if !profile_flags.is_empty() {
+            command += &format!(" {}", launch_command::shlex_join(&profile_flags));
+        }
+    }
     if !command.is_empty() {
         let pane_target = format!("={new_sess}:");
         let shown = tmux(
@@ -975,8 +1075,8 @@ pub(super) async fn session_new(native: &Native, data: &Map<String, Value>) -> A
                 "routeId": route_id,
                 "model": model, "effort": effort,
                 "harnessAccount": alias, "motorAccount": motor_alias,
-                "profileId": null,
-                "profileStatus": null,
+                "profileId": profile.as_ref().map(|p| &p["id"]),
+                "profileStatus": profile.as_ref().map(|_| "launch_requested"),
                 "profileEffectiveNow": null}),
     )
 }

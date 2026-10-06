@@ -145,6 +145,113 @@ fn account_failure(e: &accounts::AccountError) -> ConfigError {
     }
 }
 
+/// `_native_launch_model`: descarta modelos ajenos y ajusta el esfuerzo
+/// al catálogo del CLI. No consulta credenciales ni lanza procesos.
+pub fn native_launch_model(
+    registry: &Value,
+    harness: &str,
+    model: &str,
+    effort: &str,
+) -> Result<(String, String), Unsure> {
+    let motor = sub(registry, "motors")?.and_then(|m| m.get(harness));
+    let native = sub(registry, "harnesses")?.and_then(|m| m.get(harness));
+    let mut models = Vec::new();
+    // `models` es lista, mientras los contenedores superiores son objetos.
+    for spec in [motor, native].into_iter().flatten() {
+        if let Some(raw) = spec.get("models").filter(|v| truthy(v)) {
+            for row in raw.as_array().ok_or(Unsure)? {
+                if row.is_object() && row.get("id").is_some_and(truthy) {
+                    models.push(row);
+                }
+            }
+        }
+    }
+    let found = models.iter().find(|row| row["id"].as_str() == Some(model));
+    let pattern = motor
+        .and_then(|m| m.get("modelMatch"))
+        .filter(|v| truthy(v));
+    let fits = !model.is_empty()
+        && (found.is_some()
+            || match pattern {
+                Some(p) => providers::py_search(
+                    &providers::py_regex(p.as_str().ok_or(Unsure)?, true)?,
+                    model,
+                )?,
+                None => false,
+            });
+    if !fits {
+        return Ok((String::new(), String::new()));
+    }
+    let mut effort = effort.to_owned();
+    if let Some(spec) = found {
+        let allowed = spec.get("efforts").filter(|v| truthy(v));
+        let allowed = match allowed {
+            Some(v) => v.as_array().ok_or(Unsure)?.as_slice(),
+            None => &[],
+        };
+        if !effort.is_empty() && !allowed.iter().any(|v| v.as_str() == Some(&effort)) {
+            effort = if allowed.is_empty() {
+                String::new()
+            } else {
+                spec.get("defaultEffort")
+                    .filter(|v| truthy(v))
+                    .map(|v| v.as_str().map(str::to_owned).ok_or(Unsure))
+                    .transpose()?
+                    .unwrap_or_default()
+            };
+        }
+    }
+    Ok((model.to_owned(), effort))
+}
+
+/// `_acp_launch_cmd` para nuevas sesiones; la cuenta pertenece al motor.
+pub fn acp_launch_command(
+    registry: &Value,
+    motor: &str,
+    model: &str,
+    effort: &str,
+    account: &str,
+    danger: bool,
+) -> Result<String, Unsure> {
+    let motor = if motor.is_empty() { "claude" } else { motor };
+    let (model, effort) = native_launch_model(registry, motor, model, effort)?;
+    let mut command = format!("cc-acp --agent {}", shlex_quote(motor));
+    for (flag, value) in [("--model", model.as_str()), ("--effort", effort.as_str())] {
+        if !value.is_empty() {
+            command += &format!(" {flag} {}", shlex_quote(value));
+        }
+    }
+    if !account.is_empty() && account != "main" {
+        command += &format!(" --account {}", shlex_quote(account));
+    }
+    if danger {
+        command += " --danger";
+    }
+    Ok(command)
+}
+
+/// Rama OpenCode/AGY de `_harness_launch_cmd`. Sus comandos no anteponen
+/// entorno de cuenta; resuelven el binario igual que el resto del runtime.
+pub fn native_harness_command(
+    ctx: &Ctx,
+    harness: &str,
+    model: &str,
+    effort: &str,
+) -> Result<String, Unsure> {
+    if !matches!(harness, "opencode" | "agy") {
+        return Err(Unsure);
+    }
+    let (model, effort) = native_launch_model(&ctx.registry, harness, model, effort)?;
+    let mut command = shlex_quote(&harness_bin(ctx, harness)?);
+    if !model.is_empty() {
+        command += &format!(" --model {}", shlex_quote(&model));
+    }
+    if harness == "agy" && !effort.is_empty() {
+        command += &format!(" --effort {}", shlex_quote(&effort));
+    }
+    Ok(command)
+}
+
 /// `_configuration_command(harness, motor, model, effort, account, resume,
 /// flags, preserve_model_flags=…)` (2308): un único `env -u … <asignaciones>
 /// <binario> …` con todo el borrador, por `shlex.join`. `main` nunca lleva

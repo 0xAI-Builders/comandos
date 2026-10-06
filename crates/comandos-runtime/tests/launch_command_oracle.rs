@@ -1225,3 +1225,36 @@ fn inventory_paths_are_detected_before_claim() {
     assert!(may_need_inventory(false, "opencode", None, None));
     assert!(may_need_inventory(true, "claude", None, None));
 }
+
+#[test]
+fn session_new_launch_helpers_match_python() {
+    let home = Home::new("new-launch");
+    let ctx = ctx(&home, 0);
+    let oracle = Oracle::new(&home).expect("Python oracle available");
+    let mut cases = Vec::new();
+    let mut actual = Vec::new();
+    for harness in ["claude", "codex", "opencode", "agy"] {
+        let model = ctx.registry["motors"][harness]["models"][0]["id"]
+            .as_str()
+            .unwrap();
+        for model in ["", "foreign-model", model] {
+            for effort in ["", "not-an-effort"] {
+                let args = [harness, model, effort].map(|v| serde_json::to_string(v).unwrap());
+                cases.push(json!({"expr":format!("dash._native_launch_model({},{},{})",args[0],args[1],args[2])}));
+                let value =
+                    launch_command::native_launch_model(&ctx.registry, harness, model, effort)
+                        .unwrap();
+                actual.push(json!({"ok":[value.0,value.1]}));
+            }
+        }
+        if matches!(harness, "opencode" | "agy") {
+            cases.push(json!({"expr":format!("dash._harness_launch_cmd({harness:?},{model:?},'not-an-effort','main')")}));
+            actual.push(json!({"ok":launch_command::native_harness_command(&ctx,harness,model,"not-an-effort").unwrap()}));
+        }
+    }
+    for account in ["main", "relotto", "quote'a"] {
+        cases.push(json!({"expr":format!("dash._acp_launch_cmd('claude','claude-fable-5-1','high',{},danger=True)",serde_json::to_string(account).unwrap())}));
+        actual.push(json!({"ok":launch_command::acp_launch_command(&ctx.registry,"claude","claude-fable-5-1","high",account,true).unwrap()}));
+    }
+    assert_eq!(actual, oracle.run(&cases, &[]));
+}

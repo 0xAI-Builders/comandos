@@ -610,6 +610,25 @@ fn toml_value(v: &Value) -> Result<String> {
     }
     Err(invalid("override de skill inválido"))
 }
+// `str(OSError)` del Python conserva errno y el nombre que falló. Mantener
+// Fault::Io permite al adaptador distinguirlo de un perfil inválido.
+fn launch_io(error: std::io::Error, path: Option<&Path>) -> Fault {
+    let Some(errno) = error.raw_os_error() else {
+        return Fault::Io(error);
+    };
+    let raw = error.to_string();
+    let suffix = format!(" (os error {errno})");
+    let detail = raw.strip_suffix(&suffix).unwrap_or(&raw);
+    let mut text = format!("[Errno {errno}] {detail}");
+    if let Some(path) = path {
+        let Some(path) = path.to_str() else {
+            return Fault::Uncertain("nonutf8 launch path".into());
+        };
+        text += &format!(": {}", comandos_core::pomodoro::python_repr(&json!(path)));
+    }
+    Fault::Io(std::io::Error::new(error.kind(), text))
+}
+
 pub fn launch_args(
     profile: &Value,
     registry: &Value,
@@ -795,7 +814,7 @@ pub fn launch_args(
             .recursive(true)
             .mode(0o700)
             .create(runtime_dir)
-            .map_err(Fault::Io)?;
+            .map_err(|e| launch_io(e, Some(runtime_dir)))?;
         let mut bytes = [0u8; 16];
         getrandom::fill(&mut bytes).map_err(|e| Fault::Uncertain(e.to_string()))?;
         let path = runtime_dir.join(format!(
@@ -807,14 +826,14 @@ pub fn launch_args(
             .create_new(true)
             .mode(0o600)
             .open(&path)
-            .map_err(Fault::Io)?;
+            .map_err(|e| launch_io(e, Some(&path)))?;
         use std::io::Write;
         file.write_all(
             response_dumps_unicode(&json!({"mcpServers":servers}))
                 .map_err(Fault::Uncertain)?
                 .as_bytes(),
         )
-        .map_err(Fault::Io)?;
+        .map_err(|e| launch_io(e, None))?;
         args.extend([
             "--strict-mcp-config".into(),
             "--mcp-config".into(),

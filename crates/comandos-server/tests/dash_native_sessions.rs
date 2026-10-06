@@ -106,7 +106,11 @@ fn assert_confined(t: &Twin) {
 
 /// Texto comparable entre los dos HOME: reloj normalizado y raíz como `~`.
 fn comparable(home: &TestHome, text: &str) -> String {
-    normalize_home(home, &normalize(text))
+    let text = normalize_home(home, &normalize(text));
+    regex::Regex::new(r"profile-mcp-[A-Za-z0-9_-]+\.json")
+        .unwrap()
+        .replace_all(&text, "profile-mcp-ID.json")
+        .into_owned()
 }
 
 /// Un argumento de una llamada a un falso o a tmux, comparable: la ruta de un
@@ -1087,16 +1091,12 @@ async fn without_tmux_server_both_decline_before_effects() {
             r#"{"cwd":"~/codebase/p2f","agent":"shell"}"#,
         ),
         ("/account/add", r#"{"provider":"grok","alias":"g1"}"#),
-        (
-            "/session-new",
-            r#"{"cwd":"~/codebase/p2f","profileId":"p1"}"#,
-        ),
     ] {
         let wire = request_body(fr.port, "POST", path, "", body).await;
         assert_eq!(wire.text(), r#"{"legacy": true}"#, "{path}");
     }
     fr.stop().await;
-    assert_eq!(legacy.requests().len(), 3);
+    assert_eq!(legacy.requests().len(), 2);
     let socket = comandos_server::dash::native::tmux::private_socket(&home.tmux_dir());
     assert!(!socket.exists(), "nació un servidor tmux");
     assert!(!home.root.join(".grok-accounts").exists(), "ninguna cuenta");
@@ -1208,4 +1208,152 @@ async fn account_add_relative_cwd_resolves_against_home_or_declines() {
         created[0].last().map(String::as_str),
         Some(home.root.display().to_string().as_str())
     );
+}
+
+#[tokio::test]
+async fn session_new_additional_harnesses_match_python() {
+    let t = Twin::start("snew-harness", |h| {
+        seed_registry(h);
+        support::tabs::seed_accounts(h);
+    })
+    .await
+    .expect("confined harness twin");
+    assert_confined(&t);
+    for (route, account, command) in [
+        ("acp:claude", "relotto", "cc-acp --agent claude"),
+        ("opencode:opencode", "main", "opencode --model"),
+        ("agy:agy", "main", "agy --model"),
+    ] {
+        let body = serde_json::json!({"cwd":"~/codebase/p2f","routeId":route,"motorAccount":account,"danger":true}).to_string();
+        let (status, log) = same_typed(&t, "/session-new", &body).await;
+        assert_eq!(status, 200, "{route}");
+        let commands = typed(&log);
+        assert!(commands.iter().any(|c| c.contains(command)), "{commands:?}");
+        if route == "acp:claude" {
+            assert!(
+                commands
+                    .iter()
+                    .any(|c| c.contains("--account relotto") && c.contains("--danger")),
+                "{commands:?}"
+            );
+        }
+    }
+    assert_eq!(
+        usage_rows(&t.a, "usage_session_configs"),
+        usage_rows(&t.b, "usage_session_configs")
+    );
+}
+
+#[tokio::test]
+async fn session_new_profile_matches_python_and_preserves_configuration() {
+    let t = Twin::start("snew-profile", |h| {
+        seed_registry(h);
+        support::tabs::seed_accounts(h);
+        let conn = comandos_store::usage::open_usage_db_at(&h.usage_db()).unwrap();
+        comandos_store::session_profiles::save_profile(&conn, &serde_json::json!({"id":"p-native","name":"Privado","harness":"codex","routeId":"codex:codex"}),1700000000).unwrap();
+        comandos_store::session_profiles::save_profile(&conn, &serde_json::json!({"id":"p-io","name":"IO","harness":"claude","routeId":"claude:claude","mcps":{"demo":false}}),1700000000).unwrap();
+        let conf_path = h.root.join(".claude.json");
+        let mut conf: serde_json::Value = serde_json::from_slice(&std::fs::read(&conf_path).unwrap()).unwrap();
+        conf["mcpServers"] = serde_json::json!({"demo":{"command":"never-run"},"keep":{"command":"never-run-keep"}});
+        std::fs::write(conf_path,conf.to_string()).unwrap();
+        comandos_store::session_profiles::save_profile(&conn, &serde_json::json!({"id":"p-flags","name":"Flags","harness":"codex","routeId":"codex:codex","mcps":{"demo":false}}),1700000000).unwrap();
+        std::fs::write(h.root.join(".codex/config.toml"), "# conservar literalmente\nmodel = 'modelo-del-usuario'\n[mcp_servers.demo]\ncommand = 'never-run'\n").unwrap();
+    }).await.expect("confined profile twin");
+    assert_confined(&t);
+    let before: Vec<_> = [&t.a, &t.b]
+        .iter()
+        .map(|h| std::fs::read(h.root.join(".codex/config.toml")).unwrap())
+        .collect();
+    let missing = t
+        .post(
+            "/session-new",
+            r#"{"profileId":"missing","cwd":"~/codebase/p2f"}"#,
+        )
+        .await;
+    missing.assert_same();
+    assert_eq!(missing.front.status, 409);
+    let body = r#"{"cwd":"~/codebase/p2f","profileId":"p-native","danger":true}"#;
+    let (status, log) = same_typed(&t, "/session-new", body).await;
+    assert_eq!(status, 200);
+    assert!(
+        typed(&log)
+            .iter()
+            .any(|c| c.contains("COMANDOS_SESSION_PROFILE=p-native") && c.contains("codex")),
+        "{log:?}"
+    );
+    let (status, log) = same_typed(
+        &t,
+        "/session-new",
+        r#"{"cwd":"~/codebase/p2f","profileId":"p-flags"}"#,
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert!(
+        typed(&log)
+            .iter()
+            .any(|c| c.contains("COMANDOS_SESSION_PROFILE=p-flags")
+                && c.contains("mcp_servers.demo.enabled=false")),
+        "{log:?}"
+    );
+    let (status, log) = same_typed(
+        &t,
+        "/session-new",
+        r#"{"cwd":"~/codebase/p2f","profileId":"p-io"}"#,
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert!(
+        typed(&log)
+            .iter()
+            .any(|c| c.contains("COMANDOS_SESSION_PROFILE=p-io")
+                && c.contains("--strict-mcp-config --mcp-config")),
+        "{log:?}"
+    );
+    for h in [&t.a, &t.b] {
+        use std::os::unix::fs::PermissionsExt;
+        let root = h.hooks().join("profile-launches");
+        let files: Vec<_> = std::fs::read_dir(&root)
+            .unwrap()
+            .map(|f| f.unwrap().path())
+            .collect();
+        assert_eq!(files.len(), 1);
+        let content: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&files[0]).unwrap()).unwrap();
+        assert_eq!(
+            content,
+            serde_json::json!({"mcpServers":{"keep":{"command":"never-run-keep"}}})
+        );
+        assert_eq!(
+            std::fs::metadata(&files[0]).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let original: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(h.root.join(".claude.json")).unwrap()).unwrap();
+        assert!(
+            original["mcpServers"]["demo"].is_object(),
+            "global MCP config was changed"
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+        h.write("profile-launches", "occupied");
+    }
+    let (status, log) = same_logged(
+        &t,
+        "/session-new",
+        r#"{"cwd":"~/codebase/p2f","profileId":"p-io"}"#,
+    )
+    .await;
+    assert_eq!(status, 409);
+    assert!(log.is_empty(), "IO failure created no session: {log:?}");
+    for (i, h) in [&t.a, &t.b].iter().enumerate() {
+        assert_eq!(
+            std::fs::read(h.root.join(".codex/config.toml")).unwrap(),
+            before[i]
+        );
+        let conn = rusqlite::Connection::open(h.usage_db()).unwrap();
+        let profile =
+            comandos_store::session_profiles::get_profile(&conn, &serde_json::json!("p-native"))
+                .unwrap();
+        assert_eq!(profile["routeId"], "codex:codex");
+        assert_eq!(profile["updatedAt"], 1700000000);
+    }
 }
