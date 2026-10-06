@@ -4,7 +4,8 @@ mod support;
 
 use comandos_server::dash::native::retired::{GET_PATHS, POST_PATHS};
 use std::{fs, path::Path};
-use support::{FakeLegacy, TestHome, dead_port, front, get, oracle::oracle, request_body};
+use support::http_golden::FrozenHttp;
+use support::{FakeLegacy, TestHome, dead_port, front, get, request_body};
 
 const BODY: &str = r#"{"error": "El chat de CommandOS se retir\u00f3; usa la barra de comandos", "code": "retired"}"#;
 
@@ -27,12 +28,10 @@ async fn retired_routes_answer_operator_410() {
         assert_eq!((wire.status, wire.text().as_str()), (410, BODY), "{path}");
     }
     // El residuo ya responde los sufijos desconocidos como Python.
-    let py = oracle(&home)
-        .await
-        .expect("Python requerido para el oráculo");
+    let py = FrozenHttp::new(&home, "server-http-retired", &[]).await;
     for (method, body) in [("GET", ""), ("POST", "{}")] {
         let rust = request_body(front.port, method, "/proxy-extra", "", body).await;
-        let python = request_body(py.port, method, "/proxy-extra", "", body).await;
+        let python = py.request(method, "/proxy-extra", "", body).await;
         assert_eq!(
             (rust.status, rust.text()),
             (python.status, python.text()),
@@ -52,8 +51,9 @@ async fn retired_routes_answer_operator_410() {
 async fn retired_body_is_pythons_operator_body() {
     let home = TestHome::new("retired-oracle");
     let front = front(&home, dead_port(), home.options()).await;
-    if let Some(py) = oracle(&home).await {
-        let python = get(py.port, "/operator").await;
+    {
+        let py = FrozenHttp::new(&home, "server-http-retired", &[]).await;
+        let python = py.get("/operator").await;
         let rust = get(front.port, "/usage/guard").await;
         assert_eq!(
             (python.status, python.header("content-type"), python.text()),
