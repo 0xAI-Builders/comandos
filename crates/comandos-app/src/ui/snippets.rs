@@ -345,6 +345,9 @@ impl Dialog {
                 "Cerrar (ESC)"
             },
         );
+        // The original dialog uses a plain button; toolbar sizing would enlarge
+        // its header and move the search, list, and preview below it.
+        button.style_context().remove_class("tabplus");
         button.style_context().add_class("cc-snip-close");
         button.set_relief(gtk::ReliefStyle::None);
         button.connect_clicked(move |_| close());
