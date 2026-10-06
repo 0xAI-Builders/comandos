@@ -55,3 +55,10 @@ hyper = { version = "=1.11.1", default-features = false, features = ["server", "
 
 [lints]
 workspace = true
+
+# Real owned process actors for tests; never installed by the runtime consumers.
+[[bin]]
+name = "fake-proc-worker"
+path = "tests/support/proc_worker.rs"
+test = false
+bench = false

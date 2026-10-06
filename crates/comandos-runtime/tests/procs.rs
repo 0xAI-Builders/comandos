@@ -117,8 +117,8 @@ fn owned_child_poll_does_not_reap_before_group_cleanup() {
         os::unix::process::CommandExt,
         process::{Command, Stdio},
     };
-    let mut c = Command::new("/usr/bin/python3")
-        .args(["-c", "import sys;sys.exit(7)"])
+    let mut c = Command::new(env!("CARGO_BIN_EXE_fake-proc-worker"))
+        .arg("exit7")
         .process_group(0)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -152,11 +152,9 @@ impl Fixture {
             .unwrap();
         Self(root)
     }
-    fn tool(&self, source: &str) -> comandos_runtime::procs::macos::NativeTools {
-        use std::os::unix::fs::PermissionsExt;
-        let path = self.0.join("tool");
-        std::fs::write(&path, format!("#!/usr/bin/python3\n{source}")).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+    fn tool(&self, mode: &str) -> comandos_runtime::procs::macos::NativeTools {
+        let path = self.0.join(mode);
+        std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_fake-proc-worker"), &path).unwrap();
         comandos_runtime::procs::macos::NativeTools {
             ps: path.clone(),
             lsof: path,
@@ -173,11 +171,7 @@ impl Drop for Fixture {
 fn mac_agent_selection_matches_extracted_python_branch() {
     // Compile only the real function AST with inert collaborators; never import
     // cc-dash or execute its startup, real ps/lsof, or process inventory.
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let code = r#"
 import ast,json,os,sys,types
 source=open(sys.argv[1]).read(); tree=ast.parse(source)
@@ -189,17 +183,28 @@ ns={'os':types.SimpleNamespace(path=path),'agent_set':lambda:{'claude','grok'},'
 exec(compile(ast.Module(body=[fn],type_ignores=[]),sys.argv[1],'exec'),ns)
 print(json.dumps(ns['agent_procs']()))
 "#;
-    let out = std::process::Command::new("/usr/bin/python3")
-        .args(["-c", code])
-        .arg(root.join("bin/cc-dash"))
-        .output()
-        .unwrap();
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
+    let out = comandos_oracle::oracle_at(
+        &root.join("tests/golden"),
+        "runtime-mac-agent-selection",
+        &serde_json::json!({"source_commit":"2674f366bb01b9db42f6f64b728929b3acfe8b83",
+            "source":include_str!("oracle-src/agent_procs.py"), "script":code}),
+        || {
+            let out = std::process::Command::new(
+                std::env::var("COMANDOS_RUNTIME_ORACLE_PYTHON")
+                    .unwrap_or_else(|_| "python3".into()),
+            )
+            .args(["-c", code])
+            .arg(root.join("tests/oracle-src/agent_procs.py"))
+            .output()
+            .map_err(|e| e.to_string())?;
+            if out.status.success() {
+                Ok(out.stdout)
+            } else {
+                Err(String::from_utf8_lossy(&out.stderr).into_owned())
+            }
+        },
     );
-    let expected: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let expected: serde_json::Value = serde_json::from_slice(&out).unwrap();
     let agents =
         comandos_runtime::providers::agent_set(Some("claude grok"), &serde_json::json!({}));
     let aliases = comandos_runtime::providers::process_aliases(
@@ -234,31 +239,18 @@ print(json.dumps(ns['agent_procs']()))
 #[test]
 fn native_tools_bound_deadlines_and_output_and_release_owned_group() {
     let f = Fixture::new("tools-timeout");
-    let t = f.tool("import time\ntime.sleep(30)\n");
+    let t = f.tool("timeout");
     let begin = std::time::Instant::now();
     assert!(t.run("ps", &[], Duration::from_millis(40)).is_none());
     assert!(begin.elapsed() < Duration::from_secs(2));
     assert!(t.run("unknown", &[], Duration::from_secs(1)).is_none());
     let f = Fixture::new("tools-cap");
-    let t = f.tool("import os\nwhile True: os.write(1,b'x'*65536)\n");
+    let t = f.tool("output-cap");
     let begin = std::time::Instant::now();
     assert!(t.run("ps", &[], Duration::from_secs(5)).is_none());
     assert!(begin.elapsed() < Duration::from_secs(3));
     let f = Fixture::new("tools-group");
-    let script = format!(
-        r#"import os,subprocess,sys,time,pathlib
-p=pathlib.Path({:?})
-child='import time,pathlib,sys;pathlib.Path(sys.argv[1]).write_text("ready");time.sleep(.4);pathlib.Path(sys.argv[2]).write_text("survived")'
-subprocess.Popen([sys.executable,'-c',child,str(p/'ready'),str(p/'survived')],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-until=time.monotonic()+2
-while not (p/'ready').exists():
- if time.monotonic()>until: sys.exit(1)
- time.sleep(.002)
-print('C='+os.environ['LC_ALL']+' TZ='+os.environ['TZ'],flush=True)
-"#,
-        f.0.to_str().unwrap()
-    );
-    let t = f.tool(&script);
+    let t = f.tool("group");
     assert_eq!(
         t.run("ps", &[], Duration::from_secs(2)).as_deref(),
         Some("C=C TZ=UTC\n")
@@ -273,7 +265,7 @@ print('C='+os.environ['LC_ALL']+' TZ='+os.environ['TZ'],flush=True)
 #[test]
 fn partial_tool_stdout_is_retained_like_python_even_with_nonzero_exit() {
     let f = Fixture::new("tools-partial");
-    let t = f.tool("import sys\nprint('p812\\nn/own/cwd',flush=True)\nsys.exit(1)\n");
+    let t = f.tool("partial");
     assert_eq!(
         t.run("lsof", &[], Duration::from_secs(1)).as_deref(),
         Some("p812\nn/own/cwd\n")
@@ -397,22 +389,7 @@ fn runtime_acp_close_retains_group_ownership_with_live_or_exited_leader() {
         } else {
             "runtime-acp-live"
         });
-        let script = format!(
-            r#"import pathlib,subprocess,sys,time
-p=pathlib.Path({:?})
-body='import signal,time,pathlib,sys;signal.signal(signal.SIGTERM,signal.SIG_IGN);pathlib.Path(sys.argv[1]).write_text("ready");time.sleep(.5);pathlib.Path(sys.argv[2]).write_text("survived")'
-subprocess.Popen([sys.executable,'-c',body,str(p/'ready'),str(p/'survived')],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-while not (p/'ready').exists():time.sleep(.002)
-{}
-"#,
-            f.0.to_str().unwrap(),
-            if exits {
-                "sys.exit(7)"
-            } else {
-                "time.sleep(30)"
-            }
-        );
-        let t = f.tool(&script);
+        let t = f.tool(if exits { "acp-exit" } else { "acp-live" });
         let opts = OpenOptions {
             model: String::new(),
             extra_env: vec![],
