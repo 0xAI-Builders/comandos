@@ -6,6 +6,14 @@ task_runner="$task_root/scripts/rust-sandbox"
 "$task_runner" cargo fmt --all -- --check
 "$task_runner" cargo test --workspace --locked
 "$task_runner" cargo clippy --workspace --all-targets --locked -- -D warnings
+# Los módulos solo-wasm de los crates web (y de `comandos-term-web` cuando
+# exista) no los ve el clippy de host: aquí se aplican sus `deny` de pánico.
+web_crates="-p comandos-web -p comandos-web-dom -p comandos-web-view"
+if [ -f "$task_root/crates/comandos-term-web/Cargo.toml" ]; then
+  web_crates="$web_crates -p comandos-term-web"
+fi
+# shellcheck disable=SC2086
+"$task_runner" cargo clippy --target wasm32-unknown-unknown $web_crates --all-targets --locked -- -D warnings
 "$task_runner" cargo build --workspace --all-targets --locked
 "$task_runner" python3 -m pytest crates/comandos-extensions/tests -q
 "$task_runner" python3 -m pytest tests/test_turn_state.py tests/test_event_store.py tests/test_work_marks.py tests/test_notification_delivery.py tests/test_v1_migrations.py -k 'not installer' -q

@@ -9,6 +9,7 @@ pub mod forward;
 pub mod native;
 pub mod router;
 pub mod statics;
+pub mod term;
 pub mod token;
 
 pub use token::{load_token, token_path};
@@ -45,6 +46,11 @@ pub const CUTS_OFF_ENV: &str = "COMANDOS_DASH_CUTS_OFF";
 
 #[derive(Clone)]
 pub struct DashConfig {
+    pub term: term::TermMode,
+    pub webterm_compat: Vec<u16>,
+    pub shadow_readonly: bool,
+    pub no_usage_effects: bool,
+    pub term_replay_dir: Option<PathBuf>,
     pub port: u16,
     /// Puerto del `cc-dash` Python al que se reenvía lo no nativo.
     pub legacy_port: u16,
@@ -127,12 +133,41 @@ pub fn parse_args_env(
     let mut legacy_flag = None;
     let mut native = true;
     let mut usage_effects = true;
+    let mut term = term::TermMode::Off;
+    let mut webterm_compat = Vec::new();
+    let mut shadow_readonly = false;
+    let mut no_usage_effects = false;
+    let mut term_replay_dir = None;
     let mut words = args.iter();
     while let Some(word) = words.next() {
-        if word == "--no-native" {
-            native = false;
+        if word == "--term" || word.starts_with("--term=") {
+            let value = word
+                .strip_prefix("--term=")
+                .map(String::from)
+                .or_else(|| words.next().cloned())
+                .ok_or_else(|| "--term requiere modo".to_string())?;
+            term = term::TermMode::parse(&value)?;
+        } else if word == "--webterm-compat" || word.starts_with("--webterm-compat=") {
+            let value = word
+                .strip_prefix("--webterm-compat=")
+                .map(String::from)
+                .or_else(|| words.next().cloned())
+                .ok_or_else(|| "--webterm-compat requiere puertos".to_string())?;
+            webterm_compat = parse_compat(&value)?;
+        } else if word == "--shadow-readonly" {
+            shadow_readonly = true;
         } else if word == "--no-usage-effects" {
+            no_usage_effects = true;
             usage_effects = false;
+        } else if word == "--term-replay-dir" || word.starts_with("--term-replay-dir=") {
+            let value = word
+                .strip_prefix("--term-replay-dir=")
+                .map(String::from)
+                .or_else(|| words.next().cloned())
+                .ok_or_else(|| "--term-replay-dir requiere directorio".to_string())?;
+            term_replay_dir = Some(PathBuf::from(value));
+        } else if word == "--no-native" {
+            native = false;
         } else if word == "--legacy-port" {
             let value = words
                 .next()
@@ -180,6 +215,11 @@ pub fn parse_args_env(
         ));
     }
     Ok(DashConfig {
+        term,
+        webterm_compat,
+        shadow_readonly,
+        no_usage_effects,
+        term_replay_dir,
         port,
         legacy_port,
         home: home.to_path_buf(),
@@ -219,6 +259,30 @@ fn parse_cuts(name: &str, value: &str) -> Result<BTreeSet<Cut>, String> {
         .collect()
 }
 
+fn parse_compat(value: &str) -> Result<Vec<u16>, String> {
+    let mut ports = Vec::new();
+    for value in value.split(',') {
+        let port = parse_port("--webterm-compat", value)?;
+        if port == 0 || ports.contains(&port) {
+            return Err("puerto compat vacío, cero o duplicado".into());
+        }
+        ports.push(port);
+    }
+    Ok(ports)
+}
+fn validate_term(cfg: &DashConfig) -> Result<(), String> {
+    if !cfg.webterm_compat.is_empty() && cfg.term == term::TermMode::Off {
+        return Err("compat requiere --term ttyd/native".into());
+    }
+    if cfg
+        .webterm_compat
+        .iter()
+        .any(|p| *p == cfg.port || *p == cfg.legacy_port)
+    {
+        return Err("puerto compat coincide con tablero/heredado".into());
+    }
+    Ok(())
+}
 fn parse_port(name: &str, value: &str) -> Result<u16, String> {
     value
         .parse::<u16>()
@@ -309,6 +373,21 @@ pub fn from_env(args: &[String]) -> Result<DashConfig, StartError> {
     cfg.census_path = std::env::var_os("XDG_RUNTIME_DIR")
         .filter(|dir| !dir.is_empty())
         .map(|dir| PathBuf::from(dir).join(native::census::file_name(cfg.port)));
+    if !args
+        .iter()
+        .any(|a| a == "--term" || a.starts_with("--term="))
+        && let Ok(value) = std::env::var("COMANDOS_DASH_TERM")
+    {
+        cfg.term = term::TermMode::parse(&value).map_err(StartError::Usage)?;
+    }
+    if !args
+        .iter()
+        .any(|a| a == "--webterm-compat" || a.starts_with("--webterm-compat="))
+        && let Ok(value) = std::env::var("COMANDOS_DASH_WEBTERM_COMPAT")
+    {
+        cfg.webterm_compat = parse_compat(&value).map_err(StartError::Usage)?;
+    }
+    validate_term(&cfg).map_err(StartError::Usage)?;
     let override_dir = std::env::var(DASH_DIR_ENV).ok();
     cfg.dash_dir = dash_dir(&home, override_dir.as_deref()).map_err(StartError::Config)?;
     cfg.repo_root = repo_root(&cfg.dash_dir, std::env::var(REPO_ENV).ok().as_deref());
@@ -343,6 +422,7 @@ pub enum StartError {
 pub fn limits() -> Limits {
     Limits {
         connections: 256,
+        websockets: 64,
         header_bytes: 64 * 1024,
         buffered_wire_bytes: 20_000_000 + 64 * 1024,
         header_timeout: Duration::from_secs(30),
@@ -367,6 +447,8 @@ pub struct DashState {
     pub config: DashConfig,
     pub asset_exists: AssetExists,
     pub native: Option<Arc<native::Native>>,
+    pub term_target: term::attach::TmuxTarget,
+    pub term_control: Arc<term::lifecycle::Control>,
 }
 
 pub fn handler(state: Arc<DashState>) -> Handler {
@@ -377,6 +459,27 @@ pub fn handler(state: Arc<DashState>) -> Handler {
 }
 
 async fn handle(state: &DashState, request: Request) -> Result<Reply, HandlerError> {
+    if request.method == Method::GET && router::path_of(&request.target) == "/web/status" {
+        return term::lifecycle::reply_status(state, &request);
+    }
+    if state.config.shadow_readonly && request.method != Method::GET {
+        return Reply::json(
+            StatusCode::OK,
+            &serde_json::json!({"ok":true,"shadow":true}),
+        );
+    }
+    if state.config.term != term::TermMode::Off
+        && !state.term_control.enabled()
+        && (router::path_of(&request.target) == "/term"
+            || router::path_of(&request.target).starts_with("/term/"))
+    {
+        return not_found();
+    }
+    if state.config.term != term::TermMode::Off
+        && let Some(route) = term::routes::route(&request.method, &request.target)
+    {
+        return term::routes::http_route(state, route, &request.target).await;
+    }
     let live = state.native.as_ref().filter(|n| n.enabled());
     if live.is_none()
         && let Some(reply) = state.native.as_ref().and_then(|n| n.typing_retry(&request))
@@ -444,9 +547,20 @@ pub fn build(
     cfg: DashConfig,
     opts: Option<native::NativeOptions>,
 ) -> (Config, Option<Arc<native::Native>>) {
+    assemble(cfg, opts).0
+}
+
+fn assemble(
+    cfg: DashConfig,
+    opts: Option<native::NativeOptions>,
+) -> ((Config, Option<Arc<native::Native>>), Arc<DashState>) {
+    let term_target = opts
+        .as_ref()
+        .map(|o| o.term_target.clone())
+        .unwrap_or(term::attach::TmuxTarget::User);
     let asset_exists = asset_exists(&cfg.dash_dir);
     let token = cfg.token.clone();
-    let native = cfg.native.then(|| {
+    let native = (cfg.native && !cfg.shadow_readonly).then(|| {
         let mut o = opts.unwrap_or_else(|| {
             let mut o = native::NativeOptions::for_home(&cfg.home, cfg.state_db.clone());
             o.repo_root = cfg.repo_root.clone();
@@ -470,19 +584,24 @@ pub fn build(
         }
         Arc::new(native::Native::new(o))
     });
+    let term_control = Arc::new(term::lifecycle::Control::new(&cfg.home));
     let state = Arc::new(DashState {
         config: cfg,
         asset_exists: asset_exists.clone(),
         native: native.clone(),
+        term_target,
+        term_control,
     });
     let config = Config {
+        websocket: (state.config.term != term::TermMode::Off)
+            .then(|| term::routes::ws_route(state.clone())),
         token,
         token_file: state.config.token_file.clone(),
         asset_exists,
-        handler: handler(state),
+        handler: handler(state.clone()),
         limits: limits(),
     };
-    (config, native)
+    ((config, native), state)
 }
 
 /// Configuración del transporte para un `DashConfig` ya resuelto (API de la 2a).
@@ -498,7 +617,9 @@ pub async fn serve_with(
     opts: Option<native::NativeOptions>,
     shutdown: watch::Receiver<bool>,
 ) -> io::Result<()> {
-    let (config, native) = build(cfg, opts);
+    validate_term(&cfg).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+    term::lifecycle::persist(&cfg)?;
+    let ((config, native), state) = assemble(cfg, opts);
     let mut census_task = None;
     if let Some(native) = &native {
         // Abre la base antes de atender: la primera petición no paga la migración.
@@ -515,7 +636,22 @@ pub async fn serve_with(
             )));
         }
     }
-    let served = crate::serve(listener, config, shutdown).await;
+    let (stop, stop_rx) = watch::channel(*shutdown.borrow());
+    let mut tasks = tokio::task::JoinSet::new();
+    tasks.spawn(crate::serve(listener, config, stop_rx.clone()));
+    tasks.spawn(term::lifecycle::run(state.clone(), stop_rx.clone()));
+    let mut shutdown = shutdown;
+    let mut served = Ok(());
+    tokio::select! {
+        _=shutdown.changed()=>{},
+        result=tasks.join_next()=>{if let Some(result)=result {served=result.map_err(io::Error::other).and_then(|result|result);}},
+    }
+    let _ = stop.send(true);
+    while let Some(result) = tasks.join_next().await {
+        if served.is_ok() {
+            served = result.map_err(io::Error::other).and_then(|result| result);
+        }
+    }
     if let Some(task) = census_task {
         task.abort();
     }

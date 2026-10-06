@@ -1,0 +1,208 @@
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>ComandOS · terminal</title>
+<link rel="icon" href="../icon-192.png">
+
+<link rel="stylesheet" href="/buttons.css?v=2">
+<!-- Cargamos la fuente bundleada por @font-face para que WebKit la use aun si
+     fontconfig del sistema no la conoce. -->
+<style>
+:root{--sans:'Inter',system-ui,sans-serif;--mono:'Ubuntu Sans Mono','JetBrains Mono',monospace}
+  @font-face {
+    font-family: var(--mono);
+    font-weight: 400; font-style: normal;
+    src: url('../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Regular.ttf') format('truetype');
+  }
+  @font-face {
+    font-family: var(--mono);
+    font-weight: 400; font-style: italic;
+    src: url('../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Italic.ttf') format('truetype');
+  }
+  @font-face {
+    font-family: var(--mono);
+    font-weight: 700; font-style: normal;
+    src: url('../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Bold.ttf') format('truetype');
+  }
+  @font-face {
+    font-family: var(--mono);
+    font-weight: 700; font-style: italic;
+    src: url('../assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-BoldItalic.ttf') format('truetype');
+  }
+  :root {
+    --term-bg:#0A0D13; --term-panel:#121722; --term-panel2:#161C29;
+    --term-line:#222A3A; --term-line2:#2E3852; --term-text:#EAF0FB;
+    --term-dim:#9AA6BF; --term-faint:#5E6980; --term-brand:#8B7CFF;
+  }
+  html, body { margin: 0; padding: 0; width: 100%; max-width: 100%; height: 100%; background:var(--term-bg); color:var(--term-text); overflow: hidden; }
+  #term-shell { width: 100%; max-width: 100%; min-width: 0; height: 100%; display: grid;
+    grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto; position:relative;
+    overflow: hidden; background:var(--term-bg); }
+  #term {
+    /* content-box: FitAddon mide la altura del contenedor y solo descuenta el padding del
+       elemento de xterm; con border-box contaba nuestro padding como renglones y las
+       últimas líneas (el prompt) quedaban tapadas por la barra táctil. */
+    width: auto; max-width: none;
+    padding: 22px 6px 6px 10px;   /* 8 + 14 px: la cabecera de los panes de arriba crece hacia aquí (igual que el escritorio) */
+    box-sizing: content-box;
+    min-width: 0; min-height: 0;
+    overflow: hidden;
+  }
+  #term-toolbar { box-sizing: border-box; display: flex; gap: 6px;
+    width: 100%; max-width: 100%; min-width: 0; overflow-x: auto;
+    padding: 6px; border-top: 1px solid var(--term-line2); background:var(--term-panel);
+    overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; touch-action: pan-x; }
+  #term-toolbar button { box-sizing: border-box; flex: 0 0 auto; min-width: 44px; height: 44px; padding: 0 10px;
+    border: 1px solid var(--term-line2); border-radius: 4px; background:var(--term-panel2); color:var(--term-text);
+    font: 700 13px var(--mono); }
+  #term-toolbar button.key-hot { min-width: 64px; font-weight: 700; border-color:var(--term-brand); }
+  /* Respuesta rápida a los agentes: Sí (Enter) verde, No (Esc) rojo. */
+  #term-toolbar button.key-yes, #term-toolbar button.key-no { min-width: 56px; font-weight: 800; }
+  #term-toolbar button.key-yes { color:#4ade80; border-color:#1f7a44; }
+  #term-toolbar button.key-no { color:#f87171; border-color:#8a2a35; }
+  #term-toolbar button.on { background:var(--term-brand); border-color:var(--term-brand); color:var(--term-bg); }
+  [hidden] { display:none !important; }
+  #term-toolbar button:disabled { opacity: .55; }
+  #selection-toolbar { grid-row:2 / 4; padding:6px; border-top:1px solid var(--term-line2); background:var(--term-panel); }
+  .selection-row { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; }
+  @media (max-width:600px) { .selection-row { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+  #selection-toolbar button.primary { background:var(--term-brand); border-color:var(--term-brand); color:var(--term-bg); }
+  #selection-toolbar button { min-width:0; min-height:44px; border:1px solid var(--term-line2);
+    border-radius:4px; background:var(--term-panel2); color:var(--term-text); font:600 14px var(--sans); touch-action:manipulation; }
+  #selection-toolbar button:disabled { opacity:.5; }
+  #pane-dialog { box-sizing:border-box; width:min(460px,calc(100vw - 20px)); max-height:80dvh; overflow:auto;
+    border:1px solid var(--term-line2); border-radius:10px; padding:14px; color:var(--term-text); background:var(--term-panel); }
+  #pane-dialog::backdrop { background:#0009; }
+  #pane-dialog h2 { margin:0 0 10px; font:600 18px var(--sans); }
+  #pane-dialog button { min-height:44px; border:1px solid var(--term-line2); border-radius:4px;
+    padding:8px 12px; background:var(--term-panel2); color:var(--term-text); font:14px var(--sans); touch-action:manipulation; }
+  #pane-dialog button:disabled { opacity:.5; }
+  #pane-list { display:grid; gap:8px; margin:10px 0; }
+  .pane-option { display:flex; flex-wrap:wrap; gap:8px; min-width:0; padding-bottom:8px; border-bottom:1px solid var(--term-line2); }
+  .pane-option > button:first-child { flex:1 1 100%; min-width:0; overflow-wrap:anywhere; text-align:left; }
+  .pane-option > button:not(:first-child) { flex:1 1 0; min-width:0; }
+  .pane-option .pane-path { display:block; margin-top:2px; font:13px/1.3 var(--mono); color:var(--term-dim); overflow-wrap:anywhere; }
+  .pane-option [aria-pressed="true"] { border-color:var(--term-brand)!important; }
+  #pane-dialog .danger { color:#ff9b9b; border-color:#a64c55; }
+  #pane-dialog p { font:14px/1.4 var(--sans); }
+  #pane-dialog footer { display:flex; gap:8px; justify-content:flex-end; }
+  #term-toolbar svg { width: 20px; height: 20px; fill: none; stroke: currentColor;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
+  #paste-dialog { width: min(420px, calc(100vw - 32px)); color:var(--term-text); background:var(--term-panel);
+    border: 1px solid var(--term-line2); border-radius: 6px; padding: 14px; }
+  #paste-dialog::backdrop { background: rgba(0, 0, 0, .55); }
+  #paste-dialog form { display: grid; gap: 10px; }
+  #paste-text { min-height: 132px; box-sizing: border-box; resize: vertical; color: inherit;
+    background:var(--term-bg); border: 1px solid var(--term-line2); font: 13px var(--mono); }
+  #paste-dialog form > div { display: flex; justify-content: flex-end; gap: 8px; }
+  #paste-dialog button { background:var(--term-panel2); border:1px solid var(--term-line2); color:var(--term-text);
+    border-radius:4px; padding:6px 10px; font:inherit; }
+  #paste-dialog button:hover { border-color:var(--term-brand); }
+  #mobile-compose { display:flex; gap:6px; padding:6px; border-top:1px solid var(--term-line2); background:var(--term-panel); min-width:0; }
+  #mobile-draft { flex:1; min-width:0; resize:none; max-height:25dvh; box-sizing:border-box; padding:8px;
+    border:1px solid var(--term-line2); border-radius:4px; background:var(--term-bg); color:var(--term-text);
+    font:16px/1.35 var(--mono); touch-action:pan-y; }
+  #mobile-compose button, #terminal-history button, #history-pane { min-height:44px; border:1px solid var(--term-line2);
+    border-radius:4px; color:var(--term-text); background:var(--term-panel2); font:inherit; padding:6px 10px; }
+  #mobile-compose button:disabled { opacity:.5; }
+  #mobile-compose button { min-width:44px; font:600 13px/1.2 var(--sans); }
+  #terminal-history { position:absolute; inset:0 0 112px; z-index:5; display:flex; flex-direction:column;
+    min-height:0; background:var(--term-bg); padding:8px; box-sizing:border-box; }
+  #history-controls { display:flex; flex-wrap:wrap; gap:6px; align-items:center; flex:none; font:13px var(--sans); }
+  #history-pane { flex:1; min-width:90px; max-width:100%; }
+  #history-status { font:13px/1.3 var(--sans); color:var(--term-dim); margin:6px 0; flex:none; }
+  #history-text { margin:0; padding:10px; flex:1; min-height:0; overflow:auto; white-space:pre-wrap;
+    overflow-wrap:anywhere; width:100%; box-sizing:border-box; resize:none; border:1px solid var(--term-line2);
+    border-radius:4px; color:var(--term-text); background:var(--term-bg); font:16px/1.45 var(--mono); user-select:text; -webkit-user-select:text;
+    touch-action:manipulation; -webkit-touch-callout:default; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
+  #history-text::selection { background:var(--term-brand); color:var(--term-bg); }
+  #term-toolbar button,#history-controls button { touch-action:manipulation; }
+  @media(pointer:coarse){
+    /* Editable controls below 16px trigger automatic focus zoom on iOS. */
+    #history-pane,#paste-text,.xterm .xterm-helper-textarea { font-size:16px!important; }
+    #pane-dialog { margin:auto auto max(10px,env(safe-area-inset-bottom)); }
+  }
+  #err {
+    position: absolute; inset: 0; display: none;
+    color:var(--term-brand); font-family: var(--mono);
+    padding: 16px; white-space: pre-wrap; pointer-events:none;
+  }
+  #dbg {
+    position: fixed; right: 8px; top: 8px; z-index: 9; display: none;
+    color:var(--term-brand); font-family: var(--mono);
+    font-size: 11px; background:var(--term-panel); padding: 4px 8px;
+    border-radius: 4px; max-width: 60vw; white-space: pre-wrap;
+  }
+  #dbg.on { display: block; }
+  *{scrollbar-width:thin;scrollbar-color:var(--term-line2) var(--term-bg)}
+  *::-webkit-scrollbar{width:10px;height:10px}
+  *::-webkit-scrollbar-track{background:var(--term-bg)}
+  *::-webkit-scrollbar-thumb{background:var(--term-line2);border-radius:10px;border:3px solid var(--term-bg);background-clip:padding-box}
+  *::-webkit-scrollbar-thumb:hover{background:var(--term-brand);background-clip:padding-box}
+
+  /* Marcos y cabecera B por pane (grill 30-sep), mismas medidas que el escritorio. */
+  #pane-chrome { position:absolute; inset:0; pointer-events:none; z-index:3; }
+  #pane-chrome .pc-frame { position:absolute; box-sizing:border-box; border:1px solid var(--term-line2); border-radius:10px; }
+  #pane-chrome .pc-frame.on { border-color:var(--term-brand, #8b7cf6); }
+  /* Agarradera de resize entre panes: línea fina a todo lo largo + pastilla central con puntos. */
+  #pane-chrome .pc-grip { position:absolute; }
+  #pane-chrome .pc-grip .ln { position:absolute; background:var(--term-brand, #8b7cf6); opacity:.55; }
+  #pane-chrome .pc-grip.drag .ln { opacity:1; }
+  #pane-chrome .pc-grip.v .ln { left:50%; top:0; bottom:0; width:2px; margin-left:-1px; }
+  #pane-chrome .pc-grip.h .ln { top:50%; left:0; right:0; height:2px; margin-top:-1px; }
+  #pane-chrome .pc-grip .pill { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); border-radius:4px;
+    background:var(--term-brand, #8b7cf6); box-shadow:0 1px 3px #0008; transition:width .12s, height .12s; }
+  #pane-chrome .pc-grip.v .pill { width:6px; height:34px; }
+  #pane-chrome .pc-grip.h .pill { width:34px; height:6px; }
+  #pane-chrome .pc-grip.v.drag .pill { width:8px; height:44px; }
+  #pane-chrome .pc-grip.h.drag .pill { width:44px; height:8px; }
+  #pane-chrome .pc-grip .pill::after { content:""; position:absolute; inset:0; margin:auto; opacity:.9; }
+  #pane-chrome .pc-grip .tip { position:absolute; left:50%; transform:translateX(-50%); white-space:nowrap; font:700 11px var(--mono);
+    background:var(--term-brand, #8b7cf6); color:var(--term-bg); padding:2px 8px; border-radius:5px; box-shadow:0 1px 3px rgba(0,0,0,.35); }
+  #pane-chrome .pc-grip.v .tip { top:calc(50% - 44px); }
+  #pane-chrome .pc-grip.h .tip { top:-26px; }
+  #pane-chrome .pc-grip.v .pill::after { width:3px; height:17px; background:radial-gradient(circle, #fff 1.3px, transparent 1.5px) 0 0/3px 7px repeat-y; }
+  #pane-chrome .pc-grip.h .pill::after { width:17px; height:3px; background:radial-gradient(circle, #fff 1.3px, transparent 1.5px) 0 0/7px 3px repeat-x; }
+  /* Manita (1-oct): agarrar al pasar por el canal, agarrando mientras se arrastra. */
+  #term:is(.resize-col,.resize-row) .xterm-screen, #term:is(.resize-col,.resize-row) .xterm-screen * { cursor:grab !important; }
+  #term.grabbing .xterm-screen, #term.grabbing .xterm-screen * { cursor:grabbing !important; }
+  #pane-chrome .pc-head { position:absolute; box-sizing:border-box; display:flex; align-items:center; gap:8px; padding:0 10px;
+    border-radius:9px 9px 0 0; background:color-mix(in srgb, var(--term-panel) 65%, var(--term-line2)); font:11px var(--sans); color:var(--term-text); }
+  #pane-chrome .pc-head b { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:30%; }
+  #pane-chrome .pc-sep { width:1px; height:14px; background:var(--term-line2); flex:none; }
+  #pane-chrome .pc-logo { width:14px; height:14px; border-radius:4px; color:#fff; font:800 9px/14px var(--sans); text-align:center; flex:none; }
+  #pane-chrome .pc-model { font:600 11px var(--mono); white-space:nowrap; }
+  #pane-chrome .pc-eff { color:var(--term-dim, #8a98ab); }
+  #pane-chrome .pc-ok { color:#4ade80; font-weight:800; }
+  #pane-chrome .pc-keys { margin-left:auto; display:flex; gap:10px; flex:none; }
+  #pane-chrome .pc-keys button { pointer-events:auto; height:22px; min-width:0; padding:0 14px; display:inline-flex; align-items:center; gap:6px;
+    border:1px solid var(--term-line2); border-radius:8px; background:var(--term-panel2); color:var(--term-dim, #8a98ab);
+    font:600 11px var(--sans); cursor:pointer; box-shadow:0 2px 0 var(--term-line2); }
+  #pane-chrome .pc-keys button:hover { color:var(--term-text); }
+  #pane-chrome .pc-keys button:active { transform:translateY(2px); box-shadow:none; }
+  #pane-chrome .pc-keys button[data-act="acct"] b { color:var(--term-text); font-weight:700; }
+  /* Menú «Cuenta» (grill 2-oct): cada cuenta con 5 h, semana y semana por modelo. */
+  #pane-chrome .pc-acct { position:absolute; z-index:6; width:300px; max-width:calc(100% - 16px); box-sizing:border-box; pointer-events:auto;
+    background:var(--term-panel); border:1px solid var(--term-line2); border-radius:12px; box-shadow:0 14px 40px rgba(0,0,0,.55); padding:8px; font:13px var(--sans); color:var(--term-text); }
+  #pane-chrome .pc-acct h4 { margin:2px 6px 8px; font:700 10px var(--mono); letter-spacing:.12em; color:var(--term-dim); }
+  #pane-chrome .pc-acct .acc { display:grid; grid-template-columns:1fr auto; gap:4px 10px; width:100%; text-align:left; padding:9px 10px; border-radius:9px;
+    border:1px solid transparent; background:none; color:var(--term-text); cursor:pointer; font:13px var(--sans); }
+  #pane-chrome .pc-acct .acc:hover:not(:disabled) { background:var(--term-panel2); }
+  #pane-chrome .pc-acct .acc.on { border-color:color-mix(in srgb, var(--term-brand) 50%, transparent); cursor:default; }
+  #pane-chrome .pc-acct .acc:disabled:not(.on) { opacity:.5; cursor:not-allowed; }
+  #pane-chrome .pc-acct .acc .tag { font:600 10px var(--mono); color:var(--term-brand); align-self:center; }
+  #pane-chrome .pc-acct .bars { grid-column:1 / -1; display:grid; grid-template-columns:auto 1fr auto; gap:3px 8px; align-items:center; font:11px var(--mono); color:var(--term-dim); }
+  #pane-chrome .pc-acct .bar { height:5px; border-radius:3px; background:var(--term-line); overflow:hidden; }
+  #pane-chrome .pc-acct .bar i { display:block; height:100%; background:var(--term-brand); }
+  #pane-chrome .pc-acct .bar i.warn { background:#fbbf24; }
+  #pane-chrome .pc-acct .bar i.full { background:#f87171; }
+  #pane-chrome .pc-acct .foot { margin:8px 6px 2px; font-size:12px; color:var(--term-dim); }
+  #pane-chrome .pc-acct .msg { margin:8px 6px 2px; font-size:12px; color:var(--term-text); }
+  #pane-chrome .pc-acct .msg.err { color:#f87171; }
+  #pane-chrome .ai-dot { display:block; flex:none; position:relative; }
+  #pane-chrome .ai-dot::before { content:""; position:absolute; inset:calc(50% - 4px); width:8px; height:8px; border-radius:50%; background:var(--ai-c); }
+  #pane-chrome .ai-dot.ai-need::before { animation:pc-pulse 1.4s ease-in-out infinite; }
+  @keyframes pc-pulse { 50% { box-shadow:0 0 0 4px color-mix(in srgb, var(--ai-c) 30%, transparent); } }
+  @media (prefers-reduced-motion:reduce) { #pane-chrome .ai-dot::before { animation:none; } }
+  @media (max-width:420px) { #pane-chrome .pc-eff, #pane-chrome .pc-keys button span { display:none; } #pane-chrome .pc-keys button { padding:0 9px; } }
+</style>

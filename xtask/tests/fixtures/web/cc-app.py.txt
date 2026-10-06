@@ -1,0 +1,29 @@
+# Fixture del host GTK: llamadas run_javascript y sus envoltorios.
+def _dash_js(code):
+    try:
+        wv.run_javascript(
+            f"try{{{code}}}catch(e){{console.error('dash_js: '+(e&&e.stack||e))}}", None, None, None)
+    except Exception as e:
+        print(f"_dash_js fallo: {e}")
+
+
+def _dash_click(elem_id):
+    def go(*_):
+        wv.run_javascript(f"try{{document.getElementById('{elem_id}').click()}}catch(e){{}}", None, None, None)
+    return go
+
+
+wv.run_javascript("try{typeof pomoRender==='function'&&pomoRender()}catch(e){}", None, None, None)
+_dash_js(f"render({json.dumps(sess)})")
+btn.connect("clicked", _dash_click("btn-notif"))
+_dash_js('ghostFn();'
+         'window.Bee&&Bee.helper()')
+
+
+def _dbg():
+    with open(path) as fh:
+        code = fh.read()
+    _dash_js(code)
+
+
+ucm.register_script_message_handler("centro")

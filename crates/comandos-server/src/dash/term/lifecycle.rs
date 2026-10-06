@@ -1,0 +1,201 @@
+//! Terminal enablement and compatibility leases are independent of HTTP lifetime.
+use super::{
+    compat::{self, CompatProfile},
+    routes::TermMode,
+};
+use crate::dash::{self, DashState};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    io,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+use tokio::{sync::watch, task::JoinHandle};
+pub fn mode_file(home: &Path) -> PathBuf {
+    home.join(".claude/hooks/webterm-mode.json")
+}
+pub struct Control {
+    enabled_file: PathBuf,
+    enabled: watch::Sender<bool>,
+    ports: Mutex<BTreeSet<u16>>,
+    errors: Mutex<BTreeMap<u16, String>>,
+}
+impl Control {
+    pub fn new(home: &Path) -> Self {
+        let enabled_file = home.join(".claude/hooks/webterm-enabled");
+        let (tx, _) = watch::channel(enabled_file.is_file());
+        Self {
+            enabled_file,
+            enabled: tx,
+            ports: Mutex::new(BTreeSet::new()),
+            errors: Mutex::new(BTreeMap::new()),
+        }
+    }
+    pub fn enabled(&self) -> bool {
+        self.enabled_file.is_file()
+    }
+    pub fn subscribe(&self) -> watch::Receiver<bool> {
+        self.enabled.subscribe()
+    }
+    pub fn ports(&self) -> Vec<u16> {
+        self.ports
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .copied()
+            .collect()
+    }
+    pub fn status(&self) -> serde_json::Value {
+        serde_json::json!({"enabled":self.enabled(),"ports":self.ports(),"bind_errors":*self.errors.lock().unwrap_or_else(std::sync::PoisonError::into_inner)})
+    }
+    fn port(&self, port: u16, live: bool) {
+        let mut ports = self
+            .ports
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if live {
+            ports.insert(port);
+        } else {
+            ports.remove(&port);
+        }
+    }
+    fn error(&self, port: u16, error: Option<&io::Error>) {
+        let mut errors = self
+            .errors
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(e) = error {
+            errors.insert(port, e.kind().to_string());
+        } else {
+            errors.remove(&port);
+        }
+    }
+}
+struct Lease {
+    port: u16,
+    stop: watch::Sender<bool>,
+    task: JoinHandle<io::Result<()>>,
+}
+impl Drop for Lease {
+    fn drop(&mut self) {
+        let _ = self.stop.send(true);
+        self.task.abort();
+    }
+}
+async fn close(leases: &mut Vec<Lease>, control: &Control) {
+    for l in leases.iter() {
+        let _ = l.stop.send(true);
+        control.port(l.port, false);
+    }
+    for mut l in leases.drain(..) {
+        let _ = (&mut l.task).await;
+    }
+}
+pub async fn run(state: Arc<DashState>, mut shutdown: watch::Receiver<bool>) -> io::Result<()> {
+    let mut leases = Vec::new();
+    let mut interval = tokio::time::interval(Duration::from_millis(100));
+    loop {
+        let enabled = state.config.term != TermMode::Off && state.term_control.enabled();
+        state.term_control.enabled.send_if_modified(|old| {
+            if *old == enabled {
+                false
+            } else {
+                *old = enabled;
+                true
+            }
+        });
+        if *shutdown.borrow() {
+            break;
+        }
+        if enabled {
+            for &port in &state.config.webterm_compat {
+                if leases
+                    .iter()
+                    .any(|l: &Lease| l.port == port && !l.task.is_finished())
+                {
+                    continue;
+                }
+                if let Some(index) = leases.iter().position(|l| l.port == port) {
+                    leases.remove(index);
+                    state.term_control.port(port, false);
+                }
+                match dash::bind(port).await {
+                    Ok(listener) => {
+                        let (stop, rx) = watch::channel(false);
+                        let profile = if port == 4779 {
+                            CompatProfile::Plain
+                        } else {
+                            CompatProfile::Path
+                        };
+                        let task = tokio::spawn(compat::serve_listener(
+                            listener,
+                            profile,
+                            state.clone(),
+                            rx,
+                        ));
+                        leases.push(Lease { port, stop, task });
+                        state.term_control.port(port, true);
+                        state.term_control.error(port, None);
+                    }
+                    Err(error) => {
+                        if state
+                            .term_control
+                            .errors
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .get(&port)
+                            != Some(&error.kind().to_string())
+                        {
+                            eprintln!("comandos terminal: compat {port}: {}", error.kind());
+                        }
+                        state.term_control.error(port, Some(&error));
+                    }
+                }
+            }
+        } else {
+            close(&mut leases, &state.term_control).await;
+        }
+        tokio::select! {changed=shutdown.changed()=>{if changed.is_err()||*shutdown.borrow(){break}},_=interval.tick()=>{}}
+    }
+    state.term_control.enabled.send_replace(false);
+    close(&mut leases, &state.term_control).await;
+    Ok(())
+}
+pub fn persist(config: &dash::DashConfig) -> io::Result<()> {
+    if config.shadow_readonly || (config.term == TermMode::Off && !mode_file(&config.home).exists())
+    {
+        return Ok(());
+    }
+    let value = serde_json::json!({"mode":config.term.name(),"ports":config.webterm_compat});
+    dash::native::files::write_text_atomic(&mode_file(&config.home), &value.to_string())
+}
+/// Until B2 combines component and terminal status, keep bind failures visible.
+pub fn reply_status(
+    state: &DashState,
+    request: &crate::Request,
+) -> Result<crate::Reply, crate::HandlerError> {
+    use comandos_core::dashboard_access as access;
+    let peer = request.peer.ip().to_string();
+    let headers: Vec<_> = request
+        .headers
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let policy = access::Request {
+        method: access::Method::Get,
+        path: &request.target,
+        peer_ip: Some(&peer),
+        headers: &headers,
+    };
+    if let Some(error) = access::security_gate(&policy, &state.config.token) {
+        return crate::Reply::json(
+            http::StatusCode::from_u16(error.status).map_err(|_| crate::HandlerError::Failure)?,
+            &serde_json::json!({"error":error.message}),
+        );
+    }
+    crate::Reply::json(
+        http::StatusCode::OK,
+        &serde_json::json!({"term":state.term_control.status()}),
+    )
+}

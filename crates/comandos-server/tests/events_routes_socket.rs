@@ -89,6 +89,7 @@ impl Fixture {
         let (stop, shutdown) = watch::channel(false);
         let limits = Limits {
             connections: 8,
+            websockets: 64,
             header_bytes: 65536,
             buffered_wire_bytes: 20_000_000,
             header_timeout: WAIT,
@@ -98,6 +99,7 @@ impl Fixture {
             shutdown_grace: Duration::from_millis(100),
         };
         let config = Config {
+            websocket: None,
             token: b"socket-fixture-token".to_vec(),
             token_file: None,
             asset_exists: Arc::new(|_| false),

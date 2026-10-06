@@ -30,6 +30,7 @@ const WAIT: Duration = Duration::from_secs(3);
 fn limits() -> Limits {
     Limits {
         connections: 8,
+        websockets: 64,
         header_bytes: 65536,
         buffered_wire_bytes: 20_000_000,
         header_timeout: Duration::from_secs(1),
@@ -65,6 +66,7 @@ impl Fixture {
         let address = listener.local_addr().unwrap();
         let (stop, shutdown) = watch::channel(false);
         let config = Config {
+            websocket: None,
             token: b"fixture-token".to_vec(),
             token_file: None,
             asset_exists: Arc::new(|p| p == "/workspace.css"),
@@ -722,6 +724,7 @@ async fn invalid_limits_and_empty_tokens_fail_before_accepting() {
         let error = server::serve(
             listener,
             Config {
+                websocket: None,
                 token,
                 token_file: None,
                 asset_exists: Arc::new(|_| false),
