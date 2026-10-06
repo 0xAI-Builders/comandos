@@ -11,7 +11,7 @@ use rusqlite::OptionalExtension;
 use std::{
     fs,
     io::{self, Read},
-    os::unix::fs::MetadataExt,
+    os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
 };
 pub struct DocumentDir<'a> {
@@ -139,11 +139,7 @@ impl<'a> DocumentDir<'a> {
                 "control no puede leerse como documento".into(),
             ));
         }
-        let mut f = fs::File::open(&path)?;
-        let opened = f.metadata()?;
-        if (m.dev(), m.ino()) != (opened.dev(), opened.ino()) {
-            return Err(Error::Validation("documento cambió al abrir".into()));
-        }
+        let mut f = open_regular(&path, &m)?;
         let mut body = Vec::new();
         f.read_to_end(&mut body)?;
         let after = f.metadata()?;
@@ -233,5 +229,42 @@ impl<'a> DocumentDir<'a> {
             rows.sort_by(|a, b| a.key.cmp(&b.key));
             Ok(rows)
         })
+    }
+}
+
+// Nonblocking open prevents a regular-file -> FIFO replacement from hanging.
+// Validate the opened descriptor before any document byte is read.
+fn open_regular(path: &Path, expected: &fs::Metadata) -> Result<fs::File> {
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags((nix::fcntl::OFlag::O_NONBLOCK | nix::fcntl::OFlag::O_NOCTTY).bits())
+        .open(path)?;
+    let opened = file.metadata()?;
+    if !opened.is_file() || (expected.dev(), expected.ino()) != (opened.dev(), opened.ino()) {
+        return Err(Error::Validation("documento cambió al abrir".into()));
+    }
+    Ok(file)
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::DirBuilderExt;
+    #[test]
+    fn regular_file_replaced_by_fifo_is_rejected_without_waiting_for_writer() {
+        let dir = std::env::temp_dir().join(format!("document-fifo-race-{}", std::process::id()));
+        fs::DirBuilder::new().mode(0o700).create(&dir).unwrap();
+        let path = dir.join("report.json");
+        fs::write(&path, b"{}").unwrap();
+        let before = fs::symlink_metadata(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        nix::unistd::mkfifo(
+            &path,
+            nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
+        )
+        .unwrap();
+        let begin = std::time::Instant::now();
+        assert!(open_regular(&path, &before).is_err());
+        assert!(begin.elapsed() < std::time::Duration::from_secs(1));
+        fs::remove_dir_all(dir).unwrap();
     }
 }
