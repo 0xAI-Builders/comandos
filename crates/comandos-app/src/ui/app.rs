@@ -1594,15 +1594,21 @@ impl App {
                     .map_err(|_| "process metadata unavailable".to_string())?;
                     let mut sessions = serde_json::Map::new();
                     let mut tabs = serde_json::Map::new();
-                    for key in keys
-                        .iter()
+                    let keys: Vec<_> = keys.into_iter()
                         .filter(|k| k.as_str() == "local" || k.starts_with("term-"))
-                    {
+                        .collect();
+                    let allowed = || !closed.load(Ordering::Acquire)
+                        && current.load(Ordering::Acquire) == epoch;
+                    let mut batch = snapshot::capture_sessions_when(&tmux, &keys, &inspector, &allowed).ok();
+                    for key in &keys {
                         if closed.load(Ordering::Acquire) {
                             return Ok(());
                         }
-                        let captured = snapshot::capture_session(&tmux, key, &inspector)
-                            .ok()
+                        let captured = match batch.as_mut() {
+                            Some(values) => values.remove(key),
+                            None if allowed() => snapshot::capture_session(&tmux, key, &inspector).ok(),
+                            None => return Ok(()),
+                        }
                             .map(|v| {
                                 snapshot::carry_pane_keys(
                                     snapshot::carry_resume_ids(
