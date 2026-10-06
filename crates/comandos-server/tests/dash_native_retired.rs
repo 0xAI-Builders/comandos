@@ -26,23 +26,24 @@ async fn retired_routes_answer_operator_410() {
         let wire = request_body(front.port, "POST", path, "", "{}").await;
         assert_eq!((wire.status, wire.text().as_str()), (410, BODY), "{path}");
     }
-    // Lo que no es exactamente una ruta retirada sigue su camino.
-    assert_eq!(
-        get(front.port, "/proxy-extra").await.status,
-        502,
-        "reenviada al heredado (muerto)"
-    );
+    // El residuo ya responde los sufijos desconocidos como Python.
+    let py = oracle(&home)
+        .await
+        .expect("Python requerido para el oráculo");
+    for (method, body) in [("GET", ""), ("POST", "{}")] {
+        let rust = request_body(front.port, method, "/proxy-extra", "", body).await;
+        let python = request_body(py.port, method, "/proxy-extra", "", body).await;
+        assert_eq!(
+            (rust.status, rust.text()),
+            (python.status, python.text()),
+            "{method}"
+        );
+    }
     assert_eq!(get(front.port, "/eventsx").await.status, 502);
     assert_eq!(
         get(front.port, "/events/v2").await.status,
         200,
         "nativa del dominio B"
-    );
-    assert_eq!(
-        request_body(front.port, "POST", "/proxy-extra", "", "{}")
-            .await
-            .status,
-        502
     );
     front.stop().await;
 }

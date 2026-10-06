@@ -9,9 +9,8 @@
 //! declina (el Python heredado atiende la petición entera); después, el
 //! adaptador falla cerrado (`session_configuration`).
 //!
-//! Se declinan siempre, antes de tocar nada: `extensionsOnly` (pide
-//! `inventory`/`prepare_launch`, aún sin portar) y un `motor-results.json`
-//! que el port no carga con certeza.
+//! Un `motor-results.json` que no se carga con certeza declina antes de
+//! reclamar la operación. Las extensiones usan el mismo diario durable.
 use super::{
     super::{Fault, Native, NativeOptions, operations, py, target},
     results::MotorResults,
@@ -89,7 +88,7 @@ fn owner() -> i64 {
 /// idempotente (GET `/model/status` también lo hace en cada lectura), así que
 /// hacerlo en cada entrada equivale a la primera vez del Python. Lo que el
 /// barrido no decide con certeza declina sin escribir.
-fn open_store(opts: &NativeOptions) -> Result<Connection, Fault> {
+pub(super) fn open_store(opts: &NativeOptions) -> Result<Connection, Fault> {
     let conn = open_journal(&opts.journal_db).map_err(decline)?;
     match operations::recovery_is_certain(&conn) {
         Ok(true) => {}
@@ -159,7 +158,7 @@ fn environ(opts: &NativeOptions) -> HashMap<String, String> {
 }
 
 /// Lo que el adaptador necesita del frente, fijado antes del `claim`.
-async fn build_env(native: &Arc<Native>) -> Result<Env, Fault> {
+pub(super) async fn build_env(native: &Arc<Native>) -> Result<Env, Fault> {
     let opts = native.options();
     let repo = opts.repo_root.clone().ok_or(Fault::Decline)?;
     let (registry, matrix) = super::super::usage::providers::registry_and_matrix(native).await?;
@@ -535,10 +534,6 @@ pub async fn session_configure(
         return Ok((StatusCode::BAD_REQUEST, body));
     }
     data.insert("requestId".into(), json!(request_id));
-    // Sin portar (`inventory`, `prepare_launch`): el heredado lo atiende entero.
-    if data.get("extensionsOnly").is_some_and(truthy) {
-        return Err(Fault::Decline);
-    }
     let results = MotorResults::shared(native.options());
     let opkey = format!("{sess}|{pane}");
     let request = Value::Object(data);
@@ -584,23 +579,36 @@ pub async fn session_configure(
         let (id, req, key) = (request_id.clone(), request.clone(), opkey.clone());
         blocking(move || {
             // `__init__` lee el agente del pane; sus excepciones (tmux) son 500.
+            let kind = if req.get("extensionsOnly").is_some_and(truthy) { Kind::Extensions } else { Kind::Session };
             let adapter =
-                SessionConfiguration::new(Kind::Session, req.clone(), identity.clone(), env)
+                SessionConfiguration::new(kind, req.clone(), identity.clone(), env)
                     .map_err(decline)?;
             // Antes del `claim`: lo que el port no reproduce declina.
             adapter.probe().map_err(decline)?;
-            // Nota 2 del controlador: el origen OpenCode lo atiende el heredado
-            // (su `prepare` lo rechaza igual; aquí ni se reclama).
-            if adapter.frm() == "opencode" {
-                return Err(Fault::Decline);
-            }
             let opts = native.options();
             let conn = open_store(opts)?;
             let pane_key = sc::identity_key(&identity);
             match with_store(&conn, opts, |s| s.claim(&id, &pane_key, &req)) {
                 // La conexión va al hilo: abrirla allí podría fallar con la fila
                 // ya reclamada.
-                Ok(true) => Ok(Ok((adapter, conn))),
+                Ok(true) => {
+                    if kind == Kind::Extensions {
+                        use comandos_runtime::pane_extensions::{ExtensionStore, Fault as DraftFault};
+                        let clock = || (opts.clock_seconds)();
+                        let checked = ExtensionStore::new(&conn, &clock).and_then(|s| {
+                            s.require_revision(req["extensionDraftKey"].as_str().unwrap_or(""), &req["revision"])
+                        });
+                        if let Err(e) = checked {
+                            let result = json!({"ok":false,"error":"la selección cambió; vuelve a cargarla"});
+                            let _ = with_store(&conn, opts, |s|s.stage(&id,"failed",None,Some(&result)));
+                            return match e {
+                                DraftFault::Invalid(text)|DraftFault::Conflict(text) => Ok(Err(conflict(&text, Some(&key)))),
+                                DraftFault::Persistence(_) => Err(failure()),
+                            };
+                        }
+                    }
+                    Ok(Ok((adapter, conn)))
+                }
                 Ok(false) => Ok(Err((
                     StatusCode::ACCEPTED,
                     json!({"ok": true, "pending": true, "operationKey": key, "operationId": id}),
@@ -768,10 +776,6 @@ pub async fn session_recover(
         return Err(Fault::Decline);
     };
     let opkey = format!("{sess}|{pane}");
-    // Sin portar: el heredado recupera las operaciones de extensiones.
-    if request.get("extensionsOnly").is_some_and(truthy) {
-        return Err(Fault::Decline);
-    }
     let current = match target::pane_identity(native, &sess, &pane).await {
         Ok(identity) => identity,
         Err(target::TargetError::Value(text)) => return Ok(conflict(&text, None)),
@@ -871,27 +875,26 @@ fn recover(
 ) {
     let opts = native.options();
     // El `try` del Python: adaptador, `rollback` y `stage('rolled_back')`.
-    let attempt = SessionConfiguration::for_recovery(
-        Kind::Session,
-        request,
-        identity,
-        env,
-        snapshot,
-        allow_pending,
-    )
-    .and_then(|mut adapter| adapter.recover(snapshot))
-    .and_then(|observed| {
-        let result = json!({
-            "ok": false, "rolledBack": true, "recoveryRequired": false,
-            "observed": observed.map_or(Value::Null, Value::Object),
-            "error": "conversación original recuperada; no se aplicó el destino",
-        });
-        with_store(conn, opts, |s| {
-            s.stage(operation_id, "rolled_back", None, Some(&result))
-        })
-        .map_err(|e| sc::Fail::Py(e.to_string()))?;
-        Ok(result)
-    });
+    let kind = if request.get("extensionsOnly").is_some_and(truthy) {
+        Kind::Extensions
+    } else {
+        Kind::Session
+    };
+    let attempt =
+        SessionConfiguration::for_recovery(kind, request, identity, env, snapshot, allow_pending)
+            .and_then(|mut adapter| adapter.recover(snapshot))
+            .and_then(|observed| {
+                let result = json!({
+                    "ok": false, "rolledBack": true, "recoveryRequired": false,
+                    "observed": observed.map_or(Value::Null, Value::Object),
+                    "error": "conversación original recuperada; no se aplicó el destino",
+                });
+                with_store(conn, opts, |s| {
+                    s.stage(operation_id, "rolled_back", None, Some(&result))
+                })
+                .map_err(|e| sc::Fail::Py(e.to_string()))?;
+                Ok(result)
+            });
     let result = match attempt {
         Ok(result) => result,
         Err(fail) => {

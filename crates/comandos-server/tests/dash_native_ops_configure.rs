@@ -41,10 +41,10 @@ async fn validations_and_declines() {
             json!({"session": "audit", "pane": "%1", "requestId": "con espacio 123"}),
             json!([400, {"ok": false, "error": "requestId inválido"}]),
         ),
-        // Sin portar: el heredado atiende las extensiones enteras.
+        // Extensions use the same native exact-pane guard before any claim.
         (
             json!({"session": "audit", "pane": "%1", "requestId": "extensiones-0001", "extensionsOnly": true}),
-            json!("decline"),
+            json!([409, {"ok":false,"error":"el panel ya no existe","operationKey":"audit|%1"}]),
         ),
         // Un tipo que el `str()` del Python convertiría: se declina.
         (json!({"session": 5, "pane": "%1"}), json!("decline")),
