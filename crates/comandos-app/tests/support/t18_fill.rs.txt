@@ -1,0 +1,20 @@
+#![allow(dead_code)]
+use std::{cell::{Cell,RefCell},rc::Rc,collections::BTreeMap,time::Duration,sync::{Arc,atomic::{AtomicBool,Ordering}}};
+use comandos_app::ui::{mosaic::{OwnedViews,ManagedView,MosaicState},snippets::Scope};
+mod glib{use super::*;pub struct SourceId(Rc<Cell<bool>>);impl SourceId{pub fn remove(self){self.0.set(true);}}thread_local!{pub static QUEUE:RefCell<Vec<(Rc<Cell<bool>>,std::boxed::Box<dyn FnOnce()>)>>=RefCell::new(vec![]);}
+ pub fn timeout_add_local_once(delay:Duration,done:impl FnOnce()+'static)->SourceId{assert!([10,25].contains(&delay.as_millis()));let cancelled=Rc::new(Cell::new(false));QUEUE.with(|q|q.borrow_mut().push((cancelled.clone(),std::boxed::Box::new(done))));SourceId(cancelled)}
+ pub fn drain(){loop{let next=QUEUE.with(|q|if q.borrow().is_empty(){None}else{Some(q.borrow_mut().remove(0))});let Some((cancelled,done))=next else{break;};if !cancelled.get(){done();}}}}
+#[derive(Clone,Default)]struct Widget;impl Widget{fn remove<T>(&self,_:&T){}fn pack_start<T>(&self,_:&T,_:bool,_:bool,_:u32){}fn pack2(&self,_:&Self,_:bool,_:bool){}fn show(&self){}fn show_all(&self){}fn set_position(&self,n:i32){assert_eq!(n,700);}}
+struct TermView;struct Overlay{widget:Widget,term:TermView}struct Client(Rc<Cell<i32>>);impl ManagedView for Client{fn shutdown(&self){self.0.set(self.0.get()-1);}}
+struct Status;impl Status{fn set_text(&self,_:&str){panic!("unexpected error");}}
+type Cells=Rc<Vec<(String,String,Widget,Widget)>>;struct Owned{mosaic_scope:Scope,mosaic_loading:Cell<bool>,fill:RefCell<Option<glib::SourceId>>,mosaic:RefCell<MosaicState>,clients:RefCell<OwnedViews<Client>>,cell_ticks:RefCell<BTreeMap<String,glib::SourceId>>,cell_taps:RefCell<BTreeMap<String,glib::SourceId>>,cells:RefCell<Vec<Widget>>,cell_sizes:RefCell<BTreeMap<String,()>>,cell_grown:RefCell<BTreeMap<String,()>>,mosaic_box:RefCell<Option<Widget>>,column:Widget,mosaic_position:Cell<i32>}
+struct App{t18:Owned,closed:Arc<AtomicBool>,status:Status,paned:Widget,live:Rc<Cell<i32>>,calls:Cell<i32>}
+impl App{fn close_window(&self,_:&str){}fn close_aux(&self,id:&str){self.t18.clients.borrow_mut().remove(id);}fn focus_current_term(&self){}
+fn aux_terminal(&self,_:&str,id:&str,kind:&str,scrollback:usize)->Result<Overlay,String>{assert_eq!((kind,scrollback),("mosaic",400));self.calls.set(self.calls.get()+1);self.live.set(self.live.get()+1);self.t18.clients.borrow_mut().insert(id.into(),Client(self.live.clone()))?;Ok(Overlay{widget:Widget,term:TermView})}fn bind_mosaic_cell(&self,_:&str,_:&str,_:&Widget,_:&TermView){}
+// ACTUAL_METHODS
+}
+fn main(){let app=Rc::new(App{t18:Owned{mosaic_scope:Scope::default(),mosaic_loading:Cell::new(false),fill:RefCell::new(None),mosaic:RefCell::new(MosaicState::default()),clients:RefCell::new(OwnedViews::new(12)),cell_ticks:RefCell::new(BTreeMap::new()),cell_taps:RefCell::new(BTreeMap::new()),cells:RefCell::new(vec![]),cell_sizes:RefCell::new(BTreeMap::new()),cell_grown:RefCell::new(BTreeMap::new()),mosaic_box:RefCell::new(None),column:Widget,mosaic_position:Cell::new(700)},closed:Arc::new(AtomicBool::new(false)),status:Status,paned:Widget,live:Rc::new(Cell::new(0)),calls:Cell::new(0)});
+let cells:Cells=Rc::new((0..12).map(|n|(format!("private{n}"),format!("label{n}"),Widget,Widget)).collect());
+app.t18.mosaic.borrow_mut().on=true;app.mosaic_fill(cells.clone(),0,10);let replay=glib::QUEUE.with(|q|q.borrow_mut().remove(0).1);app.mosaic_close();replay();assert_eq!(app.calls.get(),0);
+for _ in 0..20{app.t18.mosaic.borrow_mut().on=true;*app.t18.mosaic_box.borrow_mut()=Some(Widget);app.mosaic_fill(cells.clone(),0,10);glib::drain();assert_eq!(app.live.get(),12);app.mosaic_close();glib::drain();assert_eq!(app.live.get(),0);assert!(app.t18.clients.borrow().keys().next().is_none());assert!(app.t18.fill.borrow().is_none());}assert!(glib::QUEUE.with(|q|q.borrow().is_empty()));
+println!("{}",serde_json::json!({"cycles":20,"clients_after":0,"sources_after":0,"replay_calls":0}));}

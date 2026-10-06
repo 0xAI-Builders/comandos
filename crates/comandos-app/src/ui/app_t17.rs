@@ -84,14 +84,8 @@ impl App {
         }
     }
     fn account_current(&self, dialog: &Dialog) -> bool {
-        !self.closed.load(Ordering::Acquire)
-            && dialog.scope.ticket().current()
-            && !dialog.instance.load(Ordering::Acquire)
-            && self
-                .terms
-                .borrow()
-                .get(&dialog.session)
-                .is_some_and(|term| Arc::ptr_eq(&term.cleanup_cancellation(), &dialog.instance))
+        dialog.scope.ticket().current()
+            && self.owns_term_instance(&dialog.session, &dialog.instance)
     }
     pub(super) fn account_popover(
         self: &Rc<Self>,
@@ -105,9 +99,8 @@ impl App {
             return;
         }
         let Some(instance) = self
-            .terms
-            .borrow()
-            .get(session)
+            .term_for_action(session)
+            .as_ref()
             .map(TermView::cleanup_cancellation)
         else {
             return;

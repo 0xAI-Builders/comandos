@@ -11,6 +11,9 @@ pub(super) struct Modal {
     panel: Option<Rc<Panel>>,
     backdrop: gtk::EventBox,
     wrapper: gtk::EventBox,
+    dismissable: bool,
+    custom: bool,
+    on_close: Option<Rc<dyn Fn()>>,
 }
 impl App {
     pub(in crate::ui) fn install_keys(self: &Rc<Self>) {
@@ -38,25 +41,29 @@ impl App {
             );
         }
         let weak = Rc::downgrade(self);
-        let signal = self.window.connect_key_press_event(move |window, event| {
-            let Some(app) = weak.upgrade().filter(|a| !a.closed.load(Ordering::Acquire)) else {
-                return glib::Propagation::Proceed;
-            };
-            // El DrawingArea propio despacha antes de escribir al PTY. El Window solo cubre los demás focos.
-            if window.focused_widget().is_some_and(|focus| {
-                app.terms
-                    .borrow()
-                    .values()
-                    .any(|term| term.widget().clone().upcast::<gtk::Widget>() == focus)
-            }) {
-                return glib::Propagation::Proceed;
-            }
-            if app.handle_key(event, None) {
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
-        });
+        let signal =
+            self.window.connect_key_press_event(move |window, event| {
+                let Some(app) = weak.upgrade().filter(|a| !a.closed.load(Ordering::Acquire)) else {
+                    return glib::Propagation::Proceed;
+                };
+                // El DrawingArea propio despacha antes de escribir al PTY. El Window solo cubre los demás focos.
+                if window.focused_widget().is_some_and(|focus| {
+                    app.terms
+                        .borrow()
+                        .values()
+                        .any(|term| term.widget().clone().upcast::<gtk::Widget>() == focus)
+                        || app.t18.clients.borrow().values().any(|client| {
+                            client.term.widget().clone().upcast::<gtk::Widget>() == focus
+                        })
+                }) {
+                    return glib::Propagation::Proceed;
+                }
+                if app.handle_key(event, None) {
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                }
+            });
         self.protocol_signals
             .borrow_mut()
             .push((self.window.clone().upcast(), signal));
@@ -67,11 +74,11 @@ impl App {
         let instance = term.cleanup_cancellation();
         term.on_app_key(Rc::new(move |event| {
             weak.upgrade().is_some_and(|app| {
-                let current =
-                    !instance.load(Ordering::Acquire)
-                        && app.terms.borrow().get(&key).is_some_and(|term| {
-                            Arc::ptr_eq(&instance, &term.cleanup_cancellation())
-                        });
+                let current = !instance.load(Ordering::Acquire)
+                    && app
+                        .term_for_action(&key)
+                        .as_ref()
+                        .is_some_and(|term| Arc::ptr_eq(&instance, &term.cleanup_cancellation()));
                 current && app.handle_key(event, Some(&key))
             })
         }));
@@ -86,12 +93,11 @@ impl App {
         input.drag = self.drag_layer.active();
         input.terminal = term_key.is_some();
         input.has_term = self
-            .current_session()
-            .is_some_and(|key| self.terms.borrow().contains_key(&key));
+            .action_session()
+            .is_some_and(|key| self.term_for_action(&key).is_some());
         input.selection = term_key.is_some_and(|key| {
-            self.terms
-                .borrow()
-                .get(key)
+            self.term_for_action(key)
+                .as_ref()
                 .is_some_and(|term| term.selection_text().is_some())
         });
         if input.key == *gdk::keys::constants::Escape && input.drag {
@@ -138,9 +144,8 @@ impl App {
                     return false;
                 };
                 let Some(action) = self
-                    .terms
-                    .borrow()
-                    .get(key)
+                    .term_for_action(key)
+                    .as_ref()
                     .map(|term| term.ctrl_c_action(input.selection, copy_context, now))
                 else {
                     return false;
@@ -161,7 +166,10 @@ impl App {
                 json!({"on":!self.active_notebook().is_visible()}),
             ),
             KeyAction::Reload => ("reload_dashboard", json!({})),
-            KeyAction::StartAI => ("start_ai_here", json!({"session":self.current_session()})),
+            KeyAction::StartAI => (
+                "start_ai_here",
+                json!({"session":term_key.map(str::to_string).or_else(||self.action_session())}),
+            ),
             KeyAction::MruOrNext => {
                 self.remember_current_navigation_page();
                 let has_mru = self.mru_pages.borrow().len() >= 2;
@@ -208,7 +216,7 @@ impl App {
         }
         true
     }
-    fn focus_current_term(&self) {
+    pub(super) fn focus_current_term(&self) {
         if let Some(key) = self.current_session()
             && let Some(term) = self.terms.borrow().get(&key)
         {
@@ -219,7 +227,7 @@ impl App {
         if !self.writable() {
             return;
         }
-        let Some((tty, terminal)) = self.terms.borrow().get(key).and_then(|term| {
+        let Some((tty, terminal)) = self.term_for_action(key).as_ref().and_then(|term| {
             term.child_tty()
                 .map(|tty| (tty, term.cleanup_cancellation()))
         }) else {
@@ -399,6 +407,26 @@ impl App {
         kind: Kind,
         panel: Option<Rc<Panel>>,
     ) {
+        self.mount_full_modal(frame.upcast_ref(), kind, panel, true, false, None);
+    }
+    pub(in crate::ui) fn mount_custom_panel(
+        self: &Rc<Self>,
+        widget: &gtk::Widget,
+        dismissable: bool,
+        on_close: Rc<dyn Fn()>,
+    ) {
+        self.mount_full_modal(widget, Kind::Help, None, dismissable, true, Some(on_close));
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn mount_full_modal(
+        self: &Rc<Self>,
+        frame: &gtk::Widget,
+        kind: Kind,
+        panel: Option<Rc<Panel>>,
+        dismissable: bool,
+        custom: bool,
+        on_close: Option<Rc<dyn Fn()>>,
+    ) {
         self.close_modal();
         let generation = self.modal_generation.get().wrapping_add(1);
         self.modal_generation.set(generation);
@@ -413,9 +441,10 @@ impl App {
         backdrop.add_events(gdk::EventMask::BUTTON_PRESS_MASK);
         let weak = Rc::downgrade(self);
         backdrop.connect_button_press_event(move |_, _| {
-            if let Some(app) = weak
-                .upgrade()
-                .filter(|a| a.modal_generation.get() == generation)
+            if dismissable
+                && let Some(app) = weak
+                    .upgrade()
+                    .filter(|a| a.modal_generation.get() == generation)
             {
                 app.close_modal();
             }
@@ -436,6 +465,9 @@ impl App {
             panel,
             backdrop,
             wrapper,
+            dismissable,
+            custom,
+            on_close,
         });
         self.restack_modal(generation);
         let weak = Rc::downgrade(self);
@@ -462,12 +494,17 @@ impl App {
         }
     }
     fn modal_key(self: &Rc<Self>, key: u32, control: bool) -> bool {
-        let kind = self.modal.borrow().as_ref().map(|m| m.kind);
-        let Some(kind) = kind else {
+        let state = self
+            .modal
+            .borrow()
+            .as_ref()
+            .map(|m| (m.kind, m.dismissable, m.custom));
+        let Some((kind, dismissable, custom)) = state else {
             return false;
         };
-        if key == *gdk::keys::constants::Escape
-            || (kind == Kind::Help
+        if (dismissable && key == *gdk::keys::constants::Escape)
+            || (!custom
+                && kind == Kind::Help
                 && self.t16.dialog.borrow().is_none()
                 && (key == *gdk::keys::constants::F1 || key == *gdk::keys::constants::question))
         {
@@ -483,9 +520,13 @@ impl App {
         if let Some(source) = self.modal_idle.borrow_mut().take() {
             source.remove();
         }
-        if let Some(modal) = self.modal.borrow_mut().take() {
+        let removed = self.modal.borrow_mut().take();
+        if let Some(modal) = removed {
             self.modal_overlay.remove(&modal.backdrop);
             self.modal_overlay.remove(&modal.wrapper);
+            if let Some(callback) = modal.on_close {
+                callback();
+            }
         }
         if !self.closed.load(Ordering::Acquire) {
             self.focus_current_term();

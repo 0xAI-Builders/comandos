@@ -1,0 +1,8 @@
+#![allow(dead_code)]
+use std::{cell::Cell,rc::Rc};mod ui{pub use comandos_app::ui::snippets;pub mod webview{pub(crate) use super::super::Page as OwnedPage;}}
+thread_local!{static PAGES:Cell<i32>=const{Cell::new(0)};static HANDLERS:Cell<i32>=const{Cell::new(0)};static CLOSES:Cell<i32>=const{Cell::new(0)};}
+pub(crate) struct Page(Cell<bool>);impl Page{fn cancel(&self){self.0.set(true);}}impl Drop for Page{fn drop(&mut self){assert!(self.0.get());PAGES.with(|n|n.set(n.get()-1));}}
+mod gtk{pub struct Window;impl Window{pub fn close(&self){super::CLOSES.with(|n|n.set(n.get()+1));}}}mod glib{pub type SignalHandlerId=usize;pub struct Object;impl Object{pub fn disconnect(&self,_:usize){super::HANDLERS.with(|n|n.set(n.get()-1));}}}
+// ACTUAL_METHODS
+fn main(){for _ in 0..20{PAGES.with(|n|n.set(n.get()+1));HANDLERS.with(|n|n.set(n.get()+2));let scope=Rc::new(ui::snippets::Scope::default());let ticket=scope.ticket();let view=WindowView{window:gtk::Window,page:Some(Page(Cell::new(false))),client:None,signals:vec![(glib::Object,0),(glib::Object,1)],closing:Rc::new(Cell::new(false)),scope};drop(view);assert!(!ticket.current());PAGES.with(|n|assert_eq!(n.get(),0));HANDLERS.with(|n|assert_eq!(n.get(),0));}
+let scope=Rc::new(ui::snippets::Scope::default());let view=WindowView{window:gtk::Window,page:None,client:None,signals:vec![],closing:Rc::new(Cell::new(true)),scope};drop(view);CLOSES.with(|n|assert_eq!(n.get(),20));println!("{}",serde_json::json!({"cycles":20,"pages_after":0,"handlers_after":0,"close_calls":20}));}

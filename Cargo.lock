@@ -382,6 +382,7 @@ dependencies = [
  "rustix",
  "serde_json",
  "sha2",
+ "signal-hook",
  "ureq",
  "webkit2gtk",
 ]

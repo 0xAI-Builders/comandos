@@ -9,4 +9,5 @@ pub mod keys;
 pub mod links;
 pub mod schedule;
 
+pub mod lifecycle;
 pub mod view;

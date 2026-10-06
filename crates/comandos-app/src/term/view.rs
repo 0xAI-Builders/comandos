@@ -62,6 +62,7 @@ struct Model {
     preferences: Value,
     settle: Settle,
     respawn_at: Option<u64>,
+    respawn: super::lifecycle::RespawnPolicy,
     schedule: PaintSchedule,
     focused: bool,
     blink_visible: bool,
@@ -163,6 +164,7 @@ impl TermView {
                 preferences,
                 settle: Settle::new(SETTLE_QUIET_MS, SETTLE_CAP_MS, 0),
                 respawn_at: None,
+                respawn: super::lifecycle::RespawnPolicy::default(),
                 schedule: PaintSchedule::default(),
                 focused: false,
                 blink_visible: true,
@@ -204,6 +206,7 @@ impl TermView {
         Ok(Self { inner })
     }
     pub fn shutdown(&self) {
+        self.inner.model.borrow_mut().respawn.shutdown();
         self.inner.closed.set(true);
         self.inner.replay.borrow_mut().cancel();
         self.inner.link_event.borrow_mut().take();
@@ -269,6 +272,9 @@ impl TermView {
     }
     pub fn cleanup_cancellation(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
         self.inner.cleanup_cancelled.clone()
+    }
+    pub fn set_respawn(&self, enabled: bool) {
+        self.inner.model.borrow_mut().respawn.set_enabled(enabled);
     }
     pub fn clipboard(&self) -> Rc<crate::ui::clipboard::Clipboard> {
         self.inner.clipboard.clone()
@@ -704,7 +710,8 @@ impl Inner {
     fn tick(self: &Rc<Self>) {
         let now = self.ms();
         let mut m = self.model.borrow_mut();
-        let spawn = m.pty.is_none()
+        let spawn = m.respawn.may_start()
+            && m.pty.is_none()
             && (m.respawn_at.is_some_and(|at| now >= at)
                 || (m.respawn_at.is_none() && m.settle.due(now)));
         if spawn {
@@ -738,7 +745,7 @@ impl Inner {
         if let Some(code) = exit {
             m.pty.take();
             m.drain = PtyDrain::default();
-            m.respawn_at = Some(now.saturating_add(RESPAWN_MS));
+            m.respawn_at = m.respawn.exited().then(|| now.saturating_add(RESPAWN_MS));
             drop(m);
             if let Some(source) = self.read_source.borrow_mut().take() {
                 source.remove();

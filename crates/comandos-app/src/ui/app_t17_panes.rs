@@ -67,6 +67,14 @@ impl App {
         key: &str,
         term: &TermView,
     ) -> Rc<PaneOverlay> {
+        self.attach_pane_overlay_at(key, term, key)
+    }
+    pub(super) fn attach_pane_overlay_at(
+        self: &Rc<Self>,
+        key: &str,
+        term: &TermView,
+        view_id: &str,
+    ) -> Rc<PaneOverlay> {
         let owner = PaneOverlay::new(key, term);
         let weak_owner = Rc::downgrade(&owner);
         owner.widget.connect_local("draw", true, move |values| {
@@ -126,7 +134,10 @@ impl App {
         let key = key.to_string();
         term.widget().connect_focus_in_event(move |_, _| {
             if let (Some(app), Some(owner)) = (weak.upgrade(), d.upgrade()) {
-                app.workspace.note_focus(&key);
+                if !app.auxiliary_current(&owner) {
+                    app.t18.focused.borrow_mut().take();
+                    app.workspace.note_focus(&key);
+                }
                 owner.reposition(true);
                 app.refresh_visible_geometry();
             }
@@ -172,7 +183,7 @@ impl App {
             .t17
             .boxes
             .borrow_mut()
-            .insert(owner.session.clone(), owner.clone())
+            .insert(view_id.to_string(), owner.clone())
         {
             old.cancel();
         }
@@ -182,16 +193,20 @@ impl App {
         !self.closed.load(Ordering::Acquire)
             && owner.scope.ticket().current()
             && !owner.term.cleanup_cancellation().load(Ordering::Acquire)
-            && self.terms.borrow().get(&owner.session).is_some_and(|t| {
-                Arc::ptr_eq(
-                    &t.cleanup_cancellation(),
-                    &owner.term.cleanup_cancellation(),
-                )
-            })
+            && (self.auxiliary_current(owner)
+                || self.terms.borrow().get(&owner.session).is_some_and(|t| {
+                    Arc::ptr_eq(
+                        &t.cleanup_cancellation(),
+                        &owner.term.cleanup_cancellation(),
+                    )
+                }))
     }
     fn pane_visible(&self, owner: &PaneOverlay) -> bool {
         if !self.presence_visible.get() {
             return false;
+        }
+        if self.auxiliary_current(owner) {
+            return self.auxiliary_visible(owner);
         }
         self.active_notebook()
             .current_page()
@@ -202,7 +217,11 @@ impl App {
             })
     }
     fn pane_focused(&self, owner: &PaneOverlay) -> bool {
-        self.current_session().as_deref() == Some(owner.session.as_str())
+        if self.auxiliary_current(owner) {
+            self.auxiliary_focused(owner)
+        } else {
+            self.current_session().as_deref() == Some(owner.session.as_str())
+        }
     }
     fn refresh_visible_geometry(self: &Rc<Self>) {
         for owner in self.t17.boxes.borrow().values() {
@@ -282,7 +301,7 @@ impl App {
             }
         }
     }
-    fn pane_geo_soon(self: &Rc<Self>, owner: &Rc<PaneOverlay>) {
+    pub(super) fn pane_geo_soon(self: &Rc<Self>, owner: &Rc<PaneOverlay>) {
         if !self.pane_current(owner) || !self.pane_visible(owner) || owner.timer.borrow().is_some()
         {
             return;
@@ -472,6 +491,7 @@ impl App {
                     if let (Some(app), Some(owner)) = (weak.upgrade(), d.upgrade())
                         && app.pane_current(&owner)
                     {
+                        owner.term.widget().grab_focus();
                         app.account_popover(b, &owner.session, &id, &harness, &alias);
                     }
                 });
@@ -534,6 +554,7 @@ impl App {
                 if let (Some(app), Some(owner)) = (weak.upgrade(), d.upgrade())
                     && app.pane_current(&owner)
                 {
+                    owner.term.widget().grab_focus();
                     app.start_ai_in_pane(&owner.session, &pane);
                 }
             });
@@ -580,6 +601,7 @@ impl App {
             if let (Some(app), Some(owner)) = (weak.upgrade(), d.upgrade())
                 && app.pane_current(&owner)
             {
+                owner.term.widget().grab_focus();
                 app.open_extension(&owner.session, &pane, &harness);
             }
         });

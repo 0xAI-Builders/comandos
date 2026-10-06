@@ -5,9 +5,10 @@ use std::{cell::{Cell,RefCell},rc::Rc};
 mod tab_actions { pub use comandos_app::tab_actions::valid_session; }
 struct App { current:RefCell<String>, calls:RefCell<Vec<Value>> }
 impl App {
+    fn action_session(&self)->Option<String>{self.current_session()}
     fn current_session(&self)->Option<String>{Some(self.current.borrow().clone())}
     fn start_ai_in_pane(&self,session:&str,pane:&str){self.calls.borrow_mut().push(json!([session,pane]));}
-    fn keyboard(&self)->(&'static str,Value) { // KEYBOARD_EXPRESSION }
+    fn keyboard(&self)->(&'static str,Value) { let term_key:Option<&str>=None; // KEYBOARD_EXPRESSION }
 }
 fn main() {
     let app=Rc::new(App{current:RefCell::new("fixture".into()),calls:RefCell::new(vec![])});

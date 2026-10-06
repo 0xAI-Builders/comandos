@@ -183,9 +183,8 @@ impl App {
             }
         };
         let Some(instance) = self
-            .terms
-            .borrow()
-            .get(session)
+            .term_for_action(session)
+            .as_ref()
             .map(TermView::cleanup_cancellation)
         else {
             self.status.set_text("Extension terminal unavailable");
@@ -219,7 +218,12 @@ impl App {
         {
             old.cancel_pending();
         }
-        self.select(&session);
+        let auxiliary = self.t18.clients.borrow().values().any(|c| {
+            c.session == session && Arc::ptr_eq(&c.term.cleanup_cancellation(), &instance)
+        });
+        if !auxiliary {
+            self.select(&session);
+        }
         let weak = Rc::downgrade(self);
         self.jobs.spawn(
             move || -> Result<(String, String, String, Option<Value>), String> {
@@ -261,13 +265,7 @@ impl App {
                         return;
                     }
                 };
-                if app.current_session().as_deref() != Some(session.as_str())
-                    || app
-                        .terms
-                        .borrow()
-                        .get(&session)
-                        .is_none_or(|t| !Arc::ptr_eq(&instance, &t.cleanup_cancellation()))
-                {
+                if !app.owns_term_instance(&session, &instance) {
                     return;
                 }
                 app.publish_extension(&uri, (session, pane, harness), instance, preview, client);
@@ -319,11 +317,10 @@ impl App {
                     if app.closed.load(Ordering::Acquire)
                         || owner.page.view != view
                         || owner.target.as_ref().is_none_or(|(session, _, _)| {
-                            app.terms.borrow().get(session).is_none_or(|term| {
-                                owner.instance.as_ref().is_none_or(|instance| {
-                                    !Arc::ptr_eq(instance, &term.cleanup_cancellation())
-                                })
-                            })
+                            owner
+                                .instance
+                                .as_ref()
+                                .is_none_or(|instance| !app.owns_term_instance(session, instance))
                         })
                         || owner
                             .instance
@@ -480,14 +477,13 @@ impl App {
             return;
         }
         let session = if session.is_empty() {
-            self.current_session().unwrap_or_default()
+            self.action_session().unwrap_or_default()
         } else {
             session.into()
         };
         let Some(instance) = self
-            .terms
-            .borrow()
-            .get(&session)
+            .term_for_action(&session)
+            .as_ref()
             .map(TermView::cleanup_cancellation)
         else {
             self.status.set_text("No tmux session");
@@ -518,11 +514,10 @@ impl App {
                 }
                 match result {
                     Ok((session, pane, cwd)) => {
-                        if app.current_session().as_deref() != Some(session.as_str())
+                        if app.action_session().as_deref() != Some(session.as_str())
                             || app
-                                .terms
-                                .borrow()
-                                .get(&session)
+                                .term_for_action(&session)
+                                .as_ref()
                                 .is_none_or(|t| !Arc::ptr_eq(&instance, &t.cleanup_cancellation()))
                         {
                             return;

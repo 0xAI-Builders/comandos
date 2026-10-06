@@ -8,6 +8,8 @@ impl Status{fn set_text(&self,_:&str){}}
 struct App{closed:Cell<bool>,selection:RefCell<String>,terms:RefCell<BTreeMap<String,Term>>,calls:Rc<Cell<u32>>,status:Status}
 impl App {
  fn writable(&self)->bool{!self.closed.get()}
+ fn action_session(&self)->Option<String>{self.current_session()}
+ fn term_for_action(&self,key:&str)->Option<Term>{self.terms.borrow().get(key).map(|t|Term(t.0.clone()))}
  fn current_session(&self)->Option<String>{Some(self.selection.borrow().clone())}
  fn call_dashboard(&self,function:ui::bridge::JsFunction,args:&[Value])->Result<(),String>{
     assert!(matches!(function,ui::bridge::JsFunction::NewSessionForPane));

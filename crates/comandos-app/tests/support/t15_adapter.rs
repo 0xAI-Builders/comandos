@@ -132,6 +132,7 @@ pub fn execute() -> serde_json::Value {
         "modal_key",
         "close_modal",
         "mount_modal",
+        "mount_full_modal",
         "restack_modal",
     ] {
         app_methods += &body(app, &format!("fn {n}("));

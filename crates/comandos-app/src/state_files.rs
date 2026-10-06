@@ -41,9 +41,14 @@ const ALLOWED: &[&str] = &[
 impl StateFiles {
     /// These two pane UI documents have distinct catalog owners.
     pub fn read_pane_document(&self, name: &str) -> Result<Value, StateError> {
+        self.read_ui_document(name)
+    }
+    pub fn read_ui_document(&self, name: &str) -> Result<Value, StateError> {
         let (domain, key) = match name {
             "app-tab-models.json" => ("tabs", "H/app-tab-models.json"),
             "app-extension-shelf.json" => ("app-ui", "H/app-extension-shelf.json"),
+            "app-layout.json" => ("app-ui", "H/app-layout.json"),
+            "app-pane-position.json" => ("app-ui", "H/app-pane-position.json"),
             _ => return Err(StateError::Name(name.into())),
         };
         let path = self.path(name)?;
@@ -69,24 +74,36 @@ impl StateFiles {
         next: &Value,
         allowed: impl Fn() -> bool,
     ) -> Result<bool, StateError> {
-        let path = self.path("app-extension-shelf.json")?;
+        self.write_ui_document_when("app-extension-shelf.json", expected, next, allowed)
+    }
+    pub fn write_ui_document_when(
+        &self,
+        name: &str,
+        expected: &Value,
+        next: &Value,
+        allowed: impl Fn() -> bool,
+    ) -> Result<bool, StateError> {
+        let key = match name {
+            "app-extension-shelf.json" => "H/app-extension-shelf.json",
+            "app-layout.json" => "H/app-layout.json",
+            "app-pane-position.json" => "H/app-pane-position.json",
+            _ => return Err(StateError::Name(name.into())),
+        };
+        let path = self.path(name)?;
         if !allowed() {
             return Ok(false);
         }
         let doc = comandos_store::domains::DomainStore {
             home: self.config.home(),
         }
-        .document("H/app-extension-shelf.json", "app-ui", path.clone());
+        .document(key, "app-ui", path.clone());
         doc.with_legacy_authority(|| {
             if self.config.mode() == crate::config::RunMode::Sandbox {
                 self.guard
                     .create_dir_all(self.config.hooks_dir(), 0o700)
                     .map_err(|e| comandos_store::Error::Validation(format!("{e:?}")))?;
             }
-            let lock_path = self
-                .config
-                .hooks_dir()
-                .join("app-extension-shelf.json.lock");
+            let lock_path = self.config.hooks_dir().join(format!("{name}.lock"));
             let lock = self
                 .guard
                 .open_lock(&lock_path)
@@ -94,7 +111,7 @@ impl StateFiles {
             let _lock = lock_exclusive(lock, &lock_path)
                 .map_err(|e| comandos_store::Error::Validation(format!("{e:?}")))?;
             let current = self
-                .read("app-extension-shelf.json")
+                .read(name)
                 .map_err(|e| comandos_store::Error::Validation(format!("{e:?}")))?;
             if &current != expected || !allowed() {
                 return Ok(false);

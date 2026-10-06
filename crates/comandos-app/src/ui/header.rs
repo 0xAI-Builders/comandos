@@ -66,17 +66,6 @@ impl Header {
             bar.pack_end(&b);
             controls.push((b, icon));
         }
-        bar.add_events(gdk::EventMask::BUTTON_PRESS_MASK);
-        let weak = window.downgrade();
-        bar.connect_button_press_event(move |_, e| {
-            if e.button() == 1
-                && let Some(w) = weak.upgrade()
-            {
-                let (x, y) = e.root();
-                w.begin_move_drag(1, x as i32, y as i32, e.time());
-            }
-            glib::Propagation::Proceed
-        });
         let badge = gtk::Label::new(None);
         badge.set_no_show_all(true);
         badge.style_context().add_class("cc-badge");

@@ -245,7 +245,7 @@ impl App {
                 let side = commands::string_arg(args, "side", "right")?.to_string();
                 commands::split_flags(&side)?;
                 let session = self
-                    .current_session()
+                    .action_session()
                     .ok_or_else(|| CommandError::Invalid("no current terminal".into()))?;
                 let tmux = self.tmux.clone();
                 let closed = self.closed.clone();
@@ -290,7 +290,7 @@ impl App {
                 );
             }
             "kill_pane" => {
-                let current = self.current_session().unwrap_or_else(|| "local".into());
+                let current = self.action_session().unwrap_or_else(|| "local".into());
                 let session = commands::session_arg(args, &current)?.to_string();
                 let tmux = self.tmux.clone();
                 let closed = self.closed.clone();
@@ -409,12 +409,11 @@ impl App {
         &self,
         f: impl FnOnce(&TermView) -> Result<(), CommandError>,
     ) -> Result<(), CommandError> {
-        let Some(key) = self.current_session() else {
+        let Some(key) = self.action_session() else {
             return Ok(());
         };
-        let terms = self.terms.borrow();
-        if let Some(term) = terms.get(&key) {
-            f(term)
+        if let Some(term) = self.term_for_action(&key) {
+            f(&term)
         } else {
             Ok(())
         }

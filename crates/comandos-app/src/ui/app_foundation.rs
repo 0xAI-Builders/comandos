@@ -31,18 +31,35 @@ impl App {
         for row in [self.tab_layout.start(), self.tab_layout.actions()] {
             for child in row.children() {
                 if let Ok(button) = child.downcast::<gtk::Button>() {
-                    let name = button.widget_name();
+                    let widget_name = button.widget_name();
+                    let name = match widget_name.as_str() {
+                        "tab-cycle-prev" => "chevron-left",
+                        "tab-cycle-next" => "chevron-right",
+                        "tabs-layout-rows" => "rows",
+                        "left-panel-toggle" => "panel-left",
+                        other => other,
+                    };
                     let pixels = if name.starts_with("chevron-") {
                         20
-                    } else if matches!(name.as_str(), "rows" | "panel-left") {
+                    } else if matches!(name, "rows" | "panel-left") {
                         18
                     } else {
                         16
                     };
-                    button.set_image(Some(&ui::icons::image(name.as_str(), pixels, dim)));
+                    let color = if name == "rows" && self.tab_layout.rows() {
+                        theme
+                            .values
+                            .get("brand")
+                            .and_then(Value::as_str)
+                            .unwrap_or(dim)
+                    } else {
+                        dim
+                    };
+                    button.set_image(Some(&ui::icons::image(name, pixels, color)));
                 }
             }
         }
+        self.paint_left_button(self.t18.state.borrow().left_hidden);
         for tab in self
             .labels
             .borrow()
@@ -52,6 +69,61 @@ impl App {
             if let Some(close) = &tab.close {
                 close.set_image(Some(&ui::icons::image("close", 12, dim)));
             }
+        }
+    }
+    pub(super) fn apply_tabs_layout(self: &Rc<Self>, mode: &str, persist: bool) {
+        let mode = if mode == "rows" { "rows" } else { "row" };
+        self.tab_layout.set_rows(mode == "rows");
+        for row in [self.tab_layout.start(), self.tab_layout.actions()] {
+            for child in row.children() {
+                match child.widget_name().as_str() {
+                    "tab-cycle-prev" | "tab-cycle-next" => child.set_visible(mode == "row"),
+                    "tabs-layout-rows" => {
+                        if let Ok(button) = child.downcast::<gtk::Button>() {
+                            let color = self
+                                .applied_theme
+                                .borrow()
+                                .as_ref()
+                                .and_then(|t| {
+                                    t.values.get(if mode == "rows" { "brand" } else { "dim" })
+                                })
+                                .and_then(Value::as_str)
+                                .unwrap_or("#AAAAAA")
+                                .to_string();
+                            button.set_image(Some(&ui::icons::image("rows", 18, &color)));
+                            button.set_tooltip_text(Some(match (mode, self.english) {
+                                ("rows", true) => "One row",
+                                ("rows", false) => "Una fila",
+                                (_, true) => "Several rows",
+                                _ => "Varias filas",
+                            }));
+                        }
+                    }
+                    _ => (),
+                }
+            }
+        }
+        if persist && self.writable() {
+            let dash = self.dash.clone();
+            let closed = self.closed.clone();
+            let ticket = self.t18.scope.ticket();
+            self.jobs.spawn(
+                move || {
+                    if closed.load(Ordering::Acquire) || !ticket.current() {
+                        return Err(crate::dash_client::DashError::Cancelled);
+                    }
+                    dash.post(
+                        "/prefs-set",
+                        &json!({"tabs_layout":mode}),
+                        Duration::from_secs(5),
+                    )
+                },
+                |result| {
+                    if let Err(error) = result {
+                        eprintln!("tabs_layout: {error:?}");
+                    }
+                },
+            );
         }
     }
     pub(super) fn device_id(&self) -> String {
@@ -119,18 +191,21 @@ impl App {
     pub(super) fn install_pane_position(self: &Rc<Self>) {
         let state = self.state.clone();
         let weak = Rc::downgrade(self);
+        let ticket = self.t18.pane_scope.ticket();
         self.jobs.spawn(
-            move || state.read("app-pane-position.json"),
+            move || state.read_ui_document("app-pane-position.json"),
             move |saved| {
-                if let Some(app) = weak.upgrade() {
-                    app.pane_saved.set(Some(
-                        saved
-                            .ok()
-                            .and_then(|v| v.get("position").unwrap_or(&Value::Null).as_i64())
-                            .unwrap_or(0)
-                            .clamp(0, i64::from(i32::MAX)) as i32,
-                    ));
-                    app.initialize_pane(app.paned.allocated_width());
+                if let Some(app) = weak.upgrade().filter(|a| !a.closed.load(Ordering::Acquire))
+                    && ticket.current()
+                {
+                    match saved {
+                        Ok(doc) => {
+                            *app.t18.pane_doc.borrow_mut() = doc;
+                            app.pane_saved.set(Some(0));
+                            app.initialize_pane(app.paned.allocated_width());
+                        }
+                        Err(error) => app.status.set_text(&format!("Pane position: {error:?}")),
+                    }
                 }
             },
         );
@@ -145,44 +220,25 @@ impl App {
             if let Some(app) = weak.upgrade().filter(|a| {
                 a.writable()
                     && a.pane_initialized.get()
-                    && a.webview.is_visible()
-                    && a.paned.is_visible()
+                    && !a.t18.state.borrow().left_hidden
+                    && a.t18.side.is_visible()
+                    && !a.t18.mosaic.borrow().on
             }) {
-                let state = app.state.clone();
-                let closed = app.closed.clone();
-                let position = paned.position();
-                app.jobs.spawn(
-                    move || {
-                        if !closed.load(Ordering::Acquire) {
-                            state.write("app-pane-position.json", &json!({"position":position}))
-                        } else {
-                            Ok(())
-                        }
-                    },
-                    |result| {
-                        if let Err(e) = result {
-                            eprintln!("posición del panel: {e:?}");
-                        }
-                    },
-                );
+                app.pane_saved.set(Some(paned.position()));
+                app.queue_ui_save("app-pane-position.json", 250);
             }
         });
     }
     fn initialize_pane(&self, width: i32) {
-        if self.pane_initialized.get() || width < 900 {
+        if self.pane_initialized.get() || self.pane_saved.get().is_none() {
             return;
         }
-        let Some(saved) = self.pane_saved.get() else {
-            return;
-        };
-        let position = if saved > 0 {
-            saved
-        } else {
-            (f64::from(width) * 0.27).round() as i32
+        let position = ui::side::pane_initial_position(width, &self.t18.pane_doc.borrow());
+        if let Some(position) = position {
+            self.pane_initialized.set(true);
+            self.pane_saved.set(Some(position));
+            self.paned.set_position(position);
         }
-        .clamp(300, (width - 720).max(320));
-        self.pane_initialized.set(true);
-        self.paned.set_position(position);
     }
     pub(super) fn sync_strip(self: &Rc<Self>) {
         let doc = self.workspace_doc.borrow().clone();

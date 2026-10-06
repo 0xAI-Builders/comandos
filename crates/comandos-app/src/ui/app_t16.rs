@@ -72,7 +72,7 @@ impl App {
                         app.open_snippets();
                         return Ok(());
                     }
-                    let key = app.current_session().ok_or_else(|| {
+                    let key = app.action_session().ok_or_else(|| {
                         ui::app_commands::CommandError::Invalid("no active terminal".into())
                     })?;
                     match name {
@@ -89,9 +89,8 @@ impl App {
         self.writable()
             && !instance.load(Ordering::Acquire)
             && self
-                .terms
-                .borrow()
-                .get(key)
+                .term_for_action(key)
+                .as_ref()
                 .is_some_and(|t| Arc::ptr_eq(&t.cleanup_cancellation(), instance))
     }
     pub(super) fn attach_term_t16(self: &Rc<Self>, key: &str, term: &TermView) {
@@ -165,9 +164,8 @@ impl App {
         point: (u16, u16),
     ) {
         let Some(instance) = self
-            .terms
-            .borrow()
-            .get(key)
+            .term_for_action(key)
+            .as_ref()
             .map(TermView::cleanup_cancellation)
         else {
             return;
@@ -178,7 +176,10 @@ impl App {
             state.scope.ticket()
         };
         let tmux = self.tmux.clone();
-        let tty = self.terms.borrow().get(key).and_then(TermView::child_tty);
+        let tty = self
+            .term_for_action(key)
+            .as_ref()
+            .and_then(TermView::child_tty);
         let closed = self.closed.clone();
         let cancel = instance.clone();
         let current = ticket.clone();
@@ -225,9 +226,8 @@ impl App {
     }
     fn select_click(self: &Rc<Self>, key: &str, context: Context, ticket: snippets::Ticket) {
         let Some((tty, instance)) = self
-            .terms
-            .borrow()
-            .get(key)
+            .term_for_action(key)
+            .as_ref()
             .map(|t| (t.child_tty(), t.cleanup_cancellation()))
         else {
             return;
@@ -407,14 +407,13 @@ impl App {
                         return;
                     };
                     app.snippet_log(snippets::LogEvent::Send, body.chars().count());
-                    let Some(key) = app.current_session() else {
+                    let Some(key) = app.action_session() else {
                         done(Err("No hay terminal activa".into()));
                         return;
                     };
                     let Some((tty, instance)) = app
-                        .terms
-                        .borrow()
-                        .get(&key)
+                        .term_for_action(&key)
+                        .as_ref()
                         .map(|t| (t.child_tty(), t.cleanup_cancellation()))
                     else {
                         done(Err("No hay terminal activa".into()));
@@ -481,7 +480,7 @@ impl App {
         {
             return false;
         }
-        let Some(term) = self.terms.borrow().get(key).cloned() else {
+        let Some(term) = self.term_for_action(key).as_ref().cloned() else {
             return false;
         };
         let pending = term.key_pending();
@@ -512,7 +511,7 @@ impl App {
                 let Some(app) = weak.upgrade().filter(|a| a.instance(&key, &instance)) else {
                     return;
                 };
-                let term = app.terms.borrow().get(&key).cloned();
+                let term = app.term_for_action(&key).as_ref().cloned();
                 if let Some(term) = term {
                     match result {
                         Ok(context) => {
@@ -544,9 +543,8 @@ impl App {
     }
     fn paste_terminal(self: &Rc<Self>, key: &str) {
         let Some((tty, instance)) = self
-            .terms
-            .borrow()
-            .get(key)
+            .term_for_action(key)
+            .as_ref()
             .map(|t| (t.child_tty(), t.cleanup_cancellation()))
         else {
             return;
@@ -566,7 +564,7 @@ impl App {
                 if let Some(app) = weak.upgrade().filter(|a| a.instance(&key, &instance)) {
                     match result {
                         Ok(_) => {
-                            if let Some(term) = app.terms.borrow().get(&key) {
+                            if let Some(term) = app.term_for_action(&key).as_ref() {
                                 term.paste_clipboard(false);
                             }
                         }
@@ -577,7 +575,7 @@ impl App {
         );
     }
     fn copy_terminal(self: &Rc<Self>, key: &str, preferred: Option<String>) {
-        let Some((tty, instance, clipboard, text)) = self.terms.borrow().get(key).map(|t| {
+        let Some((tty, instance, clipboard, text)) = self.term_for_action(key).as_ref().map(|t| {
             (
                 t.child_tty(),
                 t.cleanup_cancellation(),
@@ -589,7 +587,7 @@ impl App {
         };
         if let Some(text) = text {
             clipboard.copy_selection(&text, glib::monotonic_time() as f64 / 1_000_000.);
-            if let Some(term) = self.terms.borrow().get(key) {
+            if let Some(term) = self.term_for_action(key).as_ref() {
                 term.clear_selection();
             }
             self.feedback("Seleccion copiada", "Texto al portapapeles");
@@ -663,9 +661,8 @@ impl App {
     }
     fn reply_terminal(self: &Rc<Self>, key: &str, format: Option<&'static str>) {
         let Some((tty, instance, clipboard)) = self
-            .terms
-            .borrow()
-            .get(key)
+            .term_for_action(key)
+            .as_ref()
             .map(|t| (t.child_tty(), t.cleanup_cancellation(), t.clipboard()))
         else {
             return;
@@ -714,7 +711,7 @@ impl App {
             },
             move |result: Result<(bool, String, String), String>| {
                 if let Some(app) = weak.upgrade().filter(|a| {
-                    a.instance(&key, &instance) && a.current_session().as_deref() == Some(&key)
+                    a.instance(&key, &instance) && a.action_session().as_deref() == Some(&key)
                 }) {
                     match result {
                         Ok((true, text, project)) => {
@@ -739,9 +736,8 @@ impl App {
         point: (u16, u16),
     ) {
         let Some((tty, instance)) = self
-            .terms
-            .borrow()
-            .get(key)
+            .term_for_action(key)
+            .as_ref()
             .map(|t| (t.child_tty(), t.cleanup_cancellation()))
         else {
             return;
@@ -822,7 +818,7 @@ impl App {
                                     Rc::new(move || {
                                         weak.upgrade().is_some_and(|a| {
                                             a.instance(&key, &instance)
-                                                && a.current_session().as_deref() == Some(&key)
+                                                && a.action_session().as_deref() == Some(&key)
                                                 && a.t16.menu_epoch.load(Ordering::Acquire) == epoch
                                         })
                                     }),
@@ -863,7 +859,7 @@ impl App {
                                 item.connect_activate(move |_| {
                                     if let Some(app) = weak.upgrade().filter(|a| {
                                         a.instance(&key, &instance)
-                                            && a.current_session().as_deref() == Some(&key)
+                                            && a.action_session().as_deref() == Some(&key)
                                             && a.t16.menu_epoch.load(Ordering::Acquire) == epoch
                                     }) {
                                         app.menu_action(&key, &ctx, action);
@@ -882,9 +878,8 @@ impl App {
     }
     fn menu_action(self: &Rc<Self>, key: &str, ctx: &Context, action: MenuAction) {
         let Some((tty, instance)) = self
-            .terms
-            .borrow()
-            .get(key)
+            .term_for_action(key)
+            .as_ref()
             .map(|t| (t.child_tty(), t.cleanup_cancellation()))
         else {
             return;
@@ -906,7 +901,7 @@ impl App {
             move |valid| {
                 if let Some(app) = weak.upgrade().filter(|a| {
                     a.instance(&key, &instance)
-                        && a.current_session().as_deref() == Some(&key)
+                        && a.action_session().as_deref() == Some(&key)
                         && a.t16.menu_epoch.load(Ordering::Acquire) == epoch
                 }) {
                     if valid {
@@ -934,9 +929,8 @@ impl App {
                     let tmux = self.tmux.clone();
                     let closed = self.closed.clone();
                     let instance = self
-                        .terms
-                        .borrow()
-                        .get(key)
+                        .term_for_action(key)
+                        .as_ref()
                         .map(TermView::cleanup_cancellation);
                     let weak = Rc::downgrade(self);
                     self.jobs.spawn(
@@ -967,7 +961,7 @@ impl App {
                 }
             }
             MenuAction::ToggleWindow => {
-                if let Some(term) = self.terms.borrow().get(key)
+                if let Some(term) = self.term_for_action(key).as_ref()
                     && let Err(e) = term.feed(b"\x02l")
                 {
                     self.status.set_text(&format!("{e:?}"));
@@ -1001,9 +995,8 @@ impl App {
     }
     fn open_link(self: &Rc<Self>, key: &str, url: &str, intent: OpenIntent) {
         let Some(instance) = self
-            .terms
-            .borrow()
-            .get(key)
+            .term_for_action(key)
+            .as_ref()
             .map(TermView::cleanup_cancellation)
         else {
             return;
@@ -1063,7 +1056,7 @@ impl App {
                 old.remove(&child);
             }
         }
-        let Some(term) = self.terms.borrow().get(key).cloned() else {
+        let Some(term) = self.term_for_action(key).as_ref().cloned() else {
             return;
         };
         let instance = term.cleanup_cancellation();
@@ -1132,7 +1125,7 @@ impl App {
                     }
                     if let Some(intent) = intent {
                         app.open_link(&key, &url, intent);
-                    } else if let Some(term) = app.terms.borrow().get(&key) {
+                    } else if let Some(term) = app.term_for_action(&key).as_ref() {
                         term.clipboard().copy(
                             Target::Clipboard,
                             url.strip_prefix("file://").unwrap_or(&url),

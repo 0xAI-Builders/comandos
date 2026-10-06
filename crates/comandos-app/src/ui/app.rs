@@ -42,6 +42,7 @@ pub struct App {
     english: bool,
     t16: app_t16::Owned,
     t17: app_t17::Owned,
+    t18: app_t18::Owned,
     modal_overlay: gtk::Overlay,
     modal: RefCell<Option<app_t15::Modal>>,
     modal_generation: Cell<u64>,
@@ -129,6 +130,7 @@ impl AppRuntime {
         self.app.shutdown_protocol();
         self.app.shutdown_header();
         self.app.shutdown_t16();
+        self.app.shutdown_t18();
         self.app.shutdown_t17();
         self.app.close_modal();
         for source in self.sources {
@@ -206,37 +208,25 @@ impl App {
         });
         self.tab_layout.actions().pack_start(&sort, false, false, 0);
         let rows = ui::icons::button("rows", 18, "Varias filas");
+        rows.set_widget_name("tabs-layout-rows");
         rows.style_context().add_class("cc-key");
         rows.style_context().add_class("cc-key-rows");
         let weak = Rc::downgrade(self);
         rows.connect_clicked(move |_| {
             if let Some(app) = weak.upgrade().filter(|a| a.writable()) {
                 let mode = if app.tab_layout.rows() { "row" } else { "rows" };
-                app.tab_layout.set_rows(mode == "rows");
-                let dash = app.dash.clone();
-                app.jobs.spawn(
-                    move || {
-                        dash.post(
-                            "/prefs-set",
-                            &json!({"tabs_layout":mode}),
-                            Duration::from_secs(5),
-                        )
-                    },
-                    |result| {
-                        if let Err(e) = result {
-                            eprintln!("tabs_layout: {e:?}");
-                        }
-                    },
-                );
+                app.apply_tabs_layout(mode, true);
             }
         });
         self.tab_layout.actions().pack_start(&rows, false, false, 0);
         let left = ui::icons::button("panel-left", 18, "Mostrar/ocultar el panel izquierdo");
         left.style_context().add_class("tabnav");
+        left.set_widget_name("left-panel-toggle");
         let weak = Rc::downgrade(self);
         left.connect_clicked(move |_| {
             if let Some(app) = weak.upgrade() {
-                app.webview.set_visible(!app.webview.is_visible());
+                let hidden = !app.t18.state.borrow().left_hidden;
+                app.left_panel_set(hidden);
             }
         });
         self.tab_layout.start().pack_start(&left, false, false, 0);
@@ -250,6 +240,11 @@ impl App {
                 20,
                 glyph,
             );
+            button.set_widget_name(if delta < 0 {
+                "tab-cycle-prev"
+            } else {
+                "tab-cycle-next"
+            });
             button.style_context().add_class("tab-cycle");
             button.set_no_show_all(true);
             button.show();
@@ -493,6 +488,7 @@ impl App {
             english,
             t16,
             t17: app_t17::Owned::default(),
+            t18: app_t18::Owned::default(),
             modal_overlay: gtk::Overlay::new(),
             modal: RefCell::new(None),
             modal_generation: Cell::new(0),
@@ -926,6 +922,12 @@ impl App {
         Ok(term)
     }
     fn add_tab(self: &Rc<Self>, key: &str, label: &str, attach: bool, error: Option<&str>) {
+        if let Some(url) = key.strip_prefix("web:") {
+            if let Err(error) = self.open_web_tab(url, label) {
+                self.status.set_text(&error.to_string());
+            }
+            return;
+        }
         if self.labels.borrow().contains_key(key) {
             return;
         }
@@ -1147,6 +1149,10 @@ impl App {
         }
     }
     fn close_tab(self: &Rc<Self>, key: &str, confirm: bool) {
+        if self.t18.web_tabs.borrow().contains_key(key) {
+            self.close_web_tab(key);
+            return;
+        }
         if !self.writable() {
             return;
         }
@@ -1218,8 +1224,13 @@ impl App {
                     || self.preferences.borrow().get("button_style") != value.get("button_style")
                 {
                     *self.preferences.borrow_mut() = value.clone();
-                    self.tab_layout
-                        .set_rows(value.get("tabs_layout").and_then(Value::as_str) == Some("rows"));
+                    self.apply_tabs_layout(
+                        value
+                            .get("tabs_layout")
+                            .and_then(Value::as_str)
+                            .unwrap_or("row"),
+                        false,
+                    );
                     let themes = crate::theme::themes_from_file(Some(include_bytes!(concat!(
                         env!("CARGO_MANIFEST_DIR"),
                         "/../../config/themes.json"
@@ -1254,6 +1265,25 @@ impl App {
                     }
                     for term in self.terms.borrow().values() {
                         term.set_preferences(&value);
+                        if let Some(theme) = theme.as_ref() {
+                            term.set_palette(theme_palette(theme));
+                        }
+                    }
+                    let auxiliary = self
+                        .t18
+                        .clients
+                        .borrow()
+                        .values()
+                        .map(|c| (c.kind, c.term.clone()))
+                        .collect::<Vec<_>>();
+                    for (kind, term) in auxiliary {
+                        let mut prefs = value.clone();
+                        if kind == "mosaic"
+                            && let Some(map) = prefs.as_object_mut()
+                        {
+                            map.insert("cursor_blink".into(), json!(false));
+                        }
+                        term.set_preferences(&prefs);
                         if let Some(theme) = theme.as_ref() {
                             term.set_palette(theme_palette(theme));
                         }
@@ -1845,7 +1875,7 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
         let window = ui::window::create(application, &cfg);
         let paned = gtk::Paned::new(gtk::Orientation::Horizontal);
         paned.style_context().add_class("cc-paned");
-        paned.set_wide_handle(true);
+        paned.set_wide_handle(false);
         let notebook = gtk::Notebook::new();
         notebook.set_hexpand(true);
         notebook.set_vexpand(true);
@@ -1877,15 +1907,47 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
         terminals.pack_start(&notebook, true, true, 0);
         terminals.pack_start(app.workspace.widget(), true, true, 0);
         terminals.pack_start(&app.status, false, false, 0);
-        paned.pack1(&webview, true, false);
+        app.t18.side.pack1(&webview, true, false);
+        paned.pack1(&app.t18.side, true, false);
         let overlay = gtk::Overlay::new();
         overlay.add(&terminals);
         overlay.add_overlay(app.drag_layer.widget());
         overlay.set_overlay_pass_through(app.drag_layer.widget(), true);
         app.t17.shelf.paned.pack1(&overlay, true, false);
-        paned.pack2(&app.t17.shelf.paned, true, false);
+        app.t18
+            .reader_paned
+            .pack1(&app.t17.shelf.paned, true, false);
+        paned.pack2(&app.t18.column, true, false);
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        content.pack_start(&app.header.bar, false, false, 0);
+        let header_event = gtk::EventBox::new();
+        header_event.set_above_child(false);
+        header_event.set_visible_window(false);
+        header_event.add(&app.header.bar);
+        header_event.add_events(gdk::EventMask::BUTTON_PRESS_MASK);
+        let weak = window.downgrade();
+        header_event.connect_button_press_event(move |_, event| {
+            if event.button() != 1 {
+                return glib::Propagation::Proceed;
+            }
+            let Some(window) = weak.upgrade() else {
+                return glib::Propagation::Proceed;
+            };
+            if event.event_type() == gdk::EventType::DoubleButtonPress {
+                if window.is_maximized() {
+                    window.unmaximize();
+                } else {
+                    window.maximize();
+                }
+                return glib::Propagation::Stop;
+            }
+            if event.event_type() == gdk::EventType::ButtonPress {
+                let (x, y) = event.root();
+                window.begin_move_drag(1, x as i32, y as i32, event.time());
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
+        });
+        content.pack_start(&header_event, false, false, 0);
         content.pack_start(&paned, true, true, 0);
         app.modal_overlay.add(&content);
         window.add(&app.modal_overlay);
@@ -1893,6 +1955,7 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
         ui::app_commands::install(&app);
         ui::header::install(&app);
         app.install_keys();
+        app.install_auxiliary_views();
         app.install_t16();
         app.install_t17();
         let bridge_source = ui::bridge::install(&app);
@@ -2119,3 +2182,10 @@ mod app_t17;
 mod app_t17_panes;
 #[path = "app_t17_shelf.rs"]
 mod app_t17_shelf;
+
+#[path = "app_t18.rs"]
+mod app_t18;
+#[path = "app_t18_side.rs"]
+mod app_t18_side;
+#[path = "app_t18_views.rs"]
+mod app_t18_views;
