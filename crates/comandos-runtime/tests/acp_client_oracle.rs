@@ -151,21 +151,71 @@ fn options(home: &Home) -> OpenOptions {
     }
 }
 
-fn python_available() -> bool {
-    Command::new("python3")
-        .args(["-c", "import sys"])
-        .output()
-        .is_ok_and(|o| o.status.success())
+fn oracle_source() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/oracle-src/acp")
 }
 
-fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+fn frozen_oracle(
+    home: &Home,
+    name: &str,
+    input: Value,
+    code: &str,
+    args: &[String],
+    transcript: bool,
+) -> Value {
+    let source = oracle_source();
+    let roots = [
+        ("<HOME>", home.root.as_path()),
+        ("<SOURCE>", source.as_path()),
+    ];
+    let input = json!({"provenance": include_str!("oracle-src/acp/PROVENANCE.json"),
+        "script": code, "input": input, "fake_agent": FAKE_ACP});
+    let normalized_input: Value = serde_json::from_slice(&comandos_oracle::normalize(
+        &serde_json::to_vec(&input).unwrap(),
+        &roots,
+    ))
+    .unwrap();
+    let bytes = comandos_oracle::oracle_at(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        name,
+        &normalized_input,
+        || {
+            let out = Command::new(
+                std::env::var("COMANDOS_RUNTIME_ORACLE_PYTHON")
+                    .unwrap_or_else(|_| "python3".into()),
+            )
+            .env_clear()
+            .envs(home.env())
+            .arg("-c")
+            .arg(code)
+            .arg(&source)
+            .args(args)
+            .current_dir(&home.root)
+            .output()
+            .map_err(|e| e.to_string())?;
+            if !out.status.success() {
+                return Err(String::from_utf8_lossy(&out.stderr).into_owned());
+            }
+            let response: Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
+            // Record the original agent's transcript; replay never fabricates a process or log.
+            let value = if transcript {
+                json!({"response":response,"transcript":home.take_log()})
+            } else {
+                response
+            };
+            Ok(comandos_oracle::normalize(
+                &serde_json::to_vec(&value).unwrap(),
+                &roots,
+            ))
+        },
+    );
+    serde_json::from_slice(&comandos_oracle::restore(&bytes, &roots)).unwrap()
 }
 
 const ORACLE: &str = r#"
 import json, os, sys
-repo, spec, cwd, text, timeout = sys.argv[1], json.loads(sys.argv[2]), sys.argv[3], sys.argv[4], float(sys.argv[5])
-sys.path.insert(0, os.path.join(repo, "lib"))
+source, spec, cwd, text, timeout = sys.argv[1], json.loads(sys.argv[2]), sys.argv[3], sys.argv[4], float(sys.argv[5])
+sys.path.insert(0, source)
 import acp, news_editions
 events, out = [], {}
 s = acp.open_session(spec, cwd, model="", permission_handler=news_editions.deny_agent_tools,
@@ -181,26 +231,25 @@ out["events"] = events
 print(json.dumps(out))
 "#;
 
-fn run_python(home: &Home, spec: &Value, text: &str, timeout: f64) -> Value {
-    let out = Command::new("python3")
-        .env_clear()
-        .envs(home.env())
-        .arg("-c")
-        .arg(ORACLE)
-        .arg(repo())
-        .arg(spec.to_string())
-        .arg(home.root.join("cwd"))
-        .arg(text)
-        .arg(timeout.to_string())
-        .current_dir(&home.root)
-        .output()
-        .unwrap();
-    assert!(
-        out.status.success(),
-        "oráculo: {}",
-        String::from_utf8_lossy(&out.stderr)
+fn run_python(home: &Home, spec: &Value, text: &str, timeout: f64) -> (Value, Vec<String>) {
+    let args = [
+        spec.to_string(),
+        home.root.join("cwd").display().to_string(),
+        text.to_owned(),
+        timeout.to_string(),
+    ];
+    let value = frozen_oracle(
+        home,
+        "runtime-acp-client",
+        json!({"args":args}),
+        ORACLE,
+        &args,
+        true,
     );
-    serde_json::from_slice(&out.stdout).unwrap()
+    (
+        value["response"].clone(),
+        serde_json::from_value(value["transcript"].clone()).unwrap(),
+    )
 }
 
 fn event_json(event: &Event) -> Value {
@@ -319,10 +368,6 @@ fn deny_agent_tools_never_allows() {
 
 #[test]
 fn session_matches_python_client() {
-    if !python_available() {
-        eprintln!("python3 no está instalado: se salta");
-        return;
-    }
     let home = Home::new("same");
     let chunk = serde_json::to_string("Claro: {\"reply\": \"ñandú \\u00e9\"} fin").unwrap();
     let spec = home.spec(&[
@@ -332,8 +377,7 @@ fn session_matches_python_client() {
     ]);
     canary(&home, &spec);
     let text = "Pregunta «ñ» con \"comillas\"\ny saltos\t.";
-    let python = run_python(&home, &spec, text, 30.0);
-    let python_log = home.take_log();
+    let (python, python_log) = run_python(&home, &spec, text, 30.0);
     let rust = run_rust(&home, &spec, text, 30.0);
     let rust_log = home.take_log();
     assert_eq!(rust, python, "eventos y resultado");
@@ -350,16 +394,11 @@ fn session_matches_python_client() {
 
 #[test]
 fn timeout_matches_python_and_kills_the_agent() {
-    if !python_available() {
-        eprintln!("python3 no está instalado: se salta");
-        return;
-    }
     let home = Home::new("timeout");
     let chunk = serde_json::to_string("tarde").unwrap();
     let spec = home.spec(&[("FAKEACP_CHUNK", &chunk), ("FAKEACP_SLEEP", "5")]);
     canary(&home, &spec);
-    let python = run_python(&home, &spec, "hola", 1.0);
-    home.take_log();
+    let (python, _) = run_python(&home, &spec, "hola", 1.0);
     let started = std::time::Instant::now();
     let rust = run_rust(&home, &spec, "hola", 1.0);
     assert!(
@@ -440,32 +479,20 @@ fn unknown_binary_is_reported_like_python() {
 /// Las instrucciones de los agentes son las del Python, letra por letra.
 #[test]
 fn instructions_match_python() {
-    if !python_available() {
-        eprintln!("python3 no está instalado: se salta");
-        return;
-    }
     use comandos_runtime::news_agents::{
         CHAT_INSTRUCTIONS, LEAD_INSTRUCTIONS, SUMMARY_INSTRUCTIONS, TRANSLATE_INSTRUCTIONS,
     };
     let home = Home::new("consts");
-    let out = Command::new("python3")
-        .env_clear()
-        .envs(home.env())
-        .arg("-c")
-        .arg(
-            "import json, os, sys\nsys.path.insert(0, os.path.join(sys.argv[1], 'lib'))\n\
-             import news_editions as ne\nprint(json.dumps([ne.SUMMARY_INSTRUCTIONS, ne.LEAD_INSTRUCTIONS, \
-             ne.CHAT_INSTRUCTIONS, ne.TRANSLATE_INSTRUCTIONS]))",
-        )
-        .arg(repo())
-        .output()
-        .unwrap();
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let python: Vec<String> = serde_json::from_slice(&out.stdout).unwrap();
+    let code = "import json, sys\nsys.path.insert(0, sys.argv[1])\nimport news_editions as ne\nprint(json.dumps([ne.SUMMARY_INSTRUCTIONS, ne.LEAD_INSTRUCTIONS, ne.CHAT_INSTRUCTIONS, ne.TRANSLATE_INSTRUCTIONS]))";
+    let python: Vec<String> = serde_json::from_value(frozen_oracle(
+        &home,
+        "runtime-acp-instructions",
+        json!({}),
+        code,
+        &[],
+        false,
+    ))
+    .unwrap();
     assert_eq!(
         python,
         [
