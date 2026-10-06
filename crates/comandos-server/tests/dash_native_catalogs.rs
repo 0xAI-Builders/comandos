@@ -3,7 +3,7 @@ mod support;
 
 use comandos_server::dash::{native::wall_clock_ms, repo_root};
 use std::{fs, sync::Arc};
-use support::{FakeLegacy, TestHome, dead_port, front, get, oracle::oracle, repo};
+use support::{FakeLegacy, TestHome, dead_port, front, get, http_golden::FrozenHttp, oracle::oracle, repo};
 
 fn masked(text: &str, key: &str) -> String {
     let key = format!("\"{key}\": ");
@@ -34,9 +34,10 @@ async fn model_tiers_serves_repo_file_like_python() {
     let wire = get(front.port, "/model-tiers").await;
     assert_eq!(wire.status, 200);
     assert!(wire.text().starts_with('{'));
-    if let Some(py) = oracle(&home).await {
+    {
+        let py = FrozenHttp::new(&home, "server-http-model-tiers", &[]).await;
         for target in ["/model-tiers", "/model-tiers?x=1"] {
-            let a = get(py.port, target).await;
+            let a = py.get(target).await;
             let b = get(front.port, target).await;
             assert_eq!((a.status, a.text()), (b.status, b.text()), "{target}");
             assert_eq!(a.header("content-type"), b.header("content-type"));
