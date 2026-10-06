@@ -29,6 +29,56 @@ fn enabled_domain(home: &Path, path: &Path) -> bool {
     })
     .unwrap_or(false)
 }
+/// Toggle the existing native terminal lease. No retired executable is invoked.
+pub fn set_enabled(home: &Path, hooks: &Path, enabled: bool) -> io::Result<()> {
+    use crate::dash::native::files::{DomainDocument, Strict};
+    let marker = DomainDocument::new(home, hooks, "webterm-enabled")?;
+    let access = marker.access().map_err(io::Error::other)?;
+    if enabled {
+        let mode = DomainDocument::new(home, hooks, "webterm-mode.json")?;
+        if !matches!(mode.strict_under(&access), Strict::Value(ref value)
+            if matches!(value.get("mode").and_then(serde_json::Value::as_str), Some("native" | "ttyd")))
+        {
+            return Err(io::Error::other("Terminal web nativo deshabilitado"));
+        }
+    }
+    let _lock = if access.mode() == comandos_store::unified::Mode::Sealed {
+        None
+    } else {
+        Some(comandos_store::files::FileLock::exclusive(
+            &hooks.join("webterm-enabled.lock"),
+        )?)
+    };
+    access
+        .write(
+            || {
+                if enabled {
+                    comandos_store::files::write_atomic(&marker.file, b"")?;
+                } else if let Err(error) = std::fs::remove_file(&marker.file)
+                    && error.kind() != io::ErrorKind::NotFound
+                {
+                    return Err(error.into());
+                }
+                Ok(())
+            },
+            |db, origin| {
+                if enabled {
+                    comandos_store::unified::doc_put(
+                        db,
+                        &marker.name,
+                        marker.domain,
+                        b"",
+                        origin,
+                        0,
+                    )?;
+                } else {
+                    db.execute("DELETE FROM documents WHERE name=?1", [&marker.name])?;
+                }
+                Ok(())
+            },
+        )
+        .map_err(io::Error::other)
+}
 pub struct Control {
     enabled_file: PathBuf,
     home: PathBuf,

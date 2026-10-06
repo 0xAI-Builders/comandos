@@ -194,3 +194,123 @@ fn catalogued_server_documents_keep_exact_bytes_in_every_mode() {
         }
     }
 }
+
+#[test]
+fn web_selection_and_native_terminal_toggle_use_the_authoritative_mode() {
+    use comandos_server::dash::{term::lifecycle, web::Selection};
+    use std::os::unix::fs::PermissionsExt;
+    for (i, mode) in [Mode::Legacy, Mode::Mirror, Mode::Unified, Mode::Sealed]
+        .into_iter()
+        .enumerate()
+    {
+        let home = TestHome::new(&format!("domain-web-{i}"));
+        home.write("comandos-web.json", r#"{"on":["legacy"],"shadow":[]}"#);
+        home.write(
+            "webterm-mode.json",
+            r#"{"mode":"native","ports":[4779,4780]}"#,
+        );
+        let db = unified::open_unified(&unified::unified_path(&home.root)).unwrap();
+        unified::doc_put(
+            &db,
+            "hooks/comandos-web.json",
+            "ui-docs",
+            br#"{"on":["sql"],"shadow":["shadow"]}"#,
+            Origin::Import,
+            0,
+        )
+        .unwrap();
+        unified::doc_put(
+            &db,
+            "hooks/webterm-mode.json",
+            "ui-docs",
+            br#"{"mode":"native","ports":[4779,4780]}"#,
+            Origin::Import,
+            0,
+        )
+        .unwrap();
+        unified::set_mode(&db, "ui-docs", mode, "fixture", 1).unwrap();
+        let selected = Selection::load_domain(&home.root, &home.hooks().join("comandos-web.json"));
+        assert!(
+            selected
+                .on
+                .contains(if matches!(mode, Mode::Unified | Mode::Sealed) {
+                    "sql"
+                } else {
+                    "legacy"
+                })
+        );
+        if matches!(mode, Mode::Unified | Mode::Sealed) {
+            let cfg = comandos_server::dash::parse_args(&[], &home.root, None).unwrap();
+            let web = comandos_server::dash::web::WebState::new(&cfg);
+            assert!(web.selection().on.contains("sql"));
+            unified::doc_put(
+                &db,
+                "hooks/comandos-web.json",
+                "ui-docs",
+                br#"{"on":["changed"],"shadow":[]}"#,
+                Origin::Unified,
+                2,
+            )
+            .unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(1010));
+            assert!(
+                web.selection().on.contains("changed"),
+                "SQL changes need no legacy mtime event"
+            );
+        }
+        lifecycle::set_enabled(&home.root, &home.hooks(), true).unwrap();
+        let control = lifecycle::Control::new(&home.root);
+        assert!(control.enabled());
+        if mode != Mode::Legacy {
+            assert_eq!(
+                unified::doc_get(&db, "hooks/webterm-enabled")
+                    .unwrap()
+                    .unwrap()
+                    .body,
+                b""
+            );
+        }
+        if mode == Mode::Sealed {
+            assert!(!home.hooks().join("webterm-enabled").exists());
+            assert!(!home.hooks().join("webterm-enabled.lock").exists());
+        } else {
+            assert_eq!(
+                std::fs::read(home.hooks().join("webterm-enabled")).unwrap(),
+                b""
+            );
+            assert_eq!(
+                std::fs::metadata(home.hooks().join("webterm-enabled"))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
+        lifecycle::set_enabled(&home.root, &home.hooks(), false).unwrap();
+        assert!(!control.enabled());
+        assert!(!home.hooks().join("webterm-enabled").exists());
+        if mode != Mode::Legacy {
+            assert!(
+                unified::doc_get(&db, "hooks/webterm-enabled")
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        if matches!(mode, Mode::Unified | Mode::Sealed) {
+            unified::doc_put(
+                &db,
+                "hooks/webterm-mode.json",
+                "ui-docs",
+                br#"{"mode":"off"}"#,
+                Origin::Unified,
+                3,
+            )
+            .unwrap();
+        } else {
+            home.write("webterm-mode.json", r#"{"mode":"off"}"#);
+        }
+        assert!(lifecycle::set_enabled(&home.root, &home.hooks(), true).is_err());
+        assert!(!control.enabled());
+    }
+}

@@ -104,9 +104,6 @@ const MAX_AGE: Duration = Duration::from_secs(15);
 /// `TimeoutExpired`).
 const STATUS_SECONDS: u64 = 8;
 const SERVE_SECONDS: u64 = 12;
-const WEBTERM_ON_SECONDS: u64 = 20;
-const WEBTERM_OFF_SECONDS: u64 = 12;
-const PKILL_SECONDS: u64 = 6;
 const QRENCODE_SECONDS: u64 = 5;
 /// `http_healthy(url, timeout=0.4)`: plazo de cada operación del socket.
 const HEALTH_TIMEOUT: Duration = Duration::from_millis(400);
@@ -223,27 +220,13 @@ async fn cached(native: &Arc<Native>) -> Result<Arc<Value>, Fault> {
 struct Tools {
     tailscale: Option<PathBuf>,
     qrencode: Option<PathBuf>,
-    pkill: Option<PathBuf>,
-    /// `~/.local/bin/cc-webterm` si existe; si no, `which cc-webterm` o esa
-    /// misma ruta (que no existe).
-    script: PathBuf,
-    script_exists: bool,
 }
 
 impl Tools {
-    fn resolve(home: &Path, search: Option<&std::ffi::OsStr>) -> Tools {
-        let local = home.join(".local/bin/cc-webterm");
-        let script = if local.exists() {
-            local
-        } else {
-            which_in(search, "cc-webterm").unwrap_or(local)
-        };
+    fn resolve(search: Option<&std::ffi::OsStr>) -> Tools {
         Tools {
             tailscale: which_in(search, "tailscale"),
             qrencode: which_in(search, "qrencode"),
-            pkill: which_in(search, "pkill"),
-            script_exists: script.exists(),
-            script,
         }
     }
 }
@@ -253,11 +236,10 @@ async fn prepare(
     opts: &NativeOptions,
     token: bool,
 ) -> Result<(Tools, Option<io::Result<String>>), Fault> {
-    let home = opts.home.clone();
     let search = opts.search_path.clone();
     let hooks = opts.hooks.clone();
     tokio::task::spawn_blocking(move || {
-        let tools = Tools::resolve(&home, search.as_deref());
+        let tools = Tools::resolve(search.as_deref());
         let token = token.then(|| access_token(&hooks));
         (tools, token)
     })
@@ -800,42 +782,32 @@ async fn serve_webterm(opts: &NativeOptions, tools: &Tools) {
     serve_path(opts, tools, "/", FALLBACK_TARGET, "8443").await;
 }
 
-/// `webterm_on()`: el guion (20 s); si falla, su texto. Un texto vacío tras
-/// `strip()` es falso para el que llama, pero las rutas no se ponen (el
-/// Python ya volvió).
+/// Enable the Rust compatibility leases and publish Tailscale routes.
 async fn webterm_on(opts: &NativeOptions, tools: &Tools) -> Option<String> {
-    let argv0 = tools.script.to_string_lossy();
-    let r = run_quiet(opts, &argv0, Some(&tools.script), &[], WEBTERM_ON_SECONDS).await;
-    if !r.ok {
-        return Some(first_text(&r.stderr, &r.stdout, "cc-webterm no arranco"));
+    let home = opts.home.clone();
+    let hooks = opts.hooks.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        super::super::term::lifecycle::set_enabled(&home, &hooks, true)
+    })
+    .await;
+    match result {
+        Ok(Ok(())) => {
+            serve_webterm(opts, tools).await;
+            None
+        }
+        Ok(Err(error)) => Some(error.to_string()),
+        Err(_) => Some("No se pudo habilitar el terminal web".into()),
     }
-    serve_webterm(opts, tools).await;
-    None
 }
 
-/// `webterm_off()`: `cc-webterm off` (12 s) o, sin guion, el `pkill` de ttyd
-/// (6 s). Nunca falla.
-async fn webterm_off(opts: &NativeOptions, tools: &Tools) {
-    if tools.script_exists {
-        let argv0 = tools.script.to_string_lossy();
-        run_quiet(
-            opts,
-            &argv0,
-            Some(&tools.script),
-            &["off"],
-            WEBTERM_OFF_SECONDS,
-        )
-        .await;
-    } else {
-        run_quiet(
-            opts,
-            "pkill",
-            tools.pkill.as_deref(),
-            &["-f", "ttyd.*cc-webterm-attach"],
-            PKILL_SECONDS,
-        )
-        .await;
-    }
+/// The existing lifecycle closes listeners and active bridges when disabled.
+async fn webterm_off(opts: &NativeOptions, _tools: &Tools) {
+    let home = opts.home.clone();
+    let hooks = opts.hooks.clone();
+    let _ = tokio::task::spawn_blocking(move || {
+        super::super::term::lifecycle::set_enabled(&home, &hooks, false)
+    })
+    .await;
 }
 
 async fn tools_of(native: &Native) -> Result<Tools, Fault> {

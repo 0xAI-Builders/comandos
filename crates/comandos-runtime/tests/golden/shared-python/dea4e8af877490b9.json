@@ -1,0 +1,11 @@
+{
+  "input": {
+    "case": {
+      "script": "\nimport json, os, sys\nsys.path.insert(0, os.path.join(sys.argv[1], \"lib\"))\nimport grok_state\ntry:\n    print(json.dumps({\"ok\": grok_state.models()}))\nexcept Exception as e:\n    print(json.dumps({\"raise\": type(e).__name__}))\n",
+      "args": [],
+      "bin_inputs": []
+    },
+    "before_sha256": "2f57449e3098c7de90f9e51fdb12a6f2ea829720ef1f2dc04de4ac5446da9865"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJva1wiOiBbe1wiaWRcIjogXCJiXCIsIFwibmFtZVwiOiBcImJcIiwgXCJjb250ZXh0V2luZG93XCI6IDAsIFwiZWZmb3J0c1wiOiBbXSwgXCJkZWZhdWx0RWZmb3J0XCI6IFwiXCIsIFwiaGlkZGVuXCI6IGZhbHNlfSwge1wiaWRcIjogXCI3XCIsIFwibmFtZVwiOiBcIlRydWVcIiwgXCJjb250ZXh0V2luZG93XCI6IDAsIFwiZWZmb3J0c1wiOiBbXSwgXCJkZWZhdWx0RWZmb3J0XCI6IFwiXCIsIFwiaGlkZGVuXCI6IGZhbHNlfV19XG4iLCJ0cmVlIjp7Ii5ncm9rIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCIuZ3Jvay9tb2RlbHNfY2FjaGUuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJleUp0YjJSbGJITWlPaUI3SW1JaU9pQjdmU3dnSW1FaU9pQjdJbWx1Wm04aU9pQjdJbWxrSWpvZ055d2dJbTVoYldVaU9pQjBjblZsZlgxOWZRPT0ifX19"
+}

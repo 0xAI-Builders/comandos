@@ -1,0 +1,16 @@
+{
+  "input": {
+    "case": {
+      "script": "import sys,json,datetime; sys.path.insert(0,sys.argv[1]+'/lib'); import news_editions as e, news_radar as r, app_state; data=json.loads(sys.argv[2]);\nprint(json.dumps([e.slot_times(datetime.date.fromisoformat(c['day']),c) for c in data]))",
+      "args": [
+        {
+          "arg": "[{\"day\":\"2026-03-08\",\"timezone\":\"America/New_York\",\"slots\":[\"02:30\"]},{\"day\":\"2026-11-01\",\"timezone\":\"America/New_York\",\"slots\":[\"01:30\"]},{\"day\":\"2011-12-30\",\"timezone\":\"Pacific/Apia\",\"slots\":[\"09:00\"]}]",
+          "file": null
+        }
+      ],
+      "bin_inputs": []
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbW1tcIjAyOjMwXCIsIDE3NzI5NTUwMDAwMDBdXSwgW1tcIjAxOjMwXCIsIDE3OTM1MTEwMDAwMDBdXSwgW1tcIjA5OjAwXCIsIDEzMjUyNzE2MDAwMDBdXV1cbiIsInRyZWUiOnt9fQ=="
+}

@@ -1,0 +1,28 @@
+{
+  "input": {
+    "case": {
+      "script": "\nimport sys,pathlib,json\nsys.path.insert(0,str(pathlib.Path(sys.argv[1])/'lib'))\nfrom extension_observations import conversation_usage\nprint(json.dumps(conversation_usage(sys.argv[2],'conv',sys.argv[3],json.loads(pathlib.Path(sys.argv[4]).read_text()),max_bytes=int(sys.argv[5]))))\n",
+      "args": [
+        {
+          "arg": "opencode",
+          "file": null
+        },
+        {
+          "arg": "{{HOME}}/opencode.db",
+          "file": "38971596259b2d08a9d8949ef8427abed3423c2119b735146392fff0924dd72c"
+        },
+        {
+          "arg": "{{HOME}}/inventory.json",
+          "file": "675ba3a7bb90db3f1a6dda9321ca219d70253917c129d127ca219c767ddba386"
+        },
+        {
+          "arg": "2000000",
+          "file": null
+        }
+      ],
+      "bin_inputs": []
+    },
+    "before_sha256": "c23acd899cfc0482a39c64e186880a74a3c27b088a592b98c7da8046a429f4c1"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJjb3VudHNcIjoge1wibWNwc1wiOiB7XCJhXCI6IG51bGwsIFwiYlwiOiBudWxsfSwgXCJza2lsbHNcIjoge319LCBcImNvbXBsZXRlXCI6IGZhbHNlLCBcInR1cm5zXCI6IDEsIFwic291cmNlXCI6IFwiY29udmVyc2F0aW9uXCIsIFwidG9rZW5zXCI6IG51bGwsIFwibm90ZVwiOiBcIlNpbiBoaXN0b3JpYWwgY29tcGxldG87IGxhIGF1c2VuY2lhIGRlIGxsYW1hZGFzIG5vIGRlbXVlc3RyYSBmYWx0YSBkZSB1c28uXCJ9XG4iLCJ0cmVlIjp7Imhpc3RvcnkuanNvbmwiOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXlKMGVYQmxJam9pZFhObGNpSjlDbnNpZEhsd1pTSTZJbUZ6YzJsemRHRnVkQ0lzSW0xbGMzTmhaMlVpT25zaVkyOXVkR1Z1ZENJNlczc2lkSGx3WlNJNkluUnZiMnhmZFhObElpd2libUZ0WlNJNkltMWpjRjlmYzJWeWRtVnlYMTl6WldGeVkyZ2lMQ0pwWkNJNkltRWlmVjE5ZlFvPSJ9LCJpbnZlbnRvcnkuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJleUp0WTNCeklqcGJleUpwWkNJNkltRWlMQ0p1WVcxbElqb2labTl2SW4wc2V5SnBaQ0k2SW1JaUxDSnVZVzFsSWpvaVptOXZMbUpoY2lKOVhTd2ljMnRwYkd4eklqcGJYWDA9In0sIm9wZW5jb2RlLmRiIjp7ImtpbmQiOiJzcWxpdGUiLCJtb2RlIjo0MjAsImRiIjp7InNjaGVtYSI6W1sidGFibGUiLCJwYXJ0IiwiQ1JFQVRFIFRBQkxFIHBhcnQoaWQgVEVYVCxzZXNzaW9uX2lkIFRFWFQsZGF0YSBURVhUKSJdXSwidGFibGVzIjp7InBhcnQiOltbWyJ0ZXh0IiwiY0RFPSJdLFsidGV4dCIsIlkyOXVkZz09Il0sWyJ0ZXh0IiwiZXlKMGVYQmxJam9pZEc5dmJDSXNJblJ2YjJ3aU9pSm1iMjlmWW1GeVgzTmxZWEpqYUNJc0luTjBZWFJsSWpwN0luTjBZWFIxY3lJNkltTnZiWEJzWlhSbFpDSjlmUT09Il1dXX0sInVzZXJfdmVyc2lvbiI6MH19fX0="
+}

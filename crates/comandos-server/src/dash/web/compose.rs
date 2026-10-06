@@ -17,17 +17,43 @@ pub struct Selection {
 
 impl Selection {
     pub fn load(path: &Path) -> Selection {
-        let mut out = Selection {
+        fs::read_to_string(path)
+            .ok()
+            .map_or_else(Self::empty, |text| Self::from_text(&text))
+    }
+    fn empty() -> Self {
+        Self {
             on: BTreeSet::new(),
             shadow: BTreeSet::new(),
-        };
-        if let Ok(text) = fs::read_to_string(path)
-            && let Ok(value) = serde_json::from_str::<Value>(&text)
-        {
-            out.on = strings(&value, "on");
-            out.shadow = strings(&value, "shadow");
         }
-        out
+    }
+    fn from_text(text: &str) -> Self {
+        serde_json::from_str::<Value>(text).map_or_else(
+            |_| Self::empty(),
+            |value| Self {
+                on: strings(&value, "on"),
+                shadow: strings(&value, "shadow"),
+            },
+        )
+    }
+    pub fn load_domain(home: &Path, path: &Path) -> Self {
+        comandos_store::unified::with_readonly_access(home, "ui-docs", |mode, db| {
+            if matches!(
+                mode,
+                comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed
+            ) {
+                let body = db
+                    .map(|db| comandos_store::unified::doc_get(db, "hooks/comandos-web.json"))
+                    .transpose()?
+                    .flatten();
+                Ok(body
+                    .and_then(|doc| String::from_utf8(doc.body).ok())
+                    .map_or_else(Self::empty, |text| Self::from_text(&text)))
+            } else {
+                Ok(Self::load(path))
+            }
+        })
+        .unwrap_or_else(|_| Self::empty())
     }
 
     pub fn refresh(&mut self, path: &Path) {

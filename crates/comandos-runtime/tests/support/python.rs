@@ -4,6 +4,8 @@
 //! ve el tmux, el systemd ni el DBus de la sesión real.
 #![allow(dead_code)]
 use std::{ffi::OsStr, path::Path, process::Command};
+#[path = "python_golden.rs"]
+mod golden;
 
 /// Claves del entorno que cambian lo que calcula el Python de uso (D7 del plan 2e):
 /// el lado Rust las recibe por parámetro, así que el oráculo no debe heredarlas.
@@ -32,6 +34,21 @@ pub fn repo() -> std::path::PathBuf {
 }
 
 pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> {
+    if matches!(
+        env!("CARGO_CRATE_NAME"),
+        "cli_catalog_oracle"
+            | "extension_observations_oracle"
+            | "limits_oracle"
+            | "model_watch_oracle"
+            | "news_editions_oracle"
+            | "pane_snapshot_oracle"
+            | "providers_oracle"
+            | "providers_public_oracle"
+            | "ssh_config_oracle"
+            | "tui_state_oracle"
+    ) {
+        return golden::run_python(script, args, home);
+    }
     let python = Command::new("python3")
         .args(["-c", "import sys"])
         .output()

@@ -1,0 +1,20 @@
+{
+  "input": {
+    "case": {
+      "script": "\nimport json, os, shutil, sys\nrepo, path, names = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])\nsys.path.insert(0, os.path.join(repo, \"lib\"))\nimport providers\nif path == \"<none>\":\n    os.environ.pop(\"PATH\", None)\nelse:\n    os.environ[\"PATH\"] = path\nprint(json.dumps([[providers.which(n), shutil.which(n)] for n in names]))\n",
+      "args": [
+        {
+          "arg": "{{HOME}}/first:{{HOME}}/second",
+          "file": null
+        },
+        {
+          "arg": "[\"alpha\",\"beta\",\"gamma\",\"delta\",\"plain\",\"dir\",\"broken\",\"nope\",\"\",\"{{HOME}}/second/beta\",\"second/beta\"]",
+          "file": null
+        }
+      ],
+      "bin_inputs": []
+    },
+    "before_sha256": "9a8d81df4c8a18dd8f3752db9dfd2508b35a43219a270dad33b84ba46b54491f"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbW1wie3tIT01FfX0vZmlyc3QvYWxwaGFcIiwgXCJ7e0hPTUV9fS9maXJzdC9hbHBoYVwiXSwgW1wie3tIT01FfX0vc2Vjb25kL2JldGFcIiwgXCJ7e0hPTUV9fS9zZWNvbmQvYmV0YVwiXSwgW1wie3tIT01FfX0vLmxvY2FsL2Jpbi9nYW1tYVwiLCBudWxsXSwgW1wie3tIT01FfX0vLmJ1bi9iaW4vZGVsdGFcIiwgbnVsbF0sIFtcInt7SE9NRX19Ly5sb2NhbC9iaW4vcGxhaW5cIiwgbnVsbF0sIFtudWxsLCBudWxsXSwgW251bGwsIG51bGxdLCBbbnVsbCwgbnVsbF0sIFtudWxsLCBudWxsXSwgW1wie3tIT01FfX0vc2Vjb25kL2JldGFcIiwgXCJ7e0hPTUV9fS9zZWNvbmQvYmV0YVwiXSwgW251bGwsIG51bGxdXVxuIiwidHJlZSI6eyIuYnVuIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCIuYnVuL2JpbiI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmJ1bi9iaW4vZGVsdGEiOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0OTMsImJvZHlfYjY0IjoiSXlFdlltbHVMM05vQ2c9PSJ9LCIuYnVuL2Jpbi9nYW1tYSI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQ5MywiYm9keV9iNjQiOiJJeUV2WW1sdUwzTm9DZz09In0sIi5sb2NhbCI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmxvY2FsL2JpbiI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmxvY2FsL2Jpbi9kaXIiOnsia2luZCI6ImRpcmVjdG9yeSIsIm1vZGUiOjUwOX0sIi5sb2NhbC9iaW4vZ2FtbWEiOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0OTMsImJvZHlfYjY0IjoiSXlFdlltbHVMM05vQ2c9PSJ9LCIubG9jYWwvYmluL3BsYWluIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDkzLCJib2R5X2I2NCI6Ikl5RXZZbWx1TDNOb0NnPT0ifSwiZmlyc3QiOnsia2luZCI6ImRpcmVjdG9yeSIsIm1vZGUiOjUwOX0sImZpcnN0L2FscGhhIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDkzLCJib2R5X2I2NCI6Ikl5RXZZbWx1TDNOb0NnPT0ifSwiZmlyc3QvYnJva2VuIjp7ImtpbmQiOiJzeW1saW5rIiwidGFyZ2V0Ijoie3tIT01FfX0vZmlyc3QvbWlzc2luZyJ9LCJmaXJzdC9kaXIiOnsia2luZCI6ImRpcmVjdG9yeSIsIm1vZGUiOjUwOX0sImZpcnN0L3BsYWluIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImVBPT0ifSwic2Vjb25kIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCJzZWNvbmQvYWxwaGEiOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0OTMsImJvZHlfYjY0IjoiSXlFdlltbHVMM05vQ2c9PSJ9LCJzZWNvbmQvYmV0YSI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQ5MywiYm9keV9iNjQiOiJJeUV2WW1sdUwzTm9DZz09In19fQ=="
+}

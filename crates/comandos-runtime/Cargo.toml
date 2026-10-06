@@ -49,6 +49,7 @@ reqwest = { version = "=0.13.5", default-features = false, features = ["blocking
 rustix = { version = "=1.1.5", features = ["process"] }
 
 [dev-dependencies]
+comandos-oracle = { path = "../comandos-oracle" }
 # cc-notifyd falso de las pruebas de paridad del hook.
 hyper = { version = "=1.11.1", default-features = false, features = ["server", "http1"] }
 

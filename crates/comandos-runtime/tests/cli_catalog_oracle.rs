@@ -564,7 +564,7 @@ fn catalog_view_matches_python() {
     let mut claude_sorted: Vec<&String> = claude_found.iter().collect();
     claude_sorted.sort();
     let payload = json!({
-        "helps": helps,
+        "helps": BTreeMap::from_iter(helps),
         "versions": versions,
         "accounts": {"claude": [{"alias": "b", "env": {"CLAUDE_CONFIG_DIR": "/h/.claude-accounts/b"}}, {"alias": "c", "env": {}}]},
         "models": models,

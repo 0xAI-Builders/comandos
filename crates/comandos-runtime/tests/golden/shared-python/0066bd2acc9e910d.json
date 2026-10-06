@@ -1,0 +1,16 @@
+{
+  "input": {
+    "case": {
+      "script": "import sys,json,datetime; sys.path.insert(0,sys.argv[1]+'/lib'); import news_editions as e, news_radar as r, app_state; data=json.loads(sys.argv[2]);\n\nimport types\nwatch=types.SimpleNamespace(collect=lambda ts:{'items':data,'failures':[{'source':'missing','error':'offline'}]})\nf=e.make_fetcher(watch,reader=lambda u:(True,'body',None),now=lambda:1791212400)\nprint(json.dumps(f(e.default_policy(),3)))\n",
+      "args": [
+        {
+          "arg": "[{\"url\":\"https://a.test/1?utm_x=1\",\"title\":\"A1\",\"source\":\"A\",\"kind\":\"modelo\",\"at\":10,\"publishedAt\":100},{\"url\":\"https://a.test/2\",\"title\":\"A2\",\"source\":\"A\",\"kind\":\"ia\",\"at\":9,\"publishedAt\":90},{\"url\":\"https://b.test/1\",\"title\":\"B1\",\"source\":\"B\",\"kind\":\"ia\",\"at\":8,\"publishedAt\":80},{\"url\":\"https://a.test/1\",\"title\":\"Dup\",\"source\":\"A\",\"kind\":\"ia\",\"at\":7}]",
+          "file": null
+        }
+      ],
+      "bin_inputs": []
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJpdGVtc1wiOiBbe1widXJsXCI6IFwiaHR0cHM6Ly9hLnRlc3QvMT91dG1feD0xXCIsIFwidGl0bGVcIjogXCJBMVwiLCBcImtpbmRcIjogXCJtb2RlbG9cIiwgXCJzb3VyY2VcIjogXCJBXCIsIFwicHVibGlzaGVkQXRcIjogMTAwLCBcImRpc2NvdmVyZWRBdFwiOiAxNzkxMjEyNDAwMDAwLCBcIm1ldGFcIjoge30sIFwiZmV0Y2hTdGF0dXNcIjogXCJva1wiLCBcImZldGNoRXJyb3JcIjogbnVsbCwgXCJ0ZXh0XCI6IFwiYm9keVwifSwge1widXJsXCI6IFwiaHR0cHM6Ly9iLnRlc3QvMVwiLCBcInRpdGxlXCI6IFwiQjFcIiwgXCJraW5kXCI6IFwiaWFcIiwgXCJzb3VyY2VcIjogXCJCXCIsIFwicHVibGlzaGVkQXRcIjogODAsIFwiZGlzY292ZXJlZEF0XCI6IDE3OTEyMTI0MDAwMDAsIFwibWV0YVwiOiB7fSwgXCJmZXRjaFN0YXR1c1wiOiBcIm9rXCIsIFwiZmV0Y2hFcnJvclwiOiBudWxsLCBcInRleHRcIjogXCJib2R5XCJ9LCB7XCJ1cmxcIjogXCJodHRwczovL2EudGVzdC8yXCIsIFwidGl0bGVcIjogXCJBMlwiLCBcImtpbmRcIjogXCJpYVwiLCBcInNvdXJjZVwiOiBcIkFcIiwgXCJwdWJsaXNoZWRBdFwiOiA5MCwgXCJkaXNjb3ZlcmVkQXRcIjogMTc5MTIxMjQwMDAwMCwgXCJtZXRhXCI6IHt9LCBcImZldGNoU3RhdHVzXCI6IFwib2tcIiwgXCJmZXRjaEVycm9yXCI6IG51bGwsIFwidGV4dFwiOiBcImJvZHlcIn1dLCBcImZhaWx1cmVzXCI6IFt7XCJzb3VyY2VcIjogXCJtaXNzaW5nXCIsIFwiZXJyb3JcIjogXCJvZmZsaW5lXCJ9XX1cbiIsInRyZWUiOnt9fQ=="
+}

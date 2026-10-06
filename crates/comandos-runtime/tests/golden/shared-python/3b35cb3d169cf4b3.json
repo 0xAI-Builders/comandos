@@ -1,0 +1,16 @@
+{
+  "input": {
+    "case": {
+      "script": "import sys,json,datetime; sys.path.insert(0,sys.argv[1]+'/lib'); import news_editions as e, news_radar as r, app_state; data=json.loads(sys.argv[2]);\nimport ipaddress; print(json.dumps([not any([a.is_private,a.is_loopback,a.is_link_local,a.is_multicast,a.is_reserved,a.is_unspecified]) for a in map(ipaddress.ip_address,data)]))",
+      "args": [
+        {
+          "arg": "[\"8.8.8.8\",\"100.64.0.1\",\"192.0.0.9\",\"192.0.0.10\",\"192.0.0.8\",\"192.0.2.3\",\"198.18.0.1\",\"224.0.0.1\",\"255.255.255.255\",\"::1\",\"::ffff:8.8.8.8\",\"2001::1\",\"2001:10::1\",\"2001:20::1\",\"2001:db8::1\",\"2002::1\",\"2606:4700:4700::1111\",\"fe80::1\",\"fec0::1\"]",
+          "file": null
+        }
+      ],
+      "bin_inputs": []
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbdHJ1ZSwgdHJ1ZSwgdHJ1ZSwgdHJ1ZSwgZmFsc2UsIGZhbHNlLCBmYWxzZSwgZmFsc2UsIGZhbHNlLCBmYWxzZSwgZmFsc2UsIGZhbHNlLCBmYWxzZSwgdHJ1ZSwgZmFsc2UsIGZhbHNlLCB0cnVlLCBmYWxzZSwgdHJ1ZV1cbiIsInRyZWUiOnt9fQ=="
+}

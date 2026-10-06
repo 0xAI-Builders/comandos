@@ -1,0 +1,11 @@
+{
+  "input": {
+    "case": {
+      "script": "\nimport importlib.machinery, importlib.util, json, os, sys\nrepo = sys.argv[1]\nsys.path.insert(0, os.path.join(repo, \"bin\"))\nloader = importlib.machinery.SourceFileLoader(\"cc_dash_oracle\", os.path.join(repo, \"bin/cc-dash\"))\nspec = importlib.util.spec_from_loader(loader.name, loader)\ndash = importlib.util.module_from_spec(spec)\nloader.exec_module(dash)\n\ndef run(f):\n    try:\n        return f()\n    except Exception as e:\n        return {\"error\": type(e).__name__}\nprint(json.dumps([run(dash.parse_ssh_config), run(lambda: dash.ssh_host_entry(\"b\")),\n                  run(lambda: dash.ssh_host_entry(\"nada\"))]))\n",
+      "args": [],
+      "bin_inputs": []
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbW10sIG51bGwsIG51bGxdXG4iLCJ0cmVlIjp7fX0="
+}

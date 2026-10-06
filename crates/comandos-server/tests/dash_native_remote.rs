@@ -79,12 +79,9 @@ async fn same(t: &Twin, method: &str, path: &str) -> (u16, String) {
 
 fn logs_equal(t: &Twin) {
     assert_eq!(tailscale_log(&t.a), tailscale_log(&t.b), "tailscale.log");
-    let webterm = |h: &TestHome| {
-        let mut out = calls_of(h, "cc-webterm");
-        out.extend(calls_of(h, "pkill"));
-        out
-    };
-    assert_eq!(webterm(&t.a), webterm(&t.b), "cc-webterm / pkill");
+    // Retired script/process calls are intentionally absent from the native backend.
+    assert!(calls_of(&t.a, "cc-webterm").is_empty());
+    assert!(calls_of(&t.a, "pkill").is_empty());
 }
 
 /// `qrencode` falso: anota sus argumentos, guarda su stdin en
@@ -238,48 +235,29 @@ async fn remote_routes_match_python() {
     assert_eq!(code, 200);
     both(&t, |h| tailscale_set(h, "serve-fail", None));
 
-    // Terminal web: `cc-webterm` que falla → 400 con su texto; luego bien.
-    both(&t, |h| {
-        std::fs::write(h.root.join("webterm-fail"), "ttyd: puerto ocupado\n").unwrap()
-    });
-    let (code, body) = same(&t, "POST", "/remote-webterm-on").await;
-    assert_eq!(
-        (code, body.as_str()),
-        (400, r#"{"error": "ttyd: puerto ocupado"}"#)
+    // Native lifecycle replaces the retired script. Same route body and tailscale calls.
+    t.a.write(
+        "webterm-mode.json",
+        r#"{"mode":"native","ports":[4779,4780]}"#,
     );
-    both(&t, |h| {
-        std::fs::remove_file(h.root.join("webterm-fail")).unwrap()
-    });
     let (code, _) = same(&t, "POST", "/remote-webterm-on").await;
     assert_eq!(code, 200);
     let (code, _) = same(&t, "POST", "/remote-webterm-off").await;
     assert_eq!(code, 200);
-    assert_eq!(
-        calls_of(&t.a, "cc-webterm").last(),
-        Some(&vec!["off".to_owned()])
-    );
     logs_equal(&t);
-
-    // Sin ningún `cc-webterm`: apagar usa el `pkill` falso y encender falla
-    // con el `FileNotFoundError` del Python (ruta del HOME en el texto).
+    // Absence of the retired dependency is no longer an activation error.
     both(&t, |h| {
-        std::fs::remove_file(h.root.join("fakebin/cc-webterm")).unwrap()
+        std::fs::remove_file(h.root.join("fakebin/cc-webterm")).unwrap();
     });
-    let (code, _) = same(&t, "POST", "/remote-webterm-off").await;
-    assert_eq!(code, 200);
-    assert_eq!(
-        calls_of(&t.a, "pkill"),
-        vec![vec!["-f".to_owned(), "ttyd.*cc-webterm-attach".to_owned()]]
-    );
-    let (code, body) = same(&t, "POST", "/remote-webterm-on").await;
-    assert_eq!(
-        (code, body.as_str()),
-        (
-            400,
-            r#"{"error": "[Errno 2] No such file or directory: '<HOME>/.local/bin/cc-webterm'"}"#
-        )
-    );
-    logs_equal(&t);
+    let run = t.request("POST", "/remote-webterm-on", "{}").await;
+    assert_eq!(run.front.status, 200);
+    assert_eq!(run.oracle.status, 400);
+    assert!(calls_of(&t.a, "cc-webterm").is_empty());
+    // Next assertions compare only the subsequent host/status phase.
+    both(&t, |h| {
+        std::fs::write(h.root.join("tailscale.log"), b"").unwrap();
+        tailscale_set(h, "serve.txt", Some("|-- proxy http://127.0.0.1:4777\n"));
+    });
 
     // Sin `status --json`: el host sale de `status --self --json` con la
     // expresión del Python; sin nada, host vacío → QR 400.
@@ -345,8 +323,8 @@ async fn remote_off_never_resets() {
     // Orden del frente: 443 off, 8443 off, después la terminal web.
     let pos = |v: &Vec<String>| front.iter().position(|c| c == v).unwrap();
     assert!(pos(&off("443")) < pos(&off("8443")));
-    assert_eq!(calls_of(&t.a, "cc-webterm"), vec![vec!["off".to_owned()]]);
-    assert_eq!(calls_of(&t.a, "cc-webterm"), calls_of(&t.b, "cc-webterm"));
+    assert!(calls_of(&t.a, "cc-webterm").is_empty());
+    assert_eq!(calls_of(&t.b, "cc-webterm"), vec![vec!["off".to_owned()]]);
 }
 
 /// Servidor HTTP de la prueba: `200` en `/term/token` y `404` en lo demás.
@@ -457,10 +435,14 @@ async fn restore_runs_only_with_front_background() {
     assert!(calls_of(&home, "cc-webterm").is_empty());
     assert!(tailscale_log(&home).is_empty());
     home.write("webterm-enabled", "");
+    home.write(
+        "webterm-mode.json",
+        r#"{"mode":"native","ports":[4779,4780]}"#,
+    );
     assert!(remote::start(&front));
     assert!(until(|| tailscale_log(&home).len() >= 2).await);
     assert!(until(|| front.tasks().is_empty()).await);
-    assert_eq!(calls_of(&home, "cc-webterm"), vec![Vec::<String>::new()]);
+    assert!(calls_of(&home, "cc-webterm").is_empty());
 
     // El Python hace lo mismo con su `restore_requested_webterm()`.
     let python = TestHome::new_short("remote-restore-py");
@@ -479,8 +461,6 @@ async fn restore_runs_only_with_front_background() {
     };
     assert_eq!(out.trim(), "True");
     assert_eq!(tailscale_log(&python), tailscale_log(&home));
-    assert_eq!(
-        calls_of(&python, "cc-webterm"),
-        calls_of(&home, "cc-webterm")
-    );
+    assert_eq!(calls_of(&python, "cc-webterm"), vec![Vec::<String>::new()]);
+    assert!(calls_of(&home, "cc-webterm").is_empty());
 }

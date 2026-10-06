@@ -55,6 +55,7 @@ impl WebRoute {
 
 pub struct WebState {
     pub selection_path: PathBuf,
+    home: PathBuf,
     pub repo_root: Option<PathBuf>,
     pub web_dir: PathBuf,
     pub dash_dir: PathBuf,
@@ -76,9 +77,10 @@ impl WebState {
             selection: Mutex::new((
                 Instant::now(),
                 FileStamp::read(&selection_path),
-                Selection::load(&selection_path),
+                Selection::load_domain(&cfg.home, &selection_path),
             )),
             selection_path,
+            home: cfg.home.clone(),
             repo_root: cfg.repo_root.clone(),
             web_dir: cfg.web_dir.clone(),
             dash_dir: cfg.dash_dir.clone(),
@@ -98,11 +100,9 @@ impl WebState {
     pub fn selection(&self) -> Selection {
         let mut sel = self.selection.lock().unwrap_or_else(|e| e.into_inner());
         if sel.0.elapsed() >= Duration::from_secs(1) {
-            let stamp = FileStamp::read(&self.selection_path);
-            if stamp != sel.1 {
-                sel.2 = Selection::load(&self.selection_path);
-                sel.1 = stamp;
-            }
+            // SQL authority can change without any legacy file mtime event.
+            sel.2 = Selection::load_domain(&self.home, &self.selection_path);
+            sel.1 = FileStamp::read(&self.selection_path);
             sel.0 = Instant::now();
         }
         sel.2.clone()

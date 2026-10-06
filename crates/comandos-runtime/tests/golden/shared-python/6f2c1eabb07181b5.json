@@ -1,0 +1,16 @@
+{
+  "input": {
+    "case": {
+      "script": "\nimport json, os, sys\nrepo = sys.argv[1]\nsys.path.insert(0, os.path.join(repo, \"lib\"))\nimport cli_help, cli_catalog, command_chains, model_watch\n\nprint(json.dumps([model_watch.latest_models(d, {k: set(v) for k, v in r.items()}) for d, r in json.load(open(sys.argv[2]))]))\n",
+      "args": [
+        {
+          "arg": "{{HOME}}/cases.json",
+          "file": "ab60cf28558c6d1f2cfa386ad9c2792a11cd07bc972895bb97f05f32e5d95186"
+        }
+      ],
+      "bin_inputs": []
+    },
+    "before_sha256": "703d0b1ec308f352c4db5079f1e0367f860e72df67741ecf03b536e308665dad"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbe1wiY2xhdWRlXCI6IFtdLCBcImNvZGV4XCI6IFtdLCBcImdyb2tcIjogW119LCB7XCJjbGF1ZGVcIjogW1wiY2xhdWRlLW9wdXMtNS02XCIsIFwiY2xhdWRlLXNvbm5ldC01LTVcIiwgXCJjbGF1ZGUtZmFibGUtNS0xXCJdLCBcImNvZGV4XCI6IFtcImdwdC01LjEwXCJdLCBcImdyb2tcIjogW1wiZ3Jvay00LjdcIl19LCB7XCJjbGF1ZGVcIjogW10sIFwiY29kZXhcIjogW1wiZ3B0LTUuMFwiXSwgXCJncm9rXCI6IFtdfV1cbiIsInRyZWUiOnsiY2FzZXMuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJXMXR1ZFd4c0xIdDlYU3hiZXlKamJHRjFaR1VpT2xzaVkyeGhkV1JsTFc5d2RYTXROUzAxSWl3aVkyeGhkV1JsTFc5d2RYTXROUzAwSWl3aVkyeGhkV1JsTFhOdmJtNWxkQzAxTFRVaUxDSmpiR0YxWkdVdGFHRnBhM1V0TkMwMUxUSXdNalV4TURBeElpd2lZMnhoZFdSbExXOXdkWE10TlMwMVd6RnRYU0lzSW1Oc1lYVmtaUzFtWVdKc1pTMDFMVEVpTERkZExDSmpiMlJsZUNJNld5Sm5jSFF0TlM0Mklpd2laM0IwTFRVdU5pMWpiMlJsZUNJc0ltZHdkQzAxTGpFd0lpd2liek1pWFN3aVozSnZheUk2SW1keWIyc3ROQzQzSW4wc2V5Sm5jbTlySWpwYkltZHliMnN0TkM0M0lpd2laM0p2YXkwMExqY3RZblZwYkdRdFptRnpkQ0lzSW1keWIyc3ROQzQySWwwc0ltTnNZWFZrWlNJNld5SmpiR0YxWkdVdGIzQjFjeTAxTFRZaVhYMWRMRnQ3ZlN4N0ltTnZaR1Y0SWpwYkltZHdkQzAxSWl3aVozQjBMVFV1TUNKZGZWMWQifX19"
+}

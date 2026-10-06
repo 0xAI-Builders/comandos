@@ -1,0 +1,16 @@
+{
+  "input": {
+    "case": {
+      "script": "\nimport importlib.machinery, importlib.util, json, os, sys\nrepo = sys.argv[1]\nsys.path.insert(0, os.path.join(repo, \"bin\"))\nloader = importlib.machinery.SourceFileLoader(\"cc_dash_oracle\", os.path.join(repo, \"bin/cc-dash\"))\nspec = importlib.util.spec_from_loader(loader.name, loader)\ndash = importlib.util.module_from_spec(spec)\nloader.exec_module(dash)\nprint(json.dumps([bool(dash.SSH_HOST_RE.match(s)) for s in json.load(open(sys.argv[2]))]))\n",
+      "args": [
+        {
+          "arg": "{{HOME}}/hosts.json",
+          "file": "71791fca8c1658fc31ec650337cac9c4d82fa83690bac537454f51dadfedb85e"
+        }
+      ],
+      "bin_inputs": []
+    },
+    "before_sha256": "db8689ed347b6bb531c7ed0e8f3346e8789ce6fcfdc02ae3aa404f7a7691e31a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbdHJ1ZSwgdHJ1ZSwgZmFsc2UsIGZhbHNlLCBmYWxzZSwgZmFsc2UsIHRydWUsIGZhbHNlXVxuIiwidHJlZSI6eyJob3N0cy5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6Ild5SmhJaXdpYzNKMkxURXVZbDlqSWl3aUlpd2lZU0JpSWl3aVlWeHVJaXdpdzdFaUxDSjRlSGg0ZUhoNGVIaDRlSGg0ZUhoNGVIaDRlSGg0ZUhoNGVIaDRlSGg0ZUhoNGVIaDRlSGg0ZUhoNGVIaDRlSGg0ZUhoNGVIaDRlSGg0ZUhnaUxDSjVlWGw1ZVhsNWVYbDVlWGw1ZVhsNWVYbDVlWGw1ZVhsNWVYbDVlWGw1ZVhsNWVYbDVlWGw1ZVhsNWVYbDVlWGw1ZVhsNWVYbDVlWGw1ZVhsNUlsMD0ifX19"
+}

@@ -1,0 +1,16 @@
+{
+  "input": {
+    "case": {
+      "script": "\nimport json, os, sys\nrepo = sys.argv[1]\nsys.path.insert(0, os.path.join(repo, \"lib\"))\nimport cli_help, cli_catalog, command_chains, model_watch\n\nouts = json.load(open(sys.argv[2]))\ncat = {'clis': [{'id': str(i), 'binary': str(i)} for i in range(len(outs))]}\nclass R:\n    def __init__(s, o): s.stdout, s.stderr = o, ''\nprint(json.dumps(cli_catalog.installed_versions(cat, which=lambda b: '/x/' + b, run=lambda a, **k: R(outs[int(a[0].split('/')[-1])]))))\n",
+      "args": [
+        {
+          "arg": "{{HOME}}/out.json",
+          "file": "26ff81dc454969925157063c75b7aed8de5813d3a50dd0ad05ff1db3293e5be3"
+        }
+      ],
+      "bin_inputs": []
+    },
+    "before_sha256": "5748c1d4d02df2079398788ee60815aacfcb6c85fc907561ae6bae1090d84624"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCIwXCI6IFwiMC4xNTkuMlwiLCBcIjFcIjogXCIyLjEuMjg2XCIsIFwiMlwiOiBcIjEuMC40NC1iZXRhLjFcIiwgXCIzXCI6IFwiP1wiLCBcIjRcIjogXCI/XCIsIFwiNVwiOiBcIjEuMlwiLCBcIjZcIjogXCI/XCJ9XG4iLCJ0cmVlIjp7Im91dC5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6Ild5SmpiMlJsZUMxamJHa2dNQzR4TlRrdU1seHVJaXdpTWk0eExqSTROaUFvUTJ4aGRXUmxJRU52WkdVcElpd2laM0p2YXlCMk1TNHdMalEwTFdKbGRHRXVNU3Q0SWl3aWMybHVJSFpsY25OcHc3TnVJaXdpSWl3aU1TNHlJaXdpTVRJaVhRPT0ifX19"
+}
