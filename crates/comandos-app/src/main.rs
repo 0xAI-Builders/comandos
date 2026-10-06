@@ -10,11 +10,7 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     match resolve_entry(&argv0) {
-        // T7 sustituye este brazo por `comandos_app::ui::app::run(&rest, default_live)`.
-        Entry::App { .. } => {
-            eprintln!("comandos-app: interfaz pendiente (Tarea 7)");
-            ExitCode::from(2)
-        }
+        Entry::App { default_live } => comandos_app::ui::app::run(&rest, default_live),
         // T19 sustituye este brazo por `comandos_app::notifyd::run(&rest)`.
         Entry::Notifyd => {
             eprintln!("comandos-app: popups pendientes (Tarea 19)");

@@ -1,0 +1,6 @@
+prefix=/usr
+Name: libpsl
+Description: pkg-config metadata shim for GTK SDK private dependency
+Version: 0.20.0
+Libs:
+Cflags:

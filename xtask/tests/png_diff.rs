@@ -1,4 +1,4 @@
-use xtask::png_diff::{Rect, Rgba, crop, decode, diff, encode, mask, write_diff_png};
+use xtask::png_diff::{Rect, Rgba, compare, crop, decode, diff, encode, mask, write_diff_png};
 
 fn solid(w: u32, h: u32, rgba: [u8; 4]) -> Rgba {
     Rgba {
@@ -154,6 +154,30 @@ fn diff_png_marks_differences_in_red() {
     let got = decode(&std::fs::read(&out).unwrap()).unwrap();
     let _ = std::fs::remove_file(&out);
     assert_eq!(got.pixels, vec![0, 0, 0, 255, 255, 0, 0, 255]);
+}
+
+#[test]
+fn compare_paths_reports_summary_and_dimension_errors() {
+    let dir = std::env::temp_dir().join(format!("xtask-png-compare-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let a = dir.join("a.png");
+    let b = dir.join("b.png");
+    let c = dir.join("c.png");
+    xtask::png_diff::write_png(&solid(1, 1, [0, 0, 0, 255]), &a).unwrap();
+    xtask::png_diff::write_png(&solid(1, 1, [0, 43, 0, 255]), &b).unwrap();
+    xtask::png_diff::write_png(&solid(2, 1, [0, 0, 0, 255]), &c).unwrap();
+    let summary = compare(&a, &b).unwrap();
+    assert_eq!(
+        (
+            summary.width,
+            summary.height,
+            summary.compared,
+            summary.different
+        ),
+        (1, 1, 1, 1)
+    );
+    assert!(compare(&a, &c).is_err());
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 fn png_bytes(w: u32, h: u32, color: png::ColorType, depth: png::BitDepth, data: &[u8]) -> Vec<u8> {

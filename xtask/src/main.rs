@@ -1,4 +1,5 @@
 mod app_drift;
+mod app_shot;
 mod parity;
 mod poll;
 mod rss;
@@ -71,6 +72,7 @@ fn main() {
                 }
             }
         }
+        Some("app-shot") => exit(app_shot::run(&args[1..])),
         Some("shots") => exit(web::shots(&args[1..])),
         Some("png-diff") => exit(web::png_diff(&args[1..])),
         Some("dom-diff") => exit(web::dom_diff(&args[1..])),
@@ -80,7 +82,7 @@ fn main() {
         Some("web-port") => exit(xtask::web_port::main(&args[1..])),
         _ => {
             eprintln!(
-                "subcomandos: rss, parity, poll, app-drift, shots, png-diff, dom-diff, fixtures, web-build, web-inventory, web-port"
+                "subcomandos: rss, parity, poll, app-drift, app-shot, shots, png-diff, dom-diff, fixtures, web-build, web-inventory, web-port"
             );
             exit(2);
         }
