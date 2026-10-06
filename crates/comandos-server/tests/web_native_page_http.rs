@@ -69,6 +69,8 @@ impl Front {
         entries[0].deps = vec![ids.last().unwrap().clone()];
         web.registry = Resolved::in_memory(entries, &[]);
         let assets = [
+            "/comandos_web_sound.js",
+            "/comandos_web_sound_bg.wasm",
             "/comandos_web_content.js",
             "/comandos_web_content_bg.wasm",
             "/workspace.css",

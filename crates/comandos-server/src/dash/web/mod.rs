@@ -5,6 +5,7 @@ mod file_stamp;
 pub mod gate;
 pub mod markdown;
 pub mod native_page;
+pub mod native_precache;
 pub mod native_term_page;
 mod native_worker;
 pub mod registry;

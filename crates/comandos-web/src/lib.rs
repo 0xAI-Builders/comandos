@@ -59,6 +59,8 @@ pub mod components {
     pub mod app_coordinator;
     pub mod chain_builder;
     pub mod command_sidebar;
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) mod content_runtime;
     pub mod device_drafts;
     pub mod extensions;
     pub mod foundation;
@@ -88,4 +90,6 @@ pub mod components {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use registry::{boot, dependency_failed, needs_content};
+pub use components::content_runtime::{install_content_loader, prepare_content};
+#[cfg(target_arch = "wasm32")]
+pub use registry::{boot, dependency_failed, needs_content, needs_sound};

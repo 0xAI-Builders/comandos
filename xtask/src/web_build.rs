@@ -56,22 +56,26 @@ await init({ module_or_path: new URL("{{WASM}}", import.meta.url) });
 boot(me ? me.dataset.k || "" : "");
 "#;
 
-/// Transport-only conditional loader: Rust selects the dependency and reports failures.
-/// Full native selection initializes both artifacts before boot; this is not first-use lazy loading.
+/// Transport-only loader: native audio mounts eagerly; Rust requests content only at feature use.
 pub fn render_content_boot(module_js: &str, wasm: &str) -> String {
     format!(
-        r#"// Generated native transport; component selection and lifecycle stay in Rust.
-import init, {{ boot, needs_content, dependency_failed }} from "{module_js}";
+        r#"// Generated platform transport; Rust owns selection, feature lifecycle and errors.
+import init, {{ boot, needs_sound, dependency_failed, install_content_loader }} from "{module_js}";
 const me=document.currentScript||document.querySelector("script[data-k]");
 const k=me?me.dataset.k||"":"";
 await init({{module_or_path:new URL("{wasm}",import.meta.url)}});
-if(needs_content()){{
-  try{{
-    const content=await import("./comandos_web_content.js");
-    await content.default({{module_or_path:new URL("./comandos_web_content_bg.wasm",import.meta.url)}});
-    content.register_content();
-  }}catch(error){{dependency_failed(k,error);throw error;}}
+if(needs_sound()){{
+ try{{
+  const sound=await import("./comandos_web_sound.js");
+  await sound.default({{module_or_path:new URL("./comandos_web_sound_bg.wasm",import.meta.url)}});
+  sound.register_sound();
+ }}catch(error){{dependency_failed(k,error);throw error;}}
 }}
+install_content_loader(async()=>{{
+ const content=await import("./comandos_web_content.js");
+ await content.default({{module_or_path:new URL("./comandos_web_content_bg.wasm",import.meta.url)}});
+ content.register_content();
+}});
 boot(k);
 "#
     )
@@ -515,31 +519,61 @@ fn build_one(opts: &Options, c: &WasmCrate) -> Result<Built, String> {
         files.push((boot, BOOT_FILE.to_string(), text.into_bytes()));
     }
     if c.name == "comandos-web" && c.target == BindgenTarget::Web {
-        let companion = build_one(
-            opts,
-            &WasmCrate::new("comandos-web-content", BindgenTarget::Web, 350 * 1024),
-        )?;
-        let mut companion_gzip = 0;
-        for (logical, physical, bytes) in companion.files {
-            if physical == BOOT_FILE {
-                continue;
-            }
-            if physical.ends_with(".wasm") {
-                companion_gzip += gzip_len(&bytes)?;
-            }
-            if let Some((_, _, existing)) = files.iter().find(|(_, name, _)| name == &physical) {
-                if existing != &bytes {
-                    return Err(format!("companion file collision: {physical}"));
+        let mut content_gzip = 0;
+        let mut sound_gzip = 0;
+        for (name, budget) in [
+            ("comandos-web-content", 350 * 1024),
+            ("comandos-web-sound", 250 * 1024),
+        ] {
+            let companion = build_one(opts, &WasmCrate::new(name, BindgenTarget::Web, budget))?;
+            for (logical, physical, bytes) in companion.files {
+                if physical == BOOT_FILE {
+                    continue;
                 }
-                continue;
+                if physical.ends_with(".wasm") {
+                    let size = gzip_len(&bytes)?;
+                    if name == "comandos-web-content" {
+                        content_gzip += size;
+                    } else {
+                        sound_gzip += size;
+                    }
+                }
+                if let Some((_, _, existing)) = files.iter().find(|(_, path, _)| path == &physical)
+                {
+                    if existing != &bytes {
+                        return Err(format!("companion file collision: {physical}"));
+                    }
+                    continue;
+                }
+                files.push((logical, physical, bytes));
             }
-            files.push((logical, physical, bytes));
         }
         println!(
-            "complete dashboard WASM: {} B gzip (main {} + content {})",
-            gz + companion_gzip,
+            "dashboard WASM gzip: initial {} B (main {} + sound {}), deferred {} B, cumulative {} B",
+            gz + sound_gzip,
             gz,
-            companion_gzip
+            sound_gzip,
+            content_gzip,
+            gz + sound_gzip + content_gzip
+        );
+        let mut initial_transport_gzip = 0;
+        let mut deferred_transport_gzip = 0;
+        for (_, physical, bytes) in &files {
+            if physical.ends_with(".js") {
+                if physical == "comandos_web_content.js" {
+                    deferred_transport_gzip += gzip_len(bytes)?;
+                } else {
+                    initial_transport_gzip += gzip_len(bytes)?;
+                }
+            }
+        }
+        println!(
+            "dashboard WASM+JS gzip: initial {} B, deferred {} B, cumulative {} B (JS initial {}, deferred {})",
+            gz + sound_gzip + initial_transport_gzip,
+            content_gzip + deferred_transport_gzip,
+            gz + sound_gzip + content_gzip + initial_transport_gzip + deferred_transport_gzip,
+            initial_transport_gzip,
+            deferred_transport_gzip
         );
         files.extend(
             native_page_files(
@@ -579,7 +613,12 @@ fn build_one(opts: &Options, c: &WasmCrate) -> Result<Built, String> {
     {
         let mut page: comandos_core::web_assets::NativePage =
             serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-        for name in ["comandos_web_content.js", "comandos_web_content_bg.wasm"] {
+        for name in [
+            "comandos_web_content.js",
+            "comandos_web_content_bg.wasm",
+            "comandos_web_sound.js",
+            "comandos_web_sound_bg.wasm",
+        ] {
             page.assets.insert(format!("/{name}"), name.into());
         }
         *bytes = serde_json::to_vec(&page).map_err(|e| e.to_string())?;

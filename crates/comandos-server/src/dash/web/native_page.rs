@@ -32,6 +32,8 @@ pub fn bundle(manifest: &Manifest, web_dir: &Path) -> Result<NativePage, String>
         return Err("native bundle does not match compiled template/inventory".into());
     }
     for root in [
+        "/comandos_web_sound.js",
+        "/comandos_web_sound_bg.wasm",
         "/comandos_web_content.js",
         "/comandos_web_content_bg.wasm",
         "/workspace.css",

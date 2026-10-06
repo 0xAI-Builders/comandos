@@ -1,4 +1,4 @@
-//! Existing news, analytics and sound components in a separate Rust/WASM artifact.
+//! Existing news and analytics components in a separate Rust/WASM artifact.
 //! The core registry owns selection; public APIs stay synchronous after transport initialization.
 #![cfg(target_arch = "wasm32")]
 #![deny(
@@ -41,7 +41,6 @@ fn mount_render() -> Result<(), JsValue> {
 
 mod analytics_ui;
 mod news_reader;
-mod ui_sounds;
 #[allow(dead_code)]
 #[path = "../../comandos-web/src/components/web_support.rs"]
 mod web_support;
@@ -52,10 +51,6 @@ pub fn register_content() -> Result<(), JsValue> {
         (
             "__comandosMountAnalytics",
             analytics_ui::mount as fn() -> Result<(), JsValue>,
-        ),
-        (
-            "__comandosMountSounds",
-            ui_sounds::mount as fn() -> Result<(), JsValue>,
         ),
         (
             "__comandosMountAnalyticsRenderer",

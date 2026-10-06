@@ -555,6 +555,11 @@ mod web {
     }
     fn analytics() -> Result<JsValue, JsValue> {
         let existing = global("analyticsView");
+        if global("__comandosAnalyticsDeferred") == JsValue::TRUE
+            && !super::super::content_runtime::ready()
+        {
+            return Ok(existing);
+        }
         if truthy(&existing) {
             return Ok(existing);
         }
@@ -612,6 +617,22 @@ mod web {
             }
         }
         classes(&usage, "open", true);
+        if global("__comandosAnalyticsDeferred") == JsValue::TRUE
+            && !super::super::content_runtime::ready()
+        {
+            let prepared = super::super::content_runtime::prepare_content("analytics");
+            wasm_bindgen_futures::spawn_local(async move {
+                if wait(Ok(prepared.into())).await.is_ok()
+                    && contains(&id("usage"), "open").unwrap_or(false)
+                {
+                    let opened = analytics().and_then(|view| call(&view, "open", &[tab]));
+                    if let Err(error) = opened {
+                        toast(&string(&error));
+                    }
+                }
+            });
+            return Ok(());
+        }
         let view = analytics()?;
         if !view.is_null() && !view.is_undefined() {
             call(&view, "open", &[tab])?;

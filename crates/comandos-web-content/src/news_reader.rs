@@ -2562,7 +2562,7 @@ fn install(opts: JsValue) -> Result<JsValue, JsValue> {
             {
                 call(&r, "close", &[])
             } else {
-                Ok(JsValue::UNDEFINED)
+                Ok(JsValue::NULL)
             }
         })
     };
@@ -2583,7 +2583,8 @@ fn install(opts: JsValue) -> Result<JsValue, JsValue> {
                         "close"
                     },
                     &[],
-                )
+                )?;
+                Ok(JsValue::UNDEFINED)
             }
         })
     };
@@ -2598,7 +2599,7 @@ fn install(opts: JsValue) -> Result<JsValue, JsValue> {
             r.try_borrow().map(|r| r.clone()).unwrap_or(JsValue::NULL)
         })?;
         let wanted = call(&params, "get", &["news".into()])?;
-        if desktop || !wanted.is_null() {
+        if (desktop || !wanted.is_null()) && !truthy(&get(&opts, "skipAutoOpen")) {
             let pattern = construct("RegExp", &["^\\d{4}-\\d{2}-\\d{2}@\\d{2}:\\d{2}$".into()])?;
             let target = if truthy(&wanted)
                 && truthy(&call(&pattern, "test", std::slice::from_ref(&wanted))?)
@@ -2827,7 +2828,9 @@ pub fn mount() -> Result<(), JsValue> {
 }
 pub fn attach() -> Result<(), JsValue> {
     let api = global("NewsReader");
-    let instance = install(JsValue::UNDEFINED)?;
+    let opts = object();
+    set(&opts, "skipAutoOpen", &JsValue::TRUE)?;
+    let instance = install(opts)?;
     set(&api, "instance", &instance)
 }
 

@@ -395,7 +395,7 @@ pub fn first_boot(booted: bool, page_ready: bool) -> bool {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use web::{boot, boot_with, dependency_failed, needs_content};
+pub use web::{boot, boot_with, dependency_failed, needs_content, needs_sound};
 
 #[cfg(target_arch = "wasm32")]
 mod web {
@@ -432,13 +432,20 @@ mod web {
         })
     }
     #[wasm_bindgen]
+    pub fn needs_sound() -> bool {
+        let content = comandos_web_dom::dom::query(r#"meta[name="comandos-web"]"#)
+            .and_then(|m| m.get_attribute("content"))
+            .unwrap_or_default();
+        meta_ids(&content).contains(&"ui-sounds")
+    }
+    #[wasm_bindgen]
     pub fn dependency_failed(k: &str, error: JsValue) {
         let _ = BOOTED.try_with(|b| b.set(true));
         publish_report(
             k,
             &Report {
                 mounted: Vec::new(),
-                failed: vec![("native-content".into(), describe(&error))],
+                failed: vec![("native-sound".into(), describe(&error))],
             },
             "failed",
         );

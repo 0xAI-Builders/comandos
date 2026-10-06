@@ -41,6 +41,9 @@ fn render(web: &WebState) -> Result<Vec<u8>, String> {
     }
     let mut precache = vec!["/?web=native".to_string()];
     for path in manifest.paths() {
+        if super::native_precache::is_deferred(path) {
+            continue;
+        }
         if [
             ".js",
             ".wasm",
