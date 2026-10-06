@@ -16,7 +16,10 @@ use crate::{
 pub use backup::{BackupEntry, BackupManifest, EntryKind, backup_sources, verify_backup};
 use rusqlite::Connection;
 use serde_json::{Value, json};
-use std::{collections::BTreeSet, path::PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
 pub use verify::{VerifyReport, verify};
 pub struct MigrateOptions {
     pub home: PathBuf,
@@ -136,14 +139,61 @@ pub fn migrate(opts: &MigrateOptions) -> Result<MigrateReport> {
             .ok_or_else(|| Error::Validation("run sin respaldo".into()))?
             .join("manifest.json"),
     )?;
-    let mut complete = true;
+    // Un recibo antiguo no prueba que la fuente actual esté importada. El
+    // candado global evita cambios de modo y todos los flocks se conservan
+    // hasta confirmar el run, en el mismo orden que los importadores.
+    let (_, _mode_lock) = unified::modes::access_mode(&opts.home, Some(&conn), "tabs")?;
+    let mut current = BTreeMap::new();
     for entry in manifest.entries {
         let symbolic = sources::symbolic(&opts.home, &entry.source)?;
         let spec = crate::domains::catalog::source(&symbolic)
             .ok_or_else(|| Error::Validation("fuente de respaldo fuera del catálogo".into()))?;
-        let mode = unified::mode_of(Some(&conn), spec.domain)?;
-        let done:bool=conn.query_row("SELECT EXISTS(SELECT 1 FROM migration_steps WHERE run_id=?1 AND domain=?2 AND source=?3 AND status='done')",rusqlite::params![report.run_id,spec.domain,symbolic],|r|r.get(0))?;
-        complete &= done || matches!(mode, unified::Mode::Unified | unified::Mode::Sealed);
+        current.entry(symbolic.clone()).or_insert(sources::Source {
+            path: entry.source,
+            symbolic,
+            spec: *spec,
+            db: opts.db.clone(),
+        });
+    }
+    let mut complete = true;
+    let mut source_locks = vec![];
+    for source in current.values() {
+        let mode = unified::mode_of(Some(&conn), source.spec.domain)?;
+        if unified::modes::guarded(&opts.db, source.spec.domain)? != (mode == unified::Mode::Sealed)
+        {
+            return Err(Error::Validation(
+                "guardia y modo sin confirmar al finalizar".into(),
+            ));
+        }
+        if matches!(mode, unified::Mode::Unified | unified::Mode::Sealed) {
+            continue;
+        }
+        // No recrear el directorio/archivo de una fuente desaparecida.
+        match std::fs::symlink_metadata(&source.path) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                complete = false;
+                continue;
+            }
+            Err(e) => return Err(e.into()),
+            Ok(_) => {}
+        }
+        sources::check_parents(&opts.home, &source.path)?;
+        source_locks.push(sources::lock(source)?);
+        let snapshot = match sources::read_source(&opts.home, source) {
+            Ok(snapshot) => snapshot,
+            Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+                complete = false;
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
+        complete &= journal::unchanged(
+            &conn,
+            &report.run_id,
+            source.spec.domain,
+            &source.symbolic,
+            &snapshot.sha256,
+        )?;
     }
     if complete {
         journal::finish(&conn, &report.run_id, opts.now_ms)?;

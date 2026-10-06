@@ -579,3 +579,121 @@ fn extension_sizes_document_and_directory_variants_are_both_supported() {
         b"{\"model\":42}"
     );
 }
+
+#[test]
+fn changed_done_source_outside_partial_resume_keeps_run_open() {
+    let h = Home::all();
+    let c = h.conn();
+    c.execute_batch("CREATE TRIGGER stop_late BEFORE INSERT ON documents WHEN NEW.name='hooks/snippets.json' BEGIN SELECT RAISE(ABORT,'late interruption'); END").unwrap();
+    assert!(migrate(&h.opts()).is_err());
+    let id: String = c
+        .query_row(
+            "SELECT run_id FROM migration_runs WHERE status='running'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    c.execute_batch("DROP TRIGGER stop_late").unwrap();
+    let tabs = h.0.join(".claude/hooks/app-tabs.json");
+    fs::write(&tabs, b"changed-tabs").unwrap();
+    fs::File::open(&tabs)
+        .unwrap()
+        .set_modified(UNIX_EPOCH + std::time::Duration::from_secs(2_000_000_000))
+        .unwrap();
+    let mut opts = h.opts();
+    opts.resume = true;
+    opts.domains = Some(vec!["ui-docs".into()]);
+    migrate(&opts).unwrap();
+    let status: String = c
+        .query_row(
+            "SELECT status FROM migration_runs WHERE run_id=?1",
+            [&id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(status, "running");
+    assert_ne!(
+        unified::doc_get(&c, "hooks/app-tabs.json")
+            .unwrap()
+            .unwrap()
+            .body,
+        b"changed-tabs"
+    );
+    opts.domains = None;
+    migrate(&opts).unwrap();
+    assert_eq!(
+        unified::doc_get(&c, "hooks/app-tabs.json")
+            .unwrap()
+            .unwrap()
+            .body,
+        b"changed-tabs"
+    );
+    assert!(verify(&h.0, &c, "tabs").unwrap().mismatches.is_empty());
+}
+
+#[test]
+fn partial_resume_keeps_removed_manifest_source_running() {
+    let h = Home::new();
+    h.write(".claude/hooks/app-tabs.json", b"original");
+    h.write(".claude/hooks/snippets.json", b"[]");
+    let c = h.conn();
+    c.execute_batch("CREATE TRIGGER stop_late BEFORE INSERT ON documents WHEN NEW.name='hooks/snippets.json' BEGIN SELECT RAISE(ABORT,'stop'); END").unwrap();
+    assert!(migrate(&h.opts()).is_err());
+    c.execute_batch("DROP TRIGGER stop_late").unwrap();
+    fs::remove_file(h.0.join(".claude/hooks/app-tabs.json")).unwrap();
+    let mut opts = h.opts();
+    opts.resume = true;
+    opts.domains = Some(vec!["ui-docs".into()]);
+    let report = migrate(&opts).unwrap();
+    let status = || {
+        c.query_row(
+            "SELECT status FROM migration_runs WHERE run_id=?1",
+            [&report.run_id],
+            |r| r.get::<_, String>(0),
+        )
+        .unwrap()
+    };
+    assert_eq!(
+        status(),
+        "running",
+        "removed manifest source cannot be verified"
+    );
+    h.write(".claude/hooks/app-tabs.json", b"original");
+    opts.domains = None;
+    migrate(&opts).unwrap();
+    assert_eq!(status(), "done");
+}
+
+#[test]
+fn completion_exempts_authoritative_domains_without_resurrecting_files() {
+    for mode in [Mode::Unified, Mode::Sealed] {
+        let h = Home::new();
+        h.write(".claude/hooks/app-tabs.json", b"original");
+        h.write(".claude/hooks/snippets.json", b"[]");
+        let c = h.conn();
+        c.execute_batch("CREATE TRIGGER stop_late BEFORE INSERT ON documents WHEN NEW.name='hooks/snippets.json' BEGIN SELECT RAISE(ABORT,'stop'); END").unwrap();
+        assert!(migrate(&h.opts()).is_err());
+        c.execute_batch("DROP TRIGGER stop_late").unwrap();
+        unified::set_mode(&c, "tabs", mode, "private-test", 100).unwrap();
+        let tabs = h.0.join(".claude/hooks/app-tabs.json");
+        let lock = h.0.join(".claude/hooks/app-tabs.json.lock");
+        fs::remove_file(&tabs).unwrap();
+        fs::remove_file(&lock).unwrap();
+        let mut opts = h.opts();
+        opts.resume = true;
+        opts.domains = Some(vec!["ui-docs".into()]);
+        let report = migrate(&opts).unwrap();
+        assert_eq!(
+            c.query_row(
+                "SELECT status FROM migration_runs WHERE run_id=?1",
+                [&report.run_id],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+            "done"
+        );
+        assert_eq!(unified::mode_of(Some(&c), "tabs").unwrap(), mode);
+        assert!(!tabs.exists());
+        assert!(!lock.exists());
+    }
+}

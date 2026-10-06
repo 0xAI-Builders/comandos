@@ -4,6 +4,7 @@ mod documents;
 mod logs;
 pub(crate) mod modes;
 mod open;
+mod preflight;
 pub use collections::*;
 pub use documents::*;
 pub use logs::*;

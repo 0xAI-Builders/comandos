@@ -322,3 +322,215 @@ fn unknown_schema_revision_is_rejected_before_any_new_migration() {
     drop(c);
     std::fs::remove_file(p).unwrap();
 }
+
+#[test]
+fn rejected_wal_backed_open_preserves_source_entries_bytes_and_metadata() {
+    use sha2::{Digest, Sha256};
+    use std::{
+        fs,
+        os::unix::fs::{MetadataExt, PermissionsExt},
+    };
+    fn tree(dir: &std::path::Path) -> Vec<(String, String, u64, u32, i64, i64)> {
+        let mut files: Vec<_> = fs::read_dir(dir)
+            .unwrap()
+            .map(|entry| {
+                let entry = entry.unwrap();
+                let meta = entry.metadata().unwrap();
+                (
+                    entry.file_name().to_str().unwrap().to_owned(),
+                    format!("{:x}", Sha256::digest(fs::read(entry.path()).unwrap())),
+                    meta.ino(),
+                    meta.mode(),
+                    meta.mtime(),
+                    meta.mtime_nsec(),
+                )
+            })
+            .collect();
+        files.sort();
+        files
+    }
+    let root = std::env::temp_dir().join(format!(
+        "comandos-unified-wal-reject-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).unwrap();
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+    let source = root.join("source");
+    fs::create_dir(&source).unwrap();
+    fs::set_permissions(&source, fs::Permissions::from_mode(0o700)).unwrap();
+    let path = source.join("state.sqlite3");
+    let c = unified::open_unified(&path).unwrap();
+    c.execute_batch("PRAGMA wal_autocheckpoint=0").unwrap();
+    unified::doc_put(
+        &c,
+        "hooks/prefs.json",
+        "ui-docs",
+        b"only-in-wal",
+        Origin::Mirror,
+        100,
+    )
+    .unwrap();
+    for (name, dbmode, parentmode, future) in [
+        ("db0644", 0o644, 0o700, 0),
+        ("parent0755", 0o600, 0o755, 0),
+        ("future-version-wal", 0o600, 0o700, 1),
+        ("future-schema-wal", 0o600, 0o700, 2),
+    ] {
+        if future == 1 {
+            c.pragma_update(None, "user_version", 12).unwrap();
+        }
+        if future == 2 {
+            c.pragma_update(None, "user_version", 11).unwrap();
+            c.execute("INSERT INTO schema_migrations VALUES(105,'future',0)", [])
+                .unwrap();
+        }
+        let dir = root.join(name);
+        fs::create_dir(&dir).unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(parentmode)).unwrap();
+        let db = dir.join("state.sqlite3");
+        fs::copy(&path, &db).unwrap();
+        fs::copy(
+            format!("{}-wal", path.display()),
+            format!("{}-wal", db.display()),
+        )
+        .unwrap();
+        fs::set_permissions(&db, fs::Permissions::from_mode(dbmode)).unwrap();
+        fs::set_permissions(
+            format!("{}-wal", db.display()),
+            fs::Permissions::from_mode(0o600),
+        )
+        .unwrap();
+        let before = tree(&dir);
+        let parent = fs::metadata(&dir).unwrap();
+        let rejected = unified::open_unified(&db);
+        let error = rejected.unwrap_err().to_string();
+        let expected = if future > 0 {
+            "versión más nueva"
+        } else if dbmode != 0o600 {
+            "permisos 0600"
+        } else {
+            "directorio privado 0700"
+        };
+        assert!(error.contains(expected), "{name}: {error}");
+        assert_eq!(tree(&dir), before, "{name}");
+        assert_eq!(fs::metadata(&dir).unwrap().mode(), parent.mode());
+        let after = fs::metadata(&dir).unwrap();
+        assert_eq!(
+            (
+                after.dev(),
+                after.ino(),
+                after.mtime(),
+                after.mtime_nsec(),
+                after.ctime(),
+                after.ctime_nsec()
+            ),
+            (
+                parent.dev(),
+                parent.ino(),
+                parent.mtime(),
+                parent.mtime_nsec(),
+                parent.ctime(),
+                parent.ctime_nsec()
+            )
+        );
+    }
+    drop(c);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn validated_wal_open_reads_committed_rows_without_initial_shm() {
+    use std::{fs, os::unix::fs::PermissionsExt};
+    let root =
+        std::env::temp_dir().join(format!("comandos-unified-valid-wal-{}", std::process::id()));
+    let source = root.join("source");
+    let target = root.join("target");
+    for dir in [&root, &source, &target] {
+        fs::create_dir_all(dir).unwrap();
+        fs::set_permissions(dir, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    // URI characters exercise the immutable fast path too.
+    let original = source.join("state ?#%.sqlite3");
+    let c = unified::open_unified(&original).unwrap();
+    c.execute_batch("PRAGMA wal_autocheckpoint=0").unwrap();
+    unified::doc_put(
+        &c,
+        "hooks/prefs.json",
+        "ui-docs",
+        b"WAL commit",
+        Origin::Mirror,
+        100,
+    )
+    .unwrap();
+    let db = target.join("state ?#%.sqlite3");
+    fs::copy(&original, &db).unwrap();
+    fs::copy(
+        format!("{}-wal", original.display()),
+        format!("{}-wal", db.display()),
+    )
+    .unwrap();
+    assert!(!std::path::Path::new(&format!("{}-shm", db.display())).exists());
+    let target_conn = unified::open_unified(&db).unwrap();
+    assert_eq!(
+        unified::doc_get(&target_conn, "hooks/prefs.json")
+            .unwrap()
+            .unwrap()
+            .body,
+        b"WAL commit"
+    );
+    drop(target_conn);
+    assert!(!std::path::Path::new(&format!("{}-wal", db.display())).exists());
+    let reopened = unified::open_unified(&db).unwrap();
+    assert_eq!(
+        unified::doc_get(&reopened, "hooks/prefs.json")
+            .unwrap()
+            .unwrap()
+            .body,
+        b"WAL commit"
+    );
+    drop(reopened);
+    drop(c);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn immutable_schema_gate_rejects_secure_no_wal_database_unchanged() {
+    use std::{
+        fs,
+        os::unix::fs::{MetadataExt, PermissionsExt},
+    };
+    let root = std::env::temp_dir().join(format!(
+        "comandos-unified-no-wal-future-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).unwrap();
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+    for (name, sql) in [
+        (
+            "user ?#%.sqlite3",
+            "PRAGMA user_version=12; CREATE TABLE marker(value TEXT);",
+        ),
+        (
+            "schema ?#%.sqlite3",
+            "CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY,name TEXT,applied_at REAL);INSERT INTO schema_migrations VALUES(105,'future',0);",
+        ),
+    ] {
+        let db = root.join(name);
+        let c = Connection::open(&db).unwrap();
+        c.execute_batch(sql).unwrap();
+        drop(c);
+        fs::set_permissions(&db, fs::Permissions::from_mode(0o600)).unwrap();
+        let before = fs::read(&db).unwrap();
+        let meta = fs::metadata(&db).unwrap();
+        let error = unified::open_unified(&db).unwrap_err();
+        assert!(error.to_string().contains("versión más nueva"));
+        assert_eq!(fs::read(&db).unwrap(), before);
+        let after = fs::metadata(&db).unwrap();
+        assert_eq!(
+            (after.ino(), after.mode(), after.mtime(), after.mtime_nsec()),
+            (meta.ino(), meta.mode(), meta.mtime(), meta.mtime_nsec())
+        );
+    }
+    assert_eq!(fs::read_dir(&root).unwrap().count(), 2);
+    fs::remove_dir_all(root).unwrap();
+}

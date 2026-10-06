@@ -84,21 +84,27 @@ pub fn open_unified(path: &Path) -> Result<Connection> {
             Err(e) => return Err(e.into()),
         }
     }
-    let conn = Connection::open(path)?;
-    validate(&conn)?;
-    if path != Path::new(":memory:") {
+    let conn = if path != Path::new(":memory:") {
         use std::os::unix::fs::PermissionsExt;
-        // No chmod de un COMANDOS_DB existente ni de su directorio compartido.
-        // Las bases de una versión futura se rechazan antes de estas comprobaciones.
+        // Toda privacidad se comprueba antes de abrir SQLite sobre la fuente.
         private_parent(path)?;
-        if std::fs::metadata(path)?.permissions().mode() & 0o7777 != 0o600 {
+        if std::fs::symlink_metadata(path)?.permissions().mode() & 0o7777 != 0o600 {
             return Err(Error::Validation(format!(
                 "{}: la base única requiere permisos 0600",
                 path.display()
             )));
         }
-    }
+        super::preflight::accept(path)?
+    } else {
+        Connection::open(path)?
+    };
+    // Un error posterior a la aceptación tampoco debe checkpoint al cerrar.
+    conn.set_db_config(
+        rusqlite::config::DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+        true,
+    )?;
     conn.busy_timeout(Duration::from_secs(5))?;
+    validate(&conn)?;
     conn.pragma_update(None, "foreign_keys", true)?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
     let tx = Transaction::new_unchecked(&conn, TransactionBehavior::Immediate)?;
@@ -120,5 +126,9 @@ pub fn open_unified(path: &Path) -> Result<Connection> {
     }
     crate::usage::ensure_schema(&conn)?;
     tx.commit()?;
+    conn.set_db_config(
+        rusqlite::config::DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+        false,
+    )?;
     Ok(conn)
 }
