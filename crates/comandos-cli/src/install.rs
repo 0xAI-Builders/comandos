@@ -1,8 +1,15 @@
 //! Instalación en paralelo del binario: `--stage`, `--link` y `--rollback`, sin cutover implícito.
+pub mod assets;
+pub mod cleanup;
 pub mod darwin;
+pub mod full;
+pub mod hooks_register;
 pub mod manifest;
+pub mod plan;
+pub mod platform;
 mod record;
 pub mod release;
+pub mod retarget;
 pub use manifest::STATE_PROTOCOL;
 
 use record::Record;
@@ -30,6 +37,9 @@ enum Action {
 
 /// Devuelve el código de salida; los errores de uso salen con 2 y los de operación con `Err`.
 pub fn run(args: &[String]) -> Result<i32, String> {
+    if full::handles(args) {
+        return full::run(args);
+    }
     let Some((home, action, dry_run, no_launchctl)) = parse(args) else {
         eprintln!("{USAGE}");
         return Ok(2);

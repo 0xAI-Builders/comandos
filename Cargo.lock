@@ -431,6 +431,7 @@ dependencies = [
  "chrono",
  "comandos-acp",
  "comandos-core",
+ "comandos-desktop",
  "comandos-extensions",
  "comandos-runtime",
  "comandos-server",

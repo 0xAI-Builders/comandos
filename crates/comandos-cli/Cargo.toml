@@ -16,6 +16,7 @@ path = "src/main.rs"
 [dependencies]
 # `install --stage` valida el `manifest.json` de `web/` (T4).
 comandos-core = { path = "../comandos-core" }
+comandos-desktop = { path = "../comandos-desktop" }
 toml = "=0.8.2"
 # Already locked by runtime: source spans for scoped notify migrations.
 toml_edit = "=0.25.15"
