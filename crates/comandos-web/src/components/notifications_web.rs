@@ -1,6 +1,9 @@
+use super::super::web_support::utf16_query as query;
 use super::super::web_support::*;
 use comandos_web_dom::port::utf16_string as string;
-use comandos_web_dom::port::{from_utf16_json as from_json, to_utf16_json as to_json};
+use comandos_web_dom::port::{
+    from_utf16_json as from_json, to_utf16_json as to_json, utf16_get as get, utf16_set as set,
+};
 use comandos_web_dom::{bridge::global_set, port::*};
 use comandos_web_view::notifications as view;
 use js_sys::{Array, Map, Set};
@@ -178,9 +181,9 @@ impl Controller {
     async fn request(&self, method: &str, path: &str, body: JsValue) -> Result<JsValue, JsValue> {
         let cb = get(&self.opts, "transport");
         let args = if body.is_undefined() {
-            vec![method.into(), path.into()]
+            vec![utf16_value(method), utf16_value(path)]
         } else {
-            vec![method.into(), path.into(), body]
+            vec![utf16_value(method), utf16_value(path), body]
         };
         wait(invoke(&cb, &args)).await
     }
@@ -663,10 +666,10 @@ impl Controller {
         if !r.is_object() {
             return Ok(());
         }
-        if let Some(rev) = get(r, "rev").as_string()
+        if get(r, "rev").is_string()
             && let Ok(mut s) = self.watch_rev.try_borrow_mut()
         {
-            *s = rev;
+            *s = string(&get(r, "rev"));
         }
         let badge = get(r, "badge");
         if !badge.is_null() && !badge.is_undefined() && number(&badge).is_finite() {
@@ -704,9 +707,13 @@ impl Controller {
             .try_borrow()
             .map(|s| s.clone())
             .unwrap_or_default();
+        let encoded_rev = match invoke(&global("encodeURIComponent"), &[utf16_value(&rev)]) {
+            Ok(value) => string(&value),
+            Err(error) => return js_sys::Promise::reject(&error).into(),
+        };
         let path = format!(
             "/notices/watch?rev={}&wait={}",
-            encode(&rev.into()),
+            encoded_rev,
             if seconds.is_undefined() {
                 "25".into()
             } else {
@@ -726,7 +733,12 @@ impl Controller {
         let _ = set(&options, "signal", &get(&abort, "signal"));
         let response = invoke(
             &get(&self.opts, "transport"),
-            &["GET".into(), path.into(), JsValue::UNDEFINED, options],
+            &[
+                "GET".into(),
+                utf16_value(&path),
+                JsValue::UNDEFINED,
+                options,
+            ],
         );
         let response = match response {
             Ok(p) => js_sys::Promise::resolve(&p),
@@ -1118,7 +1130,12 @@ fn watch_fetch(path: String, signal: JsValue) -> JsValue {
             set(&headers, "X-Comandos-Token", &token)?;
         }
         set(&opts, "headers", &headers)?;
-        let r = wait(call(&global("window"), "fetch", &[path.into(), opts])).await?;
+        let r = wait(call(
+            &global("window"),
+            "fetch",
+            &[utf16_value(&path), opts],
+        ))
+        .await?;
         let data = wait(call(&r, "json", &[]))
             .await
             .unwrap_or_else(|_| object());

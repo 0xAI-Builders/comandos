@@ -1,6 +1,10 @@
 use super::super::web_support::*;
+use super::super::web_support::{utf16_attr as attr, utf16_toast as toast};
 use super::*;
-use comandos_web_dom::port::{from_utf16_json as from_json, to_utf16_json as to_json};
+use comandos_web_dom::port::utf16_string as string;
+use comandos_web_dom::port::{
+    from_utf16_json as from_json, to_utf16_json as to_json, utf16_get as get, utf16_set as set,
+};
 use comandos_web_dom::{bridge::global_set, port::*};
 use comandos_web_view::work_marks as view;
 use std::{cell::RefCell, rc::Rc};
@@ -28,7 +32,10 @@ fn index(list: JsValue) -> Result<JsValue, JsValue> {
     let map = js_sys::Map::new();
     for row in js_sys::Array::from(&list).iter() {
         map.set(
-            &key(&string(&get(&row, "scope")), &string(&get(&row, "key"))).into(),
+            &utf16_value(&key(
+                &string(&get(&row, "scope")),
+                &string(&get(&row, "key")),
+            )),
             &row,
         );
     }
@@ -39,7 +46,7 @@ fn row(scope: &str, name: &str) -> JsValue {
     let Ok(s) = st.try_borrow() else {
         return JsValue::NULL;
     };
-    let r = call(&s.marks, "get", &[key(scope, name).into()]).unwrap_or(JsValue::NULL);
+    let r = call(&s.marks, "get", &[utf16_value(&key(scope, name))]).unwrap_or(JsValue::NULL);
     if truthy(&r) {
         r
     } else {
@@ -48,7 +55,7 @@ fn row(scope: &str, name: &str) -> JsValue {
     }
 }
 fn favorite(name: &str) -> bool {
-    truthy(&call(&get(&state(), "favs"), "has", &[name.into()]).unwrap_or(JsValue::FALSE))
+    truthy(&call(&get(&state(), "favs"), "has", &[utf16_value(name)]).unwrap_or(JsValue::FALSE))
 }
 fn adopt(body: JsValue) -> Result<JsValue, JsValue> {
     let marks = get(&body, "marks");
@@ -104,8 +111,8 @@ fn set_mark(scope: String, name: String, value: JsValue) -> JsValue {
     promise(async move {
         let current = row(&scope, &name);
         let body = object();
-        set(&body, "scope", &scope.clone().into())?;
-        set(&body, "key", &name.clone().into())?;
+        set(&body, "scope", &utf16_value(&scope))?;
+        set(&body, "key", &utf16_value(&name))?;
         set(&body, "value", &value)?;
         set(&body, "expectedRevision", &get(&current, "revision"))?;
         let r = request("POST", "/work-marks", body).await?;
@@ -127,7 +134,7 @@ fn set_mark(scope: String, name: String, value: JsValue) -> JsValue {
                 call(
                     &s.marks,
                     "set",
-                    &[key(&scope, &name).into(), changed.clone()],
+                    &[utf16_value(&key(&scope, &name)), changed.clone()],
                 )?;
             }
             decorate()?;
@@ -140,12 +147,13 @@ fn set_mark(scope: String, name: String, value: JsValue) -> JsValue {
             ))
             .into());
         }
-        Err(js_sys::Error::new(
-            &get(&body, "error")
-                .as_string()
-                .unwrap_or_else(|| "No se pudo guardar la marca".into()),
-        )
-        .into())
+        let message = get(&body, "error");
+        let message = if message.is_string() {
+            message
+        } else {
+            "No se pudo guardar la marca".into()
+        };
+        Err(invoke(&global("Error"), &[message])?)
     })
 }
 fn paint(button: JsValue, target: JsValue) -> Result<JsValue, JsValue> {
@@ -158,7 +166,7 @@ fn paint(button: JsValue, target: JsValue) -> Result<JsValue, JsValue> {
         .activity
         .clone();
     let activity = activity_for(&to_json(&target), &to_json(&activity));
-    let mark = get(&r, "mark").as_string().unwrap_or_default();
+    let mark = string(&get(&r, "mark"));
     let c = channels(&mark, activity.as_str().unwrap_or_default());
     let ai = c.get("ai").and_then(Value::as_str).unwrap_or("idle");
     let sticker = c.get("sticker").and_then(Value::as_str);
@@ -212,7 +220,7 @@ fn paint(button: JsValue, target: JsValue) -> Result<JsValue, JsValue> {
         }
     );
     attr(&button, "aria-label", &title);
-    set(&button, "title", &title.into())?;
+    set(&button, "title", &utf16_value(&title))?;
     let host = get(&button, "parentNode");
     if !truthy(&host) {
         return Ok(JsValue::UNDEFINED);
@@ -258,7 +266,7 @@ fn paint(button: JsValue, target: JsValue) -> Result<JsValue, JsValue> {
             ""
         }
     );
-    set(&extra, "innerHTML", &html.into())?;
+    set(&extra, "innerHTML", &utf16_value(&html))?;
     Ok(JsValue::UNDEFINED)
 }
 fn query_closest(el: &JsValue, sel: &str) -> JsValue {
@@ -297,7 +305,7 @@ fn choose(items: JsValue, target: JsValue, index: u32) -> JsValue {
         let result = if is_fav && scope == "session" && global("setSessionFavorite").is_function() {
             wait(invoke(
                 &global("setSessionFavorite"),
-                &[name.into(), get(&item, "value")],
+                &[utf16_value(&name), get(&item, "value")],
             ))
             .await
         } else {
@@ -578,18 +586,20 @@ pub fn mount() -> Result<(), JsValue> {
         set(&api, k, &from_json(d.get(k).unwrap_or(&Value::Null))?)?;
     }
     method(&api, "label", |a| {
-        Ok(view::label(
+        Ok(utf16_value(&view::label(
             &string(&a.get(0)),
             if a.get(1).is_undefined() {
                 english()
             } else {
                 number(&a.get(1)) != 0.
             },
-        )
-        .into())
+        )))
     })?;
     method(&api, "iconSvg", |a| {
-        Ok(view::icon(&string(&a.get(0)), a.get(1).as_f64().unwrap_or(16.)).into())
+        Ok(utf16_value(&view::icon(
+            &string(&a.get(0)),
+            a.get(1).as_f64().unwrap_or(16.),
+        )))
     })?;
     method(&api, "aiIconSvg", |a| {
         Ok(view::ai_icon(

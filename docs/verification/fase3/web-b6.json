@@ -1,6 +1,6 @@
 {
   "status": "implementation_and_node_checks_pass_browser_pending",
-  "artifact": "7c658a0613d7",
+  "artifact": "cd7e5eea705c",
   "scope": "work-marks and manual Pomodoro; server authority and current polling preserved",
   "plan_discrepancy": "Current original source uses pixel-art hourglass and six styles; preserving current source and CJS contracts over obsolete plan ring wording",
   "node": {
@@ -50,6 +50,17 @@
       "work-marks"
     ],
     "old_907d_red_exit": 1,
-    "final_7c658_green_exit": 0
+    "final_7c658_green_exit": 0,
+    "consumer_v2": {
+      "supplied_cases": 22,
+      "all_equal": true,
+      "extended_cases": 57,
+      "workmarks_identity_request_and_real_suggestion_click": true,
+      "analytics_real_popover_and_tooltip_handlers": true,
+      "notices_group_read_and_watch_revision": true,
+      "pomodoro_send_error_identity": true,
+      "old_7c658_red_exit": 1,
+      "final_cd7e5_green_exit": 0
+    }
   }
 }

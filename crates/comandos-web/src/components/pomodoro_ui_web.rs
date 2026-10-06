@@ -171,7 +171,7 @@ fn note_completion(u: &Ui, v: &JsValue) -> Result<(), JsValue> {
             .unwrap_or(JsValue::NULL);
             if truthy(&device) && truthy(&call(&snd, "isReady", &[]).unwrap_or(JsValue::FALSE)) {
                 let payload = object();
-                set(&payload, "eventId", &event.clone().into())?;
+                set(&payload, "eventId", &utf16_value(&event))?;
                 set(&payload, "deviceId", &device)?;
                 let event = if level_up {
                     format!(
@@ -558,7 +558,7 @@ fn tick() -> Result<JsValue, JsValue> {
             ("[data-pm-label]", label(&v)),
         ] {
             for el in all(&panel, sel) {
-                set(&el, "textContent", &text_.clone().into())?;
+                set(&el, "textContent", &utf16_value(&text_))?;
             }
         }
     }

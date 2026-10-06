@@ -1,7 +1,10 @@
 use super::super::web_support::*;
+use super::super::web_support::{utf16_attr as attr, utf16_escape as escape};
 use super::*;
 use comandos_web_dom::port::utf16_string as string;
-use comandos_web_dom::port::{from_utf16_json as from_json, to_utf16_json as to_json};
+use comandos_web_dom::port::{
+    from_utf16_json as from_json, to_utf16_json as to_json, utf16_get as get, utf16_set as set,
+};
 use comandos_web_dom::{bridge::global_set, port::*};
 use comandos_web_view::pomodoro as art;
 use std::{cell::RefCell, rc::Rc};
@@ -182,11 +185,13 @@ async fn dispatch(st: Rc<RefCell<Client>>) -> Result<JsValue, JsValue> {
             st.try_borrow_mut().map_err(|_| borrowed())?.pending = JsValue::NULL;
         }
         let code = get(&body, "code")
-            .as_string()
+            .is_string()
+            .then(|| string(&get(&body, "code")))
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| if retry { "server" } else { "rejected" }.into());
         let msg = get(&body, "error")
-            .as_string()
+            .is_string()
+            .then(|| string(&get(&body, "error")))
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| {
                 if retry {

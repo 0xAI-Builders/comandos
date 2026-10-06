@@ -1,6 +1,8 @@
 use super::super::web_support::*;
 use comandos_web_dom::port::utf16_string as string;
-use comandos_web_dom::port::{from_utf16_json as from_json, to_utf16_json as to_json};
+use comandos_web_dom::port::{
+    from_utf16_json as from_json, to_utf16_json as to_json, utf16_get as get, utf16_set as set,
+};
 use comandos_web_dom::{bridge::global_set, port::*};
 use comandos_web_view::{analytics::Renderer, escape::text as esc};
 use serde_json::json;
@@ -171,7 +173,7 @@ impl UI {
         let pop = query(&self.el, ".pop");
         let data = get(&btn, "dataset");
         let decoded = invoke(&global("decodeURIComponent"), &[get(&data, "pop")])?;
-        let rows = js_sys::JSON::parse(&string(&decoded))?;
+        let rows = call(&global("JSON"), "parse", &[decoded])?;
         let mut html = format!("<h6>{}</h6>", esc(&string(&get(&data, "title"))));
         for row in js_sys::Array::from(&rows).iter() {
             html += &format!(

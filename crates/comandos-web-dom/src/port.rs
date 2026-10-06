@@ -73,6 +73,13 @@ pub fn utf16_string(v: &JsValue) -> String {
         .map(|v| comandos_web_view::utf16::encode(js_sys::JsString::from(v).iter()))
         .unwrap_or_default()
 }
+/// Property names here use the same internal encoding as utf16_string/JSON.
+pub fn utf16_get(o: &JsValue, key: &str) -> JsValue {
+    Reflect::get(o, &utf16_value(key)).unwrap_or(JsValue::UNDEFINED)
+}
+pub fn utf16_set(o: &JsValue, key: &str, value: &JsValue) -> Result<(), JsValue> {
+    Reflect::set(o, &utf16_value(key), value).map(|_| ())
+}
 pub fn string(v: &JsValue) -> String {
     invoke(&get(&js_sys::global(), "String"), std::slice::from_ref(v))
         .ok()
