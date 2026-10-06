@@ -332,6 +332,7 @@ pub fn mount() -> Result<(), wasm_bindgen::JsValue> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::unreachable)]
 mod tests {
     use super::{detach_tab, move_tab, resize_split, tab_ids};
     use serde_json::Value;

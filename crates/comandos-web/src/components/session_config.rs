@@ -475,6 +475,7 @@ mod tests {
 
 #[cfg(test)]
 #[test]
+#[allow(clippy::unwrap_used, clippy::panic)]
 fn original_session_config_ui_assertion_inputs_match_node_oracle() {
     let cases: Value = serde_json::from_str(include_str!(
         "../../../../xtask/web/fixtures/sounds/session-cases.json"
@@ -511,13 +512,13 @@ fn original_session_config_ui_assertion_inputs_match_node_oracle() {
             _ => panic!("unexpected original API {name}"),
         };
         // JS omits undefined identity values. The native model uses null.
-        if name == "draft" {
-            if let Some(o) = got.as_object_mut() {
-                o.retain(|k, v| {
-                    !(["expectedIdentity", "expectedConversationId"].contains(&k.as_str())
-                        && v.is_null())
-                });
-            }
+        if name == "draft"
+            && let Some(o) = got.as_object_mut()
+        {
+            o.retain(|k, v| {
+                !(["expectedIdentity", "expectedConversationId"].contains(&k.as_str())
+                    && v.is_null())
+            });
         }
         assert_eq!(&got, case.get("expected").unwrap(), "{name}: {args:?}");
     }

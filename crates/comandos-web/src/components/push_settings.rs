@@ -151,6 +151,11 @@ pub fn mount() -> Result<(), wasm_bindgen::JsValue> {
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+pub fn attach() -> Result<(), wasm_bindgen::JsValue> {
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{event_url_after_routing, support, url_base64_to_bytes};
@@ -177,9 +182,4 @@ mod tests {
         assert_eq!(event.as_deref(), Some("ev 42"));
         assert_eq!(url, "/?x=1");
     }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn attach() -> Result<(), wasm_bindgen::JsValue> {
-    Ok(())
 }
