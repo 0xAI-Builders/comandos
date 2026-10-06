@@ -243,8 +243,11 @@ pub(crate) fn with_readonly_access<T>(
                 "candado de modo cambió durante lectura".into(),
             ));
         }
-        file.try_lock_shared()
-            .map_err(|e| Error::Validation(format!("modo ocupado durante lectura: {e}")))?;
+        match file.try_lock_shared() {
+            Ok(()) => {}
+            Err(fs::TryLockError::WouldBlock) => return Err(Error::ModeBusy),
+            Err(fs::TryLockError::Error(error)) => return Err(error.into()),
+        }
         Some(file)
     } else {
         None

@@ -22,6 +22,7 @@ toml_edit = "=0.25.15"
 getrandom.workspace = true
 comandos-extensions = { path = "../comandos-extensions" }
 comandos-runtime = { path = "../comandos-runtime" }
+comandos-acp = { path = "../comandos-acp" }
 comandos-server = { path = "../comandos-server" }
 sha2.workspace = true
 comandos-store = { path = "../comandos-store" }

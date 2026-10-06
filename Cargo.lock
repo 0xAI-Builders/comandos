@@ -342,6 +342,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "comandos-acp"
+version = "0.1.0"
+dependencies = [
+ "comandos-core",
+ "comandos-runtime",
+ "comandos-store",
+ "nix",
+ "regex",
+ "serde_json",
+ "signal-hook",
+]
+
+[[package]]
 name = "comandos-app"
 version = "0.1.0"
 dependencies = [
@@ -389,6 +402,7 @@ name = "comandos-cli"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "comandos-acp",
  "comandos-core",
  "comandos-extensions",
  "comandos-runtime",

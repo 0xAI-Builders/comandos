@@ -104,3 +104,22 @@ fn dispatch_agents_alias_and_explicit_preserve_arguments() {
         );
     }
 }
+
+#[test]
+fn dispatch_acp_alias_and_explicit_preserve_values() {
+    for (name, args) in [
+        (
+            "comandos",
+            v(&["acp", "--model", "two words", "--resume", "id"]),
+        ),
+        (
+            "/private/bin/cc-acp",
+            v(&["--model", "two words", "--resume", "id"]),
+        ),
+    ] {
+        assert_eq!(
+            resolve(name, &args),
+            Command::Acp(v(&["--model", "two words", "--resume", "id"]))
+        );
+    }
+}

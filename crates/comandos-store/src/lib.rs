@@ -19,6 +19,7 @@ use serde_json::{Map, Value};
 
 #[derive(Debug)]
 pub enum Error {
+    ModeBusy,
     Validation(String),
     MissingEvent,
     Io(std::io::Error),
@@ -28,6 +29,11 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::ModeBusy => write!(
+                f,
+                "modo ocupado durante lectura: {}",
+                std::fs::TryLockError::WouldBlock
+            ),
             Self::Validation(s) => f.write_str(s),
             Self::Io(e) => e.fmt(f),
             Self::MissingEvent => f.write_str("evento inexistente"),

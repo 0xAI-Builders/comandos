@@ -36,6 +36,131 @@ impl DocHandle<'_> {
             body()
         })
     }
+    /// Atomic owned read/modify/write. The callback only transforms bytes and
+    /// must not call this facade or perform external I/O while its locks live.
+    /// `None` leaves the document unchanged. Reads never create a missing DB;
+    /// write admission checks the original source before creating file locks.
+    pub fn update_owned(
+        &self,
+        now_ms: i64,
+        update: impl FnOnce(Option<&[u8]>) -> Result<Option<Vec<u8>>>,
+    ) -> Result<bool> {
+        self.update_owned_when(now_ms, std::time::Duration::from_secs(5), || true, update)
+    }
+    /// The deadline bounds only mode-busy admission. Cancellation is checked
+    /// before admission, file-lock acquisition and the byte transformation.
+    pub fn update_owned_when(
+        &self,
+        now_ms: i64,
+        wait: std::time::Duration,
+        allowed: impl Fn() -> bool,
+        update: impl FnOnce(Option<&[u8]>) -> Result<Option<Vec<u8>>>,
+    ) -> Result<bool> {
+        if !allowed() {
+            return Ok(false);
+        }
+        let path = unified::unified_path(self.home);
+        let deadline = std::time::Instant::now() + wait;
+        let existing = loop {
+            if !allowed() {
+                return Ok(false);
+            }
+            match unified::modes::with_readonly_access(self.home, self.domain, |_, db| {
+                Ok(db.is_some())
+            }) {
+                Err(Error::ModeBusy) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(5))
+                }
+                result => break result?,
+            }
+        };
+        if !allowed() {
+            return Ok(false);
+        }
+        let db = if existing {
+            Some(unified::open_existing(&path)?)
+        } else {
+            None
+        };
+        let (mode, _mode_lock) = unified::modes::access_mode(self.home, db.as_ref(), self.domain)?;
+        if db.is_none() && path.exists() {
+            return Err(Error::Validation(
+                "base apareció durante actualización de documento".into(),
+            ));
+        }
+        if !allowed() {
+            return Ok(false);
+        }
+        let _file_lock = if mode == Mode::Sealed {
+            None
+        } else {
+            // New document/control directories are private; existing modes are
+            // preserved. Sealed never recreates the legacy directory.
+            if let Some(parent) = self.lock.parent() {
+                use std::os::unix::fs::DirBuilderExt;
+                fs::DirBuilder::new()
+                    .recursive(true)
+                    .mode(0o700)
+                    .create(parent)?;
+            }
+            Some(FileLock::exclusive(&self.lock)?)
+        };
+        // In Sealed there is no legacy lock. SQLite must protect the read as
+        // well as the write, including updates from other sealed writers.
+        let tx = if mode != Mode::Legacy {
+            db.as_ref()
+                .map(|db| {
+                    rusqlite::Transaction::new_unchecked(
+                        db,
+                        rusqlite::TransactionBehavior::Immediate,
+                    )
+                })
+                .transpose()?
+        } else {
+            None
+        };
+        if let Some(tx) = &tx {
+            crate::migrate::move_db::admit_write(tx)?;
+        }
+        if !allowed() {
+            return Ok(false);
+        }
+        let old = if matches!(mode, Mode::Unified | Mode::Sealed) {
+            unified::doc_get(
+                db.as_ref()
+                    .ok_or_else(|| Error::Validation("estado único sin base".into()))?,
+                self.name,
+            )?
+            .map(|d| d.body)
+        } else {
+            legacy::read(&self.file)?
+        };
+        let Some(body) = update(old.as_deref())? else {
+            return Ok(false);
+        };
+        if matches!(mode, Mode::Legacy | Mode::Mirror) {
+            write_atomic(&self.file, &body)?;
+        }
+        if let Some(tx) = tx {
+            unified::doc_put(
+                &tx,
+                self.name,
+                self.domain,
+                &body,
+                if mode == Mode::Mirror {
+                    unified::Origin::Mirror
+                } else {
+                    unified::Origin::Unified
+                },
+                now_ms,
+            )?;
+            tx.commit()?;
+        }
+        if mode == Mode::Unified {
+            write_atomic(&self.file, &body)?;
+        }
+        Ok(true)
+    }
     pub fn read_readonly(&self) -> Result<Option<Vec<u8>>> {
         unified::modes::with_readonly_access(self.home, self.domain, |mode, db| {
             if matches!(mode, Mode::Unified | Mode::Sealed) {
