@@ -108,12 +108,18 @@ fn behavior_diff(args: &[String]) -> i32 {
         let oracle = page.eval(
             "async () => await(await fetch('/xtask/web/fixtures/sounds/oracle.json')).json()",
         )?;
-        let push_url=format!("{}/xtask/web/fixtures/sounds/push-ui.html",base.trim_end_matches('/'));
-        let push_script="async () => {await window.fixtureReady;const {checkPushHandlers}=await import('/xtask/web/fixtures/sounds/push-handlers.mjs');return await checkPushHandlers();}";
-        page.navigate(&format!("{push_url}?web=off"))?;let push_baseline=page.eval(push_script)?;
-        page.navigate(&format!("{push_url}?web=on"))?;let push_candidate=page.eval(push_script)?;
+        let push_url = format!(
+            "{}/xtask/web/fixtures/sounds/push-ui.html",
+            base.trim_end_matches('/')
+        );
+        let push_script = "async () => {await window.fixtureReady;const {checkPushHandlers}=await import('/xtask/web/fixtures/sounds/push-handlers.mjs');return await checkPushHandlers();}";
+        page.navigate(&format!("{push_url}?web=off"))?;
+        let push_baseline = page.eval(push_script)?;
+        page.navigate(&format!("{push_url}?web=on"))?;
+        let push_candidate = page.eval(push_script)?;
         page.close()?;
-        let passes = push_candidate==push_baseline && candidate == baseline
+        let passes = push_candidate == push_baseline
+            && candidate == baseline
             && candidate == oracle
             && negative["detected"] == true
             && proof["ready"] == true
