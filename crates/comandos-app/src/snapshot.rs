@@ -74,6 +74,9 @@ pub fn capture_with<T: crate::restore::RestoreTmux>(
         "window_height",
         "window_active",
         "window_zoomed_flag",
+        "pane-border-status",
+        "automatic-rename",
+        "window-size",
     ]
     .iter()
     .map(|key| format!("#{{{key}}}"))
@@ -106,26 +109,49 @@ pub fn capture_with<T: crate::restore::RestoreTmux>(
     let mut windows = Vec::new();
     for line in raw.lines() {
         let fields: Vec<_> = line.split(&separator).collect();
-        let [wid, index, name, layout, width, height, active, zoomed] = fields.as_slice() else {
+        let [
+            wid,
+            index,
+            name,
+            layout,
+            width,
+            height,
+            active,
+            zoomed,
+            border,
+            rename,
+            size,
+        ] = fields.as_slice()
+        else {
             return Err(SnapshotError::Invalid(format!(
                 "incomplete window row: {line:?}"
             )));
         };
         let mut window = serde_json::json!({"id":wid,"index":integer(index)?,"name":name,"layout":layout,
             "width":integer(width)?,"height":integer(height)?,"active":*active == "1","zoomed":*zoomed == "1","panes":[]});
-        for (option, field, default) in [
-            ("pane-border-status", "border_status", "off"),
-            ("automatic-rename", "automatic_rename", "off"),
-            ("window-size", "window_size", "latest"),
+        // Window options are expanded in this same list-windows response. Flag
+        // formats use 0/1 while show-options printed off/on in the snapshot.
+        let rename = match *rename {
+            "" | "0" | "off" => "off",
+            "1" | "on" => "on",
+            value => {
+                return Err(SnapshotError::Invalid(format!(
+                    "invalid automatic-rename {value:?}"
+                )));
+            }
+        };
+        for (value, field, default) in [
+            (*border, "border_status", "off"),
+            (rename, "automatic_rename", "off"),
+            (*size, "window_size", "latest"),
         ] {
-            let value = read(&["show-options", "-wAv", "-t", wid, option])?;
             if let Some(object) = window.as_object_mut() {
                 object.insert(
                     field.into(),
                     Value::String(if value.is_empty() {
                         default.into()
                     } else {
-                        value
+                        value.to_owned()
                     }),
                 );
             }

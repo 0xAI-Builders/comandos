@@ -14,6 +14,135 @@ use comandos_runtime::pane_snapshot::PaneInspector;
 use serde_json::json;
 use std::{collections::BTreeSet, path::Path};
 use support::tmux::TestTmux;
+
+struct CountingReads<'a> {
+    ctl: &'a comandos_app::tmux::TmuxCtl,
+    calls: std::cell::RefCell<Vec<Vec<String>>>,
+}
+impl restore::RestoreTmux for CountingReads<'_> {
+    type Ownership = comandos_app::tmux::OwnedSession;
+    fn mode(&self) -> RunMode {
+        self.ctl.mode()
+    }
+    fn read(&self, args: &[&str]) -> Result<String, String> {
+        self.calls
+            .borrow_mut()
+            .push(args.iter().map(|v| v.to_string()).collect());
+        restore::RestoreTmux::read(self.ctl, args)
+    }
+    fn mutate(&self, args: &[&str], stdin: Option<&[u8]>) -> Result<String, String> {
+        restore::RestoreTmux::mutate(self.ctl, args, stdin)
+    }
+    fn create(&self, args: &[&str]) -> Result<(String, Self::Ownership), String> {
+        restore::RestoreTmux::create(self.ctl, args)
+    }
+    fn cleanup(&self, own: Self::Ownership) -> Result<(), String> {
+        restore::RestoreTmux::cleanup(self.ctl, own)
+    }
+}
+
+#[test]
+fn snapshot_reads_window_options_together_without_redundant_subprocesses() {
+    let f = TestTmux::for_mode(RunMode::Sandbox).unwrap();
+    f.tmux.new_session("term-options", 100, 30);
+    let id = f
+        .ctl
+        .read(&["list-windows", "-t", "=term-options", "-F", "#{window_id}"])
+        .unwrap()
+        .stdout
+        .trim()
+        .to_owned();
+    let counted = CountingReads {
+        ctl: &f.ctl,
+        calls: Default::default(),
+    };
+    for (border, rename, size) in [
+        ("off", "off", "latest"),
+        ("top", "on", "largest"),
+        ("bottom", "off", "smallest"),
+        ("off", "on", "manual"),
+    ] {
+        for (option, value) in [
+            ("pane-border-status", border),
+            ("automatic-rename", rename),
+            ("window-size", size),
+        ] {
+            assert!(
+                f.ctl
+                    .mutate(&["set-option", "-w", "-t", &id, option, value])
+                    .unwrap()
+                    .ok()
+            );
+        }
+        counted.calls.borrow_mut().clear();
+        let captured =
+            snapshot::capture_with(&counted, "term-options", |_| Ok(Default::default())).unwrap();
+        let window = &captured["windows"][0];
+        assert_eq!(window["border_status"], border);
+        assert_eq!(window["automatic_rename"], rename);
+        assert_eq!(window["window_size"], size);
+        assert_eq!(window["panes"].as_array().unwrap().len(), 1);
+        let calls = counted.calls.borrow();
+        assert_eq!(
+            calls.len(),
+            3,
+            "window options must not each fork another tmux process: {calls:?}"
+        );
+        assert_eq!(
+            calls[2][0], "display-message",
+            "the final layout race check must remain"
+        );
+        assert_eq!(calls[2].last().unwrap(), "#{window_layout}");
+    }
+}
+
+#[test]
+fn snapshot_options_keep_inherited_global_values() {
+    let f = TestTmux::for_mode(RunMode::Sandbox).unwrap();
+    f.tmux.new_session("term-inherited", 100, 30);
+    for (option, value) in [
+        ("pane-border-status", "bottom"),
+        ("automatic-rename", "on"),
+        ("window-size", "largest"),
+    ] {
+        assert!(
+            f.ctl
+                .mutate(&["set-option", "-g", option, value])
+                .unwrap()
+                .ok()
+        );
+    }
+    let captured =
+        snapshot::capture_with(&f.ctl, "term-inherited", |_| Ok(Default::default())).unwrap();
+    assert_eq!(captured["windows"][0]["border_status"], "bottom");
+    assert_eq!(captured["windows"][0]["automatic_rename"], "on");
+    assert_eq!(captured["windows"][0]["window_size"], "largest");
+}
+
+#[test]
+fn snapshot_still_rejects_layout_change_during_metadata_lookup() {
+    let f = TestTmux::for_mode(RunMode::Sandbox).unwrap();
+    f.tmux.new_session("term-layout-race", 100, 30);
+    let captured = snapshot::capture_with(&f.ctl, "term-layout-race", |pane| {
+        assert!(
+            f.ctl
+                .mutate(&[
+                    "split-window",
+                    "-d",
+                    "-h",
+                    "-t",
+                    pane["id"].as_str().unwrap(),
+                    "/bin/sh"
+                ])
+                .unwrap()
+                .ok()
+        );
+        Ok(Default::default())
+    });
+    assert!(
+        matches!(captured, Err(snapshot::SnapshotError::Invalid(ref reason)) if reason == "Window resized during capture")
+    );
+}
 #[test]
 fn capture_and_restore_private_tmux_geometry_without_agents() {
     let f = TestTmux::for_mode(RunMode::Sandbox).unwrap();
