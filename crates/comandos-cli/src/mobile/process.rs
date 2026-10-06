@@ -1,7 +1,10 @@
 //! Bounded, noninteractive argv/stdin transport. Never invokes a shell.
 use nix::{
     fcntl::{FcntlArg, OFlag, fcntl},
-    sys::signal::{Signal, killpg},
+    sys::{
+        signal::{Signal, killpg},
+        wait::{Id, WaitPidFlag, WaitStatus, waitid},
+    },
     unistd::Pid,
 };
 use std::{
@@ -118,19 +121,27 @@ pub(super) fn run(
         if !err_done {
             err_done = read(&mut stderr, &mut err)?;
         }
-        // Keep the PID unreaped until EOF; a child retaining pipes remains
-        // bounded by the same deadline, with its owned group still identifiable.
-        if out_done
-            && err_done
-            && stdin.is_none()
-            && let Some(status) = owned.child.try_wait().map_err(|e| e.to_string())?
-        {
-            owned.finished = true;
-            return Ok(Output {
-                status,
-                stdout: out,
-                stderr: err,
-            });
+        // Keep the leader PID reserved until all group cleanup is done, even
+        // when descendants closed their own stdio before the leader exited.
+        if out_done && err_done && stdin.is_none() {
+            let id = Pid::from_raw(i32::try_from(owned.child.id()).map_err(|e| e.to_string())?);
+            let state = waitid(
+                Id::Pid(id),
+                WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT,
+            )
+            .map_err(|e| e.to_string())?;
+            if !matches!(state, WaitStatus::StillAlive) {
+                // Signal before wait/reap; the unreaped leader prevents PID
+                // reuse from redirecting this signal to an unrelated group.
+                let _ = killpg(id, Signal::SIGKILL);
+                let status = owned.child.wait().map_err(|e| e.to_string())?;
+                owned.finished = true;
+                return Ok(Output {
+                    status,
+                    stdout: out,
+                    stderr: err,
+                });
+            }
         }
         if Instant::now() >= deadline {
             return Err(format!(
@@ -158,5 +169,60 @@ mod tests {
         .unwrap_err();
         assert!(error.contains("tiempo agotado"));
         assert!(begin.elapsed() < Duration::from_secs(2));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn normal_completion_closes_owned_descendants_with_detached_stdio() {
+        use std::{fs, os::unix::fs::DirBuilderExt};
+        let mut nonce = [0; 8];
+        getrandom::fill(&mut nonce).unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "mobile-owned-group-{}-{}",
+            std::process::id(),
+            nonce.iter().map(|b| format!("{b:02x}")).collect::<String>()
+        ));
+        fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(root.clone());
+        fs::write(
+            root.join("descendant.py"),
+            r#"import sys,time
+from pathlib import Path
+p=Path(sys.argv[1]); (p/'ready').write_text('own child')
+time.sleep(.2)
+(p/'survived').write_text('owned descendant survived normal completion')
+"#,
+        )
+        .unwrap();
+        fs::write(root.join("leader.py"), r#"import sys,subprocess,time
+from pathlib import Path
+p=Path(sys.argv[1]); subprocess.Popen([sys.executable,str(p/'descendant.py'),str(p)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+limit=time.monotonic()+1
+while not (p/'ready').exists():
+ if time.monotonic()>limit: sys.exit(99)
+ time.sleep(.001)
+print('owned output',flush=True)
+sys.exit(7)
+"#).unwrap();
+        let output = run(
+            Path::new("/usr/bin/python3"),
+            &[root.join("leader.py").as_os_str(), root.as_os_str()],
+            None,
+            Duration::from_secs(2),
+        )
+        .unwrap();
+        assert_eq!(output.status.code(), Some(7));
+        assert_eq!(output.stdout, b"owned output\n");
+        std::thread::sleep(Duration::from_millis(400));
+        assert!(
+            !root.join("survived").exists(),
+            "normal completion left an owned descendant running"
+        );
     }
 }
