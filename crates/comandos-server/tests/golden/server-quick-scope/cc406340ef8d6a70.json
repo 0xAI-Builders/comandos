@@ -1,0 +1,8 @@
+{
+  "input": {
+    "source_ref": "2674f36",
+    "source": "def scope_cmd(argv):\n    \"\"\"En Linux con systemd la sesion vive en su propio scope (sobrevive a\n    reinicios de cc-dash); en macOS/otros va directo (tmux ya es un demonio).\"\"\"\n    if shutil.which(\"systemd-run\"):\n        return [\"systemd-run\", \"--user\", \"--scope\", \"--collect\", \"--quiet\"] + argv\n    return argv\n",
+    "script": "import ast,json,sys,types\nfn=next(n for n in ast.parse(open(sys.argv[1]).read()).body if isinstance(n,ast.FunctionDef) and n.name=='scope_cmd')\nns={'shutil':types.SimpleNamespace(which=lambda _:True)}\nexec(compile(ast.Module(body=[fn],type_ignores=[]),sys.argv[1],'exec'),ns)\nprint(json.dumps(ns['scope_cmd'](['/fixture/tmux','-S','/fixture/socket with space'])))\nns['shutil']=types.SimpleNamespace(which=lambda _:None)\nprint(json.dumps(ns['scope_cmd'](['/fixture/tmux','-S','/fixture/socket with space'])))\n"
+  },
+  "output_b64": "WyJzeXN0ZW1kLXJ1biIsICItLXVzZXIiLCAiLS1zY29wZSIsICItLWNvbGxlY3QiLCAiLS1xdWlldCIsICIvZml4dHVyZS90bXV4IiwgIi1TIiwgIi9maXh0dXJlL3NvY2tldCB3aXRoIHNwYWNlIl0KWyIvZml4dHVyZS90bXV4IiwgIi1TIiwgIi9maXh0dXJlL3NvY2tldCB3aXRoIHNwYWNlIl0K"
+}

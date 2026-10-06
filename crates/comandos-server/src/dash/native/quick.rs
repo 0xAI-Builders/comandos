@@ -471,11 +471,7 @@ mod tests {
         assert_eq!(linux.env, tail.env);
         assert_eq!(linux.env_remove, tail.env_remove);
         // Real Python function AST; inert which, no startup or subprocess.
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let code = r#"import ast,json,sys,types
 fn=next(n for n in ast.parse(open(sys.argv[1]).read()).body if isinstance(n,ast.FunctionDef) and n.name=='scope_cmd')
 ns={'shutil':types.SimpleNamespace(which=lambda _:True)}
@@ -484,17 +480,27 @@ print(json.dumps(ns['scope_cmd'](['/fixture/tmux','-S','/fixture/socket with spa
 ns['shutil']=types.SimpleNamespace(which=lambda _:None)
 print(json.dumps(ns['scope_cmd'](['/fixture/tmux','-S','/fixture/socket with space'])))
 "#;
-        let out = std::process::Command::new("/usr/bin/python3")
-            .args(["-c", code])
-            .arg(root.join("bin/cc-dash"))
-            .output()
-            .unwrap();
-        assert!(
-            out.status.success(),
-            "{}",
-            String::from_utf8_lossy(&out.stderr)
+        let out = comandos_oracle::oracle_at(
+            &root.join("tests/golden"),
+            "server-quick-scope",
+            &serde_json::json!({"source_ref":"2674f36", "source":include_str!("../../../tests/oracle-src/scope_cmd.py"), "script":code}),
+            || {
+                let out = std::process::Command::new(
+                    std::env::var("COMANDOS_SERVER_ORACLE_PYTHON")
+                        .unwrap_or_else(|_| "python3".into()),
+                )
+                .args(["-c", code])
+                .arg(root.join("tests/oracle-src/scope_cmd.py"))
+                .output()
+                .map_err(|e| e.to_string())?;
+                if out.status.success() {
+                    Ok(out.stdout)
+                } else {
+                    Err(String::from_utf8_lossy(&out.stderr).into_owned())
+                }
+            },
         );
-        let text = String::from_utf8(out.stdout).unwrap();
+        let text = String::from_utf8(out).unwrap();
         let mut lines = text.lines();
         let expected: Vec<String> = serde_json::from_str(lines.next().unwrap()).unwrap();
         let linux_names: Vec<String> = std::iter::once("systemd-run".to_owned())

@@ -1,0 +1,23 @@
+{
+  "input": {
+    "source": "CPython stdlib mimetypes",
+    "script": "import mimetypes,json,sys;print(json.dumps({ext:mimetypes.guess_type('file'+ext)[0] or 'application/octet-stream' for ext in json.loads(sys.argv[1])}))",
+    "extensions": [
+      "",
+      ".cjs",
+      ".css",
+      ".gif",
+      ".html",
+      ".ico",
+      ".in",
+      ".js",
+      ".json",
+      ".md",
+      ".png",
+      ".svg",
+      ".txt",
+      ".webmanifest"
+    ]
+  },
+  "output_b64": "eyIiOiAiYXBwbGljYXRpb24vb2N0ZXQtc3RyZWFtIiwgIi5janMiOiAiYXBwbGljYXRpb24vb2N0ZXQtc3RyZWFtIiwgIi5jc3MiOiAidGV4dC9jc3MiLCAiLmdpZiI6ICJpbWFnZS9naWYiLCAiLmh0bWwiOiAidGV4dC9odG1sIiwgIi5pY28iOiAiaW1hZ2Uvdm5kLm1pY3Jvc29mdC5pY29uIiwgIi5pbiI6ICJhcHBsaWNhdGlvbi9vY3RldC1zdHJlYW0iLCAiLmpzIjogInRleHQvamF2YXNjcmlwdCIsICIuanNvbiI6ICJhcHBsaWNhdGlvbi9qc29uIiwgIi5tZCI6ICJ0ZXh0L21hcmtkb3duIiwgIi5wbmciOiAiaW1hZ2UvcG5nIiwgIi5zdmciOiAiaW1hZ2Uvc3ZnK3htbCIsICIudHh0IjogInRleHQvcGxhaW4iLCAiLndlYm1hbmlmZXN0IjogImFwcGxpY2F0aW9uL21hbmlmZXN0K2pzb24ifQo="
+}

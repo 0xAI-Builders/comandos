@@ -19,7 +19,7 @@ fn request(method: &str, target: &str) -> Request {
     }
 }
 fn oracle(home: &TestHome, cases: &Value) -> Value {
-    let output=Command::new("/usr/bin/python3").args(["-c",r#"
+    let script = r#"
 import http.server,io,json,sys,email.message
 class Handler(http.server.SimpleHTTPRequestHandler):
  def send_response(self,status,message=None):self.status=status
@@ -37,13 +37,35 @@ for case in json.loads(sys.argv[2]):
   f.close()
  out.append({'status':h.status,'headers':h.saved,'body':list(h.wfile.getvalue())})
 print(json.dumps(out))
-"#]).arg(home.root.join("dash")).arg(cases.to_string()).env_clear().env("HOME",&home.root).env("LANG","C.UTF-8").output().unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
+"#;
+    let dash = home.root.join("dash");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let output = comandos_oracle::oracle_at(
+        &root.join("tests/golden"),
+        "server-static-residue",
+        &json!({"source":"CPython stdlib http.server", "script":script, "cases":cases,
+            "mtime_ms":support::NOW_MS,
+            "files":comandos_oracle::snapshot_tree(&dash, &[]).unwrap()}),
+        || {
+            let output = Command::new(
+                std::env::var("COMANDOS_SERVER_ORACLE_PYTHON").unwrap_or_else(|_| "python3".into()),
+            )
+            .args(["-c", script])
+            .arg(&dash)
+            .arg(cases.to_string())
+            .env_clear()
+            .env("HOME", &home.root)
+            .env("LANG", "C.UTF-8")
+            .output()
+            .map_err(|e| e.to_string())?;
+            if output.status.success() {
+                Ok(output.stdout)
+            } else {
+                Err(String::from_utf8_lossy(&output.stderr).into_owned())
+            }
+        },
     );
-    serde_json::from_slice(&output.stdout).unwrap()
+    serde_json::from_slice(&output).unwrap()
 }
 #[tokio::test]
 async fn static_directory_errors_normalization_and_head_match_python() {
@@ -59,6 +81,15 @@ async fn static_directory_errors_normalization_and_head_match_python() {
         ("literal%zz.txt", "percent"),
     ] {
         fs::write(root.join(p), v).unwrap();
+        // Assert exact Last-Modified semantics against a fixed fixture clock.
+        let modified =
+            std::time::UNIX_EPOCH + std::time::Duration::from_millis(support::NOW_MS as u64);
+        fs::File::options()
+            .write(true)
+            .open(root.join(p))
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
     }
     std::os::unix::fs::symlink("a & ñ.txt", root.join("listed/link")).unwrap();
     let targets = [
@@ -269,9 +300,45 @@ async fn fifo_and_large_file_do_not_block_or_allocate_unbounded_body() {
 #[test]
 fn mime_table_matches_python_for_checkout_extensions() {
     use comandos_server::dash::statics::mime_for;
-    let out=Command::new("/usr/bin/python3").args(["-c","import pathlib,mimetypes,json,sys;print(json.dumps({p.suffix:mimetypes.guess_type(str(p))[0] or 'application/octet-stream' for p in pathlib.Path(sys.argv[1]).rglob('*') if p.is_file()}))"]).arg(support::repo().join("dash")).env_clear().env("LANG","C.UTF-8").output().unwrap();
-    assert!(out.status.success());
-    let types: Value = serde_json::from_slice(&out.stdout).unwrap();
+    fn extensions(path: &std::path::Path, out: &mut std::collections::BTreeSet<String>) {
+        for entry in fs::read_dir(path).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() && !path.is_symlink() {
+                extensions(&path, out);
+            } else if path.is_file() {
+                out.insert(
+                    path.extension()
+                        .map(|v| format!(".{}", v.to_str().unwrap()))
+                        .unwrap_or_default(),
+                );
+            }
+        }
+    }
+    let mut suffixes = std::collections::BTreeSet::new();
+    extensions(&support::repo().join("dash"), &mut suffixes);
+    let script = "import mimetypes,json,sys;print(json.dumps({ext:mimetypes.guess_type('file'+ext)[0] or 'application/octet-stream' for ext in json.loads(sys.argv[1])}))";
+    let out = comandos_oracle::oracle_at(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "server-static-mime",
+        &json!({"source":"CPython stdlib mimetypes", "script":script,"extensions":suffixes}),
+        || {
+            let output = Command::new(
+                std::env::var("COMANDOS_SERVER_ORACLE_PYTHON").unwrap_or_else(|_| "python3".into()),
+            )
+            .args(["-c", script])
+            .arg(serde_json::to_string(&suffixes).unwrap())
+            .env_clear()
+            .env("LANG", "C.UTF-8")
+            .output()
+            .map_err(|e| e.to_string())?;
+            if output.status.success() {
+                Ok(output.stdout)
+            } else {
+                Err(String::from_utf8_lossy(&output.stderr).into_owned())
+            }
+        },
+    );
+    let types: Value = serde_json::from_slice(&out).unwrap();
     for (ext, mime) in types.as_object().unwrap() {
         assert_eq!(
             mime_for(&format!("file{ext}")),

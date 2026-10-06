@@ -591,6 +591,7 @@ dependencies = [
  "chrono-tz",
  "comandos-core",
  "comandos-domdiff",
+ "comandos-oracle",
  "comandos-runtime",
  "comandos-store",
  "comandos-term",
