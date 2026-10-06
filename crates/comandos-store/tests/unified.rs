@@ -3,6 +3,52 @@ use comandos_store::unified::{self, CommandKind, Generation, LogName, Origin};
 use rusqlite::Connection;
 
 #[test]
+fn insecure_existing_locations_are_rejected_without_chmod_or_database_creation() {
+    use std::{fs, os::unix::fs::PermissionsExt};
+    let base = std::env::temp_dir().join(format!(
+        "comandos-unified-permissions-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&base).unwrap();
+    fs::set_permissions(&base, fs::Permissions::from_mode(0o755)).unwrap();
+    let path = base.join("state.sqlite3");
+    assert!(unified::open_unified(&path).is_err());
+    assert!(
+        !path.exists(),
+        "failed preflight must not create a database"
+    );
+    assert_eq!(
+        fs::metadata(&base).unwrap().permissions().mode() & 0o777,
+        0o755
+    );
+    fs::set_permissions(&base, fs::Permissions::from_mode(0o700)).unwrap();
+    let connection = Connection::open(&path).unwrap();
+    connection
+        .execute_batch("CREATE TABLE marker(value TEXT);INSERT INTO marker VALUES('untouched');")
+        .unwrap();
+    drop(connection);
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+    let bytes = fs::read(&path).unwrap();
+    assert!(unified::open_unified(&path).is_err());
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o644
+    );
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+    let reopened = unified::open_unified(&path).unwrap();
+    assert_eq!(
+        reopened
+            .query_row("SELECT value FROM marker", [], |row| row
+                .get::<_, String>(0))
+            .unwrap(),
+        "untouched"
+    );
+    drop(reopened);
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
 fn unified_contains_released_schemas_and_both_version_marks() {
     let c = unified::open_unified(std::path::Path::new(":memory:")).unwrap();
     assert_eq!(

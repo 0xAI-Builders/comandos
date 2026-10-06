@@ -87,6 +87,7 @@ fn mixed_hosts_preserve_first_alias_wildcards_argv_output_and_pending_exit() {
     )
     .unwrap();
     home.compare(&[]);
+    home.compare(&[""]);
     let custom = home.0.join("llave pública.pub");
     fs::write(&custom, "fixture").unwrap();
     home.compare(&[custom.to_str().unwrap()]);

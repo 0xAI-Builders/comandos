@@ -9,6 +9,7 @@ pub fn main(args: &[String]) -> i32 {
     let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
     let key = args
         .first()
+        .filter(|key| !key.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| home.join(".ssh/id_ed25519.pub"));
     if !key.is_file() {

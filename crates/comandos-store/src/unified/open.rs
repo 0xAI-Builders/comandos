@@ -37,6 +37,22 @@ fn validate(conn: &Connection) -> Result<BTreeSet<i64>> {
     }
     Ok(existing)
 }
+
+fn private_parent(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    if std::fs::metadata(parent)?.permissions().mode() & 0o7777 != 0o700 {
+        return Err(Error::Validation(format!(
+            "{}: la base única requiere un directorio privado 0700",
+            parent.display()
+        )));
+    }
+    Ok(())
+}
+
 pub fn open_unified(path: &Path) -> Result<Connection> {
     if path != Path::new(":memory:") {
         if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
@@ -45,6 +61,16 @@ pub fn open_unified(path: &Path) -> Result<Connection> {
                 .recursive(true)
                 .mode(0o700)
                 .create(parent)?;
+        }
+        match std::fs::symlink_metadata(path) {
+            Ok(metadata) if !metadata.is_file() => {
+                return Err(Error::Validation(
+                    "la base única debe ser un archivo regular".into(),
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => private_parent(path)?,
+            Err(error) => return Err(error.into()),
         }
         use std::os::unix::fs::OpenOptionsExt;
         match std::fs::OpenOptions::new()
@@ -60,6 +86,18 @@ pub fn open_unified(path: &Path) -> Result<Connection> {
     }
     let conn = Connection::open(path)?;
     validate(&conn)?;
+    if path != Path::new(":memory:") {
+        use std::os::unix::fs::PermissionsExt;
+        // No chmod de un COMANDOS_DB existente ni de su directorio compartido.
+        // Las bases de una versión futura se rechazan antes de estas comprobaciones.
+        private_parent(path)?;
+        if std::fs::metadata(path)?.permissions().mode() & 0o7777 != 0o600 {
+            return Err(Error::Validation(format!(
+                "{}: la base única requiere permisos 0600",
+                path.display()
+            )));
+        }
+    }
     conn.busy_timeout(Duration::from_secs(5))?;
     conn.pragma_update(None, "foreign_keys", true)?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
