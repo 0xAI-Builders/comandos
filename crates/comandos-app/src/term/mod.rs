@@ -4,3 +4,9 @@ pub mod paint;
 
 pub mod pty;
 pub mod settle;
+
+pub mod keys;
+pub mod links;
+pub mod schedule;
+
+pub mod view;

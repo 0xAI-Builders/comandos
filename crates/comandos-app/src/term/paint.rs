@@ -192,3 +192,51 @@ pub fn plan_row(
         }
     }
 }
+
+/// Retained frame: incidental exposure/blink cannot reveal a partial DEC2026
+/// update. Native tests exercise the same cache that GTK paints.
+pub struct FrameCache {
+    ops: Vec<PaintOp>,
+    cursor: crate::term::engine::CursorView,
+}
+impl Default for FrameCache {
+    fn default() -> Self {
+        Self {
+            ops: Vec::new(),
+            cursor: crate::term::engine::CursorView {
+                line: 0,
+                col: 0,
+                shape: crate::term::engine::CursorShape::Block,
+                visible: false,
+                wide: false,
+            },
+        }
+    }
+}
+impl FrameCache {
+    pub fn refresh(&mut self, term: &crate::term::engine::TermEngine, geom: &CellGeom) -> bool {
+        if term.next_deadline().is_some() {
+            return false;
+        }
+        self.ops.clear();
+        let mut row = RowRender::default();
+        for line in 0..usize::from(term.size().1) {
+            term.render_line(line, &mut row);
+            plan_row(
+                &row,
+                line,
+                geom,
+                &|col| term.fg_is_rgb(line, col),
+                &mut self.ops,
+            );
+        }
+        self.cursor = term.cursor();
+        true
+    }
+    pub fn ops(&self) -> &[PaintOp] {
+        &self.ops
+    }
+    pub fn cursor(&self) -> crate::term::engine::CursorView {
+        self.cursor
+    }
+}
