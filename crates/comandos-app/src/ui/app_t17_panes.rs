@@ -370,7 +370,6 @@ impl App {
         );
     }
     fn place_pane_pills(self: &Rc<Self>, owner: &Rc<PaneOverlay>) {
-        owner.reposition(self.pane_focused(owner));
         let models = self.t17.models.borrow();
         let info = models.get(owner.session.split(':').next().unwrap_or(&owner.session));
         let panes = info
@@ -392,6 +391,7 @@ impl App {
         let line = color("line", "#223044");
         let bg = color("bg", "#0A0D13");
         *owner.colors.borrow_mut() = (line, brand.clone(), bg);
+        owner.reposition(self.pane_focused(owner));
         let geometry = owner
             .panes
             .borrow()

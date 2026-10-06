@@ -492,6 +492,16 @@ pub(crate) struct ResizeWish {
     pub neighbor: Option<String>,
     pub size: u16,
 }
+/// Every input that can change placement or the overlay's own painted frame.
+#[derive(PartialEq)]
+struct RepositionState {
+    layout: FrameLayout,
+    geom: CellGeom,
+    panes: Vec<PaneGeometry>,
+    pills: Vec<(gtk::Widget, String, &'static str, i32)>,
+    grips: Vec<gtk::EventBox>,
+    colors: (String, String, String),
+}
 pub(crate) struct PaneOverlay {
     pub widget: gtk::Overlay,
     pub session: String,
@@ -500,6 +510,7 @@ pub(crate) struct PaneOverlay {
     pub gate: RefCell<GeometryGate>,
     pub panes: RefCell<Vec<PaneRecord>>,
     pub layout: RefCell<FrameLayout>,
+    repositioned: RefCell<Option<RepositionState>>,
     pub pills: RefCell<Vec<PaneWidget>>,
     pub grips: RefCell<Vec<gtk::EventBox>>,
     pub signature: RefCell<String>,
@@ -540,6 +551,7 @@ impl PaneOverlay {
             gate: RefCell::new(GeometryGate::default()),
             panes: RefCell::new(vec![]),
             layout: RefCell::new(FrameLayout::default()),
+            repositioned: RefCell::new(None),
             pills: RefCell::new(vec![]),
             grips: RefCell::new(vec![]),
             signature: RefCell::new(String::new()),
@@ -604,6 +616,24 @@ impl PaneOverlay {
             .collect();
         let geom = self.term.cell_geometry();
         let layout = frame_layout(&panes, &geom, self.term.grid_size(), &active, focused);
+        let state = RepositionState {
+            layout: layout.clone(),
+            geom,
+            panes: panes.clone(),
+            pills: self
+                .pills
+                .borrow()
+                .iter()
+                .map(|p| (p.widget.clone(), p.pane.clone(), p.kind, p.width))
+                .collect(),
+            grips: self.grips.borrow().clone(),
+            colors: self.colors.borrow().clone(),
+        };
+        if self.repositioned.borrow().as_ref() == Some(&state) {
+            return;
+        }
+        *self.repositioned.borrow_mut() = Some(state);
+
         for pill in self.pills.borrow().iter() {
             let Some(row) = layout.rows.get(&pill.pane) else {
                 pill.widget.hide();
