@@ -25,7 +25,7 @@ pub fn mime_for(path: &str) -> &'static str {
         return "application/octet-stream";
     };
     match ext.to_ascii_lowercase().as_str() {
-        "html" => "text/html",
+        "html" | "htm" => "text/html",
         "js" | "mjs" => "text/javascript",
         "css" => "text/css",
         "json" | "map" => "application/json",
@@ -87,7 +87,7 @@ pub async fn serve(dash_dir: &Path, request: &Request) -> Result<Reply, HandlerE
 /// `If-Modified-Since` en segundos UTC, solo si no hay `If-None-Match` y la
 /// fecha se entiende y es UTC (o sin zona), como `send_head`. El Python lee
 /// la primera aparición de la cabecera.
-fn if_modified_since(headers: &[(String, String)]) -> Option<i64> {
+pub(crate) fn if_modified_since(headers: &[(String, String)]) -> Option<i64> {
     if headers.iter().any(|(k, _)| k == "if-none-match") {
         return None;
     }
@@ -111,7 +111,7 @@ fn load(path: &PathBuf, ims: Option<i64>) -> io::Result<Loaded> {
 }
 
 /// Segundos enteros desde la época, truncando hacia abajo (`time.gmtime`).
-fn unix_seconds(time: SystemTime) -> i64 {
+pub(crate) fn unix_seconds(time: SystemTime) -> i64 {
     match time.duration_since(UNIX_EPOCH) {
         Ok(after) => i64::try_from(after.as_secs()).unwrap_or(i64::MAX),
         Err(before) => {

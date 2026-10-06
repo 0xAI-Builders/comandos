@@ -452,6 +452,7 @@ pub fn build(
             o.repo_root = cfg.repo_root.clone();
             o
         });
+        o.dash_dir = Some(cfg.dash_dir.clone());
         // El contexto de sugerencias habla con el MISMO heredado al que se reenvía.
         o.legacy = SocketAddr::from((Ipv4Addr::LOCALHOST, cfg.legacy_port));
         o.legacy_token = cfg.token.clone();

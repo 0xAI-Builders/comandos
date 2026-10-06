@@ -375,8 +375,8 @@ async fn news_writes_match_python() {
 
 /// Lo que no se puede reproducir con certeza (`str()` de un `float` como
 /// texto de nota) declina ANTES de escribir: se reenvía y no hay filas nuevas.
-/// Con la consulta en la ruta (`self.path in (...)` es exacto) tampoco es del
-/// frente.
+/// Con consulta o sufijo no casa la ruta de noticias: T7 responde el
+/// desconocido con 400 sin efectos.
 #[tokio::test]
 async fn news_writes_decline_before_effects() {
     let home = TestHome::new("news-decline");
@@ -402,9 +402,14 @@ async fn news_writes_decline_before_effects() {
         ("/news/chat/note/", r#"{"chatId": 2}"#),
     ] {
         let wire = request_body(f.port, "POST", path, "", body).await;
-        assert_eq!(wire.status, 200, "{path} {body}: {}", wire.text());
+        assert_eq!(
+            wire.status,
+            if path == "/news/notes" { 200 } else { 400 },
+            "{path} {body}: {}",
+            wire.text()
+        );
     }
-    assert_eq!(legacy.requests().len(), 6, "{:?}", legacy.requests());
+    assert_eq!(legacy.requests().len(), 3, "{:?}", legacy.requests());
     assert_eq!(news_rows(&home), before);
     f.stop().await;
 }
@@ -731,7 +736,7 @@ async fn agent_routes_decline_before_effects() {
             sent += 1;
         }
     }
-    // `self.path in (...)` es exacto: con consulta no es del frente.
+    // `self.path in (...)` es exacto: consulta/sufijo cae al desconocido de T7.
     home.write("news-editions.json", FAKE_CHAIN);
     for path in ["/news/chat?x=1", "/news/translate/"] {
         let wire = request_body(
@@ -742,8 +747,7 @@ async fn agent_routes_decline_before_effects() {
             r#"{"storyId": 10, "message": "hola"}"#,
         )
         .await;
-        assert_eq!(wire.status, 200, "{path}: {}", wire.text());
-        sent += 1;
+        assert_eq!(wire.status, 400, "{path}: {}", wire.text());
     }
     assert_eq!(legacy.requests().len(), sent, "{:?}", legacy.requests());
     f.stop().await;
