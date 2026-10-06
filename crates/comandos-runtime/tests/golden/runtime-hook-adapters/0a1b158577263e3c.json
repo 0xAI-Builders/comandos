@@ -1,0 +1,41 @@
+{
+  "input": {
+    "case": {
+      "provenance": "{\n  \"source_commit\": \"2674f366bb01b9db42f6f64b728929b3acfe8b83\",\n  \"python\": \"CPython 3.10.12\",\n  \"files\": {\n    \"grok-hooks.py\": {\n      \"frozen_reference_path\": \"crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/grok-hooks.py\",\n      \"sha256\": \"e2a78b56da1dadf7cf606ab27f66bab6e116820e7677b01d12fb9d9a8e73fa28\"\n    },\n    \"agy-statusline.py\": {\n      \"frozen_reference_path\": \"crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/agy-statusline.py\",\n      \"sha256\": \"994eaee2b60cd065364bfd1beecde1cdf49100ddeb0426355224c54a457862cf\"\n    }\n  }\n}\n",
+      "script": "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/grok-hooks.py",
+      "args": [
+        "--accept",
+        "<HOME>/state.grok"
+      ],
+      "stdin": [
+        123,
+        34,
+        101,
+        118,
+        101,
+        110,
+        116,
+        34,
+        58,
+        34,
+        78,
+        111,
+        116,
+        105,
+        102,
+        105,
+        99,
+        97,
+        116,
+        105,
+        111,
+        110,
+        34,
+        125
+      ],
+      "fixed_fixture_clock": false
+    },
+    "before_sha256": "30b0e267fe61146143eb2a4e5636909ac819452ee75763b8731bd9346246a851"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbMCxcIlwiXSIsInRyZWUiOnsic3RhdGUuZ3JvayI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJleUpsZG1WdWRDSTZJazV2ZEdsbWFXTmhkR2x2YmlKOSJ9fX0="
+}

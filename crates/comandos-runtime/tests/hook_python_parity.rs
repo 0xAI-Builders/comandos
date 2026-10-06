@@ -7,7 +7,7 @@
 mod parity;
 
 use parity::{Window, normalize, read_lossy};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
@@ -38,16 +38,59 @@ fn run(
     args: &[&str],
     home: &Path,
     stdin: &[u8],
+    clock: Option<i64>,
 ) -> (Option<i32>, String) {
-    let mut command = if oracle {
-        let mut c = Command::new("python3");
-        c.arg(root().join(script));
-        c
-    } else {
-        let mut c = Command::new(env!("CARGO_BIN_EXE_comandos-hook"));
-        c.arg(harness);
-        c
-    };
+    if oracle {
+        fs::create_dir_all(home).unwrap();
+        let source = root().join(script);
+        // Alias only the fixture anchor and its three original freshness ages.
+        let times: Vec<PathBuf> = clock
+            .map(|n| {
+                [n, n - 10, n - 100, n - 55]
+                    .into_iter()
+                    .map(|n| PathBuf::from(n.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut roots = vec![("<HOME>", home), ("<SOURCE>", source.as_path())];
+        for (token, path) in ["<CLOCK>", "<FRESH>", "<STALE>", "<EDGE>"]
+            .into_iter()
+            .zip(&times)
+        {
+            roots.push((token, path));
+        }
+        let normalized_args: Vec<String> = args
+            .iter()
+            .map(|arg| {
+                String::from_utf8(comandos_oracle::normalize(arg.as_bytes(), &roots)).unwrap()
+            })
+            .collect();
+        let output = comandos_oracle::text_with_tree_at(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+            "runtime-hook-adapters", &json!({"provenance":include_str!("fixtures/hooks/oracle/adapters/PROVENANCE.json"),
+                "script":script,"args":normalized_args,"stdin":stdin,"fixed_fixture_clock":clock.is_some()}),
+            home, &roots, || {
+                let mut command = Command::new(std::env::var("COMANDOS_RUNTIME_ORACLE_PYTHON")
+                    .unwrap_or_else(|_| "python3".into()));
+                if let Some(clock) = clock {
+                    command.arg("-c").arg("import runpy,sys,time\np=sys.argv[1]; n=int(sys.argv[2]);sys.argv=sys.argv[1:2]+sys.argv[3:];time.time=lambda:n;runpy.run_path(p,run_name='__main__')")
+                        .arg(&source).arg(clock.to_string());
+                } else { command.arg(&source); }
+                serde_json::to_string(&run_command(command, args, home, stdin)).map_err(|e| e.to_string())
+            }).unwrap();
+        return serde_json::from_str(&output).unwrap();
+    }
+    let mut command = Command::new(env!("CARGO_BIN_EXE_comandos-hook"));
+    command.arg(harness);
+    run_command(command, args, home, stdin)
+}
+
+fn run_command(
+    mut command: Command,
+    args: &[&str],
+    home: &Path,
+    stdin: &[u8],
+) -> (Option<i32>, String) {
     let mut child = command
         .args(args)
         .env_clear()
@@ -77,12 +120,14 @@ fn grok(oracle: bool, args: &[&str], home: &Path, stdin: &[u8]) -> (Option<i32>,
         args,
         home,
         stdin,
+        None,
     )
 }
 
 #[test]
 fn grok_normalize_matches_python() {
     let home = std::env::temp_dir().join(format!("comandos-grok-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&home);
     fs::create_dir_all(&home).unwrap();
     let fx = fixture("grok_events");
     let mut inputs: Vec<Vec<u8>> = fx["normalize"]
@@ -116,6 +161,7 @@ fn grok_normalize_matches_python() {
 #[test]
 fn grok_accept_matches_python() {
     let dir = std::env::temp_dir().join(format!("comandos-grok-accept-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     let fx = fixture("grok_events");
     let sequences = fx["accept"].as_array().unwrap();
@@ -131,9 +177,10 @@ fn grok_accept_matches_python() {
         for (m, sequence) in sequences.iter().enumerate() {
             let paths: Vec<PathBuf> = ["py", "rs"]
                 .iter()
-                .map(|side| dir.join(format!("{n}-{m}-{side}.grok")))
+                .map(|side| dir.join(format!("{n}-{m}-{side}")).join("state.grok"))
                 .collect();
             for path in &paths {
+                fs::create_dir_all(path.parent().unwrap()).unwrap();
                 let _ = fs::remove_file(path);
                 if let Some(seed) = seed {
                     fs::write(path, seed).unwrap();
@@ -146,7 +193,12 @@ fn grok_accept_matches_python() {
                     .zip([true, false])
                     .map(|(path, oracle)| {
                         let path = path.to_str().unwrap();
-                        let result = grok(oracle, &["--accept", path], &dir, &stdin);
+                        let result = grok(
+                            oracle,
+                            &["--accept", path],
+                            Path::new(path).parent().unwrap(),
+                            &stdin,
+                        );
                         let mode = fs::metadata(path)
                             .map(|m| m.permissions().mode() & 0o777)
                             .ok();
@@ -159,11 +211,13 @@ fn grok_accept_matches_python() {
     }
     // `--accept` con stdin que no es objeto: 0 y el archivo intacto.
     for stdin in [&b"[1]"[..], b"basura", b""] {
-        let path = dir.join("x.grok");
+        let scope = dir.join("invalid");
+        fs::create_dir_all(&scope).unwrap();
+        let path = scope.join("x.grok");
         let path = path.to_str().unwrap();
         assert_eq!(
-            grok(true, &["--accept", path], &dir, stdin),
-            grok(false, &["--accept", path], &dir, stdin)
+            grok(true, &["--accept", path], &scope, stdin),
+            grok(false, &["--accept", path], &scope, stdin)
         );
     }
     let _ = fs::remove_dir_all(&dir);
@@ -198,9 +252,10 @@ fn agy_status_matches_python() {
             r#"{{"plan_tier": "Google AI Pro", "quota": {{"3p-5h": {{"remaining_fraction": 1.0, "reset_time": "2026-10-04T08:12:22Z"}}, "3p-weekly": {{"remaining_fraction": 1, "reset_time": "2026-10-11T03:12:22Z"}}, "gemini-5h": {{"remaining_fraction": 0.9725484, "reset_time": "2026-10-04T06:28:13Z"}}, "gemini-weekly": {{"remaining_fraction": 0.59870625, "reset_time": "2026-10-07T17:21:23Z"}}}}, "captured_at": {captured}}}"#
         )
     };
-    let fresh = (now() - 10).to_string();
-    let stale = (now() - 100).to_string();
-    let edge = (now() - 55).to_string();
+    let clock = now();
+    let fresh = (clock - 10).to_string();
+    let stale = (clock - 100).to_string();
+    let edge = (clock - 55).to_string();
     // (nombre, stdin, archivo previo).
     let mut cases: Vec<(String, Vec<u8>, Option<String>)> = vec![
         ("real".into(), real.clone(), None),
@@ -248,6 +303,7 @@ fn agy_status_matches_python() {
                 &[],
                 home,
                 &stdin,
+                Some(clock),
             )
         };
         let (python, rust) = (agy(true, &homes[0]), agy(false, &homes[1]));
