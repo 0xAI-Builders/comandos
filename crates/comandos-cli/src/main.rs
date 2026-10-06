@@ -29,13 +29,14 @@ fn main() {
         Command::Dash(args) => comandos_server::dash::main(&args),
         Command::Webterm(args) => comandos_cli::webterm::main(&args),
         Command::WebtermAttach(args) => comandos_cli::webterm_attach::main(&args),
+        Command::State(args) => comandos_cli::state::cli::main(&args),
         Command::Version => {
             println!("comandos {}", env!("CARGO_PKG_VERSION"));
             0
         }
         Command::Help => {
             println!(
-                "uso: comandos <ext|hook|events|install|dash|webterm|webterm-attach|--version>"
+                "uso: comandos <ext|hook|events|install|dash|webterm|webterm-attach|state|--version>"
             );
             0
         }
