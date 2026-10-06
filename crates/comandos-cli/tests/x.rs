@@ -16,6 +16,9 @@ fn fake_tmux() -> &'static Path {
         fs::write(&source, r#"
 use std::{fs::OpenOptions, io::Write};
 fn main() {
+    let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
+    let socket = std::path::PathBuf::from(std::env::var_os("X_TEST_SOCKET").unwrap());
+    assert!(socket.starts_with(&home), "fake socket must be private to the fixture HOME");
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut log = OpenOptions::new().create(true).append(true).open(std::env::var_os("X_TEST_LOG").unwrap()).unwrap();
     writeln!(log, "{:?}", args).unwrap();
@@ -33,7 +36,13 @@ fn main() {
 }
 "#).unwrap();
         let binary = dir.join("fake");
+        let rustup_home = std::env::var_os("RUSTUP_HOME").map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap()).join(".rustup"));
         let out = Command::new("rustc")
+            .env("HOME", &dir)
+            .env("RUSTUP_HOME", rustup_home)
+            .env("TMUX_TMPDIR", dir.join("private-tmux"))
+            .env("X_TEST_SOCKET", dir.join("private-tmux/socket"))
             .args(["--edition=2024"])
             .arg(source).arg("-o").arg(&binary).output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -47,6 +56,7 @@ impl Home {
         let dir = std::env::temp_dir().join(format!("comandos-x-{tag}-{}", std::process::id()));
         fs::create_dir_all(dir.join("bin")).unwrap();
         fs::create_dir_all(dir.join(".claude/hooks")).unwrap();
+        fs::create_dir_all(dir.join("private-tmux")).unwrap();
         fs::create_dir_all(dir.join("codebase/team/Alpha.Test:Case")).unwrap();
         fs::create_dir_all(dir.join("codebase/Other.Space")).unwrap();
         fs::create_dir_all(dir.join("codebase/team/Leaf Space")).unwrap();
@@ -66,10 +76,14 @@ impl Home {
             fs::write(&log, b"").unwrap();
             let mut command = Command::new(program);
             command
+                .env_clear()
                 .args(prefix)
                 .args(args)
                 .current_dir(&self.0)
                 .env("HOME", &self.0)
+                .env("PWD", &self.0)
+                .env("TMUX_TMPDIR", self.0.join("private-tmux"))
+                .env("X_TEST_SOCKET", self.0.join("private-tmux/socket"))
                 .env("PATH", &path)
                 .env("SHELL", "/bin/fixture-shell")
                 .env("X_TEST_LOG", &log)
@@ -81,7 +95,10 @@ impl Home {
                 command.env("CCX_AGENT", agent);
             }
             if in_tmux {
-                command.env("TMUX", "/private/fixture/socket,1,0");
+                command.env(
+                    "TMUX",
+                    format!("{},1,0", self.0.join("private-tmux/socket").display()),
+                );
             }
             let out = command.output().unwrap();
             (out, fs::read(&log).unwrap())
@@ -184,6 +201,100 @@ fn harness_flag_environment_last_config_and_overrides_match_original() {
     home.compare(&["-a", "claude", "Other.Space"], "", Some("grok"), false);
     for harness in ["grok", "codex", "opencode", "agy", "gemini", "custom"] {
         home.compare(&["-a", harness, "Other.Space"], "", None, false);
+    }
+}
+
+#[test]
+fn discovery_rejects_symlinked_root_but_keeps_direct_logical_paths() {
+    let home = Home::new("root-symlink");
+    fs::rename(home.0.join("codebase"), home.0.join("projects")).unwrap();
+    fs::create_dir(home.0.join("projects/Project")).unwrap();
+    std::os::unix::fs::symlink(home.0.join("projects"), home.0.join("codebase")).unwrap();
+    home.compare(&["Project"], "", None, false);
+    assert!(fs::read(home.0.join("calls")).unwrap().is_empty());
+    home.compare(&["codebase/team/Alpha.Test:Case"], "", None, false);
+}
+
+#[test]
+fn discovery_rejects_descendant_directory_symlinks_without_tmux_calls() {
+    let home = Home::new("child-symlink");
+    fs::create_dir_all(home.0.join("outside/ExcludedProject")).unwrap();
+    std::os::unix::fs::symlink(home.0.join("outside"), home.0.join("codebase/ChildLink")).unwrap();
+    std::os::unix::fs::symlink(
+        home.0.join("outside/ExcludedProject"),
+        home.0.join("codebase/team/ExcludedLeaf"),
+    )
+    .unwrap();
+    for target in ["ExcludedProject", "ChildLink", "ExcludedLeaf"] {
+        home.compare(&[target], "", None, false);
+        assert!(fs::read(home.0.join("calls")).unwrap().is_empty());
+    }
+}
+
+#[test]
+fn unicode_alpha_class_discovers_non_ascii_letters_like_find() {
+    let home = Home::new("unicode-alpha");
+    fs::remove_dir_all(home.0.join("codebase")).unwrap();
+    fs::create_dir_all(home.0.join("codebase/École")).unwrap();
+    home.compare(&["[[:alpha:]]cole"], "", None, false);
+}
+
+#[test]
+fn unicode_simple_lowercase_does_not_equate_long_s_with_ascii_s() {
+    let home = Home::new("unicode-fold");
+    fs::remove_dir_all(home.0.join("codebase")).unwrap();
+    fs::create_dir_all(home.0.join("codebase/ſchool")).unwrap();
+    home.compare(&["school"], "", None, false);
+    assert!(fs::read(home.0.join("calls")).unwrap().is_empty());
+}
+
+#[test]
+fn unicode_classes_case_mappings_and_bracket_syntax_match_find() {
+    let home = Home::new("glob-oracle");
+    fs::remove_dir_all(home.0.join("codebase")).unwrap();
+    for name in [
+        "É", "é", "İ", "ı", "K", "K", "Σ", "σ", "ς", "ß", "ẞ", "Ⅻ", "١", "²", "\u{0345}",
+        "\u{0301}", "\u{200d}", "\u{a0}", "\u{2003}", " ", "\t", "1", "A", "a", "b", "z", "]", "-",
+        "^", "[", "&", "~", "?", "\\",
+    ] {
+        fs::create_dir_all(home.0.join("codebase").join(name)).unwrap();
+    }
+    for pattern in [
+        "i",
+        "k",
+        "σ",
+        "ς",
+        "s",
+        "[A-Z]",
+        "[É-é]",
+        "[z-a]",
+        "[]a]",
+        "[!]]",
+        "[^]]",
+        "[-a]",
+        "[a-]",
+        "[a\\-z]",
+        "[a[:digit:]]",
+        "[[:alpha:]]",
+        "[[:alnum:]]",
+        "[[:digit:]]",
+        "[[:upper:]]",
+        "[[:lower:]]",
+        "[[:blank:]]",
+        "[[:space:]]",
+        "[[:punct:]]",
+        "[[:graph:]]",
+        "[[:print:]]",
+        "[[:cntrl:]]",
+        "[[:xdigit:]]",
+        "[[:unknown:]]",
+        "\\",
+        "[\\]",
+        "[",
+        "*?*",
+        "**",
+    ] {
+        home.compare(&[pattern], "", None, false);
     }
 }
 
