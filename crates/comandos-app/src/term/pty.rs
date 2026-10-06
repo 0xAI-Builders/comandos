@@ -1,6 +1,7 @@
 //! Nonblocking desktop PTY. Only its own session leader/group is signalled.
 use nix::fcntl::{FcntlArg, OFlag, fcntl};
 use nix::sys::signal::{Signal, killpg};
+use nix::sys::wait::{Id, WaitPidFlag, WaitStatus, waitid};
 use nix::unistd::Pid;
 use std::collections::VecDeque;
 use std::io::{ErrorKind, Read, Write};
@@ -28,6 +29,7 @@ pub struct PtySession {
     pty: pty_process::blocking::Pty,
     child: Option<Child>,
     pid: u32,
+    exit_reported: bool,
     pending: VecDeque<u8>,
     reaper: SyncSender<Child>,
 }
@@ -91,6 +93,7 @@ impl PtySession {
             pty,
             child: Some(child),
             pid,
+            exit_reported: false,
             pending: VecDeque::new(),
             reaper,
         })
@@ -154,10 +157,25 @@ impl PtySession {
             .ok()
             .map(|p| p.to_string_lossy().into_owned())
     }
+    /// Observe status once without consuming the PID reservation: Drop still
+    /// owns cleanup of descendants in the session leader's process group.
     pub fn try_reap(&mut self) -> Option<i32> {
-        let status = self.child.as_mut()?.try_wait().ok()??;
-        self.child.take();
-        status.code().or(Some(-1))
+        if self.exit_reported || self.child.is_none() {
+            return None;
+        }
+        let pid = Pid::from_raw(i32::try_from(self.pid).ok()?);
+        let status = waitid(
+            Id::Pid(pid),
+            WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT,
+        )
+        .ok()?;
+        let code = match status {
+            WaitStatus::Exited(_, code) => code,
+            WaitStatus::Signaled(_, _, _) => -1,
+            _ => return None,
+        };
+        self.exit_reported = true;
+        Some(code)
     }
 }
 

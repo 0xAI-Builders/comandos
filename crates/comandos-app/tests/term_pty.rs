@@ -272,3 +272,46 @@ fn normal_exit_can_be_reaped_once_and_closed_read_is_reported() {
     assert_eq!(p.try_reap(), None);
     assert_eq!(p.read_chunk(&mut [0; 10]), ReadOutcome::Closed);
 }
+
+#[test]
+fn exited_leader_retains_group_cleanup_after_status_observation() {
+    let mut p = confined_shell(
+        "/bin/sh -c 'trap \"\" HUP TERM; while :; do sleep 10; done' & descendant=$!; printf 'DESC=%s\\n' \"$descendant\"; sleep 0.1; exit 0",
+    );
+    let text = read_until(&mut p, "DESC=", Duration::from_secs(2));
+    let descendant: u32 = text
+        .split("DESC=")
+        .nth(1)
+        .unwrap()
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let end = Instant::now() + Duration::from_secs(2);
+    while p.try_reap().is_none() && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    drop(p);
+    let end = Instant::now() + Duration::from_secs(2);
+    let state = || {
+        std::fs::read_to_string(format!("/proc/{descendant}/stat"))
+            .ok()
+            .and_then(|s| {
+                s.rsplit_once(") ")
+                    .and_then(|(_, tail)| tail.chars().next())
+            })
+    };
+    while state().is_some_and(|s| s != 'Z') && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let alive = state().is_some_and(|s| s != 'Z');
+    // On RED clean up only the synthetic descendant to avoid leaking it.
+    if alive {
+        let _ = nix::sys::signal::kill(
+            nix::unistd::Pid::from_raw(i32::try_from(descendant).unwrap()),
+            nix::sys::signal::Signal::SIGKILL,
+        );
+    }
+    assert!(!alive, "descendant survived try_reap followed by Drop");
+}
