@@ -13,6 +13,13 @@ accepts 100–60000; the default is 15000. Start the real application with a pri
 HOME, runtime directory and explicit private tmux socket, using the existing
 fixture loader. This option never launches an agent or changes the workspace.
 
+For a private remote runtime requiring software painting, set
+`COMANDOS_APP_DIAGNOSTIC_SOFTWARE_RENDERING=1` explicitly in sandbox/shadow.
+It sets the native WebKit HardwareAccelerationPolicy to NEVER. Unset/other values
+preserve WebKit's default, and live mode ignores this variable even when it is
+`1`. Apply the same explicit runtime policy to the independently running Python
+oracle. The actual policy is captured; software painting is not parity evidence.
+
 The output is the config-derived `layout_dump_path()`: sandbox uses
 `sandbox_root()/layout.json`, shadow uses
 `runtime_dir()/comandos-app-shadow-layout.json`, and live uses
@@ -51,7 +58,7 @@ significant, including nulls, whitespace, Unicode, hidden text and blank cells.
 | `readiness` | Actual diagnostic outcome. Only `ready` captures enter parity comparison. |
 | `viewport` | `{width,height,dpr}`: allocated window size in GTK logical pixels, actual GTK scale factor. |
 | `window` | `{title}`: current native window title. |
-| `dashboard` | `{uri,title,loading}` from the native WebKit widget. No injected script or fabricated page state. This identifies the page; DOM/pixel acceptance is a separate gate. |
+| `dashboard` | `{uri,title,loading,hardware_acceleration_policy}` from the native WebKit widget/settings. The policy is its lower-case native enum string. No injected script or fabricated page state. This identifies the page; DOM/pixel acceptance is a separate gate. |
 | `theme` | `{name,tokens,ansi,button_style}` from the successfully applied App CSS theme and button style. Initial theme includes its actually applied `sutil` button style. Tokens are the entire applied token object; ANSI is the entire applied array. |
 | `font` | Actual Pango-resolved window font, `{family,size,size_unit,weight,style}`. `size_unit` is `pt` or `px`; enum strings are lower case. Requested preferences are not a substitute for a resolved font. |
 | `tabs` | Logical TabRegistry order, including hidden and closed entries. Each entry has actual `key,label,kind,favorite,selected,state,attached`. `kind` is `local`, `session`, or `web`; `attached` means an owned native TermView exists. |

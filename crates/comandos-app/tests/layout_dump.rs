@@ -138,6 +138,18 @@ fn diagnostic_opt_in_is_explicit_and_native_load_failure_survives_finished() {
 }
 
 #[test]
+fn software_rendering_requires_literal_private_opt_in_and_never_changes_live() {
+    use comandos_app::{config::RunMode, ui::webview::diagnostic_software_rendering};
+    for mode in [RunMode::Sandbox, RunMode::Shadow] {
+        assert!(diagnostic_software_rendering(mode, Some("1")));
+        for value in [None, Some("0"), Some("true"), Some(""), Some(" 1")] {
+            assert!(!diagnostic_software_rendering(mode, value));
+        }
+    }
+    assert!(!diagnostic_software_rendering(RunMode::Live, Some("1")));
+}
+
+#[test]
 fn missing_content_measurements_and_mapped_allocations_fail_closed() {
     for field in ["font", "cell_metrics", "grid"] {
         let mut value = context();

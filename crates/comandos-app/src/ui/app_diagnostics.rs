@@ -8,7 +8,7 @@ use std::{
     sync::atomic::Ordering,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-use webkit2gtk::WebViewExt;
+use webkit2gtk::{SettingsExt, WebViewExt};
 
 impl App {
     fn diagnostic_issues(&self) -> Vec<String> {
@@ -91,6 +91,9 @@ impl App {
             window.upcast_ref(),
             &window.style_context().font(gtk::StateFlags::NORMAL),
         )?;
+        let hardware_acceleration_policy = WebViewExt::settings(&self.webview)
+            .ok_or("WebKit settings unavailable")?
+            .hardware_acceleration_policy();
         let mut widgets = Vec::new();
         for (id, role, widget) in [
             ("window", "window", window.upcast_ref::<gtk::Widget>()),
@@ -221,7 +224,7 @@ impl App {
             .and_then(|page| self.workspace.widget().nth_page(Some(page)))
             .and_then(|page| self.workspace.group_of_page(&page));
         layout_dump::normalize(
-            json!({"viewport":{"width":window.allocated_width(),"height":window.allocated_height(),"dpr":window.scale_factor()},"window":{"title":window.title().map(|v|v.to_string())},"dashboard":{"uri":self.webview.uri().map(|v|v.to_string()),"title":self.webview.title().map(|v|v.to_string()),"loading":self.webview.is_loading()},"theme":{"name":theme.values.get("name"),"tokens":theme.values,"ansi":theme.ansi,"button_style":*self.applied_button_style.borrow()},"font":font,"tabs":tabs,"strip":{"order":strip_entries.iter().map(|(key,_)|key).collect::<Vec<_>>(),"selected":strip_selected,"layout":if self.tab_layout.rows(){"rows"}else{"single"}},"workspace":{"available":!doc.is_null(),"revision":(!doc.is_null()).then_some(self.revision.get()),"groups":doc.get("groups").cloned().unwrap_or_else(||json!([])),"focused_tab":self.workspace.focused(),"selected_tab":selected,"active_group":active_group},"widgets":widgets,"terminals":terminals}),
+            json!({"viewport":{"width":window.allocated_width(),"height":window.allocated_height(),"dpr":window.scale_factor()},"window":{"title":window.title().map(|v|v.to_string())},"dashboard":{"uri":self.webview.uri().map(|v|v.to_string()),"title":self.webview.title().map(|v|v.to_string()),"loading":self.webview.is_loading(),"hardware_acceleration_policy":format!("{hardware_acceleration_policy:?}").to_lowercase()},"theme":{"name":theme.values.get("name"),"tokens":theme.values,"ansi":theme.ansi,"button_style":*self.applied_button_style.borrow()},"font":font,"tabs":tabs,"strip":{"order":strip_entries.iter().map(|(key,_)|key).collect::<Vec<_>>(),"selected":strip_selected,"layout":if self.tab_layout.rows(){"rows"}else{"single"}},"workspace":{"available":!doc.is_null(),"revision":(!doc.is_null()).then_some(self.revision.get()),"groups":doc.get("groups").cloned().unwrap_or_else(||json!([])),"focused_tab":self.workspace.focused(),"selected_tab":selected,"active_group":active_group},"widgets":widgets,"terminals":terminals}),
         )
     }
     pub(super) fn install_layout_diagnostic(self: &Rc<Self>) -> Option<glib::SourceId> {

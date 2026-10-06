@@ -45,6 +45,9 @@ pub fn dashboard_uri(base: Option<&str>, version: &str) -> Option<String> {
 pub fn create(cfg: &AppConfig) -> Result<WebView, WebError> {
     create_observed(cfg, None)
 }
+pub fn diagnostic_software_rendering(mode: RunMode, value: Option<&str>) -> bool {
+    mode != RunMode::Live && crate::layout_dump::enabled(value)
+}
 pub fn create_observed(
     cfg: &AppConfig,
     observation: Option<Rc<RefCell<LoadObservation>>>,
@@ -72,6 +75,15 @@ pub fn create_observed(
     webview.set_hexpand(true);
     webview.set_vexpand(true);
     if let Some(settings) = WebViewExt::settings(&webview) {
+        if diagnostic_software_rendering(
+            cfg.mode(),
+            std::env::var("COMANDOS_APP_DIAGNOSTIC_SOFTWARE_RENDERING")
+                .ok()
+                .as_deref(),
+        ) {
+            settings
+                .set_hardware_acceleration_policy(webkit2gtk::HardwareAccelerationPolicy::Never);
+        }
         settings.set_enable_webaudio(true);
         settings.set_enable_javascript(cfg.mode() != RunMode::Shadow);
         settings.set_enable_write_console_messages_to_stdout(true);
