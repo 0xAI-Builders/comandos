@@ -154,12 +154,10 @@ async fn static_directory_errors_normalization_and_head_match_python() {
 
 #[tokio::test]
 async fn unknown_operator_and_delete_gate_match_python() {
-    use support::{dead_port, front, oracle::oracle, request_body};
+    use support::{dead_port, front, http_golden::FrozenHttp, request_body};
     let home = TestHome::new("residue-unknown");
     let rust = front(&home, dead_port(), home.options()).await;
-    let py = oracle(&home)
-        .await
-        .expect("Python requerido para el oráculo");
+    let py = FrozenHttp::new(&home, "server-http-residue-gates", &[]).await;
     for (method, path, body) in [
         ("POST", "/nada", "{}"),
         ("POST", "/news/notes?x=1", "{}"),
@@ -176,7 +174,7 @@ async fn unknown_operator_and_delete_gate_match_python() {
         ("DELETE", "/nada", "{"),
     ] {
         let a = request_body(rust.port, method, path, "", body).await;
-        let b = request_body(py.port, method, path, "", body).await;
+        let b = py.request(method, path, "", body).await;
         assert_eq!(
             (a.status, a.text()),
             (b.status, b.text()),
@@ -185,7 +183,7 @@ async fn unknown_operator_and_delete_gate_match_python() {
     }
     let body = " ".repeat(64001);
     let a = request_body(rust.port, "DELETE", "/nada", "", &body).await;
-    let b = request_body(py.port, "DELETE", "/nada", "", &body).await;
+    let b = py.request("DELETE", "/nada", "", &body).await;
     assert_eq!((a.status, a.text()), (b.status, b.text()));
     assert_eq!(a.status, 413);
     rust.stop().await;
