@@ -12,7 +12,10 @@ use std::{
     collections::{BTreeMap, VecDeque},
     fs,
     io::{BufRead, BufReader, Read, Write},
-    os::{fd::AsFd, unix::process::CommandExt},
+    os::{
+        fd::AsFd,
+        unix::{fs::OpenOptionsExt, process::CommandExt},
+    },
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
     sync::{
@@ -499,8 +502,7 @@ impl Session {
     fn fs_read(&self, params: &Value) -> Result<Value> {
         let path = self.file_path(params)?;
         let mut bytes = vec![];
-        fs::File::open(path)
-            .map_err(|e| e.to_string())?
+        regular_file(&path, false)?
             .take((MAX_LINE + 1) as u64)
             .read_to_end(&mut bytes)
             .map_err(|e| e.to_string())?;
@@ -553,7 +555,12 @@ impl Session {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        fs::write(path, content).map_err(|e| e.to_string())?;
+        let mut file = regular_file(&path, true)?;
+        // Check the opened descriptor before truncating, including replacements
+        // between pathname metadata and open. Regular symlinks remain supported.
+        file.set_len(0).map_err(|e| e.to_string())?;
+        file.write_all(content.as_bytes())
+            .map_err(|e| e.to_string())?;
         Ok(json!({}))
     }
     fn update(&mut self, update: &Value, events: &mut impl Events) -> Result<()> {
@@ -823,4 +830,28 @@ impl Session {
             }
         }
     }
+}
+
+fn regular_file(path: &Path, write: bool) -> Result<fs::File> {
+    match fs::metadata(path) {
+        Ok(metadata) if !metadata.is_file() => {
+            return Err("ACP requiere un archivo regular".into());
+        }
+        Ok(_) => {}
+        Err(e) if write && e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.to_string()),
+    }
+    // A FIFO substituted after the metadata check must not block open. Never
+    // request truncation before validating the actual opened descriptor.
+    let file = fs::OpenOptions::new()
+        .read(!write)
+        .write(write)
+        .create(write)
+        .custom_flags(nix::libc::O_NONBLOCK | nix::libc::O_NOCTTY)
+        .open(path)
+        .map_err(|e| e.to_string())?;
+    if !file.metadata().map_err(|e| e.to_string())?.is_file() {
+        return Err("ACP requiere un archivo regular".into());
+    }
+    Ok(file)
 }
