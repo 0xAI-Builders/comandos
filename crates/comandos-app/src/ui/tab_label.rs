@@ -14,12 +14,18 @@ pub struct TabLabel {
     pub favorite: Option<gtk::Button>,
     pub close: Option<gtk::Button>,
     pub suggest: Option<gtk::Button>,
-    indicator: gtk::Image,
+    pub indicator: gtk::Image,
+    pub dot: gtk::EventBox,
     sticker: gtk::Label,
     state: Rc<RefCell<String>>,
     mark: Rc<RefCell<String>>,
     editing: Rc<Cell<bool>>,
     painted: Rc<RefCell<String>>,
+    cache: Rc<RefCell<super::marks::IndicatorCache>>,
+    favorite_on: Rc<Cell<bool>>,
+    favorite_frame: Rc<Cell<usize>>,
+    last_seconds: Rc<Cell<f64>>,
+    english: Rc<Cell<bool>>,
 }
 impl TabLabel {
     pub fn diagnostic_state(&self) -> serde_json::Value {
@@ -109,11 +115,17 @@ impl TabLabel {
             close,
             suggest,
             indicator,
+            dot,
             sticker,
             state: Rc::new(RefCell::new(String::new())),
             mark: Rc::new(RefCell::new("none".into())),
             editing: Rc::new(Cell::new(false)),
             painted: Rc::new(RefCell::new(String::new())),
+            cache: Rc::new(RefCell::new(super::marks::IndicatorCache::default())),
+            favorite_on: Rc::new(Cell::new(false)),
+            favorite_frame: Rc::new(Cell::new(usize::MAX)),
+            last_seconds: Rc::new(Cell::new(0.)),
+            english: Rc::new(Cell::new(false)),
         };
         out.item.show_all();
         out.paint(0.);
@@ -122,50 +134,75 @@ impl TabLabel {
     pub fn widget(&self) -> gtk::Widget {
         self.item.clone().upcast()
     }
+    pub fn set_language(&self, english: bool) {
+        self.english.set(english);
+        self.set_favorite(self.favorite_on.get());
+        self.paint(self.last_seconds.get());
+    }
     pub fn set_text(&self, text: &str) {
         self.text.set_text(text);
     }
     pub fn set_favorite(&self, value: bool) {
         if let Some(b) = &self.favorite {
-            b.set_label("☆");
+            b.set_tooltip_text(Some(match (self.english.get(), value) {
+                (true, true) => "Remove from favorites",
+                (true, false) => "Add to favorites",
+                (false, true) => "Quitar de favoritos",
+                (false, false) => "Marcar como favorita",
+            }));
+            if self.favorite_on.replace(value) == value {
+                return;
+            }
+
+            self.favorite_frame.set(usize::MAX);
+            b.set_label(if value { "" } else { "☆" });
+            if !value {
+                b.set_image(gtk::Image::NONE);
+            } else {
+                self.paint_favorite(0.);
+            }
             if value {
                 b.style_context().add_class("favorite");
                 b.set_opacity(1.);
             } else {
                 b.style_context().remove_class("favorite");
             }
-            b.set_tooltip_text(Some(if value {
-                "Quitar de favoritos"
-            } else {
-                "Marcar como favorita"
-            }));
         }
     }
     pub fn set_state(&self, state: &str) {
+        if *self.state.borrow() == state {
+            return;
+        }
         *self.state.borrow_mut() = state.into();
-        self.paint(0.);
+        self.paint(self.last_seconds.get());
     }
     pub fn set_mark(&self, mark: &str) {
+        if *self.mark.borrow() == mark {
+            return;
+        }
         *self.mark.borrow_mut() = mark.into();
-        self.paint(0.);
+        self.paint(self.last_seconds.get());
     }
     pub fn paint(&self, seconds: f64) {
+        self.last_seconds.set(seconds);
+        self.paint_favorite(seconds);
         use comandos_core::work_marks as marks;
         let state = marks::ai_status(&self.state.borrow());
         let scale = self.indicator.scale_factor().max(1);
         let frame = marks::ai_frame_index(state, seconds).unwrap_or(0);
-        let phase =
-            (marks::ai_cycle(state) > 0.).then_some(frame as f64 / marks::AI_PULSE_FRAMES as f64);
-        let signature = format!("{state}:{scale}:{frame}:{}", self.mark.borrow());
+        let signature = format!(
+            "{state}:{scale}:{frame}:{}:{}",
+            self.mark.borrow(),
+            self.english.get()
+        );
         if *self.painted.borrow() == signature {
             return;
         }
         *self.painted.borrow_mut() = signature;
-        let svg = marks::ai_dot_svg(state, marks::AI_DOT_PIXELS * scale as u32, phase);
-        if let Ok(loader) = gdk_pixbuf::PixbufLoader::with_type("svg")
-            && loader.write(svg.as_bytes()).is_ok()
-            && loader.close().is_ok()
-            && let Some(pb) = loader.pixbuf()
+        if let Some(pb) =
+            self.cache
+                .borrow_mut()
+                .pixbuf(&format!("ai:{state}"), None, frame, scale, None)
         {
             if let Some(surface) = pb.create_surface(scale, self.indicator.window().as_ref()) {
                 self.indicator.set_from_surface(Some(&surface));
@@ -173,15 +210,12 @@ impl TabLabel {
                 self.indicator.set_from_pixbuf(Some(&pb));
             }
         }
-        self.indicator
-            .set_tooltip_text(Some(&format!("IA: {}", marks::ai_label(state, false))));
+        self.indicator.set_tooltip_text(Some(&format!(
+            "IA: {}",
+            marks::ai_label(state, self.english.get())
+        )));
         let mark = self.mark.borrow();
-        let text = match mark.as_str() {
-            "frozen" => Some("Aparcado"),
-            "awaiting_reply" => Some("Esperando"),
-            "resolved" => Some("Hecho"),
-            _ => None,
-        };
+        let text = marks::sticker(mark.as_str());
         for m in ["frozen", "awaiting_reply", "resolved"] {
             self.sticker
                 .style_context()
@@ -198,6 +232,27 @@ impl TabLabel {
         }
         if let Some(suggest) = &self.suggest {
             suggest.set_visible(state == "done" && text.is_none());
+        }
+    }
+    fn paint_favorite(&self, seconds: f64) {
+        if !self.favorite_on.get() {
+            return;
+        }
+        let frame = comandos_core::work_marks::frame_index("favorite", seconds).unwrap_or(0);
+        if self.favorite_frame.replace(frame) == frame {
+            return;
+        }
+        if let Some(button) = &self.favorite
+            && let Some(pb) = self.cache.borrow_mut().pixbuf(
+                "favorite",
+                None,
+                frame,
+                self.indicator.scale_factor().max(1),
+                None,
+            )
+        {
+            button.set_image(Some(&gtk::Image::from_pixbuf(Some(&pb))));
+            button.set_always_show_image(true);
         }
     }
     pub fn begin_rename(&self, save: Rc<dyn Fn(String)>) {

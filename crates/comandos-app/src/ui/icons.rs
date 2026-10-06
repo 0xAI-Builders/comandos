@@ -10,6 +10,13 @@ pub fn image(name: &str, pixels: i32, color: &str) -> gtk::Image {
         "chevron-right" => include_str!("../../../../dash/icons/chevron-right.svg"),
         "panel-left" => include_str!("../../../../dash/icons/panel-left.svg"),
         "close" => include_str!("../../../../dash/icons/close.svg"),
+        "minimize" => include_str!("../../../../dash/icons/minimize.svg"),
+        "maximize" => include_str!("../../../../dash/icons/maximize.svg"),
+        "timer" => include_str!("../../../../dash/icons/timer.svg"),
+        "bell" => include_str!("../../../../dash/icons/bell.svg"),
+        "settings" => include_str!("../../../../dash/icons/settings.svg"),
+        "sparkles" => include_str!("../../../../dash/icons/sparkles.svg"),
+
         _ => return gtk::Image::from_icon_name(Some(name), gtk::IconSize::SmallToolbar),
     };
     let svg = svg.replace("currentColor", color);

@@ -120,7 +120,7 @@ impl Poller {
             marks_client.clone(),
             tx.clone(),
             stop.clone(),
-            "/marks",
+            "/work-marks",
             intervals.marks,
             intervals.marks_timeout,
             PollUpdate::Marks,

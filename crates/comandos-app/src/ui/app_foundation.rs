@@ -44,6 +44,11 @@ impl App {
                             .iter()
                             .find(|p| p.get("active").and_then(Value::as_bool) == Some(true))
                     });
+                let mark_pane = chosen
+                    .and_then(|p| p.get("id"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                let mark_session = session.clone();
                 let pane = chosen
                     .and_then(|p| p.get("id"))
                     .and_then(Value::as_str)
@@ -66,6 +71,7 @@ impl App {
                     }
                 });
                 menu.append(&new);
+                app.append_mark_menu(&menu, &mark_session, mark_pane.as_deref());
                 menu.show_all();
                 menu.popup_at_pointer(Some(&event));
             },
@@ -80,6 +86,7 @@ impl App {
             *self.applied_theme.borrow_mut() = Some(theme.clone());
             *self.applied_button_style.borrow_mut() = Some(style.to_string());
         }
+        self.header.paint(theme);
         let dim = theme
             .values
             .get("dim")
@@ -712,89 +719,11 @@ impl App {
         *self.drag_layer.0.target.borrow_mut() = self.drag_target(point);
         self.drag_layer.widget().queue_draw();
     }
-    pub(super) fn adopt_mark(&self, mark: &Value) {
-        if mark.get("scope").and_then(Value::as_str) != Some("session") {
-            return;
-        }
-        if let Some(key) = mark.get("key").and_then(Value::as_str) {
-            self.marks.borrow_mut().insert(key.into(), mark.clone());
-            if let Some(tab) = self.labels.borrow().get(key) {
-                tab.set_mark(mark.get("mark").and_then(Value::as_str).unwrap_or("none"));
-            }
-        }
-    }
     pub(super) fn set_mark(self: &Rc<Self>, key: &str, mark: &str) {
-        if !self.writable() {
-            return;
-        }
-        if self.cfg.mode() == RunMode::Sandbox && self.cfg.dash_url().is_none() {
-            let revision = self
-                .marks
-                .borrow()
-                .get(key)
-                .and_then(|v| v.get("revision"))
-                .and_then(Value::as_u64)
-                .unwrap_or(0)
-                .saturating_add(1);
-            self.adopt_mark(&json!({"scope":"session","key":key,"mark":mark,"revision":revision}));
-            return;
-        }
-        let body = json!({"scope":"session","key":key,"value":mark,"expectedRevision":self.marks.borrow().get(key).and_then(|m|m.get("revision")).and_then(Value::as_u64).unwrap_or(0)});
-        let dash = self.dash.clone();
-        let weak = Rc::downgrade(self);
-        self.jobs.spawn(
-            move || dash.post("/work-marks", &body, Duration::from_secs(5)),
-            move |result| {
-                if let Some(app) = weak.upgrade() {
-                    match result {
-                        Ok((200, value)) => {
-                            if let Some(mark) = value.get("mark") {
-                                app.adopt_mark(mark);
-                            }
-                        }
-                        Ok((409, value)) => {
-                            if let Some(mark) = value.get("current") {
-                                app.adopt_mark(mark);
-                            }
-                            app.status.set_text(
-                                "Otro dispositivo cambió esta marca; se muestra la actual.",
-                            );
-                        }
-                        result => app.status.set_text(&format!("Marcas: {result:?}")),
-                    }
-                }
-            },
-        );
+        self.set_work_mark("session", key, &json!(mark));
     }
     pub(super) fn tab_menu(self: &Rc<Self>, key: &str, event: &gdk::EventButton) {
-        let menu = gtk::Menu::new();
-        for (label, mark) in [
-            ("Sin marca", "none"),
-            ("Aparcado", "frozen"),
-            ("Esperando", "awaiting_reply"),
-            ("Hecho", "resolved"),
-        ] {
-            let item = gtk::MenuItem::with_label(label);
-            let weak = Rc::downgrade(self);
-            let key = key.to_string();
-            item.connect_activate(move |_| {
-                if let Some(app) = weak.upgrade() {
-                    app.set_mark(&key, mark);
-                }
-            });
-            menu.append(&item);
-        }
-        let fav = gtk::MenuItem::with_label("☆ Favorita");
-        let weak = Rc::downgrade(self);
-        let k = key.to_string();
-        fav.connect_activate(move |_| {
-            if let Some(app) = weak.upgrade() {
-                app.toggle_favorite(&k);
-            }
-        });
-        menu.append(&fav);
-        menu.show_all();
-        menu.popup_at_pointer(Some(event));
+        self.mark_menu(key, None, event);
     }
     pub(super) fn sort_menu(self: &Rc<Self>, button: Option<&gtk::Widget>) {
         let menu = gtk::Menu::new();

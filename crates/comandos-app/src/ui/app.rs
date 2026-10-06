@@ -39,6 +39,7 @@ pub struct App {
     pub jobs: Jobs,
     pub dash: DashClient,
     pub window: gtk::ApplicationWindow,
+    english: bool,
     pub paned: gtk::Paned,
     pub notebook: gtk::Notebook,
     pub webview: webkit2gtk::WebView,
@@ -61,6 +62,18 @@ pub struct App {
     previous_order: RefCell<Option<Vec<String>>>,
     state_items: RefCell<BTreeMap<String, Value>>,
     marks: RefCell<BTreeMap<String, Value>>,
+    work_marks: RefCell<ui::marks::Marks>,
+    marks_fetching: Cell<bool>,
+    hourglass: RefCell<ui::hourglass::Hourglass>,
+    hourglass_sprites: RefCell<ui::hourglass::Sprites>,
+    hourglass_fetching: Cell<bool>,
+    hourglass_polled: Cell<Option<std::time::Instant>>,
+    hourglass_frame: Cell<Option<(usize, bool, i32)>>,
+    header: ui::header::Header,
+    popovers: RefCell<BTreeMap<String, (gtk::Popover, webkit2gtk::WebView)>>,
+    favorite_pending: RefCell<BTreeMap<String, bool>>,
+    favorite_queue: RefCell<std::collections::VecDeque<String>>,
+    favorite_posting: Cell<bool>,
     quick: Arc<crate::tab_actions::QuickTerminal>,
     quick_busy: Cell<bool>,
     focus_ready: Cell<bool>,
@@ -107,6 +120,7 @@ impl AppRuntime {
     fn shutdown(self) {
         self.app.closed.store(true, Ordering::Release);
         self.app.shutdown_protocol();
+        self.app.shutdown_header();
         for source in self.sources {
             source.remove();
         }
@@ -152,9 +166,21 @@ impl App {
         let plus = ui::icons::button("plus", 16, "Nueva sesión");
         let weak = Rc::downgrade(self);
         plus.connect_clicked(move |_| {
-            if let Some(app) = weak.upgrade() {
-                app.new_terminal();
+            if let Some(app) = weak.upgrade()
+                && let Err(error) = app.handlers.invoke("T14.wizard", &json!({}))
+            {
+                app.status.set_text(&error.to_string());
             }
+        });
+        let weak = Rc::downgrade(self);
+        plus.connect_button_press_event(move |button, event| {
+            if event.button() == 3
+                && let Some(app) = weak.upgrade().filter(|a| a.writable())
+            {
+                app.new_tab_menu(button);
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
         });
         plus.style_context().add_class("cc-key");
         plus.style_context().add_class("cc-key-plus");
@@ -462,13 +488,16 @@ impl App {
         let workspace = ui::workspace::GtkWorkspace::new();
         let state = StateFiles::new(cfg.clone(), guard.clone());
         let strip = RefCell::new(ui::tabstrip::TabStripNotebook::new(notebook.clone()));
+        let english =
+            config::ui_lang(cfg.hooks_dir(), std::env::var("LANG").ok().as_deref()) == "en";
         Rc::new(Self {
+            english,
             cfg,
             tmux,
             guard,
             jobs,
             dash,
-            window,
+            window: window.clone(),
             paned,
             notebook,
             webview,
@@ -496,6 +525,18 @@ impl App {
             previous_order: RefCell::new(None),
             state_items: RefCell::new(BTreeMap::new()),
             marks: RefCell::new(BTreeMap::new()),
+            work_marks: RefCell::new(ui::marks::Marks::default()),
+            marks_fetching: Cell::new(false),
+            hourglass: RefCell::new(ui::hourglass::Hourglass::default()),
+            hourglass_sprites: RefCell::new(ui::hourglass::Sprites::default()),
+            hourglass_fetching: Cell::new(false),
+            hourglass_polled: Cell::new(None),
+            hourglass_frame: Cell::new(None),
+            header: ui::header::Header::new(&window, english),
+            popovers: RefCell::new(BTreeMap::new()),
+            favorite_pending: RefCell::new(BTreeMap::new()),
+            favorite_queue: RefCell::new(std::collections::VecDeque::new()),
+            favorite_posting: Cell::new(false),
             quick: Arc::new(crate::tab_actions::QuickTerminal::default()),
             quick_busy: Cell::new(false),
             focus_ready: Cell::new(false),
@@ -929,6 +970,7 @@ impl App {
         child.set_widget_name(&format!("tab-{key}"));
         self.workspace.register_tab(key, &child);
         let tab = ui::tab_label::TabLabel::new(label, key == "local", key != "local");
+        tab.set_language(self.english);
         self.install_drag(key, tab.name.upcast_ref());
         self.install_drag(key, tab.item.upcast_ref());
         let weak = Rc::downgrade(self);
@@ -955,6 +997,18 @@ impl App {
                     app.tab_menu(&k, event);
                     return glib::Propagation::Stop;
                 }
+            }
+            glib::Propagation::Proceed
+        });
+        let weak = Rc::downgrade(self);
+        let k = key.to_string();
+        tab.dot.add_events(gdk::EventMask::BUTTON_PRESS_MASK);
+        tab.dot.connect_button_press_event(move |_, event| {
+            if event.button() == 1
+                && let Some(app) = weak.upgrade().filter(|a| a.writable())
+            {
+                app.mark_menu(&k, None, event);
+                return glib::Propagation::Stop;
             }
             glib::Propagation::Proceed
         });
@@ -1080,36 +1134,7 @@ impl App {
         }
     }
     fn toggle_favorite(self: &Rc<Self>, key: &str) {
-        if !self.writable() {
-            return;
-        }
-        let mut favorites = self.registry.borrow().favorite_keys();
-        if favorites.iter().any(|k| k == key) {
-            favorites.retain(|k| k != key);
-        } else {
-            favorites.push(key.into());
-        }
-        let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
-        self.registry
-            .borrow_mut()
-            .apply_favorites(&json!(favorites), generation);
-        self.paint_favorites();
-        let dash = self.dash.clone();
-        let weak = Rc::downgrade(self);
-        self.jobs.spawn(
-            move || {
-                dash.post(
-                    "/prefs",
-                    &json!({"favorites":favorites}),
-                    Duration::from_secs(3),
-                )
-            },
-            move |result| {
-                if let (Some(a), Err(e)) = (weak.upgrade(), result) {
-                    a.status.set_text(&format!("Favorite: {e:?}"));
-                }
-            },
-        );
+        self.queue_favorite(key);
     }
     fn paint_favorites(&self) {
         let favorites = self.registry.borrow().favorite_keys();
@@ -1226,9 +1251,10 @@ impl App {
                     }
                 }
                 if let Some(f) = value.get("favorites") {
+                    let favorites = self.merge_pending_favorites(f);
                     self.registry
                         .borrow_mut()
-                        .apply_favorites(f, favorite_generation);
+                        .apply_favorites(&favorites, favorite_generation);
                     self.paint_favorites();
                 }
             }
@@ -1237,7 +1263,7 @@ impl App {
                     self.flush_resize();
                 }
             }
-            PollUpdate::Notices { badge, .. } => self.status.set_text(&format!("Notices: {badge}")),
+            PollUpdate::Notices { badge, .. } => self.header.set_badge(badge),
             PollUpdate::State(value) => {
                 self.state_received.set(true);
                 for item in value
@@ -1268,15 +1294,10 @@ impl App {
             }
             PollUpdate::Marks(value) => {
                 self.marks_received.set(true);
-                for mark in value
-                    .get("rows")
-                    .or_else(|| value.get("marks"))
-                    .and_then(Value::as_array)
-                    .or_else(|| value.as_array())
-                    .into_iter()
-                    .flatten()
-                {
-                    self.adopt_mark(mark);
+                // La lectura heredada alimenta restore; la adopción visual usa GET propio con generación.
+                if self.work_marks.borrow().generation() == 0 {
+                    self.work_marks.borrow_mut().adopt_poll(&value, 0);
+                    self.paint_marks();
                 }
             }
         }
@@ -1847,11 +1868,12 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
         overlay.set_overlay_pass_through(app.drag_layer.widget(), true);
         paned.pack2(&overlay, true, false);
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        content.pack_start(&ui::window::header(&window), false, false, 0);
+        content.pack_start(&app.header.bar, false, false, 0);
         content.pack_start(&paned, true, true, 0);
         window.add(&content);
         app.install_foundation_handlers();
         ui::app_commands::install(&app);
+        ui::header::install(&app);
         let bridge_source = ui::bridge::install(&app);
         let weak = Rc::downgrade(&app);
         app.workspace.on_resize(Rc::new(move |updates| {
@@ -1906,9 +1928,12 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
             Duration::from_millis(80),
             move || {
                 if let Some(app) = weak.upgrade() {
-                    for tab in app.labels.borrow().values() {
-                        tab.paint(epoch.elapsed().as_secs_f64());
+                    if app.presence_visible.get() && ui::header::animations_enabled() {
+                        for tab in app.labels.borrow().values() {
+                            tab.paint(epoch.elapsed().as_secs_f64());
+                        }
                     }
+                    app.tick_hourglass();
                     if let Some(key) = app.current_session() {
                         app.paint_selected(&key);
                         app.save_device_focus(&key);
@@ -1919,6 +1944,17 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
                 }
             },
         ));
+        let weak = Rc::downgrade(&app);
+        sources.push(glib::timeout_add_local(Duration::from_secs(5), move || {
+            if let Some(app) = weak.upgrade().filter(|a| !a.closed.load(Ordering::Acquire)) {
+                if app.presence_visible.get() {
+                    app.fetch_marks();
+                }
+                glib::ControlFlow::Continue
+            } else {
+                glib::ControlFlow::Break
+            }
+        }));
         for (seconds, tabs_only) in [(5, false), (30, true)] {
             let weak = Rc::downgrade(&app);
             sources.push(glib::timeout_add_local(
@@ -2034,6 +2070,8 @@ fn parse_color(hex: &str) -> Option<[u8; 3]> {
     ])
 }
 
+#[path = "app_t14.rs"]
+mod app_t14;
 #[path = "app_diagnostics.rs"]
 mod diagnostics;
 #[path = "app_foundation.rs"]

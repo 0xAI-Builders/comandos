@@ -277,3 +277,109 @@ fn favorites_only_changes_and_fresh_generation_reach_gtk() {
     assert_eq!(prefs[1].0["favorites"], json!(["term-a"]));
     assert_eq!(prefs[2].1, 1);
 }
+
+#[test]
+fn marks_poll_uses_the_route_served_by_backend_and_original() {
+    let original = std::env::var("COMANDOS_CC_APP_ORACLE")
+        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../bin/cc-app").into());
+    let script = r#"import ast,sys
+node=next(n for n in ast.parse(open(sys.argv[1]).read()).body if isinstance(n,ast.FunctionDef) and n.name=='start_work_marks_fetch')
+paths=[n.value for n in ast.walk(node) if isinstance(n,ast.Constant) and isinstance(n.value,str) and n.value.startswith('/')]
+assert paths==['/work-marks'];print(paths[0])
+"#;
+    let out = comandos_app::proc::run(&comandos_app::proc::ProcSpec {
+        program: "python3".into(),
+        args: vec!["-c".into(), script.into(), original.into()],
+        stdin: None,
+        env: vec![],
+        clear_env: false,
+        env_remove: vec![],
+        cwd: None,
+        timeout: Duration::from_secs(5),
+    })
+    .unwrap();
+    assert_eq!(out.code, Some(0));
+    let path = String::from_utf8(out.stdout).unwrap().trim().to_string();
+    assert!(
+        include_str!("../../comandos-server/src/dash/native/events.rs")
+            .contains(&format!("Key::Path(\"{path}\")"))
+    );
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    listener.set_nonblocking(true).unwrap();
+    let stop = Arc::new(AtomicBool::new(false));
+    let stopped = stop.clone();
+    let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen = requests.clone();
+    let server = std::thread::spawn(move || {
+        while !stopped.load(Ordering::Acquire) {
+            let Ok((mut stream, _)) = listener.accept() else {
+                std::thread::sleep(Duration::from_millis(1));
+                continue;
+            };
+            stream
+                .set_read_timeout(Some(Duration::from_millis(200)))
+                .unwrap();
+            let mut buf = [0u8; 2048];
+            let n = std::io::Read::read(&mut stream, &mut buf).unwrap_or(0);
+            let request = String::from_utf8_lossy(&buf[..n]);
+            let route = request
+                .lines()
+                .next()
+                .unwrap_or("")
+                .split_whitespace()
+                .nth(1)
+                .unwrap_or("");
+            if matches!(route, "/marks" | "/work-marks") {
+                seen.lock().unwrap().push(route.to_string());
+            }
+            let (status, body) = if route == path {
+                (
+                    "200 OK",
+                    r#"{"marks":[{"scope":"session","key":"fixture","mark":"resolved","revision":1}],"panes":[]}"#,
+                )
+            } else if route == "/marks" {
+                ("404 Not Found", "{}")
+            } else {
+                ("200 OK", "{}")
+            };
+            let response = format!(
+                "HTTP/1.0 {status}\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = std::io::Write::write_all(&mut stream, response.as_bytes());
+        }
+    });
+    let client = DashClient::new(Some(&format!("http://127.0.0.1:{port}")), RunMode::Live).unwrap();
+    let (poller, rx) = Poller::start_with_intervals(
+        client,
+        Arc::new(AtomicU64::new(0)),
+        PollIntervals {
+            marks: Duration::from_millis(20),
+            state_prefs: Duration::from_secs(1),
+            workspace: Duration::from_secs(1),
+            notices_backoff: Duration::from_secs(1),
+            ..PollIntervals::default()
+        },
+    );
+    let deadline = Instant::now() + Duration::from_millis(500);
+    let mut adopted = None;
+    while Instant::now() < deadline {
+        if let Ok(PollUpdate::Marks(value)) = rx.recv_timeout(Duration::from_millis(20)) {
+            adopted = Some(value);
+            break;
+        }
+    }
+    poller.stop();
+    stop.store(true, Ordering::Release);
+    server.join().unwrap();
+    assert_eq!(
+        adopted,
+        Some(
+            json!({"marks":[{"scope":"session","key":"fixture","mark":"resolved","revision":1}],"panes":[]})
+        ),
+        "routes {:?}",
+        requests.lock().unwrap()
+    );
+    assert!(requests.lock().unwrap().iter().all(|p| p != "/marks"));
+}
