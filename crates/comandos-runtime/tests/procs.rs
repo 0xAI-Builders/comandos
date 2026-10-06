@@ -453,3 +453,68 @@ fn plain_darwin_inventory_avoids_unused_cwd_job() {
     assert_eq!(p.tools().calls.borrow().len(), 1);
     assert_eq!(p.tools().calls.borrow()[0].0, "ps");
 }
+
+#[derive(Default)]
+struct CandidateTools {
+    ps: String,
+    lsof: Option<String>,
+    calls: RefCell<Vec<(String, Vec<String>, Duration)>>,
+}
+impl Tools for CandidateTools {
+    fn run(&self, name: &str, args: &[&str], timeout: Duration) -> Option<String> {
+        self.calls.borrow_mut().push((
+            name.into(),
+            args.iter().map(|s| (*s).to_owned()).collect(),
+            timeout,
+        ));
+        match name {
+            "ps" => Some(self.ps.clone()),
+            "lsof" => self.lsof.clone(),
+            _ => panic!("unexpected fixture command"),
+        }
+    }
+}
+fn candidate_tools() -> CandidateTools {
+    CandidateTools {
+        ps: "700 1 Sat Oct 4 21:10:03 2026 /usr/bin/unrelated\n812 1 Sat Oct 4 21:10:03 2026 /usr/bin/node /opt/claude\n813 1 Sat Oct 4 21:10:03 2026 /opt/grok /opt/claude\n814 1 Sat Oct 4 21:10:03 2026 /usr/bin/node /opt/grok-wrapper\n815 1 Sat Oct 4 21:10:03 2026 /usr/bin/node /opt/other /opt/claude\n816 1 Sat Oct 4 21:10:03 2026 /opt/grok\n".into(),
+        lsof: Some("p812\nn/own/a\np813\nn/own/b\np700\nn/ignored\n".into()),
+        ..Default::default()
+    }
+}
+#[test]
+fn candidate_cwd_lookup_filters_before_one_lsof_with_the_shared_canonical_selector() {
+    let source = PsSource::new(candidate_tools());
+    let agents = std::collections::BTreeSet::from(["claude".into(), "grok".into()]);
+    let rows = comandos_runtime::agent_procs::agents_from_source(&source, &agents);
+    assert_eq!(
+        rows.iter()
+            .map(|r| (r.pid, r.cwd.as_str(), r.agent.as_str()))
+            .collect::<Vec<_>>(),
+        [(812, "/own/a", "claude"), (813, "/own/b", "claude")]
+    );
+    let calls = source.tools().calls.borrow();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].0, "ps");
+    assert_eq!(calls[0].1, ["-axww", "-o", "pid=,ppid=,lstart=,command="]);
+    assert_eq!(calls[1].0, "lsof");
+    assert_eq!(calls[1].1, ["-a", "-d", "cwd", "-p", "812,813,816", "-Fn"]);
+    assert_eq!(calls[1].2, Duration::from_secs(2));
+}
+#[test]
+fn candidate_cwd_lookup_without_a_canonical_hit_skips_lsof() {
+    let source = PsSource::new(candidate_tools());
+    let agents = std::collections::BTreeSet::from(["not-a-candidate".into()]);
+    assert!(comandos_runtime::agent_procs::agents_from_source(&source, &agents).is_empty());
+    let calls = source.tools().calls.borrow();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].0, "ps");
+}
+#[test]
+fn candidate_cwd_lookup_failure_returns_no_attribution_without_extra_jobs() {
+    let mut tools = candidate_tools();
+    tools.lsof = None;
+    let source = PsSource::new(tools);
+    let agents = std::collections::BTreeSet::from(["claude".into(), "grok".into()]);
+    assert!(comandos_runtime::agent_procs::agents_from_source(&source, &agents).is_empty());
+    assert_eq!(source.tools().calls.borrow().len(), 2);
+}

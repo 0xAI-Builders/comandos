@@ -72,11 +72,7 @@ pub fn agent_procs_for_agents(
 ) -> Result<Vec<AgentProc>, Unsure> {
     #[cfg(target_os = "macos")]
     if proc_root == Path::new("/proc") {
-        use crate::procs::ProcSource;
-        return Ok(agents_from_snapshot(
-            &crate::procs::system().snapshot_with_cwd(),
-            agents,
-        ));
+        return Ok(agents_from_source(&crate::procs::system(), agents));
     }
     let _ = agents;
     agent_procs(proc_root, aliases)
@@ -887,6 +883,34 @@ fn read_email(cfg: &[u8], agent: &str) -> Result<Value, Unsure> {
     }
 }
 
+fn canonical_agent<'a>(
+    p: &'a crate::procs::ProcInfo,
+    agents: &std::collections::BTreeSet<String>,
+) -> Option<&'a str> {
+    // Original Darwin branch: first two basenames intersect canonical agent
+    // names; sorted(hit)[0] wins, rather than Linux's alias order.
+    p.argv
+        .iter()
+        .take(2)
+        .map(|a| basename(a))
+        .filter(|a| agents.contains(*a))
+        .min()
+}
+
+/// Select canonical candidates before resolving cwd. A single ps inventory
+/// needs at most one lsof job, containing only those candidate PIDs.
+pub fn agents_from_source(
+    source: &impl crate::procs::ProcSource,
+    agents: &std::collections::BTreeSet<String>,
+) -> Vec<AgentProc> {
+    let candidates = source
+        .snapshot()
+        .into_iter()
+        .filter(|p| canonical_agent(p, agents).is_some())
+        .collect();
+    agents_from_snapshot(&source.with_cwds(candidates), agents)
+}
+
 /// Agent observations from a platform inventory. No filesystem or commands;
 /// missing cwd cannot be used to attribute an agent to a project.
 pub fn agents_from_snapshot(
@@ -896,15 +920,7 @@ pub fn agents_from_snapshot(
     procs
         .iter()
         .filter_map(|p| {
-            // Original Darwin branch: first two basenames intersect canonical
-            // agent names; sorted(hit)[0] wins, rather than Linux's alias order.
-            let agent = p
-                .argv
-                .iter()
-                .take(2)
-                .map(|a| basename(a))
-                .filter(|a| agents.contains(*a))
-                .min()?;
+            let agent = canonical_agent(p, agents)?;
             let cwd = p.cwd.as_ref()?.to_str()?.to_owned();
             Some(AgentProc {
                 pid: i64::from(p.pid),

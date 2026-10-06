@@ -20,6 +20,11 @@ pub trait ProcSource {
     fn snapshot_with_cwd(&self) -> Vec<ProcInfo> {
         self.snapshot()
     }
+    /// Enrich only the supplied observations. Callers can select candidates
+    /// before Darwin's cwd lookup instead of querying every process.
+    fn with_cwds(&self, rows: Vec<ProcInfo>) -> Vec<ProcInfo> {
+        rows
+    }
     fn process(&self, pid: i32) -> Option<ProcInfo> {
         self.snapshot().into_iter().find(|p| p.pid == pid)
     }

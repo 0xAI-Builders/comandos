@@ -5,7 +5,7 @@ ps y lsof, lanza tmux directamente y prepara un directorio de ejecución privado
 M1 no incluye AppKit, extracción de GTK, instaladores Mac ni validación de UI.
 
 Las rutas de este documento pertenecen al checkout de M1 en Linux:
-/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-mac-m1.
+/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-mac-m1-repair.
 Los originales que se comparan pertenecen al checkout principal en Linux:
 /home/someguy/codebase/0xJesus/ComandOS.
 
@@ -13,7 +13,7 @@ Los originales que se comparan pertenecen al checkout principal en Linux:
 
 | Función | Linux | Darwin | Python original en Darwin |
 |---|---|---|---|
-| ProcSource::snapshot, ProcFs, PsSnapshot | ProcFs lee una raíz inyectada; argv conserva límites NUL, inicio en ticks, cwd mediante enlace. Los consumidores previos conservan sus lectores y su raíz falsa. | ps -axww -o pid=,ppid=,lstart=,command=; lstart se convierte en segundos UTC. LC_ALL=C y TZ=UTC estabilizan el formato. El inventario base deja cwd vacío; snapshot_with_cwd lo completa mediante un lsof colectivo solo para atribución por proyecto. Se omiten filas incompletas. | agent_procs utiliza ps -axo pid=,command= y lsof; los otros lectores de procfs carecen de esos datos. |
+| ProcSource::snapshot, ProcFs, PsSnapshot | ProcFs lee una raíz inyectada; argv conserva límites NUL, inicio en ticks, cwd mediante enlace. Los consumidores previos conservan sus lectores y su raíz falsa. | ps -axww -o pid=,ppid=,lstart=,command=; lstart se convierte en segundos UTC. LC_ALL=C y TZ=UTC estabilizan el formato. El inventario base deja cwd vacío; snapshot_with_cwd permite completar un inventario genérico; la atribución por proyecto usa agents_from_source y with_cwds después de filtrar únicamente candidatos canónicos. Un ps y, solo si hay candidatos, un lsof colectivo de sus PID. Se omiten filas incompletas. | agent_procs utiliza ps -axo pid=,command= y lsof; los otros lectores de procfs carecen de esos datos. |
 | agent_procs::agent_procs_for_agents, agents_from_snapshot | Primer alias de los tres primeros argumentos, orden del directorio. | Dos primeros nombres canónicos; gana el menor nombre en el empate, como la rama Mac original. Sin cwd no se atribuye el proceso a un proyecto. | Misma selección canónica de dos nombres (el conjunto canónico se conserva separado del mapa de aliases), con lsof de los candidatos y plazo de ocho segundos para cwd. M1 limita lsof a dos segundos. |
 | agent_procs::parent_pid, proc_cmdline, process_start; process_start_time | Lectores originales de la raíz procfs; errores conservan sus resultados previos. | Consulta dirigida a un solo PID mediante ps. No ejecuta lsof por cada consulta de padre o inicio. Fallo: 0, vector vacío o inicio ausente. | parent_pid usa ps como fallback (tres segundos); _proc_cmdline y _process_start solo leen procfs y devuelven vacío. |
 | PaneInspector::new, inspect, process_argv, native_metadata | Misma raíz falsa/real, reglas de shell, orden de hijos, JSON y comprobación de inicio. | Un inventario ps por inspector, sin lsof de cwd innecesario; hijos por ppid e inicio para validar los registros de hooks. with_source permite probar estos consumidores con inventario propio. No observa de nuevo el inicio al leer cada registro. | El constructor itera /proc sin capturar la ausencia del directorio; los lectores individuales de cmdline/stat devuelven vacío ante OSError. No ofrece inventario Mac. |
@@ -60,14 +60,14 @@ Oráculos leídos o extraídos sin importar ni arrancar la app completa:
 - /home/someguy/codebase/0xJesus/ComandOS/lib/extension_launch.py:431–482.
 - /home/someguy/codebase/0xJesus/ComandOS/bin/cc-webterm:152–185.
 - /home/someguy/codebase/0xJesus/ComandOS/bin/cc-doctor:218 y diagnósticos core.
-- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-mac-m1/crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/agy-hooks.sh.
-- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-mac-m1/crates/comandos-runtime/tests/fixtures/hooks/oracle/opencode-comandos.js.
+- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-mac-m1-repair/crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/agy-hooks.sh.
+- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-mac-m1-repair/crates/comandos-runtime/tests/fixtures/hooks/oracle/opencode-comandos.js.
 
 Pruebas del checkpoint:
 
-- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-mac-m1/crates/comandos-runtime/tests/procs.rs.
-- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-mac-m1/crates/comandos-runtime/tests/platform.rs.
-- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-mac-m1/crates/comandos-server/src/dash/native/quick.rs (módulo tests).
+- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-mac-m1-repair/crates/comandos-runtime/tests/procs.rs.
+- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-mac-m1-repair/crates/comandos-runtime/tests/platform.rs.
+- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-mac-m1-repair/crates/comandos-server/src/dash/native/quick.rs (módulo tests).
 
 El informe y provenance del checkpoint registran comandos, pins, resultados y
 SDK privados. Los checks Apple no enlazan ni ejecutan un binario Darwin. Los

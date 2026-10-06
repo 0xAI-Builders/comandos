@@ -62,7 +62,7 @@ impl<T: Tools> PsSource<T> {
         };
         text.lines().filter_map(parse_ps_line).collect()
     }
-    fn with_cwds(&self, mut rows: Vec<ProcInfo>) -> Vec<ProcInfo> {
+    fn fill_cwds(&self, mut rows: Vec<ProcInfo>) -> Vec<ProcInfo> {
         if rows.is_empty() {
             return rows;
         }
@@ -100,7 +100,10 @@ impl<T: Tools> ProcSource for PsSource<T> {
         self.rows(&["-axww", "-o", "pid=,ppid=,lstart=,command="])
     }
     fn snapshot_with_cwd(&self) -> Vec<ProcInfo> {
-        self.with_cwds(self.snapshot())
+        self.fill_cwds(self.snapshot())
+    }
+    fn with_cwds(&self, rows: Vec<ProcInfo>) -> Vec<ProcInfo> {
+        self.fill_cwds(rows)
     }
     fn process(&self, pid: i32) -> Option<ProcInfo> {
         if pid <= 0 {
@@ -151,6 +154,9 @@ impl ProcSource for PsSnapshot {
     }
     fn snapshot_with_cwd(&self) -> Vec<ProcInfo> {
         PsSource::new(NativeTools::default()).snapshot_with_cwd()
+    }
+    fn with_cwds(&self, rows: Vec<ProcInfo>) -> Vec<ProcInfo> {
+        PsSource::new(NativeTools::default()).with_cwds(rows)
     }
     fn process(&self, pid: i32) -> Option<ProcInfo> {
         PsSource::new(NativeTools::default()).process(pid)
