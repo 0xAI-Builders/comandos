@@ -1,0 +1,8 @@
+{
+  "input": {
+    "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83:bin/cc-app:_LOCK_NAME",
+    "program": "import sys; d = sys.argv[1]; print(f\"cc-app-{(d or 'x').replace('/', '_').replace(':', '')}.lock\")",
+    "display": ""
+  },
+  "output_b64": "Y2MtYXBwLXgubG9jawo="
+}

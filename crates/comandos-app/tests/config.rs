@@ -173,7 +173,7 @@ fn unknown_flag_is_usage_error() {
     assert!(parse_args(&args(&["--mode", "real"]), false, &env).is_err());
 }
 
-/// F19: el mismo nombre que `bin/cc-app:43`, comparado contra el propio Python.
+/// F19: salida CPython del original congelada; replay no inicia intérpretes.
 #[test]
 fn lock_file_name_matches_python() {
     let env = env_of(SBX_ENV);
@@ -185,17 +185,29 @@ fn lock_file_name_matches_python() {
     assert_eq!(shadow.lock_file_name(":0/x"), "sombra-app-rs-0_x.lock");
     assert_eq!(sandbox.lock_file_name(":0/x"), "comandos-app-sbx-0_x.lock");
     for display in [":0", ":1", ":0/x", "", ":", "a/b:c", "host:10.0", "//"] {
-        let out = Command::new("python3")
-            .arg("-c")
-            .arg(
-                "import sys; d = sys.argv[1]; \
-                 print(f\"cc-app-{(d or 'x').replace('/', '_').replace(':', '')}.lock\")",
-            )
-            .arg(display)
-            .output()
-            .expect("python3");
-        assert!(out.status.success(), "python3 falló con {display:?}");
-        let python = String::from_utf8(out.stdout).expect("utf8");
+        let source = "2674f366bb01b9db42f6f64b728929b3acfe8b83:bin/cc-app:_LOCK_NAME";
+        let program = "import sys; d = sys.argv[1]; \
+                       print(f\"cc-app-{(d or 'x').replace('/', '_').replace(':', '')}.lock\")";
+        let bytes = comandos_oracle::oracle_at(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+            "app-lock-name",
+            &serde_json::json!({"source":source,"program":program,"display":display}),
+            || {
+                let out = Command::new(
+                    std::env::var_os("COMANDOS_APP_ORACLE_PYTHON")
+                        .unwrap_or_else(|| "python3".into()),
+                )
+                .args(["-c", program, display])
+                .env("PYTHONIOENCODING", "utf-8")
+                .output()
+                .map_err(|e| e.to_string())?;
+                if !out.status.success() {
+                    return Err(format!("Python falló con {display:?}: {}", out.status));
+                }
+                Ok(out.stdout)
+            },
+        );
+        let python = String::from_utf8(bytes).expect("utf8");
         assert_eq!(
             live.lock_file_name(display),
             python.trim_end_matches('\n'),
