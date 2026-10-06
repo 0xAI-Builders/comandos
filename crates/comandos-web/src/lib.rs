@@ -56,7 +56,10 @@ pub mod registry;
 
 pub mod components {
     pub mod analytics;
+    pub mod chain_builder;
+    pub mod command_sidebar;
     pub mod device_drafts;
+    pub mod extensions;
     pub mod news_reader;
     pub mod notifications;
     pub mod pomodoro;

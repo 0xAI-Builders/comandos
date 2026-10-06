@@ -40,9 +40,24 @@ pub struct Component {
 /// Componentes que este WASM sabe montar. Crece con cada port (B4…B13).
 pub const COMPONENTS: &[Component] = &[
     Component {
+        id: "command-sidebar",
+        mount: crate::components::command_sidebar::mount,
+        attach: None,
+    },
+    Component {
         id: "workspace",
         mount: crate::components::workspace::mount,
         attach: Some(crate::components::workspace::attach),
+    },
+    Component {
+        id: "chain-builder",
+        mount: crate::components::chain_builder::mount,
+        attach: None,
+    },
+    Component {
+        id: "extensions",
+        mount: crate::components::extensions::mount,
+        attach: Some(crate::components::extensions::attach),
     },
     Component {
         id: "vendor-markdown-it",

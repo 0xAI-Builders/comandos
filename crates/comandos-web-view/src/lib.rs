@@ -45,3 +45,5 @@ pub mod notifications;
 pub mod utf16;
 
 pub mod news;
+
+pub mod command_sidebar;

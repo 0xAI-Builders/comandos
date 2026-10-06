@@ -1,0 +1,10 @@
+{
+  "id": "extensions",
+  "kind": "script",
+  "source": "dash/extensions.js",
+  "sha256": "6d1a55e1ee5f838c815bf29dcf3f1abdc40e3f4b0ca26322bf1dcc108d3081ac",
+  "exports": [
+    "openPaneExtensions"
+  ],
+  "deps": []
+}
