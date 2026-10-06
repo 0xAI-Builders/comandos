@@ -7,6 +7,93 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 static SEQ: AtomicU64 = AtomicU64::new(0);
+
+#[test]
+fn installer_resources_and_aliases_match_frozen_legacy_install_tree() {
+    use sha2::{Digest, Sha256};
+    let baseline: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/install-legacy-linux.json")).unwrap();
+    let home = Home::new();
+    let release = home.0.join("release");
+    fs::create_dir(&release).unwrap();
+    for artifact in ["comandos-app", "comandos-notifyd", "cc-model-proxy"] {
+        fs::write(release.join(artifact), b"private native fixture").unwrap();
+        fs::set_permissions(release.join(artifact), fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let app =
+        comandos_cli::install::release::stage_app(&home.0, &release.join("comandos-app")).unwrap();
+    fs::create_dir_all(home.0.join(".local/share/comandos/bin")).unwrap();
+    fs::write(home.0.join(".local/share/comandos/bin/comandos"), b"native").unwrap();
+    let actions = comandos_cli::install::plan::plan(&home.0, Platform::LinuxNative, &release);
+    comandos_cli::install::plan::apply_with(&actions, false, &mut |_| Ok(())).unwrap();
+    let mut resources = 0;
+    let mut aliases = 0;
+    let mut frontend = 0;
+    let mut remaining = Vec::new();
+    for (relative, old) in baseline["entries"].as_object().unwrap() {
+        // The separately built native frontend still needs standalone packaging.
+        // It is a declared boundary, not a passed parity assertion.
+        if relative.starts_with(".claude/hooks/dash") {
+            frontend += 1;
+            continue;
+        }
+        if matches!(
+            relative.as_str(),
+            ".local/bin/cc-app-mac"
+                | ".local/bin/cc-extension-session"
+                | ".local/bin/cc-pane-model"
+                | ".local/bin/cc_usage.py"
+        ) {
+            remaining.push(relative.as_str());
+            continue;
+        }
+        let installed = home.0.join(relative);
+        if old["kind"] == "dir" {
+            assert!(installed.is_dir(), "missing directory {relative}");
+        } else if relative.starts_with(".local/bin/")
+            || matches!(
+                relative.as_str(),
+                ".claude/hooks/cc-notify.sh"
+                    | ".claude/hooks/cc-status.sh"
+                    | ".claude/hooks/cc-usage-tool.sh"
+            )
+        {
+            let name = installed.file_name().unwrap().to_str().unwrap();
+            let target = match name {
+                "cc-app" => app.path.clone(),
+                "cc-notifyd" => release.join("comandos-notifyd"),
+                _ => home.0.join(".local/share/comandos/bin/comandos"),
+            };
+            assert_eq!(
+                fs::read_link(&installed).unwrap(),
+                target,
+                "alias {relative}"
+            );
+            aliases += 1;
+        } else {
+            assert!(!installed.is_symlink(), "embedded resource {relative}");
+            let bytes = fs::read(&installed).unwrap();
+            let normalized = String::from_utf8(bytes.clone())
+                .ok()
+                .map(|text| text.replace(&home.0.to_string_lossy().to_string(), "{{HOME}}"));
+            if relative == ".claude/settings.json" {
+                let actual: serde_json::Value =
+                    serde_json::from_str(normalized.as_ref().unwrap()).unwrap();
+                assert_eq!(actual, old["json"], "Claude hook registration");
+            } else {
+                let payload = normalized.as_deref().map(str::as_bytes).unwrap_or(&bytes);
+                let actual = format!("{:x}", Sha256::digest(payload));
+                let expected = old.get("native_sha256").unwrap_or(&old["sha256"]);
+                assert_eq!(actual, expected.as_str().unwrap(), "resource {relative}");
+            }
+            resources += 1;
+        }
+    }
+    assert_eq!(resources, 15);
+    assert_eq!(aliases, 25);
+    assert_eq!(frontend, 33);
+    assert_eq!(remaining.len(), 4);
+}
 struct Home(PathBuf);
 impl Home {
     fn new() -> Self {

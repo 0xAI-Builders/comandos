@@ -1,0 +1,472 @@
+{
+  "version": 1,
+  "platform": "linux-native",
+  "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+  "entries": {
+    ".claude": {
+      "kind": "dir"
+    },
+    ".claude/hooks": {
+      "kind": "dir"
+    },
+    ".claude/hooks/cc-notify.conf": {
+      "kind": "file",
+      "sha256": "5d20c2718a20d262fe00f570b0432571a703dc261ff40fa399231a081babffef"
+    },
+    ".claude/hooks/cc-notify.sh": {
+      "kind": "link",
+      "target": "{{REPO}}/hooks/cc-notify.sh",
+      "sha256": "efdae7950235e94f71507826964a8eabb326da07eae7412fa3886322d1d3febe"
+    },
+    ".claude/hooks/cc-status.sh": {
+      "kind": "link",
+      "target": "{{REPO}}/hooks/cc-status.sh",
+      "sha256": "d5318e31eedee1b875e5a3341d29a74e588bccdb69380326c0f6722c93c54f6e"
+    },
+    ".claude/hooks/cc-usage-tool.sh": {
+      "kind": "link",
+      "target": "{{REPO}}/hooks/cc-usage-tool.sh",
+      "sha256": "607126610089df6e4fbe9bc85707098bea20a70c63cf3e6ee2e2e3538e59d382"
+    },
+    ".claude/hooks/dash": {
+      "kind": "dir"
+    },
+    ".claude/hooks/dash/analytics-render.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/analytics-render.js"
+    },
+    ".claude/hooks/dash/analytics.css": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/analytics.css"
+    },
+    ".claude/hooks/dash/analytics.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/analytics.js"
+    },
+    ".claude/hooks/dash/assets": {
+      "kind": "link",
+      "target": "{{REPO}}/assets"
+    },
+    ".claude/hooks/dash/buttons.css": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/buttons.css"
+    },
+    ".claude/hooks/dash/chain-builder.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/chain-builder.js"
+    },
+    ".claude/hooks/dash/command-sidebar.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/command-sidebar.js"
+    },
+    ".claude/hooks/dash/device-drafts.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/device-drafts.js"
+    },
+    ".claude/hooks/dash/extensions.css": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/extensions.css"
+    },
+    ".claude/hooks/dash/extensions.html": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/extensions.html"
+    },
+    ".claude/hooks/dash/extensions.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/extensions.js"
+    },
+    ".claude/hooks/dash/icon-192.png": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/icon-192.png"
+    },
+    ".claude/hooks/dash/icon-512.png": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/icon-512.png"
+    },
+    ".claude/hooks/dash/icons": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/icons"
+    },
+    ".claude/hooks/dash/index.html": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/index.html"
+    },
+    ".claude/hooks/dash/manifest.webmanifest": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/manifest.webmanifest"
+    },
+    ".claude/hooks/dash/news-reader.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/news-reader.js"
+    },
+    ".claude/hooks/dash/notifications.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/notifications.js"
+    },
+    ".claude/hooks/dash/pomodoro.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/pomodoro.js"
+    },
+    ".claude/hooks/dash/push-settings.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/push-settings.js"
+    },
+    ".claude/hooks/dash/quick-terminal.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/quick-terminal.js"
+    },
+    ".claude/hooks/dash/session-config.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/session-config.js"
+    },
+    ".claude/hooks/dash/session-controls.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/session-controls.js"
+    },
+    ".claude/hooks/dash/sw.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/sw.js"
+    },
+    ".claude/hooks/dash/term.html": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/term.html"
+    },
+    ".claude/hooks/dash/ui-sounds.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/ui-sounds.js"
+    },
+    ".claude/hooks/dash/vendor": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/vendor"
+    },
+    ".claude/hooks/dash/work-marks.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/work-marks.js"
+    },
+    ".claude/hooks/dash/workspace-dock.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/workspace-dock.js"
+    },
+    ".claude/hooks/dash/workspace-layout.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/workspace-layout.js"
+    },
+    ".claude/hooks/dash/workspace.css": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/workspace.css"
+    },
+    ".claude/hooks/dash/workspace.js": {
+      "kind": "link",
+      "target": "{{REPO}}/dash/workspace.js"
+    },
+    ".claude/hooks/state": {
+      "kind": "dir"
+    },
+    ".claude/hooks/terminal-replies.conf": {
+      "kind": "link",
+      "target": "{{REPO}}/config/terminal-replies.conf",
+      "sha256": "976c61c496ae91037fd02bab6c56fa295cad5429f57b39efcba7a7f427834a68"
+    },
+    ".claude/settings.json": {
+      "kind": "file",
+      "sha256": "a56b23cb7adcd997d7505ac7ab96eb3708aeb59e451a825deb2984623024da5a",
+      "json": {
+        "hooks": {
+          "UserPromptSubmit": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "{{HOME}}/.claude/hooks/cc-notify.sh",
+                  "timeout": 15
+                }
+              ]
+            }
+          ],
+          "Stop": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "{{HOME}}/.claude/hooks/cc-notify.sh",
+                  "timeout": 15
+                }
+              ]
+            }
+          ],
+          "Notification": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "{{HOME}}/.claude/hooks/cc-notify.sh",
+                  "timeout": 15
+                }
+              ]
+            }
+          ],
+          "SessionEnd": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "{{HOME}}/.claude/hooks/cc-notify.sh",
+                  "timeout": 15
+                }
+              ]
+            }
+          ],
+          "PreToolUse": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "{{HOME}}/.claude/hooks/cc-usage-tool.sh",
+                  "timeout": 5
+                }
+              ]
+            }
+          ],
+          "PostToolUse": [
+            {
+              "hooks": [
+                {
+                  "type": "command",
+                  "command": "{{HOME}}/.claude/hooks/cc-usage-tool.sh",
+                  "timeout": 5
+                }
+              ]
+            }
+          ],
+          "PostToolUseFailure": []
+        }
+      }
+    },
+    ".config": {
+      "kind": "dir"
+    },
+    ".config/kitty": {
+      "kind": "dir"
+    },
+    ".config/kitty/kitty.conf": {
+      "kind": "link",
+      "target": "{{REPO}}/config/kitty.conf",
+      "sha256": "38609ec25bc8c9dcaaa44547913a191ed81482538741435d513ee9f2dd7eb890"
+    },
+    ".config/systemd": {
+      "kind": "dir"
+    },
+    ".config/systemd/user": {
+      "kind": "dir"
+    },
+    ".config/systemd/user/cc-dash.service": {
+      "kind": "link",
+      "target": "{{REPO}}/systemd/cc-dash.service",
+      "sha256": "e3cf9831f92e24f056ecac5ec844df0627e858b141d782ae98eb827b6fb87b71",
+      "native_sha256": "43bb09e63da458e373d376628a2740aacf84bb2e2d1858b982651cc31501a07b"
+    },
+    ".config/systemd/user/cc-notifyd.service": {
+      "kind": "link",
+      "target": "{{REPO}}/systemd/cc-notifyd.service",
+      "sha256": "3f5dc55d58e77db8bec6370820e630dd9d3113ea1206d84778c0a9466fa14bc5"
+    },
+    ".config/systemd/user/cc-proxy.service": {
+      "kind": "link",
+      "target": "{{REPO}}/systemd/cc-proxy.service",
+      "sha256": "bbf55ce012ead156de130c8dc01e7f54b7f4a8dd05660ae59f84515dbffbd275"
+    },
+    ".local": {
+      "kind": "dir"
+    },
+    ".local/bin": {
+      "kind": "dir"
+    },
+    ".local/bin/cc-acp": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-acp",
+      "sha256": "6f1efbeca40badb4bac613c924d98d9c4326f68aa25ab329f0d7309b1e18543e"
+    },
+    ".local/bin/cc-agents": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-agents",
+      "sha256": "e24fcc966e37730a1c0a3c5aed43b6cec40797d7c89d885eef48603fa889a9a3"
+    },
+    ".local/bin/cc-app": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-app",
+      "sha256": "1b535bc6f4463959cc3ab992fa5a4ab859fbdaec43fcf628123cfede68b4ca6b"
+    },
+    ".local/bin/cc-app-mac": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-app-mac",
+      "sha256": "79670ba87d6be456c73059dba36f9c358838ca7fb8ce8fb2eb33424f92ad53bb"
+    },
+    ".local/bin/cc-browser-expose": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-browser-expose",
+      "sha256": "a7809f135b0ea97438e358832d3ed633f0257083b90f39ddcc0eda5a43e944e4"
+    },
+    ".local/bin/cc-browser-npx-guard": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-browser-npx-guard",
+      "sha256": "6a48a0abf7bbd9d9c2cbeb0b9fe2e66057e503a71e0e300af7abb4bd3832174d"
+    },
+    ".local/bin/cc-browser-remote": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-browser-remote",
+      "sha256": "98d2bda0361a75fd4f9610b4eb8027001f428fc79823f3b78312793f4a8cf45d"
+    },
+    ".local/bin/cc-centro": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-centro",
+      "sha256": "769853e96eb4fc8a82886214c9a2c6ab31c90dfee68e08f32165463276c14862"
+    },
+    ".local/bin/cc-codex-full-access": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-codex-full-access",
+      "sha256": "25a85186aa871082d30236c855caf25382b91a0e9a58c3d50ffa4fce9adcd0c3"
+    },
+    ".local/bin/cc-dash": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-dash",
+      "sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24"
+    },
+    ".local/bin/cc-doctor": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-doctor",
+      "sha256": "d66afa4730f21db7aa8babd58b5f88b985aa6cdfe169efc7ef460a91337cfef7"
+    },
+    ".local/bin/cc-extension-session": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-extension-session",
+      "sha256": "cb2f4414bfce18018ba3550ba4cd0bc418037ac6b915f8f419f3dd74858f4a3e"
+    },
+    ".local/bin/cc-extensions": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-extensions",
+      "sha256": "0f028fa5b0d81d54bb4a18a4921be9e4613af4078b6ef7dbe95401cf1d500cea"
+    },
+    ".local/bin/cc-keys": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-keys",
+      "sha256": "883610353891d3b9f1671eb1199daf14fd301985258b6139c00e8bad0b0aaaac"
+    },
+    ".local/bin/cc-mobile": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-mobile",
+      "sha256": "0896d438f0c0f184d6dec1aa1a9723c97b1fc060c4524dbebe340bb061e137e2"
+    },
+    ".local/bin/cc-next": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-next",
+      "sha256": "71ca5a127cbc159805cbae5bb63cc0c12f7ee19579a2e585d831d98ca8b75bac"
+    },
+    ".local/bin/cc-notifyd": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-notifyd",
+      "sha256": "0e6ac70ee9eebc7391fb42ae6c65511f8bf8ddc396e13f7ab450ce09e3c81477"
+    },
+    ".local/bin/cc-pane-model": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-pane-model",
+      "sha256": "963dabea169b9eb0fdca04e434db16449cc3953b726cd9730da5cac978b09f65"
+    },
+    ".local/bin/cc-session-snapshot": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-session-snapshot",
+      "sha256": "7acb3136b60faa0539e7708b54186d1b4118ff8dcab363e9cfd7e32a24f3fac0"
+    },
+    ".local/bin/cc-term": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-term",
+      "sha256": "a8c657174111a0d291c4d6d44d95e1daba31977c8af70235839674e13705ae5d"
+    },
+    ".local/bin/cc-webterm": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-webterm",
+      "sha256": "8c6d63ad855ca4cd99138f2730617d1e94ae115d3fa5c150f596717ff66cba61"
+    },
+    ".local/bin/cc-webterm-attach": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-webterm-attach",
+      "sha256": "1dc0f4c403eccea05c763959756bf6ceb68e92b91814f6da486fa10bf778c412"
+    },
+    ".local/bin/cc-winstart": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc-winstart",
+      "sha256": "8deb215651f04f3fd94b47769c53a88b265a0b76802d7e8096c17824ffccec8d"
+    },
+    ".local/bin/cc_usage.py": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/cc_usage.py",
+      "sha256": "eef7368bf9172e29b3116168203e6236a3a2ee1be5348dbf2c78241dd4a2e5f8"
+    },
+    ".local/bin/ccx": {
+      "kind": "link",
+      "target": "{{REPO}}/bin/ccx",
+      "sha256": "94efb10ba6be0541ab6bd4098ce8b079df0ec74fa12c2baf57dc1c30aa7b4897"
+    },
+    ".local/bin/grok-hooks.py": {
+      "kind": "link",
+      "target": "{{REPO}}/adapters/grok-hooks.py",
+      "sha256": "e2a78b56da1dadf7cf606ab27f66bab6e116820e7677b01d12fb9d9a8e73fa28"
+    },
+    ".local/share": {
+      "kind": "dir"
+    },
+    ".local/share/applications": {
+      "kind": "dir"
+    },
+    ".local/share/applications/comandos.desktop": {
+      "kind": "file",
+      "sha256": "297c814e24911c0a3fb193ca6e6da3f2b395132ba32854751cfb20cc223da58f"
+    },
+    ".local/share/fonts": {
+      "kind": "dir"
+    },
+    ".local/share/fonts/comandos": {
+      "kind": "dir"
+    },
+    ".local/share/fonts/comandos/JetBrainsMonoNerdFontMono-Bold.ttf": {
+      "kind": "file",
+      "sha256": "5bdd4a873f3cd32f882d2c55545089123926e27707d5880fc9eaf84eb01b6686"
+    },
+    ".local/share/fonts/comandos/JetBrainsMonoNerdFontMono-BoldItalic.ttf": {
+      "kind": "file",
+      "sha256": "d931df2928b3216892d35980cddcad9edade1b9c9cd2e09a6c2937139f474742"
+    },
+    ".local/share/fonts/comandos/JetBrainsMonoNerdFontMono-Italic.ttf": {
+      "kind": "file",
+      "sha256": "ccd88b36d325e6a905edc8dd3f2522718d9690d9bed3fbb4684c7e746c34f846"
+    },
+    ".local/share/fonts/comandos/JetBrainsMonoNerdFontMono-Regular.ttf": {
+      "kind": "file",
+      "sha256": "f01031f40e48dc29e1112e6b0b0450a2c6cd097f3f35cfff05c55cb311f8034c"
+    },
+    ".local/share/fonts/comandos/OFL.txt": {
+      "kind": "file",
+      "sha256": "30f0c136e3c88e422d0791acd97238870f9054a9729bc34cf2ff0d4ed8cac4ad"
+    },
+    ".local/share/icons": {
+      "kind": "dir"
+    },
+    ".local/share/icons/hicolor": {
+      "kind": "dir"
+    },
+    ".local/share/icons/hicolor/scalable": {
+      "kind": "dir"
+    },
+    ".local/share/icons/hicolor/scalable/apps": {
+      "kind": "dir"
+    },
+    ".local/share/icons/hicolor/scalable/apps/centro-claude.svg": {
+      "kind": "file",
+      "sha256": "dd48d1047b82a4854db14b4ca66a90e399d4b9ccc8e110b8f296a3ff7496cad1"
+    },
+    ".tmux.conf": {
+      "kind": "link",
+      "target": "{{REPO}}/config/tmux.conf",
+      "sha256": "9f218677512c4d0090724b2e9f82c7c92e19b8851fac7009dad52299b2be2f71"
+    }
+  }
+}
