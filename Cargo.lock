@@ -331,6 +331,7 @@ dependencies = [
  "async-channel",
  "cairo-rs",
  "comandos-core",
+ "comandos-notifyd",
  "comandos-runtime",
  "comandos-term",
  "gdk",

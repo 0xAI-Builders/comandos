@@ -243,7 +243,7 @@ impl AppConfig {
 }
 
 /// `http://127.0.0.1:PUERTO[/]` → (URL normalizada, puerto).
-fn loopback_only(url: &str) -> Result<(String, u16), String> {
+pub(crate) fn loopback_only(url: &str) -> Result<(String, u16), String> {
     loopback_from(url, "--dash-url")
 }
 
@@ -261,7 +261,7 @@ fn loopback_from(url: &str, origin: &str) -> Result<(String, u16), String> {
     Ok((format!("http://127.0.0.1:{port}"), port))
 }
 
-fn sandbox_dash(url: &str) -> Result<String, String> {
+pub(crate) fn sandbox_dash(url: &str) -> Result<String, String> {
     let (url, port) = loopback_only(url)?;
     if SANDBOX_DASH_PORTS.contains(&port) {
         Ok(url)

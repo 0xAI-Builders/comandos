@@ -22,6 +22,7 @@ harness = false
 [dependencies]
 comandos-core = { path = "../comandos-core" }
 comandos-runtime = { path = "../comandos-runtime" }
+comandos-notifyd = { path = "../comandos-notifyd" }
 serde_json.workspace = true
 sha2.workspace = true
 gtk = { version = "=0.18.2", features = ["v3_24"] }

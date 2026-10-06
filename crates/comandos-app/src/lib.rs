@@ -5,8 +5,11 @@
     allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
 )]
 pub mod config;
+pub mod dash_client;
 pub mod guard;
 pub mod jobs;
+pub mod poll;
 pub mod proc;
 pub mod term;
+pub mod theme;
 pub mod tmux;
