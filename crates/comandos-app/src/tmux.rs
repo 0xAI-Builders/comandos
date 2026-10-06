@@ -253,7 +253,9 @@ impl TmuxCtl {
     fn exec(&self, args: &[&str], stdin: Option<&[u8]>) -> Result<TmuxOut, TmuxError> {
         let mut argv: Vec<OsString> = vec!["-S".into(), self.socket.clone().into_os_string()];
         if self.mode == RunMode::Sandbox {
-            argv.extend(["-f".into(), "/dev/null".into()]);
+            // The private environment has no inherited locale. Force tmux's
+            // UTF-8 client output so Unicode paths remain usable by consumers.
+            argv.extend(["-u".into(), "-f".into(), "/dev/null".into()]);
         }
         argv.extend(args.iter().map(OsString::from));
         let spec = ProcSpec {
@@ -525,7 +527,7 @@ impl TmuxCtl {
             quote(&home.display().to_string()), quote(&home.join(".config").display().to_string())
         ));
         let isolated_config = if self.mode == RunMode::Sandbox {
-            "-f /dev/null "
+            "-u -f /dev/null "
         } else {
             ""
         };

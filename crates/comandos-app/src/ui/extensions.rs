@@ -129,7 +129,7 @@ pub fn wizard_target_when(
                 "-p",
                 "-t",
                 &target,
-                "#{session_name}\n#{pane_id}",
+                "#{session_name}|#{pane_id}",
             ])
             .map_err(|_| "No tmux session".to_string())?;
         if !current() || !out.ok() {
@@ -138,7 +138,7 @@ pub fn wizard_target_when(
         let (actual_session, pane) = out
             .stdout
             .trim()
-            .split_once('\n')
+            .split_once('|')
             .ok_or_else(|| "Wizard pane unavailable".to_string())?;
         if actual_session != session || !super::app_commands::valid_pane(pane) {
             return Err("Wizard pane changed".into());
@@ -159,13 +159,16 @@ pub fn wizard_target_when(
             "-p",
             "-t",
             &pane,
-            "#{session_name}\n#{pane_id}\n#{pane_current_path}",
+            "#{session_name}|#{pane_id}|#{pane_current_path}",
         ])
         .map_err(|_| "No tmux session".to_string())?;
     if !current() || !out.ok() {
         return Err("Wizard cancelled or socket replaced".into());
     }
-    let mut fields = out.stdout.splitn(3, '\n');
+    // tmux display-message replaces literal newlines in the format with '_'.
+    // Session/pane identifiers cannot contain '|'; split only those fields,
+    // preserving any separator that belongs to the working directory.
+    let mut fields = out.stdout.splitn(3, '|');
     if fields.next() != Some(session) || fields.next() != Some(pane.as_str()) {
         return Err("Wizard pane changed".into());
     }

@@ -15,11 +15,11 @@ impl TmuxIo for Tmux {
         assert!(["%2","%9","%3"].contains(&pane));
         let stdout=if fmt.contains("#{pid}") {
             format!("{}|$1|100|fixture|{pane}",if self.recycled.get(){99}else{21})
-        } else if fmt=="#{session_name}\n#{pane_id}" {
+        } else if fmt=="#{session_name}|#{pane_id}" {
             if self.scenario=="active_changed"{self.active.set("%3");}
-            format!("fixture\n{pane}")
+            format!("fixture|{pane}")
         } else {
-            assert_eq!(fmt,"#{session_name}\n#{pane_id}\n#{pane_current_path}");
+            assert_eq!(fmt,"#{session_name}|#{pane_id}|#{pane_current_path}");
             match self.scenario {
                 "recycled"=>self.recycled.set(true),
                 "socket_changed"=>self.swapped.set(true),
@@ -28,7 +28,7 @@ impl TmuxIo for Tmux {
                 "active_changed"=>self.active.set("%3"),
                 _=>{}
             }
-            format!("fixture\n{pane}\ncwd{}",&pane[1..])
+            format!("fixture|{pane}|cwd{}",&pane[1..])
         };
         Ok(TmuxOut{code:0,stdout,stderr:String::new()})
     }
