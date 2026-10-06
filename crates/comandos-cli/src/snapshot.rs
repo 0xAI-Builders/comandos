@@ -299,12 +299,11 @@ fn run_inner(
             let inspector = PaneInspector::new(&config.home, &config.proc_root)
                 .map_err(|_| "pane inventory is uncertain")?;
             for key in keys {
-                let now = source.borrow_mut().now();
                 let captured = tmux_snapshot::capture_session_with_start_at(
                     &mut |args| source.borrow_mut().tmux(args),
                     &key,
                     &inspector,
-                    now,
+                    0,
                     &mut |pid| {
                         source
                             .borrow_mut()
@@ -315,7 +314,10 @@ fn run_inner(
                     },
                 )
                 .map_err(|e| e.to_string())
-                .and_then(|captured| {
+                .and_then(|mut captured| {
+                    // The helper takes a fixed timestamp; the bridge samples
+                    // completion after its tmux operations, as Python does.
+                    captured["captured_at"] = Value::from(source.borrow_mut().now());
                     if identity_ready(&captured) {
                         Ok(captured)
                     } else {

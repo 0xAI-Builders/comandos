@@ -97,6 +97,7 @@ def pane_started(pid):
     tick=started(pid)
     return int(tick) if tick is not None else None
 def tmux(*args):
+    case['now']+=case.get('tick',0)
     watch_state['capturing']=True
     calls.append(list(args)); layout=case['layout']; op=args[0]
     if op=='list-windows':
@@ -213,6 +214,7 @@ impl Source for FakeSource {
         self.case["now"] = json!(self.now() + seconds as i64);
     }
     fn tmux(&mut self, args: &[&str]) -> tmux_snapshot::Result<TmuxResult> {
+        self.case["now"] = json!(self.now() + self.case["tick"].as_i64().unwrap_or(0));
         self.capturing = true;
         self.calls
             .push(args.iter().map(|s| (*s).to_owned()).collect());
@@ -812,4 +814,46 @@ fn watched_global_errors_retry_after_fake_five_second_clock_like_original() {
     assert_eq!(source.sleeps, vec![5]);
     assert!(source.calls.is_empty());
     assert!(!native.home().join(".local").exists());
+}
+
+#[test]
+fn captured_at_matches_original_completion_clock_and_retains_failed_session_metadata() {
+    for failed in [false, true] {
+        let oracle = Fixture::new();
+        oracle.seed();
+        let native = Fixture::new();
+        native.seed();
+        let mut case = oracle.scenario();
+        if failed {
+            for fixture in [&oracle, &native] {
+                assert!(fixture.oracle_snapshot(&case, &[]).status.success());
+            }
+            case["fail"] = json!(["term-b"]);
+        }
+        case["tick"] = json!(1);
+        let expected = oracle.oracle_snapshot(&case, &[]);
+        let (actual, source) = native_run(&native, case, &[]);
+        assert_result(&oracle, &native, &expected, &actual, &source);
+        let path = ".claude/hooks/app-sessions-v2.json";
+        let expected_bytes = fs::read(oracle.home().join(path)).unwrap();
+        let actual_bytes = fs::read(native.home().join(path)).unwrap();
+        assert_eq!(actual_bytes, expected_bytes);
+        let value: Value = serde_json::from_slice(&actual_bytes).unwrap();
+        for (key, stamp) in if failed {
+            [("local", 606), ("term-b", 600), ("term-a", 613)]
+        } else {
+            [("local", 606), ("term-b", 612), ("term-a", 618)]
+        } {
+            assert_eq!(value["sessions"][key]["captured_at"], json!(stamp));
+        }
+        assert_eq!(value["saved_at"], json!(if failed { 613 } else { 618 }));
+        if failed {
+            let backup = ".claude/hooks/app-sessions-v2.json.bak";
+            assert_eq!(
+                fs::read(native.home().join(backup)).unwrap(),
+                fs::read(oracle.home().join(backup)).unwrap()
+            );
+            assert!(actual.stderr.contains("term-b: retained previous snapshot"));
+        }
+    }
 }
