@@ -1,0 +1,10 @@
+{
+  "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+  "source_path": "hooks/cc-usage-tool.sh",
+  "sha256": "607126610089df6e4fbe9bc85707098bea20a70c63cf3e6ee2e2e3538e59d382",
+  "python": "CPython 3.10.12",
+  "bash": "GNU bash, version 5.1.16(1)-release (x86_64-pc-linux-gnu)",
+  "jq": "jq-1.6",
+  "python_source": "../usage-seed/cc_usage.py",
+  "observations": "Exit/stdout, complete original SQL dump with existing timestamp/hash/duration normalization, exact cumulative tmux transcript. Replay never starts reference processes or writes reference logs."
+}

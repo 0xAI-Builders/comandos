@@ -86,6 +86,51 @@ fn run(
     (out.status.code(), out.stdout)
 }
 
+type UsageObservation = ((Option<i32>, Vec<u8>), Vec<String>, String);
+
+fn usage_reference(
+    home: &Path,
+    fake: &Path,
+    env: &[(&str, &str)],
+    events: &[Vec<u8>],
+    seed: &[String],
+    start_ms: i64,
+) -> UsageObservation {
+    let source =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/oracle-src/hooks/cc-usage-tool.sh");
+    let bytes = comandos_oracle::oracle_at(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "runtime-shell-claude-usage",
+        &serde_json::json!({"provenance":include_str!("oracle-src/hooks/USAGE_PROVENANCE.json"),
+            "python_provenance":include_str!("oracle-src/usage-seed/PROVENANCE.json"),
+            "seed":seed,"env":env,"event_history":events}),
+        || {
+            let output = run(
+                source.to_str().unwrap(),
+                "claude-usage",
+                "bash",
+                home,
+                fake,
+                env,
+                events.last().unwrap(),
+            );
+            let rows: Vec<String> = dump_db(
+                &home.join(".claude/hooks/comandos-usage.sqlite"),
+                Window {
+                    start_ms,
+                    end_ms: now_ms(),
+                },
+            )
+            .into_iter()
+            .map(without_duration)
+            .collect();
+            let transcript = parity::read_lossy(&home.join("fake.log"));
+            serde_json::to_vec(&(output, rows, transcript)).map_err(|e| e.to_string())
+        },
+    );
+    serde_json::from_slice(&bytes).unwrap()
+}
+
 /// Base de uso con una interacción abierta en `fake-sess`/`%7` (la que el hook claude
 /// deja con `working`), hecha con el `cc_usage.py` real y copiada a cada `HOME`.
 fn seed_usage(dir: &Path) -> PathBuf {
@@ -184,6 +229,19 @@ fn claude_usage_matches_cc_usage_tool() {
     let _ = fs::remove_dir_all(&dir);
     let fake = fakebin(&dir);
     let seed = seed_usage(&dir);
+    let seed_at: i64 = rusqlite::Connection::open(&seed)
+        .unwrap()
+        .query_row("select started_at_ms from usage_interactions", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    let seed_dump = dump_db(
+        &seed,
+        Window {
+            start_ms: seed_at,
+            end_ms: now_ms(),
+        },
+    );
     let fx: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -228,7 +286,7 @@ fn claude_usage_matches_cc_usage_tool() {
         ),
     ];
     for (name, env) in scenarios {
-        let start_ms = now_ms();
+        let start_ms = seed_at;
         let homes: Vec<PathBuf> = ["bash", "rust"]
             .iter()
             .map(|s| dir.join(format!("{name}-{s}")))
@@ -239,60 +297,52 @@ fn claude_usage_matches_cc_usage_tool() {
         }
         fs::create_dir_all(homes[0].join(".local/bin")).unwrap();
         std::os::unix::fs::symlink(
-            root().join("bin/cc_usage.py"),
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/oracle-src/usage-seed/cc_usage.py"),
             homes[0].join(".local/bin/cc_usage.py"),
         )
         .unwrap();
-        for event in &events {
-            let outs: Vec<_> = ["bash", "rust"]
-                .iter()
-                .zip(&homes)
-                .map(|(side, home)| {
-                    let out = run(
-                        "hooks/cc-usage-tool.sh",
-                        "claude-usage",
-                        side,
-                        home,
-                        &fake,
-                        &env,
-                        event,
-                    );
-                    // El Rust escribe en el proceso de entrega desacoplado.
-                    wait_for_delivery(home);
-                    out
-                })
-                .collect();
+        let mut expected_trace = String::new();
+        for (index, event) in events.iter().enumerate() {
+            let (expected, expected_rows, transcript) = usage_reference(
+                &homes[0],
+                &fake,
+                &env,
+                &events[..=index],
+                &seed_dump,
+                start_ms,
+            );
+            expected_trace = transcript;
+            let actual = run("", "claude-usage", "rust", &homes[1], &fake, &env, event);
+            // The actual native detached delivery and SQLite queries still run.
+            wait_for_delivery(&homes[1]);
             assert_eq!(
-                outs[0],
-                outs[1],
+                expected,
+                actual,
                 "{name}: {}",
                 String::from_utf8_lossy(event)
             );
-            let window = Window {
-                start_ms,
-                end_ms: now_ms(),
-            };
-            let dumps: Vec<Vec<String>> = homes
-                .iter()
-                .map(|h| {
-                    dump_db(&h.join(".claude/hooks/comandos-usage.sqlite"), window)
-                        .into_iter()
-                        .map(without_duration)
-                        .collect()
-                })
-                .collect();
+            let actual_rows: Vec<String> = dump_db(
+                &homes[1].join(".claude/hooks/comandos-usage.sqlite"),
+                Window {
+                    start_ms,
+                    end_ms: now_ms(),
+                },
+            )
+            .into_iter()
+            .map(without_duration)
+            .collect();
             assert_eq!(
-                dumps[0],
-                dumps[1],
+                expected_rows,
+                actual_rows,
                 "{name}: {}",
                 String::from_utf8_lossy(event)
             );
         }
-        let logs: Vec<String> = homes
-            .iter()
-            .map(|h| parity::read_lossy(&h.join("fake.log")))
-            .collect();
-        assert_eq!(logs[0], logs[1], "{name}: llamadas a tmux");
+        assert_eq!(
+            expected_trace,
+            parity::read_lossy(&homes[1].join("fake.log")),
+            "{name}: llamadas a tmux"
+        );
     }
     let _ = fs::remove_dir_all(&dir);
 }
