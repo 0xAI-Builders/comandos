@@ -180,9 +180,7 @@ fn active_script_component_is_removed_and_boot_injected_after_charset() {
     assert!(!html.contains("quick-terminal.js"));
     let after_charset = html.split_once("<meta charset=\"utf-8\">\n").unwrap().1;
     assert!(after_charset.starts_with("<meta name=\"comandos-web\" content=\"quick-terminal\">"));
-    assert!(html.contains(
-        "<script type=\"module\" async src=\"/web/0123456789ab/boot.js\" data-k=\"n1\"></script>"
-    ));
+    assert!(html.contains("<script data-k=\"n1\">import(\"/web/0123456789ab/boot.js\");</script>"));
     assert!(html.contains("<script src=\"/web/gate.js?k=n1\"></script>"));
 }
 

@@ -146,10 +146,14 @@ pub fn compose(
         text = e.cut(&text);
     }
     let ids: Vec<&str> = active.iter().map(|e| e.id.as_str()).collect();
+    let boot = serde_json::Value::String(format!("/web/{}", assets.path("comandos_web_boot.js")))
+        .to_string()
+        .replace('<', "\\u003c");
+    // WebKit can defer an async module element behind the classic gate script.
+    // Dynamic import starts its evaluation while that readiness gate is waiting.
     let head = format!(
-        "<meta name=\"comandos-web\" content=\"{}\">\n<script type=\"module\" async src=\"/web/{}\" data-k=\"{nonce}\"></script>\n<script src=\"/web/gate.js?k={nonce}\"></script>\n",
-        ids.join(" "),
-        assets.path("comandos_web_boot.js")
+        "<meta name=\"comandos-web\" content=\"{}\">\n<script data-k=\"{nonce}\">import({boot});</script>\n<script src=\"/web/gate.js?k={nonce}\"></script>\n",
+        ids.join(" ")
     );
     let html = match text.split_once("<meta charset=\"utf-8\">\n") {
         Some((before, after)) => format!("{before}<meta charset=\"utf-8\">\n{head}{after}"),
