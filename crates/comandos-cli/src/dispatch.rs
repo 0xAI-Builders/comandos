@@ -10,6 +10,7 @@ pub enum Command {
     Webterm(Vec<String>),
     WebtermAttach(Vec<String>),
     State(Vec<String>),
+    Keys(Vec<String>),
     Version,
     Help,
     Unknown(String),
@@ -31,6 +32,7 @@ const ALIASES: &[(&str, &[&str])] = &[
     ("cc-dash", &["dash"]),
     ("cc-webterm", &["webterm"]),
     ("cc-webterm-attach", &["webterm-attach"]),
+    ("cc-keys", &["keys"]),
 ];
 
 pub fn resolve(argv0: &str, args: &[String]) -> Command {
@@ -50,6 +52,7 @@ pub fn resolve(argv0: &str, args: &[String]) -> Command {
         Some("webterm") => Command::Webterm(words[1..].to_vec()),
         Some("webterm-attach") => Command::WebtermAttach(words[1..].to_vec()),
         Some("state") => Command::State(words[1..].to_vec()),
+        Some("keys") => Command::Keys(words[1..].to_vec()),
         Some("--version") | Some("version") => Command::Version,
         None | Some("--help") | Some("help") => Command::Help,
         Some(other) => Command::Unknown(other.to_string()),
