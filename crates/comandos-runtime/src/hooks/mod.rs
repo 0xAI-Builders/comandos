@@ -21,7 +21,7 @@ mod grok_redact;
 mod input;
 mod jq;
 mod notify_http;
-mod opencode;
+pub mod opencode;
 pub mod py;
 mod state_file;
 mod text;

@@ -90,3 +90,17 @@ fn dispatch_winstart_alias_and_explicit() {
         );
     }
 }
+#[test]
+fn dispatch_agents_alias_and_explicit_preserve_arguments() {
+    for argv0 in ["comandos", "/private/bin/cc-agents"] {
+        let args = if argv0 == "comandos" {
+            v(&["agents", "setup", "ignored"])
+        } else {
+            v(&["setup", "ignored"])
+        };
+        assert_eq!(
+            resolve(argv0, &args),
+            Command::Agents(v(&["setup", "ignored"]))
+        );
+    }
+}
