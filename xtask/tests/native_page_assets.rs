@@ -70,3 +70,29 @@ fn native_bundle_contains_every_switchable_pomodoro_sprite() {
     }
     assert_eq!(count, 36);
 }
+
+#[test]
+fn terminal_bundle_uses_existing_fonts_and_dedicated_controller_inventory() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap();
+    let files = xtask::native_term_page::files(root)
+        .unwrap()
+        .into_iter()
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let page: NativePage =
+        serde_json::from_slice(&files["comandos_native_term_page.json"]).unwrap();
+    assert_eq!(page.components, ["term-main", "term-tail"]);
+    assert_eq!(page.assets.len(), 6);
+    for (url, name) in &page.assets {
+        assert!(files.contains_key(name));
+        if url.ends_with(".ttf") {
+            assert!(files[name].len() > 10000);
+        }
+    }
+    assert!(
+        !files
+            .keys()
+            .any(|name| name.ends_with(".js") || name.ends_with(".html"))
+    );
+}

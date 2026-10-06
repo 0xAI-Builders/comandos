@@ -22,3 +22,5 @@ pub use comandos_domdiff as dom_diff;
 pub mod mac;
 
 pub mod retire_check;
+
+pub mod native_term_page;

@@ -1,0 +1,16 @@
+{
+  "id": "term-main",
+  "kind": "region",
+  "source": "dash/term.html",
+  "script_index": 1,
+  "marker_start": "(function () {",
+  "marker_end": "</script>",
+  "sha256": "5a750fbd26eb334ae1a386faba30e4dc8e0753eb751b7c7b8d1564680fe0bf86",
+  "exports": [
+    "__comandosTerm",
+    "__comandosOwnsTouchGestures"
+  ],
+  "deps": [
+    "device-drafts"
+  ]
+}

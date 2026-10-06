@@ -510,6 +510,17 @@ fn build_one(opts: &Options, c: &WasmCrate) -> Result<Built, String> {
         );
         check_budget(c, total, opts.check_budget)?;
     }
+    if c.name == "comandos-term-web" && c.target == BindgenTarget::Web {
+        files.extend(
+            crate::native_term_page::files(
+                opts.manifest_path
+                    .parent()
+                    .ok_or("workspace manifest has no parent")?,
+            )?
+            .into_iter()
+            .map(|(name, bytes)| (name.clone(), name, bytes)),
+        );
+    }
     let parts: Vec<&[u8]> = files.iter().map(|(_, _, b)| b.as_slice()).collect();
     Ok(Built {
         hash: content_hash(&parts),

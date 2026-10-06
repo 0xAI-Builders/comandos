@@ -33,6 +33,7 @@
 //! página, que tendría que pedir un gesto del usuario antes de escribir.
 pub mod canvas;
 pub mod connection;
+pub mod controls;
 pub mod keyboard;
 pub mod links;
 pub mod metrics;
@@ -42,6 +43,7 @@ pub mod overlay;
 pub mod page;
 pub mod page_theme;
 pub mod paint;
+pub mod pane_chrome;
 pub mod parent;
 pub mod theme;
 

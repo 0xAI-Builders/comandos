@@ -512,3 +512,124 @@ async fn native_worker_requires_own_artifact_and_preserves_legacy_route() {
     );
     front.stop().await;
 }
+
+#[tokio::test]
+async fn dedicated_compiled_terminal_needs_no_main_wasm_or_source_and_validates_its_own_ready() {
+    let front = Front::start().await;
+    let ids = vec!["term-main".to_string(), "term-tail".to_string()];
+    let assets = [
+        "/buttons.css",
+        "/icon-192.png",
+        "/assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Regular.ttf",
+        "/assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Italic.ttf",
+        "/assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Bold.ttf",
+        "/assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-BoldItalic.ttf",
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(i, url)| (url.into(), format!("term-static-{i}")))
+    .collect::<std::collections::BTreeMap<String, String>>();
+    let page = comandos_core::web_assets::NativePage {
+        version: 1,
+        template_sha256: sha256_hex(
+            comandos_web_view::term_page::shell(&Default::default())
+                .into_string()
+                .as_bytes(),
+        ),
+        components: ids.clone(),
+        assets: assets.clone(),
+    };
+    let mut files = std::collections::BTreeMap::new();
+    for name in [
+        "comandos_term_web_boot.js",
+        "comandos_term_web.js",
+        "comandos_term_web_bg.wasm",
+    ] {
+        files.insert(name.to_string(), format!("fedcba987654/{name}"));
+        std::fs::write(
+            front.root.join("web/fedcba987654").join(name),
+            b"term-payload",
+        )
+        .unwrap();
+    }
+    for name in assets.values() {
+        files.insert(name.clone(), format!("fedcba987654/{name}"));
+        std::fs::write(
+            front.root.join("web/fedcba987654").join(name),
+            b"term-static",
+        )
+        .unwrap();
+    }
+    let descriptor = dash::web::native_term_page::DESCRIPTOR;
+    files.insert(descriptor.into(), format!("fedcba987654/{descriptor}"));
+    std::fs::write(
+        front.root.join("web/fedcba987654").join(descriptor),
+        serde_json::to_vec(&page).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        front.root.join("web/manifest.json"),
+        serde_json::to_vec(&comandos_core::web_assets::Manifest { files }).unwrap(),
+    )
+    .unwrap();
+    std::fs::remove_file(front.root.join(".claude/hooks/dash/index.html")).unwrap();
+    let response = front
+        .http(
+            "GET",
+            "/term/?web=native&arg=demo&auth=fixture-token",
+            "",
+            "",
+        )
+        .await;
+    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    assert!(response.contains("content=\"native-term\""));
+    assert_eq!(response.matches("<!DOCTYPE html>").count(), 1);
+    assert!(!response.contains("<script src=\"../assets/xterm"));
+    assert!(
+        response.find("id=\"pane-chrome\"").unwrap()
+            < response.find("comandos_term_web_boot.js").unwrap()
+    );
+    assert!(response.contains("url('/web/fedcba987654/term-static-"));
+    let k = nonce(&response);
+    assert!(k.starts_with("native-term-"));
+    let denied = front
+        .http(
+            "POST",
+            "/web/ready",
+            &serde_json::json!({"k":k,"mounted":["term-main"],"failed":[]}).to_string(),
+            "",
+        )
+        .await;
+    assert!(denied.starts_with("HTTP/1.1 400"));
+    let ready = front
+        .http(
+            "POST",
+            "/web/ready",
+            &serde_json::json!({"k":k,"mounted":ids,"failed":[]}).to_string(),
+            "",
+        )
+        .await;
+    assert!(ready.starts_with("HTTP/1.1 200"), "{ready}");
+    let font = front
+        .http(
+            "GET",
+            "/assets/fonts/JetBrainsMono/JetBrainsMonoNerdFontMono-Regular.ttf",
+            "",
+            "",
+        )
+        .await;
+    assert!(
+        font.starts_with("HTTP/1.1 200") && font.contains("term-static"),
+        "{font}"
+    );
+    std::fs::remove_file(
+        front
+            .root
+            .join("web/fedcba987654/comandos_term_web_bg.wasm"),
+    )
+    .unwrap();
+    let missing = front.http("GET", "/term/?web=native", "", "").await;
+    assert!(missing.starts_with("HTTP/1.1 503"));
+    assert!(!missing.contains("legacy-exact"));
+    front.stop().await;
+}

@@ -30,7 +30,12 @@ pub async fn handle(
                 &state.web.web_dir,
                 &state.config.dash_dir,
                 &url,
-            ) else {
+            )
+            .or_else(|| {
+                super::Manifest::load_terminal(&state.web.web_dir)
+                    .ok()
+                    .and_then(|m| super::native_term_page::alias(&m, &state.web.web_dir, &url))
+            }) else {
                 return dash::not_found();
             };
             asset(state, &rel).await
@@ -174,14 +179,25 @@ fn ready(state: &DashState, request: &Request) -> Result<Reply, HandlerError> {
                     .collect::<std::collections::BTreeSet<_>>();
                 (unique.len() == names.len()).then_some(unique)
             });
-        let expected = super::native_page::admit(
-            &state.web.registry,
-            &state.web.selection(),
-            &state.web.manifest(),
-            &state.web.web_dir,
-        )
-        .ok()
-        .map(|p| p.ids.into_iter().collect::<std::collections::BTreeSet<_>>());
+        let expected = if k.starts_with("native-term-") {
+            super::Manifest::load_terminal(&state.web.web_dir)
+                .ok()
+                .and_then(|m| super::native_term_page::bundle(&m, &state.web.web_dir).ok())
+                .map(|p| {
+                    p.components
+                        .into_iter()
+                        .collect::<std::collections::BTreeSet<_>>()
+                })
+        } else {
+            super::native_page::admit(
+                &state.web.registry,
+                &state.web.selection(),
+                &state.web.manifest(),
+                &state.web.web_dir,
+            )
+            .ok()
+            .map(|p| p.ids.into_iter().collect::<std::collections::BTreeSet<_>>())
+        };
         if failed.is_none_or(|v| !v.is_empty()) || mounted.is_none() || mounted != expected {
             return Reply::json(
                 StatusCode::BAD_REQUEST,
@@ -266,7 +282,9 @@ async fn asset(state: &DashState, rel: &str) -> Result<Reply, HandlerError> {
         .await
         .map_err(|_| HandlerError::Failure)?;
     let mut reply = Reply::bytes(StatusCode::OK, statics::mime_for(rel), bytes);
-    if web.manifest().is_versioned(rel) {
+    if web.manifest().is_versioned(rel)
+        || super::Manifest::load_terminal(&web.web_dir).is_ok_and(|m| m.is_versioned(rel))
+    {
         reply.cache = crate::ReplyCache::Immutable;
     }
     Ok(reply)
@@ -276,7 +294,7 @@ fn fallback() -> &'static str {
     "if(!sessionStorage.cc_web_fallback){sessionStorage.cc_web_fallback=1;try{fetch('/ui-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({event:'web-gate-timeout'}),keepalive:true}).catch(()=>{})}catch(e){}const u=new URL(location.href);u.searchParams.set('web','off');location.replace(u.href)}"
 }
 
-pub(super) fn query_value(target: &str, key: &str) -> Option<String> {
+pub(crate) fn query_value(target: &str, key: &str) -> Option<String> {
     let query = target
         .split_once('?')?
         .1

@@ -29,12 +29,15 @@ pub enum Inserted {
 
 impl Gate {
     pub fn insert(&self) -> Inserted {
-        self.insert_mode(false)
+        self.insert_mode("")
     }
     pub fn insert_native(&self) -> Inserted {
-        self.insert_mode(true)
+        self.insert_mode("native-")
     }
-    fn insert_mode(&self, native: bool) -> Inserted {
+    pub fn insert_native_term(&self) -> Inserted {
+        self.insert_mode("native-term-")
+    }
+    fn insert_mode(&self, prefix: &str) -> Inserted {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         inner.sweep();
         if inner.nonces.len() >= CAP {
@@ -45,7 +48,7 @@ impl Gate {
             inner.gate_full += 1;
             return Inserted::Full;
         };
-        let k = if native { format!("native-{k}") } else { k };
+        let k = format!("{prefix}{k}");
         let (tx, _) = watch::channel(false);
         inner.nonces.insert(k.clone(), (Instant::now(), tx));
         inner.order.push_back(k.clone());

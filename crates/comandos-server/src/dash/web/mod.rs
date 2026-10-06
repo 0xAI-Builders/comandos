@@ -5,6 +5,7 @@ mod file_stamp;
 pub mod gate;
 pub mod markdown;
 pub mod native_page;
+pub mod native_term_page;
 mod native_worker;
 pub mod registry;
 pub mod routes;
@@ -107,6 +108,11 @@ impl WebState {
             (assets::valid_relative(rel) && self.web_dir.join(rel).is_file())
                 || native_page::alias(&self.manifest(), &self.web_dir, &self.dash_dir, rel)
                     .is_some()
+                || (!self.dash_dir.join(rel.trim_start_matches('/')).is_file()
+                    && Manifest::load_terminal(&self.web_dir)
+                        .ok()
+                        .and_then(|m| native_term_page::alias(&m, &self.web_dir, rel))
+                        .is_some())
         }
     }
 

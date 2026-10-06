@@ -19,6 +19,29 @@ impl Manifest {
         Ok(loaded)
     }
 
+    pub fn load_terminal(web_dir: &Path) -> Result<Self, String> {
+        let text = fs::read_to_string(web_dir.join(MANIFEST_FILE)).map_err(|e| e.to_string())?;
+        let manifest: comandos_core::web_assets::Manifest =
+            serde_json::from_str(&text).map_err(|e| e.to_string())?;
+        manifest.check_paths()?;
+        for required in [
+            "comandos_term_web_boot.js",
+            "comandos_term_web.js",
+            "comandos_term_web_bg.wasm",
+        ] {
+            if !manifest.files.contains_key(required) {
+                return Err(format!("native terminal artifact missing: {required}"));
+            }
+        }
+        for (logical, rel) in &manifest.files {
+            if !web_dir.join(rel).is_file() {
+                return Err(format!("artifact missing: {logical}"));
+            }
+        }
+        Ok(Self {
+            files: manifest.files,
+        })
+    }
     pub fn check_files(&self, web_dir: &Path) -> Result<(), String> {
         for required in [
             "comandos_web_boot.js",

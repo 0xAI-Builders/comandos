@@ -1,0 +1,11 @@
+{
+  "id": "term-tail",
+  "kind": "region",
+  "source": "dash/term.html",
+  "script_index": 2,
+  "marker_start": "/* Marcos + cabecera B por pane en el remoto (grill 30-sep): misma geometría que",
+  "marker_end": "</script>",
+  "sha256": "1d3e89a2c57cb1c0c979756832190b69e40453de1065bad0abe9185060df15b5",
+  "exports": [],
+  "deps": ["term-main"]
+}

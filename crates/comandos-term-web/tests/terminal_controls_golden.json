@@ -1,0 +1,186 @@
+[
+  {
+    "name": "mobile-start",
+    "data": {
+      "compose": false,
+      "readonly": true,
+      "keyboard": "Teclado directo"
+    }
+  },
+  {
+    "name": "draft-framing",
+    "data": "\u001b[200~draft\rtext\u001b[201~\r"
+  },
+  {
+    "name": "draft-pending",
+    "data": {
+      "text": "draft\ntext\u001b",
+      "stored": "draft\ntext\u001b"
+    }
+  },
+  {
+    "name": "draft-ack",
+    "data": {
+      "text": "",
+      "stored": null
+    }
+  },
+  {
+    "name": "history-open",
+    "data": {
+      "hidden": false,
+      "text": "first\nsecond\nthird",
+      "status": "Toca una línea para empezar y otra para marcar hasta dónde. Luego, Copiar selección.",
+      "range": [
+        13,
+        18
+      ],
+      "toolbar": true
+    }
+  },
+  {
+    "name": "tap-select",
+    "data": {
+      "range": [
+        0,
+        18
+      ],
+      "status": "3 líneas seleccionadas · toca otra línea para extender o pulsa Copiar selección"
+    }
+  },
+  {
+    "name": "copy",
+    "data": [
+      "first\nsecond\nthird"
+    ]
+  },
+  {
+    "name": "extend-and-scroll",
+    "data": {
+      "range": [
+        0,
+        12
+      ],
+      "scrollTop": 11
+    }
+  },
+  {
+    "name": "history-output",
+    "data": "Hay salida nueva. Actualiza cuando termines de seleccionar."
+  },
+  {
+    "name": "history-close",
+    "data": {
+      "hidden": true,
+      "compose": false
+    }
+  },
+  {
+    "name": "native-selection-copy",
+    "data": [
+      "first\nsecond\nthird",
+      "native selection"
+    ]
+  },
+  {
+    "name": "pane-list",
+    "data": {
+      "open": true,
+      "labels": [
+        "1. project · terminal · Activo",
+        "2. other · codex"
+      ],
+      "status": "Elige un panel para activarlo, dividirlo o cerrar su split."
+    }
+  },
+  {
+    "name": "close-confirm",
+    "data": {
+      "hidden": false,
+      "label": "¿Cerrar 1. project · terminal?",
+      "requests": 0
+    }
+  },
+  {
+    "name": "close-cancel",
+    "data": {
+      "hidden": true,
+      "list": false
+    }
+  },
+  {
+    "name": "close-request",
+    "data": [
+      {
+        "session": "private-session",
+        "action": "close",
+        "pane": "%1",
+        "identity": "one"
+      }
+    ]
+  },
+  {
+    "name": "mouse-off-wheel",
+    "data": [
+      {
+        "session": "private-session",
+        "delta": 2,
+        "col": 8,
+        "row": 4
+      }
+    ]
+  },
+  {
+    "name": "longpress-history",
+    "data": {
+      "hidden": false,
+      "request": {
+        "session": "private-session",
+        "lines": 2000,
+        "col": 8,
+        "row": 4
+      }
+    }
+  },
+  {
+    "name": "ack-failure-retains",
+    "data": {
+      "text": "unconfirmed",
+      "error": "La terminal no confirmó el envío. El borrador se conserva; comprueba antes de reenviar."
+    }
+  },
+  {
+    "name": "ack-preserves-new-edit",
+    "data": "new edit"
+  },
+  {
+    "name": "composition-no-send",
+    "data": "new edit"
+  },
+  {
+    "name": "stale-history",
+    "data": {
+      "hidden": true,
+      "text": "",
+      "status": "Cargando historial…"
+    }
+  },
+  {
+    "name": "unicode-selection",
+    "data": {
+      "range": [
+        0,
+        10
+      ],
+      "status": "3 líneas seleccionadas · toca otra línea para extender o pulsa Copiar selección"
+    }
+  },
+  {
+    "name": "snap-resize-press-motion-release",
+    "data": [
+      "\u001b[<0;9;5M",
+      "\u001b[<32;14;5M",
+      "\u001b[<0;14;5m"
+    ]
+  }
+]

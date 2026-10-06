@@ -501,6 +501,13 @@ async fn handle(state: &DashState, request: Request) -> Result<Reply, HandlerErr
     {
         return not_found();
     }
+    if request.method == Method::GET
+        && router::path_of(&request.target) == "/term/"
+        && crate::dash::web::routes::query_value(&request.target, "web").as_deref()
+            == Some("native")
+    {
+        return web::native_term_page::serve(state);
+    }
     if state.config.term != term::TermMode::Off
         && let Some(route) = term::routes::route(&request.method, &request.target)
     {

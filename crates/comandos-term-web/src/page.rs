@@ -16,8 +16,16 @@ use web_sys::{CloseEvent, HtmlElement, MessageEvent, ResizeObserver, WebSocket};
 const FONT: &str = "'Ubuntu Sans Mono', 'JetBrainsMono Nerd Font Mono', 'JetBrainsMono Nerd Font', 'JetBrains Mono', 'DejaVu Sans Mono', monospace";
 thread_local! { static PAGE: RefCell<Option<Rc<RefCell<Page>>>> = const { RefCell::new(None) }; }
 
+#[path = "page_adapter.rs"]
+mod adapter;
+
 type Term = Rc<RefCell<WebTerm>>;
 pub struct Page {
+    ui: Option<crate::controls::TerminalControls>,
+    data_hooks: Vec<Function>,
+    resize_hooks: Vec<Function>,
+    adapter_size: Option<(u16, u16)>,
+    write_hooks: Vec<Function>,
     term: Option<Term>,
     socket: Option<WebSocket>,
     socket_id: u64,
@@ -296,6 +304,7 @@ fn fit(page: &Rc<RefCell<Page>>) {
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0) as u16
     };
+    adapter::resized(page, size.clone());
     let size = (number("cols"), number("rows"));
     let mut p = page.borrow_mut();
     if size.0 < 2 || size.1 == 0 || p.last_size == Some(size) || !socket_open(&p) {
@@ -413,6 +422,7 @@ fn connect(page: &Rc<RefCell<Page>>) {
                 .unwrap_or(0.0) as u16
         };
         let (cols, rows) = (n("cols"), n("rows"));
+        adapter::resized(&page, size);
         let mut p = page.borrow_mut();
         p.down = false;
         p.reconnect.connected();
@@ -471,6 +481,7 @@ fn connect(page: &Rc<RefCell<Page>>) {
         match kind {
             b'0' => {
                 t.borrow_mut().write(payload);
+                adapter::output(&page);
                 let replies = t.borrow_mut().take_replies();
                 if !replies.is_empty() {
                     send_input(&page, &replies, false);
@@ -509,6 +520,10 @@ fn connect(page: &Rc<RefCell<Page>>) {
             return;
         }
         let code = event.dyn_ref::<CloseEvent>().map_or(0, CloseEvent::code);
+        let ui = page.borrow().ui.clone();
+        if let Some(ui) = ui {
+            ui.disconnect();
+        }
         if page.borrow().resizing {
             {
                 let mut p = page.borrow_mut();
@@ -589,6 +604,9 @@ fn interaction(page: &Rc<RefCell<Page>>, known: bool, busy: bool, selecting: boo
             "Seleccionar"
         }));
     }
+    if let Some(ui) = page.borrow().ui.as_ref() {
+        ui.refresh_interaction();
+    }
 }
 fn set_ctrl(page: &Rc<RefCell<Page>>, armed: bool) {
     page.borrow_mut().ctrl = armed;
@@ -636,12 +654,21 @@ fn handle(page: &Rc<RefCell<Page>>, command: Command) {
             page.borrow_mut().pasting = false;
         }
         Command::Ctrl => {
+            let ui = page.borrow().ui.clone();
+            if let Some(ui) = ui {
+                ui.set_mobile(false);
+            }
             set_ctrl(page, true);
             if let Some(t) = term(page) {
                 t.borrow().focus();
             }
         }
         Command::Focus => {
+            let ui = page.borrow().ui.clone();
+            if let Some(ui) = ui {
+                ui.focus();
+                return;
+            }
             if let Some(t) = term(page) {
                 t.borrow().focus();
             }
@@ -685,11 +712,23 @@ fn switch_session(page: &Rc<RefCell<Page>>, session: &str) {
     schedule_connect(page, true);
 }
 fn dispose(page: &Rc<RefCell<Page>>) {
-    let mut p = page.borrow_mut();
-    if p.disposed {
-        return;
+    let ui = {
+        let mut p = page.borrow_mut();
+        if p.disposed {
+            return;
+        }
+        p.ui.take()
+    };
+    // Subscription disposal and gesture release can re-enter the live adapter.
+    crate::pane_chrome::dispose();
+    if let Some(ui) = ui {
+        ui.dispose();
     }
+    let mut p = page.borrow_mut();
     p.disposed = true;
+    p.data_hooks.clear();
+    p.resize_hooks.clear();
+    p.write_hooks.clear();
     if let Some(s) = p.socket.take() {
         let _ = s.close_with_code_and_reason(1000, "pagehide");
     }
@@ -815,6 +854,20 @@ pub fn boot(k: &str) -> Result<(), JsValue> {
 }
 #[wasm_bindgen]
 pub fn boot_term(k: &str) -> Result<(), JsValue> {
+    if window()?
+        .document()
+        .and_then(|d| {
+            d.query_selector("meta[name='comandos-web-mode']")
+                .ok()
+                .flatten()
+        })
+        .and_then(|m| m.get_attribute("content"))
+        .as_deref()
+        == Some("native-term")
+    {
+        native_boot(k);
+        return Ok(());
+    }
     if element("term").is_none()
         && window()?
             .document()
@@ -832,6 +885,82 @@ pub fn boot_term(k: &str) -> Result<(), JsValue> {
     }
     attach()?;
     ready(k)
+}
+thread_local! {static NATIVE_BOOTED:std::cell::Cell<bool>=const{std::cell::Cell::new(false)};}
+fn native_report(k: &str, mounted: &[&str], failed: Option<(&str, &JsValue)>, phase: &str) {
+    let report = json!({"k":k,"mounted":mounted,"failed":failed.map(|(id,e)|vec![json!({"id":id,"error":string_field(e,"message").or_else(||e.as_string()).unwrap_or_else(||"terminal boot failed".into())})]).unwrap_or_default()});
+    let _ = Reflect::set(
+        &js_sys::global(),
+        &"__comandosBootReport".into(),
+        &value(&report.to_string()),
+    );
+    let _ = Reflect::set(
+        &js_sys::global(),
+        &"__comandosBootState".into(),
+        &phase.into(),
+    );
+}
+fn native_boot(k: &str) {
+    if NATIVE_BOOTED.with(|s| s.replace(true)) {
+        return;
+    }
+    let k = k.to_owned();
+    native_report(&k, &[], None, "waiting-dom");
+    comandos_web_dom::dom::on_ready(move || {
+        native_report(&k, &[], None, "mounting");
+        if let Err(e) = attach_main() {
+            native_report(&k, &[], Some(("term-main", &e)), "failed");
+            PAGE.with(|slot| {
+                if let Some(p) = slot.borrow_mut().take() {
+                    dispose(&p);
+                }
+            });
+            return;
+        }
+        if let Err(e) = crate::pane_chrome::attach() {
+            native_report(&k, &["term-main"], Some(("term-tail", &e)), "failed");
+            return;
+        }
+        native_report(&k, &["term-main", "term-tail"], None, "reporting");
+        let k = k.clone();
+        spawn_local(async move {
+            let result = async {
+                let init = web_sys::RequestInit::new();
+                init.set_method("POST");
+                let headers = web_sys::Headers::new()?;
+                headers.set("Content-Type", "application/json")?;
+                init.set_headers(&headers);
+                init.set_body(&JsValue::from_str(
+                    &json!({"k":k,"mounted":["term-main","term-tail"],"failed":[]}).to_string(),
+                ));
+                let response =
+                    JsFuture::from(window()?.fetch_with_str_and_init("/web/ready", &init)).await?;
+                if Reflect::get(&response, &"ok".into())? != JsValue::TRUE {
+                    return Err(
+                        js_sys::Error::new("native terminal readiness rejected by server").into(),
+                    );
+                }
+                Ok::<(), JsValue>(())
+            }
+            .await;
+            if let Err(e) = result {
+                native_report(
+                    &k,
+                    &["term-main", "term-tail"],
+                    Some(("@ready", &e)),
+                    "failed",
+                );
+                return;
+            }
+            let _ = Reflect::set(
+                &js_sys::global(),
+                &"__comandosAttached".into(),
+                &JsValue::TRUE,
+            );
+            let _ = Reflect::set(&js_sys::global(), &"__comandosReady".into(), &JsValue::TRUE);
+            native_report(&k, &["term-main", "term-tail"], None, "ready");
+        });
+    });
 }
 fn ready(k: &str) -> Result<(), JsValue> {
     let w = window()?;
@@ -854,6 +983,10 @@ fn ready(k: &str) -> Result<(), JsValue> {
     Ok(())
 }
 fn attach() -> Result<(), JsValue> {
+    attach_main()?;
+    crate::pane_chrome::attach()
+}
+fn attach_main() -> Result<(), JsValue> {
     PAGE.with(|slot| {
         if let Some(old) = slot.borrow_mut().take() {
             dispose(&old);
@@ -907,6 +1040,11 @@ fn attach() -> Result<(), JsValue> {
     let term = Rc::new(RefCell::new(WebTerm::new(host.clone(), opts)?));
     let page = Rc::new(RefCell::new(Page {
         term: Some(term.clone()),
+        ui: None,
+        data_hooks: Vec::new(),
+        resize_hooks: Vec::new(),
+        adapter_size: None,
+        write_hooks: Vec::new(),
         socket: None,
         socket_id: 0,
         session,
@@ -964,6 +1102,7 @@ fn attach() -> Result<(), JsValue> {
     let data = Closure::<dyn FnMut(JsValue)>::new(move |data: JsValue| {
         if let Some(page) = weak.upgrade() {
             let bytes = Uint8Array::new(&data).to_vec();
+            adapter::data(&page, &bytes);
             let converted = {
                 let p = page.borrow();
                 if p.ctrl && !p.pasting {
@@ -1103,6 +1242,11 @@ fn attach() -> Result<(), JsValue> {
         p.observer_cb = Some(observer_cb);
     }
     PAGE.with(|slot| *slot.borrow_mut() = Some(page.clone()));
+    let adapter = adapter::publish(&page)?;
+    if element("mobile-compose").is_some() {
+        let ui = crate::controls::TerminalControls::new(adapter)?;
+        page.borrow_mut().ui = Some(ui);
+    }
     connect(&page);
     post("ready", None);
     Ok(())
