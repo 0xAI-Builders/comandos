@@ -12,6 +12,12 @@
 //! `import_legacy_history`) solo la hace el dueño: con `legacy`, el Python;
 //! con `front`, el frente. `_notices_push_loop` (1038) no se arranca nunca:
 //! con `web_push.available() == False` no hace nada (D10).
+//!
+//! El vigilante de modelos (`_model_watch_loop`) y el bucle de límites
+//! (`_limits_snapshot_loop`) solo arrancan con `front` (Tarea 6): con
+//! `legacy` son del Python.
+pub mod limits;
+pub mod models;
 pub mod pomodoro;
 
 use super::{Background, Native};
@@ -33,7 +39,8 @@ impl Stop {
         self.stopped.load(Ordering::Acquire)
     }
 
-    fn set(&self) {
+    /// Pide la parada.
+    pub fn set(&self) {
         self.stopped.store(true, Ordering::Release);
         self.notify.notify_waiters();
     }
@@ -54,12 +61,24 @@ impl Stop {
 pub struct BackgroundRunner {
     stop: Arc<Stop>,
     pomodoro: bool,
+    models: bool,
+    limits: bool,
 }
 
 impl BackgroundRunner {
     /// ¿Arrancó el planificador de Pomodoro?
     pub fn pomodoro(&self) -> bool {
         self.pomodoro
+    }
+
+    /// ¿Arrancó el vigilante de modelos?
+    pub fn models(&self) -> bool {
+        self.models
+    }
+
+    /// ¿Arrancó el bucle de límites?
+    pub fn limits(&self) -> bool {
+        self.limits
     }
 
     /// Para los bucles: el que espera despierta y termina; el que trabaja
@@ -83,5 +102,14 @@ pub fn start(native: &Arc<Native>) -> BackgroundRunner {
     let pomodoro = background.pomodoro
         && native.enabled()
         && pomodoro::spawn(native, Arc::clone(&stop), front_owns(&background));
-    BackgroundRunner { stop, pomodoro }
+    let models =
+        background.model_watch && native.enabled() && models::start(native, Arc::clone(&stop));
+    let limits =
+        background.limits_snapshot && native.enabled() && limits::start(native, Arc::clone(&stop));
+    BackgroundRunner {
+        stop,
+        pomodoro,
+        models,
+        limits,
+    }
 }

@@ -104,7 +104,12 @@ fn push_routes_claim_exactly_the_python_paths() {
     let push = |r| Some(NativeRoute::Push(r));
     assert_eq!(route(&Method::GET, "/push/key"), push(PushRoute::Key));
     assert_eq!(route(&Method::GET, "/push/key?x=1"), push(PushRoute::Key));
-    assert_eq!(route(&Method::GET, "/push/keys"), None);
+    assert_eq!(
+        route(&Method::GET, "/push/keys"),
+        Some(NativeRoute::Residue(
+            comandos_server::dash::native::residue::ResidueRoute::GetFallback
+        ))
+    );
     assert_eq!(
         route(&Method::POST, "/push/subscription"),
         push(PushRoute::SubscriptionPost)
@@ -113,13 +118,23 @@ fn push_routes_claim_exactly_the_python_paths() {
         route(&Method::DELETE, "/push/subscription"),
         push(PushRoute::SubscriptionDelete)
     );
-    assert_eq!(route(&Method::DELETE, "/push/subscription?x"), None);
+    assert_eq!(
+        route(&Method::DELETE, "/push/subscription?x"),
+        Some(NativeRoute::Residue(
+            comandos_server::dash::native::residue::ResidueRoute::DeleteUnknown
+        ))
+    );
     assert_eq!(route(&Method::POST, "/push/test"), push(PushRoute::Test));
     assert_eq!(
         route(&Method::POST, "/pomodoro"),
         push(PushRoute::PomodoroPost)
     );
-    assert_eq!(route(&Method::POST, "/pomodoro?x"), None);
+    assert_eq!(
+        route(&Method::POST, "/pomodoro?x"),
+        Some(NativeRoute::Residue(
+            comandos_server::dash::native::residue::ResidueRoute::PostUnknown
+        ))
+    );
     // La GET sigue en la base (P3).
     assert_eq!(
         route(&Method::GET, "/pomodoro"),
@@ -277,7 +292,9 @@ async fn scheduler_runs_in_both_modes_but_only_the_owner_migrates() {
         assert!(native.ready().await);
         let runner = background::start(&native);
         assert!(runner.pomodoro());
-        assert_eq!(native.tasks().len(), 1);
+        // Con `front` también el vigilante de modelos y el bucle de límites
+        // (2f-3/T6; esperan 90 s y 300 s antes de su primera vuelta).
+        assert_eq!(native.tasks().len(), if owner { 3 } else { 1 });
         let legacy_records =
             "select count(*) from pomodoro_records where provenance='legacy-planned'";
         if owner {

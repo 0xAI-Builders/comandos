@@ -10,6 +10,7 @@
 //!   agente en un hilo de sistema con su conexión, a lo sumo dos a la vez.
 pub mod agents;
 pub mod read;
+pub mod scheduler;
 pub mod write;
 
 use super::{Answer, Entry, Key, Native, NativeRoute, Verb};

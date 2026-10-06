@@ -441,6 +441,8 @@ pub struct NativeOptions {
     pub desktop_device: String,
     /// Checkout del heredado (`REPO_ROOT`): de él sale `config/model-tiers.json`.
     pub repo_root: Option<PathBuf>,
+    /// Raíz de estáticos autorizada por DashConfig, nunca inferida del HOME.
+    pub dash_dir: Option<PathBuf>,
     /// `HOME` del frente (`os.path.expanduser("~")` del Python).
     pub home: PathBuf,
     /// Raíz de `/proc` (las pruebas de capa usan una falsa; el frente, la real).
@@ -474,6 +476,9 @@ pub struct NativeOptions {
     /// cc-notifyd (`127.0.0.1:4778`) de los avisos de nivel; las pruebas ponen
     /// uno falso que solo guarda los cuerpos.
     pub notifyd: Arc<dyn usage::pane_models::NotifyPost>,
+    /// Feeds de noticias del vigilante de modelos (`news_watch`): las URLs del
+    /// Python en producción; las pruebas los llevan a un servidor local.
+    pub news_feeds: Arc<background::models::Feeds>,
     /// Falso en la sombra (`--no-usage-effects`): sin refresco de límites (ni red
     /// ni escrituras) ni el resto de efectos de uso de la fase.
     pub usage_effects: bool,
@@ -581,6 +586,7 @@ impl NativeOptions {
             journal_db: home.join(".claude/hooks/session-operations.sqlite3"),
             desktop_device: desktop_device(),
             repo_root: None,
+            dash_dir: None,
             home: home.to_path_buf(),
             proc_root: PathBuf::from("/proc"),
             legacy: SocketAddr::from((Ipv4Addr::LOCALHOST, crate::dash::DEFAULT_LEGACY_PORT)),
@@ -598,6 +604,7 @@ impl NativeOptions {
             quick_base: quick::default_base(home),
             oauth: Arc::new(usage::limits::ReqwestOauth::default()),
             notifyd: Arc::new(usage::pane_models::HyperNotify::default()),
+            news_feeds: Arc::new(background::models::Feeds::production()),
             usage_effects: true,
             usage_env: Arc::new(usage_env_from_process()),
             extension_env: Arc::new(
@@ -642,6 +649,7 @@ fn env_path(name: &str) -> Option<PathBuf> {
 pub struct Native {
     opts: NativeOptions,
     enabled: AtomicBool,
+    pub(crate) news_scheduler_started: AtomicBool,
     refusals: AtomicUsize,
     state: OnceCell<Option<BackendCaller<StateBackend>>>,
     worker: Mutex<Option<BackendWorker<StateBackend>>>,
@@ -704,6 +712,7 @@ impl Native {
             journal: lanes::Lane::new(opts.journal_db.clone()),
             opts,
             enabled: AtomicBool::new(true),
+            news_scheduler_started: AtomicBool::new(false),
             refusals: AtomicUsize::new(0),
             state: OnceCell::new(),
             worker: Mutex::new(None),
@@ -1030,23 +1039,35 @@ mod scaffold_tests {
         assert!(Key::Prefix("/state").matches("/state"));
         assert!(Key::Prefix("/state").matches("/stateful?x=1"));
         assert!(!Key::Prefix("/state").matches("/stat"));
-        assert_eq!(route(&Method::DELETE, "/no-existe"), None);
+        assert_eq!(
+            route(&Method::DELETE, "/no-existe"),
+            Some(NativeRoute::Residue(residue::ResidueRoute::DeleteUnknown))
+        );
     }
 
     #[test]
-    fn head_maps_to_its_verb_but_no_table_claims_it_yet() {
-        // R2 del preflight: el verbo existe para el residuo (2f-3/T7), pero
-        // hasta entonces HEAD sigue cayendo en estático o reenvío.
-        assert_eq!(route(&Method::HEAD, "/state"), None);
-        assert_eq!(route(&Method::HEAD, "/"), None);
+    fn head_and_unknown_delete_reach_only_the_last_residual_table() {
+        for path in ["/state", "/"] {
+            assert_eq!(
+                route(&Method::HEAD, path),
+                Some(NativeRoute::Residue(residue::ResidueRoute::HeadFallback))
+            );
+        }
         assert_eq!(route(&Method::PUT, "/state"), None);
-        // DELETE: solo `/push/subscription` (2f-3/T5), el único `do_DELETE`.
+        assert!(TABLES.last().is_some_and(|table| {
+            table.len() == residue::ROUTES.len()
+                && table
+                    .iter()
+                    .all(|e| matches!(e.route, NativeRoute::Residue(_)))
+        }));
         assert!(
             TABLES
                 .iter()
-                .flat_map(|table| table.iter())
-                .all(|entry| entry.verb != Verb::Head
+                .flat_map(|t| t.iter())
+                .all(|entry| (entry.verb != Verb::Head
+                    || matches!(entry.route, NativeRoute::Residue(_)))
                     && (entry.verb != Verb::Delete
+                        || matches!(entry.route, NativeRoute::Residue(_))
                         || matches!(entry.key, Key::Raw("/push/subscription"))))
         );
     }

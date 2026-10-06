@@ -1,0 +1,7 @@
+{"name":"r-get-dir-sin-barra","method":"GET","path":"/prototypes","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"r-get-inexistente","method":"GET","path":"/comandos-fixture-no-existe.css","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"r-head-inexistente","method":"HEAD","path":"/comandos-fixture-no-existe.css","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"r-post-desconocido","method":"POST","path":"/nada","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{},"volatile":[],"expect":"same"}
+{"name":"r-delete-desconocido","method":"DELETE","path":"/nada","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{},"volatile":[],"expect":"same"}
+{"name":"r-operator-get","method":"GET","path":"/operator/x","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"r-operator-post","method":"POST","path":"/operatorX","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{},"volatile":[],"expect":"same"}

@@ -35,6 +35,15 @@ nix = { version = "=0.31.3", default-features = false, features = ["feature", "f
 toml_edit = "=0.25.15"
 toml_parser = "=1.1.3"
 
+# News radar: standards-based URL, HTML/XML and bounded HTTPS transport.
+url = "=2.5.8"
+html5ever = "=0.39.0"
+html-escape = "=0.2.15"
+encoding_rs = "=0.8.35"
+roxmltree = "=0.21.1"
+sha1 = "=0.10.6"
+reqwest = { version = "=0.13.5", default-features = false, features = ["blocking", "rustls", "json"] }
+
 [dev-dependencies]
 # cc-notifyd falso de las pruebas de paridad del hook.
 hyper = { version = "=1.11.1", default-features = false, features = ["server", "http1"] }

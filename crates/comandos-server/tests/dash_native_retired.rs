@@ -134,23 +134,23 @@ fn collect_sources(dir: &Path, only_web: bool, sources: &mut Vec<std::path::Path
 
 /// Método equivocado: el Python contesta él mismo, así que se reenvía.
 #[tokio::test]
-async fn wrong_method_is_forwarded() {
+async fn wrong_method_uses_residual_static_or_post_preamble() {
     let home = TestHome::new("retired-method");
     let legacy = FakeLegacy::start().await;
     let front = front(&home, legacy.port, home.options()).await;
     assert_eq!(
         get(front.port, "/pause").await.status,
-        200,
+        404,
         "GET a ruta solo POST"
     );
     assert_eq!(
         request_body(front.port, "POST", "/usage/guard", "", "{}")
             .await
             .status,
-        200,
+        400,
         "POST a ruta solo GET"
     );
     let seen = legacy.requests();
-    assert_eq!(seen.len(), 2, "{seen:?}");
+    assert_eq!(seen.len(), 0, "{seen:?}");
     front.stop().await;
 }

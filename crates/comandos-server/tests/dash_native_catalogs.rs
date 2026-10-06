@@ -323,14 +323,14 @@ async fn sovereignty_declines_on_empty_usage_db_without_creating_tables() {
 }
 
 #[tokio::test]
-async fn sovereignty_query_is_forwarded() {
+async fn sovereignty_query_uses_python_static_fallback() {
     let home = TestHome::new("sovereignty-query");
     let legacy = FakeLegacy::start().await;
     let front = front(&home, legacy.port, home.options()).await;
-    assert_eq!(
-        get(front.port, "/sovereignty?x=1").await.text(),
-        r#"{"legacy": true}"#
-    );
+    let response = get(front.port, "/sovereignty?x=1").await;
+    assert_eq!(response.status, 404);
+    assert!(response.text().contains("File not found"));
+    assert!(legacy.seen.lock().unwrap().is_empty());
     front.stop().await;
 }
 
