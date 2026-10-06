@@ -312,6 +312,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "comandos-browser"
+version = "0.1.0"
+dependencies = [
+ "comandos-core",
+ "getrandom 0.3.4",
+ "nix",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "comandos-cli"
 version = "0.1.0"
 dependencies = [
@@ -320,8 +331,11 @@ dependencies = [
  "comandos-runtime",
  "comandos-server",
  "comandos-store",
+ "getrandom 0.3.4",
+ "nix",
  "serde_json",
  "sha2",
+ "toml",
 ]
 
 [[package]]

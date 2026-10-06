@@ -42,6 +42,12 @@ pub fn response_dumps(value: &Value) -> Result<String, String> {
     encode(value, true, false, false, Policy::Workspace)
 }
 
+/// Python JSONL transport: insertion order, ASCII escapes, compact separators.
+pub fn response_dumps_compact(value: &Value) -> Result<String, String> {
+    validate_workspace_depth(value, 0)?;
+    encode(value, true, true, false, Policy::Workspace)
+}
+
 /// Una entrada `"clave": valor` de un objeto de respuesta, como la escribe
 /// `response_dumps` dentro de un objeto (el valor está un nivel por dentro).
 pub fn response_dumps_entry(key: &str, value: &Value) -> Result<String, String> {

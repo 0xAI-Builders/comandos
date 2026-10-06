@@ -59,3 +59,19 @@ fn dispatch_dash_and_cc_dash_alias() {
         matches!(resolve("/home/x/.local/bin/cc-dash", &v(&["--no-open"])), Command::Dash(a) if a == v(&["--no-open"]))
     );
 }
+
+#[test]
+fn dispatch_browser_aliases_and_explicit() {
+    assert!(
+        matches!(resolve("comandos", &v(&["browser", "remote"])), Command::Browser(a) if a == v(&["remote"]))
+    );
+    assert!(
+        matches!(resolve("/home/x/.local/bin/cc-browser-remote", &v(&[])), Command::Browser(a) if a == v(&["remote"]))
+    );
+    assert!(
+        matches!(resolve("cc-browser-expose", &v(&["status"])), Command::Browser(a) if a == v(&["expose", "status"]))
+    );
+    assert!(
+        matches!(resolve("cc-browser-npx-guard", &v(&["chrome-devtools-mcp"])), Command::Browser(a) if a == v(&["npx-guard", "chrome-devtools-mcp"]))
+    );
+}

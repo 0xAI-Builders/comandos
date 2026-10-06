@@ -3,13 +3,13 @@
 {"name":"term.html","method":"GET","path":"/term.html","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"static-accepted"}
 {"name":"notifications.js","method":"GET","path":"/notifications.js","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"static-accepted"}
 {"name":"xterm.css","method":"GET","path":"/assets/xterm/xterm.css","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"static-accepted"}
-{"name":"vendor-listing","method":"GET","path":"/vendor/","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
-{"name":"no-existe.css","method":"GET","path":"/no-existe.css","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
+{"name":"vendor-listing","method":"GET","path":"/vendor/","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
+{"name":"no-existe.css","method":"GET","path":"/no-existe.css","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"state-local","method":"GET","path":"/state","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/*/observedConfig/observedAt","/*/observedConfig/evidenceAt"],"expect":"same"}
 {"name":"workmarks-local","method":"GET","path":"/work-marks","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"state-remoto-con-token","method":"GET","path":"/state","headers":{"Host":"x.ts.net","X-Forwarded-For":"100.64.0.9","X-Comandos-Token":"{{token}}"},"body":null,"volatile":["/*/observedConfig/observedAt","/*/observedConfig/evidenceAt"],"expect":"same"}
 {"name":"d-state-consulta","method":"GET","path":"/state?x=1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/*/observedConfig/observedAt","/*/observedConfig/evidenceAt"],"expect":"same"}
-{"name":"d-state-prefijo","method":"GET","path":"/states","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/*/observedConfig/observedAt","/*/observedConfig/evidenceAt"],"expect":"same","forwarded":true}
+{"name":"d-state-prefijo","method":"GET","path":"/states","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/*/observedConfig/observedAt","/*/observedConfig/evidenceAt"],"expect":"same"}
 {"name":"state-remoto-sin-token","method":"GET","path":"/state","headers":{"Host":"x.ts.net","X-Forwarded-For":"100.64.0.9"},"body":null,"volatile":[],"expect":"same"}
 {"name":"state-remoto-token-malo","method":"GET","path":"/state","headers":{"Host":"x.ts.net","X-Forwarded-For":"100.64.0.9","Authorization":"Bearer nope"},"body":null,"volatile":[],"expect":"same"}
 {"name":"post-cuerpo-no-objeto","method":"POST","path":"/pane/type","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":"[1,2]","volatile":[],"expect":"same"}
@@ -73,7 +73,7 @@
 {"name":"c-save-malo","method":"POST","path":"/workspace","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"document":{},"expectedRevision":"1"},"volatile":[],"expect":"same"}
 {"name":"c-save-tabs","method":"POST","path":"/workspace","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"document":{"schema":1,"groups":[],"tabs":{}},"expectedRevision":0,"requestId":"parity-c"},"volatile":[],"expect":"same"}
 {"name":"c-sort-vacio","method":"POST","path":"/workspace/sort","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"restore":[]},"volatile":["/revision"],"expect":"same"}
-{"name":"c-close-group-post","method":"POST","path":"/workspace/close-group","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"expectedRevision":"x"},"volatile":[],"expect":"same","forwarded":true}
+{"name":"c-close-group-post","method":"POST","path":"/workspace/close-group","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"expectedRevision":"x"},"volatile":[],"expect":"same"}
 # --- 2b · E: retiradas → 410 de /operator (oracle_path)
 {"name":"e-get-pomodoro-report","method":"GET","path":"/pomodoro/report","oracle_path":"/operator","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"e-get-project-profiles","method":"GET","path":"/project-profiles","oracle_path":"/operator","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
@@ -106,7 +106,7 @@
 {"name":"e-post-models-refresh","method":"POST","path":"/models/refresh","oracle_path":"/operator","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{},"volatile":[],"expect":"same"}
 {"name":"e-post-open-with-account","method":"POST","path":"/open-with-account","oracle_path":"/operator","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{},"volatile":[],"expect":"same"}
 {"name":"e-post-tab-new","method":"POST","path":"/tab-new","oracle_path":"/operator","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{},"volatile":[],"expect":"same"}
-{"name":"e-operator-sigue-reenviada","method":"GET","path":"/operator","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
+{"name":"e-operator-retirada-nativa","method":"GET","path":"/operator","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 # --- 2c · F1: snippets y registro de uso (nativas; los POST escriben, el orden importa)
 {"name":"f-snippets","method":"GET","path":"/snippets","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"f-snippets-vacio","method":"POST","path":"/snippets","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"name":"","body":"x"},"volatile":[],"expect":"same"}
@@ -121,7 +121,7 @@
 {"name":"f-ui-log-roto","method":"POST","path":"/ui-log","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"events":[{"d":"x"}]},"volatile":[],"expect":"same"}
 # --- 2c · F2: Pomodoro (nativa; lee app-state, focus-queue y la base de uso)
 {"name":"f-pomodoro","method":"GET","path":"/pomodoro","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/serverNowMs"],"expect":"same"}
-{"name":"f-pomodoro-consulta","method":"GET","path":"/pomodoro?x=1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
+{"name":"f-pomodoro-consulta","method":"GET","path":"/pomodoro?x=1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 # --- 2c · F3: catálogos de solo lectura (nativas)
 {"name":"f-model-tiers","method":"GET","path":"/model-tiers","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"f-sovereignty","method":"GET","path":"/sovereignty","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/generatedAt","/stores/*/mtime"],"expect":"same"}
@@ -132,7 +132,7 @@
 {"name":"g-terminal-panes-mala","method":"POST","path":"/terminal-panes","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"a b"},"volatile":[],"expect":"same"}
 {"name":"g-terminal-panes-nadie","method":"POST","path":"/terminal-panes","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"no-existe"},"volatile":[],"expect":"same"}
 {"name":"g-terminal-panes-accion","method":"POST","path":"/terminal-panes","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","action":"zz"},"volatile":[],"expect":"same"}
-{"name":"g-terminal-panes-close","method":"POST","path":"/terminal-panes","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","action":"close","pane":"%0","identity":"x"},"volatile":[],"expect":"same","forwarded":true}
+{"name":"g-terminal-panes-close","method":"POST","path":"/terminal-panes","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","action":"close","pane":"%0","identity":"x"},"volatile":[],"expect":"same"}
 {"name":"g-terminal-history","method":"POST","path":"/terminal-history","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","lines":5},"volatile":["/text"],"expect":"same"}
 {"name":"g-terminal-history-lineas","method":"POST","path":"/terminal-history","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"local","lines":0},"volatile":[],"expect":"same"}
 {"name":"g-terminal-history-nadie","method":"POST","path":"/terminal-history","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"no-existe"},"volatile":[],"expect":"same"}
@@ -149,7 +149,7 @@
 {"name":"h-model-status-clave","method":"GET","path":"/model/status?operationKey=a%20b","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"h-model-status-id","method":"GET","path":"/model/status?operationKey=local&operationId=%24%24","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"h-model-status-ajena","method":"GET","path":"/model/status?operationKey=local&operationId=no-existe","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
-{"name":"h-model-status-sin-registro","method":"GET","path":"/model/status?operationKey=sin-registro-paridad","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
+{"name":"h-model-status-sin-registro","method":"GET","path":"/model/status?operationKey=sin-registro-paridad","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 # --- 2e · uso y analítica (nativas; leen la base de uso y la caché de límites calentada arriba)
 {"name":"u-week","method":"GET","path":"/analytics/week","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/accounts/*/left","/accounts/*/h5Left","/accounts/*/model/left","/week/now","/week/measuredAt"],"expect":"same"}
 {"name":"u-week-sidebar","method":"GET","path":"/analytics/week?offset=0&sidebar=1","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/accounts/*/left","/accounts/*/h5Left","/accounts/*/model/left","/week/now","/week/measuredAt"],"expect":"same"}
@@ -158,22 +158,22 @@
 {"name":"u-week-offset-fuera","method":"GET","path":"/analytics/week?offset=3","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"u-week-demo","method":"GET","path":"/analytics/week?demo=normal","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"u-week-demo-nada","method":"GET","path":"/analytics/week?demo=zz9","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
-{"name":"u-week-prefijo","method":"GET","path":"/analytics/weekly","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/week/now","/week/measuredAt"],"expect":"same","forwarded":true}
+{"name":"u-week-prefijo","method":"GET","path":"/analytics/weekly","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/week/now","/week/measuredAt"],"expect":"same"}
 {"name":"u-extension-usage","method":"GET","path":"/extension-usage","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/extensions/*/lastSeen"],"expect":"same"}
 {"name":"u-extension-usage-30","method":"GET","path":"/extension-usage?days=30","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/extensions/*/lastSeen"],"expect":"same"}
 {"name":"u-extension-usage-dias","method":"GET","path":"/extension-usage?days=x","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"u-extension-usage-sesion","method":"GET","path":"/extension-usage?session=a%20b","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"u-extension-usage-panel","method":"GET","path":"/extension-usage?pane=%251","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
-{"name":"u-extension-usage-prefijo","method":"GET","path":"/extension-usageX","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
+{"name":"u-extension-usage-prefijo","method":"GET","path":"/extension-usageX","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 # --- 2e · T4: registro de proveedores, planes y menú de cuentas (nativas; los prefijos se reenvían)
 {"name":"u-providers","method":"GET","path":"/providers","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
-{"name":"u-providers-prefijo","method":"GET","path":"/providersX","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
+{"name":"u-providers-prefijo","method":"GET","path":"/providersX","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"u-optimization-plans","method":"GET","path":"/optimization/plans","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"u-accounts","method":"GET","path":"/accounts","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"u-accounts-codex","method":"GET","path":"/accounts?harness=codex","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"u-accounts-sin-uso","method":"GET","path":"/accounts?harness=claude&usage=0","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"u-accounts-shell","method":"GET","path":"/accounts?harness=shell","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
-{"name":"u-accounts-prefijo","method":"GET","path":"/accountsX","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same","forwarded":true}
+{"name":"u-accounts-prefijo","method":"GET","path":"/accountsX","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"u-usage-state-calentar","method":"GET","path":"/usage/state","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"status-only"}
 {"name":"u-usage-state","method":"GET","path":"/usage/state","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/generated_at","/panes/*/last_seen_at","/limits/*/captured_at","/limits/*/runsOutIn","/limits/*/pace","/limits/*/burn","/lastInteraction","/windows/items/*/used","/windows/items/*/remaining","/windows/items/*/percent"],"expect":"same"}
-{"name":"u-usage-state-prefijo","method":"GET","path":"/usage/stateX","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/generated_at","/panes/*/last_seen_at","/limits/*/captured_at","/limits/*/runsOutIn","/limits/*/pace","/limits/*/burn","/lastInteraction","/windows/items/*/used","/windows/items/*/remaining","/windows/items/*/percent"],"expect":"same","forwarded":true}
+{"name":"u-usage-state-prefijo","method":"GET","path":"/usage/stateX","headers":{"Host":"127.0.0.1"},"body":null,"volatile":["/generated_at","/panes/*/last_seen_at","/limits/*/captured_at","/limits/*/runsOutIn","/limits/*/pace","/limits/*/burn","/lastInteraction","/windows/items/*/used","/windows/items/*/remaining","/windows/items/*/percent"],"expect":"same"}

@@ -11,6 +11,7 @@ pub enum Command {
     WebtermAttach(Vec<String>),
     State(Vec<String>),
     Keys(Vec<String>),
+    Browser(Vec<String>),
     Version,
     Help,
     Unknown(String),
@@ -33,6 +34,9 @@ const ALIASES: &[(&str, &[&str])] = &[
     ("cc-webterm", &["webterm"]),
     ("cc-webterm-attach", &["webterm-attach"]),
     ("cc-keys", &["keys"]),
+    ("cc-browser-remote", &["browser", "remote"]),
+    ("cc-browser-expose", &["browser", "expose"]),
+    ("cc-browser-npx-guard", &["browser", "npx-guard"]),
 ];
 
 pub fn resolve(argv0: &str, args: &[String]) -> Command {
@@ -53,6 +57,7 @@ pub fn resolve(argv0: &str, args: &[String]) -> Command {
         Some("webterm-attach") => Command::WebtermAttach(words[1..].to_vec()),
         Some("state") => Command::State(words[1..].to_vec()),
         Some("keys") => Command::Keys(words[1..].to_vec()),
+        Some("browser") => Command::Browser(words[1..].to_vec()),
         Some("--version") | Some("version") => Command::Version,
         None | Some("--help") | Some("help") => Command::Help,
         Some(other) => Command::Unknown(other.to_string()),
