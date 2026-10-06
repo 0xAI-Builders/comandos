@@ -2,7 +2,8 @@
 use crate::{HandlerError, Reply, Request};
 use http::StatusCode;
 use linkify::{LinkFinder, LinkKind};
-use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd, html};
+use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd, html};
+mod uri;
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
@@ -43,21 +44,12 @@ fn anchor(url: &str, title: &str) -> String {
     )
 }
 
-fn normalized_href(href: &str) -> String {
-    // URL encoding replaces unpaired UTF-16 units, while ordinary text retains
-    // them through the lossless browser transport. Decode only non-ASCII URLs.
-    let decoded = if href.is_ascii() {
-        Cow::Borrowed(href)
-    } else {
-        Cow::Owned(
-            char::decode_utf16(comandos_web_view::utf16::decode(href))
-                .map(|unit| unit.unwrap_or(char::REPLACEMENT_CHARACTER))
-                .collect::<String>(),
-        )
-    };
-    let href = idna_href(&decoded);
+fn normalized_href(href: &str) -> Cow<'_, str> {
+    // Parser destinations have already decoded entities. Their PUA scalars
+    // are Unicode data, never evidence of the UTF-16 transport codec.
+    let href = idna_href(href);
     if href.is_ascii() {
-        return href;
+        return Cow::Owned(href);
     }
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let extra = href.bytes().filter(|byte| !byte.is_ascii()).count() * 2;
@@ -71,7 +63,7 @@ fn normalized_href(href: &str) -> String {
             encoded.push(char::from(HEX[usize::from(byte & 15)]));
         }
     }
-    encoded
+    Cow::Owned(encoded)
 }
 // markdown-it normalizes an international hostname without rewriting the
 // spelling of the scheme, port, userinfo or path.
@@ -145,6 +137,12 @@ impl HtmlText {
             self.original(span)
         } else if self.source.get(range.clone()) == Some(value) {
             self.original(range)
+        } else if let Some(raw) = self
+            .source
+            .get(range)
+            .filter(|raw| raw.starts_with('&') && raw.ends_with(';'))
+        {
+            uri::entity_text(raw, value)
         } else {
             value.into()
         }
@@ -375,6 +373,8 @@ fn linkified(text: &str) -> String {
             continue;
         }
         out.push_str(&esc(text.get(at..link.start).unwrap_or_default()));
+        // Bare destinations still originate in source, before entities.
+        let href = uri::transport_destination(&href);
         out.push_str(&anchor(&href, ""));
         out.push_str(&esc(visible));
         out.push_str("</a>");
@@ -488,7 +488,13 @@ pub fn render(text: &str, _profile: Profile) -> String {
     // A single tilde is literal in markdown-it. Convert these boundaries
     // before Text coalescing, so a URL's closing tilde remains part of the
     // same text run and receives the original autolink treatment.
-    let parsed = Parser::new_ext(source, options)
+    let base_parser = Parser::new_ext(source, options);
+    let definitions = base_parser
+        .reference_definitions()
+        .iter()
+        .map(|(id, definition)| (id.to_string(), definition.span.clone()))
+        .collect::<HashMap<_, _>>();
+    let parsed = base_parser
         .into_offset_iter()
         .map(|(event, mut range)| {
             let event = match event {
@@ -537,11 +543,46 @@ pub fn render(text: &str, _profile: Profile) -> String {
                 events.push(Event::End(TagEnd::CodeBlock));
             }
             Event::Start(Tag::Link {
-                dest_url, title, ..
+                dest_url,
+                title,
+                link_type,
+                id,
             })
             | Event::Start(Tag::Image {
-                dest_url, title, ..
+                dest_url,
+                title,
+                link_type,
+                id,
             }) => {
+                let raw_source = match link_type {
+                    LinkType::Inline | LinkType::Autolink | LinkType::Email => {
+                        source.get(range.clone())
+                    }
+                    _ => definitions
+                        .get(id.as_ref())
+                        .and_then(|span| source.get(span.clone())),
+                };
+                let raw = if dest_url.contains('\u{e000}') || dest_url.contains('\u{fffd}') {
+                    raw_source.and_then(|raw| match link_type {
+                        LinkType::Inline => uri::inline_destination(raw),
+                        LinkType::Autolink | LinkType::Email => {
+                            raw.strip_prefix('<').and_then(|s| s.strip_suffix('>'))
+                        }
+                        _ => uri::reference_destination(raw),
+                    })
+                } else {
+                    None
+                };
+                let dest_url = raw
+                    .and_then(|raw| uri::parsed_destination(raw, link_type))
+                    .map_or_else(|| Cow::Borrowed(dest_url.as_ref()), Cow::Owned);
+                let title = if title.contains('\u{e000}') || title.contains('\u{fffd}') {
+                    raw_source
+                        .and_then(|raw| uri::source_title(raw, link_type))
+                        .map_or_else(|| Cow::Borrowed(title.as_ref()), Cow::Owned)
+                } else {
+                    Cow::Borrowed(title.as_ref())
+                };
                 let image = source
                     .get(range.start..)
                     .is_some_and(|s| s.starts_with("!"));
@@ -593,7 +634,8 @@ pub fn render(text: &str, _profile: Profile) -> String {
                 if code > 0 || !links.is_empty() {
                     events.push(Event::Text(t.into()));
                 } else {
-                    events.push(Event::Html(linkified(&t).into()));
+                    let rendered = linkified(&t);
+                    events.push(Event::Html(rendered.into()));
                 }
             }
             Event::Code(t) => {

@@ -1,0 +1,85 @@
+{
+  "original": "54024241c4f88930671a069b1b84f2aa39752702716b2ac906b1929bc2ccf25b",
+  "cases": [
+    {
+      "text": "[&#xe000;&#xf0000;](https://example.org)",
+      "baseline": "<p><a href=\"https://example.org\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">󰀀</a></p>\n"
+    },
+    {
+      "text": "[x](https://example.org \"&#xe000;&#xf0000;\")",
+      "baseline": "<p><a href=\"https://example.org\" title=\"󰀀\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://example.org \"&#xe000;&#xf0000;\"",
+      "baseline": "<p><a href=\"https://example.org\" title=\"󰀀\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[&#xe000;&#xf0000;](https://example.org/a&#xe000;&#xf0000;)",
+      "baseline": "<p><a href=\"https://example.org/a%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">󰀀</a></p>\n"
+    },
+    {
+      "text": "[&#xe000;&#xe000;](https://example.org)",
+      "baseline": "<p><a href=\"https://example.org\" target=\"_blank\" rel=\"noopener noreferrer nofollow\"></a></p>\n"
+    },
+    {
+      "text": "[x](https://example.org \"&#xe000;&#xe000;\")",
+      "baseline": "<p><a href=\"https://example.org\" title=\"\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://example.org \"&#xe000;&#xe000;\"",
+      "baseline": "<p><a href=\"https://example.org\" title=\"\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[&#xe000;&#xe000;](https://example.org/a&#xe000;&#xe000;)",
+      "baseline": "<p><a href=\"https://example.org/a%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\"></a></p>\n"
+    },
+    {
+      "text": "[&#xf0000;](https://example.org)",
+      "baseline": "<p><a href=\"https://example.org\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">󰀀</a></p>\n"
+    },
+    {
+      "text": "[x](https://example.org \"&#xf0000;\")",
+      "baseline": "<p><a href=\"https://example.org\" title=\"󰀀\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://example.org \"&#xf0000;\"",
+      "baseline": "<p><a href=\"https://example.org\" title=\"󰀀\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[&#xf0000;](https://example.org/a&#xf0000;)",
+      "baseline": "<p><a href=\"https://example.org/a%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">󰀀</a></p>\n"
+    },
+    {
+      "text": "[&#xe000;\ud800](https://example.org)",
+      "baseline": "<p><a href=\"https://example.org\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">\ud800</a></p>\n"
+    },
+    {
+      "text": "[x](https://example.org \"&#xe000;\ud800\")",
+      "baseline": "<p><a href=\"https://example.org\" title=\"\ud800\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://example.org \"&#xe000;\ud800\"",
+      "baseline": "<p><a href=\"https://example.org\" title=\"\ud800\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[&#xe000;\ud800](https://example.org/a&#xe000;\ud800)",
+      "baseline": "<p><a href=\"https://example.org/a%EE%80%80%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">\ud800</a></p>\n"
+    },
+    {
+      "text": "[\ud800&#xe000;&#xf0000;](https://example.org)",
+      "baseline": "<p><a href=\"https://example.org\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">\ud800󰀀</a></p>\n"
+    },
+    {
+      "text": "[x](https://example.org \"\ud800&#xe000;&#xf0000;\")",
+      "baseline": "<p><a href=\"https://example.org\" title=\"\ud800󰀀\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://example.org \"\ud800&#xe000;&#xf0000;\"",
+      "baseline": "<p><a href=\"https://example.org\" title=\"\ud800󰀀\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[\ud800&#xe000;&#xf0000;](https://example.org/a\ud800&#xe000;&#xf0000;)",
+      "baseline": "<p><a href=\"https://example.org/a%EF%BF%BD%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">\ud800󰀀</a></p>\n"
+    }
+  ]
+}
