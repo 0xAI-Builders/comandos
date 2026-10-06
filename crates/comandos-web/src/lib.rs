@@ -71,6 +71,7 @@ pub mod components {
     pub(crate) mod web_support;
     pub mod work_marks;
     pub mod workspace;
+    pub mod workspace_dock;
     pub mod workspace_layout;
 }
 

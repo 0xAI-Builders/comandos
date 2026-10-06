@@ -55,6 +55,11 @@ pub const COMPONENTS: &[Component] = &[
         attach: None,
     },
     Component {
+        id: "workspace-dock",
+        mount: crate::components::workspace_dock::mount,
+        attach: Some(crate::components::workspace_dock::attach),
+    },
+    Component {
         id: "extensions",
         mount: crate::components::extensions::mount,
         attach: Some(crate::components::extensions::attach),
