@@ -210,3 +210,29 @@ async fn dropping_a_worker_terminates_its_owned_descendants() {
     );
     assert!(!survived);
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn completed_worker_close_and_late_drop_cannot_touch_reused_profile() {
+    let dir = temp_dir("closed-profile-reuse");
+    let profile = dir.join("profile");
+    let cfg=BrokerConfig::from_value(json!({"command":[env!("CARGO_BIN_EXE_fake-mcp-worker")],"state_dir":dir,"catalog":{"tools":[{"name":"navigate_page"}]},"stop_grace":0.1}),&dir).unwrap();
+    let (tx, _rx) = mpsc::channel(1);
+    let old = Worker::start(&cfg, profile.clone(), tx).await.unwrap();
+    old.clone().close(0.1).await.unwrap();
+    let (tx, _rx) = mpsc::channel(1);
+    let current = Worker::start(&cfg, profile.clone(), tx).await.unwrap();
+    let second_close = old.clone().close(0.1).await;
+    drop(old);
+    let exists = profile.exists();
+    let result = current
+        .request("tools/call", json!({"name":"navigate_page","arguments":{}}))
+        .await;
+    current.close(0.1).await.unwrap();
+    assert!(second_close.is_ok());
+    assert!(exists);
+    assert_eq!(
+        result.unwrap()["result"]["content"][0]["text"],
+        "ok navigate_page"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}

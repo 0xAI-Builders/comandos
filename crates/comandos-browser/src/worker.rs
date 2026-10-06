@@ -14,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc,
-        atomic::{AtomicI64, Ordering},
+        atomic::{AtomicBool, AtomicI64, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -46,6 +46,7 @@ pub struct Worker {
     root: Option<(i32, u64)>,
     owned: Mutex<BTreeMap<i32, u64>>,
     closing: Mutex<()>,
+    closed: AtomicBool,
     pending: Pending,
     counter: AtomicI64,
     profile: PathBuf,
@@ -151,6 +152,7 @@ impl Worker {
             root,
             owned: Mutex::new(BTreeMap::new()),
             closing: Mutex::new(()),
+            closed: AtomicBool::new(false),
             pending,
             counter: AtomicI64::new(0),
             profile,
@@ -214,6 +216,9 @@ impl Worker {
 
     pub async fn close(self: Arc<Self>, stop_grace: f64) -> Result<(), CloseError> {
         let _closing = self.closing.lock().await;
+        if self.closed.load(Ordering::SeqCst) {
+            return Ok(());
+        }
         let proc_root = Path::new("/proc");
         let root_pid = self
             .root
@@ -269,6 +274,8 @@ impl Worker {
             task.abort();
         }
         let _ = std::fs::remove_dir_all(&self.profile);
+        // Late Arc owners must never rescan a profile after ownership is released.
+        self.closed.store(true, Ordering::SeqCst);
         Ok(())
     }
 
@@ -365,6 +372,9 @@ impl Drop for Worker {
     fn drop(&mut self) {
         for task in self.tasks.get_mut().unwrap().drain(..) {
             task.abort();
+        }
+        if self.closed.load(Ordering::SeqCst) {
+            return;
         }
         let proc_root = Path::new("/proc");
         let root_pid = self
