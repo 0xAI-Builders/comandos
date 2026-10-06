@@ -1,5 +1,6 @@
 //! Acceso por dominio sin cambiar consumidores ni modos en producción.
 pub mod catalog;
+mod layout;
 mod legacy;
 mod mirror;
 use crate::{
@@ -7,6 +8,7 @@ use crate::{
     files::{FileLock, write_atomic},
     unified::{self, LogName, Mode},
 };
+pub use layout::LayoutSnapshot;
 use rusqlite::{Connection, OptionalExtension};
 use std::{
     fs,
@@ -22,6 +24,15 @@ pub struct DocHandle<'a> {
     pub lock: PathBuf,
 }
 impl DocHandle<'_> {
+    pub fn read_readonly(&self) -> Result<Option<Vec<u8>>> {
+        unified::modes::with_readonly_access(self.home, self.domain, |mode, db| {
+            if matches!(mode, Mode::Unified | Mode::Sealed) {
+                let db = db.ok_or_else(|| Error::Validation("estado único sin base".into()))?;
+                return Ok(unified::doc_get(db, self.name)?.map(|d| d.body));
+            }
+            legacy::read(&self.file)
+        })
+    }
     pub fn read(&self, db: Option<&Connection>) -> Result<Option<Vec<u8>>> {
         let (mode, _guard) = unified::modes::access_mode(self.home, db, self.domain)?;
         if matches!(mode, Mode::Unified | Mode::Sealed)

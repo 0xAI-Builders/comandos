@@ -4,6 +4,7 @@ pub mod install;
 pub mod keys;
 pub mod next;
 pub mod raise;
+pub mod snapshot;
 pub mod state;
 pub mod web;
 pub mod webterm;

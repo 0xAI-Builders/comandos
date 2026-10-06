@@ -21,6 +21,7 @@ harness = false
 # (necesitan `libwebkit2gtk-4.1-dev`).
 [dependencies]
 comandos-core = { path = "../comandos-core" }
+comandos-store = { path = "../comandos-store" }
 comandos-runtime = { path = "../comandos-runtime" }
 comandos-notifyd = { path = "../comandos-notifyd" }
 serde_json.workspace = true

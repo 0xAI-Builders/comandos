@@ -1,6 +1,7 @@
 //! Reads and writes shared app state files under `hooks_dir`.
 use crate::config::AppConfig;
 use crate::guard::{GuardError, WriteGuard};
+use comandos_store::snapshot_files::{self, Backend, Policy};
 use nix::fcntl::{Flock, FlockArg};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -101,66 +102,23 @@ impl StateFiles {
     }
 
     pub fn read_session_snapshot(&self) -> Value {
-        for name in ["app-sessions-v2.json", "app-sessions-v2.json.bak"] {
-            if let Ok(bytes) = std::fs::read(self.config.hooks_dir().join(name))
-                && let Some(value) = comandos_core::json::workspace_loads_bytes(&bytes)
-                && comandos_core::workspace::snapshot::check_snapshot(&value)
-                    == comandos_core::workspace::snapshot::Snapshot::Valid
-            {
-                return value;
-            }
-        }
-        serde_json::json!({"version":2,"sessions":{}})
+        snapshot_files::read_with(
+            &SnapshotBackend(&self.guard),
+            &self.config.hooks_dir().join("app-sessions-v2.json"),
+        )
     }
 
     fn write_session_snapshot(&self, value: &Value) -> Result<(), StateError> {
-        if comandos_core::workspace::snapshot::check_snapshot(value)
-            != comandos_core::workspace::snapshot::Snapshot::Valid
-        {
-            return Err(StateError::Name(
-                "Refusing incomplete session layout snapshot".into(),
-            ));
-        }
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
-        if let Ok(old) = self.read("app-sessions-v2.json")
-            && comandos_core::workspace::snapshot::check_snapshot(&old)
-                == comandos_core::workspace::snapshot::Snapshot::Valid
-        {
-            let encoded = comandos_core::json::response_dumps(&old).map_err(StateError::Name)?;
-            let history = self.config.hooks_dir().join("app-sessions-v2.json.history");
-            self.guard
-                .create_dir_all(&history, 0o700)
-                .map_err(StateError::Guard)?;
-            let stamp = old.get("saved_at").and_then(Value::as_u64).unwrap_or(now) / 60 * 60;
-            self.guard
-                .archive_once(
-                    &history.join(format!("{stamp:012}.json")),
-                    encoded.as_bytes(),
-                )
-                .map_err(StateError::Guard)?;
-            if let Ok(entries) = std::fs::read_dir(&history) {
-                for entry in entries.filter_map(Result::ok) {
-                    if entry
-                        .file_name()
-                        .to_str()
-                        .and_then(|n| n.strip_suffix(".json"))
-                        .and_then(|n| n.parse::<u64>().ok())
-                        .is_some_and(|stamp| stamp < now.saturating_sub(7 * 86400))
-                    {
-                        self.guard
-                            .remove_file(&entry.path())
-                            .map_err(StateError::Guard)?;
-                    }
-                }
-            }
-            let backup = self.config.hooks_dir().join("app-sessions-v2.json.bak");
-            self.guard
-                .write_atomic(&backup, encoded.as_bytes(), "app-sessions-v2.")
-                .map_err(StateError::Guard)?;
-        }
-        self.write("app-sessions-v2.json", value)
+        snapshot_files::write_with(
+            &SnapshotBackend(&self.guard),
+            &self.config.hooks_dir().join("app-sessions-v2.json"),
+            value,
+            i64::try_from(now).unwrap_or(i64::MAX),
+            Policy::App,
+        )
     }
 
     pub fn archive_tab(&self, entry: &Value) -> Result<(), StateError> {
@@ -196,6 +154,59 @@ impl StateFiles {
             return Err(StateError::Name(name.to_string()));
         }
         Ok(self.config.hooks_dir().join(name))
+    }
+}
+
+struct SnapshotBackend<'a>(&'a WriteGuard);
+impl Backend for SnapshotBackend<'_> {
+    type Error = StateError;
+    fn invalid(message: String) -> StateError {
+        StateError::Name(message)
+    }
+    fn read(&self, path: &Path) -> Result<Option<Vec<u8>>, StateError> {
+        match std::fs::read(path) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(StateError::Io(path.to_path_buf(), e.to_string())),
+        }
+    }
+    fn prepare(&self, path: &Path) -> Result<(), StateError> {
+        self.0
+            .create_dir_all(path, 0o700)
+            .map_err(StateError::Guard)
+    }
+    fn write(&self, path: &Path, bytes: &[u8]) -> Result<(), StateError> {
+        self.0
+            .write_atomic(path, bytes, "app-state.")
+            .map_err(StateError::Guard)
+    }
+    fn archive(&self, _source: &Path, target: &Path, bytes: &[u8]) -> Result<bool, StateError> {
+        self.0
+            .archive_once(target, bytes)
+            .map_err(StateError::Guard)
+    }
+    fn backup(&self, _source: &Path, target: &Path, bytes: &[u8]) -> Result<(), StateError> {
+        self.0
+            .write_atomic(target, bytes, "app-sessions-v2.")
+            .map_err(StateError::Guard)
+    }
+    fn prune(&self, history: &Path, cutoff: i128) -> Result<(), StateError> {
+        if let Ok(entries) = std::fs::read_dir(history) {
+            for entry in entries.filter_map(Result::ok) {
+                if entry
+                    .file_name()
+                    .to_str()
+                    .and_then(|n| n.strip_suffix(".json"))
+                    .and_then(|n| n.parse::<u64>().ok())
+                    .is_some_and(|n| i128::from(n) < cutoff)
+                {
+                    self.0
+                        .remove_file(&entry.path())
+                        .map_err(StateError::Guard)?;
+                }
+            }
+        }
+        Ok(())
     }
 }
 

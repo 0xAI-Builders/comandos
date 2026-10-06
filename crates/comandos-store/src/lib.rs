@@ -6,6 +6,7 @@ pub mod marks;
 pub mod migrate;
 pub mod news;
 pub mod session_profiles;
+pub mod snapshot_files;
 #[path = "state_db/mod.rs"]
 pub mod state;
 pub mod unified;

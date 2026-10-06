@@ -215,6 +215,18 @@ pub fn capture_session_at(
     inspector: &PaneInspector,
     captured_at: i64,
 ) -> Result<Value> {
+    capture_session_with_start_at(tmux, session, inspector, captured_at, &mut start_time)
+}
+
+/// Snapshot capture with an explicit process-start reader. Tests can keep both
+/// pane inventory and kernel identity reads inside their own fixture tree.
+pub fn capture_session_with_start_at(
+    tmux: &mut impl FnMut(&[&str]) -> Result<TmuxResult>,
+    session: &str,
+    inspector: &PaneInspector,
+    captured_at: i64,
+    process_start: &mut impl FnMut(&str) -> Value,
+) -> Result<Value> {
     let target = format!("={session}");
     let raw = checked(
         tmux,
@@ -272,7 +284,7 @@ pub fn capture_session_at(
             pane.insert("index".into(), Value::from(py_int(field(1))?));
             pane.insert("cwd".into(), Value::from(field(2)));
             pane.insert("pid".into(), Value::from(pid));
-            pane.insert("start".into(), start_time(process));
+            pane.insert("start".into(), process_start(process));
             pane.insert("command".into(), Value::from(command));
             pane.insert("active".into(), Value::Bool(field(5) == "1"));
             if !tagged.is_empty() {

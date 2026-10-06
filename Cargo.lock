@@ -352,6 +352,7 @@ dependencies = [
  "comandos-core",
  "comandos-notifyd",
  "comandos-runtime",
+ "comandos-store",
  "comandos-term",
  "gdk",
  "gdk-pixbuf",
