@@ -7,7 +7,8 @@ use serde_json::json;
 fn real_tick_is_idle_without_damage_but_read_and_sync_flush_still_paint() {
     let source = include_str!("../src/term/view.rs");
     let methods = native::body(source, "fn tick(self: &Rc<Self>)")
-        + &native::body(source, "fn read(self: &Rc<Self>, condition: IOCondition)");
+        + &native::body(source, "fn read(self: &Rc<Self>, condition: IOCondition)")
+        + &native::body(source, "fn poll_shadow(&self, m: &mut Model, now: u64)");
     let probe =
         include_str!("support/term_idle_tick.rs.txt").replace("// ACTUAL_METHODS", &methods);
     let result = native::execute_source(&probe, &json!({}));
@@ -25,4 +26,13 @@ fn real_tick_is_idle_without_damage_but_read_and_sync_flush_still_paint() {
     assert_eq!(result["unmapped_paints"], 0);
     assert_eq!(result["queued_before_map"], true);
     assert_eq!(result["remapped_paints"], 1);
+    assert_eq!(result["shadow_full_rows"], true);
+    assert_eq!(result["shadow_new_paints"], 1);
+    assert_eq!(result["shadow_same_paints"], 1);
+    assert_eq!(result["shadow_hidden_paints"], 0);
+    assert_eq!(result["shadow_hidden_pending"], true);
+    assert_eq!(result["shadow_hidden_requests"], 0);
+    assert_eq!(result["shadow_remapped_paints"], 1);
+    assert_eq!(result["shadow_pty"], false);
+    assert_eq!(result["shadow_io_or_callbacks"], 0);
 }
