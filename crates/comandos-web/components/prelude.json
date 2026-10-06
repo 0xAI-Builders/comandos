@@ -1,0 +1,14 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "\"use strict\";",
+  "marker_end": "// ---------- i18n ----------",
+  "sha256": "28d4bc51f4b8a5d3b06e716d3d1d0cec79f87c9fa6caa0eeee1eef2f088cc406",
+  "id": "prelude",
+  "exports": [
+    "S",
+    "$"
+  ],
+  "deps": []
+}

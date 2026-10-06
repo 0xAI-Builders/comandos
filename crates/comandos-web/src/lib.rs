@@ -60,6 +60,7 @@ pub mod components {
     pub mod command_sidebar;
     pub mod device_drafts;
     pub mod extensions;
+    pub mod foundation;
     pub mod news_reader;
     pub mod notifications;
     pub mod pomodoro;

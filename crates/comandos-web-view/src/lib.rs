@@ -47,3 +47,4 @@ pub mod utf16;
 pub mod news;
 
 pub mod command_sidebar;
+pub mod index_page;

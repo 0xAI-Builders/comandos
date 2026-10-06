@@ -1,0 +1,406 @@
+<div id="panes">
+<nav id="app-navigation" aria-label="Pestañas de sesiones">
+  <button type="button" id="tab-panel" class="tab-nav-btn" aria-label="Panel de sesiones" title="Panel de sesiones"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
+  <button type="button" id="tab-left" class="tab-nav-btn" aria-label="Mostrar u ocultar el panel izquierdo" title="Mostrar/ocultar el panel izquierdo" aria-pressed="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg></button>
+  <button type="button" id="tab-prev" class="tab-nav-btn tab-step" aria-label="Desplazar pestañas a la izquierda">‹</button>
+  <div id="tabbar" role="tablist" aria-label="Terminales"></div>
+  <button type="button" id="tab-term" class="tab-nav-btn" aria-label="Terminal" title="Terminal rápida en una carpeta nueva"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 8 4 4-4 4M12 17h7"/></svg></button>
+  <button type="button" id="tab-new" class="tab-nav-btn" aria-label="Nueva sesión" title="Nueva sesión"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+  <button type="button" id="tab-sort" class="tab-nav-btn" aria-label="Ordenar pestañas una vez" title="Ordenar pestañas una vez" aria-haspopup="menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/></svg></button>
+  <button type="button" id="tab-rows" class="tab-nav-btn" aria-label="Varias filas" title="Varias filas" aria-pressed="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/></svg></button>
+  <button type="button" id="tab-next" class="tab-nav-btn tab-step" aria-label="Desplazar pestañas a la derecha">›</button>
+  <button type="button" id="tab-open" class="tab-nav-btn" aria-label="Ver todas las sesiones" title="Ver todas las sesiones"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg></button>
+</nav>
+<div id="view-panel" class="on">
+<div id="topbar">
+<header class="hdr-ordered">
+  <!-- Brand vive en el HeaderBar de cc-app (arriba a la izquierda). Fuera de
+       la app (browser mobile) puede hacer falta — si algún día se necesita,
+       reponer este div. -->
+  <!-- Cabecera «Ordenada» (H1, grill 29-sep): fila 1 = ☰, contadores, Terminal,
+       Nueva sesión | búsqueda … Servidores, Resúmenes, campana, Pomodoro, Ajustes,
+       reloj. La fila 2 son las pestañas (#app-navigation). -->
+  <button class="hdr-btn" id="btn-menu" aria-label="Más" title="Más" aria-haspopup="dialog" aria-expanded="false" aria-controls="menu-panel"><span data-icon="menu" data-size="17"></span><span class="hdr-lbl">Más</span></button>
+  <div class="counts">
+    <span class="pill hot"><b id="n-waiting">0</b> <span class="cnt-long">esperan</span><span class="cnt-short">esp.</span></span>
+    <span class="pill ok"><b id="n-done">0</b> <span class="cnt-long">listos</span><span class="cnt-short">list.</span></span>
+    <span class="pill run"><b id="n-working">0</b> <span class="cnt-long">trabajando</span><span class="cnt-short">trab.</span></span>
+  </div>
+  <button class="hdr-btn" id="btn-terminal" aria-label="Terminal" title="Terminal rápida en una carpeta nueva"><span data-icon="terminal" data-size="17"></span><span class="hdr-lbl">Terminal</span></button>
+  <button class="hdr-btn primary" id="btn-newsess" aria-label="Nueva sesión" title="Nueva sesión"><span data-icon="plus" data-size="17"></span><span class="hdr-lbl">Nueva sesión</span></button>
+  <div class="hdr-right">
+	    <button class="hdr-btn" id="btn-switch" aria-label="switch" title="Saltar a cualquier sesión (Ctrl+K)"><span data-icon="search" data-size="16"></span><span class="hdr-lbl">Buscar</span></button>
+	    <button class="hdr-btn" id="btn-snippets" aria-label="snippets" title="Snippets (Ctrl+Shift+K)"><span data-icon="snippet" data-size="16"></span><span class="hdr-lbl">Snippets</span></button>
+	    <button class="hdr-btn" id="btn-usage" aria-label="Analytics" title="Analytics de harnesses, motores y foco"><span data-icon="database" data-size="17"></span><span class="hdr-lbl">Analytics</span></button>
+	    <button class="hdr-btn" id="btn-remote" aria-label="Remoto" title="Remoto — continuar desde celular/tablet"><span data-icon="smartphone" data-size="17"></span><span class="hdr-lbl">Remoto</span></button>
+	    <button class="hdr-btn" id="btn-servers" aria-label="Servidores" title="Servidores" aria-expanded="false" aria-controls="servers-panel"><span data-icon="server" data-size="17"></span><span class="hdr-lbl">Servidores</span></button>
+    <div class="hdr-primary">
+	    <button class="hdr-btn" id="btn-news" aria-label="Resúmenes" title="Resúmenes — tres al día, con fuentes y la IA que los escribió"><span data-icon="sparkles" data-size="16"></span></button>
+	    <button class="hdr-btn" id="btn-notif" aria-label="Notificaciones" title="Notificaciones — todo local: avisos, pomodoros y cola de foco"><span data-icon="bell" data-size="16"></span><b class="nbadge hidden" id="notif-badge">0</b></button>
+	    <div id="notif-panel" class="hidden" role="dialog" aria-label="Notificaciones"></div>
+	    <button class="hdr-btn" id="btn-pomo" role="timer" aria-label="Pomodoro"
+	      title="Pomodoro compartido entre dispositivos"><span data-icon="timer" data-size="16"></span><span class="pomo-mini"></span></button>
+	    <div id="pomo-panel" class="hidden" role="dialog" aria-label="Pomodoro"></div>
+	    <button class="hdr-btn" id="btn-settings" aria-label="Ajustes" title="Ajustes"><span data-icon="settings" data-size="17"></span><span class="hdr-lbl">Ajustes</span></button>
+    </div>
+    <span id="clock">--:--</span>
+  </div>
+</header>
+
+<!-- ☰ Más: controles que salieron de la cabecera, con sus ids y handlers de
+     siempre. Vive en <body> (initHeaderPopovers) como #notif-panel. -->
+<div id="menu-panel" class="hidden" role="dialog" aria-label="Más">
+  <div class="mp-row"><button class="hdr-btn" id="btn-theme" aria-label="Apariencia" title="Elegir apariencia"></button><label for="btn-theme">Apariencia</label></div>
+  <div class="mp-row"><button class="hdr-btn" id="btn-sov" aria-label="Soberanía" title="Soberanía — qué se guarda en tu máquina y qué sale de ella"><span data-icon="lock" data-size="16"></span></button><label for="btn-sov">Soberanía</label></div>
+  <div class="mp-row">
+    <span id="snd-ctl" title="Volumen global (voz y chime). El icono silencia o activa el sonido.">
+      <button class="hdr-btn" id="btn-mute" aria-label="mute"></button>
+      <input type="range" id="vol-top" min="0" max="100" value="60" aria-label="Volumen">
+    </span>
+  </div>
+  <div class="mp-row mp-limits"><span id="limits-strip" class="hidden" hidden title="Límites del plan — click para el detalle"></span></div>
+  <div class="mp-tools"><button id="toggle-overview" aria-pressed="false">Todas las sesiones</button><button id="open-session-profiles">Perfiles</button><button id="open-extension-usage">Uso de herramientas</button></div>
+</div>
+</div>
+
+<div id="content">
+<!-- Servidores (H1): la fila SSH de siempre, sin cambios; #btn-servers la muestra. -->
+<div id="servers-panel" class="hidden">
+<div id="ssh-bar">
+  <button class="lbl" id="ssh-toggle" type="button" aria-expanded="false" title="Mostrar todos los servidores"><span data-icon="server" data-size="12"></span> <span id="ssh-count">Servidores</span> <span data-icon="chevron" data-size="12" class="chev"></span></button>
+  <span id="ssh-chips"></span>
+  <button id="ssh-manage" title="Agregar, editar o borrar (viven en ~/.ssh/config)">gestionar</button>
+</div>
+</div>
+<div id="side-top">
+<div id="session-overview" hidden></div>
+
+<div id="newsess" class="hidden" role="dialog" aria-modal="true" aria-label="Nueva sesión">
+  <div class="ns-card">
+    <div class="ns-title">Nueva sesión</div>
+    <label class="ns-label">Carpeta del proyecto</label>
+    <input id="ns-cwd" list="ns-dirs" autocomplete="off" spellcheck="false"
+      placeholder="~/codebase/...">
+    <datalist id="ns-dirs"></datalist>
+    <div id="ns-fs">
+      <div id="ns-crumbs"></div>
+      <div id="ns-dirlist"></div>
+      <div id="ns-fs-state"></div>
+    </div>
+    <label class="ns-label">Harness</label>
+    <div class="ns-chips" id="ns-harness"></div>
+    <div id="ns-motor-wrap">
+      <label class="ns-label">Motor</label>
+      <div class="ns-chips" id="ns-motor"></div>
+    </div>
+    <div id="ns-model-wrap">
+      <label class="ns-label">Modelo</label>
+      <div class="ns-chips" id="ns-model"></div>
+    </div>
+    <div id="ns-effort-wrap">
+      <label class="ns-label">Pensamiento</label>
+      <div class="ns-chips" id="ns-effort"></div>
+    </div>
+    <div id="ns-acct-wrap" class="hidden">
+      <label class="ns-label">Cuenta del harness</label>
+      <div class="ns-chips" id="ns-acct"></div>
+    </div>
+    <div id="ns-motor-acct-wrap" class="hidden">
+      <label class="ns-label">Cuenta del motor</label>
+      <div class="ns-chips" id="ns-motor-acct"></div>
+      <div class="ns-note" id="ns-motor-acct-note"></div>
+    </div>
+    <details id="ns-unavailable"><summary></summary><div class="ns-matrix" id="ns-matrix"></div></details>
+    <label class="ns-danger"><button type="button" class="sw" id="ns-danger" role="switch" aria-checked="false"
+      title="Apagado: el agente pide permiso antes de acciones riesgosas. Enciéndelo solo si confías en la tarea."></button>
+      <span>sin aprobaciones (dangerously)</span></label>
+    <div class="ns-note" id="ns-note"></div>
+    <div class="ns-actions">
+      <button type="button" id="ns-cancel">Cancelar</button>
+      <span id="ns-profile-note" class="sc-note">Sin perfil</span><button type="button" id="ns-profile-open" class="sc-btn">Elegir perfil</button><button type="button" id="ns-profile-clear" class="sc-btn">Quitar perfil</button>
+      <button type="button" id="ns-go" class="primary">Crear</button>
+    </div>
+  </div>
+</div>
+
+<div id="command-sidebar" aria-label="Comandos por CLI"></div>
+</div><!-- /#side-top -->
+</div>
+</div><!-- /#view-panel -->
+<div id="splitter" role="separator" aria-orientation="vertical" aria-label="Ajustar panel"></div>
+<div id="term-area"></div>
+</div><!-- /#panes -->
+
+<div id="settings" class="modal" aria-label="Ajustes" role="dialog" aria-modal="true">
+ <div class="modal-panel">
+  <button type="button" class="modal-close" data-close="settings" aria-label="cerrar">
+    <span data-icon="close"></span>
+  </button>
+  <nav class="mtabs" role="tablist">
+    <button class="mtab active" data-mtab="appearance"><span data-icon="sparkles" data-size="13"></span> Apariencia</button>
+    <button class="mtab" data-mtab="notif"><span data-icon="bell" data-size="13"></span> Notificaciones</button>
+    <button class="mtab" data-mtab="term"><span data-icon="terminal" data-size="13"></span> Terminal</button>
+    <button class="mtab" data-mtab="dash"><span data-icon="layers" data-size="13"></span> Tablero</button>
+  </nav>
+
+  <div class="mtab-pane active" data-mpane="appearance">
+    <div class="set"><label>Elige una atmósfera</label><div class="desc">Preview inmediato. Dashboard, terminal, chrome y avisos usan la misma identidad.</div></div>
+    <div id="theme-gallery" class="theme-gallery" role="radiogroup" aria-label="Temas"></div>
+    <div class="set"><label>Botones de la cabecera</label><div class="desc">Mismo tamaño para todos; elige cómo se ven y cómo se hunden al presionarlos.</div></div>
+    <div id="button-style-gallery" class="btn-style-gallery" role="radiogroup" aria-label="Estilo de botones"></div>
+  </div>
+
+  <!-- ========= Notificaciones + Idioma ========= -->
+  <div class="mtab-pane" data-mpane="notif">
+    <div class="set"><label for="vol">Volumen (voz y chime)</label>
+      <input type="range" id="vol" class="solid" min="0" max="100" value="60"></div>
+    <div class="set switch"><label>Worktrees automáticos (repo ocupado → sesión aislada)</label><button class="cfg" data-key="AUTO_WORKTREE" role="switch"></button></div>
+    <div class="set switch"><label>Avisar al terminar</label><button class="cfg" data-key="NOTIFY_ON_DONE" role="switch"></button></div>
+    <div class="set switch"><label>Avisar al pedir atencion</label><button class="cfg" data-key="NOTIFY_ON_ATTENTION" role="switch"></button></div>
+    <div class="set switch"><label>Voz (anuncia el proyecto)</label><button id="sw-voice" role="switch"></button></div>
+    <div class="set switch"><label>Chime (suena si la voz esta apagada)</label><button class="cfg" data-key="SOUND_ENABLED" role="switch"></button></div>
+    <div class="set switch"><label>Popups de escritorio</label><button class="cfg" data-key="DESKTOP_NOTIFY" role="switch"></button></div>
+    <div class="set" style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="test" id="test-chime">Probar atencion</button>
+      <button class="test" id="test-done">Probar terminado</button>
+      <button class="test" id="test-voice">Probar voz</button>
+    </div>
+    <div class="set"><label>Posición de los avisos</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="npos test" data-npos="tl" title="Superior izquierda">↖</button>
+        <button class="npos test" data-npos="tr" title="Superior derecha">↗</button>
+        <button class="npos test" data-npos="bl" title="Inferior izquierda">↙</button>
+        <button class="npos test" data-npos="br" title="Inferior derecha">↘</button>
+        <button class="npos test" data-npos="free" title="Quedan donde las arrastres">Libre</button>
+      </div>
+      <div class="desc">Esquina fija, o "Libre": los avisos aparecen donde dejaste el último al arrastrarlo.</div></div>
+    <div class="set"><div class="desc">UN solo volumen para todo ComandOS. Estos botones suenan
+      EXACTAMENTE igual que las notificaciones reales (mismo reproductor y volumen) — si algo
+      suena distinto a esto, NO viene de ComandOS.</div></div>
+    <div class="set" id="notice-settings"><label>Avisos de proyectos</label><div class="desc">Cargando preferencias…</div></div>
+    <div class="set" id="push-settings"><label>Avisos en este dispositivo (push)</label>
+      <div class="desc" id="push-status" aria-live="polite">Comprobando…</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="test" id="push-enable" type="button">Activar avisos en este dispositivo</button>
+        <button class="test" id="push-test" type="button" hidden>Enviar aviso de prueba</button>
+        <button class="test" id="push-disable" type="button" hidden>Desactivar</button>
+      </div>
+      <div class="desc">Solo llegan si ningún CommandOS está visible desde hace 2 minutos. Con la pantalla bloqueada se ve el proyecto y un título breve; el detalle, al abrir la app. El sonido lo decide Android.</div></div>
+
+    <h3 style="margin-top:24px">Idioma / Language</h3>
+    <div class="set" style="display:flex;gap:8px">
+      <button class="test lang-btn" data-lang="auto">Auto</button>
+      <button class="test lang-btn" data-lang="es">Español</button>
+      <button class="test lang-btn" data-lang="en">English</button>
+    </div>
+  </div>
+
+  <!-- ========= Terminal ========= -->
+  <div class="mtab-pane" data-mpane="term">
+    <div class="set">
+      <label for="pf-font-family">Tipografía</label>
+      <select id="pf-font-family">
+        <option value="JetBrainsMono Nerd Font Mono">JetBrains Mono (bundle)</option>
+        <option value="JetBrains Mono">JetBrains Mono</option>
+        <option value="Cascadia Code">Cascadia Code</option>
+        <option value="Fira Code">Fira Code</option>
+        <option value="Iosevka">Iosevka</option>
+        <option value="Hack">Hack</option>
+        <option value="Source Code Pro">Source Code Pro</option>
+        <option value="DejaVu Sans Mono">DejaVu Sans Mono</option>
+        <option value="Monospace">Monospace del sistema</option>
+      </select>
+      <div id="font-preview" class="font-preview">
+        <div class="fp-line"><span class="fp-dim">$</span> <span class="fp-hi">chimp@ComandOS</span>:~ (main) <span class="fp-dim">↑ 2</span></div>
+        <div class="fp-line">const arr = [1, 2, 3].map(x =&gt; x * 2);</div>
+        <div class="fp-line">if (i !== 0 &amp;&amp; a &gt;= b) return -&gt; null;</div>
+        <div class="fp-line fp-dim">// == != === !== -&gt; =&gt; &lt;= &gt;= &lt;=&gt; ::</div>
+      </div>
+    </div>
+    <div class="set">
+      <label for="pf-font-size">Tamaño: <span id="pf-font-size-v">13</span> px</label>
+      <input type="range" id="pf-font-size" class="solid" min="8" max="28" value="13">
+    </div>
+    <div class="set">
+      <label>Cursor</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="test cur-shape" data-shape="block">Bloque</button>
+        <button class="test cur-shape" data-shape="ibeam">Barra</button>
+        <button class="test cur-shape" data-shape="underline">Subrayado</button>
+      </div>
+    </div>
+    <div class="set switch"><label>Parpadeo del cursor</label>
+      <button id="sw-cursor-blink" role="switch"></button></div>
+    <div class="set switch"><label>Ligaduras <code class="lig-sample">== != -&gt; =&gt;</code></label>
+      <button id="sw-ligatures" role="switch"></button></div>
+    <div class="set">
+      <label for="pf-padding">Margen interno: <span id="pf-padding-v">8</span> px</label>
+      <input type="range" id="pf-padding" class="solid" min="0" max="40" value="8">
+    </div>
+    <div class="set">
+      <label for="pf-opacity">Opacidad del fondo: <span id="pf-opacity-v">100</span>%</label>
+      <input type="range" id="pf-opacity" class="solid" min="30" max="100" value="100">
+    </div>
+    <div class="desc" style="margin-top:-4px">Cambios se aplican al abrir una pestaña nueva. Reabre las existentes para verlos.</div>
+  </div>
+
+  <!-- ========= Tablero ========= -->
+  <div class="mtab-pane" data-mpane="dash">
+  <div class="set switch"><label>Notificaciones del navegador</label>
+    <button id="sw-notif" role="switch"></button></div>
+  <div class="set">
+    <label for="poll">Refresco: <span id="poll-v">2</span> s</label>
+    <input type="range" id="poll" class="solid" min="1" max="10" value="2">
+  </div>
+  </div><!-- /mtab-pane dash -->
+ </div><!-- /modal-panel -->
+</div><!-- /#settings -->
+
+
+<div id="remote" class="modal" aria-label="Remoto" role="dialog" aria-modal="true">
+ <div class="modal-panel">
+  <button type="button" class="modal-close" data-close="remote" aria-label="cerrar">
+    <span data-icon="close"></span>
+  </button>
+  <h3>Continuar remoto</h3>
+  <div class="set">
+    <div id="remote-status" class="remote-state"><span class="remote-dot"></span><span>Consultando...</span></div>
+  </div>
+  <div class="set remote-actions">
+    <button type="button" class="test" id="remote-on">Prender remoto</button>
+    <button type="button" class="test" id="remote-off">Apagar remoto</button>
+    <button type="button" class="test" id="remote-webterm-on">Terminal ON</button>
+    <button type="button" class="test" id="remote-webterm-off">Terminal OFF</button>
+  </div>
+  <div class="set">
+    <button type="button" class="test" id="remote-open-terminal" style="width:100%">Abrir terminal ahora</button>
+  </div>
+  <div class="set">
+    <img id="remote-qr" class="hidden" alt="QR remoto">
+    <div id="remote-no-qr" class="desc hidden">Instala qrencode para generar QR.</div>
+  </div>
+  <div class="set">
+    <label>Dashboard</label>
+    <div class="urlrow"><input id="remote-dashboard-url" readonly><button class="test" id="remote-copy-dashboard">Copiar</button></div>
+  </div>
+  <div class="set">
+    <label>Terminal web</label>
+    <div class="urlrow"><input id="remote-term-url" readonly><button class="test" id="remote-copy-term">Copiar</button></div>
+  </div>
+  <div class="set">
+    <label>Fallback terminal</label>
+    <div class="urlrow"><input id="remote-fallback-url" readonly><button class="test" id="remote-copy-fallback">Copiar</button></div>
+  </div>
+  <div class="set"><div class="desc">Apagar remoto no apaga Tailscale; sólo deja de exponer ComandOS y detiene la terminal web.</div></div>
+ </div>
+</div>
+
+<div id="usage" class="modal" aria-label="Analytics" role="dialog" aria-modal="true">
+ <div class="an" id="an-root"></div>
+</div>
+
+<div id="tabclose" class="modal" role="dialog" aria-modal="true" aria-label="Cerrar pestaña">
+ <div class="modal-panel" style="max-width:430px">
+  <h3 style="margin:0 0 6px">¿Cerrar la pestaña «<span id="tabclose-name"></span>»?</h3>
+  <div class="desc" style="margin-bottom:14px">La sesión tmux sigue viva; puedes recuperarla en Recientes. Se cierra aquí y en el escritorio.</div>
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <button type="button" class="test" data-close="tabclose">Cancelar</button>
+    <button type="button" class="test warn" id="tabclose-yes">Cerrar pestaña</button>
+  </div>
+ </div>
+</div>
+
+<div id="groupclose" class="modal" role="dialog" aria-modal="true" aria-labelledby="groupclose-title">
+ <div class="modal-panel" style="max-width:460px">
+  <h3 id="groupclose-title" style="margin:0 0 6px">¿Cerrar este grupo de pestañas?</h3>
+  <div id="groupclose-desc" class="desc" style="margin-bottom:8px">Se cierran aquí y en el escritorio. Sus sesiones tmux siguen vivas y puedes recuperarlas en Recientes.</div>
+  <ul id="groupclose-list" style="margin:0 0 10px;padding-left:20px"></ul>
+  <div id="groupclose-status" class="desc" role="status" aria-live="polite" style="margin-bottom:10px"></div>
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <button type="button" class="test" id="groupclose-cancel" data-close="groupclose">Cancelar</button>
+    <button type="button" class="test warn" id="groupclose-yes">Cerrar pestañas</button>
+  </div>
+ </div>
+</div>
+
+<div id="sovereignty" class="modal" aria-label="Soberanía" role="dialog" aria-modal="true">
+ <div class="modal-panel sov-panel">
+  <button type="button" class="modal-close" data-close="sovereignty" aria-label="cerrar"><span data-icon="close"></span></button>
+  <h3><span data-icon="lock" data-size="16"></span> Soberanía</h3>
+  <p class="srv-privacy">Todo lo que ComandOS maneja vive en esta máquina. Aquí ves exactamente qué archivos y bases son, cuánto pesan y qué canales salen — solo los que TÚ activaste.</p>
+  <div id="sov-body"><div class="desc">…</div></div>
+ </div>
+</div>
+<div id="servers" class="modal" aria-label="Servidores SSH" role="dialog" aria-modal="true">
+ <div class="modal-panel">
+  <button type="button" class="modal-close" data-close="servers" aria-label="cerrar">
+    <span data-icon="close"></span>
+  </button>
+  <h3>Servidores SSH</h3>
+  <p class="srv-privacy">🔒 Todo queda en TU máquina: los servidores viven en
+  <code>~/.ssh/config</code> y las llaves en <code>~/.ssh/</code> (el estándar
+  de SSH, permisos 0600). ComandOS <b>nunca guarda passwords</b> ni sube nada
+  a ningún lado — si tecleas un password, va directo a tu servidor.</p>
+  <div id="srv-list" role="region" aria-label="Conexiones guardadas" tabindex="0"></div>
+  <h3 style="margin-top:22px" id="srv-form-title">Agregar servidor</h3>
+  <form id="srv-form">
+    <div class="frow">
+      <div class="set"><label>Alias</label><input name="host" required placeholder="web-1"></div>
+      <div class="set"><label>Usuario</label><input name="user" placeholder="root"></div>
+    </div>
+    <div class="set"><label>Host / IP</label><input name="hostname" required placeholder="203.0.113.7"></div>
+    <div class="frow">
+      <div class="set"><label>Puerto</label><input name="port" placeholder="22"></div>
+      <div class="set"><label>Llave (opcional)</label><input name="identity" placeholder="~/.ssh/id_ed25519"></div>
+    </div>
+    <label class="srv-remember">
+      <input type="checkbox" id="srv-remember" name="remember" checked>
+      <span>Recordar acceso despues de reiniciar
+        <small>Instala tu llave publica; te pedira el password una ultima vez.</small>
+      </span>
+    </label>
+    <input type="hidden" name="orig">
+    <div class="set" style="display:flex;gap:8px;margin-top:4px">
+      <button type="submit" class="test">Guardar</button>
+      <button type="button" id="srv-cancel" class="test hidden">Cancelar edicion</button>
+    </div>
+  </form>
+  <div class="set"><div class="desc">Viven en ~/.ssh/config: estandar y tuyo. Conectar abre una
+    sesion tmux reconectable. Para dejar de teclear passwords: corre <b>cc-keys</b> una vez.</div></div>
+ </div>
+</div>
+
+<div id="sw-ov" class="hidden">
+  <div id="sw-box">
+    <input id="sw-in" placeholder="Salta a...  (Enter va a la primera, ↑↓ navega, Esc cierra)"
+      autocomplete="off" spellcheck="false">
+    <div id="sw-list"></div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+<div id="mdl-menu" class="hidden" role="listbox" aria-label="Modelos"></div>
+
+<!-- OJO: SIN class="modal" — este es un <dialog> nativo (showModal + su
+     propio ::backdrop). La clase .modal de los modales-div le heredaba
+     display:none: quedaba INVISIBLE mientras showModal() volvia inerte toda
+     la pagina = tablero "congelado". -->
+<dialog id="dlg-snippets" class="snip-modal">
+  <div class="modal-hd">
+    <span class="modal-title">Snippets</span>
+    <button class="hdr-btn" data-close-snippets aria-label="close"><span data-icon="close" data-size="14"></span></button>
+  </div>
+  <div class="snip-grid">
+    <div class="snip-list">
+      <input id="snip-q" placeholder="buscar..." autocomplete="off" spellcheck="false">
+      <ul id="snip-items"></ul>
+      <div class="snip-list-ft">
+        <button id="snip-new" class="hdr-btn" title="Nuevo snippet"><span data-icon="plus" data-size="14"></span> nuevo</button>
+      </div>
+    </div>
+    <div class="snip-pane" id="snip-pane">
+      <div class="snip-empty" data-en="Select a snippet or create a new one." data-es="Elige un snippet o crea uno nuevo.">Elige un snippet o crea uno nuevo.</div>
+    </div>
+  </div>
+</dialog>
+

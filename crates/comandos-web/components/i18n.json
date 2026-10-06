@@ -1,0 +1,20 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- i18n ----------",
+  "marker_end": "// ---------- app nativa ----------",
+  "sha256": "57142b5b9b001be52566aeabffbc08f2ec70279e0880bd62c5a806ab1caa9ffd",
+  "id": "i18n",
+  "exports": [
+    "L",
+    "T_EN",
+    "t",
+    "tf",
+    "applyI18n",
+    "saveCfg"
+  ],
+  "deps": [
+    "prelude"
+  ]
+}
