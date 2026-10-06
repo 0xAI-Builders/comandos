@@ -25,6 +25,7 @@ pub(crate) struct Journal {
     pub(super) extension_trees: Vec<PathBuf>,
     durable: Option<PathBuf>,
     committed: bool,
+    reload_error: Option<String>,
     runtime: Vec<RuntimeEffect>,
     pub(super) documents: Vec<super::extension_mutations::DocumentEffect>,
 }
@@ -763,7 +764,47 @@ pub(crate) fn installation_lock(home: &Path) -> Result<std::rc::Rc<fs::File>, St
     });
     Ok(guard)
 }
+pub(crate) fn inherited_installation_lock(home: &Path) -> Result<std::rc::Rc<fs::File>, String> {
+    let stdin = std::io::stdin();
+    let file = fs::File::from(nix::unistd::dup(&stdin).map_err(|e| e.to_string())?);
+    let held = file.metadata().map_err(|e| e.to_string())?;
+    let current = home.symlink_metadata().map_err(|e| e.to_string())?;
+    if !held.is_dir()
+        || !current.is_dir()
+        || (held.dev(), held.ino()) != (current.dev(), current.ino())
+    {
+        return Err("worker lacks inherited HOME installation lock".into());
+    }
+    file.try_lock().map_err(|e| e.to_string())?;
+    let guard = std::rc::Rc::new(file);
+    HELD_INSTALL_LOCKS.with(|locks| {
+        locks
+            .borrow_mut()
+            .insert((held.dev(), held.ino()), std::rc::Rc::downgrade(&guard));
+    });
+    Ok(guard)
+}
 impl Journal {
+    pub(crate) fn durable_path(&self) -> Result<&Path, String> {
+        self.durable
+            .as_deref()
+            .ok_or_else(|| "durable extension journal absent".into())
+    }
+    pub(crate) fn reload(&mut self, home: &Path) -> Result<(), String> {
+        let loaded = match load_journal(home, self.durable_path()?) {
+            Ok(journal) => journal,
+            Err(error) => {
+                self.reload_error = Some(error.clone());
+                return Err(error);
+            }
+        };
+        if loaded.committed {
+            self.reload_error = Some("worker committed outer journal".into());
+            return Err("worker committed the outer journal".into());
+        }
+        *self = loaded;
+        Ok(())
+    }
     pub(crate) fn commit(&mut self) -> Result<(), String> {
         if self.committed {
             return Ok(());
@@ -938,6 +979,22 @@ pub(crate) fn recover_with(
     path: &Path,
     run: &mut dyn FnMut(&Action) -> Result<(), String>,
 ) -> Result<(), String> {
+    let _guard = installation_lock(home)?;
+    let journal = load_journal(home, path)?;
+    if journal.committed {
+        journal.discard()
+    } else {
+        journal.rollback_with(run)
+    }
+}
+pub(crate) fn load_active_journal(home: &Path, path: &Path) -> Result<Journal, String> {
+    let journal = load_journal(home, path)?;
+    if journal.committed {
+        return Err("extension worker cannot modify committed journal".into());
+    }
+    Ok(journal)
+}
+pub(crate) fn load_journal(home: &Path, path: &Path) -> Result<Journal, String> {
     let parent = home.join(".local/share/comandos/install-journals");
     if path.parent() != Some(parent.as_path())
         || !path
@@ -1000,10 +1057,16 @@ pub(crate) fn recover_with(
     }
     for row in value["entries"].as_array().ok_or("journal entries")? {
         let dest = PathBuf::from(row["path"].as_str().ok_or("journal destination")?);
-        if !dest.starts_with(home) {
+        if !dest.starts_with(home)
+            || dest.components().any(|c| {
+                matches!(
+                    c,
+                    std::path::Component::ParentDir | std::path::Component::CurDir
+                )
+            })
+        {
             return Err("journal destination outside HOME".into());
         }
-        super::release::check_app_parents(&dest)?;
         if journal.entries.contains_key(&dest) {
             return Err("duplicate journal destination".into());
         }
@@ -1013,6 +1076,28 @@ pub(crate) fn recover_with(
         journal
             .observed
             .insert(dest, decode_before(path, &row["written"])?);
+    }
+    // Published skill roots can replace an original directory with our own
+    // link. Validate that exact admitted root without following it to inspect
+    // original child paths; rollback restores the directory before its children.
+    for dest in journal.entries.keys() {
+        let owned_parent = dest.ancestors().skip(1).find(|parent| {
+            matches!(journal.entries.get(*parent), Some(Before::Directory(_)))
+                && matches!(journal.observed.get(*parent), Some(Before::Link(_)))
+                && parent.is_symlink()
+        });
+        if let Some(parent) = owned_parent {
+            super::release::check_app_parents(parent)?;
+            if !matches!(journal.observed.get(parent),Some(Before::Link(target)) if fs::read_link(parent).is_ok_and(|actual|actual==*target))
+            {
+                return Err(format!(
+                    "{} published skill root changed; journal retained",
+                    parent.display()
+                ));
+            }
+        } else {
+            super::release::check_app_parents(dest)?;
+        }
     }
     journal.extensions = value
         .get("extensions")
@@ -1047,12 +1132,9 @@ pub(crate) fn recover_with(
             );
         }
     }
-    if journal.committed {
-        journal.discard()
-    } else {
-        journal.rollback_with(run)
-    }
+    Ok(journal)
 }
+
 #[cfg(test)]
 mod durable_tests {
     use super::*;
@@ -1232,6 +1314,9 @@ impl Journal {
         mut self,
         run: &mut dyn FnMut(&Action) -> Result<(), String>,
     ) -> Result<(), String> {
+        if let Some(error) = &self.reload_error {
+            return Err(self.runtime_error("extension worker journal reload", error));
+        }
         let _extension_locks = if self.extensions {
             let home = self.install_home().ok_or("extension journal home absent")?;
             let state = comandos_extensions::config::state_dir(home);

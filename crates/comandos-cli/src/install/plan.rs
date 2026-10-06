@@ -42,6 +42,11 @@ pub enum Action {
     RegisterClaudeHooks(PathBuf),
     AgentsSetup(PathBuf),
     InstallFonts(PathBuf),
+    ExtensionOperation {
+        home: PathBuf,
+        journal: PathBuf,
+        operation: String,
+    },
     Systemctl {
         home: PathBuf,
         args: Vec<String>,
@@ -369,6 +374,9 @@ fn summary(action: &Action) -> String {
         Action::Systemctl { args, .. } => format!("systemctl {}", args.join(" ")),
         Action::SystemctlState { unit, .. } => format!("query enabled/active state {unit}"),
         Action::LaunchAgent(home) => format!("prepare LaunchAgent {}", home.display()),
+        Action::ExtensionOperation {
+            home, operation, ..
+        } => format!("extension {operation} {}", home.display()),
     }
 }
 

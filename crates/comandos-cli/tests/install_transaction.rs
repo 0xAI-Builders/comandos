@@ -588,6 +588,13 @@ fn full_extension_import_sync_and_timer_partial_activation_roll_back_after_late_
             ],
             &mut |action| {
                 match action {
+                    Action::ExtensionOperation {
+                        home,
+                        journal,
+                        operation,
+                    } => {
+                        comandos_cli::install::extension_worker::execute(home, journal, operation)?;
+                    }
                     Action::SystemctlState { unit, response, .. } => {
                         assert_eq!(unit, "comandos-extensions-sync.timer");
                         *response.borrow_mut() = Some(timer.clone());

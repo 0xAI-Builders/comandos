@@ -4,6 +4,7 @@ pub mod cleanup;
 pub mod components;
 pub mod darwin;
 mod extension_mutations;
+pub mod extension_worker;
 pub mod extensions;
 pub mod full;
 pub mod guard;
@@ -46,6 +47,9 @@ enum Action {
 
 /// Devuelve el código de salida; los errores de uso salen con 2 y los de operación con `Err`.
 pub fn run(args: &[String]) -> Result<i32, String> {
+    if args.first().is_some_and(|s| s == "--extension-worker") {
+        return extension_worker::entry(&args[1..]);
+    }
     if full::handles(args) {
         return full::run(args);
     }

@@ -354,33 +354,25 @@ pub fn run_with(
             if dry {
                 println!("dry-run: extensions import/sync");
             } else {
-                let owned = std::rc::Rc::new(std::cell::RefCell::new(
-                    journal.take().ok_or("extension journal absent")?,
-                ));
-                let adapter = std::rc::Rc::new(std::cell::RefCell::new(
-                    super::extension_mutations::Adapter {
-                        journal: owned.clone(),
-                    },
-                ));
-                let result = comandos_extensions::mutations::with(adapter, || {
-                    let catalog = home.join(".config/comandos/extensions/catalog.json");
-                    if !catalog.exists() {
-                        comandos_extensions::cli::catalog_command(&home, None, "import")?;
-                    }
-                    comandos_extensions::cli::catalog_command(&home, None, "sync")?;
-                    super::extensions::apply_with_journal(
-                        &home,
-                        platform,
-                        &mut owned.borrow_mut(),
-                        &mut tracked_action,
-                    )
-                });
-                journal = Some(
-                    std::rc::Rc::try_unwrap(owned)
-                        .map_err(|_| "extension journal adapter lease leaked")?
-                        .into_inner(),
-                );
-                result?;
+                let j = journal.as_mut().ok_or("extension journal absent")?;
+                let catalog = home.join(".config/comandos/extensions/catalog.json");
+                let operations = if catalog.exists() {
+                    vec!["sync"]
+                } else {
+                    vec!["import", "sync"]
+                };
+                for operation in operations {
+                    let result = tracked_action(&Action::ExtensionOperation {
+                        home: home.clone(),
+                        journal: j.durable_path()?.into(),
+                        operation: operation.into(),
+                    });
+                    // Re-read durable before-mutation intents only after the owned
+                    // worker has exited/reaped; never infer ownership from source IO.
+                    j.reload(&home)?;
+                    result?;
+                }
+                super::extensions::apply_with_journal(&home, platform, j, &mut tracked_action)?;
             }
             if dry {
                 super::extensions::apply(&home, platform, true)?;
@@ -486,6 +478,11 @@ pub(super) fn external(action: &Action) -> Result<(), String> {
                 Duration::from_secs(30),
             )
         }
+        Action::ExtensionOperation {
+            home,
+            journal,
+            operation,
+        } => super::extension_worker::run(home, journal, operation),
         Action::SystemctlState {
             home,
             unit,
