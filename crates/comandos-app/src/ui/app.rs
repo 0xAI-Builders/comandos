@@ -69,6 +69,7 @@ pub struct App {
     startup_valid: Cell<bool>,
     workspace_doc: RefCell<Value>,
     pending_workspace: RefCell<Option<Value>>,
+    resize_queue: RefCell<crate::workspace_resize::ResizeQueue>,
     revision: Cell<u64>,
     posting: Cell<bool>,
     dragging: Cell<bool>,
@@ -102,6 +103,7 @@ impl AppRuntime {
         self.app.dash.cancel_pending();
         self.app.cancel_drag();
         self.app.workspace.shutdown();
+        self.app.resize_queue.borrow_mut().cancel();
         if let Some(screen) = gdk::Screen::default() {
             gtk::StyleContext::remove_provider_for_screen(&screen, &self.app.theme_provider);
         }
@@ -471,19 +473,21 @@ impl App {
             cancelled: self.closed.clone(),
         };
         let home = self.private_home();
+        let guard = self.guard.clone();
         let selected = self.current_session();
         let weak = Rc::downgrade(self);
         self.jobs.spawn(
             move || {
                 let cwd = if fresh {
                     let now: chrono::DateTime<chrono::Utc> = std::time::SystemTime::now().into();
-                    comandos_runtime::quick_terminal::reserve_directory(
-                        &home.join("codebase/0xJesus/Terminal"),
-                        now.fixed_offset(),
-                    )
-                    .map_err(|e| e.to_string())?
-                    .display()
-                    .to_string()
+                    guard
+                        .reserve_quick_directory(
+                            &home.join("codebase/0xJesus/Terminal"),
+                            now.fixed_offset(),
+                        )
+                        .map_err(|e| format!("{e:?}"))?
+                        .display()
+                        .to_string()
                 } else {
                     selected
                         .as_deref()
@@ -621,6 +625,7 @@ impl App {
             startup_valid: Cell::new(false),
             workspace_doc: RefCell::new(Value::Null),
             pending_workspace: RefCell::new(None),
+            resize_queue: RefCell::new(crate::workspace_resize::ResizeQueue::default()),
             revision: Cell::new(0),
             posting: Cell::new(false),
             dragging: Cell::new(false),
@@ -1335,7 +1340,11 @@ impl App {
                     self.paint_favorites();
                 }
             }
-            PollUpdate::Workspace(value) => self.apply_workspace(&value),
+            PollUpdate::Workspace(value) => {
+                if self.apply_workspace(&value) {
+                    self.flush_resize();
+                }
+            }
             PollUpdate::Notices { badge, .. } => self.status.set_text(&format!("Notices: {badge}")),
             PollUpdate::State(value) => {
                 for item in value
@@ -1378,14 +1387,14 @@ impl App {
             }
         }
     }
-    fn apply_workspace(self: &Rc<Self>, value: &Value) {
+    fn apply_workspace(self: &Rc<Self>, value: &Value) -> bool {
         if !self.restore.borrow().ready() || self.posting.get() || self.dragging.get() {
             *self.pending_workspace.borrow_mut() = Some(value.clone());
-            return;
+            return false;
         }
         let doc = value.get("document").unwrap_or(value);
         if comandos_core::workspace::validate_document(doc).is_err() {
-            return;
+            return false;
         }
         self.revision.set(
             value
@@ -1400,6 +1409,31 @@ impl App {
         self.notebook.hide();
         self.workspace.widget().show_all();
         self.restore_device_focus();
+        self.resize_queue.borrow_mut().authority_received();
+        true
+    }
+    pub(super) fn flush_resize(self: &Rc<Self>) {
+        if self.posting.get()
+            || self.dragging.get()
+            || !self.restore.borrow().ready()
+            || self.closed.load(Ordering::Acquire)
+            || (self.cfg.mode() != RunMode::Shadow && !self.writable())
+        {
+            return;
+        }
+        let publication = self
+            .resize_queue
+            .borrow_mut()
+            .prepare(&self.workspace_doc.borrow(), false);
+        if let Some(publication) = publication {
+            if publication.rejected > 0 {
+                self.status
+                    .set_text("Layout changed; obsolete divider movement discarded");
+            }
+            if publication.changed {
+                self.commit_workspace(publication.document, None);
+            }
+        }
     }
     fn commit_workspace(self: &Rc<Self>, doc: Value, focus: Option<String>) {
         if self.posting.get() || !self.restore.borrow().ready() {
@@ -1407,6 +1441,8 @@ impl App {
         }
         if self.cfg.mode() == RunMode::Shadow {
             self.workspace.commit(&doc, focus.as_deref());
+            self.resize_queue.borrow_mut().complete(true);
+            self.resize_queue.borrow_mut().authority_received();
             return;
         }
         if !self.writable() {
@@ -1415,6 +1451,7 @@ impl App {
         if self.cfg.mode() == RunMode::Sandbox && self.cfg.dash_url().is_none() {
             let revision = self.revision.get().saturating_add(1);
             let value = json!({"document":doc,"revision":revision});
+            self.resize_queue.borrow_mut().complete(true);
             self.apply_workspace(&value);
             if let Some(focus) = focus.as_deref() {
                 self.select(focus);
@@ -1439,6 +1476,7 @@ impl App {
         }
         let mut bytes = [0u8; 12];
         if getrandom::fill(&mut bytes).is_err() {
+            self.resize_queue.borrow_mut().complete(false);
             self.status.set_text("No request identity available");
             return;
         }
@@ -1460,6 +1498,7 @@ impl App {
                     return;
                 };
                 app.posting.set(false);
+                let mut authority_received = false;
                 match response {
                     Ok((status, value)) => {
                         let current = if status == 409 {
@@ -1469,8 +1508,18 @@ impl App {
                         } else {
                             None
                         };
+                        // Un conflicto conserva la última intención y la rebasa sobre current.
+                        let valid_authority = current.is_some_and(|v| {
+                            comandos_core::workspace::validate_document(
+                                v.get("document").unwrap_or(v),
+                            )
+                            .is_ok()
+                        });
+                        app.resize_queue
+                            .borrow_mut()
+                            .complete((200..300).contains(&status) && valid_authority);
                         if let Some(current) = current {
-                            app.apply_workspace(current);
+                            authority_received = app.apply_workspace(current);
                             if let Some(focus) = focus.as_deref() {
                                 app.workspace.select(focus);
                             }
@@ -1483,17 +1532,24 @@ impl App {
                             app.status.set_text(&format!("Workspace HTTP {status}"));
                         }
                     }
-                    Err(e) => app.status.set_text(&format!("Workspace: {e:?}")),
+                    Err(e) => {
+                        app.resize_queue.borrow_mut().complete(false);
+                        app.status.set_text(&format!("Workspace: {e:?}"));
+                    }
                 }
                 // A queued poll may be older than the authoritative POST response.
-                if let Some(pending) = app.pending_workspace.borrow_mut().take()
+                let pending = app.pending_workspace.borrow_mut().take();
+                if let Some(pending) = pending
                     && pending
                         .get("revision")
                         .unwrap_or(&Value::Null)
                         .as_u64()
                         .is_some_and(|r| r > app.revision.get())
                 {
-                    app.apply_workspace(&pending);
+                    authority_received |= app.apply_workspace(&pending);
+                }
+                if authority_received {
+                    app.flush_resize();
                 }
             },
         );
@@ -1898,20 +1954,11 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
         app.install_foundation_handlers();
         let weak = Rc::downgrade(&app);
         app.workspace.on_resize(Rc::new(move |updates| {
-            if let Some(app) = weak.upgrade() {
-                let mut doc = app.workspace_doc.borrow().clone();
-                for (group, path, ratio) in updates {
-                    match comandos_core::workspace::layout::resize_split(
-                        &doc,
-                        group,
-                        &json!(path),
-                        &json!(ratio),
-                    ) {
-                        Ok(changed) => doc = changed,
-                        Err(_) => return,
-                    }
-                }
-                app.commit_workspace(doc, None);
+            if let Some(app) = weak.upgrade().filter(|a| !a.closed.load(Ordering::Acquire)) {
+                app.resize_queue
+                    .borrow_mut()
+                    .record(&app.workspace_doc.borrow(), updates);
+                app.flush_resize();
             }
         }));
         // Registro T13: bridge actions beyond the connected foundation.

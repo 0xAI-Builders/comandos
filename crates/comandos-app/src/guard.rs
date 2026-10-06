@@ -264,6 +264,35 @@ impl WriteGuard {
             .map_err(|_| GuardError::Escape(path.to_path_buf()))
     }
 
+    /// Reserva fechada exclusiva, sin resolver enlaces fuera de las raíces permitidas.
+    pub fn reserve_quick_directory(
+        &self,
+        base: &Path,
+        now: chrono::DateTime<chrono::FixedOffset>,
+    ) -> Result<PathBuf, GuardError> {
+        let stem = comandos_runtime::quick_terminal::directory_stem(now);
+        // El descriptor del padre permanece anclado durante todas las colisiones.
+        let (dir, _) = self.resolve_parent(&base.join(&stem), true)?;
+        let mut suffix = 1u64;
+        loop {
+            let name = if suffix == 1 {
+                stem.clone()
+            } else {
+                format!("{stem}-{suffix}")
+            };
+            let path = base.join(&name);
+            match mkdirat(&dir, name.as_str(), Mode::from_bits_truncate(0o700)) {
+                Ok(()) => return Ok(path),
+                Err(nix::errno::Errno::EEXIST) => {
+                    suffix = suffix
+                        .checked_add(1)
+                        .ok_or_else(|| io(base, "sufijos de carpeta agotados"))?;
+                }
+                Err(error) => return Err(io(&path, error)),
+            }
+        }
+    }
+
     /// Abre (creándolo) un archivo de candado para `flock`.
     pub fn open_lock(&self, path: &Path) -> Result<std::fs::File, GuardError> {
         let (dir, name) = self.resolve_parent(path, false)?;

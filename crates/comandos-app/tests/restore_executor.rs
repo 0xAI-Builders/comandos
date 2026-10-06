@@ -6,7 +6,7 @@
 )]
 use comandos_app::{
     config::RunMode,
-    restore::{RestorePlan, RestoreTmux, ScopeLauncher, execute, remap_layout},
+    restore::{EnterError, RestorePlan, RestoreTmux, ScopeLauncher, execute, remap_layout},
 };
 use comandos_core::workspace::snapshot::layout_checksum;
 use serde_json::{Value, json};
@@ -25,6 +25,12 @@ struct Recorder {
     fail: RefCell<Option<String>>,
     cleaned: Cell<bool>,
     shadow: bool,
+    pasted: Cell<bool>,
+    reject_after_paste: bool,
+    reject_enter_at_backend: bool,
+    paste_count: Cell<usize>,
+    reject_second_paste: bool,
+    dispatch_checks: Cell<usize>,
 }
 impl Recorder {
     fn record(&self, args: &[&str], stdin: Option<&[u8]>) -> Result<String, String> {
@@ -32,6 +38,10 @@ impl Recorder {
             args.iter().map(|a| (*a).into()).collect(),
             stdin.map(|b| b.to_vec()),
         ));
+        if args.first() == Some(&"paste-buffer") {
+            self.pasted.set(true);
+            self.paste_count.set(self.paste_count.get() + 1);
+        }
         if self.fail.borrow().as_deref() == args.first().copied() {
             return Err("fixture failure".into());
         }
@@ -62,7 +72,29 @@ impl RestoreTmux for Recorder {
     }
     fn mutate(&self, a: &[&str], b: Option<&[u8]>) -> Result<String, String> {
         assert!(!self.shadow);
+        if a.first() == Some(&"send-keys") && self.reject_enter_at_backend {
+            return Err("cancelled at dispatch boundary".into());
+        }
         self.record(a, b)
+    }
+    fn validate(&self, _: &Self::Ownership) -> Result<(), String> {
+        if (self.pasted.get() && self.reject_after_paste)
+            || (self.reject_second_paste && self.paste_count.get() == 2)
+        {
+            Err("cancelled or ownership rejected after paste".into())
+        } else {
+            Ok(())
+        }
+    }
+    fn send_enter(&self, token: &Self::Ownership, pane: &str) -> Result<(), EnterError> {
+        comandos_app::restore::dispatch_enter(self, token, pane, || {
+            self.dispatch_checks.set(self.dispatch_checks.get() + 1);
+            if self.reject_enter_at_backend && self.dispatch_checks.get() == 2 {
+                Err("cancelled at dispatch boundary".into())
+            } else {
+                Ok(())
+            }
+        })
     }
     fn create(&self, a: &[&str]) -> Result<(String, Self::Ownership), String> {
         assert!(!self.shadow);
@@ -156,6 +188,100 @@ fn failed_restore_cleans_only_owned_placeholder() {
     );
     assert!(out.tabs[0].error.is_some());
     assert!(tmux.cleaned.get());
+}
+
+#[test]
+fn cancellation_or_identity_rejection_after_paste_cleans_owned_placeholder() {
+    let tmux = Recorder {
+        reject_after_paste: true,
+        ..Recorder::default()
+    };
+    let out = execute(
+        &plan(snapshot(), BTreeSet::new(), RunMode::Sandbox),
+        &tmux,
+        &Scopes::default(),
+        Path::new("/private-home"),
+    );
+    assert!(out.tabs[0].error.is_some());
+    assert!(tmux.pasted.get());
+    assert!(!tmux.calls.borrow().iter().any(|(a, _)| a[0] == "send-keys"));
+    assert!(
+        tmux.cleaned.get(),
+        "no Enter dispatched; exact owned placeholder must be cleaned"
+    );
+}
+
+#[test]
+fn backend_cancel_before_enter_dispatch_cleans_owned_placeholder() {
+    let tmux = Recorder {
+        reject_enter_at_backend: true,
+        ..Recorder::default()
+    };
+    let out = execute(
+        &plan(snapshot(), BTreeSet::new(), RunMode::Sandbox),
+        &tmux,
+        &Scopes::default(),
+        Path::new("/private-home"),
+    );
+    assert!(out.tabs[0].error.is_some());
+    assert!(tmux.pasted.get());
+    assert!(!tmux.calls.borrow().iter().any(|(a, _)| a[0] == "send-keys"));
+    assert!(tmux.cleaned.get());
+    assert_eq!(
+        tmux.dispatch_checks.get(),
+        2,
+        "cancellation occurs after ownership validation, at the final dispatch boundary"
+    );
+}
+
+#[test]
+fn uncertain_enter_result_preserves_owned_session() {
+    let tmux = Recorder::default();
+    *tmux.fail.borrow_mut() = Some("send-keys".into());
+    let out = execute(
+        &plan(snapshot(), BTreeSet::new(), RunMode::Sandbox),
+        &tmux,
+        &Scopes::default(),
+        Path::new("/private-home"),
+    );
+    assert!(out.tabs[0].error.is_some());
+    assert_eq!(
+        tmux.calls
+            .borrow()
+            .iter()
+            .filter(|(a, _)| a[0] == "send-keys")
+            .count(),
+        1
+    );
+    assert!(
+        !tmux.cleaned.get(),
+        "Enter may have reached tmux despite the failed result"
+    );
+}
+
+#[test]
+fn later_pre_dispatch_cancellation_preserves_session_when_first_enter_was_sent() {
+    let tmux = Recorder {
+        reject_second_paste: true,
+        ..Recorder::default()
+    };
+    let out = execute(
+        &plan(snapshot(), BTreeSet::new(), RunMode::Sandbox),
+        &tmux,
+        &Scopes::default(),
+        Path::new("/private-home"),
+    );
+    assert!(out.tabs[0].error.is_some());
+    assert_eq!(tmux.paste_count.get(), 2);
+    assert_eq!(
+        tmux.calls
+            .borrow()
+            .iter()
+            .filter(|(a, _)| a[0] == "send-keys")
+            .count(),
+        1
+    );
+    assert!(!tmux.cleaned.get(), "first pane already received Enter");
 }
 #[test]
 fn invalid_checksum_prevents_all_mutation() {

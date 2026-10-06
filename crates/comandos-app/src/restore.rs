@@ -135,7 +135,32 @@ impl RestoreCoordinator {
     }
 }
 
-/// The executor uses this interface so tests never launch agents or a personal server.
+/// Resultado del límite de despacho, distinto de una mera respuesta fallida.
+#[derive(Debug)]
+pub enum EnterError {
+    /// Ningún proceso capaz de enviar Enter fue invocado.
+    BeforeDispatch(String),
+    /// Se intentó enviar Enter; un error no autoriza a matar la sesión.
+    PossiblyDispatched(String),
+}
+
+/// La cancelación final y la validación ocurren antes del límite de despacho.
+pub fn dispatch_enter<T: RestoreTmux + ?Sized>(
+    tmux: &T,
+    ownership: &T::Ownership,
+    pane: &str,
+    check: impl Fn() -> Result<(), String>,
+) -> Result<(), EnterError> {
+    check().map_err(EnterError::BeforeDispatch)?;
+    tmux.validate(ownership)
+        .map_err(EnterError::BeforeDispatch)?;
+    check().map_err(EnterError::BeforeDispatch)?;
+    tmux.mutate(&["send-keys", "-t", pane, "Enter"], None)
+        .map(|_| ())
+        .map_err(EnterError::PossiblyDispatched)
+}
+
+/// Backend inyectado: los fixtures no necesitan lanzar agentes ni un servidor tmux.
 pub trait RestoreTmux {
     type Ownership;
     fn mode(&self) -> RunMode;
@@ -144,6 +169,9 @@ pub trait RestoreTmux {
     fn create(&self, args: &[&str]) -> Result<(String, Self::Ownership), String>;
     fn validate(&self, _ownership: &Self::Ownership) -> Result<(), String> {
         Ok(())
+    }
+    fn send_enter(&self, ownership: &Self::Ownership, pane: &str) -> Result<(), EnterError> {
+        dispatch_enter(self, ownership, pane, || Ok(()))
     }
     fn cleanup(&self, ownership: Self::Ownership) -> Result<(), String>;
 }
@@ -272,6 +300,9 @@ impl RestoreTmux for CancelableTmux {
     fn mutate(&self, args: &[&str], stdin: Option<&[u8]>) -> Result<String, String> {
         self.check()?;
         RestoreTmux::mutate(&self.tmux, args, stdin)
+    }
+    fn send_enter(&self, token: &Self::Ownership, pane: &str) -> Result<(), EnterError> {
+        dispatch_enter(&self.tmux, token, pane, || self.check())
     }
     fn create(&self, args: &[&str]) -> Result<(String, Self::Ownership), String> {
         self.check()?;
@@ -697,9 +728,16 @@ fn restore_missing<T: RestoreTmux, S: ScopeLauncher + ?Sized>(
                     let _ = mutate_owned(tmux, &owned, &["delete-buffer", "-b", &buffer], None);
                 }
                 paste?;
-                // Once Enter might have been delivered, preserve the session even on error.
-                started = true;
-                mutate_owned(tmux, &owned, &["send-keys", "-t", &pane, "Enter"], None)?;
+                let token = owned.as_ref().ok_or("placeholder ownership missing")?;
+                match tmux.send_enter(token, &pane) {
+                    Ok(()) => started = true,
+                    Err(EnterError::BeforeDispatch(error)) => return Err(error),
+                    Err(EnterError::PossiblyDispatched(error)) => {
+                        // Una respuesta fallida no demuestra que Enter no llegó a tmux.
+                        started = true;
+                        return Err(error);
+                    }
+                }
             } else if saved
                 .get("agent")
                 .unwrap_or(&Value::Null)

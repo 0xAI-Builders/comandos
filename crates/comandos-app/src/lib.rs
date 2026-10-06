@@ -23,4 +23,5 @@ pub mod term;
 pub mod theme;
 pub mod tmux;
 pub mod ui;
+pub mod workspace_resize;
 pub mod workspace_view;

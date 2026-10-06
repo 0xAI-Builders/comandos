@@ -571,6 +571,7 @@ impl App {
         if let Some(doc) = pending {
             self.apply_workspace(&doc);
         }
+        self.flush_resize();
     }
     fn end_drag(self: &Rc<Self>) {
         if let Some(seat) = gdk::Display::default().and_then(|d| d.default_seat()) {
@@ -631,6 +632,7 @@ impl App {
                 self.apply_workspace(&pending);
             }
         }
+        self.flush_resize();
     }
     pub(super) fn drag_tick(self: &Rc<Self>) {
         if !self.drag_layer.active() {
@@ -862,6 +864,7 @@ impl App {
                     if let Some(app) = weak.upgrade().filter(|a| !a.closed.load(Ordering::Acquire))
                     {
                         app.posting.set(false);
+                        app.resize_queue.borrow_mut().complete(false);
                         match result {
                             Ok((200, payload)) => {
                                 *app.previous_order.borrow_mut() = if undo {
@@ -889,6 +892,7 @@ impl App {
                         {
                             app.apply_workspace(&pending);
                         }
+                        app.flush_resize();
                     }
                 },
             );
