@@ -1,6 +1,8 @@
 //! Instalación en paralelo del binario: `--stage`, `--link` y `--rollback`, sin cutover implícito.
+pub mod manifest;
 mod record;
 pub mod release;
+pub use manifest::STATE_PROTOCOL;
 
 use record::Record;
 use std::{

@@ -12,7 +12,7 @@ pub fn unified_path(home: &Path) -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| home.join(".local/share/comandos/comandos.sqlite3"))
 }
-fn validate(conn: &Connection) -> Result<BTreeSet<i64>> {
+pub(super) fn validate(conn: &Connection) -> Result<BTreeSet<i64>> {
     let uv: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
     if uv > crate::usage::SCHEMA_VERSION {
         return Err(Error::Validation(
@@ -38,7 +38,7 @@ fn validate(conn: &Connection) -> Result<BTreeSet<i64>> {
     Ok(existing)
 }
 
-fn private_parent(path: &Path) -> Result<()> {
+pub(super) fn private_parent(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let parent = path
         .parent()

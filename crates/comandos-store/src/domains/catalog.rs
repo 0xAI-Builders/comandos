@@ -173,6 +173,12 @@ pub fn source(path: &str) -> Option<&'static SourceSpec> {
 
 /// Solo restos observables y excepciones D3/D9; lo desconocido queda visible.
 pub fn file_classification(path: &str) -> &'static str {
+    if control_suffix(
+        std::path::Path::new(path),
+        std::path::Path::new("SHARE/comandos.sqlite3"),
+    ) {
+        return "metadatos-control";
+    }
     let leaf = path.rsplit('/').next().unwrap_or(path);
     if matches!(
         path,
@@ -240,4 +246,228 @@ pub fn file_classification(path: &str) -> &'static str {
         return "resto";
     }
     "sin-dominio"
+}
+
+/// Registro de escritores por dominio; las variantes Python conservan su alcance.
+#[derive(Debug, Clone, Copy)]
+pub struct Domain {
+    pub name: &'static str,
+    pub rust_writers: &'static [&'static str],
+    pub python_writers: &'static [&'static str],
+}
+pub static DOMAINS: &[Domain] = &[
+    Domain {
+        name: "tabs",
+        rust_writers: &["dash", "comandos-app", "comandos-app-mac"],
+        python_writers: &["cc-app"],
+    },
+    Domain {
+        name: "layout",
+        rust_writers: &["comandos-app", "snapshot"],
+        python_writers: &["cc-app", "cc-session-snapshot"],
+    },
+    Domain {
+        name: "app-ui",
+        rust_writers: &["comandos-app"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "app-commands",
+        rust_writers: &["dash", "next", "comandos-app"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "session-status",
+        rust_writers: &["hook"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "processes",
+        rust_writers: &["hook agy", "hook opencode"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "logs",
+        rust_writers: &["hook", "dash"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "ui-docs",
+        rust_writers: &["dash", "acp"],
+        python_writers: &["cc-acp"],
+    },
+    Domain {
+        name: "quota-docs",
+        rust_writers: &["dash", "hook agy-status"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "news-docs",
+        rust_writers: &["dash"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "extensions",
+        rust_writers: &["ext"],
+        python_writers: &["cc-extensions"],
+    },
+    Domain {
+        name: "closed-panes",
+        rust_writers: &["dash"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "codex-reports",
+        rust_writers: &["codex"],
+        python_writers: &["cc-codex-full-access"],
+    },
+    Domain {
+        name: "db-operator",
+        rust_writers: &["dash"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "db-news",
+        rust_writers: &["dash"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "db-operations",
+        rust_writers: &["dash"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "db-app-state",
+        rust_writers: &["dash", "events", "hook"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "db-usage",
+        rust_writers: &["dash", "hook claude-usage"],
+        python_writers: &["cc_usage.py"],
+    },
+];
+pub fn domain(name: &str) -> Option<&'static Domain> {
+    DOMAINS.iter().find(|d| d.name == name)
+}
+
+/// La base de destino y sus controles nunca son fuentes de una migración.
+/// Se compara también con COMANDOS_DB, incluso cuando cae dentro de H o STATE.
+pub fn is_unified_control_file(path: &std::path::Path, db: &std::path::Path) -> bool {
+    // Sin identidad fiable no se permite proponer el archivo como fuente.
+    UnifiedControlFiles::inspect(db)
+        .and_then(|controls| controls.is_control(path))
+        .unwrap_or(true)
+}
+
+/// Identidades de control reunidas una vez antes de recorrer fuentes.
+/// Solo se comparan inodos de entradas regulares, nunca destinos de symlinks finales.
+pub struct UnifiedControlFiles {
+    db: std::path::PathBuf,
+    regular: std::collections::BTreeSet<(u64, u64)>,
+}
+impl UnifiedControlFiles {
+    pub fn inspect(db: &std::path::Path) -> std::io::Result<Self> {
+        use std::os::unix::fs::MetadataExt;
+        let db = control_path_identity(db)?;
+        let mut regular = std::collections::BTreeSet::new();
+        let parent = db
+            .parent()
+            .ok_or_else(|| std::io::Error::other("control sin padre"))?;
+        match std::fs::read_dir(parent) {
+            Ok(entries) => {
+                for entry in entries {
+                    let path = entry?.path();
+                    if control_suffix(&path, &db) {
+                        let metadata = std::fs::symlink_metadata(path)?;
+                        if metadata.is_file() {
+                            regular.insert((metadata.dev(), metadata.ino()));
+                        }
+                    }
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+        Ok(Self { db, regular })
+    }
+    pub fn database_path(&self) -> &std::path::Path {
+        &self.db
+    }
+    pub fn is_control(&self, path: &std::path::Path) -> std::io::Result<bool> {
+        use std::os::unix::fs::MetadataExt;
+        let path = control_path_identity(path)?;
+        if control_suffix(&path, &self.db) {
+            return Ok(true);
+        }
+        match std::fs::symlink_metadata(path) {
+            Ok(metadata) => {
+                Ok(metadata.is_file() && self.regular.contains(&(metadata.dev(), metadata.ino())))
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error),
+        }
+    }
+}
+
+fn control_suffix(path: &std::path::Path, db: &std::path::Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    let Some(tail) = path
+        .as_os_str()
+        .as_bytes()
+        .strip_prefix(db.as_os_str().as_bytes())
+    else {
+        return false;
+    };
+    tail.is_empty()
+        || matches!(
+            tail,
+            b"-wal" | b"-shm" | b"-journal" | b".domain-modes.lock"
+        )
+        || tail.starts_with(b".sealed-")
+}
+
+/// Identidad absoluta con padres resueltos, sin seguir el enlace de la entrada final.
+/// Los componentes todavía ausentes se resuelven desde el ancestro existente.
+pub fn control_path_identity(path: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+    use std::path::Component;
+    let absolute = if path.is_absolute() {
+        path.to_owned()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    let name = absolute
+        .file_name()
+        .ok_or_else(|| std::io::Error::other("ruta de control sin nombre"))?;
+    let mut parent = absolute
+        .parent()
+        .ok_or_else(|| std::io::Error::other("ruta de control sin padre"))?
+        .to_owned();
+    let mut absent = Vec::new();
+    let mut resolved = loop {
+        match std::fs::canonicalize(&parent) {
+            Ok(parent) => break parent,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let component = parent.components().next_back().ok_or(error)?;
+                absent.push(component.as_os_str().to_owned());
+                if !parent.pop() {
+                    return Err(std::io::Error::other("sin ancestro de control"));
+                }
+            }
+            Err(error) => return Err(error),
+        }
+    };
+    for suffix in absent.into_iter().rev() {
+        for component in std::path::Path::new(&suffix).components() {
+            match component {
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    resolved.pop();
+                }
+                other => resolved.push(other.as_os_str()),
+            }
+        }
+    }
+    resolved.push(name);
+    Ok(resolved)
 }

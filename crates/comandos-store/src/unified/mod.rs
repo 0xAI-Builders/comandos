@@ -2,10 +2,12 @@
 mod collections;
 mod documents;
 mod logs;
+pub(crate) mod modes;
 mod open;
 pub use collections::*;
 pub use documents::*;
 pub use logs::*;
+pub use modes::{Mode, mode_of, seal_guard_path, set_mode};
 pub use open::{MOVED_SENTINEL, open_unified, unified_path};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

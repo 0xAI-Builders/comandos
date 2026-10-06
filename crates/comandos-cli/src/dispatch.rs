@@ -39,10 +39,17 @@ const ALIASES: &[(&str, &[&str])] = &[
     ("cc-browser-npx-guard", &["browser", "npx-guard"]),
 ];
 
+pub(crate) fn alias_prefix(name: &str) -> Option<&'static [&'static str]> {
+    ALIASES
+        .iter()
+        .find(|(alias, _)| *alias == name)
+        .map(|(_, prefix)| *prefix)
+}
+
 pub fn resolve(argv0: &str, args: &[String]) -> Command {
     let name = argv0.rsplit('/').next().unwrap_or(argv0);
     let mut words: Vec<String> = Vec::new();
-    if let Some((_, prefix)) = ALIASES.iter().find(|(alias, _)| *alias == name) {
+    if let Some(prefix) = alias_prefix(name) {
         words.extend(prefix.iter().map(|s| s.to_string()));
     }
     words.extend(args.iter().cloned());
