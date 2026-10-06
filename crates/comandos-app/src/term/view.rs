@@ -86,6 +86,7 @@ struct Inner {
     closed: Cell<bool>,
     context_menu: RefCell<Option<ContextCallback>>,
     app_key: RefCell<Option<AppKeyCallback>>,
+    last_ctrl_c: Cell<Option<f64>>,
     cleanup_cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 pub struct TermView {
@@ -167,6 +168,7 @@ impl TermView {
             closed: Cell::new(false),
             context_menu: RefCell::new(None),
             app_key: RefCell::new(None),
+            last_ctrl_c: Cell::new(None),
             cleanup_cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         });
         inner.configure_font();
@@ -180,6 +182,7 @@ impl TermView {
     }
     pub fn shutdown(&self) {
         self.inner.closed.set(true);
+        self.inner.last_ctrl_c.set(None);
         self.inner
             .cleanup_cancelled
             .store(true, std::sync::atomic::Ordering::Release);
@@ -197,6 +200,34 @@ impl TermView {
     }
     pub fn on_app_key(&self, callback: AppKeyCallback) {
         *self.inner.app_key.borrow_mut() = Some(callback);
+    }
+    /// El gesto pertenece a esta terminal, como _last_ctrl_c del objeto VTE original.
+    pub fn ctrl_c_action(
+        &self,
+        selection: bool,
+        copy_context: bool,
+        now: f64,
+    ) -> crate::agent_stop::CtrlCAction {
+        use crate::agent_stop::{self, CtrlCAction};
+        if self.inner.closed.get() {
+            self.inner.last_ctrl_c.set(None);
+            return CtrlCAction::SendInterrupt;
+        }
+        let action = agent_stop::ctrl_c_action(
+            selection,
+            copy_context,
+            now,
+            self.inner.last_ctrl_c.get().unwrap_or(f64::NAN),
+            agent_stop::DOUBLE_TAP_SECONDS,
+        );
+        self.inner
+            .last_ctrl_c
+            .set(if action == CtrlCAction::SendInterrupt && !copy_context {
+                Some(now)
+            } else {
+                None
+            });
+        action
     }
     pub fn cleanup_cancellation(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
         self.inner.cleanup_cancelled.clone()
@@ -688,6 +719,7 @@ impl Inner {
 impl Drop for Inner {
     fn drop(&mut self) {
         self.closed.set(true);
+        self.last_ctrl_c.set(None);
         self.cleanup_cancelled
             .store(true, std::sync::atomic::Ordering::Release);
         self.app_key.get_mut().take();

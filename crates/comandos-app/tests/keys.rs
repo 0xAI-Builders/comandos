@@ -116,3 +116,72 @@ fn original_on_key_ast_matches_native_decision_matrix() {
     }
     assert_eq!(expected.len(), 2624);
 }
+
+#[test]
+fn original_ctrl_c_owns_timestamp_per_terminal_object() {
+    use comandos_app::proc::{ProcSpec, run};
+    let scenarios = serde_json::json!([
+        [
+            ["new", "old"],
+            ["c", "old", 1.0, false, false],
+            ["close", "old"],
+            ["new", "new"],
+            ["c", "new", 1.2, false, false]
+        ],
+        [
+            ["new", "same"],
+            ["c", "same", 1.0, false, false],
+            ["c", "same", 1.2, false, false]
+        ],
+        [
+            ["new", "selection"],
+            ["c", "selection", 1.0, true, false],
+            ["c", "selection", 1.2, true, false]
+        ],
+        [
+            ["new", "copy"],
+            ["c", "copy", 1.0, false, true],
+            ["c", "copy", 1.2, false, true]
+        ],
+        [
+            ["new", "context"],
+            ["c", "context", 1.0, false, false],
+            ["c", "context", 1.1, false, true],
+            ["c", "context", 1.2, false, false]
+        ],
+        [
+            ["new", "old"],
+            ["c", "old", 1.0, false, false],
+            ["close", "old"],
+            ["new", "new"],
+            ["c", "new", 1.2, false, false],
+            ["c", "new", 1.3, false, false]
+        ]
+    ]);
+    let out = run(&ProcSpec {
+        program: "python3".into(),
+        args: vec![
+            "-c".into(),
+            include_str!("support/t15_original.py").into(),
+            std::env::var("COMANDOS_CC_APP_ORACLE")
+                .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../bin/cc-app").into())
+                .into(),
+            "gestures".into(),
+        ],
+        stdin: Some(serde_json::to_vec(&scenarios).unwrap()),
+        env: vec![],
+        clear_env: false,
+        env_remove: vec![],
+        cwd: None,
+        timeout: std::time::Duration::from_secs(5),
+    })
+    .unwrap();
+    assert_eq!(
+        out.code,
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let expected: Vec<usize> = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(expected, [0, 1, 0, 0, 0, 1]);
+}

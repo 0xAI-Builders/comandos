@@ -93,7 +93,8 @@ pub fn execute() -> serde_json::Value {
     let term = include_str!("../../src/term/view.rs");
     let term_methods = body(term, "pub fn shutdown(")
         + &body(term, "pub fn on_app_key(")
-        + &body(term, "pub fn cleanup_cancellation(");
+        + &body(term, "pub fn cleanup_cancellation(")
+        + &body(term, "pub fn ctrl_c_action(");
     let dispatch = body(term, "fn dispatch_app_key(");
     let teardown = body(term, "impl Drop for Inner {");
     let key_callback = body(term, "inner.area.connect_key_press_event(");

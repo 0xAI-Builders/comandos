@@ -64,9 +64,16 @@ impl App {
     pub(super) fn attach_term_keys(self: &Rc<Self>, key: &str, term: &TermView) {
         let weak = Rc::downgrade(self);
         let key = key.to_string();
+        let instance = term.cleanup_cancellation();
         term.on_app_key(Rc::new(move |event| {
-            weak.upgrade()
-                .is_some_and(|app| app.handle_key(event, Some(&key)))
+            weak.upgrade().is_some_and(|app| {
+                let current =
+                    !instance.load(Ordering::Acquire)
+                        && app.terms.borrow().get(&key).is_some_and(|term| {
+                            Arc::ptr_eq(&instance, &term.cleanup_cancellation())
+                        });
+                current && app.handle_key(event, Some(&key))
+            })
         }));
     }
     fn handle_key(self: &Rc<Self>, event: &gdk::EventKey, term_key: Option<&str>) -> bool {
@@ -118,24 +125,14 @@ impl App {
                 let Some(key) = term_key else {
                     return false;
                 };
-                let last = self
-                    .last_ctrl_c
+                let Some(action) = self
+                    .terms
                     .borrow()
                     .get(key)
-                    .copied()
-                    .unwrap_or(f64::NAN);
-                let action = agent_stop::ctrl_c_action(
-                    input.selection,
-                    false,
-                    now,
-                    last,
-                    agent_stop::DOUBLE_TAP_SECONDS,
-                );
-                if action == agent_stop::CtrlCAction::SendInterrupt {
-                    self.last_ctrl_c.borrow_mut().insert(key.into(), now);
-                } else {
-                    self.last_ctrl_c.borrow_mut().remove(key);
-                }
+                    .map(|term| term.ctrl_c_action(input.selection, false, now))
+                else {
+                    return false;
+                };
                 if action == agent_stop::CtrlCAction::Copy {
                     if let Err(error) = self.handlers.invoke("copy_selection", &json!({})) {
                         self.status.set_text(&error.to_string());

@@ -66,3 +66,25 @@ elif mode=='agents':
 elif mode=='primitives':
  ns={};load({'DOUBLE_TAP_S','ctrl_c_action','parse_client_state','client_blocks_stop','_parse_stat'},ns)
  print(json.dumps({'actions':[ns['ctrl_c_action'](*c)for c in data['actions']], 'clients':[ns['parse_client_state'](s,'/private/tty')for s in data['clients']], 'blocked':[ns['client_blocks_stop'](s)for s in data['states']]}))
+
+elif mode=='gestures':
+ library=os.path.join(os.path.dirname(os.path.dirname(source)),'lib','agent_stop.py');libtree=ast.parse(open(library).read());agent={}
+ for n in libtree.body:
+  if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='DOUBLE_TAP_S'for t in n.targets)or isinstance(n,ast.FunctionDef)and n.name=='ctrl_c_action':exec(compile(ast.Module([n],[]),library,'exec'),agent)
+ results=[]
+ for scenario in data:
+  armed=[];ns={'agent_stop':types.SimpleNamespace(**agent),'Vte':types.SimpleNamespace(Format=types.SimpleNamespace(TEXT=0)),'_arm_agent_cleanup':lambda t:armed.append(t.name)}
+  load({'handle_ctrl_c'},ns)
+  class Term:
+   def __init__(self,name):self.name=name;self.selection=False
+   def get_has_selection(self):return self.selection
+   def copy_clipboard_format(self,*a):pass
+   def unselect_all(self):self.selection=False
+  terms={}
+  for event in scenario:
+   if event[0]=='new':terms[event[1]]=Term(event[1])
+   elif event[0]=='close':del terms[event[1]]
+   else:
+    term=terms[event[1]];term.selection=event[3];ns['handle_ctrl_c'](term,event[4],event[2])
+  results.append(len(armed))
+ print(json.dumps(results))
