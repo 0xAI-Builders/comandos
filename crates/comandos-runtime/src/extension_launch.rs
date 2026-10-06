@@ -2358,12 +2358,35 @@ printf namespace-proof-ok
             return Err(refused());
         }
     };
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    let success = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status.success(),
+    let success = wait_namespace_probe(
+        &mut child,
+        std::time::Duration::from_secs(10),
+        &mut |child| {
+            let _ = nix::sys::signal::killpg(
+                nix::unistd::Pid::from_raw(child.id() as i32),
+                nix::sys::signal::Signal::SIGKILL,
+            );
+        },
+    );
+    let verified = success
+        && fs::read(&output).is_ok_and(|b| b == b"namespace-proof-ok")
+        && fs::read(&target).is_ok_and(|b| b == b"parent");
+    let _ = fs::remove_dir_all(&directory);
+    if verified { Ok(()) } else { Err(refused()) }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn wait_namespace_probe(
+    child: &mut std::process::Child,
+    timeout: std::time::Duration,
+    terminate: &mut dyn FnMut(&std::process::Child),
+) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    let exited = loop {
+        match crate::procs::child_exited_unreaped(child) {
+            Ok(true) => break true,
             Err(_) => break false,
-            Ok(None) => {
+            Ok(false) => {
                 if std::time::Instant::now() >= deadline {
                     break false;
                 }
@@ -2372,22 +2395,69 @@ printf namespace-proof-ok
         }
     };
     // Also terminate/reap descendants if proof was interrupted or failed.
-    let _ = nix::sys::signal::killpg(
-        nix::unistd::Pid::from_raw(child.id() as i32),
-        nix::sys::signal::Signal::SIGKILL,
-    );
-    let _ = child.wait();
-    let verified = success
-        && fs::read(&output).is_ok_and(|b| b == b"namespace-proof-ok")
-        && fs::read(&target).is_ok_and(|b| b == b"parent");
-    let _ = fs::remove_dir_all(&directory);
-    if verified { Ok(()) } else { Err(refused()) }
+    // The unreaped child still reserves its PID/group. An ECHILD/error never
+    // authorizes a signal through an ID whose ownership is no longer proven.
+    if crate::procs::child_exited_unreaped(child).is_ok() {
+        terminate(child);
+    }
+    let success = child.wait().is_ok_and(|status| status.success());
+    exited && success
 }
 
 #[cfg(test)]
 mod tests {
     use super::{parse_toml, parse_trust_toml, shlex_split};
     use serde_json::json;
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn probe_leader_remains_owned_until_group_cleanup_and_timeout_is_reaped() {
+        use std::os::unix::process::CommandExt;
+        for (program, args, timeout, success) in [
+            (
+                "/usr/bin/true",
+                vec![],
+                std::time::Duration::from_secs(2),
+                true,
+            ),
+            (
+                "/usr/bin/sleep",
+                vec!["60"],
+                std::time::Duration::from_millis(30),
+                false,
+            ),
+        ] {
+            let mut child = std::process::Command::new(program)
+                .args(args)
+                .process_group(0)
+                .spawn()
+                .unwrap();
+            let pid = child.id();
+            let mut called = false;
+            let outcome = super::wait_namespace_probe(&mut child, timeout, &mut |leader| {
+                called = true;
+                // Independent OS evidence: the leader's PID and process group
+                // still exist at the moment cleanup receives signal authority.
+                let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
+                let state = stat
+                    .rsplit_once(')')
+                    .unwrap()
+                    .1
+                    .split_whitespace()
+                    .next()
+                    .unwrap();
+                if success {
+                    assert_eq!(state, "Z");
+                }
+                let owned = nix::unistd::Pid::from_raw(leader.id() as i32);
+                assert_eq!(nix::unistd::getpgid(Some(owned)).unwrap(), owned);
+                let _ = nix::sys::signal::killpg(owned, nix::sys::signal::Signal::SIGKILL);
+            });
+            assert!(called);
+            assert_eq!(outcome, success);
+            assert!(!std::path::Path::new(&format!("/proc/{pid}")).exists());
+        }
+    }
 
     #[test]
     fn shlex_split_matches_posix_shlex() {
