@@ -151,6 +151,25 @@ fn read_setting(path: &Path, key: &str, apostrophes: bool) -> String {
         .map(|s| setting(&s, key, apostrophes))
         .unwrap_or_default()
 }
+fn lint_entries(root: &Path, errors: &mut Vec<String>) -> Vec<fs::DirEntry> {
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return vec![],
+        Err(e) => {
+            errors.push(format!("{}: {e}", root.display()));
+            return vec![];
+        }
+    };
+    entries
+        .filter_map(|entry| match entry {
+            Ok(entry) => Some(entry),
+            Err(e) => {
+                errors.push(format!("{}: no se pudo leer entrada: {e}", root.display()));
+                None
+            }
+        })
+        .collect()
+}
 impl Doctor {
     fn new(home: PathBuf) -> Self {
         let sys = env::var("CC_MOCK_UNAME")
@@ -480,24 +499,37 @@ impl Doctor {
             ("SHARE", self.home.join(".local/share/comandos")),
         ];
         let mut leftovers = vec![];
+        let mut errors = vec![];
         let mut pending: Vec<_> = roots.into_iter().collect();
         while let Some((symbol, root)) = pending.pop() {
-            let Ok(entries) = fs::read_dir(&root) else {
-                continue;
-            };
-            for entry in entries.flatten() {
+            for entry in lint_entries(&root, &mut errors) {
                 let symbolic = format!("{symbol}/{}", entry.file_name().to_string_lossy());
                 let classification = catalog::file_classification(&symbolic);
                 if classification == "resto" {
                     leftovers.push(entry.path());
                     continue;
                 }
-                let kind = entry.file_type();
-                // Do not traverse release/web/cache trees, symlinks, or D3 archives.
-                if classification == "sin-dominio"
-                    && symbolic != "SHARE/backups"
-                    && kind.is_ok_and(|k| k.is_dir())
+                let kind = match entry.file_type() {
+                    Ok(kind) => kind,
+                    Err(e) => {
+                        errors.push(format!(
+                            "{}: no se pudo inspeccionar entrada: {e}",
+                            entry.path().display()
+                        ));
+                        continue;
+                    }
+                };
+                // Catalog directory prefixes include a slash. Classify the root
+                // itself by lstat metadata, including broken symlinks, without
+                // traversing their targets or loading legacy assets.
+                if (kind.is_dir() || kind.is_symlink())
+                    && catalog::file_classification(&format!("{symbolic}/")) == "resto"
                 {
+                    leftovers.push(entry.path());
+                    continue;
+                }
+                // Do not traverse release/web/cache trees, symlinks, or D3 archives.
+                if classification == "sin-dominio" && symbolic != "SHARE/backups" && kind.is_dir() {
                     // Known active subdirectories only. Status documents are metadata-only.
                     if [
                         "H/state",
@@ -511,8 +543,7 @@ impl Doctor {
                         if symbolic.starts_with("SHARE/") {
                             leftovers.push(entry.path())
                         } else {
-                            for child in fs::read_dir(entry.path()).into_iter().flatten().flatten()
-                            {
+                            for child in lint_entries(&entry.path(), &mut errors) {
                                 let child_symbol =
                                     format!("{symbolic}/{}", child.file_name().to_string_lossy());
                                 if catalog::file_classification(&child_symbol) == "resto" {
@@ -525,18 +556,24 @@ impl Doctor {
             }
         }
         leftovers.sort();
+        errors.sort();
+        let mut details = leftovers
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>();
+        details.extend(
+            errors
+                .into_iter()
+                .map(|error| format!("lectura incompleta: {error}")),
+        );
         self.check(
             "Estado Rust",
             "restos D9",
-            if leftovers.is_empty() { "pass" } else { "warn" },
-            if leftovers.is_empty() {
+            if details.is_empty() { "pass" } else { "warn" },
+            if details.is_empty() {
                 "sin restos conocidos".into()
             } else {
-                leftovers
-                    .iter()
-                    .map(|p| p.display().to_string())
-                    .collect::<Vec<_>>()
-                    .join(" · ")
+                details.join(" · ")
             },
             None,
         );

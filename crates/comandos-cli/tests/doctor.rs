@@ -778,3 +778,141 @@ fn confirmed_apt_fix_preserves_output_and_argument_vectors_with_fake_sudo() {
     assert_eq!(fs::read(f.0.join("calls")).unwrap(), calls);
     assert_eq!(native.status.code(), Some(1));
 }
+
+#[test]
+fn d9_dash_directory_symlink_and_broken_symlink_are_metadata_leftovers() {
+    let f = Fixture::new();
+    let hooks = f.0.join("home/.claude/hooks");
+    fs::create_dir_all(&hooks).unwrap();
+    let dash = hooks.join("dash");
+    fs::create_dir(&dash).unwrap();
+    fs::write(dash.join("old.js"), b"private legacy bytes, do not load").unwrap();
+    let before = tree(&f.0.join("home"));
+    let out = f.run(false, false, &["core", "--json"], "");
+    assert_eq!(tree(&f.0.join("home")), before);
+    let row = records(&out)
+        .into_iter()
+        .find(|r| r["check"] == "restos D9")
+        .unwrap();
+    assert_eq!(row["status"], "warn", "{row}");
+    assert!(
+        row["detail"]
+            .as_str()
+            .unwrap()
+            .contains(dash.to_str().unwrap())
+    );
+
+    fs::remove_dir_all(&dash).unwrap();
+    let target = f.0.join("private-legacy-dash");
+    fs::create_dir(&target).unwrap();
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::write(target.join("old.js"), b"private target must stay untouched").unwrap();
+    let target_before = tree(&target);
+    // Even an unreadable target is diagnosed without following the link.
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o000)).unwrap();
+    symlink(&target, &dash).unwrap();
+    let before = tree(&f.0.join("home"));
+    let out = f.run(false, false, &["core", "--json"], "");
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(tree(&target), target_before);
+    assert_eq!(
+        fs::read(target.join("old.js")).unwrap(),
+        b"private target must stay untouched"
+    );
+    assert_eq!(tree(&f.0.join("home")), before);
+    let row = records(&out)
+        .into_iter()
+        .find(|r| r["check"] == "restos D9")
+        .unwrap();
+    assert_eq!(row["status"], "warn", "{row}");
+    assert!(
+        row["detail"]
+            .as_str()
+            .unwrap()
+            .contains(dash.to_str().unwrap())
+    );
+    assert!(
+        !row["detail"]
+            .as_str()
+            .unwrap()
+            .contains("lectura incompleta"),
+        "The symlink target must not be traversed: {row}"
+    );
+
+    fs::remove_dir_all(&target).unwrap();
+    let before = tree(&f.0.join("home"));
+    let out = f.run(false, false, &["core", "--json"], "");
+    assert_eq!(tree(&f.0.join("home")), before);
+    let row = records(&out)
+        .into_iter()
+        .find(|r| r["check"] == "restos D9")
+        .unwrap();
+    assert_eq!(row["status"], "warn", "{row}");
+    assert!(
+        !row["detail"]
+            .as_str()
+            .unwrap()
+            .contains("lectura incompleta"),
+        "A broken dash link is a known metadata leftover: {row}"
+    );
+}
+
+#[test]
+fn d9_permission_denied_at_root_or_active_child_never_reports_clean_pass() {
+    for child in [false, true] {
+        let f = Fixture::new();
+        let hooks = f.0.join("home/.claude/hooks");
+        fs::create_dir_all(&hooks).unwrap();
+        fs::set_permissions(&hooks, fs::Permissions::from_mode(0o700)).unwrap();
+        let blocked = if child {
+            let state = hooks.join("state");
+            fs::create_dir(&state).unwrap();
+            fs::set_permissions(&state, fs::Permissions::from_mode(0o700)).unwrap();
+            fs::write(state.join("private.tmp"), b"private known leftover").unwrap();
+            state
+        } else {
+            fs::write(hooks.join("notify.sh"), b"private known leftover").unwrap();
+            hooks
+        };
+        let before = tree(&f.0.join("home"));
+        fs::set_permissions(&blocked, fs::Permissions::from_mode(0o000)).unwrap();
+        let denied = fs::read_dir(&blocked).err().map(|e| e.kind());
+        let out = f.run(false, false, &["core", "--json"], "");
+        fs::set_permissions(&blocked, fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(
+            denied,
+            Some(std::io::ErrorKind::PermissionDenied),
+            "This fixture needs an unprivileged test user"
+        );
+        assert_eq!(tree(&f.0.join("home")), before);
+        let row = records(&out)
+            .into_iter()
+            .find(|r| r["check"] == "restos D9")
+            .unwrap();
+        assert_eq!(row["status"], "warn", "{row}");
+        assert!(
+            row["detail"]
+                .as_str()
+                .unwrap()
+                .contains(blocked.to_str().unwrap())
+        );
+        assert!(
+            row["detail"]
+                .as_str()
+                .unwrap()
+                .contains("Permission denied"),
+            "{row}"
+        );
+        let healthy = f.run(false, false, &["core", "--json"], "");
+        let row = records(&healthy)
+            .into_iter()
+            .find(|r| r["check"] == "restos D9")
+            .unwrap();
+        assert_eq!(row["status"], "warn", "{row}");
+        assert!(row["detail"].as_str().unwrap().contains(if child {
+            "private.tmp"
+        } else {
+            "notify.sh"
+        }));
+    }
+}
