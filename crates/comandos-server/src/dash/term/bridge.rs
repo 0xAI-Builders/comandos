@@ -352,7 +352,7 @@ where
                     .tx
                     .try_send(QueuedInput {
                         msg: ClientMsg::Input(command.tail),
-                        _permit: permit,
+                        _permit: Some(permit),
                     })
                     .map_err(io::Error::other)?;
             }
@@ -367,42 +367,69 @@ where
     let mut exited = false;
     let outcome: io::Result<()> = async {
         loop {
-                        // Keep the send future pinned across input events: readiness and flush
-            // remain interruptible without submitting the same frame twice.
-            if let Some(bytes)=pending.take() {
+            // Keep send pinned across input events so a frame is submitted once.
+            if let Some(bytes) = pending.take() {
                 let bytes: Vec<u8> = bytes;
-                stats.max_outbox_bytes=stats.max_outbox_bytes.max(bytes.len());
-                stats.output_bytes+=bytes.len()-1;
+                stats.max_outbox_bytes = stats.max_outbox_bytes.max(bytes.len());
+                stats.output_bytes += bytes.len() - 1;
                 let send = sink.send(Message::binary(bytes));
                 tokio::pin!(send);
                 loop {
-                                        tokio::select! {
-                        _=stop_wait(&mut shutdown)=>return Ok(()),
-                        result=&mut send=>{result.map_err(ws_error)?;break;},
-                        _=async {if let Some(child)=child.as_mut(){let _=child.wait().await;}else{std::future::pending::<()>().await;}}, if child.is_some() && !exited=>{exited=true;paused=false;},
-                        msg=stream.next()=>{if !input(msg,&mut writer,&mut paused,&mut close_code).await? {return Ok(());}},
+                    tokio::select! {
+                        _ = stop_wait(&mut shutdown) => return Ok(()),
+                        result = &mut send => {
+                            result.map_err(ws_error)?;
+                            break;
+                        },
+                        _ = child_exit(&mut child), if child.is_some() && !exited => {
+                            exited = true;
+                            paused = false;
+                        },
+                        msg = stream.next() => {
+                            if !input(msg, &mut writer, &mut paused, &mut close_code).await? {
+                                return Ok(());
+                            }
+                        },
                     }
                 }
             }
             tokio::select! {
-                _=stop_wait(&mut shutdown)=>return Ok(()),
-                msg=stream.next()=>{if !input(msg,&mut writer,&mut paused,&mut close_code).await? {return Ok(());}},
-                result=async {
-                    if let Some(pty)=pty.as_mut() {pty.read(&mut buffer).await}
-                    else if let Some(file)=file.as_mut() {file.read(&mut buffer).await}
-                    else {std::future::pending().await}
-                }, if !paused && !eof => {
-                    match result {
-                        Ok(0)=> {eof=true;if child.is_some(){return Ok(());}},
-                        Ok(n)=> {
-                            if let Some(writer)=writer.as_mut() && let Some(ready)=writer.ready.take() {let _=ready.send(());}
-                            pending=Some(proto::output(&buffer[..n]));
-                        },
-                        Err(error) if error.raw_os_error()==Some(5) && child.is_some()=>return Ok(()),
-                        Err(error)=>return Err(error),
+                _ = stop_wait(&mut shutdown) => return Ok(()),
+                msg = stream.next() => {
+                    if !input(msg, &mut writer, &mut paused, &mut close_code).await? {
+                        return Ok(());
                     }
                 },
-                _=async {if let Some(child)=child.as_mut(){let _=child.wait().await;}else{std::future::pending::<()>().await;}}, if child.is_some() && !exited=>{exited=true;paused=false;},
+                result = async {
+                    if let Some(pty) = pty.as_mut() {
+                        pty.read(&mut buffer).await
+                    } else if let Some(file) = file.as_mut() {
+                        file.read(&mut buffer).await
+                    } else {
+                        std::future::pending().await
+                    }
+                }, if !paused && !eof => {
+                    match result {
+                        Ok(0) => {
+                            eof = true;
+                            if child.is_some() { return Ok(()); }
+                        },
+                        Ok(n) => {
+                            if let Some(writer) = writer.as_mut()
+                                && let Some(ready) = writer.ready.take()
+                            {
+                                let _ = ready.send(());
+                            }
+                            pending = Some(proto::output(&buffer[..n]));
+                        },
+                        Err(error) if error.raw_os_error() == Some(5) && child.is_some() => return Ok(()),
+                        Err(error) => return Err(error),
+                    }
+                },
+                _ = child_exit(&mut child), if child.is_some() && !exited => {
+                    exited = true;
+                    paused = false;
+                },
             }
         }
     }.await;
@@ -450,12 +477,20 @@ where
         result => result.map(|()| stats),
     }
 }
+async fn child_exit(child: &mut Option<tokio::process::Child>) {
+    if let Some(child) = child.as_mut() {
+        let _ = child.wait().await;
+    } else {
+        std::future::pending::<()>().await;
+    }
+}
+
 /// The active write and queued input share a 1 MiB byte budget and 256 slots. An additional
 /// input beyond that budget closes with 1009 instead of suspending socket reads:
 /// Close/EOF and shutdown remain observable even when the PTY stops consuming.
 struct QueuedInput {
     msg: ClientMsg,
-    _permit: tokio::sync::OwnedSemaphorePermit,
+    _permit: Option<tokio::sync::OwnedSemaphorePermit>,
 }
 struct InputWriter {
     tx: tokio::sync::mpsc::Sender<QueuedInput>,
@@ -549,25 +584,17 @@ async fn input(
     };
     match proto::parse_client(&frame) {
         Ok(msg @ (ClientMsg::Input(_) | ClientMsg::Resize { .. })) => {
-            if let Some(writer) = writer {
-                let permit = permit.unwrap_or_else(|| {
-                    writer
-                        .budget
-                        .clone()
-                        .try_acquire_many_owned(0)
-                        .expect("zero permits")
-                });
-                if writer
+            if let Some(writer) = writer
+                && writer
                     .tx
                     .try_send(QueuedInput {
                         msg,
                         _permit: permit,
                     })
                     .is_err()
-                {
-                    *close = Some(CloseCode::Size);
-                    return Ok(false);
-                }
+            {
+                *close = Some(CloseCode::Size);
+                return Ok(false);
             }
         }
         Ok(ClientMsg::Pause) => *paused = true,
