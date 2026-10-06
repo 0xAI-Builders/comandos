@@ -123,3 +123,16 @@ falsos propios; no se operan cuentas, inventarios ni proveedores reales.
 Quedan pendientes el enlace/ejecución nativa en Mac, TTY y los contratos del
 vendor real. Este checkpoint no valida AppKit, GTK, servicios, instalación
 personal ni cutover.
+
+### Lecturas cortas de NativeTools
+
+Una reparación independiente del port C5 drena lecturas no bloqueantes
+positivas sin pausa por fragmento. Comprueba el plazo antes de cada lectura,
+incluidas las repeticiones por Interrupted. Sólo espera cuando el pipe está
+bloqueado o ya llegó EOF pero el líder sigue pendiente. Conserva el techo de
+4 MiB, la salida parcial con código distinto de cero y el cierre del grupo
+poseído antes de recoger al líder. No modifica el umbral de tres segundos del
+test original de exceso de salida. El repro extraído limita exclusivamente el
+slice de lectura a 512 bytes para ejercitar lecturas cortas deterministas; no
+cambia el lector productivo de 8192 bytes. La repetición nativa del test Mac
+original queda a cargo de Root.

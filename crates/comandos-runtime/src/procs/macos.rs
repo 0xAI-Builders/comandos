@@ -229,6 +229,11 @@ impl Tools for NativeTools {
         let mut bytes = Vec::new();
         let mut eof = false;
         loop {
+            // Check every read, including successful/Interrupted retries, so
+            // continuous output cannot starve the caller's deadline.
+            if begin.elapsed() >= timeout {
+                return None;
+            }
             if !eof {
                 let mut chunk = [0; 8192];
                 match pipe.read(&mut chunk) {
@@ -238,6 +243,9 @@ impl Tools for NativeTools {
                             return None;
                         }
                         bytes.extend_from_slice(&chunk[..n]);
+                        // Drain ready bytes without a per-chunk sleep. Darwin
+                        // pipes can return short reads even while more is ready.
+                        continue;
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                     Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
