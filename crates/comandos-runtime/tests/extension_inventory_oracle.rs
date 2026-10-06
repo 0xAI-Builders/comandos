@@ -168,3 +168,32 @@ fn synchronous_offline_counter_preserves_verified_fixture_and_corrupt_fallback()
     );
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn inventory_retains_only_bounded_metadata_counts_across_calls() {
+    let root = std::env::temp_dir().join(format!(
+        "comandos-inventory-count-cache-{}",
+        std::process::id()
+    ));
+    let skill = root.join(".agents/skills/demo/SKILL.md");
+    std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
+    std::fs::write(&skill, "hello").unwrap();
+    let cache = root.join(".cache/comandos/tiktoken");
+    std::fs::create_dir_all(&cache).unwrap();
+    let source = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.migration-build/public-token-cache")
+        .join(comandos_extensions::tokenizer::ENCODING_FILE);
+    let encoding = cache.join(comandos_extensions::tokenizer::ENCODING_FILE);
+    std::fs::copy(source, &encoding).unwrap();
+    let paths = Paths::new(&root, &root);
+    let registry = json!({"harnesses":{"codex":{"defaultHome":root.join(".codex")}}});
+    let a = extension_launch::inventory(&registry, "codex", "main", &root, &paths).unwrap();
+    assert_eq!(a["skills"][0]["size"]["tokens"], 1);
+    std::fs::remove_file(encoding).unwrap();
+    let b = extension_launch::inventory(&registry, "codex", "main", &root, &paths).unwrap();
+    assert_eq!(a.to_string(), b.to_string());
+    std::fs::write(skill, "hello new text").unwrap();
+    let c = extension_launch::inventory(&registry, "codex", "main", &root, &paths).unwrap();
+    assert!(c["skills"][0]["size"]["tokens"].is_null());
+    std::fs::remove_dir_all(root).unwrap();
+}
