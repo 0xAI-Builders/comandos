@@ -257,6 +257,8 @@ async fn fonts(native: &Native) -> Value {
 enum PrefsFault {
     /// `ValueError` → 400 con su texto.
     Bad(&'static str),
+    /// Persistencia fallida; distinta de un error al convertir el dato.
+    Storage,
     Fault(Fault),
 }
 
@@ -488,7 +490,7 @@ async fn prefs_set(native: &Native, data: &Map<String, Value>) -> Answer {
         let _lock = if access.mode() == comandos_store::unified::Mode::Sealed {
             None
         } else {
-            Some(FileLock::acquire(&doc.file).map_err(|_| Fault::Decline)?)
+            Some(FileLock::acquire(&doc.file).map_err(|_| PrefsFault::Storage)?)
         };
         access
             .with_write_transaction(|| {
@@ -499,17 +501,17 @@ async fn prefs_set(native: &Native, data: &Map<String, Value>) -> Answer {
                 let text = response_dumps(&prefs).map_err(|_| Fault::Decline)?;
                 let favorites = prefs.get("favorites").cloned().unwrap_or_else(|| json!([]));
                 doc.write_under(&access, text.as_bytes(), now)
-                    .map_err(|_| Fault::Error(HandlerError::Failure))?;
+                    .map_err(|_| PrefsFault::Storage)?;
                 Ok(favorites)
             })
-            .map_err(|_| PrefsFault::Fault(Fault::Error(HandlerError::Failure)))?
+            .map_err(|_| PrefsFault::Storage)?
     })
     .await
     .map_err(|_| HandlerError::Failure)?;
     match written {
         Ok(favorites) => reply(StatusCode::OK, &json!({"ok": true, "favorites": favorites})),
         Err(PrefsFault::Bad(message)) => error(StatusCode::BAD_REQUEST, message),
-        Err(PrefsFault::Fault(Fault::Error(HandlerError::Failure))) => error(
+        Err(PrefsFault::Storage) => error(
             StatusCode::SERVICE_UNAVAILABLE,
             "No se pudieron guardar las preferencias",
         ),
