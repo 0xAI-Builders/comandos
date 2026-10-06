@@ -550,6 +550,7 @@ pub fn assemble(
 /// los intercambia de una vez y la salida vieja acaba en `trash`, que se borra; si el
 /// sistema de archivos no lo admite, dos `rename` (con una ventana sin `out`).
 pub fn swap_into_place(next: &Path, out: &Path, trash: &Path) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
     use nix::fcntl::{AT_FDCWD, RenameFlags, renameat2};
     let err = |e: &dyn std::fmt::Display| format!("no se pudo instalar {}: {e}", out.display());
     validate_output(out)?;
@@ -578,15 +579,30 @@ pub fn swap_into_place(next: &Path, out: &Path, trash: &Path) -> Result<(), Stri
     if out.symlink_metadata().is_err() {
         return fs::rename(next, out).map_err(|e| err(&e));
     }
-    match renameat2(AT_FDCWD, next, AT_FDCWD, out, RenameFlags::RENAME_EXCHANGE) {
+    #[cfg(target_os = "linux")]
+    if renameat2(AT_FDCWD, next, AT_FDCWD, out, RenameFlags::RENAME_EXCHANGE).is_ok() {
         // Tras el intercambio, `next` es la salida vieja.
-        Ok(()) => fs::rename(next, trash).map_err(|e| err(&e))?,
-        Err(_) => {
-            fs::rename(out, trash).map_err(|e| err(&e))?;
-            fs::rename(next, out).map_err(|e| err(&e))?;
-        }
+        fs::rename(next, trash).map_err(|e| err(&e))?;
+        let _ = fs::remove_dir_all(trash);
+        return Ok(());
     }
+    swap_with_renames(next, out, trash)?;
     let _ = fs::remove_dir_all(trash);
+    Ok(())
+}
+
+fn swap_with_renames(next: &Path, out: &Path, trash: &Path) -> Result<(), String> {
+    fs::rename(out, trash).map_err(|e| format!("no se pudo instalar {}: {e}", out.display()))?;
+    if let Err(error) = fs::rename(next, out) {
+        return match fs::rename(trash, out) {
+            Ok(()) => Err(format!("no se pudo instalar {}: {error}", out.display())),
+            Err(restore) => Err(format!(
+                "no se pudo instalar {}: {error}; salida anterior en {}: {restore}",
+                out.display(),
+                trash.display()
+            )),
+        };
+    }
     Ok(())
 }
 
@@ -816,5 +832,62 @@ pub fn main(args: &[String]) -> i32 {
             eprintln!("error: {e}");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod swap_transaction_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct Fixture(PathBuf);
+    impl Fixture {
+        fn new() -> Self {
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "comandos-web-swap-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn portable_swap_keeps_old_tree_until_new_tree_is_installed() {
+        let root = Fixture::new();
+        let (out, next, trash) = (
+            root.0.join("out"),
+            root.0.join("next"),
+            root.0.join("trash"),
+        );
+        fs::create_dir(&out).unwrap();
+        fs::create_dir(&next).unwrap();
+        fs::write(out.join("version"), b"old").unwrap();
+        fs::write(next.join("version"), b"new").unwrap();
+        swap_with_renames(&next, &out, &trash).unwrap();
+        assert_eq!(fs::read(out.join("version")).unwrap(), b"new");
+        assert_eq!(fs::read(trash.join("version")).unwrap(), b"old");
+    }
+
+    #[test]
+    fn failed_second_rename_restores_previous_output() {
+        let root = Fixture::new();
+        let (out, next, trash) = (
+            root.0.join("out"),
+            root.0.join("missing-next"),
+            root.0.join("trash"),
+        );
+        fs::create_dir(&out).unwrap();
+        fs::write(out.join("version"), b"old").unwrap();
+        assert!(swap_with_renames(&next, &out, &trash).is_err());
+        assert_eq!(fs::read(out.join("version")).unwrap(), b"old");
+        assert!(!trash.exists());
     }
 }
