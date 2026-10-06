@@ -5,3 +5,4 @@
 {"name":"r-delete-desconocido","method":"DELETE","path":"/nada","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{},"volatile":[],"expect":"same"}
 {"name":"r-operator-get","method":"GET","path":"/operator/x","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}
 {"name":"r-operator-post","method":"POST","path":"/operatorX","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{},"volatile":[],"expect":"same"}
+{"name":"r-get-prefijo-state","method":"GET","path":"/stateX","headers":{"Host":"127.0.0.1"},"body":null,"volatile":[],"expect":"same"}

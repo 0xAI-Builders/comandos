@@ -273,12 +273,14 @@ async fn analytics_week_empty_home_matches_python() {
 }
 
 #[tokio::test]
-async fn analytics_week_prefix_is_still_forwarded() {
+async fn analytics_week_prefix_is_native() {
     let home = TestHome::new("week-prefix");
     let legacy = FakeLegacy::start().await;
     let front = front(&home, legacy.port, home.options()).await;
     let wire = get(front.port, "/analytics/weekly").await;
-    assert_eq!(wire.text(), r#"{"legacy": true}"#);
+    assert_eq!(wire.status, 200);
+    assert!(serde_json::from_slice::<serde_json::Value>(&wire.body).unwrap()["week"].is_object());
+    assert!(legacy.requests().is_empty());
     front.stop().await;
 }
 

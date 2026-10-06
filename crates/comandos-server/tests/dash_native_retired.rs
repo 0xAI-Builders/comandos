@@ -39,7 +39,7 @@ async fn retired_routes_answer_operator_410() {
             "{method}"
         );
     }
-    assert_eq!(get(front.port, "/eventsx").await.status, 502);
+    assert_eq!(get(front.port, "/eventsx").await.status, 410);
     assert_eq!(
         get(front.port, "/events/v2").await.status,
         200,
