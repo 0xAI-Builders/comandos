@@ -8,6 +8,8 @@ use comandos_app::{
     restore::RestoreTmux,
     tab_actions::{PaneClose, QuickTerminal, select_window, valid_session, valid_window},
 };
+#[path = "support/inert_oracle.rs"]
+mod inert_oracle;
 use serde_json::{Value, json};
 use std::cell::RefCell;
 struct Windows {
@@ -145,7 +147,6 @@ fn cancelled_confirmation_never_posts_and_confirmed_close_keeps_exact_original_i
 }
 #[test]
 fn ordinary_close_preserves_busy_sessions_like_original_ast() {
-    use comandos_app::proc::{ProcSpec, run};
     let cases = json!([
         ["term-busy", "zsh\ncodex", true],
         ["term-busy", "node\nbash", true],
@@ -155,8 +156,6 @@ fn ordinary_close_preserves_busy_sessions_like_original_ast() {
         ["term-empty", "", true],
         ["term-bad", "bash", false]
     ]);
-    let home = std::env::temp_dir().join(format!("comandos-close-oracle-{}", std::process::id()));
-    std::fs::create_dir(&home).unwrap();
     let script = r#"import ast,json,sys,types
 nodes=ast.parse(open(sys.argv[1]).read()).body
 exec(compile(ast.Module(body=[n for n in nodes if isinstance(n,ast.FunctionDef) and n.name=='close_tab'],type_ignores=[]),sys.argv[1],'exec'))
@@ -171,31 +170,7 @@ for key,commands,success in json.load(sys.stdin):
  out.append(any(c[0]=='kill-session' for c in calls))
 print(json.dumps(out))
 "#;
-    let result = run(&ProcSpec {
-        program: "python3".into(),
-        args: vec![
-            "-c".into(),
-            script.into(),
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../bin/cc-app").into(),
-        ],
-        stdin: Some(serde_json::to_vec(&cases).unwrap()),
-        env: vec![
-            ("HOME".into(), home.display().to_string().into()),
-            ("PATH".into(), "/usr/bin:/bin".into()),
-        ],
-        clear_env: true,
-        env_remove: vec![],
-        cwd: Some(home.clone()),
-        timeout: std::time::Duration::from_secs(5),
-    })
-    .unwrap();
-    assert_eq!(
-        result.code,
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&result.stderr)
-    );
-    let oracle: Value = serde_json::from_slice(&result.stdout).unwrap();
+    let oracle = inert_oracle::oracle("app-tab-close", script, "bin/cc-app", &cases, None);
     let actual: Vec<_> = cases
         .as_array()
         .unwrap()
@@ -209,5 +184,4 @@ print(json.dumps(out))
         })
         .collect();
     assert_eq!(json!(actual), oracle);
-    std::fs::remove_dir_all(home).unwrap();
 }
