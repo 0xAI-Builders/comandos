@@ -78,7 +78,7 @@ pub(crate) fn mode_lock(path: &Path) -> Result<FileLock> {
     Ok(FileLock::exclusive(&mode_lock_path(path))?)
 }
 const GUARD: &[u8] = b"comandos-state-protocol-2:sealed\n";
-fn guarded(path: &Path, name: &str) -> Result<bool> {
+pub(crate) fn guarded(path: &Path, name: &str) -> Result<bool> {
     let guard = seal_guard_path(path, name)?;
     match fs::symlink_metadata(&guard) {
         Ok(meta) if !meta.is_file() => Err(Error::Validation(format!(
@@ -171,6 +171,23 @@ pub fn set_mode(conn: &Connection, name: &str, mode: Mode, by: &str, now_ms: i64
         }
     }
     Ok(())
+}
+
+/// El migrador solo prepara legacy; nunca desella ni degrada una autoridad nueva.
+pub(crate) fn prepare_mirror(
+    home: &Path,
+    conn: &Connection,
+    name: &str,
+    now_ms: i64,
+) -> Result<Mode> {
+    let (mode, _lock) = access_mode(home, Some(conn), name)?;
+    if mode != Mode::Legacy {
+        return Ok(mode);
+    }
+    let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    conn.execute("INSERT INTO domain_modes(domain,mode,changed_at_ms,changed_by) VALUES(?1,'mirror',?2,'state migrate') ON CONFLICT(domain) DO UPDATE SET mode='mirror',changed_at_ms=excluded.changed_at_ms,changed_by=excluded.changed_by WHERE domain_modes.mode='legacy'", params![name,now_ms])?;
+    tx.commit()?;
+    Ok(Mode::Mirror)
 }
 
 fn validate_access(conn: &Connection) -> Result<()> {

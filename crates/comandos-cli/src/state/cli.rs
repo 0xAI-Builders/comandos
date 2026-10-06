@@ -188,35 +188,148 @@ fn hash(path: &Path) -> Result<String, std::io::Error> {
     }
     Ok(format!("{:x}", digest.finalize()))
 }
-pub fn main(args: &[String]) -> i32 {
-    if args.first().map(String::as_str) != Some("inventory") {
-        eprintln!("uso: comandos state inventory [--home DIR] [--json]");
-        return 2;
-    }
-    let mut home = std::env::var_os("HOME").map(PathBuf::from);
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--home" if i + 1 < args.len() => {
-                i += 1;
-                home = Some(args[i].clone().into());
-            }
-            "--json" => {}
-            _ => {
-                eprintln!("uso: comandos state inventory [--home DIR] [--json]");
-                return 2;
-            }
-        }
-        i += 1;
-    }
-    let Some(home) = home else {
-        eprintln!("HOME no definido");
-        return 2;
+struct Options {
+    home: PathBuf,
+    dry_run: bool,
+    resume: bool,
+    domains: Vec<String>,
+    proc_root: PathBuf,
+    repo: PathBuf,
+}
+fn parse(args: &[String]) -> Result<(&str, Options), String> {
+    let mut args = args.iter();
+    let command = args
+        .next()
+        .map(String::as_str)
+        .ok_or("falta operación state")?;
+    let mut opts = Options {
+        home: std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .ok_or("HOME no definido")?,
+        dry_run: false,
+        resume: false,
+        domains: vec![],
+        proc_root: PathBuf::from("/proc"),
+        repo: std::env::current_dir().map_err(|e| e.to_string())?,
     };
-    match inventory(&home) {
-        Ok(value) => {
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--home" => opts.home = args.next().ok_or("falta --home")?.into(),
+            "--json" => {}
+            "--dry-run" if command == "migrate" => opts.dry_run = true,
+            "--resume" if command == "migrate" => opts.resume = true,
+            "--domain" if matches!(command, "migrate" | "verify") => opts
+                .domains
+                .push(args.next().ok_or("falta --domain")?.clone()),
+            "--proc-root" if command == "status" => {
+                opts.proc_root = args.next().ok_or("falta --proc-root")?.into()
+            }
+            "--repo" if command == "status" => {
+                opts.repo = args.next().ok_or("falta --repo")?.into()
+            }
+            _ => return Err(format!("opción state inválida: {arg}")),
+        }
+    }
+    Ok((command, opts))
+}
+fn execute(command: &str, opts: &Options) -> Result<(Value, bool), String> {
+    use comandos_store::{migrate, unified};
+    let db = unified::unified_path(&opts.home);
+    match command {
+        "inventory" => {
+            let value = inventory(&opts.home)?;
+            let failed = value
+                .get("errors")
+                .and_then(Value::as_array)
+                .is_some_and(|e| !e.is_empty());
+            Ok((value, failed))
+        }
+        "migrate" => migrate::migrate(&migrate::MigrateOptions {
+            home: opts.home.clone(),
+            db,
+            dry_run: opts.dry_run,
+            resume: opts.resume,
+            domains: if opts.domains.is_empty() {
+                None
+            } else {
+                Some(opts.domains.clone())
+            },
+            now_ms: migrate::journal::now_ms().map_err(|e| e.to_string())?,
+        })
+        .map(|report| (report.json(), false))
+        .map_err(|e| e.to_string()),
+        "verify" => {
+            if !db.exists() {
+                return Err("verify requiere una base existente".into());
+            }
+            let conn = unified::open_unified(&db).map_err(|e| e.to_string())?;
+            let domains = if opts.domains.is_empty() {
+                comandos_store::domains::catalog::DOMAINS
+                    .iter()
+                    .filter(|d| !d.name.starts_with("db-"))
+                    .map(|d| d.name.to_owned())
+                    .collect()
+            } else {
+                opts.domains.clone()
+            };
+            let mut reports = vec![];
+            let mut failed = false;
+            for name in domains {
+                let report =
+                    migrate::verify(&opts.home, &conn, &name).map_err(|e| e.to_string())?;
+                migrate::journal::record_verify(
+                    &conn,
+                    &report,
+                    migrate::journal::now_ms().map_err(|e| e.to_string())?,
+                )
+                .map_err(|e| e.to_string())?;
+                failed |= !report.mismatches.is_empty();
+                reports.push(report.json());
+            }
+            Ok((json!(reports), failed))
+        }
+        "backups" => {
+            let value = migrate::backup::list(&opts.home).map_err(|e| e.to_string())?;
+            let failed = value.as_array().is_some_and(|entries| {
+                entries
+                    .iter()
+                    .any(|e| e.get("verified").and_then(Value::as_bool) != Some(true))
+            });
+            Ok((value, failed))
+        }
+        "status" => {
+            let mut value = migrate::journal::status(&opts.home, &db).map_err(|e| e.to_string())?;
+            if let Some(rows) = value.get_mut("domains").and_then(Value::as_array_mut) {
+                for row in rows {
+                    let domain = row
+                        .get("domain")
+                        .and_then(Value::as_str)
+                        .ok_or("status sin dominio")?;
+                    let writers = super::preflight::domain_writers(
+                        &opts.proc_root,
+                        &opts.home,
+                        &opts.repo,
+                        domain,
+                    );
+                    let writers=writers.iter().map(|w|json!({"pid":w.pid,"exe":w.exe,"argv":w.argv,"protocol":w.protocol,"python_repo":w.python_repo,"release":w.exe.parent()})).collect::<Vec<_>>();
+                    row.as_object_mut()
+                        .ok_or("status inválido")?
+                        .insert("writers".into(), json!(writers));
+                }
+            }
+            Ok((value, false))
+        }
+        _ => Err(
+            "uso: comandos state inventory|migrate|verify|status|backups [--home DIR] [--json]"
+                .into(),
+        ),
+    }
+}
+pub fn main(args: &[String]) -> i32 {
+    match parse(args).and_then(|(command, opts)| execute(command, &opts)) {
+        Ok((value, failed)) => {
             println!("{value}");
-            i32::from(value["errors"].as_array().is_some_and(|e| !e.is_empty()))
+            i32::from(failed)
         }
         Err(error) => {
             eprintln!("{error}");
