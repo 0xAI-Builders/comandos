@@ -160,7 +160,8 @@ fn copy(path: &Path, target: &Path, expected: &Identity) -> Result<[u8; 32]> {
         .mode(0o600)
         .open(target)?;
     let hash = transfer(path, Some(&mut out), expected)?;
-    out.sync_all()?;
+    // Snapshot privado efímero: write_all basta para la lectura inmediata;
+    // no se publica ni requiere sobrevivir a un crash.
     Ok(hash)
 }
 fn immutable_uri(path: &Path) -> Result<String> {
@@ -209,6 +210,8 @@ fn read_snapshot<T>(
         let walhash = copy(&walpath, &suffix(&staged, "-wal"), wal)?;
         source.check(path)?;
         let conn = Connection::open(&staged)?;
+        // Sólo la copia temporal: su recuperación/cierre no requiere durabilidad.
+        conn.pragma_update(None, "synchronous", "OFF")?;
         conn.pragma_update(None, "query_only", true)?;
         let value = body(&conn)?;
         // Comprobar bytes además de identidad después de interpretar el WAL.

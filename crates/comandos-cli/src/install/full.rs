@@ -4,7 +4,7 @@ use super::{
     platform::Platform,
     release,
 };
-use comandos_desktop::proc::{ProcSpec, run as process_run};
+use comandos_desktop::proc::{ProcOutput, ProcSpec, run as process_run};
 use std::{
     path::{Path, PathBuf},
     time::Duration,
@@ -70,12 +70,23 @@ pub fn run(args: &[String]) -> Result<i32, String> {
             home.display()
         ));
     }
+    let platform = Platform::current();
+    if platform == Platform::WslUbuntu && !super::wsl::prepare(&home, dry)? {
+        return Ok(0);
+    }
+    let explicit_source = source.is_some();
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let source = source.unwrap_or_else(|| exe.parent().unwrap_or(Path::new("/")).to_path_buf());
     if !source.is_absolute() {
         return Ok(2);
     }
     let source_binary = source.join("comandos");
+    if explicit_source && !source_binary.is_file() {
+        return Err(format!(
+            "release is missing a native executable: {}",
+            source_binary.display()
+        ));
+    }
     let candidate = if source_binary.is_file() {
         source_binary
     } else {
@@ -91,7 +102,35 @@ pub fn run(args: &[String]) -> Result<i32, String> {
     } else {
         release::stage_release(&home, &candidate, &web)?
     };
-    let mut actions = plan::plan(&home, Platform::current(), &source);
+    let proxy = super::proxy::prepare(&home, &source, dry)?;
+    let mut actions = plan::plan(&home, platform, &source);
+    if let Some(target) = proxy {
+        actions.retain(
+            |action| !matches!(action, Action::Link { name, .. } if name == "cc-model-proxy"),
+        );
+        actions.insert(
+            0,
+            Action::Link {
+                name: "cc-model-proxy".into(),
+                at: home.join(".local/bin/cc-model-proxy"),
+                target,
+            },
+        );
+    }
+    // Freeze separate payloads before switching any public alias. Removing the
+    // input release or source checkout cannot invalidate an installed daemon.
+    for action in &mut actions {
+        if let Action::Link { name, target, .. } = action {
+            let artifact = match name.as_str() {
+                "cc-notifyd" => Some("comandos-notifyd"),
+                "cc-model-proxy" => Some("cc-model-proxy"),
+                _ => None,
+            };
+            if let Some(artifact) = artifact {
+                *target = super::components::stage(&home, artifact, target, dry)?;
+            }
+        }
+    }
     // Stage and verify the GTK artifact using its existing reversible installer.
     if source.join("comandos-app").is_file() {
         let app = if dry {
@@ -123,7 +162,7 @@ pub fn run(args: &[String]) -> Result<i32, String> {
     }
     if extensions {
         if dry {
-            println!("dry-run: extensions import/sync and synchronization timer");
+            println!("dry-run: extensions import/sync");
         } else {
             let catalog = home.join(".config/comandos/extensions/catalog.json");
             if !catalog.exists() {
@@ -141,6 +180,7 @@ pub fn run(args: &[String]) -> Result<i32, String> {
                 Duration::from_secs(90),
             )?;
         }
+        super::extensions::apply(&home, platform, dry)?;
     }
     Ok(0)
 }
@@ -151,6 +191,25 @@ pub(super) fn command(
     args: Vec<String>,
     timeout: Duration,
 ) -> Result<(), String> {
+    let output = capture(home, program, args, timeout)?;
+    if output.timed_out || output.code != Some(0) {
+        return Err(format!(
+            "{} failed (exit {:?}, timed out {}): {}",
+            program.display(),
+            output.code,
+            output.timed_out,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn capture(
+    home: &Path,
+    program: &Path,
+    args: Vec<String>,
+    timeout: Duration,
+) -> Result<ProcOutput, String> {
     let output = process_run(&ProcSpec {
         program: program.to_str().ok_or("program path must be UTF-8")?.into(),
         args: args.into_iter().map(Into::into).collect(),
@@ -162,7 +221,7 @@ pub(super) fn command(
         timeout,
     })
     .map_err(|e| format!("{e:?}"))?;
-    if output.timed_out || output.code != Some(0) {
+    if output.timed_out {
         return Err(format!(
             "{} failed (exit {:?}, timed out {}): {}",
             program.display(),
@@ -171,7 +230,7 @@ pub(super) fn command(
             String::from_utf8_lossy(&output.stderr)
         ));
     }
-    Ok(())
+    Ok(output)
 }
 
 pub(super) fn external(action: &Action) -> Result<(), String> {
@@ -209,7 +268,7 @@ pub(super) fn external(action: &Action) -> Result<(), String> {
     }
 }
 
-fn find(name: &str) -> Option<PathBuf> {
+pub(super) fn find(name: &str) -> Option<PathBuf> {
     use std::os::unix::fs::PermissionsExt;
     std::env::var_os("PATH").and_then(|paths| {
         std::env::split_paths(&paths)

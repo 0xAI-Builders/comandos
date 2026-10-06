@@ -1,16 +1,20 @@
 //! Instalación en paralelo del binario: `--stage`, `--link` y `--rollback`, sin cutover implícito.
 pub mod assets;
 pub mod cleanup;
+pub mod components;
 pub mod darwin;
+pub mod extensions;
 pub mod full;
 pub mod guard;
 pub mod hooks_register;
 pub mod manifest;
 pub mod plan;
 pub mod platform;
+pub mod proxy;
 mod record;
 pub mod release;
 pub mod retarget;
+pub mod wsl;
 pub use manifest::STATE_PROTOCOL;
 
 use record::Record;
