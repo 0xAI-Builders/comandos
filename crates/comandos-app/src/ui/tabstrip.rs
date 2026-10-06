@@ -235,6 +235,11 @@ impl TabStripLayout {
         self.attach();
     }
     pub fn set_items(&self, items: Vec<(String, gtk::Widget)>) {
+        if self.0.items.borrow().as_slice() == items.as_slice() {
+            // Labels and available width can change without replacing widgets.
+            self.reflow();
+            return;
+        }
         let changed = self
             .0
             .items
