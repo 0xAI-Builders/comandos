@@ -77,6 +77,8 @@ fn atomic<T>(conn: &Connection, run: impl FnOnce() -> Result<T>) -> Result<T> {
         ));
     }
     let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    comandos_store::migrate::move_db::admit_write(conn)
+        .map_err(|e| Fault::Persistence(e.to_string()))?;
     let out = run()?;
     tx.commit()?;
     Ok(out)

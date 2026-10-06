@@ -1,6 +1,6 @@
 # Migración privada de fuentes de archivo
 
-S3 implementa respaldo, journal, relleno y consulta. No traslada ni respalda bases SQLite fuente; esa operación y la estimación de uso pertenecen a S4. `usage_move_estimate_ms` permanece nulo. El controlador conserva la ejecución sobre datos vivos y las puertas de publicación.
+S3 implementa respaldo, journal, relleno y consulta de archivos. Las bases SQLite fuente usan la operación separada S4, documentada en `/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-state-domains/docs/verification/state-sqlite-moves.md`; el ensayo ahora informa `usage_move_estimate_ms` cuando existe su fuente. El controlador conserva la ejecución sobre datos vivos y las puertas de publicación.
 
 Implementación: `/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-state-domains/crates/comandos-store/src/migrate/`. CLI: `/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-state-domains/crates/comandos-cli/src/state/cli.rs`. Fixtures privados: `/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-state-domains/crates/comandos-store/tests/migrate.rs` y `/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-state-domains/crates/comandos-cli/tests/state_cli.rs`.
 

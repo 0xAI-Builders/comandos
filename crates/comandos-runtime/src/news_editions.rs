@@ -92,6 +92,7 @@ pub fn schedule_editions(
         conn,
         TransactionBehavior::Immediate,
     ))?;
+    comandos_store::migrate::move_db::admit_write(conn).map_err(|e| e.to_string())?;
     let zone = zone(policy)?.to_string();
     for (slot, at) in slot_times(day, policy)? {
         if not_before.is_some_and(|n| at < n) {
@@ -136,6 +137,7 @@ pub fn reconcile(conn: &Connection, now: i64, p: &Policy) -> Result<()> {
         conn,
         TransactionBehavior::Immediate,
     ))?;
+    comandos_store::migrate::move_db::admit_write(conn).map_err(|e| e.to_string())?;
     for (query, state, error, note) in [
         (
             "SELECT edition_id FROM news_jobs WHERE state='running' AND lease_until_ms <= ?1",
@@ -177,6 +179,7 @@ pub fn requeue_orphans(conn: &Connection, now: i64, p: &Policy) -> Result<()> {
         conn,
         TransactionBehavior::Immediate,
     ))?;
+    comandos_store::migrate::move_db::admit_write(conn).map_err(|e| e.to_string())?;
     let rows = {
         let mut stmt=sql(tx.prepare("SELECT j.edition_id,e.scheduled_at_ms FROM news_jobs j JOIN news_editions e ON e.id=j.edition_id WHERE j.state='running'"))?;
         sql(stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))))?
@@ -205,6 +208,7 @@ pub fn claim_due_job(conn: &Connection, now: i64, p: &Policy) -> Result<Option<V
         conn,
         TransactionBehavior::Immediate,
     ))?;
+    comandos_store::migrate::move_db::admit_write(conn).map_err(|e| e.to_string())?;
     if sql(tx
         .query_row(
             "SELECT 1 FROM news_jobs WHERE state='running' AND lease_until_ms>? LIMIT 1",
@@ -405,6 +409,7 @@ pub fn recover_reading(conn: &Connection, now: i64) -> Result<()> {
         conn,
         TransactionBehavior::Immediate,
     ))?;
+    comandos_store::migrate::move_db::admit_write(conn).map_err(|e| e.to_string())?;
     sql(tx.execute("UPDATE news_chat SET state='failed',text='Se interrumpió (el servicio se reinició). Vuelve a preguntar.' WHERE state='pending'",[]))?;
     sql(tx.execute("UPDATE news_translations SET state='failed',error='interrumpida',updated_at_ms=? WHERE state='running'",[now]))?;
     sql(tx.commit())

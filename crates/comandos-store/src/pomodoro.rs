@@ -69,6 +69,9 @@ fn transaction<T>(conn: &Connection, read: bool, run: impl FnOnce() -> Result<T>
         rusqlite::TransactionBehavior::Immediate
     };
     let tx = rusqlite::Transaction::new_unchecked(conn, behavior)?;
+    if !read {
+        crate::migrate::move_db::admit_write(conn)?;
+    }
     let out = run()?;
     tx.commit()?;
     Ok(out)

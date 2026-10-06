@@ -205,6 +205,8 @@ pub fn claim(
     require_own_transaction(conn)?;
     let tx = rusqlite::Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
         .map_err(|e| sql(e, None))?;
+    comandos_store::migrate::move_db::admit_write(conn)
+        .map_err(|e| quick("database", e.to_string(), true, None))?;
     let row=conn.query_row("SELECT state,cwd,session,pane_key,lease_until FROM quick_terminal_requests WHERE request_id=?",[id],|r|{
         Ok((r.get::<_,String>(0)?,Terminal{cwd:r.get(1)?,session:r.get(2)?,pane:r.get(3)?},r.get::<_,f64>(4)?))
     }).optional().map_err(|e|sql(e,None))?;
@@ -257,6 +259,8 @@ pub fn finish(
     require_own_transaction(conn)?;
     let tx = rusqlite::Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
         .map_err(|e| sql(e, Some(cwd.into())))?;
+    comandos_store::migrate::move_db::admit_write(conn)
+        .map_err(|e| quick("database", e.to_string(), true, Some(cwd.into())))?;
     conn.execute(
         "UPDATE quick_terminal_requests SET state=?,error=?,updated_at=? WHERE request_id=?",
         params![state, error, clock(), id],

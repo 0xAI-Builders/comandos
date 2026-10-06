@@ -9,7 +9,10 @@
 //! UTF-8 es `Undecodable` (el Python falla al decodificar o al serializar: 500).
 use comandos_core::json::{python_eq, truthy, workspace_loads};
 use comandos_core::usage_state::{self, PyNum, UsageError};
-use rusqlite::{Connection, Row, ToSql, params, params_from_iter, types::ValueRef};
+use rusqlite::{
+    Connection, Row, ToSql, Transaction, TransactionBehavior, params, params_from_iter,
+    types::ValueRef,
+};
 use serde_json::{Map, Value};
 use std::collections::HashSet;
 
@@ -1544,7 +1547,8 @@ pub fn record_panes(conn: &Connection, panes: &[Object]) -> Result<usize> {
     if panes.is_empty() {
         return Ok(0);
     }
-    let tx = conn.unchecked_transaction()?;
+    let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    crate::migrate::move_db::admit_write(conn).map_err(|_| ReadError::Unsure)?;
     let recorded = panes
         .iter()
         .filter(|pane| record_pane(&tx, pane).is_ok())
@@ -1628,7 +1632,8 @@ pub fn record_quota_snapshots(conn: &Connection, rows: &[Value], now: i64) -> Re
         return Ok(0);
     }
     // `executemany` dentro de `with connect(...)`: una sola transacción.
-    let tx = conn.unchecked_transaction()?;
+    let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    crate::migrate::move_db::admit_write(conn).map_err(|_| ReadError::Unsure)?;
     let mut stmt = tx.prepare(
         "insert into usage_quota_snapshots (limit_id, provider, account, win, scope, resets_at, percent, captured_at) \
          values (?,?,?,?,?,?,?,?) on conflict(limit_id, resets_at) do update set \

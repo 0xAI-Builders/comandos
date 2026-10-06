@@ -88,7 +88,8 @@ impl StableSource {
 }
 struct Scratch(PathBuf);
 impl Scratch {
-    fn new(path: &Path) -> Result<Self> {
+    fn new_outside(path: &Path, home: Option<&Path>) -> Result<Self> {
+        let home = home.map(fs::canonicalize).transpose()?;
         let parent = fs::canonicalize(
             path.parent()
                 .filter(|p| !p.as_os_str().is_empty())
@@ -96,7 +97,8 @@ impl Scratch {
         )?;
         for root in [Path::new("/tmp"), Path::new("/var/tmp")] {
             let root = fs::canonicalize(root)?;
-            if root.starts_with(&parent) {
+            if root.starts_with(&parent) || home.as_ref().is_some_and(|home| root.starts_with(home))
+            {
                 continue;
             }
             for _ in 0..8 {
@@ -178,13 +180,18 @@ fn immutable_uri(path: &Path) -> Result<String> {
     uri.push_str("?immutable=1");
     Ok(uri)
 }
-fn inspect(path: &Path) -> Result<StableSource> {
+fn read_snapshot<T>(
+    path: &Path,
+    home: Option<&Path>,
+    private: bool,
+    body: impl FnOnce(&Connection) -> Result<T>,
+) -> Result<(StableSource, T)> {
     let source = StableSource::capture(path)?;
     let db = source
         .db
         .as_ref()
         .ok_or_else(|| Error::Validation("base ausente durante validación".into()))?;
-    if db.mode & 0o7777 != 0o600 || source.parent.mode & 0o7777 != 0o700 {
+    if private && (db.mode & 0o7777 != 0o600 || source.parent.mode & 0o7777 != 0o700) {
         return Err(Error::Validation(
             "SQLite sin privacidad 0600/0700 durante validación".into(),
         ));
@@ -194,20 +201,22 @@ fn inspect(path: &Path) -> Result<StableSource> {
             "journal activo: apertura requiere fuente estable".into(),
         ));
     }
-    if let Some(wal) = &source.wal {
-        let scratch = Scratch::new(path)?;
+    let value = if let Some(wal) = &source.wal {
+        let scratch = Scratch::new_outside(path, home)?;
         let staged = scratch.0.join("db.sqlite3");
         let dbhash = copy(path, &staged, db)?;
         let walpath = suffix(path, "-wal");
         let walhash = copy(&walpath, &suffix(&staged, "-wal"), wal)?;
         source.check(path)?;
         let conn = Connection::open(&staged)?;
-        validate(&conn)?;
+        conn.pragma_update(None, "query_only", true)?;
+        let value = body(&conn)?;
         // Comprobar bytes además de identidad después de interpretar el WAL.
         if transfer(path, None, db)? != dbhash || transfer(&walpath, None, wal)? != walhash {
             return Err(Error::Validation(CHANGED.into()));
         }
         source.check(path)?;
+        value
     } else {
         // Evita copiar una base grande en la apertura habitual sin WAL.
         // La URI se escapa byte a byte; '?' y '%' son nombres, no opciones.
@@ -215,10 +224,54 @@ fn inspect(path: &Path) -> Result<StableSource> {
             immutable_uri(path)?,
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
         )?;
-        validate(&conn)?;
+        let value = body(&conn)?;
         source.check(path)?;
+        value
+    };
+    Ok((source, value))
+}
+fn inspect(path: &Path) -> Result<StableSource> {
+    read_snapshot(path, None, true, validate).map(|(source, _)| source)
+}
+/// Snapshot de lectura sin crear DB, SHM ni candados en la fuente/HOME.
+/// Los callbacks sólo consultan SQLite; las escrituras están prohibidas.
+pub fn with_readonly_db<T>(
+    home: &Path,
+    path: &Path,
+    body: impl FnOnce(&Connection) -> Result<T>,
+) -> Result<T> {
+    if !home.is_absolute() || !path.is_absolute() {
+        return Err(Error::Validation(
+            "snapshot requiere rutas absolutas".into(),
+        ));
     }
-    Ok(source)
+    read_snapshot(path, Some(home), false, body).map(|(_, value)| value)
+}
+/// Aplica también privacidad, versión completa y guardias de la base única.
+pub fn with_readonly_unified<T>(
+    home: &Path,
+    path: &Path,
+    body: impl FnOnce(&Connection) -> Result<T>,
+) -> Result<T> {
+    if !home.is_absolute() || !path.is_absolute() {
+        return Err(Error::Validation(
+            "snapshot requiere rutas absolutas".into(),
+        ));
+    }
+    read_snapshot(path, Some(home), true, |conn| {
+        validate(conn)?;
+        for domain in crate::domains::catalog::DOMAINS {
+            if super::modes::guarded(path, domain.name)?
+                != (super::mode_of(Some(conn), domain.name)? == super::Mode::Sealed)
+            {
+                return Err(Error::Validation(
+                    "guardia y modo sin confirmar en snapshot".into(),
+                ));
+            }
+        }
+        body(conn)
+    })
+    .map(|(_, value)| value)
 }
 // La identidad puede cambiar por escritores SQLite que no toman nuestro
 // flock. Reintentar su snapshot, sin abrir la fuente, respeta esa concurrencia.
@@ -251,7 +304,7 @@ mod tests {
     use super::*;
     #[test]
     fn stable_source_rejects_replacement_and_new_wal() {
-        let scratch = Scratch::new(Path::new("/tmp/nonexistent-db")).unwrap();
+        let scratch = Scratch::new_outside(Path::new("/tmp/nonexistent-db"), None).unwrap();
         let path = scratch.0.join("db");
         fs::write(&path, b"source").unwrap();
         let stamp = StableSource::capture(&path).unwrap();

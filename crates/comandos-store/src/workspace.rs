@@ -148,10 +148,10 @@ impl<'a> WorkspaceStore<'a> {
         if !self.conn.is_autocommit() {
             return Err(Error::ActiveTransaction);
         }
-        Ok(Transaction::new_unchecked(
-            self.conn,
-            TransactionBehavior::Immediate,
-        )?)
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
+        crate::migrate::move_db::admit_write(self.conn)
+            .map_err(|e| Error::Invalid(e.to_string()))?;
+        Ok(tx)
     }
     /// `now_seconds` and request ids come from the caller; no clock is read here.
     /// Revision comparison follows Python, including integer/float/bool equality.

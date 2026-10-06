@@ -245,7 +245,8 @@ async fn set_focus_settings(
         .usage
         .with(move |u| -> rusqlite::Result<Saved> {
             usage::ensure_schema(&u.conn).map_err(store_sql)?;
-            let tx = u.conn.unchecked_transaction()?;
+            let tx = rusqlite::Transaction::new_unchecked(&u.conn, rusqlite::TransactionBehavior::Immediate)?;
+            comandos_store::migrate::move_db::admit_write(&u.conn).map_err(store_sql)?;
             for (key, text) in &pairs {
                 tx.execute(
                     "insert into focus_settings(key,value) values(?,?) on conflict(key) do update set value=excluded.value",

@@ -1,8 +1,6 @@
 //! Durable isolated operation journal; owner, clock and terminal effects belong to callers.
 use comandos_core::json::{dumps, response_dumps};
-use rusqlite::{
-    Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior, params,
-};
+use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -57,6 +55,8 @@ fn reject_transaction(conn: &Connection) -> Result<()> {
 fn atomic<T>(conn: &Connection, run: impl FnOnce(&Transaction<'_>) -> Result<T>) -> Result<T> {
     reject_transaction(conn)?;
     let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    comandos_store::migrate::move_db::admit_write(conn)
+        .map_err(|e| Error::Persistence(e.to_string()))?;
     let value = run(&tx)?;
     tx.commit()?;
     Ok(value)
@@ -97,6 +97,13 @@ fn truthy(value: &Value) -> bool {
 }
 /// Create/open only the separate journal, with private permissions, no application schema.
 pub fn open_journal(path: &Path) -> Result<Connection> {
+    if let comandos_store::migrate::DbLocation::Unified(path) =
+        comandos_store::migrate::resolve_configured(path)
+            .map_err(|e| Error::Persistence(e.to_string()))?
+    {
+        return comandos_store::unified::open_unified(&path)
+            .map_err(|e| Error::Persistence(e.to_string()));
+    }
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent)?;
     }
@@ -385,12 +392,40 @@ fn identity_key(identity: &Value) -> Option<String> {
 }
 /// Read confirmed project metadata without creating a missing file or running recovery.
 pub fn config_history(path: &Path, cwd: &str, pane_key: &str) -> Result<Value> {
+    let location = comandos_store::migrate::resolve_configured(path)
+        .map_err(|e| Error::Persistence(e.to_string()))?;
+    let is_unified = matches!(location, comandos_store::migrate::DbLocation::Unified(_));
+    let resolved = match location {
+        comandos_store::migrate::DbLocation::Legacy(p)
+        | comandos_store::migrate::DbLocation::Unified(p) => p,
+    };
+    if !resolved.exists() || cwd.is_empty() {
+        return Ok(
+            json!({"items":[],"previous":null,"scope":"project","provenance":"confirmed-operations"}),
+        );
+    }
+    let home = resolved
+        .parent()
+        .ok_or_else(|| Error::Persistence("ruta sin padre".into()))?;
+    let read = |db: &Connection| {
+        comandos_store::migrate::move_db::admit_write(db)?;
+        config_history_from(db, cwd, pane_key)
+            .map_err(|e| comandos_store::Error::Validation(e.to_string()))
+    };
+    if is_unified {
+        comandos_store::unified::with_readonly_unified(home, &resolved, read)
+    } else {
+        comandos_store::unified::with_readonly_db(home, &resolved, read)
+    }
+    .map_err(|e| Error::Persistence(e.to_string()))
+}
+fn config_history_from(db: &Connection, cwd: &str, pane_key: &str) -> Result<Value> {
     let mut response =
         json!({"items":[],"previous":null,"scope":"project","provenance":"confirmed-operations"});
-    if cwd.is_empty() || !path.is_file() {
+    if cwd.is_empty() {
         return Ok(response);
     }
-    let db = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+
     let mut statement=db.prepare("SELECT pane_key,request,snapshot,result,updated FROM session_operations WHERE state='confirmed' ORDER BY updated DESC,id ASC")?;
     let rows = statement.query_map([], |row| {
         Ok((

@@ -51,8 +51,29 @@ const FIELDS: &[&str] = &[
 ];
 
 fn schema(conn: &Connection) -> Result<()> {
+    crate::with_transaction(conn, || {
     conn.execute_batch("CREATE TABLE IF NOT EXISTS session_profiles (id TEXT PRIMARY KEY,name TEXT NOT NULL,payload TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL)")?;
     Ok(())
+    }).map_err(|e| Fault::Uncertain(e.to_string()))
+}
+fn admit_write(conn: &Connection) -> Result<()> {
+    crate::migrate::move_db::admit_write(conn).map_err(|e| Fault::Uncertain(e.to_string()))
+}
+fn in_write_tx<T>(conn: &Connection, run: impl FnOnce() -> Result<T>) -> Result<T> {
+    let tx = if conn.is_autocommit() {
+        Some(rusqlite::Transaction::new_unchecked(
+            conn,
+            rusqlite::TransactionBehavior::Immediate,
+        )?)
+    } else {
+        None
+    };
+    admit_write(conn)?;
+    let out = run()?;
+    if let Some(tx) = tx {
+        tx.commit()?;
+    }
+    Ok(out)
 }
 fn valid_id(s: &str) -> bool {
     !s.is_empty()
@@ -102,9 +123,11 @@ pub fn get_profile(conn: &Connection, ident: &Value) -> Result<Value> {
     load(&raw.ok_or_else(|| invalid("perfil no encontrado"))?)
 }
 pub fn delete_profile(conn: &Connection, ident: &Value) -> Result<()> {
-    schema(conn)?;
-    conn.execute("DELETE FROM session_profiles WHERE id=?", [id(ident)?])?;
-    Ok(())
+    in_write_tx(conn, || {
+        schema(conn)?;
+        conn.execute("DELETE FROM session_profiles WHERE id=?", [id(ident)?])?;
+        Ok(())
+    })
 }
 pub fn save_profile(conn: &Connection, data: &Value, now: i64) -> Result<Value> {
     let data = data
@@ -185,7 +208,6 @@ pub fn save_profile(conn: &Connection, data: &Value, now: i64) -> Result<Value> 
         };
         out.insert(key.into(), values.into());
     }
-    schema(conn)?;
     // Reservar escritura antes de leer created_at evita que dos guardados
     // iniciales concurrentes devuelvan un createdAt distinto al durable.
     let tx = if conn.is_autocommit() {
@@ -196,6 +218,8 @@ pub fn save_profile(conn: &Connection, data: &Value, now: i64) -> Result<Value> 
     } else {
         None
     };
+    admit_write(conn)?;
+    schema(conn)?;
     let previous: Option<i64> = conn
         .query_row(
             "SELECT created_at FROM session_profiles WHERE id=?",

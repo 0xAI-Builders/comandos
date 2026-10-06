@@ -780,6 +780,8 @@ fn in_write_tx<T>(
     body: impl FnOnce(&Connection) -> Result<T>,
 ) -> WriteResult<T> {
     let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    crate::migrate::move_db::admit_write(conn)
+        .map_err(|e| NewsError::Fault(Fault::Unsure(e.to_string())))?;
     let value = body(&tx).map_err(NewsError::AfterWrite)?;
     tx.commit()
         .map_err(|e| NewsError::AfterWrite(Fault::Sql(e)))?;
@@ -1074,11 +1076,13 @@ pub fn toggle_chat_note(conn: &Connection, chat_id: Option<i64>, now: i64) -> Wr
     let mut note = insert_note(conn, msg.story_id, input, now)?;
     let label = format!("{who}, guardada desde el chat.");
     let id = note.get("id").and_then(Value::as_i64);
-    // Fuera de la transacción, en modo autocommit, como el Python.
-    conn.execute(
-        "UPDATE news_notes SET text = ? WHERE id = ?",
-        params![label, id],
-    )
+    // A second durable transaction preserves the Python write order.
+    in_sql_write_tx(conn, || {
+        conn.execute(
+            "UPDATE news_notes SET text = ? WHERE id = ?",
+            params![label, id],
+        )
+    })
     .map_err(|e| NewsError::AfterWrite(Fault::Sql(e)))?;
     if let Some(obj) = note.as_object_mut() {
         obj.insert("text".into(), Value::String(label));
@@ -1219,6 +1223,17 @@ pub fn chat_turns(
     Ok(out)
 }
 
+// Keep the public rusqlite error contract used by late agent callbacks.
+fn in_sql_write_tx<T>(
+    conn: &Connection,
+    body: impl FnOnce() -> rusqlite::Result<T>,
+) -> rusqlite::Result<T> {
+    crate::with_transaction(conn, || Ok(body()?)).map_err(|error| match error {
+        crate::Error::Sql(error) => error,
+        _ => rusqlite::Error::InvalidQuery,
+    })
+}
+
 /// La respuesta del agente en la pendiente (`run_chat`, fuera de transacción).
 pub fn finish_chat(
     conn: &Connection,
@@ -1227,20 +1242,24 @@ pub fn finish_chat(
     cite: Option<&str>,
     model: &str,
 ) -> rusqlite::Result<()> {
-    conn.execute(
-        "UPDATE news_chat SET state = 'done', text = ?, cite = ?, model = ? WHERE id = ?",
-        params![text, cite, model, pending_id],
-    )?;
-    Ok(())
+    in_sql_write_tx(conn, || {
+        conn.execute(
+            "UPDATE news_chat SET state = 'done', text = ?, cite = ?, model = ? WHERE id = ?",
+            params![text, cite, model, pending_id],
+        )?;
+        Ok(())
+    })
 }
 
 /// El fallo escrito en la pendiente (`run_chat`).
 pub fn fail_chat(conn: &Connection, pending_id: i64, text: &str) -> rusqlite::Result<()> {
-    conn.execute(
-        "UPDATE news_chat SET state = 'failed', text = ? WHERE id = ?",
-        params![text, pending_id],
-    )?;
-    Ok(())
+    in_sql_write_tx(conn, || {
+        conn.execute(
+            "UPDATE news_chat SET state = 'failed', text = ? WHERE id = ?",
+            params![text, pending_id],
+        )?;
+        Ok(())
+    })
 }
 
 /// La traducción terminada (`run_translation`).
@@ -1253,12 +1272,14 @@ pub fn finish_translation(
     model: &str,
     now: i64,
 ) -> rusqlite::Result<()> {
-    conn.execute(
+    in_sql_write_tx(conn, || {
+        conn.execute(
         "UPDATE news_translations SET state = 'done', title = ?, blocks = ?, model = ?, error = NULL, \
          updated_at_ms = ? WHERE source_id = ? AND lang = ?",
         params![title, blocks, model, now, source_id, lang],
     )?;
-    Ok(())
+        Ok(())
+    })
 }
 
 /// El fallo de una traducción (`run_translation`).
@@ -1269,12 +1290,14 @@ pub fn fail_translation(
     error: &str,
     now: i64,
 ) -> rusqlite::Result<()> {
-    conn.execute(
-        "UPDATE news_translations SET state = 'failed', error = ?, updated_at_ms = ? \
+    in_sql_write_tx(conn, || {
+        conn.execute(
+            "UPDATE news_translations SET state = 'failed', error = ?, updated_at_ms = ? \
          WHERE source_id = ? AND lang = ?",
-        params![error, now, source_id, lang],
-    )?;
-    Ok(())
+            params![error, now, source_id, lang],
+        )?;
+        Ok(())
+    })
 }
 
 // ---------------------------------------------------------------- configuración
