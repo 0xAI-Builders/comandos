@@ -3,6 +3,7 @@ pub mod domains;
 pub mod files;
 pub mod intake;
 pub mod marks;
+pub mod migrate;
 pub mod news;
 pub mod session_profiles;
 #[path = "state_db/mod.rs"]

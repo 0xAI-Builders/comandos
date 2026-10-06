@@ -394,6 +394,9 @@ impl UnifiedControlFiles {
     pub fn database_path(&self) -> &std::path::Path {
         &self.db
     }
+    pub(crate) fn has_regular_identity(&self, device: u64, inode: u64) -> bool {
+        self.regular.contains(&(device, inode))
+    }
     pub fn is_control(&self, path: &std::path::Path) -> std::io::Result<bool> {
         use std::os::unix::fs::MetadataExt;
         let path = control_path_identity(path)?;
@@ -422,7 +425,7 @@ fn control_suffix(path: &std::path::Path, db: &std::path::Path) -> bool {
     tail.is_empty()
         || matches!(
             tail,
-            b"-wal" | b"-shm" | b"-journal" | b".domain-modes.lock"
+            b"-wal" | b"-shm" | b"-journal" | b".domain-modes.lock" | b".migration.lock"
         )
         || tail.starts_with(b".sealed-")
 }
