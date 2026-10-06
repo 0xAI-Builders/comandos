@@ -1,0 +1,24 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "clock_ms": 1791115200000,
+      "request": {
+        "method": "POST",
+        "target": "/snippets/update",
+        "extra": "",
+        "body": "{\"id\": \"0123456789abcdef\", \"name\": \" nuevo \", \"body\": \"b\", \"tags\": [\" k \"]}"
+      },
+      "effect_files": [
+        "snippets.json",
+        "snippets.json.lock",
+        "ui-events.jsonl",
+        "ui-events.jsonl.lock"
+      ]
+    },
+    "before_sha256": "cdffb0a00b0718b4273d06b4a13d91b1d52ce1467fc332fc31a7a141f75ce36d"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjoyMDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCIxMDdcIl1dLFwiYm9keVwiOlsxMjMsMzQsMTA1LDExNiwxMDEsMTA5LDM0LDU4LDMyLDEyMywzNCwxMDUsMTAwLDM0LDU4LDMyLDM0LDQ4LDQ5LDUwLDUxLDUyLDUzLDU0LDU1LDU2LDU3LDk3LDk4LDk5LDEwMCwxMDEsMTAyLDM0LDQ0LDMyLDM0LDExMCw5NywxMDksMTAxLDM0LDU4LDMyLDM0LDExMCwxMTcsMTAxLDExOCwxMTEsMzQsNDQsMzIsMzQsOTgsMTExLDEwMCwxMjEsMzQsNTgsMzIsMzQsOTgsMzQsNDQsMzIsMzQsMTE2LDk3LDEwMywxMTUsMzQsNTgsMzIsOTEsMzQsMTA3LDM0LDkzLDQ0LDMyLDM0LDExNywxMTIsMTAwLDk3LDExNiwxMDEsMTAwLDk1LDk3LDExNiwzNCw1OCwzMiw0OSw1NSw1Nyw0OSw0OSw0OSw1Myw1MCw0OCw0OCwxMjUsMTI1XX0iLCJ0cmVlIjp7InNuaXBwZXRzLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiVzNzaWFXUWlPaUFpTURFeU16UTFOamM0T1dGaVkyUmxaaUlzSUNKdVlXMWxJam9nSW01MVpYWnZJaXdnSW1KdlpIa2lPaUFpWWlJc0lDSjBZV2R6SWpvZ1d5SnJJbDBzSUNKMWNHUmhkR1ZrWDJGMElqb2dNVGM1TVRFeE5USXdNSDBzSUhzaWFXUWlPaUFpWVdGaFlXRmhZV0ZoWVdGaFlXRmhZU0lzSUNKdVlXMWxJam9nSW05MGNtOGlMQ0FpWW05a2VTSTZJQ0o1SWl3Z0luUmhaM01pT2lCYlhTd2dJblZ3WkdGMFpXUmZZWFFpT2lBemZTd2dleUpwWkNJNklDSXdNVEl6TkRVMk56ZzVZV0pqWkdWbUlpd2dJbTVoYldVaU9pQWliblZsZG04aUxDQWlZbTlrZVNJNklDSmlJaXdnSW5SaFozTWlPaUJiSW1zaVhTd2dJblZ3WkdGMFpXUmZZWFFpT2lBeE56a3hNVEUxTWpBd2ZWMD0ifSwic25pcHBldHMuanNvbi5sb2NrIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6Mzg0LCJib2R5X2I2NCI6IiJ9fX0="
+}

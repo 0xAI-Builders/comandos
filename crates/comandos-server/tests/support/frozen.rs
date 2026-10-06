@@ -20,6 +20,8 @@ pub fn reference(home: &Path) -> Result<PathBuf, String> {
             "bin/cc_usage.py",
             "lib",
             "config",
+            "dash/index.html",
+            "dash/term.html",
         ])
         .output()
         .map_err(|e| e.to_string())?;

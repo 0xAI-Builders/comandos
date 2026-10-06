@@ -1,0 +1,24 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "clock_ms": 1791115200000,
+      "request": {
+        "method": "GET",
+        "target": "/snippets",
+        "extra": "",
+        "body": ""
+      },
+      "effect_files": [
+        "snippets.json",
+        "snippets.json.lock",
+        "ui-events.jsonl",
+        "ui-events.jsonl.lock"
+      ]
+    },
+    "before_sha256": "e225f18c2767718f0d66960fcaa74952e4eeba615df12243493a24c942bd6dbe"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjo1MDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29ubmVjdGlvblwiLFwiY2xvc2VcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCIzOFwiXV0sXCJib2R5XCI6WzEyMywzNCwxMDEsMTE0LDExNCwxMTEsMTE0LDM0LDU4LDMyLDM0LDY5LDExNCwxMTQsMTExLDExNCwzMiwxMDUsMTEwLDExNiwxMDEsMTE0LDExMCwxMTEsMzIsMTAwLDEwMSwxMDgsMzIsMTE2LDk3LDk4LDEwOCwxMDEsMTE0LDExMSwzNCwxMjVdfSIsInRyZWUiOnsic25pcHBldHMuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJXM3NpYVdRaU9pQWlNREV5TXpRMU5qYzRPV0ZpWTJSbFppSXNJQ0p1WVcxbElqb2dJbUVpTENBaVltOWtlU0k2SUNKNElpd2dJblZ3WkdGMFpXUmZZWFFpT2lCSmJtWnBibWwwZVgxZCJ9LCJzbmlwcGV0cy5qc29uLmxvY2siOnsia2luZCI6ImZpbGUiLCJtb2RlIjozODQsImJvZHlfYjY0IjoiIn19fQ=="
+}

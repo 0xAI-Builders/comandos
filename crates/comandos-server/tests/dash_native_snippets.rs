@@ -4,8 +4,25 @@
 mod support;
 
 use serde_json::Value;
+use support::http_golden::FrozenHttp;
+
+async fn oracle(home: &TestHome) -> Option<FrozenHttp<'_>> {
+    Some(
+        FrozenHttp::new(
+            home,
+            "server-http-snippets",
+            &[
+                "snippets.json",
+                "snippets.json.lock",
+                "ui-events.jsonl",
+                "ui-events.jsonl.lock",
+            ],
+        )
+        .await,
+    )
+}
 use std::{fs, sync::Arc};
-use support::{FakeLegacy, TestHome, Wire, dead_port, front, get, oracle::oracle, request_body};
+use support::{FakeLegacy, TestHome, Wire, dead_port, front, get, request_body};
 
 const MESSY: &str = r#"[
   {"id": "0123456789abcdef", "name": " Saludo ", "body": "echo hola", "tags": ["a", " b "], "updated_at": 7.9},
@@ -37,7 +54,7 @@ async fn snippets_list_normalizes_like_python() {
         r#"[{"id": "0123456789abcdef", "name": " Saludo ", "body": "echo hola", "tags": ["a", " b "], "updated_at": 7}, {"id": "fedcba9876543210", "name": "None", "body": "True", "tags": [], "updated_at": 0}, {"id": "3333333333333333", "name": "\u00f1and\u00fa", "body": "y", "tags": [], "updated_at": 0}]"#
     );
     if let Some(py) = oracle(&home).await {
-        assert_eq!(seen(&get(py.port, "/snippets").await), seen(&wire));
+        assert_eq!(seen(&py.get("/snippets").await), seen(&wire));
     }
     front.stop().await;
 }
@@ -79,9 +96,10 @@ async fn snippets_crud_writes_python_bytes() {
         )
     );
     // Lo escrito por Rust lo lee igual el Python.
-    if let Some(py) = oracle(&home).await {
+    if let Some(mut py) = oracle(&home).await {
+        py.alias("<NEW_SNIPPET_ID>", &id);
         assert_eq!(
-            seen(&get(py.port, "/snippets").await),
+            seen(&py.get("/snippets").await),
             seen(&get(front.port, "/snippets").await)
         );
     }
@@ -138,7 +156,7 @@ async fn snippets_errors_match_python_oracle() {
     ];
     for (path, body) in &cases {
         assert_eq!(
-            seen(&request_body(py.port, "POST", path, "", body).await),
+            seen(&py.request("POST", path, "", body).await),
             seen(&request_body(front.port, "POST", path, "", body).await),
             "{path} {body}"
         );
@@ -252,7 +270,7 @@ async fn ui_log_errors_and_rotation_match_python_oracle() {
     let front = front(&rust_home, dead_port(), opts).await;
     let body = r#"{"events": [{"ts": 2000000001, "k": "a", "d": 1}]}"#;
     assert_eq!(
-        seen(&request_body(py.port, "POST", "/ui-log", "", body).await),
+        seen(&py.request("POST", "/ui-log", "", body).await),
         seen(&request_body(front.port, "POST", "/ui-log", "", body).await)
     );
     let rotated = fs::read_to_string(rust_home.hooks().join("ui-events.jsonl")).unwrap();
@@ -272,7 +290,7 @@ async fn ui_log_errors_and_rotation_match_python_oracle() {
         r#"{"events": [{"ts": [1]}]}"#,
     ] {
         assert_eq!(
-            seen(&request_body(py.port, "POST", "/ui-log", "", body).await),
+            seen(&py.request("POST", "/ui-log", "", body).await),
             seen(&request_body(front.port, "POST", "/ui-log", "", body).await),
             "{body}"
         );
@@ -331,7 +349,7 @@ async fn snippets_odd_rows_match_python_oracle() {
         r#"[{"id": "1234567890123456", "name": "num", "body": "x", "tags": [], "updated_at": 12}, {"id": "5555555555555555", "name": "z", "body": "x", "tags": [], "updated_at": 1}]"#
     );
     if let Some(py) = oracle(&home).await {
-        assert_eq!(seen(&get(py.port, "/snippets").await), seen(&wire));
+        assert_eq!(seen(&py.get("/snippets").await), seen(&wire));
         for broken in [
             r#"[{"id": "0123456789abcdef", "name": "a", "body": "x", "updated_at": "abc"}]"#,
             r#"[{"id": "0123456789abcdef", "name": "a", "body": "x", "updated_at": NaN}]"#,
@@ -340,15 +358,11 @@ async fn snippets_odd_rows_match_python_oracle() {
             home.write("snippets.json", broken);
             let wire = get(front.port, "/snippets").await;
             assert_eq!(wire.status, 500, "{broken}");
-            assert_eq!(
-                seen(&get(py.port, "/snippets").await),
-                seen(&wire),
-                "{broken}"
-            );
+            assert_eq!(seen(&py.get("/snippets").await), seen(&wire), "{broken}");
             // Bajo candado también: 500 y el archivo intacto.
             let body = r#"{"name": "a", "body": "b"}"#;
             assert_eq!(
-                seen(&request_body(py.port, "POST", "/snippets", "", body).await),
+                seen(&py.request("POST", "/snippets", "", body).await),
                 seen(&request_body(front.port, "POST", "/snippets", "", body).await),
                 "{broken}"
             );
@@ -408,7 +422,7 @@ async fn ui_log_conversions_match_python_oracle() {
     ];
     for body in &cases {
         assert_eq!(
-            seen(&request_body(py.port, "POST", "/ui-log", "", body).await),
+            seen(&py.request("POST", "/ui-log", "", body).await),
             seen(&request_body(front.port, "POST", "/ui-log", "", body).await),
             "{body}"
         );
@@ -448,7 +462,7 @@ async fn ui_log_rotation_aborts_like_python() {
         let front = front(&rust_home, dead_port(), opts).await;
         let body = r#"{"events": [{"ts": 2000000001, "k": "a"}]}"#;
         assert_eq!(
-            seen(&request_body(py.port, "POST", "/ui-log", "", body).await),
+            seen(&py.request("POST", "/ui-log", "", body).await),
             seen(&request_body(front.port, "POST", "/ui-log", "", body).await)
         );
         let rotated = fs::read_to_string(rust_home.hooks().join("ui-events.jsonl")).unwrap();
@@ -538,7 +552,7 @@ async fn snippets_non_scalar_id_is_400_like_python() {
     if let Some(py) = oracle(&home).await {
         for (path, body) in cases {
             assert_eq!(
-                seen(&request_body(py.port, "POST", path, "", body).await),
+                seen(&py.request("POST", path, "", body).await),
                 seen(&request_body(front.port, "POST", path, "", body).await),
                 "{path} {body}"
             );
@@ -617,7 +631,7 @@ async fn snippets_update_replaces_every_duplicate_id() {
         r#"[{"id": "0123456789abcdef", "name": "nuevo", "body": "b", "tags": ["k"], "updated_at": 1791115200}, {"id": "aaaaaaaaaaaaaaaa", "name": "otro", "body": "y", "tags": [], "updated_at": 3}, {"id": "0123456789abcdef", "name": "nuevo", "body": "b", "tags": ["k"], "updated_at": 1791115200}]"#
     );
     if let Some(py) = oracle(&python_home).await {
-        let a = request_body(py.port, "POST", "/snippets/update", "", body).await;
+        let a = py.request("POST", "/snippets/update", "", body).await;
         assert_eq!(
             (a.status, no_times(&a.text())),
             (wire.status, no_times(&wire.text()))

@@ -874,8 +874,21 @@ with open(os.path.join(_TWIN_HOME, ".comandos-twin-guard"), "w") as _twin_f:
 /// prólogo. Nunca hereda nada del proceso de pruebas.
 fn confined_python(home: &TestHome, script: &str, args: &[String], opts: &OracleOpts) -> Command {
     confined_fakebin(home, &opts.fakebin_extra);
-    let repo = std::fs::canonicalize(super::repo()).unwrap();
-    let python = real_program("python3").unwrap_or_else(|| PathBuf::from("/usr/bin/python3"));
+    let reference = opts
+        .extra_env
+        .iter()
+        .find(|(key, _)| key == "COMANDOS_ORACLE_REFERENCE_ROOT");
+    let repo = if let Some((_, reference)) = reference {
+        let reference = PathBuf::from(reference);
+        assert_eq!(reference, home.root.join(".oracle/reference"));
+        std::fs::canonicalize(reference).unwrap()
+    } else {
+        std::fs::canonicalize(super::repo()).unwrap()
+    };
+    let python = std::env::var_os("COMANDOS_SERVER_ORACLE_PYTHON")
+        .map(PathBuf::from)
+        .or_else(|| real_program("python3"))
+        .unwrap_or_else(|| PathBuf::from("/usr/bin/python3"));
     let mut command = Command::new(python);
     command
         .arg("-c")

@@ -1,0 +1,24 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "clock_ms": 1791115200000,
+      "request": {
+        "method": "POST",
+        "target": "/snippets",
+        "extra": "",
+        "body": "{\"name\": \"a\", \"body\": \"x\", \"tags\": [\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\",\"10\",\"11\"]}"
+      },
+      "effect_files": [
+        "snippets.json",
+        "snippets.json.lock",
+        "ui-events.jsonl",
+        "ui-events.jsonl.lock"
+      ]
+    },
+    "before_sha256": "649fdbb8ae12c7ee13896a7365001558893adb23117a718d8d3289ea778b5b28"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjo0MDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCIzN1wiXV0sXCJib2R5XCI6WzEyMywzNCwxMDEsMTE0LDExNCwxMTEsMTE0LDM0LDU4LDMyLDM0LDEwMCwxMDEsMTA5LDk3LDExNSwxMDUsOTcsMTAwLDExMSwxMTUsMzIsMTE2LDk3LDEwMywxMTUsMzIsNDAsMTA5LDk3LDEyMCwzMiw0OSw0OCw0MSwzNCwxMjVdfSIsInRyZWUiOnsic25pcHBldHMuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJXd29nSUhzaWFXUWlPaUFpTURFeU16UTFOamM0T1dGaVkyUmxaaUlzSUNKdVlXMWxJam9nSWlCVFlXeDFaRzhnSWl3Z0ltSnZaSGtpT2lBaVpXTm9ieUJvYjJ4aElpd2dJblJoWjNNaU9pQmJJbUVpTENBaUlHSWdJbDBzSUNKMWNHUmhkR1ZrWDJGMElqb2dOeTQ1ZlN3S0lDQjdJbWxrSWpvZ0lqQXhNak0wTlRZM09EbEJRa05FUlVZaUxDQWlibUZ0WlNJNklDSnRZWG5EdW5OamRXeGhjeUlzSUNKaWIyUjVJam9nSW5naWZTd0tJQ0I3SW1sa0lqb2dJbVpsWkdOaVlUazROelkxTkRNeU1UQWlMQ0FpYm1GdFpTSTZJRzUxYkd3c0lDSmliMlI1SWpvZ2RISjFaU3dnSW5SaFozTWlPaUJ1ZFd4c2ZTd0tJQ0I3SW1sa0lqb2dJakV4TVRFeE1URXhNVEV4TVRFeE1URWlMQ0FpYm1GdFpTSTZJQ0lpTENBaVltOWtlU0k2SUNKNEluMHNDaUFnZXlKcFpDSTZJQ0l5TWpJeU1qSXlNakl5TWpJeU1qSXlJaXdnSW01aGJXVWlPaUFpYjJzaUxDQWlZbTlrZVNJNklDSjRJaXdnSW5SaFozTWlPaUJiSWlJc0lDSjVJbDE5TEFvZ0lDSnVieTF2WW1wbGRHOGlMQW9nSUhzaWFXUWlPaUFpTXpNek16TXpNek16TXpNek16TXpNeUlzSUNKdVlXMWxJam9nSXNPeFlXNWt3N29pTENBaVltOWtlU0k2SUNKNUlpd2dJblJoWjNNaU9pQmJYWDBLWFE9PSJ9fX0="
+}

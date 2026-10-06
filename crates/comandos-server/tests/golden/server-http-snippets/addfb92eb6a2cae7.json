@@ -1,0 +1,24 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "clock_ms": 1791115200000,
+      "request": {
+        "method": "POST",
+        "target": "/snippets",
+        "extra": "",
+        "body": "{\"name\": \"a\", \"body\": \"x\", \"tags\": [\" \"]}"
+      },
+      "effect_files": [
+        "snippets.json",
+        "snippets.json.lock",
+        "ui-events.jsonl",
+        "ui-events.jsonl.lock"
+      ]
+    },
+    "before_sha256": "649fdbb8ae12c7ee13896a7365001558893adb23117a718d8d3289ea778b5b28"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjo0MDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCIyMlwiXV0sXCJib2R5XCI6WzEyMywzNCwxMDEsMTE0LDExNCwxMTEsMTE0LDM0LDU4LDMyLDM0LDExNiw5NywxMDMsMzIsMTE4LDk3LDk5LDEwNSwxMTEsMzQsMTI1XX0iLCJ0cmVlIjp7InNuaXBwZXRzLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiV3dvZ0lIc2lhV1FpT2lBaU1ERXlNelExTmpjNE9XRmlZMlJsWmlJc0lDSnVZVzFsSWpvZ0lpQlRZV3gxWkc4Z0lpd2dJbUp2WkhraU9pQWlaV05vYnlCb2IyeGhJaXdnSW5SaFozTWlPaUJiSW1FaUxDQWlJR0lnSWwwc0lDSjFjR1JoZEdWa1gyRjBJam9nTnk0NWZTd0tJQ0I3SW1sa0lqb2dJakF4TWpNME5UWTNPRGxCUWtORVJVWWlMQ0FpYm1GdFpTSTZJQ0p0WVhuRHVuTmpkV3hoY3lJc0lDSmliMlI1SWpvZ0luZ2lmU3dLSUNCN0ltbGtJam9nSW1abFpHTmlZVGs0TnpZMU5ETXlNVEFpTENBaWJtRnRaU0k2SUc1MWJHd3NJQ0ppYjJSNUlqb2dkSEoxWlN3Z0luUmhaM01pT2lCdWRXeHNmU3dLSUNCN0ltbGtJam9nSWpFeE1URXhNVEV4TVRFeE1URXhNVEVpTENBaWJtRnRaU0k2SUNJaUxDQWlZbTlrZVNJNklDSjRJbjBzQ2lBZ2V5SnBaQ0k2SUNJeU1qSXlNakl5TWpJeU1qSXlNakl5SWl3Z0ltNWhiV1VpT2lBaWIyc2lMQ0FpWW05a2VTSTZJQ0o0SWl3Z0luUmhaM01pT2lCYklpSXNJQ0o1SWwxOUxBb2dJQ0p1YnkxdlltcGxkRzhpTEFvZ0lIc2lhV1FpT2lBaU16TXpNek16TXpNek16TXpNek16TXlJc0lDSnVZVzFsSWpvZ0lzT3hZVzVrdzdvaUxDQWlZbTlrZVNJNklDSjVJaXdnSW5SaFozTWlPaUJiWFgwS1hRPT0ifX19"
+}
