@@ -4,8 +4,6 @@ use serde_json::Value;
 use std::{
     collections::HashMap,
     fs, io,
-    io::Write,
-    os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, OnceLock,
@@ -80,41 +78,7 @@ pub fn write_json_atomic(path: &Path, value: &Value) -> io::Result<()> {
 /// `write_file_atomic` (5063) con texto ya formado.
 /// Bloquea: llamar dentro de `spawn_blocking`.
 pub fn write_text_atomic(path: &Path, text: &str) -> io::Result<()> {
-    let dir = path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-    fs::create_dir_all(dir)?;
-    let mode = match fs::metadata(path) {
-        Ok(meta) => meta.permissions().mode() & 0o7777,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => 0o600,
-        Err(e) => return Err(e),
-    };
-    let name = path
-        .file_name()
-        .ok_or_else(|| io::Error::other("ruta sin nombre"))?
-        .to_string_lossy()
-        .into_owned();
-    let mut random = [0u8; 8];
-    getrandom::fill(&mut random).map_err(|e| io::Error::other(e.to_string()))?;
-    let suffix: String = random.iter().map(|b| format!("{b:02x}")).collect();
-    let tmp = dir.join(format!(".{name}.{suffix}.tmp"));
-    let result = (|| {
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        file.write_all(text.as_bytes())?;
-        file.flush()?;
-        file.sync_all()?;
-        fs::set_permissions(&tmp, fs::Permissions::from_mode(mode))?;
-        fs::rename(&tmp, path)
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&tmp);
-    }
-    result
+    comandos_store::files::write_atomic(path, text.as_bytes())
 }
 
 /// `file_lock` (5168): `flock` exclusivo sobre `<ruta>.lock` (creado 0600),
@@ -123,26 +87,21 @@ pub fn write_text_atomic(path: &Path, text: &str) -> io::Result<()> {
 /// nada); `acquire` espera como el Python. Se suelta al soltar el valor
 /// (cerrar el descriptor suelta el `flock`).
 pub struct FileLock {
-    _file: fs::File,
+    _guard: comandos_store::files::FileLock,
 }
 
 impl FileLock {
     pub fn try_acquire(path: &Path) -> io::Result<Option<FileLock>> {
-        let file = lock_file_for(path)?;
-        match file.try_lock() {
-            Ok(()) => Ok(Some(FileLock { _file: file })),
-            Err(fs::TryLockError::WouldBlock) => Ok(None),
-            Err(fs::TryLockError::Error(e)) => Err(e),
-        }
+        comandos_store::files::FileLock::try_exclusive(&lock_path_for(path))
+            .map(|guard| guard.map(|guard| FileLock { _guard: guard }))
     }
 
     /// `fcntl.flock(fd, LOCK_EX)` con espera: el `file_lock` del Python tal
     /// cual. Bloquea hasta que el otro dueño (Python, cc-app) lo suelte, sin
     /// plazo: solo para hilos propios. Las rutas usan `acquire_timeout`.
     pub fn acquire(path: &Path) -> io::Result<FileLock> {
-        let file = lock_file_for(path)?;
-        file.lock()?;
-        Ok(FileLock { _file: file })
+        comandos_store::files::FileLock::exclusive(&lock_path_for(path))
+            .map(|guard| FileLock { _guard: guard })
     }
 
     /// `acquire` desde el runtime, con plazo. Los que esperan la misma ruta
@@ -275,20 +234,10 @@ fn timed_out(path: &Path) -> io::Error {
 }
 
 /// `open(path + ".lock", "a+")` con 0600 si es nuevo (y su directorio).
-fn lock_file_for(path: &Path) -> io::Result<fs::File> {
+fn lock_path_for(path: &Path) -> PathBuf {
     let mut name = path.as_os_str().to_owned();
     name.push(".lock");
-    let lock = std::path::PathBuf::from(name);
-    if let Some(dir) = lock.parent().filter(|d| !d.as_os_str().is_empty()) {
-        fs::create_dir_all(dir)?;
-    }
-    fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .open(&lock)
+    PathBuf::from(name)
 }
 
 #[cfg(test)]
