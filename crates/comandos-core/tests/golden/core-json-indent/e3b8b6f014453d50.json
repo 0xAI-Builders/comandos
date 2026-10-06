@@ -1,0 +1,9 @@
+{
+  "input": {
+    "source": "CPython stdlib json",
+    "raw": "{\"hooks\": {\"Stop\": [{\"matcher\": \"\", \"hooks\": [{\"type\": \"command\", \"command\": \"x ñ\"}]}]}, \"n\": 1.0, \"e\": [], \"o\": {}, \"big\": 123456789012345678901234567890}",
+    "indent": 4,
+    "ascii": true
+  },
+  "output_b64": "ewogICAgImhvb2tzIjogewogICAgICAgICJTdG9wIjogWwogICAgICAgICAgICB7CiAgICAgICAgICAgICAgICAibWF0Y2hlciI6ICIiLAogICAgICAgICAgICAgICAgImhvb2tzIjogWwogICAgICAgICAgICAgICAgICAgIHsKICAgICAgICAgICAgICAgICAgICAgICAgInR5cGUiOiAiY29tbWFuZCIsCiAgICAgICAgICAgICAgICAgICAgICAgICJjb21tYW5kIjogInggXHUwMGYxIgogICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIF0KICAgICAgICAgICAgfQogICAgICAgIF0KICAgIH0sCiAgICAibiI6IDEuMCwKICAgICJlIjogW10sCiAgICAibyI6IHt9LAogICAgImJpZyI6IDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MAp9"
+}

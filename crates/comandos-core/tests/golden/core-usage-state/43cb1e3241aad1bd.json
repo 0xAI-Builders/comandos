@@ -1,0 +1,9 @@
+{
+  "input": {
+    "source_commit": "2674f36",
+    "source": "bin/cc_usage.py",
+    "script": "\nimport json, os, sys, datetime\nrepo = sys.argv[1]\nsys.path[:0] = [os.path.join(repo, \"bin\"), os.path.join(repo, \"lib\")]\nimport cc_usage\ncases = json.loads(sys.argv[2])\ndef guard(fn):\n    try:\n        return fn()\n    except OverflowError:\n        return \"ERR:Overflow\"\n    except (ValueError, TypeError):\n        return \"ERR:Raises\"\npath = os.path.join(os.getcwd(), \"usage.env\")\nopen(path, \"w\").write(cases[0])\nvalues = cc_usage._parse_env_file(path)\nprint(json.dumps([{k: v for k, v in values.items() if k.isascii()}]))",
+    "input": "[\"export A=1\\n# c\\nB = 'two' \\n C=\\\"3\\\"\\nD='x\\\"\\nnoeq\\n=v\\nE=a=b\\nexport  F = 4 \\nA=9\\r\\nG=\\u00e9\\nH\\u00e9=1\\n'\\nI=''\\nJ=\\\"\\nexport\\nK.L=1\\n\\u001cM=2\\u001c\\n\"]"
+  },
+  "output_b64": "W3siQSI6ICI5IiwgIkIiOiAidHdvIiwgIkMiOiAiMyIsICJEIjogIid4XCIiLCAiRSI6ICJhPWIiLCAiRiI6ICI0IiwgIkciOiAiXHUwMGU5IiwgIkkiOiAiIiwgIkoiOiAiXCIiLCAiTSI6ICIyIn1dCg=="
+}

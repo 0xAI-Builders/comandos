@@ -1,6 +1,6 @@
 //! `json::python_loads` contra `json.loads` del `python3` del sistema: el mismo
 //! «decodifica / mensaje de `JSONDecodeError`» para una lista escrita a mano y
-//! miles de textos casi-JSON generados (semilla fija). Sin `python3` se salta.
+//! miles de textos casi-JSON generados (semilla fija). Replay no ejecuta Python.
 use comandos_core::json::{PythonLoads, python_loads};
 use serde_json::Value;
 use std::{
@@ -22,26 +22,39 @@ for text in json.load(sys.stdin):
 print(json.dumps(out))
 "#;
 
-fn python(inputs: &[String]) -> Option<Vec<Value>> {
-    let mut child = Command::new("python3")
-        .args(["-c", ORACLE])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .ok()?;
-    let payload = serde_json::to_string(inputs).unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(payload.as_bytes())
-        .unwrap();
-    let out = child.wait_with_output().unwrap();
-    assert!(out.status.success());
-    serde_json::from_slice::<Value>(&out.stdout)
+fn python(inputs: &[String]) -> Vec<Value> {
+    let input = serde_json::json!({"script":ORACLE,"inputs":inputs});
+    let bytes = comandos_oracle::oracle_at(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "core-json-loads",
+        &input,
+        || {
+            let mut child = Command::new(
+                std::env::var_os("COMANDOS_CORE_ORACLE_PYTHON").unwrap_or_else(|| "python3".into()),
+            )
+            .args(["-c", ORACLE])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(serde_json::to_string(inputs).unwrap().as_bytes())
+                .map_err(|e| e.to_string())?;
+            let out = child.wait_with_output().map_err(|e| e.to_string())?;
+            if !out.status.success() {
+                return Err("CPython loads oracle failed".into());
+            }
+            Ok(out.stdout)
+        },
+    );
+    serde_json::from_slice::<Value>(&bytes)
         .unwrap()
         .as_array()
-        .cloned()
+        .unwrap()
+        .clone()
 }
 
 /// Generador congruencial: reproducible sin dependencias.
@@ -127,10 +140,8 @@ fn corpus() -> Vec<String> {
 #[test]
 fn messages_match_cpython() {
     let inputs = corpus();
-    let Some(expected) = python(&inputs) else {
-        eprintln!("python3 no está instalado: se salta");
-        return;
-    };
+    let expected = python(&inputs);
+    assert_eq!(inputs.len(), expected.len());
     let mut checked = 0;
     for (text, want) in inputs.iter().zip(&expected) {
         match python_loads(text) {

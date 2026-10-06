@@ -1,0 +1,9 @@
+{
+  "input": {
+    "source": "CPython stdlib json",
+    "raw": "{\"projects\": {\"/home/x/é\": {\"hasTrustDialogAccepted\": true}}, \"dup\": 1, \"dup\": 2}",
+    "indent": 2,
+    "ascii": true
+  },
+  "output_b64": "ewogICJwcm9qZWN0cyI6IHsKICAgICIvaG9tZS94L1x1MDBlOSI6IHsKICAgICAgImhhc1RydXN0RGlhbG9nQWNjZXB0ZWQiOiB0cnVlCiAgICB9CiAgfSwKICAiZHVwIjogMgp9"
+}

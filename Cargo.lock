@@ -457,6 +457,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "chrono-tz",
+ "comandos-oracle",
  "serde",
  "serde_json",
  "subtle",

@@ -1,0 +1,9 @@
+{
+  "input": {
+    "source_commit": "2674f36",
+    "source": "bin/cc_usage.py",
+    "script": "\nimport json, os, sys, datetime\nrepo = sys.argv[1]\nsys.path[:0] = [os.path.join(repo, \"bin\"), os.path.join(repo, \"lib\")]\nimport cc_usage\ncases = json.loads(sys.argv[2])\ndef guard(fn):\n    try:\n        return fn()\n    except OverflowError:\n        return \"ERR:Overflow\"\n    except (ValueError, TypeError):\n        return \"ERR:Raises\"\nprint(json.dumps([[guard(lambda: cc_usage._text(c)), guard(lambda: cc_usage._real_model(c))] for c in cases]))",
+    "input": "[null, \"x\", 1, 1.0, 0.1, 1e+16, 1e-05, -0.0, true, false, Infinity, NaN, 123456789012345678, \"\", \"  claude-fable-5  \", \"<synthetic>\", \"--model\", 5, \"\\u001c gpt \\u2028\", \"  \", 0, 2.5e-07, \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]"
+  },
+  "output_b64": "W1siIiwgIiJdLCBbIngiLCAieCJdLCBbIjEiLCAiMSJdLCBbIjEuMCIsICIxLjAiXSwgWyIwLjEiLCAiMC4xIl0sIFsiMWUrMTYiLCAiMWUrMTYiXSwgWyIxZS0wNSIsICIxZS0wNSJdLCBbIi0wLjAiLCAiIl0sIFsiVHJ1ZSIsICJUcnVlIl0sIFsiRmFsc2UiLCAiIl0sIFsiaW5mIiwgImluZiJdLCBbIm5hbiIsICJuYW4iXSwgWyIxMjM0NTY3ODkwMTIzNDU2NzgiLCAiMTIzNDU2Nzg5MDEyMzQ1Njc4Il0sIFsiIiwgIiJdLCBbIiAgY2xhdWRlLWZhYmxlLTUgICIsICJjbGF1ZGUtZmFibGUtNSJdLCBbIjxzeW50aGV0aWM+IiwgIiJdLCBbIi0tbW9kZWwiLCAiIl0sIFsiNSIsICI1Il0sIFsiXHUwMDFjIGdwdCBcdTIwMjgiLCAiZ3B0Il0sIFsiICAiLCAiIl0sIFsiMCIsICIiXSwgWyIyLjVlLTA3IiwgIjIuNWUtMDciXSwgWyJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYSIsICJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEiXV0K"
+}

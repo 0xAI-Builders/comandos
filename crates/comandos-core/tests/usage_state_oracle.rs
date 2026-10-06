@@ -34,49 +34,58 @@ fn repo() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// `python3 -c <guion> <repo> <entrada>` con un HOME temporal; `None` sin python3.
+/// Default replay is frozen; explicit record/check uses an isolated HOME.
 /// `cc_usage` es solo biblioteca estándar y no lanza procesos al importarse.
-fn run_python(script: &str, input: &str) -> Option<String> {
-    let available = Command::new("python3")
-        .args(["-c", "import sys"])
-        .output()
-        .is_ok_and(|o| o.status.success());
-    if !available {
-        eprintln!("python3 no está instalado: se salta la comparación con el oráculo");
-        return None;
-    }
-    // Un HOME propio por llamada: las pruebas corren en paralelo en el mismo proceso.
-    static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let call = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let home = std::env::temp_dir().join(format!("cmd-usage-state-{}-{call}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&home);
-    std::fs::create_dir_all(&home).unwrap();
-    let mut command = Command::new("python3");
-    command
-        .arg("-c")
-        .arg(script)
-        .arg(repo())
-        .arg(input)
-        .current_dir(&home)
-        .env("HOME", &home)
-        .env("TZ", "America/Mexico_City")
-        .env("LANG", "C.UTF-8")
-        .env_remove("LC_ALL")
-        .env_remove("LC_CTYPE")
-        .env("PYTHONDONTWRITEBYTECODE", "1")
-        .env("XDG_RUNTIME_DIR", home.join("xdg-runtime"))
-        .env_remove("TMUX");
-    for key in D7_KEYS {
-        command.env_remove(key);
-    }
-    let out = command.output().unwrap();
-    let _ = std::fs::remove_dir_all(&home);
-    assert!(
-        out.status.success(),
-        "oráculo: {}",
-        String::from_utf8_lossy(&out.stderr)
+fn run_python(script: &str, input: &str) -> String {
+    let golden_input =
+        json!({"source_commit":"2674f36","source":"bin/cc_usage.py","script":script,"input":input});
+    let bytes = comandos_oracle::oracle_at(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "core-usage-state",
+        &golden_input,
+        || {
+            // Un HOME propio por llamada: las pruebas corren en paralelo en el mismo proceso.
+            static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let call = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let home =
+                std::env::temp_dir().join(format!("cmd-usage-state-{}-{call}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&home);
+            std::fs::create_dir_all(&home).unwrap();
+            let mut command = Command::new(
+                std::env::var_os("COMANDOS_CORE_ORACLE_PYTHON").unwrap_or_else(|| "python3".into()),
+            );
+            command
+                .arg("-c")
+                .arg(script)
+                .arg(
+                    std::env::var_os("COMANDOS_CORE_ORACLE_REPO")
+                        .map(std::path::PathBuf::from)
+                        .unwrap_or_else(repo),
+                )
+                .arg(input)
+                .current_dir(&home)
+                .env("HOME", &home)
+                .env("TZ", "America/Mexico_City")
+                .env("LANG", "C.UTF-8")
+                .env_remove("LC_ALL")
+                .env_remove("LC_CTYPE")
+                .env("PYTHONDONTWRITEBYTECODE", "1")
+                .env("XDG_RUNTIME_DIR", home.join("xdg-runtime"))
+                .env_remove("TMUX");
+            for key in D7_KEYS {
+                command.env_remove(key);
+            }
+            let out = command.output().unwrap();
+            let _ = std::fs::remove_dir_all(&home);
+            assert!(
+                out.status.success(),
+                "oráculo: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            Ok(out.stdout)
+        },
     );
-    Some(String::from_utf8(out.stdout).unwrap())
+    String::from_utf8(bytes).unwrap()
 }
 
 const PRELUDE: &str = r#"
@@ -109,9 +118,7 @@ fn err(e: UsageError) -> Option<Value> {
 /// Compara con el oráculo los casos que el Rust no declina (`Unsure`).
 fn compare(script: &str, cases: &Value, rust: impl Fn(&Value) -> Option<Value>) {
     let input = response_dumps(cases).unwrap();
-    let Some(out) = run_python(&format!("{PRELUDE}{script}"), &input) else {
-        return;
-    };
+    let out = run_python(&format!("{PRELUDE}{script}"), &input);
     let expected = workspace_loads(out.trim_end()).unwrap();
     let (Some(cases), Some(expected)) = (cases.as_array(), expected.as_array()) else {
         panic!("oráculo sin lista");
