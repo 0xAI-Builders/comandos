@@ -10,7 +10,7 @@ use std::fs::{self, DirBuilder, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 mod migrations;
-pub use migrations::MIGRATIONS;
+pub use migrations::{MIGRATIONS, UNIFIED_MIGRATIONS};
 
 #[derive(Clone, Copy)]
 pub struct Migration {

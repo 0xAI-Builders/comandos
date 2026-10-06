@@ -6,6 +6,7 @@ pub mod news;
 pub mod session_profiles;
 #[path = "state_db/mod.rs"]
 pub mod state;
+pub mod unified;
 use comandos_core::event;
 use rusqlite::{
     Connection, OptionalExtension, Row, params, params_from_iter,
