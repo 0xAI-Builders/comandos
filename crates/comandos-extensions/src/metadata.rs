@@ -272,20 +272,30 @@ pub async fn record_mcp_size_with_clock<F, Fut, C>(
     else {
         return;
     };
-    let lock = if access.mode() == comandos_store::unified::Mode::Sealed {
-        None
+    let lock_path = if access.mode() == comandos_store::unified::Mode::Sealed {
+        // Mantener la exclusión por recurso sin recrear el árbol legado.
+        // La ruta de la conexión también respeta una base de datos reubicada.
+        let (Some(db_path), Some(resource)) = (
+            access.db().and_then(|db| db.path()),
+            path.file_stem().and_then(|name| name.to_str()),
+        ) else {
+            return;
+        };
+        let mut name = std::ffi::OsString::from(db_path);
+        name.push(format!(".extensions-size-{resource}.lock"));
+        std::path::PathBuf::from(name)
     } else {
         if private_dir(dir).is_err() {
             return;
         }
-        let Ok(lock) = lock_file(&path.with_extension("json.lock")) else {
-            return;
-        };
-        if !acquire_lock(&lock, tokio::time::Instant::now() + Duration::from_secs(8)).await {
-            return;
-        }
-        Some(lock)
+        path.with_extension("json.lock")
     };
+    let Ok(lock) = lock_file(&lock_path) else {
+        return;
+    };
+    if !acquire_lock(&lock, tokio::time::Instant::now() + Duration::from_secs(8)).await {
+        return;
+    }
     let Some((_, doc_name)) = crate::config::state_document(&path) else {
         return;
     };

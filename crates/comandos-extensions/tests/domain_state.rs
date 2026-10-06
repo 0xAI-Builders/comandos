@@ -78,7 +78,11 @@ async fn extension_sizes_round_trip_every_mode() {
             metadata::record_mcp_size(&home, "one", &spec, &tools, now, &counter),
             metadata::record_mcp_size(&home, "one", &spec, &tools, now, &counter)
         );
-        assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+        assert_eq!(
+            calls.load(std::sync::atomic::Ordering::Relaxed),
+            1,
+            "mode={mode:?}"
+        );
         assert_eq!(metadata::mcp_size(&home, "one", &spec, now)["tokens"], 42);
         assert_eq!(path.exists(), mode != Mode::Sealed);
         if mode != Mode::Legacy {
