@@ -153,7 +153,7 @@ impl App {
             env!("CARGO_MANIFEST_DIR"),
             "/../../config/themes.json"
         ))));
-        if let Some(theme) = crate::theme::desktop_theme("bruno", &themes)
+        if let Some(theme) = crate::theme::desktop_theme(crate::theme::DEFAULT_THEME, &themes)
             && self
                 .theme_provider
                 .load_from_data(crate::theme::theme_css(&theme).as_bytes())
@@ -859,7 +859,7 @@ impl App {
                     .borrow()
                     .get("theme")
                     .and_then(Value::as_str)
-                    .unwrap_or("bruno"),
+                    .unwrap_or(crate::theme::DEFAULT_THEME),
                 &crate::theme::themes_from_file(Some(include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
                     "/../../config/themes.json"
@@ -1232,7 +1232,7 @@ impl App {
                         value
                             .get("theme")
                             .and_then(Value::as_str)
-                            .unwrap_or("bruno"),
+                            .unwrap_or(crate::theme::DEFAULT_THEME),
                         &themes,
                     );
                     if let Some(theme) = theme.as_ref() {

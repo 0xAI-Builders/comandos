@@ -120,3 +120,54 @@ print(json.dumps(out))
         .collect();
     assert_eq!(json!(actual), oracle);
 }
+
+#[test]
+fn cold_start_theme_matches_original_when_preferences_are_unavailable() {
+    use comandos_app::proc::{ProcSpec, run};
+    let script = r#"import ast,sys
+nodes=ast.parse(open(sys.argv[1]).read()).body
+node=next(n for n in nodes if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='THEME' for t in n.targets))
+scope={'PREFS':{},'THEMES':{'noche':'noche','bruno':'bruno'}}
+exec(compile(ast.Module(body=[node],type_ignores=[]),sys.argv[1],'exec'),scope)
+print(scope['THEME'])
+"#;
+    let env = [
+        "HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_CACHE_HOME",
+        "XDG_STATE_HOME",
+        "XDG_RUNTIME_DIR",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+    ]
+    .into_iter()
+    .map(|key| {
+        (
+            key.into(),
+            std::env::var_os(key).expect("private oracle environment"),
+        )
+    })
+    .collect();
+    let oracle = run(&ProcSpec {
+        program: "/usr/bin/python3".into(),
+        args: vec![
+            "-c".into(),
+            script.into(),
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../bin/cc-app").into(),
+        ],
+        stdin: None,
+        env,
+        clear_env: true,
+        env_remove: vec![],
+        cwd: None,
+        timeout: std::time::Duration::from_secs(5),
+    })
+    .unwrap();
+    assert_eq!(oracle.code, Some(0));
+    assert_eq!(
+        comandos_app::theme::DEFAULT_THEME,
+        std::str::from_utf8(&oracle.stdout).unwrap().trim()
+    );
+}
