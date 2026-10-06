@@ -388,6 +388,9 @@ mod group_tests {
         sync::atomic::{AtomicBool, AtomicUsize, Ordering},
         time::{Duration, Instant},
     };
+    fn shell_path(path: &std::path::Path) -> String {
+        format!("'{}'", path.to_str().unwrap().replace('\'', "'\"'\"'"))
+    }
     struct Fixture(PathBuf);
     impl Fixture {
         fn new() -> Self {
@@ -403,7 +406,7 @@ mod group_tests {
         }
         fn tools(&self, body: &str) -> NativeTools {
             let path = self.0.join("ps-fake");
-            fs::write(&path, format!("#!/usr/bin/python3\n{body}\n")).unwrap();
+            fs::write(&path, format!("#!/bin/sh\nset -eu\n{body}\n")).unwrap();
             fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
             NativeTools {
                 ps: path.clone(),
@@ -483,7 +486,7 @@ mod group_tests {
     fn owned_group_query_is_directed_strict_and_leader_remains_unreaped() {
         let f = Fixture::new();
         let child = Owned::exited();
-        let tools = f.tools("import sys,os\nassert sys.argv[1]=='-g' and sys.argv[3:]==['-o','pid=,pgid=,stat=']\nassert os.environ['COMMAND_MODE']=='unix2003'\nprint(sys.argv[2],sys.argv[2],'Z')");
+        let tools = f.tools("[ \"$#\" -eq 4 ] && [ \"$1\" = -g ] && [ \"$3\" = -o ] && [ \"$4\" = 'pid=,pgid=,stat=' ]\n[ \"${COMMAND_MODE-}\" = unix2003 ]\nprintf '%s %s Z\\n' \"$2\" \"$2\"");
         let cancel = AtomicBool::new(false);
         let proof =
             inspect_exited_group(&child.0, &tools, Duration::from_secs(2), &cancel).unwrap();
@@ -500,12 +503,12 @@ mod group_tests {
         );
         assert!(super::super::child_exited_unreaped(&child.0).unwrap());
         for body in [
-            "import sys\nprint(sys.argv[2],sys.argv[2],'Z');sys.exit(1)",
-            "import sys\nprint(sys.argv[2],sys.argv[2],'Z')\nprint('999',sys.argv[2],'S')",
-            "import sys\nprint(sys.argv[2],sys.argv[2],'Z')\nprint('partial')",
-            "import sys\nprint(sys.argv[2],sys.argv[2],'Z',end='')",
-            "pass",
-            "import os\nos.write(1,b'\\xff\\n')",
+            "printf '%s %s Z\\n' \"$2\" \"$2\"; exit 1",
+            "printf '%s %s Z\\n999 %s S\\n' \"$2\" \"$2\" \"$2\"",
+            "printf '%s %s Z\\npartial\\n' \"$2\" \"$2\"",
+            "printf '%s %s Z' \"$2\" \"$2\"",
+            "true",
+            "printf '\\377\\n'",
         ] {
             let tools = f.tools(body);
             assert!(
@@ -521,19 +524,13 @@ mod group_tests {
         let child = Owned::exited();
         let cancel = AtomicBool::new(true);
         let marker = f.0.join("unexpected-query");
-        let tools = f.tools(&format!(
-            "open({:?},'w').write('query')",
-            marker.to_str().unwrap()
-        ));
+        let tools = f.tools(&format!("printf query > {}", shell_path(&marker)));
         assert!(!inspect_exited_group(&child.0, &tools, Duration::from_secs(2), &cancel).unwrap());
         assert!(!marker.exists());
         cancel.store(false, Ordering::Release);
         assert!(!inspect_exited_group(&child.0, &tools, Duration::ZERO, &cancel).unwrap());
         assert!(!marker.exists());
-        let tools = f.tools(&format!(
-            "import time\nopen({:?},'w').write('query')\ntime.sleep(30)",
-            marker.to_str().unwrap()
-        ));
+        let tools = f.tools(&format!("printf query > {}; sleep 30", shell_path(&marker)));
         let begin = Instant::now();
         std::thread::scope(|scope| {
             scope.spawn(|| {
@@ -550,15 +547,16 @@ mod group_tests {
         assert!(marker.exists());
         assert!(begin.elapsed() < Duration::from_secs(3));
         cancel.store(false, Ordering::Release);
-        let tools = f.tools(
-            "import sys,time\nprint(sys.argv[2],sys.argv[2],'Z',flush=True)\ntime.sleep(30)",
-        );
+        let tools = f.tools("printf '%s %s Z\\n' \"$2\" \"$2\"; sleep 30");
         let begin = Instant::now();
         assert!(
             !inspect_exited_group(&child.0, &tools, Duration::from_millis(40), &cancel).unwrap()
         );
         assert!(begin.elapsed() < Duration::from_secs(2));
-        let tools = f.tools("import os\nwhile True:os.write(1,b'x'*65536)");
+        let tools = f.tools(&format!(
+            "while :; do printf '%s' '{}'; done",
+            "x".repeat(65536)
+        ));
         let begin = Instant::now();
         assert!(!inspect_exited_group(&child.0, &tools, Duration::from_secs(5), &cancel).unwrap());
         assert!(begin.elapsed() < Duration::from_secs(3));
@@ -567,7 +565,7 @@ mod group_tests {
     #[test]
     fn public_tools_still_return_partial_nonzero_stdout_with_status_retained() {
         let f = Fixture::new();
-        let tools = f.tools("import sys\nprint('partial',flush=True)\nsys.exit(1)");
+        let tools = f.tools("printf 'partial\\n'; exit 1");
         let output = tools
             .output("ps", &[], Duration::from_secs(2), None, None)
             .unwrap();
@@ -583,10 +581,7 @@ mod group_tests {
     fn alive_reaped_and_nonleader_children_never_authorize_cleanup() {
         let f = Fixture::new();
         let marker = f.0.join("unexpected-query");
-        let tools = f.tools(&format!(
-            "open({:?},'w').write('query')",
-            marker.to_str().unwrap()
-        ));
+        let tools = f.tools(&format!("printf query > {}", shell_path(&marker)));
         let cancel = AtomicBool::new(false);
         let alive = Owned(
             Command::new("/bin/sleep")
@@ -608,7 +603,7 @@ mod group_tests {
         }
         let inherited_pid = inherited.id();
         let actual_group = nix::unistd::getpgrp().as_raw();
-        let tools = f.tools(&format!("import sys\nassert sys.argv[1:]==['-g','{inherited_pid}','-o','pid=,pgid=,stat=']\nprint('{inherited_pid} {actual_group} Z')"));
+        let tools = f.tools(&format!("[ \"$#\" -eq 4 ] && [ \"$1\" = -g ] && [ \"$2\" = '{inherited_pid}' ] && [ \"$3\" = -o ] && [ \"$4\" = 'pid=,pgid=,stat=' ]\nprintf '{inherited_pid} {actual_group} Z\\n'"));
         let proof = inspect_exited_group(&inherited, &tools, Duration::from_secs(2), &cancel);
         inherited.wait().unwrap();
         assert!(!proof.unwrap());
@@ -626,11 +621,9 @@ mod group_tests {
         );
         let f = Fixture::new();
         let leaf = f.0.join("leaf-ready");
-        let descendant = format!(
-            "import pathlib,time;pathlib.Path({:?}).write_text('ready');time.sleep(30)",
-            leaf.to_str().unwrap()
-        );
-        let tools = f.tools(&format!("import subprocess,sys,time,pathlib\nsubprocess.Popen([sys.executable,'-c',{:?}],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)\nwhile not pathlib.Path({:?}).exists():time.sleep(.002)",descendant,leaf.to_str().unwrap()));
+        let descendant = format!("printf ready > {}; exec sleep 30", shell_path(&leaf));
+        let quoted = format!("'{}'", descendant.replace('\'', "'\"'\"'"));
+        let tools = f.tools(&format!("/bin/sh -c {quoted} </dev/null >/dev/null 2>&1 &\nwhile [ ! -f {} ]; do sleep .002; done",shell_path(&leaf)));
         let owned = Owned(Command::new(&tools.ps).process_group(0).spawn().unwrap());
         let end = Instant::now() + Duration::from_secs(2);
         while !super::super::child_exited_unreaped(&owned.0).unwrap() {
