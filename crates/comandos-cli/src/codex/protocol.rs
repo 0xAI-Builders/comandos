@@ -5,10 +5,7 @@ use super::{
 };
 use nix::{
     fcntl::{FcntlArg, OFlag, fcntl},
-    sys::{
-        signal::{Signal, killpg},
-        wait::{Id, WaitPidFlag, WaitStatus, waitid},
-    },
+    sys::signal::{Signal, killpg},
     unistd::Pid,
 };
 use serde_json::{Value, json};
@@ -56,11 +53,8 @@ impl Drop for Control {
         let end = Instant::now() + Duration::from_millis(100);
         while Instant::now() < end
             && matches!(
-                waitid(
-                    Id::Pid(pid),
-                    WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT
-                ),
-                Ok(WaitStatus::StillAlive)
+                comandos_runtime::procs::child_exited_unreaped(&self.child),
+                Ok(false)
             )
         {
             std::thread::sleep(Duration::from_millis(2));
@@ -112,15 +106,7 @@ impl Control {
         Ok(c)
     }
     fn alive(&self) -> bool {
-        i32::try_from(self.child.id()).is_ok_and(|id| {
-            matches!(
-                waitid(
-                    Id::Pid(Pid::from_raw(id)),
-                    WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT
-                ),
-                Ok(WaitStatus::StillAlive)
-            )
-        })
+        comandos_runtime::procs::child_exited_unreaped(&self.child).is_ok_and(|exited| !exited)
     }
     fn guard(&self, end: Instant, method: &str) -> Result<()> {
         if self.cancel.load(Ordering::SeqCst) {

@@ -10,6 +10,9 @@ pub mod reports;
 pub mod runtime;
 pub type Result<T> = std::result::Result<T, String>;
 pub fn main(args: &[String]) -> i32 {
+    main_for_platform(args, std::env::consts::OS)
+}
+fn main_for_platform(args: &[String], platform: &str) -> i32 {
     let Some((name, tail)) = args.split_first() else {
         eprintln!("uso: comandos codex <full-access|thread-release|yolo-install|yolo-policy>");
         return 2;
@@ -34,6 +37,12 @@ pub fn main(args: &[String]) -> i32 {
         } else {
             2
         };
+    }
+    if matches!(name.as_str(), "full-access" | "thread-release")
+        && let Err(error) = require_linux(platform)
+    {
+        eprintln!("{error}");
+        return 1;
     }
     let result = match name.as_str() {
         "yolo-policy" => {
@@ -69,6 +78,13 @@ pub fn main(args: &[String]) -> i32 {
         }
     }
 }
+pub(super) fn require_linux(platform: &str) -> Result<()> {
+    if platform == "linux" {
+        Ok(())
+    } else {
+        Err("full-access y thread-release requieren Linux (/proc y pidfd); usa yolo-install para instalar el lanzador en macOS".into())
+    }
+}
 pub fn launch(args: &[String]) -> i32 {
     match install::launch(args) {
         Ok(code) => code,
@@ -78,3 +94,5 @@ pub fn launch(args: &[String]) -> i32 {
         }
     }
 }
+#[cfg(test)]
+mod portability_tests;

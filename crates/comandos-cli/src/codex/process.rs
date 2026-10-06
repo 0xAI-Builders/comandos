@@ -1,10 +1,7 @@
 //! Bounded, noninteractive argv/stdin transport. Never invokes a shell.
 use nix::{
     fcntl::{FcntlArg, OFlag, fcntl},
-    sys::{
-        signal::{Signal, killpg},
-        wait::{Id, WaitPidFlag, WaitStatus, waitid},
-    },
+    sys::signal::{Signal, killpg},
     unistd::Pid,
 };
 use std::{
@@ -132,14 +129,8 @@ pub(super) fn run_when(
         if out_done
             && err_done
             && stdin.is_none()
-            && !matches!(
-                waitid(
-                    Id::Pid(pid),
-                    WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT
-                )
-                .map_err(|e| e.to_string())?,
-                WaitStatus::StillAlive
-            )
+            && comandos_runtime::procs::child_exited_unreaped(&owned.child)
+                .map_err(|e| e.to_string())?
         {
             killpg(pid, Signal::SIGKILL)
                 .or_else(|e| {

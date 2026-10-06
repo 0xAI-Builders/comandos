@@ -74,3 +74,52 @@ SDK privados. Los checks Apple no enlazan ni ejecutan un binario Darwin. Los
 fixtures Linux no equivalen a aceptación del producto Mac, UI, proveedores reales,
 TTY, rendimiento ni servicios instalados. No se ejecutan pruebas que enumeren
 procesos personales; ese límite se registra al sustituir el gate global Linux.
+
+## C5: mantenimiento Codex en Darwin
+
+El checkpoint C5 conserva la implementación Linux. En Darwin, el CLI permite
+`comandos --version`, las cuatro ayudas Codex, `comandos codex yolo-policy -- …`,
+`comandos codex yolo-install` y el lanzador autónomo instalado. La instalación
+sigue validando la ayuda del ejecutable original, hash/manifiesto del artefacto,
+el primer backup y las rutas de shell. `--dry-run` no publica el lanzador ni
+modifica shell o backups; consultar la ayuda del vendor propio sigue siendo una
+operación explícita del preflight. No utiliza Python como implementación del
+lanzador.
+
+`comandos codex full-access` (también el alias `cc-codex-full-access`) y
+`comandos codex thread-release` requieren Linux. En Darwin terminan con código 1
+y un diagnóstico en stderr antes de validar HOME/planes, leer autoridad de
+Store, inventario, cuentas o transcripts, crear directorios o ejecutar helpers.
+La ayuda sigue disponible con código 0. El rechazo incluye dry-run, retries y
+`full-access --install-only`; para instalar en Darwin se usa `yolo-install`.
+No se sustituye la autoridad pidfd por observaciones ps/lsof ni se reconstruyen
+argumentos o entornos de otras cuentas a partir de texto ambiguo. El adaptador
+Local rechaza también su construcción directa en plataformas sin Linux.
+
+El transporte de los hijos poseídos de Codex usa
+`comandos_runtime::procs::child_exited_unreaped`, ya compartido por M1. En Linux
+conserva waitid/WNOWAIT; en Darwin usa rustix waitid/NOWAIT. El líder permanece
+sin recoger hasta cerrar su grupo con SIGKILL, tanto tras salida normal como
+por error/cancelación. Los pidfd de señales a un agente exacto se compilan sólo
+en Linux. No se concede autoridad para señalar procesos ajenos en Darwin.
+
+Fuente y pruebas de este checkpoint, en el checkout autor de Linux:
+
+- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-cli-c5-darwin/crates/comandos-cli/src/codex/mod.rs.
+- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-cli-c5-darwin/crates/comandos-cli/src/codex/process.rs.
+- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-cli-c5-darwin/crates/comandos-cli/src/codex/protocol.rs.
+- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-cli-c5-darwin/crates/comandos-cli/src/codex/runtime.rs.
+- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-cli-c5-darwin/crates/comandos-cli/src/codex/portability_tests.rs.
+- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-cli-c5-darwin/crates/comandos-cli/tests/codex.rs.
+- /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-cli-c5-darwin/crates/comandos-cli/tests/codex_full_access.rs.
+
+Los checks Apple de aarch64/x86_64 con warnings rechazados son comprobaciones
+de compilador, incluidos los targets de tests; no enlazan ni ejecutan un CLI
+Darwin. Los tests del gate de plataforma se ejecutan en hijos Linux privados
+con selección de plataforma interna a los tests, sin override de producto.
+La integración full-access con proc/pidfd y los tests dependientes de ese
+backend están marcados Linux-only. Los fixtures Python son oráculos o vendors
+falsos propios; no se operan cuentas, inventarios ni proveedores reales.
+Quedan pendientes el enlace/ejecución nativa en Mac, TTY y los contratos del
+vendor real. Este checkpoint no valida AppKit, GTK, servicios, instalación
+personal ni cutover.

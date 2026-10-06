@@ -1,4 +1,5 @@
 //! Fresh real-source Python differential and native executable probes, private proc and PATH only.
+#![cfg(target_os = "linux")]
 use serde_json::{Value, json};
 use std::{
     fs,

@@ -120,6 +120,16 @@ fn all_codex_entrypoints_have_help_without_tool_or_home_mutation() {
         ok(&o);
         assert!(String::from_utf8_lossy(&o.stdout).contains(name));
     }
+    let mut version = Command::new(env!("CARGO_BIN_EXE_comandos"));
+    version.env_clear().arg("--version");
+    for (key, value) in f.command(&[]).get_envs() {
+        if let Some(value) = value {
+            version.env(key, value);
+        }
+    }
+    version.env("HOME", f.root.join("missing-home"));
+    ok(&version.output().unwrap());
+    assert!(!f.root.join("missing-home").exists());
     assert!(fs::read_dir(f.root.join("home")).unwrap().next().is_none());
 }
 #[test]
@@ -358,6 +368,7 @@ fn migrate_owned_legacy_launcher_keeps_first_backup_and_raw_original_link() {
     );
 }
 #[test]
+#[cfg(target_os = "linux")]
 fn standalone_free_writer_and_plan_fifo_reject_without_recovery_writes() {
     let f = Fixture::new();
     let p = f.root.join("plan.json");
@@ -457,6 +468,7 @@ fn cancellation_during_vendor_help_reaps_owned_child_before_installing() {
     assert!(!f.root.join("home/.local").exists());
 }
 #[test]
+#[cfg(target_os = "linux")]
 fn completed_help_cleans_descendant_with_closed_pipes_before_reaping_leader() {
     use std::time::{Duration, Instant};
     let f = Fixture::new();

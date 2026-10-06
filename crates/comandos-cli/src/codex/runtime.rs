@@ -64,6 +64,7 @@ pub(super) fn read_regular(path: &Path, limit: u64) -> Result<Vec<u8>> {
 }
 impl Local {
     pub fn new(home: PathBuf, proc: PathBuf, cancel: Arc<AtomicBool>) -> Result<Self> {
+        super::require_linux(std::env::consts::OS)?;
         if !proc.is_absolute() {
             return Err("--proc-root requiere ruta absoluta".into());
         }
@@ -410,6 +411,7 @@ impl Runtime for Local {
     fn cancelled(&self) -> bool {
         self.cancel.load(Ordering::SeqCst)
     }
+    #[cfg(target_os = "linux")]
     fn terminate_exact(&mut self, plan: &Value) -> Result<()> {
         if self.proc != Path::new("/proc") {
             return Err("raíces proc de prueba nunca pueden enviar señales reales".into());
@@ -441,5 +443,9 @@ impl Runtime for Local {
         );
         rustix::process::pidfd_send_signal(&fd, rustix::process::Signal::TERM)
             .map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "linux"))]
+    fn terminate_exact(&mut self, _plan: &Value) -> Result<()> {
+        super::require_linux(std::env::consts::OS)
     }
 }
