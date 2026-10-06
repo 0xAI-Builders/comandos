@@ -36,9 +36,10 @@ pub async fn answer(native: &Native, request: &Request) -> Answer {
         Query::parse(&request.target)?;
     }
     let legacy = native.options().hooks.join("events.jsonl");
+    let home = native.options().home.clone();
     let request = request.clone();
     match native
-        .with_state(move |backend| backend.events(&legacy, &request))
+        .with_state(move |backend| backend.events(&home, &legacy, &request))
         .await?
     {
         Ok(Some(reply)) => Ok(reply),

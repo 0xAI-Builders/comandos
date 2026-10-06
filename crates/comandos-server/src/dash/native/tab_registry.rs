@@ -24,7 +24,7 @@
 use crate::HandlerError;
 use crate::dash::native::{
     Fault, Native, NativeOptions,
-    files::{FileLock, LOCK_WAIT, Strict, read_json_strict, write_json_atomic},
+    files::{DomainDocument, FileLock, LOCK_WAIT, Strict, read_json_strict, write_json_atomic},
     light, py,
     states::gather::session_labels,
     target, workspace,
@@ -137,43 +137,85 @@ where
         .map_err(|_| RegistryError::Fault(Fault::Error(HandlerError::Failure)))?
 }
 
-/// `with file_lock(path): job()`. Camino rápido: el candado libre se toma en el
-/// mismo hilo que hace el trabajo (un salto). Si otro lo tiene (cc-app, el
-/// Python), se espera en la cola de `acquire_timeout` y el trabajo va en un
-/// segundo salto con el candado ya tomado.
-async fn with_file_lock<T, F>(path: PathBuf, job: F) -> Result<T, RegistryError>
-where
-    F: FnOnce() -> Result<T, RegistryError> + Send + 'static,
-    T: Send + 'static,
-{
-    enum First<T, F> {
-        Done(Result<T, RegistryError>),
-        Busy(F),
+pub(crate) fn domain_document(
+    opts: &NativeOptions,
+    name: &str,
+) -> Result<DomainDocument, RegistryError> {
+    DomainDocument::new(&opts.home, &opts.hooks, name).map_err(RegistryError::Io)
+}
+pub(crate) fn load_document(
+    doc: &DomainDocument,
+    access: Option<&comandos_store::domains::caller::CallerAccess>,
+    default: Value,
+) -> Result<Value, RegistryError> {
+    match access.map_or_else(|| doc.strict(), |a| doc.strict_under(a)) {
+        Strict::Value(Value::Null) | Strict::Missing | Strict::Unreadable => Ok(default),
+        Strict::Value(value) => Ok(value),
+        Strict::Unsure => Err(RegistryError::Unsure(doc.file.clone())),
     }
-    let target = path.clone();
-    let first = blocking(move || match FileLock::try_acquire(&target) {
-        Ok(Some(lock)) => {
-            let out = job();
-            drop(lock);
-            Ok(First::Done(out))
-        }
-        Ok(None) => Ok(First::Busy(job)),
-        Err(error) => Err(RegistryError::Io(error)),
-    })
-    .await?;
-    let job = match first {
-        First::Done(out) => return out,
-        First::Busy(job) => job,
+}
+fn write_document(
+    doc: &DomainDocument,
+    access: &comandos_store::domains::caller::CallerAccess,
+    value: &Value,
+) -> Result<(), RegistryError> {
+    let text = comandos_core::json::response_dumps(value)
+        .map_err(|e| RegistryError::Io(io::Error::other(e)))?;
+    doc.write_under(access, text.as_bytes(), 0)
+        .map_err(RegistryError::Io)
+}
+fn with_document_sync<T>(
+    opts: &NativeOptions,
+    name: &str,
+    job: impl FnOnce(
+        &DomainDocument,
+        &comandos_store::domains::caller::CallerAccess,
+    ) -> Result<T, RegistryError>,
+) -> Result<T, RegistryError> {
+    let doc = domain_document(opts, name)?;
+    let access = doc
+        .access()
+        .map_err(|e| RegistryError::Io(io::Error::other(e)))?;
+    let _lock = if access.mode() == comandos_store::unified::Mode::Sealed {
+        None
+    } else {
+        let deadline = std::time::Instant::now() + LOCK_WAIT;
+        let lock = loop {
+            if let Some(lock) = FileLock::try_acquire(&doc.file).map_err(RegistryError::Io)? {
+                break lock;
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(RegistryError::Io(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "registro ocupado",
+                )));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
+        Some(lock)
     };
-    let lock = FileLock::acquire_timeout(&path, LOCK_WAIT)
-        .await
-        .map_err(RegistryError::Io)?;
-    blocking(move || {
-        let out = job();
-        drop(lock);
-        out
-    })
-    .await
+    access
+        .with_write_transaction(|| job(&doc, &access))
+        .map_err(|e| RegistryError::Io(io::Error::other(e)))?
+}
+async fn with_document<T: Send + 'static>(
+    opts: NativeOptions,
+    name: &'static str,
+    job: impl FnOnce(
+        &DomainDocument,
+        &comandos_store::domains::caller::CallerAccess,
+    ) -> Result<T, RegistryError>
+    + Send
+    + 'static,
+) -> Result<T, RegistryError> {
+    blocking(move || with_document_sync(&opts, name, job)).await
+}
+pub(crate) fn read_metadata_domain(
+    opts: &NativeOptions,
+    access: Option<&comandos_store::domains::caller::CallerAccess>,
+) -> Result<Map<String, Value>, RegistryError> {
+    let doc = domain_document(opts, TABS_META_FILE)?;
+    metadata_from(load_document(&doc, access, json!({}))?)
 }
 
 /// `load_json_file(path, default)`: ausente, ilegible o `null` → `default`;
@@ -206,7 +248,10 @@ fn known_kind(kind: Option<&Value>) -> Option<bool> {
 
 /// `read_tab_metadata()` (5252) sobre `path`. Bloquea.
 pub fn read_tab_metadata(path: &Path) -> Result<Map<String, Value>, RegistryError> {
-    let data = load_object(path)?;
+    metadata_from(Value::Object(load_object(path)?))
+}
+fn metadata_from(data: Value) -> Result<Map<String, Value>, RegistryError> {
+    let data = data.as_object().cloned().unwrap_or_default();
     let mut out = Map::new();
     for (sess, value) in data {
         let Value::Object(value) = value else {
@@ -263,15 +308,15 @@ pub async fn write_tab_metadata(
     if !py::is_session(sess) || !TAB_KINDS.contains(&kind) {
         return Ok(None);
     }
-    let path = hook(native.options(), TABS_META_FILE);
+    let opts = native.options().clone();
     let item = meta_item(kind, host, cwd);
     let (sess, written) = (sess.to_owned(), item.clone());
     let guard = Arc::clone(meta_lock()).lock_owned().await;
-    blocking(move || {
+    with_document(opts.clone(), TABS_META_FILE, move |doc, access| {
         let _guard = guard;
-        let mut metadata = read_tab_metadata(&path)?;
+        let mut metadata = read_metadata_domain(&opts, Some(access))?;
         metadata.insert(sess, written);
-        write_json_atomic(&path, &Value::Object(metadata)).map_err(RegistryError::Io)
+        write_document(doc, access, &Value::Object(metadata))
     })
     .await?;
     Ok(Some(item))
@@ -279,12 +324,12 @@ pub async fn write_tab_metadata(
 
 /// `remove_tab_metadata(sess)` (5289): escribe solo si la clave estaba.
 pub async fn remove_tab_metadata(native: &Native, sess: &str) -> Result<(), RegistryError> {
-    let path = hook(native.options(), TABS_META_FILE);
+    let opts = native.options().clone();
     let sess = sess.to_owned();
     let guard = Arc::clone(meta_lock()).lock_owned().await;
-    blocking(move || {
+    with_document(opts, TABS_META_FILE, move |doc, access| {
         let _guard = guard;
-        unmeta_locked(&path, &sess)
+        unmeta_locked(doc, access, &sess)
     })
     .await
 }
@@ -303,9 +348,12 @@ fn py_isdigit(text: &str) -> Option<bool> {
 }
 
 /// `tab_metadata_for_session` sobre las opciones (bloquea).
-fn derived_metadata(opts: &NativeOptions, sess: &str) -> Result<Value, RegistryError> {
-    let path = hook(opts, TABS_META_FILE);
-    if let Some(saved) = read_tab_metadata(&path)?.get(sess) {
+fn derived_metadata(
+    opts: &NativeOptions,
+    sess: &str,
+    access: Option<&comandos_store::domains::caller::CallerAccess>,
+) -> Result<Value, RegistryError> {
+    if let Some(saved) = read_metadata_domain(opts, access)?.get(sess) {
         return Ok(saved.clone());
     }
     if let Some(project) = target::find_project_dir(&opts.home, sess)? {
@@ -340,23 +388,25 @@ fn derived_metadata(opts: &NativeOptions, sess: &str) -> Result<Value, RegistryE
 pub async fn tab_metadata_for_session(native: &Native, sess: &str) -> Result<Value, RegistryError> {
     let opts = native.options().clone();
     let sess = sess.to_owned();
-    blocking(move || derived_metadata(&opts, &sess)).await
+    blocking(move || derived_metadata(&opts, &sess, None)).await
 }
 
 /// `write_app_tab(sess, label)` (5239): `tabs[sess] = label or sess`.
 pub async fn write_app_tab(native: &Native, sess: &str, label: &str) -> Result<(), RegistryError> {
-    let path = hook(native.options(), TABS_FILE);
+    let opts = native.options().clone();
     let (sess, label) = (sess.to_owned(), label.to_owned());
-    let target = path.clone();
-    with_file_lock(path, move || {
-        let mut tabs = load_object(&target)?;
+    with_document(opts, TABS_FILE, move |doc, access| {
+        let mut tabs = load_document(doc, Some(access), json!({}))?
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
         let label = if label.is_empty() {
             sess.clone()
         } else {
             label
         };
         tabs.insert(sess, json!(label));
-        write_json_atomic(&target, &Value::Object(tabs)).map_err(RegistryError::Io)
+        write_document(doc, access, &Value::Object(tabs))
     })
     .await
 }
@@ -389,26 +439,28 @@ pub async fn register_app_tab(
         return Ok(());
     }
     let opts = native.options();
-    let path = hook(opts, TABS_FILE);
     let shown = label_or(label, sess);
     let known = TAB_KINDS.contains(&kind);
-    let (owned, mirrored, target) = (sess.to_owned(), shown.clone(), path.clone());
+    let (owned, mirrored) = (sess.to_owned(), shown.clone());
     let reads = opts.clone();
     // Todo lo que puede responder 500 se lee ANTES de escribir el espejo:
     // `app-tabs-meta.json` (que `write_tab_metadata` y la derivación leen
     // después) y, con un tipo desconocido, la identidad derivada (sus lecturas
     // no dependen de `app-tabs.json`; el Python la calcula después del espejo).
-    let derived = with_file_lock(path, move || {
+    let derived = with_document(opts.clone(), TABS_FILE, move |doc, access| {
         let derived = if known {
-            read_tab_metadata(&hook(&reads, TABS_META_FILE))?;
+            read_metadata_domain(&reads, Some(access))?;
             None
         } else {
-            Some(derived_metadata(&reads, &owned)?)
+            Some(derived_metadata(&reads, &owned, Some(access))?)
         };
-        let mut tabs = load_object(&target)?;
+        let mut tabs = load_document(doc, Some(access), json!({}))?
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
         if !tabs.contains_key(&owned) {
             tabs.insert(owned, json!(mirrored));
-            write_json_atomic(&target, &Value::Object(tabs)).map_err(RegistryError::Io)?;
+            write_document(doc, access, &Value::Object(tabs))?;
         }
         Ok(derived)
     })
@@ -418,10 +470,11 @@ pub async fn register_app_tab(
         Some(found) => Some(found),
     };
     if let Some(found) = meta.clone() {
-        let meta_path = hook(opts, TABS_META_FILE);
+        let meta_opts = opts.clone();
         let owned = sess.to_owned();
         let saved =
-            blocking(move || Ok(read_tab_metadata(&meta_path)?.contains_key(&owned))).await?;
+            blocking(move || Ok(read_metadata_domain(&meta_opts, None)?.contains_key(&owned)))
+                .await?;
         if !saved {
             let text = |key: &str| {
                 found
@@ -443,8 +496,19 @@ pub async fn register_app_tab(
     }
     let open = hook(opts, TAB_OPEN_FILE);
     // `except OSError: pass`.
+    let (home, now) = (opts.home.clone(), (opts.clock)());
     let _ = blocking(move || {
-        write_json_atomic(&open, &Value::Object(event)).map_err(RegistryError::Io)
+        let event = Value::Object(event);
+        let body = comandos_core::json::response_dumps(&event)
+            .map_err(|e| RegistryError::Io(io::Error::other(e)))?;
+        comandos_store::domains::commands::publish(
+            &home,
+            TAB_OPEN_FILE,
+            body.as_bytes(),
+            now,
+            || Ok(write_json_atomic(&open, &event)?),
+        )
+        .map_err(|e| RegistryError::Io(io::Error::other(e)))
     })
     .await;
     Ok(())
@@ -480,15 +544,17 @@ fn history_item(
 
 /// El cuerpo de `remember_tab` con el `flock` del historial ya tomado.
 fn remember_locked(
-    hooks: &Path,
-    target: &Path,
+    doc: &DomainDocument,
+    access: &comandos_store::domains::caller::CallerAccess,
     sess: &str,
     item: Map<String, Value>,
 ) -> Result<(), RegistryError> {
-    let history = light::read_tab_history(hooks).map_err(|fault| match fault {
-        Fault::Decline => RegistryError::Unsure(target.to_path_buf()),
-        other => RegistryError::Fault(other),
-    })?;
+    let history = light::value_from(doc.strict_under(access))
+        .and_then(light::tab_history_from)
+        .map_err(|fault| match fault {
+            Fault::Decline => RegistryError::Unsure(doc.file.clone()),
+            other => RegistryError::Fault(other),
+        })?;
     let mut out = vec![Value::Object(item)];
     out.extend(
         history
@@ -497,7 +563,7 @@ fn remember_locked(
             .take(79)
             .map(Value::Object),
     );
-    write_json_atomic(target, &Value::Array(out)).map_err(RegistryError::Io)
+    write_document(doc, access, &Value::Array(out))
 }
 
 /// `remember_tab(sess, label, cwd, agent, reason)` (5223): la sesión entra al
@@ -514,29 +580,38 @@ pub async fn remember_tab(
     let Some(item) = history_item(opts, sess, label, cwd, agent, reason) else {
         return Ok(());
     };
-    let hooks = opts.hooks.clone();
-    let path = hook(opts, TAB_HISTORY_FILE);
-    let (sess, target) = (sess.to_owned(), path.clone());
-    with_file_lock(path, move || remember_locked(&hooks, &target, &sess, item)).await
+    let sess = sess.to_owned();
+    with_document(opts.clone(), TAB_HISTORY_FILE, move |doc, access| {
+        remember_locked(doc, access, &sess, item)
+    })
+    .await
 }
 
 /// `tabs_map.pop(sess)` de `close_app_tab` con el `flock` del espejo tomado:
 /// escribe solo si estaba.
-fn unmirror_locked(target: &Path, sess: &str) -> Result<(), RegistryError> {
-    if let Value::Object(mut tabs) = load_json_file(target, json!({}))?
+fn unmirror_locked(
+    doc: &DomainDocument,
+    access: &comandos_store::domains::caller::CallerAccess,
+    sess: &str,
+) -> Result<(), RegistryError> {
+    if let Value::Object(mut tabs) = load_document(doc, Some(access), json!({}))?
         && tabs.shift_remove(sess).is_some()
     {
-        write_json_atomic(target, &Value::Object(tabs)).map_err(RegistryError::Io)?;
+        write_document(doc, access, &Value::Object(tabs))?;
     }
     Ok(())
 }
 
 /// El cuerpo de `remove_tab_metadata` con `meta_lock` tomado.
-fn unmeta_locked(path: &Path, sess: &str) -> Result<(), RegistryError> {
-    let mut metadata = read_tab_metadata(path)?;
+fn unmeta_locked(
+    doc: &DomainDocument,
+    access: &comandos_store::domains::caller::CallerAccess,
+    sess: &str,
+) -> Result<(), RegistryError> {
+    let mut metadata = metadata_from(load_document(doc, Some(access), json!({}))?)?;
     // `pop`: el resto conserva su orden.
     if metadata.shift_remove(sess).is_some() {
-        write_json_atomic(path, &Value::Object(metadata)).map_err(RegistryError::Io)?;
+        write_document(doc, access, &Value::Object(metadata))?;
     }
     Ok(())
 }
@@ -545,7 +620,15 @@ fn unmeta_locked(path: &Path, sess: &str) -> Result<(), RegistryError> {
 fn write_close_event(opts: &NativeOptions, sess: &str) {
     if let Ok(ts) = seconds_value(opts) {
         let event = json!({"session": sess, "ts": ts});
-        let _ = write_json_atomic(&hook(opts, TAB_CLOSE_FILE), &event);
+        if let Ok(body) = comandos_core::json::response_dumps(&event) {
+            let _ = comandos_store::domains::commands::publish(
+                &opts.home,
+                TAB_CLOSE_FILE,
+                body.as_bytes(),
+                (opts.clock)(),
+                || Ok(write_json_atomic(&hook(opts, TAB_CLOSE_FILE), &event)?),
+            );
+        }
     }
 }
 
@@ -568,11 +651,12 @@ fn unsure_in(opts: &NativeOptions, name: &str) -> impl FnOnce(Fault) -> Registry
 }
 
 fn close_reads(opts: &NativeOptions, sess: &str) -> Result<CloseReads, RegistryError> {
-    let tabs = light::tab_labels(&opts.hooks).map_err(unsure_in(opts, TABS_FILE))?;
-    let history =
-        light::read_tab_history(&opts.hooks).map_err(unsure_in(opts, TAB_HISTORY_FILE))?;
-    let agent = target::state_agent(&opts.hooks.join("state"), sess)?;
-    read_tab_metadata(&hook(opts, TABS_META_FILE))?;
+    let tabs =
+        light::tab_labels_domain(&opts.home, &opts.hooks).map_err(unsure_in(opts, TABS_FILE))?;
+    let history = light::read_tab_history_domain(&opts.home, &opts.hooks)
+        .map_err(unsure_in(opts, TAB_HISTORY_FILE))?;
+    let agent = target::state_agent_domain(&opts.home, &opts.hooks.join("state"), sess)?;
+    read_metadata_domain(opts, None)?;
     Ok(CloseReads {
         tabs,
         history,
@@ -583,8 +667,8 @@ fn close_reads(opts: &NativeOptions, sess: &str) -> Result<CloseReads, RegistryE
 /// Una efímera no lee el historial: solo se adelantan las lecturas del espejo
 /// y de los metadatos (el mismo motivo que en `close_reads`).
 fn ephemeral_reads(opts: &NativeOptions) -> Result<(), RegistryError> {
-    load_json_file(&hook(opts, TABS_FILE), json!({}))?;
-    read_tab_metadata(&hook(opts, TABS_META_FILE))?;
+    load_document(&domain_document(opts, TABS_FILE)?, None, json!({}))?;
+    read_metadata_domain(opts, None)?;
     Ok(())
 }
 
@@ -650,9 +734,11 @@ pub async fn close_app_tab(
         };
         remember_tab(native, sess, Some(&label), &cwd, &agent, "closed").await?;
     }
-    let path = hook(opts, TABS_FILE);
-    let (owned, target) = (sess.to_owned(), path.clone());
-    with_file_lock(path, move || unmirror_locked(&target, &owned)).await?;
+    let owned = sess.to_owned();
+    with_document(opts.clone(), TABS_FILE, move |doc, access| {
+        unmirror_locked(doc, access, &owned)
+    })
+    .await?;
     remove_tab_metadata(native, sess).await?;
     sync_after_close(native, sess).await;
     let (owned, event_opts) = (sess.to_owned(), opts.clone());
@@ -671,9 +757,10 @@ pub async fn close_app_tab(
 /// `/workspace`) ajusta el documento al registro, que ya no tiene la pestaña.
 async fn sync_after_close(native: &Native, sess: &str) {
     let hooks = native.options().hooks.clone();
+    let home = native.options().home.clone();
     let now_seconds = (native.options().clock)() as f64 / 1000.0;
     let synced = native
-        .with_state(move |b| workspace::sync_with_reason(b, &hooks, now_seconds, "user"))
+        .with_state(move |b| workspace::sync_domain(b, &home, &hooks, now_seconds, "user"))
         .await;
     match synced {
         Ok(Ok(_)) => {}
@@ -704,24 +791,17 @@ async fn sync_after_close(native: &Native, sess: &str) {
 pub mod blocking {
     use super::{
         CloseReads, RegistryError, TAB_HISTORY_FILE, TABS_FILE, TABS_META_FILE, close_label,
-        close_reads, cwd_args, ephemeral_reads, history_item, hook, meta_lock, remember_locked,
-        unmeta_locked, unmirror_locked, write_close_event,
+        close_reads, cwd_args, ephemeral_reads, history_item, meta_lock, remember_locked,
+        unmeta_locked, unmirror_locked, with_document_sync, write_close_event,
     };
     use crate::HandlerError;
     use crate::dash::native::{
-        Fault, NativeOptions,
-        files::{FileLock, LOCK_WAIT},
-        py,
+        Fault, NativeOptions, py,
         state::StateBackend,
         tmux::{Output, TmuxError},
         workspace,
     };
-    use std::{
-        collections::HashSet,
-        io,
-        path::Path,
-        time::{Duration, Instant},
-    };
+    use std::collections::HashSet;
     use tokio::runtime::Handle;
 
     /// Por qué un cierre dentro de `close_group` no terminó.
@@ -745,32 +825,6 @@ pub mod blocking {
         }
     }
 
-    /// `with file_lock(path)` desde un hilo propio: sondeo con espera
-    /// creciente hasta `LOCK_WAIT`.
-    fn with_lock<T>(
-        path: &Path,
-        job: impl FnOnce() -> Result<T, RegistryError>,
-    ) -> Result<T, RegistryError> {
-        let deadline = Instant::now() + LOCK_WAIT;
-        let mut pause = Duration::from_millis(2);
-        let lock = loop {
-            if let Some(lock) = FileLock::try_acquire(path).map_err(RegistryError::Io)? {
-                break lock;
-            }
-            if Instant::now() >= deadline {
-                return Err(RegistryError::Io(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    format!("candado de {} ocupado", path.display()),
-                )));
-            }
-            std::thread::sleep(pause);
-            pause = (pause * 2).min(Duration::from_millis(50));
-        };
-        let out = job();
-        drop(lock);
-        out
-    }
-
     /// `remember_tab` (5223).
     pub fn remember_tab(
         opts: &NativeOptions,
@@ -783,14 +837,17 @@ pub mod blocking {
         let Some(item) = history_item(opts, sess, label, cwd, agent, reason) else {
             return Ok(());
         };
-        let path = hook(opts, TAB_HISTORY_FILE);
-        with_lock(&path, || remember_locked(&opts.hooks, &path, sess, item))
+        with_document_sync(opts, TAB_HISTORY_FILE, |doc, access| {
+            remember_locked(doc, access, sess, item)
+        })
     }
 
     /// `remove_tab_metadata` (5289).
     pub fn remove_tab_metadata(opts: &NativeOptions, sess: &str) -> Result<(), RegistryError> {
         let _guard = meta_lock().blocking_lock();
-        unmeta_locked(&hook(opts, TABS_META_FILE), sess)
+        with_document_sync(opts, TABS_META_FILE, |doc, access| {
+            unmeta_locked(doc, access, sess)
+        })
     }
 
     /// `tmux(...)` del Python desde el worker: `TimeoutExpired` y
@@ -847,12 +904,15 @@ pub mod blocking {
             };
             remember_tab(opts, sess, Some(&label), &cwd, &agent, "closed")?;
         }
-        let path = hook(opts, TABS_FILE);
-        with_lock(&path, || unmirror_locked(&path, sess))?;
+        with_document_sync(opts, TABS_FILE, |doc, access| {
+            unmirror_locked(doc, access, sess)
+        })?;
         remove_tab_metadata(opts, sess)?;
         // `workspace_sync(reason="user")` con `except Exception: print`.
         let now_seconds = (opts.clock)() as f64 / 1000.0;
-        if let Err(fault) = workspace::sync_with_reason(backend, &opts.hooks, now_seconds, "user") {
+        if let Err(fault) =
+            workspace::sync_domain(backend, &opts.home, &opts.hooks, now_seconds, "user")
+        {
             let what = match fault {
                 Fault::Decline => "no reproducible en el frente",
                 Fault::Error(HandlerError::Timeout) => "tiempo agotado",

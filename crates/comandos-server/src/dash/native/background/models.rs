@@ -26,9 +26,7 @@
 //! cuatro veces el de socket del Python y cuerpo acotado a 16 MiB (el
 //! `urllib` del Python no tiene ni lo uno ni lo otro).
 use super::Stop;
-use crate::dash::native::{
-    Native, NativeOptions, catalog_cli, files::write_text_atomic, light, tmux::run_program,
-};
+use crate::dash::native::{Native, NativeOptions, catalog_cli, light, tmux::run_program};
 use comandos_core::json::{indent_dumps, response_dumps};
 use comandos_runtime::{
     hooks::py,
@@ -456,20 +454,38 @@ async fn news(native: &Native, opts: &NativeOptions, handle: Handle) {
 async fn heartbeat(opts: &NativeOptions, versions: Option<Map<String, Value>>) {
     let opts = opts.clone();
     let _ = blocking(move || {
-        let path = opts.hooks.join("model-watch.json");
-        let mut snap = match light::load(&path) {
-            Ok(Some(Value::Object(map))) => map,
-            Ok(Some(v)) if py::truthy(&v) => return,
-            Ok(_) => Map::new(),
-            Err(_) => return,
+        let Ok(doc) =
+            super::super::files::DomainDocument::new(&opts.home, &opts.hooks, "model-watch.json")
+        else {
+            return;
         };
-        snap.insert("heartbeatAt".into(), now_int(&opts).into());
-        if let Some(versions) = versions {
-            snap.entry("versions").or_insert(Value::Object(versions));
-        }
-        if let Ok(text) = indent_dumps(&Value::Object(snap), 1, true) {
-            let _ = write_text_atomic(&path, &text);
-        }
+        let Ok(access) = doc.access() else { return };
+        let _lock = if access.mode() == comandos_store::unified::Mode::Sealed {
+            None
+        } else {
+            let Ok(lock) = super::super::files::FileLock::acquire(&doc.file) else {
+                return;
+            };
+            Some(lock)
+        };
+        let _ = access.with_write_transaction(|| {
+            (|| {
+                let mut snap = match light::value_from(doc.strict_under(&access)) {
+                    Ok(Some(Value::Object(map))) => map,
+                    Ok(Some(v)) if py::truthy(&v) => return,
+                    Ok(_) => Map::new(),
+                    Err(_) => return,
+                };
+                snap.insert("heartbeatAt".into(), now_int(&opts).into());
+                if let Some(versions) = versions {
+                    snap.entry("versions").or_insert(Value::Object(versions));
+                }
+                if let Ok(text) = indent_dumps(&Value::Object(snap), 1, true) {
+                    let _ = doc.write_under(&access, text.as_bytes(), (opts.clock)());
+                }
+            })();
+            Ok::<(), ()>(())
+        });
     })
     .await;
 }

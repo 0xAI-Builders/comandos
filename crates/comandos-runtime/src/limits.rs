@@ -946,12 +946,20 @@ const AGY_BUCKETS: [(&str, &str, &str); 3] = [
 /// `read_agy_quota` (cc_usage.py:1893). Cualquier excepción la atrapa el
 /// llamador (`except Exception: agy_rows = []`): lista vacía.
 pub fn read_agy_quota(path: &Path, now: f64, zone: &dyn LocalZone) -> Vec<Value> {
-    agy_rows(path, now, zone).unwrap_or_default()
+    read_text(path).map_or_else(Vec::new, |text| {
+        agy_rows_text(&text, now, zone).unwrap_or_default()
+    })
 }
 
-fn agy_rows(path: &Path, now: f64, zone: &dyn LocalZone) -> Option<Vec<Value>> {
+pub fn read_agy_quota_bytes(bytes: &[u8], now: f64, zone: &dyn LocalZone) -> Vec<Value> {
+    std::str::from_utf8(bytes)
+        .ok()
+        .and_then(|text| agy_rows_text(text, now, zone))
+        .unwrap_or_default()
+}
+fn agy_rows_text(text: &str, now: f64, zone: &dyn LocalZone) -> Option<Vec<Value>> {
     let ts = trunc(now).ok()?;
-    let data = loads(&read_text(path)?).ok()??;
+    let data = loads(text).ok()??;
     let data = data.as_object()?;
     let quota = data.get("quota")?;
     let at = get(data, "captured_at");
@@ -1136,8 +1144,13 @@ pub fn parse_groq_ratelimit_headers(headers: &Row, now: i64) -> Result<Vec<Value
 /// `read_groq_rate_limits` (cc-dash:1261): `H/groq-ratelimit.json`; `now` es el
 /// `time.time()` que se usa si el archivo no trae `at`. Todo error → `[]`.
 pub fn read_groq_headers(path: &Path, now: i64) -> Vec<Value> {
+    read_text(path).map_or_else(Vec::new, |text| {
+        read_groq_headers_bytes(text.as_bytes(), now)
+    })
+}
+pub fn read_groq_headers_bytes(bytes: &[u8], now: i64) -> Vec<Value> {
     let rows = || -> Option<Vec<Value>> {
-        let data = loads(&read_text(path)?).ok()??;
+        let data = loads(std::str::from_utf8(bytes).ok()?).ok()??;
         let (headers, captured) = match data.as_object() {
             Some(d) => {
                 let at = get(d, "at");
@@ -1201,8 +1214,12 @@ pub fn groq_rows(
 
 /// `user_quotas` (cc-dash:540): `H/provider-quotas.json` si es un objeto; si no, `{}`.
 pub fn user_quotas(path: &Path) -> Row {
-    read_text(path)
-        .and_then(|t| loads(&t).ok().flatten())
+    read_text(path).map_or_else(Row::new, |text| user_quotas_bytes(text.as_bytes()))
+}
+pub fn user_quotas_bytes(bytes: &[u8]) -> Row {
+    std::str::from_utf8(bytes)
+        .ok()
+        .and_then(|t| loads(t).ok().flatten())
         .and_then(|v| match v {
             Value::Object(m) => Some(m),
             _ => None,

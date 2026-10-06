@@ -30,7 +30,7 @@
 //!   declinan antes de escribir.
 use super::{
     NewsRoute,
-    read::{TRACED, news_int, read_config, trace_decline},
+    read::{TRACED, news_int, read_config_domain, trace_decline},
 };
 use crate::{
     HandlerError, Request,
@@ -153,8 +153,8 @@ async fn post(native: &Arc<Native>, route: NewsRoute, d: &Map<String, Value>) ->
     };
     // `_news_asker()`: la configuración en el pool de bloqueo (nunca en el
     // worker de la base) y la cadena antes de escribir nada.
-    let path = opts.hooks.join("news-editions.json");
-    let config = tokio::task::spawn_blocking(move || read_config(&path))
+    let read_opts = opts.clone();
+    let config = tokio::task::spawn_blocking(move || read_config_domain(&read_opts))
         .await
         .map_err(|_| Fault::Decline)?;
     let config = match config {

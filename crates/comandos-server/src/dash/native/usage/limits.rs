@@ -457,8 +457,13 @@ async fn collect(
     }
 
     let quotas = blocking({
-        let path = o.hooks.join("provider-quotas.json");
-        move || lim::user_quotas(&path)
+        let (home, hooks) = (o.home.clone(), o.hooks.clone());
+        move || {
+            super::super::files::DomainDocument::new(&home, &hooks, "provider-quotas.json")
+                .ok()
+                .and_then(|d| d.read_bytes().ok().flatten())
+                .map_or_else(Map::new, |bytes| lim::user_quotas_bytes(&bytes))
+        }
     })
     .await
     .unwrap_or_default();
@@ -493,9 +498,14 @@ async fn collect(
     // Groq: consumo medido y las cabeceras `x-ratelimit-*` guardadas.
     let groq_measured = measured(deps, "groq").await;
     let headers = blocking({
-        let path = o.hooks.join("groq-ratelimit.json");
+        let (home, hooks) = (o.home.clone(), o.hooks.clone());
         let now = secs(o);
-        move || lim::read_groq_headers(&path, now)
+        move || {
+            super::super::files::DomainDocument::new(&home, &hooks, "groq-ratelimit.json")
+                .ok()
+                .and_then(|d| d.read_bytes().ok().flatten())
+                .map_or_else(Vec::new, |bytes| lim::read_groq_headers_bytes(&bytes, now))
+        }
     })
     .await
     .unwrap_or_default();
@@ -507,10 +517,17 @@ async fn collect(
 
     // agy: cuota que su barra de estado guarda en `H/agy-quota.json`.
     let agy = blocking({
-        let path = o.hooks.join("agy-quota.json");
+        let (home, hooks) = (o.home.clone(), o.hooks.clone());
         let zone = zone.clone();
         let now = (o.clock)() as f64 / 1000.0;
-        move || lim::read_agy_quota(&path, now, zone.as_ref())
+        move || {
+            super::super::files::DomainDocument::new(&home, &hooks, "agy-quota.json")
+                .ok()
+                .and_then(|d| d.read_bytes().ok().flatten())
+                .map_or_else(Vec::new, |bytes| {
+                    lim::read_agy_quota_bytes(&bytes, now, zone.as_ref())
+                })
+        }
     })
     .await
     .unwrap_or_default();

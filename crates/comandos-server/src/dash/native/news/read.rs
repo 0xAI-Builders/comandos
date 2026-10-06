@@ -21,7 +21,7 @@ use crate::{
     HandlerError, Reply, ReplyBody, Request,
     dash::native::{
         Answer, Fault, Native, NativeOptions,
-        files::{Strict, read_json_strict},
+        files::Strict,
         light::{error, read_reply},
         py::{int as py_int, str_scalar, take_chars},
     },
@@ -182,10 +182,13 @@ pub fn news_int(text: &str) -> Result<Option<i64>, Fault> {
 
 /// `_read_json_quiet(HOOKS/news-watch.json) or {}`.
 async fn latest(native: &Arc<Native>) -> Answer {
-    let path = native.options().hooks.join("news-watch.json");
-    let read = tokio::task::spawn_blocking(move || read_json_strict(&path))
-        .await
-        .map_err(|_| Fault::Decline)?;
+    let opts = native.options().clone();
+    let read = tokio::task::spawn_blocking(move || {
+        super::super::files::DomainDocument::new(&opts.home, &opts.hooks, "news-watch.json")
+            .map_or(Strict::Unsure, |d| d.strict())
+    })
+    .await
+    .map_err(|_| Fault::Decline)?;
     let value = match read {
         Strict::Missing | Strict::Unreadable => json!({}),
         Strict::Unsure => return Err(Fault::Decline),
@@ -288,14 +291,36 @@ pub(super) fn read_config(path: &Path) -> news::Result<Option<Map<String, Value>
     news::config_from_bytes(&bytes)
 }
 
+pub(super) fn read_config_domain(opts: &NativeOptions) -> news::Result<Option<Map<String, Value>>> {
+    comandos_store::unified::with_readonly_access(&opts.home, "news-docs", |mode, db| {
+        if matches!(
+            mode,
+            comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed
+        ) {
+            let Some(db) = db else {
+                return Ok(Ok(None));
+            };
+            let bytes =
+                comandos_store::unified::doc_get(db, "hooks/news-editions.json")?.map(|r| r.body);
+            Ok(match bytes {
+                Some(bytes) if bytes.len() as u64 <= MAX_CONFIG => news::config_from_bytes(&bytes),
+                _ => Ok(None),
+            })
+        } else {
+            Ok(read_config(&opts.hooks.join("news-editions.json")))
+        }
+    })
+    .map_err(|_| news::Fault::Unsure("domain read".into()))?
+}
+
 async fn editions(native: &Arc<Native>) -> Answer {
     let opts: &NativeOptions = native.options();
-    let path = opts.hooks.join("news-editions.json");
+    let read_opts = opts.clone();
     let env = env_check(opts.child_env.clone());
     let now_ms = (opts.clock)();
     // La configuración se lee antes, en el pool de bloqueo: nunca en el
     // worker de la base (un FIFO lo dejaría parado para todas las rutas).
-    let config = tokio::task::spawn_blocking(move || read_config(&path))
+    let config = tokio::task::spawn_blocking(move || read_config_domain(&read_opts))
         .await
         .map_err(|_| Fault::Decline)?;
     let config = match config {

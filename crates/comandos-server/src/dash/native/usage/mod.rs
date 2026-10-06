@@ -120,11 +120,12 @@ async fn usage_state(native: &Arc<Native>) -> Answer {
                 native
                     .pane_models
                     .clone()
-                    .apply(
+                    .apply_domain(
                         values.values,
                         values.file_text,
                         o.tmux.clone(),
                         o.hooks.clone(),
+                        o.home.clone(),
                     )
                     .await;
                 spawn_alerts(native, values.alerts);

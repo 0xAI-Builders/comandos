@@ -80,7 +80,7 @@ fn shelf_document_is_readonly_authoritative_and_live_cas_writes_only_legacy() {
         authoritative["height"] = serde_json::json!(880);
         unified::doc_put(
             &db,
-            "H/app-extension-shelf.json",
+            "hooks/app-extension-shelf.json",
             "app-ui",
             comandos_core::json::response_dumps(&authoritative)
                 .unwrap()
@@ -100,26 +100,18 @@ fn shelf_document_is_readonly_authoritative_and_live_cas_writes_only_legacy() {
                 old.clone()
             }
         );
-        let mut next = old.clone();
+        let expected = files
+            .read_pane_document("app-extension-shelf.json")
+            .unwrap();
+        let mut next = expected.clone();
         next["height"] = serde_json::json!(410);
-        let result = files.write_shelf_when(&old, &next, || true);
-        if mode == Mode::Legacy {
-            assert!(result.unwrap());
-            assert_eq!(files.read("app-extension-shelf.json").unwrap(), next);
-            assert!(
-                !files
-                    .write_shelf_when(&old, &serde_json::json!({"height":500}), || true)
-                    .unwrap()
-            );
-        } else {
-            assert!(result.is_err());
-            assert_eq!(files.read("app-extension-shelf.json").unwrap(), old);
-            assert!(
-                !cfg.hooks_dir()
-                    .join("app-extension-shelf.json.lock")
-                    .exists()
-            );
-        }
+        assert!(files.write_shelf_when(&expected, &next, || true).unwrap());
+        assert_eq!(files.read("app-extension-shelf.json").unwrap(), next);
+        assert!(
+            !files
+                .write_shelf_when(&expected, &serde_json::json!({"height":500}), || true)
+                .unwrap()
+        );
     }
 }
 
@@ -206,6 +198,8 @@ fn shelf_delayed_publication_and_replayed_actions_use_the_real_owner_scope() {
     let files = StateFiles::new(cfg.clone(), WriteGuard::from_config(&cfg, ":private-shelf"));
     let old = serde_json::json!({"height":300,"unknown":"fixture"});
     files.write("app-extension-shelf.json", &old).unwrap();
+    // The domain writer now acquires the shared lock; a stale ticket must not recreate it.
+    std::fs::remove_file(cfg.hooks_dir().join("app-extension-shelf.json.lock")).unwrap();
     let owner = Scope::default();
     let delayed = owner.ticket();
     owner.close();

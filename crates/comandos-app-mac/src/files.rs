@@ -24,9 +24,9 @@ enum Document {
 impl Document {
     fn names(self) -> (&'static str, &'static str) {
         match self {
-            Self::Tabs => ("app-tabs.json", "H/app-tabs.json"),
-            Self::Meta => ("app-tabs-meta.json", "H/app-tabs-meta.json"),
-            Self::History => ("app-tabs-history.json", "H/app-tabs-history.json"),
+            Self::Tabs => ("app-tabs.json", "hooks/app-tabs.json"),
+            Self::Meta => ("app-tabs-meta.json", "hooks/app-tabs-meta.json"),
+            Self::History => ("app-tabs-history.json", "hooks/app-tabs-history.json"),
         }
     }
 }

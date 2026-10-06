@@ -1686,17 +1686,23 @@ impl App {
         if !self.writable() || self.ipc_reading.replace(true) {
             return;
         }
-        let paths = std::mem::take(&mut *self.ipc_pending.borrow_mut());
-        if paths.is_empty() {
-            self.ipc_reading.set(false);
-            return;
+        let mut paths = std::mem::take(&mut *self.ipc_pending.borrow_mut());
+        // SQL queues have no file notification; the existing 100 ms deadline polls them.
+        for name in [
+            "app-focus.json",
+            "app-tab-open.json",
+            "app-tab-close.json",
+            "app-command.json",
+        ] {
+            paths.insert(self.cfg.hooks_dir().join(name));
         }
+        let home = self.cfg.home().to_path_buf();
         let weak = Rc::downgrade(self);
         self.jobs.spawn(
             move || {
                 paths
                     .into_iter()
-                    .filter_map(|p| ipc::read_request(&p).ok())
+                    .filter_map(|p| ipc::read_request_domain(&home, &p).ok())
                     .collect::<Vec<_>>()
             },
             move |requests| {
@@ -1711,8 +1717,9 @@ impl App {
                     if app.handle_ipc(&request) {
                         let consumer = IpcConsumer::new(app.cfg.mode(), app.guard.clone());
                         let request_for_consume = request.clone();
+                        let home = app.cfg.home().to_path_buf();
                         app.jobs.spawn(
-                            move || consumer.consume(&request_for_consume),
+                            move || consumer.consume_domain(&home, &request_for_consume),
                             |result| {
                                 if let Err(e) = result {
                                     eprintln!("IPC consume: {e:?}");

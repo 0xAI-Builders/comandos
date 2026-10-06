@@ -15,6 +15,7 @@ pub enum Kind {
 }
 pub struct Ipc {
     root: PathBuf,
+    home: Option<PathBuf>,
     mtimes: [f64; 3],
 }
 const PATHS: [(Kind, &str); 3] = [
@@ -29,12 +30,52 @@ impl Ipc {
     pub fn new(root: PathBuf) -> Self {
         let mtimes =
             PATHS.map(|(_, name)| fs::symlink_metadata(root.join(name)).map_or(0., |m| mtime(&m)));
-        Self { root, mtimes }
+        Self {
+            root,
+            mtimes,
+            home: None,
+        }
+    }
+    pub fn new_domain(home: PathBuf, root: PathBuf) -> Self {
+        let mut ipc = Self::new(root);
+        ipc.home = Some(home);
+        ipc
     }
     pub fn poll(&mut self) -> Vec<(Kind, Value)> {
         let mut out = vec![];
         for (i, (kind, name)) in PATHS.iter().enumerate() {
             let path = self.root.join(name);
+            if let Some(home) = &self.home {
+                let Ok((mode, row)) = comandos_store::domains::commands::peek(home, name) else {
+                    continue;
+                };
+                if matches!(
+                    mode,
+                    comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed
+                ) {
+                    if let Some((seq, body)) = row
+                        && body.len() <= 1 << 20
+                        && let Some(value) = comandos_core::json::workspace_loads_bytes(&body)
+                    {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
+                        if comandos_store::domains::commands::acknowledge(
+                            home,
+                            name,
+                            Some(seq),
+                            &body,
+                            now,
+                            || Ok(()),
+                        )
+                        .is_ok()
+                        {
+                            out.push((*kind, value));
+                        }
+                    }
+                    continue;
+                }
+            }
             let Ok(before) = fs::symlink_metadata(&path) else {
                 continue;
             };
@@ -83,6 +124,19 @@ impl Ipc {
                 continue;
             }
             if let Ok(value) = comandos_core::json::workspace_loads(&text) {
+                if let Some(home) = &self.home {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
+                    let _ = comandos_store::domains::commands::acknowledge(
+                        home,
+                        name,
+                        None,
+                        text.as_bytes(),
+                        now,
+                        || Ok(()),
+                    );
+                }
                 out.push((*kind, value));
             }
         }

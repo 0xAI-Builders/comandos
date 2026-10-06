@@ -839,7 +839,7 @@ pub async fn pane_values(
     let rows = rows.to_vec();
     let accounts = native.pane_accounts.clone();
     let computed = tokio::task::spawn_blocking(move || {
-        let motor = gather::motor_results(&opts.hooks).ok()?;
+        let motor = gather::motor_results(&opts.home, &opts.hooks).ok()?;
         let tiers = catalogs::read_model_tiers(&opts).ok()?;
         let mut cache = accounts.lock().unwrap_or_else(|p| p.into_inner());
         let mut account = |pid: i64, agent: &str| -> Result<String, Unsure> {
@@ -975,13 +975,39 @@ impl PaneModelWriter {
         tmux: Tmux,
         hooks: PathBuf,
     ) {
+        self.apply_context(values, file_text, tmux, hooks, None)
+            .await;
+    }
+    pub async fn apply_domain(
+        self: &Arc<Self>,
+        values: BTreeMap<String, Option<String>>,
+        file_text: String,
+        tmux: Tmux,
+        hooks: PathBuf,
+        home: PathBuf,
+    ) {
+        self.apply_context(values, file_text, tmux, hooks, Some(home))
+            .await;
+    }
+    async fn apply_context(
+        self: &Arc<Self>,
+        values: BTreeMap<String, Option<String>>,
+        file_text: String,
+        tmux: Tmux,
+        hooks: PathBuf,
+        home: Option<PathBuf>,
+    ) {
         let file_guard = self.file.lock().await;
         let changed = self.lock().file_text.as_deref() != Some(file_text.as_str());
         if changed {
+            let doc = home.map(|home| files::DomainDocument::new(&home, &hooks, "pane-models.txt"));
             let path = hooks.join("pane-models.txt");
             let text = file_text.clone();
-            let written =
-                tokio::task::spawn_blocking(move || files::write_text_atomic(&path, &text)).await;
+            let written = tokio::task::spawn_blocking(move || match doc {
+                Some(doc) => doc.and_then(|doc| doc.write_bytes(text.as_bytes(), 0)),
+                None => files::write_text_atomic(&path, &text),
+            })
+            .await;
             if matches!(written, Ok(Ok(()))) {
                 self.lock().file_text = Some(file_text);
             }

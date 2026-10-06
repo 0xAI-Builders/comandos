@@ -227,7 +227,7 @@ impl Native {
             RunMode::Sandbox { hooks, .. } => hooks.clone(),
             RunMode::Live => home.join(".claude/hooks"),
         };
-        self.ipc = Some(crate::ipc::Ipc::new(hooks.clone()));
+        self.ipc = Some(crate::ipc::Ipc::new_domain(home.clone(), hooks.clone()));
         if let Some(delegate) = &self.delegate {
             // SEGURIDAD: Owned timer targets the retained main-thread delegate; close invalidates it.
             self.ipc_timer = Some(unsafe {

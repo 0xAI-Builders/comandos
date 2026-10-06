@@ -706,9 +706,10 @@ async fn spawn_terminal(native: &Native, sess: &str) -> Result<Option<String>, F
 async fn write_focus(native: &Native, sess: &str, win: &str) -> Result<(), Fault> {
     let opts = native.options();
     let hooks = opts.hooks.clone();
+    let home = opts.home.clone();
     let files = blocking(move || {
-        let tabs = light::tab_labels(&hooks);
-        let history = light::read_tab_history(&hooks);
+        let tabs = light::tab_labels_domain(&home, &hooks);
+        let history = light::read_tab_history_domain(&home, &hooks);
         Ok((tabs, history))
     })
     .await?;
@@ -735,8 +736,18 @@ async fn write_focus(native: &Native, sess: &str, win: &str) -> Result<(), Fault
         return Ok(());
     };
     let path = opts.hooks.join("app-focus.json");
+    let (home, now) = (opts.home.clone(), (opts.clock)());
     mark_effect();
-    let _ = tokio::task::spawn_blocking(move || std::fs::write(path, text)).await;
+    let _ = tokio::task::spawn_blocking(move || {
+        comandos_store::domains::commands::publish(
+            &home,
+            "app-focus.json",
+            text.as_bytes(),
+            now,
+            || Ok(std::fs::write(path, &text)?),
+        )
+    })
+    .await;
     Ok(())
 }
 
@@ -801,11 +812,17 @@ pub(crate) async fn focus_session(
 async fn registry_preflight(native: &Native, route: &str, history: bool) -> Result<(), Fault> {
     let opts = native.options();
     let hooks = opts.hooks.clone();
+    let home = opts.home.clone();
+    let read_opts = opts.clone();
     let checked: Result<(), RegistryError> = tokio::task::spawn_blocking(move || {
-        tab_registry::load_json_file(&hooks.join(tab_registry::TABS_FILE), json!({}))?;
-        tab_registry::read_tab_metadata(&hooks.join(tab_registry::TABS_META_FILE))?;
+        tab_registry::load_document(
+            &tab_registry::domain_document(&read_opts, tab_registry::TABS_FILE)?,
+            None,
+            json!({}),
+        )?;
+        tab_registry::read_metadata_domain(&read_opts, None)?;
         if history {
-            light::read_tab_history(&hooks).map_err(|fault| match fault {
+            light::read_tab_history_domain(&home, &hooks).map_err(|fault| match fault {
                 Fault::Decline => RegistryError::Unsure(hooks.join(tab_registry::TAB_HISTORY_FILE)),
                 other => RegistryError::Fault(other),
             })?;

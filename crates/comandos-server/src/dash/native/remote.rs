@@ -1020,7 +1020,10 @@ pub fn start(native: &Arc<Native>) -> bool {
     if !native.enabled()
         || super::cut_is_off(&opts.cuts_off, super::Cut::Services)
         || !opts.background.webterm_restore
-        || !opts.hooks.join(WEBTERM_ENABLED_FILE).is_file()
+        || super::files::DomainDocument::new(&opts.home, &opts.hooks, WEBTERM_ENABLED_FILE)
+            .ok()
+            .and_then(|d| d.read_bytes().ok().flatten())
+            .is_none()
     {
         return false;
     }

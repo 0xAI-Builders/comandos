@@ -142,7 +142,21 @@ async fn post(native: &Arc<Native>, d: &Map<String, Value>) -> Answer {
     if d.get("ack").is_some_and(truthy) {
         // `os.remove(FOCUS_QUEUE)` con `except OSError: pass`.
         let queue = native.options().hooks.join("focus-queue.jsonl");
-        let _ = tokio::task::spawn_blocking(move || std::fs::remove_file(queue)).await;
+        let home = native.options().home.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            let access = comandos_store::domains::caller::CallerAccess::open(&home, "logs")?;
+            access.write(
+                || {
+                    let _ = std::fs::remove_file(queue);
+                    Ok(())
+                },
+                |db, _| {
+                    db.execute("DELETE FROM log_lines WHERE log='focus-queue'", [])?;
+                    Ok(())
+                },
+            )
+        })
+        .await;
         return reply(StatusCode::OK, &json!({"ok": true}));
     }
     let command = if d.contains_key("action") {

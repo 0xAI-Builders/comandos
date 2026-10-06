@@ -298,8 +298,19 @@ async fn write_close_signal(opts: &NativeOptions, closed: Value) {
         return;
     };
     let signal = json!({"session": last, "sessions": closed, "ts": ts});
-    let _ =
-        tokio::task::spawn_blocking(move || super::files::write_json_atomic(&path, &signal)).await;
+    let (home, now) = (opts.home.clone(), (opts.clock)());
+    let _ = tokio::task::spawn_blocking(move || {
+        let body = comandos_core::json::response_dumps(&signal)
+            .map_err(comandos_store::Error::Validation)?;
+        comandos_store::domains::commands::publish(
+            &home,
+            "app-tab-close.json",
+            body.as_bytes(),
+            now,
+            || Ok(super::files::write_json_atomic(&path, &signal)?),
+        )
+    })
+    .await;
 }
 
 /// `workspace_payload(state)` sobre el JSON de `CloseGroupState::current`.

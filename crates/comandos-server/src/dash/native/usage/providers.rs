@@ -187,10 +187,14 @@ pub async fn answer_plans(native: &Native) -> Answer {
         plans.push(plan_item(&registry, &matrix, &plan)?);
     }
     // `optimization_state().get("profile") or ""`.
-    let state = read_json_or_none(native.options().hooks.join("optimization-default.json"))
-        .await?
-        .filter(Value::is_object)
-        .unwrap_or_else(|| json!({}));
+    let opts = native.options().clone();
+    let state = tokio::task::spawn_blocking(move || {
+        super::super::light::load_domain(&opts.home, &opts.hooks, "optimization-default.json")
+    })
+    .await
+    .map_err(|_| Fault::Decline)??
+    .filter(Value::is_object)
+    .unwrap_or_else(|| json!({}));
     let profile = state.get("profile").filter(|p| truthy(p));
     let active = profile.cloned().unwrap_or_else(|| json!(""));
     read_reply(&json!({"plans": plans, "active": active}))

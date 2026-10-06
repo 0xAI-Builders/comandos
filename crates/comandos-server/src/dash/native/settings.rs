@@ -23,7 +23,7 @@
 use super::{
     Answer, Entry, Fault, Key, Native, NativeOptions, NativeRoute, Verb,
     files::{FileLock, LOCK_WAIT, write_text_atomic},
-    light::{data, error, load, read_reply},
+    light::{data, error, read_reply},
     procs::{gui_env_for, spawn_detached, which_in},
     py::{int, str_scalar, take_chars},
     query::Query,
@@ -172,8 +172,10 @@ pub async fn answer(native: &Arc<Native>, route: SettingsRoute, request: &Reques
 /// GET `/models/latest`: el snapshot del vigilante, o `{}` si falta, no se
 /// lee o es falso. Lo que el port no lee con certeza declina.
 async fn models_latest(opts: &NativeOptions) -> Answer {
-    let path = opts.hooks.join("model-watch.json");
-    let data = blocking(move || load(&path)).await??;
+    let opts = opts.clone();
+    let data =
+        blocking(move || super::light::load_domain(&opts.home, &opts.hooks, "model-watch.json"))
+            .await??;
     let data = data
         .filter(truthy)
         .unwrap_or_else(|| Value::Object(Map::new()));

@@ -51,6 +51,7 @@ struct State {
 
 pub struct MotorResults {
     path: PathBuf,
+    document: Option<files::DomainDocument>,
     clock: Seconds,
     state: Mutex<State>,
 }
@@ -68,6 +69,7 @@ impl MotorResults {
     pub fn load_with(path: &Path, clock: Seconds) -> Self {
         Self {
             path: path.to_owned(),
+            document: None,
             clock,
             state: Mutex::new(State::default()),
         }
@@ -85,7 +87,10 @@ impl MotorResults {
             .entry(path.clone())
             .or_insert_with(|| {
                 let clock = opts.clock_seconds.clone();
-                Arc::new(Self::load_with(&path, Arc::new(move || clock())))
+                let mut results = Self::load_with(&path, Arc::new(move || clock()));
+                results.document =
+                    files::DomainDocument::new(&opts.home, &opts.hooks, "motor-results.json").ok();
+                Arc::new(results)
             })
             .clone()
     }
@@ -101,10 +106,18 @@ impl MotorResults {
         let stamp = std::fs::metadata(&self.path)
             .ok()
             .map(|m| (m.mtime(), m.mtime_nsec(), m.size(), m.ino()));
-        if !force && state.stamp.is_some() && stamp == state.stamp {
+        if self.document.is_none() && !force && state.stamp.is_some() && stamp == state.stamp {
             return;
         }
-        match files::read_json_strict(&self.path) {
+        let read = self
+            .document
+            .as_ref()
+            .map_or_else(|| files::read_json_strict(&self.path), |doc| doc.strict());
+        self.refresh_read(state, read);
+        state.stamp = stamp;
+    }
+    fn refresh_read(&self, state: &mut State, read: files::Strict) {
+        match read {
             files::Strict::Missing | files::Strict::Unreadable => {
                 state.disk = Map::new();
                 state.uncertain = false;
@@ -119,7 +132,6 @@ impl MotorResults {
                 state.uncertain = false;
             }
         }
-        state.stamp = stamp;
     }
 
     /// El archivo con las entradas propias superpuestas (gana el `ts` más
@@ -214,37 +226,77 @@ impl MotorResults {
     /// de escritura se tragan, como `_motor_result_write`).
     fn put(&self, key: &str, result: Map<String, Value>) -> Result<(), Uncertain> {
         let mut state = self.lock();
-        self.refresh(&mut state, true);
-        let entry = Value::Object(result);
-        // `merged` decide por timestamp y conserva la posición del disco.
-        // Sustituir aquí la entrada del disco perdería el resultado más nuevo.
-        if newest(&entry, state.own.get(key)) {
-            state.own.insert(key.to_owned(), entry);
-        }
-        let _ = trim(&mut state.own);
-        if state.uncertain {
-            return Err(Uncertain);
-        }
-        let merged = match Self::merged(&state) {
-            Ok(merged) => merged,
-            Err(Uncertain) => {
-                // `float(ts)` lanza en el Python tras guardar y antes de escribir.
+        let access = self
+            .document
+            .as_ref()
+            .map(|doc| doc.access())
+            .transpose()
+            .map_err(|_| Uncertain)?;
+        let _lock = if let Some(access) = &access {
+            if access.mode() == comandos_store::unified::Mode::Sealed {
+                None
+            } else {
+                Some(files::FileLock::acquire(&self.path).map_err(|_| Uncertain)?)
+            }
+        } else {
+            None
+        };
+        let job = || {
+            if let (Some(doc), Some(access)) = (&self.document, &access) {
+                self.refresh_read(&mut state, doc.strict_under(access));
+            } else {
+                self.refresh(&mut state, true);
+            }
+            let entry = Value::Object(result);
+            // `merged` decide por timestamp y conserva la posición del disco.
+            // Sustituir aquí la entrada del disco perdería el resultado más nuevo.
+            if newest(&entry, state.own.get(key)) {
+                state.own.insert(key.to_owned(), entry);
+            }
+            let _ = trim(&mut state.own);
+            if state.uncertain {
                 return Err(Uncertain);
             }
+            let merged = match Self::merged(&state) {
+                Ok(merged) => merged,
+                Err(Uncertain) => {
+                    // `float(ts)` lanza en el Python tras guardar y antes de escribir.
+                    return Err(Uncertain);
+                }
+            };
+            // Lo propio que el recorte dejó fuera ya no vuelve.
+            state.own.retain(|k, _| merged.contains_key(k));
+            let value = Value::Object(merged.clone());
+            let written = if let (Some(doc), Some(access)) = (&self.document, &access) {
+                comandos_core::json::response_dumps(&value)
+                    .map_err(std::io::Error::other)
+                    .and_then(|body| {
+                        doc.write_under(
+                            access,
+                            body.as_bytes(),
+                            ((self.clock)() * 1000.).trunc() as i64,
+                        )
+                    })
+            } else {
+                if let Some(dir) = self.path.parent() {
+                    let _ = std::fs::create_dir_all(dir);
+                }
+                files::write_json_atomic(&self.path, &value)
+            };
+            if written.is_ok() {
+                state.disk = merged;
+                // El heredado puede reemplazar el archivo después del rename.
+                // Su metadata no identifica `merged`: la siguiente lectura debe
+                // recargar antes de asociar contenido y sello.
+                state.stamp = None;
+            }
+            Ok(())
         };
-        // Lo propio que el recorte dejó fuera ya no vuelve.
-        state.own.retain(|k, _| merged.contains_key(k));
-        if let Some(dir) = self.path.parent() {
-            let _ = std::fs::create_dir_all(dir);
+        if let Some(access) = &access {
+            access.with_write_transaction(job).map_err(|_| Uncertain)?
+        } else {
+            job()
         }
-        if files::write_json_atomic(&self.path, &Value::Object(merged.clone())).is_ok() {
-            state.disk = merged;
-            // El heredado puede reemplazar el archivo después del rename.
-            // Su metadata no identifica `merged`: la siguiente lectura debe
-            // recargar antes de asociar contenido y sello.
-            state.stamp = None;
-        }
-        Ok(())
     }
 }
 

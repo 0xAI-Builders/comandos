@@ -96,8 +96,10 @@ struct Scan {
 /// `MOTOR_RESULT` desde su espejo `H/motor-results.json` (D1): ausente → `{}`;
 /// ilegible, incierto, no objeto o con un valor que no es objeto → declinar
 /// (la memoria del Python es desconocida).
-pub(crate) fn motor_results(hooks: &Path) -> Result<Map<String, Value>, StateFault> {
-    match files::read_json_strict(&hooks.join("motor-results.json")) {
+pub(crate) fn motor_results(home: &Path, hooks: &Path) -> Result<Map<String, Value>, StateFault> {
+    match files::DomainDocument::new(home, hooks, "motor-results.json")
+        .map_or(Strict::Unsure, |d| d.strict())
+    {
         Strict::Missing => Ok(Map::new()),
         Strict::Value(Value::Object(map)) if map.values().all(Value::is_object) => Ok(map),
         _ => Err(StateFault::Decline),
@@ -169,11 +171,13 @@ fn scan(
     // `PaneInspector()` se crea al empezar `read_states`.
     let inspector = PaneInspector::new(&opts.home, opts.proc_root.as_path()).map_err(unsure)?;
     let (maps, external) = agent_maps(opts, &registry, &panes)?;
-    let tabs = light::tab_labels(&opts.hooks)?;
-    let history = light::read_tab_history(&opts.hooks)?;
-    let records = cache.records.scan(&opts.hooks.join("state"))?;
+    let tabs = light::tab_labels_domain(&opts.home, &opts.hooks)?;
+    let history = light::read_tab_history_domain(&opts.home, &opts.hooks)?;
+    let records = cache
+        .records
+        .scan_domain(&opts.home, &opts.hooks.join("state"))?;
     drop(cache);
-    let motor = motor_results(&opts.hooks)?;
+    let motor = motor_results(&opts.home, &opts.hooks)?;
     let tiers = catalogs::read_model_tiers(opts)?;
     Ok(Scan {
         panes,
@@ -324,11 +328,17 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
         .into_inner()
         .unwrap_or_else(|p| p.into_inner());
     // 8. `write_app_tab_models`: un fallo se ignora, como su `except`.
-    let path = opts.hooks.join("app-tab-models.json");
+    let doc = files::DomainDocument::new(&opts.home, &opts.hooks, "app-tab-models.json");
+    let now_ms = (opts.clock)();
     // En el pool y no en `serial`: un trabajo de `serial` en cola se descarta si
     // el cómputo se abandona, y esta escritura, como la del Python, se completa
     // aunque el cliente se vaya.
-    let _ = tokio::task::spawn_blocking(move || files::write_json_atomic(&path, &models)).await;
+    let _ = tokio::task::spawn_blocking(move || {
+        let doc = doc?;
+        let body = response_dumps(&models).map_err(std::io::Error::other)?;
+        doc.write_bytes(body.as_bytes(), now_ms)
+    })
+    .await;
     let Value::Array(items) = items else {
         return Err(StateFault::Failure);
     };

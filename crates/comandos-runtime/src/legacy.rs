@@ -10,6 +10,16 @@ pub const LEGACY_MARKER: &str = "events.legacy_import";
 /// Import once, without a pane/session target or live-state side effects.
 /// Existing callers can group this import with their own transaction.
 pub fn import_legacy(conn: &Connection, path: &Path) -> Result<u64> {
+    import_with(conn, || match std::fs::read(path) {
+        Ok(bytes) => Ok(bytes),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
+        Err(e) => Err(e.into()),
+    })
+}
+pub fn import_legacy_bytes(conn: &Connection, bytes: &[u8]) -> Result<u64> {
+    import_with(conn, || Ok(bytes.to_vec()))
+}
+fn import_with(conn: &Connection, read: impl FnOnce() -> Result<Vec<u8>>) -> Result<u64> {
     let tx = if conn.is_autocommit() {
         Some(Transaction::new_unchecked(
             conn,
@@ -34,11 +44,7 @@ pub fn import_legacy(conn: &Connection, path: &Path) -> Result<u64> {
             |r| r.get(0),
         )?;
         let cutoff = first.map(|n| n.div_euclid(1000));
-        let bytes = match std::fs::read(path) {
-            Ok(bytes) => bytes,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => vec![],
-            Err(e) => return Err(e.into()),
-        };
+        let bytes = read()?;
         let text = String::from_utf8_lossy(&bytes);
         let mut seen = HashMap::<String, u64>::new();
         // Match Python splitlines, including Unicode line separators and lone CR.

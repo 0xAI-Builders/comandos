@@ -533,8 +533,8 @@ fn scan(
 ) -> Scanned {
     let agents = (|| -> Result<_, StateFault> {
         // `session_labels()`: `tab_labels()` y `read_tab_history()`.
-        let tabs = light::tab_labels(&opts.hooks)?;
-        let history = light::read_tab_history(&opts.hooks)?;
+        let tabs = light::tab_labels_domain(&opts.home, &opts.hooks)?;
+        let history = light::read_tab_history_domain(&opts.home, &opts.hooks)?;
         let labels = gather::session_labels(tabs, live, &history);
         // `agent_pane_maps(agent_procs())`.
         let registry = gather::load_registry(opts, registry)?;

@@ -1,5 +1,5 @@
 //! Edition loop: a registered system thread, only when Front owns background work.
-use super::{agents, read::read_config};
+use super::{agents, read::read_config_domain};
 use crate::dash::native::{Native, background::front_owns, usage::pane_models::notice_emit};
 use comandos_runtime::{
     news_agents::{self, Opener},
@@ -163,7 +163,7 @@ fn tick(
     handle: &tokio::runtime::Handle,
 ) -> Result<Value, String> {
     let opts = native.options();
-    let config = read_config(&opts.hooks.join("news-editions.json")).map_err(|e| e.to_string())?;
+    let config = read_config_domain(opts).map_err(|e| e.to_string())?;
     let env = |key: &str| -> Option<String> {
         if let Some(env) = &opts.child_env {
             env.iter()

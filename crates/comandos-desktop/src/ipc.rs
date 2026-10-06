@@ -94,3 +94,84 @@ impl<G: IpcGuard> IpcConsumer<G> {
         self.guard.remove_file(&request.path)
     }
 }
+
+/// The home is explicit because sandbox hooks may be outside its standard path.
+pub fn read_request_domain(home: &Path, path: &Path) -> Result<IpcRequest, IpcError> {
+    let name = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| IpcError::Unknown(path.into()))?;
+    // app-tab-active is a document, never an IPC queue.
+    if name == "app-tab-active.json" {
+        return read_request(path);
+    }
+    let (mode, row) = comandos_store::domains::commands::peek(home, name)
+        .map_err(|e| IpcError::Io(path.into(), e.to_string()))?;
+    if !matches!(
+        mode,
+        comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed
+    ) {
+        return read_request(path);
+    }
+    let (seq, body) = row.ok_or_else(|| IpcError::Io(path.into(), "no pending command".into()))?;
+    if body.len() > 1 << 20 {
+        return Err(IpcError::Json(path.into()));
+    }
+    let payload = comandos_core::json::workspace_loads_bytes(&body)
+        .filter(Value::is_object)
+        .ok_or_else(|| IpcError::Json(path.into()))?;
+    let kind = match name {
+        "app-focus.json" => IpcKind::Focus,
+        "app-tab-open.json" => IpcKind::TabOpen,
+        "app-tab-close.json" => IpcKind::TabClose,
+        "app-command.json" => IpcKind::Command,
+        _ => return Err(IpcError::Unknown(path.into())),
+    };
+    Ok(IpcRequest {
+        kind,
+        payload,
+        path: path.into(),
+        stamp: (u64::MAX, seq as u64, 0, 0),
+    })
+}
+impl<G: IpcGuard> IpcConsumer<G> {
+    pub fn consume_domain(&self, home: &Path, request: &IpcRequest) -> Result<(), IpcError> {
+        if self.mode == RunMode::Shadow {
+            return Ok(());
+        }
+        let Some(name) = request.path.file_name().and_then(|s| s.to_str()) else {
+            return Err(IpcError::Unknown(request.path.clone()));
+        };
+        if name == "app-tab-active.json" {
+            return self
+                .consume(request)
+                .map_err(|_| IpcError::Io(request.path.clone(), "legacy consume failed".into()));
+        }
+        let body = comandos_core::json::response_dumps(&request.payload)
+            .map_err(|_| IpcError::Json(request.path.clone()))?;
+        let seq = (request.stamp.0 == u64::MAX).then_some(request.stamp.1 as i64);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
+        comandos_store::domains::commands::acknowledge(
+            home,
+            name,
+            seq,
+            body.as_bytes(),
+            now,
+            || {
+                // Preserve an atomic replacement arriving after the read.
+                if let Ok(current) = read_request(&request.path)
+                    && current.payload == request.payload
+                    && (seq.is_some() || current.stamp == request.stamp)
+                {
+                    self.guard.remove_file(&request.path).map_err(|_| {
+                        comandos_store::Error::Validation("legacy consume failed".into())
+                    })?;
+                }
+                Ok(())
+            },
+        )
+        .map_err(|e| IpcError::Io(request.path.clone(), e.to_string()))
+    }
+}

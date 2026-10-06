@@ -321,16 +321,14 @@ fn live_snippet_crud_uses_existing_authorized_hooks_and_checks_domain_first() {
             json!({"id":"one","name":"first","body":"ñ😀\n","tags":[],"unknown":{"keep":true}}),
         ];
         let result = files.write_snippets_when(&[], &first, || true);
-        if mode != Mode::Legacy {
-            assert!(result.is_err());
-            assert!(!cfg.hooks_dir().join("snippets.json").exists());
-            assert!(!cfg.hooks_dir().join("snippets.json.lock").exists());
-            continue;
-        }
         assert!(
             result.unwrap(),
-            "Live Legacy save should use the existing hooks directory"
+            "the admitted mode should publish through its backend"
         );
+        if mode == Mode::Sealed {
+            assert!(!cfg.hooks_dir().join("snippets.json").exists());
+            assert!(!cfg.hooks_dir().join("snippets.json.lock").exists());
+        }
         assert_eq!(files.read_snippets().unwrap(), first);
         let next = edit_document(
             &first,
@@ -354,7 +352,7 @@ fn live_snippet_crud_uses_existing_authorized_hooks_and_checks_domain_first() {
 }
 
 #[test]
-fn legacy_cas_preserves_python_json_and_refuses_nonlegacy_authority() {
+fn cas_preserves_python_json_in_every_mode() {
     use comandos_app::{config::parse_args, guard::WriteGuard, state_files::StateFiles};
     use comandos_store::unified::{self, Mode};
     use std::os::unix::fs::PermissionsExt;
@@ -383,7 +381,7 @@ fn legacy_cas_preserves_python_json_and_refuses_nonlegacy_authority() {
         let db = unified::open_unified(&dbpath).unwrap();
         unified::doc_put(
             &db,
-            "H/snippets.json",
+            "hooks/snippets.json",
             "ui-docs",
             comandos_core::json::response_dumps(&before)
                 .unwrap()
@@ -402,27 +400,18 @@ fn legacy_cas_preserves_python_json_and_refuses_nonlegacy_authority() {
             files.write_snippets_when(before.as_array().unwrap(), next.as_array().unwrap(), || {
                 true
             });
-        if mode == Mode::Legacy {
-            assert!(result.unwrap());
-            assert!(
-                !files
-                    .write_snippets_when(before.as_array().unwrap(), &[], || true)
-                    .unwrap()
-            );
-            assert_eq!(files.read("snippets.json").unwrap(), next);
-            assert!(
-                !files
-                    .write_snippets_when(next.as_array().unwrap(), &[], || false)
-                    .unwrap()
-            );
-        } else {
-            assert!(result.is_err());
-            assert_eq!(files.read("snippets.json").unwrap(), before);
-            assert!(
-                !cfg.hooks_dir().join("snippets.json.lock").exists(),
-                "authority must be checked before creating the legacy lock"
-            );
-        }
+        assert!(result.unwrap());
+        assert!(
+            !files
+                .write_snippets_when(before.as_array().unwrap(), &[], || true)
+                .unwrap()
+        );
+        assert_eq!(files.read("snippets.json").unwrap(), next);
+        assert!(
+            !files
+                .write_snippets_when(next.as_array().unwrap(), &[], || false)
+                .unwrap()
+        );
     }
 }
 #[test]
@@ -466,8 +455,14 @@ fn newly_unified_authority_cannot_publish_legacy_bytes() {
         unified::set_mode(&db, "ui-docs", Mode::Unified, "fixture", 1).unwrap();
         true
     });
-    assert!(result.is_err());
-    assert_eq!(files.read("snippets.json").unwrap(), before);
+    assert!(!result.unwrap());
+    assert_eq!(
+        comandos_core::json::workspace_loads_bytes(
+            &std::fs::read(cfg.hooks_dir().join("snippets.json")).unwrap()
+        )
+        .unwrap(),
+        before
+    );
 }
 
 #[test]
@@ -692,7 +687,7 @@ fn authority_published_at_final_cancel_check_cannot_write_legacy() {
             let db = unified::open_unified(&unified::unified_path(cfg.home())).unwrap();
             unified::doc_put(
                 &db,
-                "H/snippets.json",
+                "hooks/snippets.json",
                 "ui-docs",
                 b"[]",
                 unified::Origin::Import,
@@ -703,9 +698,12 @@ fn authority_published_at_final_cancel_check_cannot_write_legacy() {
         }
         true
     });
-    assert!(result.is_err());
+    assert!(!result.unwrap());
     assert_eq!(
-        files.read("snippets.json").unwrap(),
+        comandos_core::json::workspace_loads_bytes(
+            &std::fs::read(cfg.hooks_dir().join("snippets.json")).unwrap()
+        )
+        .unwrap(),
         before,
         "mode must be proven after final cancellation callback before publishing bytes"
     );

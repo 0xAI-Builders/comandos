@@ -26,6 +26,90 @@ pub enum Strict {
     Value(Value),
 }
 
+/// Contexto explícito: HOOKS puede estar fuera del HOME, también en pruebas.
+#[derive(Clone)]
+pub struct DomainDocument {
+    pub home: PathBuf,
+    pub file: PathBuf,
+    pub name: String,
+    pub domain: &'static str,
+}
+impl DomainDocument {
+    pub fn new(home: &Path, hooks: &Path, name: &str) -> io::Result<Self> {
+        use comandos_store::domains::catalog::{self, TargetKind};
+        let symbolic = format!("H/{name}");
+        let spec = catalog::source(&symbolic)
+            .filter(|s| s.kind == TargetKind::Document)
+            .ok_or_else(|| io::Error::other("documento fuera del catálogo"))?;
+        Ok(Self {
+            home: home.into(),
+            file: hooks.join(name),
+            name: format!("hooks/{name}"),
+            domain: spec.domain,
+        })
+    }
+    pub fn read_bytes(&self) -> comandos_store::Result<Option<Vec<u8>>> {
+        comandos_store::domains::DomainStore { home: &self.home }
+            .document(&self.name, self.domain, self.file.clone())
+            .read_readonly()
+    }
+    pub fn strict(&self) -> Strict {
+        match self.read_bytes() {
+            Ok(Some(bytes)) => bytes_strict(&bytes),
+            Ok(None) => Strict::Missing,
+            Err(_) => Strict::Unsure,
+        }
+    }
+    pub fn access(&self) -> comandos_store::Result<comandos_store::domains::caller::CallerAccess> {
+        comandos_store::domains::caller::CallerAccess::open(&self.home, self.domain)
+    }
+    pub fn strict_under(&self, access: &comandos_store::domains::caller::CallerAccess) -> Strict {
+        match access.read_document(&self.name, &self.file) {
+            Ok(Some(bytes)) => bytes_strict(&bytes),
+            Ok(None) => Strict::Missing,
+            Err(_) => Strict::Unsure,
+        }
+    }
+    pub fn write_under(
+        &self,
+        access: &comandos_store::domains::caller::CallerAccess,
+        bytes: &[u8],
+        now_ms: i64,
+    ) -> io::Result<()> {
+        access
+            .write(
+                || Ok(comandos_store::files::write_atomic(&self.file, bytes)?),
+                |db, origin| {
+                    comandos_store::unified::doc_put(
+                        db,
+                        &self.name,
+                        self.domain,
+                        bytes,
+                        origin,
+                        now_ms,
+                    )
+                    .map(|_| ())
+                },
+            )
+            .map_err(io::Error::other)
+    }
+    pub fn write_bytes(&self, bytes: &[u8], now_ms: i64) -> io::Result<()> {
+        let access = self.access().map_err(io::Error::other)?;
+        let _lock = if access.mode() == comandos_store::unified::Mode::Sealed {
+            None
+        } else {
+            Some(FileLock::acquire(&self.file)?)
+        };
+        self.write_under(&access, bytes, now_ms)
+    }
+}
+pub fn bytes_strict(bytes: &[u8]) -> Strict {
+    match std::str::from_utf8(bytes) {
+        Ok(text) => loads_strict(text),
+        Err(_) => Strict::Unsure,
+    }
+}
+
 /// `json.load(open(path))` del Python: lectura en modo texto (UTF-8), así que
 /// un BOM o UTF-16 no se decodifican como en `json.loads(bytes)`.
 pub fn read_json_strict(path: &Path) -> Strict {

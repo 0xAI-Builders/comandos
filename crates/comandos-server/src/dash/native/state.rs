@@ -157,12 +157,13 @@ impl StateBackend {
     /// Las cuatro rutas de eventos y marcas, en el hilo del worker.
     pub fn events(
         &mut self,
+        home: &Path,
         legacy: &Path,
         request: &Request,
     ) -> Result<Option<Reply>, Unanswered> {
-        let routes = self
-            .events
-            .get_or_insert_with(|| EventRoutes::new(legacy.to_path_buf(), NativeFacts));
+        let routes = self.events.get_or_insert_with(|| {
+            EventRoutes::new_domain(home.to_path_buf(), legacy.to_path_buf(), NativeFacts)
+        });
         routes.handle_native(&self.conn, request)
     }
 }

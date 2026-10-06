@@ -49,6 +49,25 @@ impl LayoutSnapshot<'_> {
         &self,
         value: &Value,
         now: i64,
+        allowed: impl FnMut() -> bool,
+    ) -> Result<bool> {
+        self.write_with_backend_when(
+            value,
+            now,
+            Policy::Bridge,
+            &Files,
+            || FileLock::exclusive(&lock_path(&self.file)).map_err(Error::from),
+            allowed,
+        )
+    }
+    /// Preserve the caller's legacy serializer policy, guard and shared flock.
+    pub fn write_with_backend_when<B: Backend<Error = Error>, L>(
+        &self,
+        value: &Value,
+        now: i64,
+        policy: Policy,
+        backend: &B,
+        acquire_legacy_lock: impl FnOnce() -> Result<L>,
         mut allowed: impl FnMut() -> bool,
     ) -> Result<bool> {
         if !allowed() {
@@ -71,7 +90,7 @@ impl LayoutSnapshot<'_> {
         let _file_lock = if mode == Mode::Sealed {
             None
         } else {
-            Some(FileLock::exclusive(&lock_path(&self.file))?)
+            Some(acquire_legacy_lock()?)
         };
         if !allowed() {
             return Ok(false);
@@ -83,10 +102,10 @@ impl LayoutSnapshot<'_> {
                 "current",
             )?
         } else {
-            Files.read(&self.file)?
+            backend.read(&self.file)?
         };
-        let plan = snapshot_files::plan(value, old.as_deref(), now, Policy::Bridge)
-            .map_err(Error::Validation)?;
+        let plan =
+            snapshot_files::plan(value, old.as_deref(), now, policy).map_err(Error::Validation)?;
         let allowed = RefCell::new(allowed);
         let stopped = Cell::new(false);
         let may_publish = || {
@@ -102,7 +121,7 @@ impl LayoutSnapshot<'_> {
             db.as_ref(),
             || {
                 if may_publish() {
-                    snapshot_files::apply_with(&Files, &self.file, &plan, Policy::Bridge)?;
+                    snapshot_files::apply_with(backend, &self.file, &plan, policy)?;
                 }
                 Ok(())
             },

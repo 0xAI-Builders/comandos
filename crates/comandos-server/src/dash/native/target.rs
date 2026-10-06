@@ -120,6 +120,35 @@ pub fn first_state_record(state: &Path, sess: &str) -> Result<Option<Map<String,
     Ok(None)
 }
 
+pub fn first_state_record_domain(
+    home: &Path,
+    state: &Path,
+    sess: &str,
+) -> Result<Option<Map<String, Value>>, Fault> {
+    comandos_store::unified::with_readonly_access(home, "session-status", |mode, db| {
+        if !matches!(mode, comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed) { return Ok(first_state_record(state, sess)); }
+        let Some(db) = db else { return Ok(Err(Fault::Decline)); };
+        let rows = db.prepare("SELECT body FROM session_status WHERE file_key NOT LIKE '.%' AND substr(file_key,-5)='.json' ORDER BY file_key")?.query_map([], |r| r.get::<_,Vec<u8>>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        for body in rows {
+            let doc = match light::value_from(super::files::bytes_strict(&body)) { Ok(Some(doc)) => doc, Ok(None) => continue, Err(e) => return Ok(Err(e)) };
+            let Value::Object(doc) = doc else { return Ok(Err(Fault::Decline)); };
+            let project = match doc.get("project") {None => "", Some(Value::String(p)) => p.as_str(), _ => return Ok(Err(Fault::Decline))};
+            if py::session_name(project) == sess { return Ok(Ok(Some(doc))); }
+        }
+        Ok(Ok(None))
+    }).map_err(|_| Fault::Decline)?
+}
+pub fn state_agent_domain(home: &Path, state: &Path, sess: &str) -> Result<String, Fault> {
+    let Some(doc) = first_state_record_domain(home, state, sess)? else {
+        return Ok("claude".into());
+    };
+    match doc.get("agent") {
+        Some(Value::String(agent)) if !agent.is_empty() => Ok(agent.clone()),
+        Some(value) if comandos_core::json::truthy(value) => Err(Fault::Decline),
+        _ => Ok("claude".into()),
+    }
+}
+
 /// `state_agent(sess)` (5428): `agent or "claude"` del primer registro.
 pub fn state_agent(state: &Path, sess: &str) -> Result<String, Fault> {
     let Some(doc) = first_state_record(state, sess)? else {
@@ -271,7 +300,7 @@ fn text_field(doc: &Map<String, Value>, key: &str) -> Result<String, Fault> {
 /// Primer salto (bloqueante): registros, `find_project_dir`, `agent_procs` y
 /// los archivos de pestañas que `session_labels` leerá.
 fn plan(ctx: &Context, sess: &str, live: &HashSet<String>) -> Result<Plan, Fault> {
-    let Some(doc) = first_state_record(&ctx.hooks.join("state"), sess)? else {
+    let Some(doc) = first_state_record_domain(&ctx.home, &ctx.hooks.join("state"), sess)? else {
         return Ok(Plan::Nothing);
     };
     let session = text_field(&doc, "session")?;
@@ -308,8 +337,8 @@ fn plan(ctx: &Context, sess: &str, live: &HashSet<String>) -> Result<Plan, Fault
         project,
         cwd,
         procs,
-        tabs: light::tab_labels(&ctx.hooks)?,
-        history: light::read_tab_history(&ctx.hooks)?,
+        tabs: light::tab_labels_domain(&ctx.home, &ctx.hooks)?,
+        history: light::read_tab_history_domain(&ctx.home, &ctx.hooks)?,
     })
 }
 

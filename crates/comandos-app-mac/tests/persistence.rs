@@ -49,7 +49,7 @@ fn save_and_history_use_authoritative_store_in_all_four_modes() {
             .map(|n| json!({"session":format!("s{n}"),"label":"own"}))
             .collect();
         let hdoc = DomainStore { home: &f.0 }.document(
-            "H/app-tabs-history.json",
+            "hooks/app-tabs-history.json",
             "tabs",
             f.0.join(".claude/hooks/app-tabs-history.json"),
         );
@@ -63,7 +63,7 @@ fn save_and_history_use_authoritative_store_in_all_four_modes() {
             .unwrap();
         let h = DomainStore { home: &f.0 }
             .document(
-                "H/app-tabs-history.json",
+                "hooks/app-tabs-history.json",
                 "tabs",
                 f.0.join(".claude/hooks/app-tabs-history.json"),
             )
@@ -101,7 +101,7 @@ fn stale_compare_and_swap_or_cancelled_owner_never_overwrites_other_writer() {
             .unwrap()
     );
     let doc = DomainStore { home: &f.0 }.document(
-        "H/app-tabs.json",
+        "hooks/app-tabs.json",
         "tabs",
         f.0.join(".claude/hooks/app-tabs.json"),
     );
@@ -146,7 +146,7 @@ fn cold_legacy_save_keeps_database_and_mode_control_absent() {
     assert!(files.save_tabs(&json!({"own":"Own"}), &|| true, 1).unwrap());
     assert!(!unified::unified_path(&f.0).exists());
     let doc = DomainStore { home: &f.0 }.document(
-        "H/app-tabs.json",
+        "hooks/app-tabs.json",
         "tabs",
         f.0.join(".claude/hooks/app-tabs.json"),
     );

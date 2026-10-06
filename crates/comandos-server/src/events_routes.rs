@@ -52,6 +52,7 @@ struct ReadFailed;
 
 pub struct EventRoutes<F = NativeFacts> {
     legacy_path: PathBuf,
+    legacy_home: Option<PathBuf>,
     facts: F,
     import_done: bool,
 }
@@ -60,6 +61,7 @@ impl<F: Facts> EventRoutes<F> {
     pub fn new(legacy_path: PathBuf, facts: F) -> Self {
         Self {
             legacy_path,
+            legacy_home: None,
             facts,
             import_done: false,
         }
@@ -67,6 +69,12 @@ impl<F: Facts> EventRoutes<F> {
 
     /// Unknown routes return None for composition. Only admitted requests may
     /// reach this adapter; transport owns general authentication/body parsing.
+    pub fn new_domain(home: PathBuf, legacy_path: PathBuf, facts: F) -> Self {
+        let mut routes = Self::new(legacy_path, facts);
+        routes.legacy_home = Some(home);
+        routes
+    }
+
     pub fn handle(
         &mut self,
         conn: &Connection,
@@ -246,7 +254,40 @@ impl<F: Facts> EventRoutes<F> {
 
     fn import(&mut self, conn: &Connection) -> comandos_store::Result<()> {
         if !self.import_done {
-            comandos_runtime::legacy::import_legacy(conn, &self.legacy_path)?;
+            if let Some(home) = &self.legacy_home {
+                let bytes =
+                    comandos_store::unified::with_readonly_access(home, "logs", |mode, db| {
+                        if matches!(
+                            mode,
+                            comandos_store::unified::Mode::Unified
+                                | comandos_store::unified::Mode::Sealed
+                        ) {
+                            let db = db.ok_or_else(|| {
+                                comandos_store::Error::Validation("logs database absent".into())
+                            })?;
+                            let lines = comandos_store::unified::log_tail(
+                                db,
+                                comandos_store::unified::LogName::Events,
+                                i64::MAX as usize,
+                            )?;
+                            let mut bytes = Vec::new();
+                            for line in lines {
+                                bytes.extend(line);
+                                bytes.push(b'\n');
+                            }
+                            Ok(bytes)
+                        } else {
+                            match std::fs::read(&self.legacy_path) {
+                                Ok(bytes) => Ok(bytes),
+                                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
+                                Err(e) => Err(e.into()),
+                            }
+                        }
+                    })?;
+                comandos_runtime::legacy::import_legacy_bytes(conn, &bytes)?;
+            } else {
+                comandos_runtime::legacy::import_legacy(conn, &self.legacy_path)?;
+            }
             self.import_done = true;
         }
         Ok(())

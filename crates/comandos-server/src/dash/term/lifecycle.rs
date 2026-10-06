@@ -15,8 +15,23 @@ use tokio::{sync::watch, task::JoinHandle};
 pub fn mode_file(home: &Path) -> PathBuf {
     home.join(".claude/hooks/webterm-mode.json")
 }
+fn enabled_domain(home: &Path, path: &Path) -> bool {
+    comandos_store::unified::with_readonly_access(home, "ui-docs", |mode, db| {
+        if matches!(
+            mode,
+            comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed
+        ) {
+            let Some(db) = db else { return Ok(false) };
+            Ok(comandos_store::unified::doc_get(db, "hooks/webterm-enabled")?.is_some())
+        } else {
+            Ok(path.is_file())
+        }
+    })
+    .unwrap_or(false)
+}
 pub struct Control {
     enabled_file: PathBuf,
+    home: PathBuf,
     enabled: watch::Sender<bool>,
     ports: Mutex<BTreeSet<u16>>,
     errors: Mutex<BTreeMap<u16, String>>,
@@ -24,16 +39,17 @@ pub struct Control {
 impl Control {
     pub fn new(home: &Path) -> Self {
         let enabled_file = home.join(".claude/hooks/webterm-enabled");
-        let (tx, _) = watch::channel(enabled_file.is_file());
+        let (tx, _) = watch::channel(enabled_domain(home, &enabled_file));
         Self {
             enabled_file,
+            home: home.to_path_buf(),
             enabled: tx,
             ports: Mutex::new(BTreeSet::new()),
             errors: Mutex::new(BTreeMap::new()),
         }
     }
     pub fn enabled(&self) -> bool {
-        self.enabled_file.is_file()
+        enabled_domain(&self.home, &self.enabled_file)
     }
     pub fn subscribe(&self) -> watch::Receiver<bool> {
         self.enabled.subscribe()
@@ -163,12 +179,28 @@ pub async fn run(state: Arc<DashState>, mut shutdown: watch::Receiver<bool>) -> 
     Ok(())
 }
 pub fn persist(config: &dash::DashConfig) -> io::Result<()> {
-    if config.shadow_readonly || (config.term == TermMode::Off && !mode_file(&config.home).exists())
+    if config.shadow_readonly
+        || (config.term == TermMode::Off
+            && comandos_store::domains::DomainStore { home: &config.home }
+                .document(
+                    "hooks/webterm-mode.json",
+                    "ui-docs",
+                    mode_file(&config.home),
+                )
+                .read_readonly()
+                .ok()
+                .flatten()
+                .is_none())
     {
         return Ok(());
     }
     let value = serde_json::json!({"mode":config.term.name(),"ports":config.webterm_compat});
-    dash::native::files::write_text_atomic(&mode_file(&config.home), &value.to_string())
+    dash::native::files::DomainDocument::new(
+        &config.home,
+        &config.home.join(".claude/hooks"),
+        "webterm-mode.json",
+    )?
+    .write_bytes(value.to_string().as_bytes(), 0)
 }
 /// Until B2 combines component and terminal status, keep bind failures visible.
 pub fn reply_status(

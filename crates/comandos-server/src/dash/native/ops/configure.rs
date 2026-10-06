@@ -979,9 +979,13 @@ pub fn motor_queue_resume(opts: &NativeOptions) {
     if open_store(opts).is_err() {
         return;
     }
-    let path = opts.hooks.join("motor-queue.json");
+    let Ok(doc) =
+        super::super::files::DomainDocument::new(&opts.home, &opts.hooks, "motor-queue.json")
+    else {
+        return;
+    };
     // `except (OSError, ValueError): return`; lo incierto, igual.
-    let queued = match super::super::files::read_json_strict(&path) {
+    let queued = match doc.strict() {
         super::super::files::Strict::Value(v) => v,
         _ => return,
     };
