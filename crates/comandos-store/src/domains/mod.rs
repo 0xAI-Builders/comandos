@@ -1,5 +1,6 @@
 //! Acceso por dominio sin cambiar consumidores ni modos en producción.
 pub mod catalog;
+mod document_dir;
 mod layout;
 mod legacy;
 mod mirror;
@@ -8,6 +9,7 @@ use crate::{
     files::{FileLock, write_atomic},
     unified::{self, LogName, Mode},
 };
+pub use document_dir::{DocumentDir, DocumentRow};
 pub use layout::LayoutSnapshot;
 use rusqlite::{Connection, OptionalExtension};
 use std::{
@@ -18,7 +20,7 @@ use std::{
 };
 pub struct DocHandle<'a> {
     pub home: &'a Path,
-    pub name: &'static str,
+    pub name: &'a str,
     pub domain: &'static str,
     pub file: PathBuf,
     pub lock: PathBuf,
@@ -386,12 +388,10 @@ impl<'a> DomainStore<'a> {
                 .collect()
         })
     }
-    pub fn document(
-        &self,
-        name: &'static str,
-        domain: &'static str,
-        file: PathBuf,
-    ) -> DocHandle<'a> {
+    pub fn document<'b>(&self, name: &'b str, domain: &'static str, file: PathBuf) -> DocHandle<'b>
+    where
+        'a: 'b,
+    {
         let lock = lock_path(&file);
         DocHandle {
             home: self.home,
@@ -400,5 +400,13 @@ impl<'a> DomainStore<'a> {
             file,
             lock,
         }
+    }
+    pub fn document_dir(
+        &self,
+        domain: &'static str,
+        prefix: &str,
+        dir: PathBuf,
+    ) -> Result<DocumentDir<'a>> {
+        DocumentDir::new(self.home, domain, prefix, dir)
     }
 }
