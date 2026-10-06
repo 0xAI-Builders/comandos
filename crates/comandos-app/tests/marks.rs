@@ -1,6 +1,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 use comandos_app::ui::marks::{Marks, adopt, indicator_display};
 use serde_json::json;
+#[path = "support/inert_oracle.rs"]
+mod inert_oracle;
 #[test]
 fn human_mark_never_hides_ai_channel() {
     assert_eq!(
@@ -58,7 +60,6 @@ fn cached_animation_pixels_are_reused_and_dpr_change_is_bounded() {
 #[test]
 fn raster_frames_match_actual_python_indicator_functions() {
     use comandos_app::{
-        proc::{ProcSpec, run},
         theme::{desktop_theme, themes_from_file},
         ui::marks::IndicatorCache,
     };
@@ -113,26 +114,13 @@ for icon,color,frame,scale,pixels in json.load(sys.stdin):
  out.append([pb.get_width(),pb.get_height(),hashlib.sha256(pb.get_pixels()).hexdigest()])
 print(json.dumps(out))
 "#;
-    let path = std::env::var("COMANDOS_CC_APP_ORACLE")
-        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../bin/cc-app").into());
-    let output = run(&ProcSpec {
-        program: "/usr/bin/python3".into(),
-        args: vec!["-c".into(), script.into(), path.into()],
-        stdin: Some(serde_json::to_vec(&cases).unwrap()),
-        env: vec![],
-        clear_env: false,
-        env_remove: vec![],
-        cwd: None,
-        timeout: std::time::Duration::from_secs(30),
-    })
-    .unwrap();
-    assert_eq!(
-        output.code,
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
+    let expected = inert_oracle::oracle(
+        "app-marks-rasters",
+        script,
+        "bin/cc-app",
+        &json!(cases),
+        None,
     );
-    let expected: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     let mut cache = IndicatorCache::default();
     for (i, case) in cases.iter().enumerate() {
         let pb = cache
