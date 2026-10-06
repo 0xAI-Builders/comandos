@@ -79,3 +79,46 @@ fn inventory_reports_domains_hashes_and_unknowns_without_writes() {
     );
     assert_eq!(fs::read(hooks.join("providers.env")).unwrap(), b"SECRET=x");
 }
+#[test]
+fn unified_database_and_guards_are_control_metadata_even_with_override() {
+    let home = Home::new();
+    let hooks = home.0.join(".claude/hooks");
+    let db = hooks.join("prefs.json");
+    for path in [
+        &db,
+        &PathBuf::from(format!("{}.sealed-ui-docs", db.display())),
+        &PathBuf::from(format!("{}.domain-modes.lock", db.display())),
+        &PathBuf::from(format!("{}-wal", db.display())),
+    ] {
+        fs::write(path, b"control").unwrap();
+    }
+    let outside = home.0.join("outside/overridden.sqlite3");
+    fs::create_dir_all(outside.parent().unwrap()).unwrap();
+    fs::write(&outside, b"private-db").unwrap();
+    fs::write(format!("{}.sealed-tabs", outside.display()), b"control").unwrap();
+    for configured in [&db, &outside] {
+        let output = Command::new(env!("CARGO_BIN_EXE_comandos"))
+            .args(["state", "inventory", "--json", "--home"])
+            .arg(&home.0)
+            .env("COMANDOS_DB", configured)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let v: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        let files = v["files"].as_array().unwrap();
+        for file in files.iter().filter(|r| {
+            r["path"]
+                .as_str()
+                .unwrap()
+                .starts_with(configured.to_str().unwrap())
+        }) {
+            assert_eq!(file["classification"], "metadatos-control");
+            assert!(file["domain"].is_null());
+        }
+        assert!(
+            files
+                .iter()
+                .any(|r| r["path"] == configured.to_str().unwrap())
+        );
+    }
+}

@@ -293,7 +293,15 @@ fn complete_release(
         }
     }
     let target = dir.join("comandos");
-    if !target.is_file() {
+    if target.is_file() {
+        if super::manifest::release_protocol(dir) != super::manifest::STATE_PROTOCOL {
+            return Err(format!(
+                "{}: release existente sin protocolo compatible; no se modifica",
+                dir.display()
+            ));
+        }
+    } else {
+        super::manifest::write_manifest(dir)?;
         let tmp = dir.join(format!("comandos.tmp.{}", std::process::id()));
         fs::write(&tmp, binary)
             .and_then(|()| fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755)))

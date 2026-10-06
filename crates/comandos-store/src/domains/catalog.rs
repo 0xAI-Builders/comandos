@@ -173,6 +173,12 @@ pub fn source(path: &str) -> Option<&'static SourceSpec> {
 
 /// Solo restos observables y excepciones D3/D9; lo desconocido queda visible.
 pub fn file_classification(path: &str) -> &'static str {
+    if is_unified_control_file(
+        std::path::Path::new(path),
+        std::path::Path::new("SHARE/comandos.sqlite3"),
+    ) {
+        return "metadatos-control";
+    }
     let leaf = path.rsplit('/').next().unwrap_or(path);
     if matches!(
         path,
@@ -240,4 +246,126 @@ pub fn file_classification(path: &str) -> &'static str {
         return "resto";
     }
     "sin-dominio"
+}
+
+/// Registro de escritores por dominio; las variantes Python conservan su alcance.
+#[derive(Debug, Clone, Copy)]
+pub struct Domain {
+    pub name: &'static str,
+    pub rust_writers: &'static [&'static str],
+    pub python_writers: &'static [&'static str],
+}
+pub static DOMAINS: &[Domain] = &[
+    Domain {
+        name: "tabs",
+        rust_writers: &["dash", "comandos-app", "comandos-app-mac"],
+        python_writers: &["cc-app"],
+    },
+    Domain {
+        name: "layout",
+        rust_writers: &["comandos-app", "snapshot"],
+        python_writers: &["cc-app", "cc-session-snapshot"],
+    },
+    Domain {
+        name: "app-ui",
+        rust_writers: &["comandos-app"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "app-commands",
+        rust_writers: &["dash", "next", "comandos-app"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "session-status",
+        rust_writers: &["hook"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "processes",
+        rust_writers: &["hook agy", "hook opencode"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "logs",
+        rust_writers: &["hook", "dash"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "ui-docs",
+        rust_writers: &["dash", "acp"],
+        python_writers: &["cc-acp"],
+    },
+    Domain {
+        name: "quota-docs",
+        rust_writers: &["dash", "hook agy-status"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "news-docs",
+        rust_writers: &["dash"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "extensions",
+        rust_writers: &["ext"],
+        python_writers: &["cc-extensions"],
+    },
+    Domain {
+        name: "closed-panes",
+        rust_writers: &["dash"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "codex-reports",
+        rust_writers: &["codex"],
+        python_writers: &["cc-codex-full-access"],
+    },
+    Domain {
+        name: "db-operator",
+        rust_writers: &["dash"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "db-news",
+        rust_writers: &["dash"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "db-operations",
+        rust_writers: &["dash"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "db-app-state",
+        rust_writers: &["dash", "events", "hook"],
+        python_writers: &[],
+    },
+    Domain {
+        name: "db-usage",
+        rust_writers: &["dash", "hook claude-usage"],
+        python_writers: &["cc_usage.py"],
+    },
+];
+pub fn domain(name: &str) -> Option<&'static Domain> {
+    DOMAINS.iter().find(|d| d.name == name)
+}
+
+/// La base de destino y sus controles nunca son fuentes de una migración.
+/// Se compara también con COMANDOS_DB, incluso cuando cae dentro de H o STATE.
+pub fn is_unified_control_file(path: &std::path::Path, db: &std::path::Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    let Some(tail) = path
+        .as_os_str()
+        .as_bytes()
+        .strip_prefix(db.as_os_str().as_bytes())
+    else {
+        return false;
+    };
+    tail.is_empty()
+        || matches!(
+            tail,
+            b"-wal" | b"-shm" | b"-journal" | b".domain-modes.lock"
+        )
+        || tail.starts_with(b".sealed-")
 }
