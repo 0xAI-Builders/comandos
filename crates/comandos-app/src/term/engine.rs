@@ -163,6 +163,119 @@ impl TermEngine {
         &self.engine
     }
 
+    /// Todas las celdas de la vista, incluidos blancos y spacers; jamás se trunca.
+    pub fn diagnostic_grid(&self, max_cells: usize) -> Result<serde_json::Value, String> {
+        use serde_json::json;
+        if usize::from(self.cols).saturating_mul(usize::from(self.rows)) > max_cells {
+            return Err("terminal grid exceeds diagnostic limit".into());
+        }
+        let mut lines = Vec::new();
+        for line in 0..usize::from(self.rows) {
+            let cells = self.row_cells(line).ok_or("terminal row unavailable")?;
+            let mut out = Vec::new();
+            for cell in cells {
+                let flags = cell.flags;
+                let spacer =
+                    flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER);
+                let text = if spacer {
+                    String::new()
+                } else {
+                    std::iter::once(if matches!(cell.c, '\0' | '\t') {
+                        ' '
+                    } else {
+                        cell.c
+                    })
+                    .chain(cell.zerowidth().unwrap_or_default().iter().copied())
+                    .collect()
+                };
+                let (foreground, background) = if flags.contains(Flags::INVERSE) {
+                    (cell.bg, cell.fg)
+                } else {
+                    (cell.fg, cell.bg)
+                };
+                let mut fg = self.diagnostic_rgb(foreground);
+                if flags.contains(Flags::DIM) && !matches!(foreground, Color::Spec(_)) {
+                    fg = crate::term::paint::vte_dim(fg);
+                }
+                let bg = self.diagnostic_rgb(background);
+                let underline = if flags.contains(Flags::DOUBLE_UNDERLINE) {
+                    "double"
+                } else if flags.contains(Flags::UNDERCURL) {
+                    "curly"
+                } else if flags.contains(Flags::DOTTED_UNDERLINE) {
+                    "dotted"
+                } else if flags.contains(Flags::DASHED_UNDERLINE) {
+                    "dashed"
+                } else if flags.contains(Flags::UNDERLINE) {
+                    "single"
+                } else {
+                    "none"
+                };
+                out.push(json!({"text":text,"width":if spacer{0}else if flags.contains(Flags::WIDE_CHAR){2}else{1},"fg":fg,"bg":bg,"bold":flags.contains(Flags::BOLD),"italic":flags.contains(Flags::ITALIC),"dim":flags.contains(Flags::DIM),"hidden":flags.contains(Flags::HIDDEN),"inverse":flags.contains(Flags::INVERSE),"strike":flags.contains(Flags::STRIKEOUT),"underline":underline,"underline_color":cell.underline_color().map(|color|self.diagnostic_rgb(color)),"wrap":flags.contains(Flags::WRAPLINE),"hyperlink":cell.hyperlink().map(|link|link.uri().to_string())}));
+            }
+            lines.push(out);
+        }
+        Ok(
+            json!({"cols":self.cols,"rows":self.rows,"display_offset":self.engine.display_offset(),"cells":lines}),
+        )
+    }
+
+    fn diagnostic_rgb(&self, color: Color) -> [u8; 3] {
+        let (index, fallback) = match color {
+            Color::Spec(rgb) => return [rgb.r, rgb.g, rgb.b],
+            Color::Indexed(index) => (
+                usize::from(index),
+                self.palette
+                    .ansi
+                    .get(usize::from(index))
+                    .copied()
+                    .unwrap_or(self.palette.fg),
+            ),
+            Color::Named(name) if (name as usize) < 16 => (
+                name as usize,
+                self.palette
+                    .ansi
+                    .get(name as usize)
+                    .copied()
+                    .unwrap_or(self.palette.fg),
+            ),
+            Color::Named(NamedColor::Background) => {
+                (NamedColor::Background as usize, self.palette.bg)
+            }
+            Color::Named(NamedColor::Cursor) => (NamedColor::Cursor as usize, self.palette.cursor),
+            Color::Named(
+                name @ (NamedColor::DimBlack
+                | NamedColor::DimRed
+                | NamedColor::DimGreen
+                | NamedColor::DimYellow
+                | NamedColor::DimBlue
+                | NamedColor::DimMagenta
+                | NamedColor::DimCyan
+                | NamedColor::DimWhite),
+            ) => {
+                let index = (name as usize).saturating_sub(NamedColor::DimBlack as usize);
+                (
+                    index,
+                    self.palette
+                        .ansi
+                        .get(index)
+                        .copied()
+                        .unwrap_or(self.palette.fg),
+                )
+            }
+            Color::Named(_) => (NamedColor::Foreground as usize, self.palette.fg),
+        };
+        self.diagnostic_changed_color(index).unwrap_or(fallback)
+    }
+    #[allow(clippy::indexing_slicing)]
+    fn diagnostic_changed_color(&self, index: usize) -> Option<[u8; 3]> {
+        // Colors sólo ofrece Index; el mismo límite del renderer se comprueba antes.
+        if index >= alacritty_terminal::term::color::COUNT {
+            return None;
+        }
+        self.engine.term().colors()[index].map(|rgb| [rgb.r, rgb.g, rgb.b])
+    }
+
     fn visible_line(&self, line: usize) -> Option<Line> {
         let grid = self.engine.term().grid();
         if line >= grid.screen_lines() {

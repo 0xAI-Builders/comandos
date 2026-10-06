@@ -226,6 +226,28 @@ impl TermView {
     pub fn selection_text(&self) -> Option<String> {
         self.inner.selection_text()
     }
+    pub fn diagnostic_ready(&self) -> bool {
+        let model = self.inner.model.borrow();
+        (model.pty.is_some() || self.inner.closed.get()) && model.engine.next_deadline().is_none()
+    }
+    pub fn diagnostic_snapshot(&self) -> Result<Value, String> {
+        let model = self.inner.model.borrow();
+        let cursor = model.engine.cursor();
+        let shape = if cursor.shape == CursorShape::Block {
+            model.cursor_shape
+        } else {
+            cursor.shape
+        };
+        let blink = model
+            .preferences
+            .get("cursor_blink")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        let font = crate::layout_dump::measured_font(self.widget().upcast_ref(), &model.font)?;
+        Ok(
+            serde_json::json!({"grid":model.engine.diagnostic_grid(100_000)?,"font":font,"font_scale":model.font_scale,"cell_metrics":{"width":model.geom.cell_w,"height":model.geom.cell_h,"origin_x":model.geom.origin_x,"origin_y":model.geom.origin_y,"dpr":model.geom.dpr,"font_size_px":model.geom.font_size},"opacity":model.opacity,"focused":model.focused,"closed":self.inner.closed.get(),"selection_text":self.inner.selection_text(),"preedit":model.preedit,"cursor":{"row":cursor.line,"col":cursor.col,"shape":format!("{shape:?}").to_lowercase(),"visible":cursor.visible,"painted":cursor.visible && (!blink || !model.focused || model.blink_visible),"wide":cursor.wide}}),
+        )
+    }
     pub fn set_font_scale(&self, scale: f64) {
         if scale.is_finite() {
             self.inner.model.borrow_mut().font_scale = scale.clamp(0.5, 3.);

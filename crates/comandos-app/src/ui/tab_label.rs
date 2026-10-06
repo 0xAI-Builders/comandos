@@ -22,6 +22,9 @@ pub struct TabLabel {
     painted: Rc<RefCell<String>>,
 }
 impl TabLabel {
+    pub fn diagnostic_state(&self) -> serde_json::Value {
+        serde_json::json!({"state":*self.state.borrow(),"mark":*self.mark.borrow(),"editing":self.editing.get()})
+    }
     pub fn new(text: &str, local: bool, closable: bool) -> Self {
         let item = gtk::EventBox::new();
         item.set_visible_window(true);

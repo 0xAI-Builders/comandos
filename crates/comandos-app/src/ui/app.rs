@@ -63,10 +63,16 @@ pub struct App {
     pane_initialized: Cell<bool>,
     pane_saved: Cell<Option<i32>>,
     theme_provider: gtk::CssProvider,
+    applied_theme: RefCell<Option<crate::theme::ThemeTokens>>,
+    applied_button_style: RefCell<Option<String>>,
     toolbar: gtk::Box,
     workspace: ui::workspace::GtkWorkspace,
     restore: RefCell<RestoreCoordinator>,
     startup_valid: Cell<bool>,
+    prefs_received: Cell<bool>,
+    state_received: Cell<bool>,
+    marks_received: Cell<bool>,
+    dashboard_observation: RefCell<Option<Rc<RefCell<ui::webview::LoadObservation>>>>,
     workspace_doc: RefCell<Value>,
     pending_workspace: RefCell<Option<Value>>,
     resize_queue: RefCell<crate::workspace_resize::ResizeQueue>,
@@ -121,10 +127,14 @@ impl App {
             env!("CARGO_MANIFEST_DIR"),
             "/../../config/themes.json"
         ))));
-        if let Some(theme) = crate::theme::desktop_theme("bruno", &themes) {
-            let _ = self
+        if let Some(theme) = crate::theme::desktop_theme("bruno", &themes)
+            && self
                 .theme_provider
-                .load_from_data(crate::theme::theme_css(&theme).as_bytes());
+                .load_from_data(crate::theme::theme_css(&theme).as_bytes())
+                .is_ok()
+        {
+            *self.applied_theme.borrow_mut() = Some(theme);
+            *self.applied_button_style.borrow_mut() = Some("sutil".into());
         }
         if let Some(screen) = gdk::Screen::default() {
             gtk::StyleContext::add_provider_for_screen(
@@ -621,8 +631,14 @@ impl App {
             pane_initialized: Cell::new(false),
             pane_saved: Cell::new(None),
             theme_provider: gtk::CssProvider::new(),
+            applied_theme: RefCell::new(None),
+            applied_button_style: RefCell::new(None),
             restore: RefCell::new(RestoreCoordinator::default()),
             startup_valid: Cell::new(false),
+            prefs_received: Cell::new(false),
+            state_received: Cell::new(false),
+            marks_received: Cell::new(false),
+            dashboard_observation: RefCell::new(None),
             workspace_doc: RefCell::new(Value::Null),
             pending_workspace: RefCell::new(None),
             resize_queue: RefCell::new(crate::workspace_resize::ResizeQueue::default()),
@@ -1287,6 +1303,7 @@ impl App {
                 value,
                 favorite_generation,
             } => {
+                self.prefs_received.set(true);
                 if crate::poll::live_pref_snapshot(&self.preferences.borrow())
                     != crate::poll::live_pref_snapshot(&value)
                     || self.preferences.borrow().get("button_style") != value.get("button_style")
@@ -1347,6 +1364,7 @@ impl App {
             }
             PollUpdate::Notices { badge, .. } => self.status.set_text(&format!("Notices: {badge}")),
             PollUpdate::State(value) => {
+                self.state_received.set(true);
                 for item in value
                     .as_array()
                     .or_else(|| {
@@ -1374,6 +1392,7 @@ impl App {
                 }
             }
             PollUpdate::Marks(value) => {
+                self.marks_received.set(true);
                 for mark in value
                     .get("rows")
                     .or_else(|| value.get("marks"))
@@ -1917,7 +1936,10 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
         let notebook = gtk::Notebook::new();
         notebook.set_hexpand(true);
         notebook.set_vexpand(true);
-        let webview = match ui::webview::create(&cfg) {
+        let observation =
+            crate::layout_dump::enabled(std::env::var("COMANDOS_APP_LAYOUT_DUMP").ok().as_deref())
+                .then(|| Rc::new(RefCell::new(ui::webview::LoadObservation::default())));
+        let webview = match ui::webview::create_observed(&cfg, observation.clone()) {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("comandos-app: WebKit: {e:?}");
@@ -1936,6 +1958,7 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
             notebook.clone(),
             webview.clone(),
         );
+        *app.dashboard_observation.borrow_mut() = observation;
         let terminals = gtk::Box::new(gtk::Orientation::Vertical, 0);
         terminals.pack_start(app.tab_layout.widget(), false, false, 0);
         terminals.pack_start(&notebook, true, true, 0);
@@ -1990,6 +2013,9 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
             }
         });
         let mut sources = vec![poll];
+        if let Some(source) = app.install_layout_diagnostic() {
+            sources.push(source);
+        }
         let weak = Rc::downgrade(&app);
         sources.push(glib::timeout_add_local(
             Duration::from_millis(260),
@@ -2128,5 +2154,7 @@ fn parse_color(hex: &str) -> Option<[u8; 3]> {
     ])
 }
 
+#[path = "app_diagnostics.rs"]
+mod diagnostics;
 #[path = "app_foundation.rs"]
 mod foundation;

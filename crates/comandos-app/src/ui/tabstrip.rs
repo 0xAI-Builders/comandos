@@ -73,6 +73,14 @@ impl TabStripNotebook {
         pages.sort_by_key(|(index, _)| *index);
         pages.into_iter().map(|(_, key)| key).collect()
     }
+
+    pub fn selected_key(&self) -> Option<String> {
+        let current = self.notebook.current_page()?;
+        self.pages
+            .iter()
+            .find(|(_, widget)| self.notebook.page_num(*widget) == Some(current))
+            .map(|(key, _)| key.clone())
+    }
 }
 
 #[derive(Clone)]

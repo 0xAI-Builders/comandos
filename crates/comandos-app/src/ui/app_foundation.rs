@@ -76,6 +76,9 @@ impl App {
         css.push_str(&crate::theme::button_style_css(style, theme));
         if let Err(error) = self.theme_provider.load_from_data(css.as_bytes()) {
             self.status.set_text(&format!("Tema: {error}"));
+        } else {
+            *self.applied_theme.borrow_mut() = Some(theme.clone());
+            *self.applied_button_style.borrow_mut() = Some(style.to_string());
         }
         let dim = theme
             .values
