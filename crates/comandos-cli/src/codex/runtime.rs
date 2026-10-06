@@ -26,7 +26,7 @@ pub struct Local {
     start: Instant,
     pub cancel: Arc<AtomicBool>,
 }
-fn open_regular(path: &Path) -> Result<fs::File> {
+pub(super) fn open_regular(path: &Path) -> Result<fs::File> {
     let m = path.symlink_metadata().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             "missing".into()

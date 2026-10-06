@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 use std::{
     ffi::OsStr,
     fs,
+    io::{ErrorKind, Read},
     os::unix::{
         fs::{PermissionsExt, symlink},
         process::CommandExt,
@@ -42,10 +43,29 @@ fn regular(path: &Path, max: u64) -> Result<Vec<u8>> {
     super::runtime::read_regular(path, max)
 }
 fn hash(path: &Path) -> Result<String> {
-    Ok(format!(
-        "{:x}",
-        Sha256::digest(regular(path, 512 * 1024 * 1024)?)
-    ))
+    const LIMIT: u64 = 512 * 1024 * 1024;
+    let file = super::runtime::open_regular(path)?;
+    if file.metadata().map_err(|e| e.to_string())?.len() > LIMIT {
+        return Err("archivo excede límite".into());
+    }
+    let mut reader = file.take(LIMIT + 1);
+    let mut digest = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    let mut total = 0u64;
+    loop {
+        let n = match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e.to_string()),
+        };
+        total += n as u64;
+        if total > LIMIT {
+            return Err("archivo excede límite".into());
+        }
+        digest.update(buffer.get(..n).ok_or("lectura inválida")?);
+    }
+    Ok(format!("{:x}", digest.finalize()))
 }
 fn text(m: &Value, k: &str) -> Result<String> {
     m[k].as_str()
