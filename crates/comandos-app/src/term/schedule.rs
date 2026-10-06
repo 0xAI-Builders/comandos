@@ -5,6 +5,7 @@ pub struct PaintSchedule {
     lines: BTreeSet<usize>,
     last_paint: Option<u64>,
     focused: bool,
+    synchronized: bool,
     blink_at: u64,
 }
 impl PaintSchedule {
@@ -29,7 +30,10 @@ impl PaintSchedule {
         self.blink_at = now_ms.saturating_add(600);
     }
     pub fn blink_due(&self, now_ms: u64) -> bool {
-        self.focused && now_ms >= self.blink_at
+        self.focused && !self.synchronized && now_ms >= self.blink_at
+    }
+    pub fn set_synchronized(&mut self, active: bool) {
+        self.synchronized = active;
     }
     pub fn blinked(&mut self, now_ms: u64) {
         self.blink_at = now_ms.saturating_add(600);

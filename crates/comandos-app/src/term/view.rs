@@ -1,9 +1,9 @@
 //! GTK terminal over the shared engine and a private nonblocking PTY.
 use super::{
     engine::*,
-    keys::key_action,
+    keys::{drag_button, key_action, mouse_button},
     paint::{CellGeom, FrameCache, LineKind, PaintOp},
-    pty::{PtyError, PtySession, ReadOutcome},
+    pty::{DrainOutcome, PtyDrain, PtyError, PtySession},
     schedule::PaintSchedule,
     settle::{RESPAWN_MS, SETTLE_CAP_MS, SETTLE_QUIET_MS, Settle, initial_size},
 };
@@ -49,6 +49,7 @@ struct Model {
     engine: TermEngine,
     frame: FrameCache,
     pty: Option<PtySession>,
+    drain: PtyDrain,
     geom: CellGeom,
     font: pango::FontDescription,
     font_scale: f64,
@@ -124,6 +125,7 @@ impl TermView {
                 ),
                 frame: FrameCache::default(),
                 pty: None,
+                drain: PtyDrain::default(),
                 geom: CellGeom {
                     cell_w: 8.,
                     cell_h: 19.,
@@ -314,7 +316,11 @@ impl Inner {
             self.options.clear_env,
         )?;
         let fd = p.raw_fd();
-        self.model.borrow_mut().pty = Some(p);
+        {
+            let mut model = self.model.borrow_mut();
+            model.pty = Some(p);
+            model.drain = PtyDrain::default();
+        }
         self.resize(cols, rows)?;
         if let Some(source) = self.read_source.borrow_mut().take() {
             source.remove();
@@ -400,29 +406,19 @@ impl Inner {
     }
     fn read(self: &Rc<Self>, condition: IOCondition) -> bool {
         let mut m = self.model.borrow_mut();
-        let mut buf = [0u8; 8192];
-        let mut closed = false;
-        let mut blocked = false;
-        for _ in 0..32 {
-            let outcome = m
-                .pty
-                .as_mut()
-                .map_or(ReadOutcome::Closed, |p| p.read_chunk(&mut buf));
-            match outcome {
-                ReadOutcome::Data(n) => {
-                    if let Some(bytes) = buf.get(..n) {
-                        m.engine.feed(bytes, Instant::now());
-                    }
-                }
-                ReadOutcome::WouldBlock => {
-                    blocked = true;
-                    break;
-                }
-                ReadOutcome::Closed => {
-                    closed = true;
-                    break;
-                }
-            }
+        let outcome = {
+            let Model {
+                pty, engine, drain, ..
+            } = &mut *m;
+            pty.as_mut().map_or(DrainOutcome::Closed, |pty| {
+                drain.read_into(pty, |bytes| engine.feed(bytes, Instant::now()))
+            })
+        };
+        let closed = outcome == DrainOutcome::Closed
+            || (outcome == DrainOutcome::WouldBlock
+                && condition.intersects(IOCondition::HUP | IOCondition::ERR));
+        if closed {
+            m.drain.close();
         }
         let drained = m.engine.drain();
         let mut lines = Vec::new();
@@ -451,7 +447,7 @@ impl Inner {
             gtk::Clipboard::get(&target).set_text(&text);
         }
         self.arm();
-        !(closed || (blocked && condition.intersects(IOCondition::HUP | IOCondition::ERR)))
+        !closed
     }
     fn arm(self: &Rc<Self>) {
         if self.closed.get() {
@@ -463,7 +459,11 @@ impl Inner {
         let now = self.ms();
         let m = self.model.borrow();
         // fd readiness drives IO; the low-rate fallback observes exit status.
-        let mut delay = 100;
+        let mut delay = if m.drain.has_exited() && m.drain.finished().is_none() {
+            1
+        } else {
+            100
+        };
         if let Some(paint) = m.schedule.next_delay_ms(now) {
             delay = delay.min(paint);
         }
@@ -515,9 +515,25 @@ impl Inner {
             }
             m = self.model.borrow_mut();
         }
-        let exit = m.pty.as_mut().and_then(PtySession::try_reap);
+        {
+            let Model { pty, drain, .. } = &mut *m;
+            if let Some(pty) = pty.as_mut() {
+                drain.observe_exit(pty);
+            }
+        }
+        if m.drain.has_exited() && m.drain.finished().is_none() {
+            drop(m);
+            if !self.read(IOCondition::empty()) {
+                if let Some(source) = self.read_source.borrow_mut().take() {
+                    source.remove();
+                }
+            }
+            m = self.model.borrow_mut();
+        }
+        let exit = m.drain.finished();
         if let Some(code) = exit {
             m.pty.take();
+            m.drain = PtyDrain::default();
             m.respawn_at = Some(now.saturating_add(RESPAWN_MS));
             drop(m);
             if let Some(source) = self.read_source.borrow_mut().take() {
@@ -540,6 +556,8 @@ impl Inner {
             .get("cursor_blink")
             .and_then(Value::as_bool)
             .unwrap_or(true);
+        let synchronized = m.engine.next_deadline().is_some();
+        m.schedule.set_synchronized(synchronized);
         if blink && m.schedule.blink_due(now) {
             m.blink_visible = !m.blink_visible;
             m.schedule.blinked(now);
@@ -671,7 +689,8 @@ fn connect_events(inner: &Rc<Inner>) {
                     )
                 };
                 if let Some(text) = text {
-                    success = inner.send(text.as_bytes()).is_ok();
+                    let bytes = encode_paste(&text, &inner.model.borrow().engine.modes());
+                    success = inner.send(&bytes).is_ok();
                 }
             }
             context.drag_finish(success, false, time);
@@ -819,11 +838,7 @@ fn connect_events(inner: &Rc<Inner>) {
             });
             return glib::Propagation::Stop;
         }
-        let button = match event.button() {
-            1 => Button::Left,
-            3 => Button::Right,
-            _ => Button::None,
-        };
+        let button = mouse_button(event.button());
         let bytes = encode_mouse(
             button,
             MouseKind::Press,
@@ -878,11 +893,7 @@ fn connect_events(inner: &Rc<Inner>) {
             return glib::Propagation::Stop;
         }
         m.last_motion = Some((col, row, state));
-        let button = if state.contains(gdk::ModifierType::BUTTON1_MASK) {
-            Button::Left
-        } else {
-            Button::None
-        };
+        let button = drag_button(state);
         let bytes = encode_mouse(
             button,
             MouseKind::Move,
@@ -932,11 +943,7 @@ fn connect_events(inner: &Rc<Inner>) {
         let mods = modifiers(event.state());
         let mut m = inner.model.borrow_mut();
         let bytes = encode_mouse(
-            if event.button() == 1 {
-                Button::Left
-            } else {
-                Button::Right
-            },
+            mouse_button(event.button()),
             MouseKind::Release,
             col,
             row,

@@ -106,3 +106,65 @@ fn punctuation_digits_and_tab_map_to_terminal_codes() {
         KeyAction::Send(b"\x1b[Z".to_vec())
     );
 }
+#[test]
+fn three_mouse_buttons_keep_identity_in_sgr_press_release_and_drag() {
+    use comandos_app::term::{
+        engine::{Button, MouseKind, MouseMode, encode_mouse},
+        keys::{drag_button, mouse_button},
+    };
+    let modes = Modes {
+        mouse: MouseMode::Drag,
+        sgr_mouse: true,
+        ..Modes::default()
+    };
+    for (number, button, state, code) in [
+        (1, Button::Left, gdk::ModifierType::BUTTON1_MASK, 0),
+        (2, Button::Middle, gdk::ModifierType::BUTTON2_MASK, 1),
+        (3, Button::Right, gdk::ModifierType::BUTTON3_MASK, 2),
+    ] {
+        assert_eq!(mouse_button(number), button);
+        assert_eq!(drag_button(state), button);
+        assert_eq!(
+            encode_mouse(
+                mouse_button(number),
+                MouseKind::Press,
+                4,
+                5,
+                (false, false, false),
+                &modes
+            ),
+            Some(format!("\x1b[<{code};5;6M").into_bytes())
+        );
+        assert_eq!(
+            encode_mouse(
+                mouse_button(number),
+                MouseKind::Release,
+                4,
+                5,
+                (false, false, false),
+                &modes
+            ),
+            Some(format!("\x1b[<{code};5;6m").into_bytes())
+        );
+        assert_eq!(
+            encode_mouse(
+                drag_button(state),
+                MouseKind::Move,
+                4,
+                5,
+                (false, false, false),
+                &modes
+            ),
+            Some(format!("\x1b[<{};5;6M", code + 32).into_bytes())
+        );
+    }
+}
+#[test]
+fn synchronized_update_freezes_blink_until_end() {
+    let mut schedule = PaintSchedule::default();
+    schedule.set_focused(true, 0);
+    schedule.set_synchronized(true);
+    assert!(!schedule.blink_due(800));
+    schedule.set_synchronized(false);
+    assert!(schedule.blink_due(800));
+}

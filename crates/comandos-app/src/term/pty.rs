@@ -217,3 +217,54 @@ impl Drop for PtySession {
         }
     }
 }
+
+/// Exit status and PTY EOF are independent. Keep the child/descriptor until
+/// both have arrived; the same bounded drain is used by GTK and native tests.
+#[derive(Default)]
+pub struct PtyDrain {
+    exit: Option<i32>,
+    eof: bool,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DrainOutcome {
+    Budget,
+    WouldBlock,
+    Closed,
+}
+impl PtyDrain {
+    pub fn observe_exit(&mut self, pty: &mut PtySession) {
+        if self.exit.is_none() {
+            self.exit = pty.try_reap();
+        }
+    }
+    pub fn has_exited(&self) -> bool {
+        self.exit.is_some()
+    }
+    pub fn finished(&self) -> Option<i32> {
+        if self.eof { self.exit } else { None }
+    }
+    pub fn close(&mut self) {
+        self.eof = true;
+    }
+    pub fn read_into(&mut self, pty: &mut PtySession, mut feed: impl FnMut(&[u8])) -> DrainOutcome {
+        if self.eof {
+            return DrainOutcome::Closed;
+        }
+        let mut buffer = [0u8; 8192];
+        for _ in 0..32 {
+            match pty.read_chunk(&mut buffer) {
+                ReadOutcome::Data(n) => {
+                    if let Some(bytes) = buffer.get(..n) {
+                        feed(bytes);
+                    }
+                }
+                ReadOutcome::WouldBlock => return DrainOutcome::WouldBlock,
+                ReadOutcome::Closed => {
+                    self.eof = true;
+                    return DrainOutcome::Closed;
+                }
+            }
+        }
+        DrainOutcome::Budget
+    }
+}

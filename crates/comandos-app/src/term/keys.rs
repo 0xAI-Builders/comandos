@@ -101,3 +101,23 @@ pub fn key_action(key: Key, mods: ModifierType, modes: &Modes) -> KeyAction {
         modes,
     )
 }
+
+pub fn mouse_button(number: u32) -> super::engine::Button {
+    match number {
+        1 => super::engine::Button::Left,
+        2 => super::engine::Button::Middle,
+        3 => super::engine::Button::Right,
+        _ => super::engine::Button::None,
+    }
+}
+pub fn drag_button(state: ModifierType) -> super::engine::Button {
+    if state.contains(ModifierType::BUTTON1_MASK) {
+        super::engine::Button::Left
+    } else if state.contains(ModifierType::BUTTON2_MASK) {
+        super::engine::Button::Middle
+    } else if state.contains(ModifierType::BUTTON3_MASK) {
+        super::engine::Button::Right
+    } else {
+        super::engine::Button::None
+    }
+}

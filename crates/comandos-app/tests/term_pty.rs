@@ -315,3 +315,39 @@ fn exited_leader_retains_group_cleanup_after_status_observation() {
     }
     assert!(!alive, "descendant survived try_reap followed by Drop");
 }
+
+#[test]
+fn exit_notification_waits_for_output_larger_than_one_dispatch() {
+    use comandos_app::term::pty::PtyDrain;
+    let mut p = confined_shell("head -c 270000 /dev/zero | tr '\\000' x; printf TAIL; exit 7");
+    let mut drain = PtyDrain::default();
+    let mut output = Vec::new();
+    let end = Instant::now() + Duration::from_secs(5);
+    while output.len() < 256000 && Instant::now() < end {
+        drain.read_into(&mut p, |bytes| output.extend_from_slice(bytes));
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    while !drain.has_exited() && Instant::now() < end {
+        drain.observe_exit(&mut p);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(
+        drain.has_exited(),
+        "leader should exit while last bytes remain buffered"
+    );
+    assert_eq!(drain.finished(), None, "exit callback precedes output EOF");
+    while drain.finished().is_none() && Instant::now() < end {
+        drain.read_into(&mut p, |bytes| output.extend_from_slice(bytes));
+        drain.observe_exit(&mut p);
+    }
+    assert_eq!(drain.finished(), Some(7));
+    assert_eq!(output.len(), 270004);
+    assert!(output.ends_with(b"TAIL"));
+    assert!(
+        output
+            .get(..270000)
+            .unwrap()
+            .iter()
+            .all(|byte| *byte == b'x')
+    );
+}
