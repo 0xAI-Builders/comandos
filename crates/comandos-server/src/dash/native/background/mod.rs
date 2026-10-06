@@ -20,7 +20,7 @@ pub mod limits;
 pub mod models;
 pub mod pomodoro;
 
-use super::{Background, Native};
+use super::{Background, Cut, Native, cut_is_off};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -99,11 +99,15 @@ pub fn front_owns(background: &Background) -> bool {
 pub fn start(native: &Arc<Native>) -> BackgroundRunner {
     let stop = Arc::new(Stop::default());
     let background = native.options().background;
-    let pomodoro = background.pomodoro
+    let services = !cut_is_off(&native.options().cuts_off, Cut::Services);
+    let pomodoro = services
+        && background.pomodoro
         && native.enabled()
         && pomodoro::spawn(native, Arc::clone(&stop), front_owns(&background));
-    let models =
-        background.model_watch && native.enabled() && models::start(native, Arc::clone(&stop));
+    let models = services
+        && background.model_watch
+        && native.enabled()
+        && models::start(native, Arc::clone(&stop));
     let limits =
         background.limits_snapshot && native.enabled() && limits::start(native, Arc::clone(&stop));
     BackgroundRunner {
@@ -111,5 +115,28 @@ pub fn start(native: &Arc<Native>) -> BackgroundRunner {
         pomodoro,
         models,
         limits,
+    }
+}
+
+/// El frente retiene este dueño hasta shutdown/disable/Drop. No espera tareas.
+pub(crate) struct Owner {
+    common: BackgroundRunner,
+    _news: Option<super::news::scheduler::Runner>,
+}
+impl Owner {
+    pub(crate) fn start(native: &Arc<Native>) -> Self {
+        let common = start(native);
+        super::remote::start(native);
+        let news = super::news::scheduler::start(native);
+        Self {
+            common,
+            _news: news,
+        }
+    }
+}
+impl Drop for Owner {
+    fn drop(&mut self) {
+        self.common.stop();
+        // Runner de noticias señala Stop al soltarse; nunca hace join.
     }
 }

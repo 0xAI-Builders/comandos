@@ -75,7 +75,8 @@ pub fn start_with(
     period: Duration,
 ) -> Option<Runner> {
     let handle = tokio::runtime::Handle::try_current().ok()?;
-    if !native.enabled()
+    if super::super::cut_is_off(&native.options().cuts_off, super::super::Cut::News)
+        || !native.enabled()
         || !front_owns(&native.options().background)
         || native.news_scheduler_started.swap(true, Ordering::AcqRel)
     {

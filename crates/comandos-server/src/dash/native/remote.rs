@@ -1017,7 +1017,11 @@ fn temp_png() -> Result<TempPng, String> {
 /// Python. Devuelve si lanzó la tarea.
 pub fn start(native: &Arc<Native>) -> bool {
     let opts = native.options();
-    if !opts.background.webterm_restore || !opts.hooks.join(WEBTERM_ENABLED_FILE).is_file() {
+    if !native.enabled()
+        || super::cut_is_off(&opts.cuts_off, super::Cut::Services)
+        || !opts.background.webterm_restore
+        || !opts.hooks.join(WEBTERM_ENABLED_FILE).is_file()
+    {
         return false;
     }
     let task_native = Arc::clone(native);

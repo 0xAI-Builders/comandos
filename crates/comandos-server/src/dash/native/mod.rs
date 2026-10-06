@@ -650,6 +650,7 @@ pub struct Native {
     opts: NativeOptions,
     enabled: AtomicBool,
     pub(crate) news_scheduler_started: AtomicBool,
+    background_owner: Mutex<Option<background::Owner>>,
     refusals: AtomicUsize,
     state: OnceCell<Option<BackendCaller<StateBackend>>>,
     worker: Mutex<Option<BackendWorker<StateBackend>>>,
@@ -713,6 +714,7 @@ impl Native {
             opts,
             enabled: AtomicBool::new(true),
             news_scheduler_started: AtomicBool::new(false),
+            background_owner: Mutex::new(None),
             refusals: AtomicUsize::new(0),
             state: OnceCell::new(),
             worker: Mutex::new(None),
@@ -787,16 +789,28 @@ impl Native {
         }
     }
 
-    /// El refresco de arranque de D3 (el `_limits_snapshot_loop` del Python lee
-    /// los límites al arrancar): va con GET `/usage/state` nativo, para que la
-    /// barra lateral no pierda los % de cuota hasta 60 s tras cada reinicio;
-    /// mientras el Python atiende la ruta, el dueño es su bucle. No repite cada
-    /// 300 s: el heredado conserva su bucle. Sin efectos de uso (sombra) no
-    /// hace nada.
-    pub fn start_background(&self) {
-        if self.opts.usage_state_native && self.enabled() {
+    /// Arranca una vez los productores y conserva sus señales de parada.
+    /// Cada productor respeta su modo y corte; los límites pertenecen a Usage.
+    pub fn start_background(self: &Arc<Self>) {
+        let mut owner = self
+            .background_owner
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        if !self.enabled() || owner.is_some() || tokio::runtime::Handle::try_current().is_err() {
+            return;
+        }
+        if self.opts.usage_state_native {
             let _ = self.limits.get(&self.refresh_deps());
         }
+        *owner = Some(background::Owner::start(self));
+    }
+
+    fn stop_background(&self) {
+        // Solo señal: una operación larga ya lanzada puede terminar según D12.
+        self.background_owner
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take();
     }
 
     /// El dueño de la importación de uso (estado, para las pruebas).
@@ -825,6 +839,7 @@ impl Native {
 
     fn disable(&self, refusal: &Refusal) {
         if self.enabled.swap(false, Ordering::AcqRel) {
+            self.stop_background();
             self.refusals.fetch_add(1, Ordering::AcqRel);
             eprintln!("{}", refusal.message(&self.opts.state_db));
         }
@@ -1019,6 +1034,7 @@ impl Native {
     pub async fn shutdown(&self) {
         // Apagado ordenado: sin línea en stderr; lo que llegue tarde se reenvía.
         self.enabled.store(false, Ordering::Release);
+        self.stop_background();
         let worker = self.worker.lock().unwrap_or_else(|p| p.into_inner()).take();
         if let Some(worker) = worker {
             let _ = worker.shutdown().await;
