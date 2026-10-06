@@ -114,6 +114,8 @@ static CATALOG: &[SourceSpec] = &[
     file!("ui-docs", "H/optimization-default.json", Document),
     file!("ui-docs", "H/acp-panes.json", Document),
     file!("ui-docs", "H/webterm-enabled", Document),
+    file!("ui-docs", "H/webterm-mode.json", Document),
+    file!("ui-docs", "H/comandos-web.json", Document),
     file!("quota-docs", "H/provider-quotas.json", Document),
     file!("quota-docs", "H/provider-subs.json", Document),
     file!("quota-docs", "H/groq-ratelimit.json", Document),
@@ -123,6 +125,31 @@ static CATALOG: &[SourceSpec] = &[
     file!("news-docs", "H/news-watch.json", Document),
     file!("news-docs", "H/operator/conversations.json", Document),
     file!("extensions", "STATE/extensions/sizes", Document),
+    SourceSpec {
+        domain: "extensions",
+        pattern: SourcePattern::Dir {
+            dir: "STATE/extensions/sizes",
+            suffix: ".json",
+        },
+        kind: TargetKind::Document,
+    },
+    // Fuentes reales que faltaban en la tabla inicial: conservar bytes exactos.
+    SourceSpec {
+        domain: "closed-panes",
+        pattern: SourcePattern::Dir {
+            dir: "STATE/closed-panes",
+            suffix: ".json",
+        },
+        kind: TargetKind::Document,
+    },
+    SourceSpec {
+        domain: "codex-reports",
+        pattern: SourcePattern::Dir {
+            dir: "STATE/codex-full-access",
+            suffix: ".json",
+        },
+        kind: TargetKind::Document,
+    },
     file!("extensions", "STATE/extensions/snapshot.json", Document),
     file!("extensions", "STATE/extensions/skills.json", Document),
     file!(
@@ -149,7 +176,13 @@ pub fn file_classification(path: &str) -> &'static str {
     let leaf = path.rsplit('/').next().unwrap_or(path);
     if matches!(
         path,
-        "H/providers.env" | "H/cc-notify.conf" | "H/dash-token" | "H/terminal-replies.conf"
+        "H/providers.env"
+            | "H/cc-notify.conf"
+            | "H/dash-token"
+            | "H/terminal-replies.conf"
+            | "H/cc-notify.sh"
+            | "H/cc-status.sh"
+            | "H/cc-usage-tool.sh"
     ) || leaf.ends_with(".lock")
         || [
             "H/session-handoffs/",
@@ -162,6 +195,9 @@ pub fn file_classification(path: &str) -> &'static str {
             "SHARE/storage/",
             "SHARE/mediakeys/",
             "SHARE/serviceworkers/",
+            "SHARE/databases/",
+            "SHARE/notifyd/",
+            "STATE/news-media/",
         ]
         .iter()
         .any(|prefix| path.starts_with(prefix))
@@ -180,12 +216,26 @@ pub fn file_classification(path: &str) -> &'static str {
             | "H/usage.db"
             | "H/usage.db-wal"
             | "H/usage.db-shm"
+            | "SHARE/cc-extensions.symlink-backup"
     ) || leaf.contains(".bak")
         || leaf.ends_with(".tmp")
         || leaf.contains(".pre-")
-        || ["H/backup-", "H/backups-", "H/dash/", "STATE/backup-"]
-            .iter()
-            .any(|prefix| path.starts_with(prefix))
+        || (path.starts_with("H/state/.") && !leaf.ends_with(".json"))
+        || [
+            "H/backup-",
+            "H/backups-",
+            "H/dash/",
+            "STATE/backup-",
+            "STATE/recovery-",
+            "STATE/load-relief-",
+            "STATE/color-repair-",
+            "STATE/quarantine-test-pollution-",
+            "SHARE/extensions-venv/",
+            "SHARE/extensions/",
+            "SHARE/codex-yolo/",
+        ]
+        .iter()
+        .any(|prefix| path.starts_with(prefix))
     {
         return "resto";
     }

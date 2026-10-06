@@ -43,3 +43,28 @@ fn shared_tabs_commands_and_snapshots_have_distinct_owners() {
     );
     assert_eq!(file_classification("H/md2tg.py"), "resto");
 }
+
+#[test]
+fn inventory_covers_real_directory_sources_missing_from_the_original_plan() {
+    for (path, domain) in [
+        ("STATE/extensions/sizes/hash.json", "extensions"),
+        ("STATE/closed-panes/123-uuid.json", "closed-panes"),
+        ("STATE/codex-full-access/123.json", "codex-reports"),
+        ("H/comandos-web.json", "ui-docs"),
+        ("H/webterm-mode.json", "ui-docs"),
+    ] {
+        assert_eq!(source(path).map(|s| s.domain), Some(domain), "{path}");
+    }
+    assert_eq!(
+        file_classification("STATE/news-media/image.png"),
+        "se-queda-como-archivo"
+    );
+    assert_eq!(
+        file_classification("SHARE/extensions-venv/bin/python"),
+        "resto"
+    );
+    assert_eq!(
+        file_classification("STATE/new-directory/new-state.json"),
+        "sin-dominio"
+    );
+}
