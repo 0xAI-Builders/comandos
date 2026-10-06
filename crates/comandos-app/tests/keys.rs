@@ -1,4 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+#[path = "support/inert_oracle.rs"]
+mod inert_oracle;
 use comandos_app::ui::keys::{KeyAction, KeyInput, action};
 #[test]
 fn shortcuts_consume_only_app_actions_and_question_reaches_chat() {
@@ -25,7 +27,6 @@ fn source_extracted_callbacks_release_row_borrows_and_require_selection() {
 
 #[test]
 fn original_on_key_ast_matches_native_decision_matrix() {
-    use comandos_app::proc::{ProcSpec, run};
     use gdk::keys::constants as k;
     let keys = [
         ("Escape", k::Escape),
@@ -86,31 +87,14 @@ fn original_on_key_ast_matches_native_decision_matrix() {
         }
     }
     let input = serde_json::json!({"keys":keys.into_iter().map(|(n,k)|(n,*k)).collect::<std::collections::BTreeMap<_,_>>(),"cases":cases});
-    let out = run(&ProcSpec {
-        program: "python3".into(),
-        args: vec![
-            "-c".into(),
-            include_str!("support/t15_original.py").into(),
-            std::env::var("COMANDOS_CC_APP_ORACLE")
-                .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../bin/cc-app").into())
-                .into(),
-            "keys".into(),
-        ],
-        stdin: Some(serde_json::to_vec(&input).unwrap()),
-        env: vec![],
-        clear_env: false,
-        env_remove: vec![],
-        cwd: None,
-        timeout: std::time::Duration::from_secs(15),
-    })
+    let expected: Vec<String> = serde_json::from_value(inert_oracle::oracle(
+        "app-keys-matrix",
+        include_str!("support/t15_original.py"),
+        "bin/cc-app",
+        &input,
+        Some("keys"),
+    ))
     .unwrap();
-    assert_eq!(
-        out.code,
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let expected: Vec<String> = serde_json::from_slice(&out.stdout).unwrap();
     for (i, (a, b)) in actual.iter().zip(&expected).enumerate() {
         assert_eq!(a, b, "case {i}: {}", cases[i]);
     }
@@ -119,7 +103,6 @@ fn original_on_key_ast_matches_native_decision_matrix() {
 
 #[test]
 fn original_ctrl_c_owns_timestamp_per_terminal_object() {
-    use comandos_app::proc::{ProcSpec, run};
     let scenarios = serde_json::json!([
         [
             ["new", "old"],
@@ -158,30 +141,13 @@ fn original_ctrl_c_owns_timestamp_per_terminal_object() {
             ["c", "new", 1.3, false, false]
         ]
     ]);
-    let out = run(&ProcSpec {
-        program: "python3".into(),
-        args: vec![
-            "-c".into(),
-            include_str!("support/t15_original.py").into(),
-            std::env::var("COMANDOS_CC_APP_ORACLE")
-                .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../bin/cc-app").into())
-                .into(),
-            "gestures".into(),
-        ],
-        stdin: Some(serde_json::to_vec(&scenarios).unwrap()),
-        env: vec![],
-        clear_env: false,
-        env_remove: vec![],
-        cwd: None,
-        timeout: std::time::Duration::from_secs(5),
-    })
+    let expected: Vec<usize> = serde_json::from_value(inert_oracle::oracle(
+        "app-keys-gestures",
+        include_str!("support/t15_original.py"),
+        "bin/cc-app",
+        &scenarios,
+        Some("gestures"),
+    ))
     .unwrap();
-    assert_eq!(
-        out.code,
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let expected: Vec<usize> = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(expected, [0, 1, 0, 0, 0, 1]);
 }
