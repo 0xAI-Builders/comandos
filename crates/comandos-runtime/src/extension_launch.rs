@@ -1685,6 +1685,8 @@ pub fn inventory(
         std::task::Poll::Ready(v) => v,
         std::task::Poll::Pending => return Err(LaunchError::Unsure),
     };
+    drop(future);
+    drop(caches);
     for row in inv["skills"].as_array_mut().ok_or(LaunchError::Other)? {
         let id = row["id"].as_str().ok_or(LaunchError::Other)?.to_owned();
         for (k, v) in c::object(&details[&id]) {
@@ -1776,6 +1778,600 @@ pub fn inventory(
         }
     }
     Ok(inv)
+}
+
+fn compact_response(value: &Value) -> Result<String, LaunchError> {
+    let text = response_dumps(value).map_err(|_| LaunchError::Unsure)?;
+    let mut out = String::new();
+    let mut quoted = false;
+    let mut escaped = false;
+    for ch in text.chars() {
+        if quoted {
+            out.push(ch);
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                quoted = false;
+            }
+        } else if ch == '"' {
+            quoted = true;
+            out.push(ch);
+        } else if ch != ' ' {
+            out.push(ch);
+        }
+    }
+    Ok(out)
+}
+fn launch_toml(value: &Value) -> Result<String, LaunchError> {
+    match value {
+        Value::Object(map) => Ok(format!(
+            "{{{}}}",
+            map.iter()
+                .map(|(k, v)| Ok(format!(
+                    "{}={}",
+                    response_dumps(&json!(k)).map_err(|_| LaunchError::Unsure)?,
+                    launch_toml(v)?
+                )))
+                .collect::<Result<Vec<_>, LaunchError>>()?
+                .join(",")
+        )),
+        Value::Array(items) => Ok(format!(
+            "[{}]",
+            items
+                .iter()
+                .map(launch_toml)
+                .collect::<Result<Vec<_>, _>>()?
+                .join(",")
+        )),
+        Value::Bool(b) => Ok(b.to_string()),
+        Value::String(_) | Value::Number(_) => {
+            response_dumps(value).map_err(|_| LaunchError::Unsure)
+        }
+        _ => Err(LaunchError::Value("Override TOML no soportado.".into())),
+    }
+}
+fn proxy_entry(harness: &str, name: &str, home: &Path) -> Value {
+    let launcher = home.join(".local/bin/cc-extensions");
+    if harness == "opencode" {
+        return json!({"type":"local","command":[launcher,"serve",name],"enabled":true});
+    }
+    let mut result = json!({"command":launcher,"args":["serve",name]});
+    match harness {
+        "claude" => result["type"] = "stdio".into(),
+        "agy" => result["disabled"] = false.into(),
+        "codex" | "grok" => result["startup_timeout_sec"] = 45.into(),
+        _ => {}
+    }
+    result
+}
+struct LaunchFiles {
+    private: PathBuf,
+    artifacts: Map<String, Value>,
+    mounts: Vec<Value>,
+}
+impl LaunchFiles {
+    fn file(&mut self, name: &str, data: &Value) -> Result<String, LaunchError> {
+        let bytes = response_dumps(data).map_err(|_| LaunchError::Unsure)?;
+        self.bytes(name, bytes.as_bytes())
+    }
+    fn bytes(&mut self, name: &str, bytes: &[u8]) -> Result<String, LaunchError> {
+        let path = self.private.join(name);
+        write_private(&path, bytes).map_err(|_| LaunchError::Other)?;
+        let key = path.to_str().ok_or(LaunchError::Unsure)?.to_owned();
+        self.artifacts.insert(key.clone(), sha256_hex(bytes).into());
+        Ok(key)
+    }
+    fn mount(&mut self, target: &Path, bytes: &[u8]) -> Result<(), LaunchError> {
+        if !target.is_file() || is_link(target) {
+            return Err(LaunchError::Value(
+                "Falta un archivo de configuración montable; no se modifica el archivo global."
+                    .into(),
+            ));
+        }
+        let suffix = target
+            .extension()
+            .and_then(OsStr::to_str)
+            .map(|s| format!(".{s}"))
+            .unwrap_or_default();
+        let source = self.bytes(&format!("mount-{}{suffix}", self.mounts.len()), bytes)?;
+        let target = target.canonicalize().map_err(|_| LaunchError::Other)?;
+        self.mounts
+            .push(json!({"source":source,"target":target,"sha256":sha256_hex(bytes)}));
+        Ok(())
+    }
+    fn mount_json(&mut self, target: &Path, data: &Value) -> Result<(), LaunchError> {
+        let text = response_dumps(data).map_err(|_| LaunchError::Unsure)?;
+        self.mount(target, text.as_bytes())
+    }
+}
+fn object_mut<'a>(
+    value: &'a mut Value,
+    key: &str,
+) -> Result<&'a mut Map<String, Value>, LaunchError> {
+    if value.get(key).is_none() {
+        value[key] = json!({});
+    }
+    value
+        .get_mut(key)
+        .and_then(Value::as_object_mut)
+        .ok_or(LaunchError::Other)
+}
+fn sorted_selection(previous: &Value, selected: &Map<String, Value>) -> Result<Value, LaunchError> {
+    let mut names = std::collections::BTreeSet::new();
+    if let Some(items) = previous.as_array() {
+        for item in items {
+            names.insert(item.as_str().ok_or(LaunchError::Other)?.to_owned());
+        }
+    }
+    for (name, enabled) in selected {
+        names.remove(name);
+        if enabled == false {
+            names.insert(name.clone());
+        }
+    }
+    Ok(json!(names.into_iter().collect::<Vec<_>>()))
+}
+fn copy_skill_tree(
+    source: &Path,
+    destination: &Path,
+    seen: &mut std::collections::HashSet<PathBuf>,
+    budget: &mut usize,
+) -> Result<(), LaunchError> {
+    use std::os::unix::fs::PermissionsExt;
+    if *budget == 0 {
+        return Err(LaunchError::Unsure);
+    }
+    *budget -= 1;
+    let source = source.canonicalize().map_err(|_| LaunchError::Other)?;
+    if source.is_dir() {
+        if !seen.insert(source.clone()) {
+            return Err(LaunchError::Unsure);
+        }
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(destination)
+            .map_err(|_| LaunchError::Other)?;
+        for entry in fs::read_dir(&source).map_err(|_| LaunchError::Other)? {
+            let entry = entry.map_err(|_| LaunchError::Other)?;
+            copy_skill_tree(
+                &entry.path(),
+                &destination.join(entry.file_name()),
+                seen,
+                budget,
+            )?;
+        }
+        seen.remove(&source);
+    } else if source.is_file() {
+        fs::copy(source, destination).map_err(|_| LaunchError::Other)?;
+        fs::set_permissions(destination, fs::Permissions::from_mode(0o600))
+            .map_err(|_| LaunchError::Other)?;
+    } else {
+        return Err(LaunchError::Other);
+    }
+    Ok(())
+}
+/// Prepare private launch configuration. No shared configuration or live process is changed.
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_launch(
+    registry: &Value,
+    harness: &str,
+    account: &str,
+    cwd: &Path,
+    selection: &Value,
+    runtime_dir: &Path,
+    operation_id: &str,
+    paths: &crate::capabilities::Paths,
+) -> Result<Value, LaunchError> {
+    use crate::{capabilities as c, session_profiles as p};
+    use std::os::unix::fs::PermissionsExt;
+    if operation_id.is_empty()
+        || operation_id.len() > 101
+        || !operation_id.as_bytes()[0].is_ascii_alphanumeric()
+        || !operation_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+    {
+        return Err(LaunchError::Value(
+            "Identificador de operación inválido.".into(),
+        ));
+    }
+    let (mut ctx, inv) = internal_inventory(registry, harness, account, cwd, paths)?;
+    let chosen = normalize(&inv, selection)?;
+    if !ctx.errors.is_empty() {
+        return Err(LaunchError::Value(
+            "Inventario incompleto; no se puede garantizar el lanzamiento aislado.".into(),
+        ));
+    }
+    // Check the supplied path before resolving: resolution would erase a symlink
+    // and chmod/write into its external target (the legacy check came too late).
+    if is_link(runtime_dir) {
+        return Err(LaunchError::Value("Directorio privado inválido.".into()));
+    }
+    let root = c::resolved(runtime_dir);
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&root)
+        .map_err(|_| LaunchError::Other)?;
+    if is_link(&root) || fs::metadata(&root).map_err(|_| LaunchError::Other)?.uid() != uid() {
+        return Err(LaunchError::Value("Directorio privado inválido.".into()));
+    }
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
+        .map_err(|_| LaunchError::Other)?;
+    let private = root.join(format!("extensions-{operation_id}-{}", uuid4_hex()?));
+    fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&private)
+        .map_err(|_| LaunchError::Other)?;
+    let mut files = LaunchFiles {
+        private: private.clone(),
+        artifacts: Map::new(),
+        mounts: Vec::new(),
+    };
+    let mut args: Vec<String> = vec![];
+    let mut env = Map::new();
+    let home = ctx.home.clone().ok_or(LaunchError::Other)?;
+    let mut selected_mcps = Map::new();
+    let mut selected_skills = Vec::new();
+    let mut synthetic = Map::new();
+    for row in c::list(&inv["mcps"]) {
+        let name = row["name"].as_str().ok_or(LaunchError::Other)?.to_owned();
+        let id = row["id"].as_str().ok_or(LaunchError::Other)?;
+        if truthy(&row["toggleable"])
+            || (truthy(&row["enforceDisabled"]) && !truthy(&row["synthetic"]))
+        {
+            selected_mcps.insert(name.clone(), chosen["mcps"][id].clone());
+        }
+        if truthy(&row["synthetic"]) && chosen["mcps"][id] == true {
+            synthetic.insert(name.clone(), proxy_entry(harness, &name, &paths.home));
+        }
+    }
+    for row in c::list(&inv["skills"]) {
+        if truthy(&row["toggleable"]) {
+            let id = row["id"].as_str().ok_or(LaunchError::Other)?;
+            let enabled = chosen["skills"][id].clone();
+            selected_skills.push((row, enabled));
+        }
+    }
+    match harness {
+        "codex" => {
+            for (name, spec) in &synthetic {
+                args.extend([
+                    "-c".into(),
+                    format!("mcp_servers.{name}={}", launch_toml(spec)?),
+                ]);
+            }
+            let configs = p::codex_configs(&home).map_err(discovery_fault)?;
+            let mut entries = p::overrides(&configs);
+            entries.extend(
+                selected_skills
+                    .iter()
+                    .map(|(row, enabled)| json!({"path":row["path"],"enabled":enabled})),
+            );
+            args.extend([
+                "-c".into(),
+                format!("skills.config={}", launch_toml(&json!(entries))?),
+            ]);
+            for (name, enabled) in &selected_mcps {
+                args.extend([
+                    "-c".into(),
+                    format!("mcp_servers.{name}.enabled={}", launch_toml(enabled)?),
+                ]);
+            }
+        }
+        "claude" => {
+            let mut servers = Map::new();
+            for layer in &ctx.layers {
+                servers.extend(c::object(&layer.data["mcpServers"]));
+            }
+            servers.extend(synthetic);
+            let project = ctx.project.to_str().ok_or(LaunchError::Unsure)?;
+            servers.extend(c::object(&ctx.user_data["projects"][project]["mcpServers"]));
+            if c::list(&inv["mcps"]).iter().any(|r| {
+                truthy(&r["plugin"])
+                    && r["enabled"] != false
+                    && r["plugin"]
+                        .as_str()
+                        .is_some_and(|p| chosen["skills"][format!("plugin:{p}")] != false)
+            }) {
+                return Err(LaunchError::Value("Claude strict no puede conservar este MCP de plugin; requiere un adaptador del plugin.".into()));
+            }
+            servers.retain(|n, _| chosen["mcps"][n] != false);
+            if response_dumps(&json!(servers))
+                .map_err(|_| LaunchError::Unsure)?
+                .contains("${")
+                || servers.values().any(|s| {
+                    truthy(&s["cwd"])
+                        && !s["cwd"]
+                            .as_str()
+                            .is_some_and(|p| Path::new(p).is_absolute())
+                })
+            {
+                return Err(LaunchError::Value(
+                    "MCP con expansión o cwd relativo no admite traslado aislado.".into(),
+                ));
+            }
+            let mut settings = json!({"skillOverrides":{},"enabledPlugins":{}});
+            for (row, enabled) in &selected_skills {
+                if truthy(&row["group"]) {
+                    settings["enabledPlugins"]
+                        [row["plugin"].as_str().ok_or(LaunchError::Other)?] = enabled.clone();
+                } else {
+                    settings["skillOverrides"][row["name"].as_str().ok_or(LaunchError::Other)?] =
+                        if enabled == true { "on" } else { "off" }.into();
+                }
+            }
+            args.extend([
+                "--settings".into(),
+                files.file("settings.json", &settings)?,
+                "--strict-mcp-config".into(),
+                "--mcp-config".into(),
+                files.file("mcp.json", &json!({"mcpServers":servers}))?,
+            ]);
+        }
+        "opencode" => {
+            let mut mcps = Map::new();
+            for (name, enabled) in &selected_mcps {
+                mcps.insert(name.clone(), json!({"enabled":enabled}));
+            }
+            mcps.extend(synthetic);
+            let mut skills = Map::new();
+            for (row, enabled) in &selected_skills {
+                skills.insert(
+                    row["name"].as_str().ok_or(LaunchError::Other)?.into(),
+                    if enabled == true { "allow" } else { "deny" }.into(),
+                );
+            }
+            let overlay = json!({"mcp":mcps,"permission":{"skill":skills}});
+            env.insert(
+                "OPENCODE_CONFIG_CONTENT".into(),
+                compact_response(&overlay)?.into(),
+            );
+        }
+        "grok" => {
+            for layer in &ctx.layers {
+                if !layer.path.exists() {
+                    continue;
+                }
+                let mut data = read_configuration(&layer.path)?;
+                object_mut(&mut data, "mcp_servers")?.extend(synthetic.clone());
+                let disabled = sorted_selection(&data["disabled_mcp_servers"], &selected_mcps)?;
+                data["disabled_mcp_servers"] = disabled;
+                for (name, enabled) in &selected_mcps {
+                    if let Some(spec) = data["mcp_servers"].get_mut(name) {
+                        spec.as_object_mut()
+                            .ok_or(LaunchError::Other)?
+                            .insert("enabled".into(), enabled.clone());
+                    }
+                }
+                let names = selected_skills
+                    .iter()
+                    .map(|(r, e)| {
+                        Ok((
+                            r["name"].as_str().ok_or(LaunchError::Other)?.to_owned(),
+                            e.clone(),
+                        ))
+                    })
+                    .collect::<Result<Map<String, Value>, LaunchError>>()?;
+                let skill_cfg = object_mut(&mut data, "skills")?;
+                let disabled =
+                    sorted_selection(skill_cfg.get("disabled").unwrap_or(&Value::Null), &names)?;
+                skill_cfg.insert("disabled".into(), disabled);
+                let lines = data
+                    .as_object()
+                    .ok_or(LaunchError::Other)?
+                    .iter()
+                    .map(|(k, v)| {
+                        Ok(format!(
+                            "{}={}",
+                            response_dumps(&json!(k)).map_err(|_| LaunchError::Unsure)?,
+                            launch_toml(v)?
+                        ))
+                    })
+                    .collect::<Result<Vec<_>, LaunchError>>()?
+                    .join("\n")
+                    + "\n";
+                files.mount(&layer.path, lines.as_bytes())?;
+            }
+            if files.mounts.is_empty() {
+                return Err(LaunchError::Value(
+                    "Falta config.toml para el montaje aislado de Grok.".into(),
+                ));
+            }
+            args.extend([
+                "--leader-socket".into(),
+                private
+                    .join("leader.sock")
+                    .to_str()
+                    .ok_or(LaunchError::Unsure)?
+                    .into(),
+            ]);
+        }
+        "agy" => {
+            let mut data = read_configuration(&home.join("config/mcp_config.json"))?;
+            object_mut(&mut data, "mcpServers")?.extend(synthetic);
+            object_mut(&mut data, "mcpServers")?.retain(|n, _| chosen["mcps"][n] != false);
+            for (name, enabled) in &selected_mcps {
+                if let Some(spec) = data["mcpServers"].get_mut(name) {
+                    spec.as_object_mut()
+                        .ok_or(LaunchError::Other)?
+                        .insert("disabled".into(), json!(enabled != true));
+                }
+            }
+            files.mount_json(&home.join("config/mcp_config.json"), &data)?;
+            for layer in &ctx.layers {
+                if layer.scope == "project" && layer.path.exists() {
+                    let mut data = read_configuration(&layer.path)?;
+                    object_mut(&mut data, "mcpServers")?.retain(|n, _| chosen["mcps"][n] != false);
+                    for (name, enabled) in &selected_mcps {
+                        if let Some(spec) = data["mcpServers"].get_mut(name) {
+                            spec.as_object_mut()
+                                .ok_or(LaunchError::Other)?
+                                .insert("disabled".into(), json!(enabled != true));
+                        }
+                    }
+                    files.mount_json(&layer.path, &data)?;
+                }
+            }
+            let mut data = read_configuration(&home.join("config/skills.json"))?;
+            let names = selected_skills
+                .iter()
+                .map(|(r, e)| {
+                    Ok((
+                        r["name"].as_str().ok_or(LaunchError::Other)?.to_owned(),
+                        e.clone(),
+                    ))
+                })
+                .collect::<Result<Map<String, Value>, LaunchError>>()?;
+            data["exclude"] = sorted_selection(&data["exclude"], &names)?;
+            if home.join("config/skills.json").exists() {
+                files.mount_json(&home.join("config/skills.json"), &data)?;
+            } else {
+                let roots = p::skill_roots(&mut ctx, paths)
+                    .into_iter()
+                    .filter_map(|(root, _, _, _)| root.is_dir().then(|| c::resolved(&root)))
+                    .collect::<std::collections::BTreeSet<_>>();
+                for target in roots {
+                    let source = private.join(format!("skills-{}", files.mounts.len()));
+                    fs::DirBuilder::new()
+                        .mode(0o700)
+                        .create(&source)
+                        .map_err(|_| LaunchError::Other)?;
+                    for (row, enabled) in &selected_skills {
+                        let path = Path::new(row["path"].as_str().ok_or(LaunchError::Other)?);
+                        if enabled == true && path.starts_with(&target) {
+                            let parent = path.parent().ok_or(LaunchError::Other)?;
+                            let destination = source.join(
+                                parent
+                                    .strip_prefix(&target)
+                                    .map_err(|_| LaunchError::Other)?,
+                            );
+                            copy_skill_tree(
+                                parent,
+                                &destination,
+                                &mut std::collections::HashSet::new(),
+                                &mut 10000,
+                            )?;
+                        }
+                    }
+                    files
+                        .mounts
+                        .push(json!({"source":source,"target":target,"kind":"directory"}));
+                }
+            }
+        }
+        _ => return Err(LaunchError::Unsure),
+    }
+    if !files.mounts.is_empty() {
+        namespace_preflight(&private, &paths.home)?;
+    }
+    let manifest = private.join("manifest.json");
+    let bundle = json!({"manifest":manifest,"selection":chosen,"operationId":operation_id,"harness":harness,"method":if files.mounts.is_empty(){"native"}else{"namespace"},"verification":{"marker":MARKER,"evidence":"manifest+process-configuration"}});
+    let data = json!({"version":1,"bundle":bundle,"args":args,"env":env,"mounts":files.mounts,"codexSelectedSkillCount":selected_skills.len(),"artifacts":files.artifacts,"cwd":ctx.project,"home":paths.home,"account":account});
+    write_private(
+        &manifest,
+        response_dumps(&data)
+            .map_err(|_| LaunchError::Unsure)?
+            .as_bytes(),
+    )
+    .map_err(|_| LaunchError::Other)?;
+    Ok(bundle)
+}
+
+/// Real child proof: user/mount isolation, original HOME and zero execution capabilities.
+fn namespace_preflight(runtime_dir: &Path, home: &Path) -> Result<(), LaunchError> {
+    use std::os::unix::process::CommandExt;
+    let refused = || {
+        LaunchError::Value(
+            "El aislamiento user/mount namespace no está disponible; no se detuvo el agente."
+                .into(),
+        )
+    };
+    let directory = runtime_dir.join(format!("namespace-proof-{}", uuid4_hex()?));
+    fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&directory)
+        .map_err(|_| LaunchError::Other)?;
+    let target = directory.join("target");
+    let source = directory.join("source");
+    write_private(&target, b"parent").map_err(|_| LaunchError::Other)?;
+    write_private(&source, b"child").map_err(|_| LaunchError::Other)?;
+    // Positional argv carries paths; neither user commands nor configuration are evaluated.
+    let script = r#"/usr/bin/mount --bind "$1" "$2" || exit 1
+exec /usr/bin/setpriv --no-new-privs --bounding-set=-all --inh-caps=-all --ambient-caps=-all /bin/sh -c '
+[ "$HOME" = "$2" ] || exit 1
+[ "$(/usr/bin/cat "$1")" = child ] || exit 1
+while read -r key value extra; do
+ case "$key" in CapInh:|CapPrm:|CapEff:|CapBnd:|CapAmb:) [ "$value" = 0000000000000000 ] || exit 1;; esac
+done < /proc/self/status
+printf namespace-proof-ok
+' proof "$2" "$3"
+"#;
+    let output = directory.join("output");
+    let stdout = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&output)
+        .map_err(|_| LaunchError::Other)?;
+    let mut child = match std::process::Command::new("/usr/bin/unshare")
+        .args([
+            "--user",
+            "--mount",
+            "--keep-caps",
+            "--propagation",
+            "private",
+            "--map-user",
+        ])
+        .arg(uid().to_string())
+        .arg("--map-group")
+        .arg(nix::unistd::getgid().as_raw().to_string())
+        .args(["--", "/bin/sh", "-c", script, "proof"])
+        .arg(&source)
+        .arg(&target)
+        .arg(home)
+        .env_clear()
+        .env("HOME", home)
+        .env("PATH", "/usr/bin:/bin")
+        .stdin(std::process::Stdio::null())
+        .stdout(stdout)
+        .stderr(std::process::Stdio::null())
+        .process_group(0)
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => {
+            let _ = fs::remove_dir_all(&directory);
+            return Err(refused());
+        }
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let success = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status.success(),
+            Err(_) => break false,
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    break false;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+    };
+    // Also terminate/reap descendants if proof was interrupted or failed.
+    let _ = nix::sys::signal::killpg(
+        nix::unistd::Pid::from_raw(child.id() as i32),
+        nix::sys::signal::Signal::SIGKILL,
+    );
+    let _ = child.wait();
+    let verified = success
+        && fs::read(&output).is_ok_and(|b| b == b"namespace-proof-ok")
+        && fs::read(&target).is_ok_and(|b| b == b"parent");
+    let _ = fs::remove_dir_all(&directory);
+    if verified { Ok(()) } else { Err(refused()) }
 }
 
 #[cfg(test)]

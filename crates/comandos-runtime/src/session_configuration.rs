@@ -1286,6 +1286,7 @@ pub struct SessionConfiguration {
     allow_pending_recovery: bool,
     /// `verify` con otro número de intentos (el `monkeypatch` de las pruebas).
     attempts_override: Option<i64>,
+    probing: bool,
 }
 
 fn key_text(data: &Map<String, Value>, key: &str) -> Result<String, Fail> {
@@ -1344,6 +1345,7 @@ impl SessionConfiguration {
             refreshing: false,
             allow_pending_recovery: false,
             attempts_override: None,
+            probing: false,
         })
     }
 
@@ -1401,6 +1403,7 @@ impl SessionConfiguration {
     /// `prepare` no declina: la operación se reclama y falla con ese texto.
     pub fn probe(&self) -> Result<(), Unsure> {
         let mut dry = self.clone();
+        dry.probing = true;
         let plan = match dry.prepare_plan() {
             Ok(plan) => plan,
             Err(Fail::Py(_)) => return Ok(()),
@@ -1424,7 +1427,21 @@ impl SessionConfiguration {
             return_origin_launch: return_launch,
         };
         if extension_launch::needs_inventory(&need)? {
-            return Err(Unsure);
+            let account = plan
+                .get("harnessAccount")
+                .and_then(Value::as_str)
+                .unwrap_or("main");
+            let cwd = Path::new(ident_text(&self.identity, "pane_current_path"));
+            match extension_launch::inventory(
+                &self.env.registry,
+                to,
+                account,
+                cwd,
+                &self.extension_paths(),
+            ) {
+                Ok(_) | Err(extension_launch::LaunchError::Value(_)) => {}
+                Err(_) => return Err(Unsure),
+            }
         }
         self.env.dialogs.probe().map_err(|_| Unsure)?;
         let home = self.env.home.to_str().ok_or(Unsure)?;
@@ -1487,12 +1504,238 @@ impl SessionConfiguration {
     fn prepare_plan(&mut self) -> Result<Map<String, Value>, Fail> {
         match self.kind {
             Kind::Session => self.prepare_session(),
-            // `PaneExtensionConfiguration.prepare` (3214) pide
-            // `prepare_launch` e `inventory`, aún sin portar (T4): quien
-            // llama declina antes del `claim` (nota 1 del controlador). Si
-            // llegara aquí después, falla cerrado sin tocar el pane.
-            Kind::Extensions => Err(Fail::Unsure),
+            Kind::Extensions => self.prepare_extensions(),
         }
+    }
+
+    fn extension_paths(&self) -> crate::capabilities::Paths {
+        let mut paths = crate::capabilities::Paths::new(&self.env.home, &self.env.cwd);
+        paths.env = self
+            .env
+            .environ
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        paths
+    }
+    fn prepare_extensions(&mut self) -> Result<Map<String, Value>, Fail> {
+        let identity = pane_identity(&self.env, &self.sess, &self.pane)?;
+        let info = agent_info_for_pane(&self.env, &self.pane)?;
+        let observed = if let Some(info) = &info {
+            observe_pane(&self.env, &self.sess, &self.pane, Some(info), None)?
+        } else {
+            Map::new()
+        };
+        let harness = match &info {
+            Some(info) => info.agent.clone(),
+            None => as_text(get(&self.data, "harness"))?,
+        };
+        if !["claude", "codex", "grok", "opencode", "agy"].contains(&harness.as_str()) {
+            return Err(py("elige un CLI compatible para este panel"));
+        }
+        if info.is_some()
+            && truthy(get(&self.data, "harness"))
+            && !is(get(&self.data, "harness"), &harness)
+        {
+            return Err(py("el CLI del panel cambió"));
+        }
+        let operation = self.with_store(|store| store.latest_for_target(&self.sess, &self.pane))?;
+        let active = operation.filter(|r| {
+            r["pane_key"] == identity_key(&identity)
+                && !matches!(
+                    r["state"].as_str(),
+                    Some("confirmed" | "failed" | "rolled_back")
+                )
+        });
+        if info.is_none()
+            && !SHELLS.contains(&ident_text(&identity, "pane_current_command"))
+            && active.is_none()
+        {
+            return Err(py("hay un proceso sin identificar en el panel"));
+        }
+        let mut account = text_or(
+            get(&observed, "harnessAccount"),
+            if info.is_none() { "main" } else { "unknown" },
+        )?;
+        if account == "unknown"
+            && let Some(operation) = &active
+        {
+            account = text_or(
+                operation
+                    .pointer("/snapshot/destination/harnessAccount")
+                    .unwrap_or(&NULL),
+                "unknown",
+            )?;
+        }
+        if account == "unknown" {
+            return Err(py("no se identificó la cuenta del proceso"));
+        }
+        let sid = as_text(get(&observed, "conversationId"))?;
+        if !is(
+            get(&self.data, "expectedIdentity"),
+            &identity_key(&identity),
+        ) || !self.data.contains_key("expectedConversationId")
+            || !is(get(&self.data, "expectedConversationId"), &sid)
+        {
+            return Err(py(
+                "cambió el panel o la conversación; vuelve a cargar el estante",
+            ));
+        }
+        let cwd = PathBuf::from(ident_text(&self.identity, "pane_current_path"));
+        let paths = self.extension_paths();
+        let inv =
+            extension_launch::inventory(&self.env.registry, &harness, &account, &cwd, &paths)?;
+        let conn = self.store_conn()?;
+        let clock = self.env.clock.clone();
+        let clock = move || clock();
+        let store = crate::pane_extensions::ExtensionStore::new(&conn, &clock)
+            .map_err(|e| py(e.to_string()))?;
+        let draft = store
+            .require_revision(
+                &key_text(&self.data, "extensionDraftKey")?,
+                get(&self.data, "revision"),
+            )
+            .map_err(|e| py(e.to_string()))?;
+        if draft["identity"] != identity_key(&self.identity)
+            || draft["conversation"] != sid
+            || draft["harness"] != harness
+        {
+            return Err(py("el borrador no pertenece a este panel y conversación"));
+        }
+        let mut desired = Map::new();
+        for kind in ["mcps", "skills"] {
+            let rows = inv[kind].as_array().ok_or(Fail::Unsure)?;
+            let mut selection = Map::new();
+            for row in rows {
+                if row["enabled"].is_boolean() {
+                    let id = row["id"].as_str().ok_or(Fail::Unsure)?;
+                    let enabled = if truthy(&row["toggleable"]) {
+                        draft["desired"][kind]
+                            .get(id)
+                            .cloned()
+                            .unwrap_or(Value::Bool(false))
+                    } else {
+                        row["enabled"].clone()
+                    };
+                    selection.insert(id.into(), enabled);
+                }
+            }
+            desired.insert(kind.into(), Value::Object(selection));
+        }
+        let desired = Value::Object(desired);
+        let chosen = extension_launch::normalize(&inv, &desired)?;
+        if !["shell", "claude", "codex", "grok", "opencode", "agy"].contains(&self.frm.as_str()) {
+            return Err(py("CLI no compatible con extensiones por proceso"));
+        }
+        if self.frm != "shell" && sid.is_empty() {
+            return Err(py(
+                "no se encontró la conversación exacta; el agente sigue abierto",
+            ));
+        }
+        let mut origin = Map::new();
+        if self.frm != "shell" {
+            let inspector = PaneInspector::new(&self.env.home, &self.env.proc_root)?;
+            let pid = ident_text(&self.identity, "pane_pid")
+                .parse()
+                .map_err(|_| Fail::Unsure)?;
+            origin = inspector.inspect(&PaneRef {
+                id: &self.pane,
+                pid,
+                command: ident_text(&self.identity, "pane_current_command"),
+            })?;
+            if !is(get(&origin, "resume_id"), &sid) {
+                return Err(py("la conversación cambió durante la preparación"));
+            }
+            if !self.probing {
+                snapshot_transcript(&self.env, &origin)?;
+            }
+        }
+        let bundle = if let Some(pid) = info.as_ref().and_then(|p| u32::try_from(p.pid).ok()) {
+            extension_launch::launch_from_pid(pid)?
+        } else {
+            None
+        };
+        let loaded = bundle
+            .as_ref()
+            .filter(|b| b["harness"] == harness)
+            .map(|b| b["selection"].clone());
+        let launch = if self.probing {
+            None
+        } else {
+            Some(extension_launch::prepare_launch(
+                &self.env.registry,
+                &harness,
+                &account,
+                &cwd,
+                &desired,
+                &self.env.hooks.join("extension-launches"),
+                &self.request_id,
+                &paths,
+            )?)
+        };
+        let environment = if self.frm == "opencode" && !self.probing {
+            Some(extension_launch::capture_opencode_environment(
+                &agent_procs::read_environ(&self.env.proc_root, self.original_pid()),
+                &self.env.hooks.join("extension-launches"),
+                &inv,
+                bundle.is_some(),
+            )?)
+        } else {
+            None
+        };
+        let flags = match get(&origin, "flags") {
+            Value::Array(items) => items
+                .iter()
+                .map(|v| v.as_str().map(str::to_owned).ok_or(Fail::Unsure))
+                .collect::<Result<Vec<_>, _>>()?,
+            v if truthy(v) => return Err(Fail::Unsure),
+            _ => vec![],
+        };
+        let confirmed = truthy(get(&observed, "confirmed"));
+        let model = if confirmed {
+            as_text(get(&observed, "model"))?
+        } else {
+            String::new()
+        };
+        let effort = if confirmed {
+            as_text(get(&observed, "effort"))?
+        } else {
+            String::new()
+        };
+        let motor = text_or(get(&observed, "motor"), &harness)?;
+        let mut command = launch_command::configuration_command(
+            &self.env.ctx(),
+            &harness,
+            &motor,
+            &model,
+            &effort,
+            &account,
+            &sid,
+            &flags,
+            model.is_empty(),
+        )?;
+        if let Some(launch) = &launch {
+            command = extension_launch::wrap_command(
+                &command,
+                launch,
+                &extension_launch::helper(&self.env.repo_root),
+                &self.env.environ,
+            )?;
+        }
+        if let Some(environment) = &environment {
+            command = extension_launch::wrap_environment(
+                &command,
+                environment,
+                &extension_launch::helper(&self.env.repo_root),
+            )?;
+        }
+        let unchanged = bundle.is_some() && loaded.as_ref().is_some_and(|v| python_eq(v, &chosen));
+        let mut plan=json!({"opencodeEnvironment":environment,"to":harness,"motor":motor,"model":model,"effort":effort,"harnessAccount":account,"motorAccount":or_text(get(&observed,"motorAccount"),&account),"command":command,"previous":observed,"routeId":format!("{harness}:{motor}"),"expectedSid":sid,"sameConversation":self.frm!="shell","extensionsOnly":true,"extensionLaunch":launch,"unchanged":unchanged,"continuity":{"continuity":if sid.is_empty(){"new-conversation"}else{"resumed"},"handoffRequired":false}}).as_object().cloned().ok_or(Fail::Unsure)?;
+        if unchanged {
+            plan.insert("extensionLaunch".into(), bundle.unwrap_or(Value::Null));
+        }
+        self.plan = Some(plan.clone());
+        Ok(plan)
     }
 
     fn prepare_session(&mut self) -> Result<Map<String, Value>, Fail> {
@@ -1894,10 +2137,8 @@ impl SessionConfiguration {
         Ok(plan)
     }
 
-    /// `_preserve_extension_plan(adapter, plan)` (2712). El caso que pediría
-    /// `inventory`/`prepare_launch` (lanzamiento previo del mismo harness y
-    /// plan que no es `unchanged`) aún no está portado: incierto (declina
-    /// antes del `claim`; después falla cerrado).
+    /// Preserve verified extension selections across account/model changes.
+    /// The pre-claim probe validates mapping without producing private files.
     fn preserve_extension_plan(&self, plan: &mut Map<String, Value>) -> Result<(), Fail> {
         let mut prior = obj_get(get(plan, "returnOrigin"), "extensionLaunch")?.clone();
         let pid = self.original_pid();
@@ -1920,7 +2161,95 @@ impl SessionConfiguration {
             plan.insert("extensionLaunch".into(), prior);
             return Ok(());
         }
-        Err(Fail::Unsure)
+        let previous = obj_get(get(plan, "returnOrigin"), "observed")?;
+        let previous = if truthy(previous) {
+            previous
+        } else {
+            get(plan, "previous")
+        };
+        let previous = obj(previous)?.ok_or(Fail::Unsure)?;
+        let harness = as_text(get(plan, "to"))?;
+        let account = text_or(get(plan, "harnessAccount"), "main")?;
+        let before_account = text_or(get(previous, "harnessAccount"), "main")?;
+        let cwd = Path::new(ident_text(&self.identity, "pane_current_path"));
+        let paths = self.extension_paths();
+        let source = extension_launch::inventory(
+            &self.env.registry,
+            &harness,
+            &before_account,
+            cwd,
+            &paths,
+        )?;
+        let dest =
+            extension_launch::inventory(&self.env.registry, &harness, &account, cwd, &paths)?;
+        let mut choices = Map::new();
+        for kind in ["mcps", "skills"] {
+            let before = source[kind].as_array().ok_or(Fail::Unsure)?;
+            let after = dest[kind].as_array().ok_or(Fail::Unsure)?;
+            let mut selected = Map::new();
+            for row in after {
+                if truthy(&row["toggleable"]) {
+                    selected.insert(
+                        row["id"].as_str().ok_or(Fail::Unsure)?.into(),
+                        Value::Bool(false),
+                    );
+                }
+            }
+            let prior_selection = prior["selection"][kind].as_object().ok_or(Fail::Unsure)?;
+            for (id, enabled) in prior_selection {
+                let mut row = after.iter().find(|r| r["id"] == *id);
+                if row.is_none()
+                    && let Some(original) = before.iter().find(|r| r["id"] == *id)
+                {
+                    let matches = after
+                        .iter()
+                        .filter(|r| {
+                            ["name", "scope", "plugin"]
+                                .iter()
+                                .all(|k| python_eq(&r[*k], &original[*k]))
+                        })
+                        .collect::<Vec<_>>();
+                    if matches.len() == 1 {
+                        row = matches.first().copied();
+                    }
+                }
+                if let Some(row) = row {
+                    selected.insert(
+                        row["id"].as_str().ok_or(Fail::Unsure)?.into(),
+                        enabled.clone(),
+                    );
+                } else if truthy(enabled) {
+                    return Err(py(
+                        "una extensión activa no existe en la cuenta destino; revisa el estante",
+                    ));
+                }
+            }
+            choices.insert(kind.into(), Value::Object(selected));
+        }
+        let choices = Value::Object(choices);
+        extension_launch::normalize(&dest, &choices)?;
+        if self.probing {
+            return Ok(());
+        }
+        let launch = extension_launch::prepare_launch(
+            &self.env.registry,
+            &harness,
+            &account,
+            cwd,
+            &choices,
+            &self.env.hooks.join("extension-launches"),
+            &self.request_id,
+            &paths,
+        )?;
+        let command = extension_launch::wrap_command(
+            &as_text(get(plan, "command"))?,
+            &launch,
+            &extension_launch::helper(&self.env.repo_root),
+            &self.env.environ,
+        )?;
+        plan.insert("extensionLaunch".into(), launch);
+        plan.insert("command".into(), s(&command));
+        Ok(())
     }
 
     // ------------------------------------------------------------ espera
@@ -2227,9 +2556,37 @@ impl SessionConfiguration {
                 plan.insert("command".into(), s(&wrapped));
             }
             if frm == "opencode" {
-                // `capture_opencode_environment` pide `inventory` (sin portar):
-                // `session_configure` declina antes del `claim` con este origen.
-                return Err(Fail::Unsure);
+                let account = as_text(get(&observed, "harnessAccount"))?;
+                let cwd = Path::new(ident_text(&self.identity, "pane_current_path"));
+                let inv = extension_launch::inventory(
+                    &self.env.registry,
+                    "opencode",
+                    &account,
+                    cwd,
+                    &self.extension_paths(),
+                )?;
+                let environment = extension_launch::capture_opencode_environment(
+                    &agent_procs::read_environ(&self.env.proc_root, self.original_pid()),
+                    &self.env.hooks.join("extension-launches"),
+                    &inv,
+                    truthy(get(&origin, "extensionLaunch")),
+                )?;
+                origin.insert("opencodeEnvironment".into(), environment.clone());
+                let resume = extension_launch::wrap_environment(
+                    &as_text(get(&origin, "resume_command"))?,
+                    &environment,
+                    &helper,
+                )?;
+                origin.insert("resume_command".into(), s(&resume));
+                if truthy(get(&plan, "sameConversation")) {
+                    plan.insert("opencodeEnvironment".into(), environment.clone());
+                    let command = extension_launch::wrap_environment(
+                        &as_text(get(&plan, "command"))?,
+                        &environment,
+                        &helper,
+                    )?;
+                    plan.insert("command".into(), s(&command));
+                }
             }
             let return_environment = obj_get(&return_origin, "opencodeEnvironment")?;
             if truthy(return_environment) && is(get(&plan, "to"), "opencode") {
@@ -2318,8 +2675,27 @@ impl SessionConfiguration {
                 ));
             }
             if truthy(get(&plan, "opencodeEnvironment")) {
-                // `capture_opencode_environment` con `inventory`: sin portar.
-                return Err(Fail::Unsure);
+                let cwd = Path::new(ident_text(&self.identity, "pane_current_path"));
+                let account = as_text(get(&plan, "harnessAccount"))?;
+                let inv = extension_launch::inventory(
+                    &self.env.registry,
+                    "opencode",
+                    &account,
+                    cwd,
+                    &self.extension_paths(),
+                )?;
+                let pid = u32::try_from(self.original_pid()).map_err(|_| Fail::Unsure)?;
+                let current = extension_launch::capture_opencode_environment(
+                    &agent_procs::read_environ(&self.env.proc_root, self.original_pid()),
+                    &self.env.hooks.join("extension-launches"),
+                    &inv,
+                    extension_launch::launch_from_pid(pid)?.is_some(),
+                )?;
+                if current["sha256"] != get(&plan, "opencodeEnvironment")["sha256"] {
+                    return Err(py(
+                        "la configuración OpenCode cambió durante la espera; el origen sigue abierto",
+                    ));
+                }
             }
             if !python_eq(
                 get(&observed, "harnessAccount"),

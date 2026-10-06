@@ -677,3 +677,142 @@ fn recovery_waits_for_a_briefly_lingering_wrapper() {
             .contains_key(b"COMANDOS_OPERATION_ID".as_slice())
     );
 }
+
+#[test]
+fn extension_prepare_claims_revision_errors_and_builds_private_shell_launch() {
+    use comandos_runtime::{pane_extensions::ExtensionStore, session_operations::Adapter};
+    let lab = OpsLab::start("extprepare").expect("private tmux laboratory required");
+    let identity = sc::pane_identity(&lab.env(), "audit", &lab.other).unwrap();
+    let key = sc::identity_key(&identity);
+    let conn = open_journal(&lab.journal()).unwrap();
+    let clock = || 1000.0;
+    let ext = ExtensionStore::new(&conn, &clock).unwrap();
+    let draft = ext
+        .state(&key, "", "codex", &json!({"mcps":{},"skills":{}}))
+        .unwrap();
+    let data = json!({"session":"audit","pane":lab.other,"requestId":"extension-prepare","harness":"codex","extensionsOnly":true,"extensionDraftKey":draft["key"],"revision":draft["revision"],"expectedIdentity":key,"expectedConversationId":"","interrupt":true});
+    let mut adapter =
+        SessionConfiguration::new(Kind::Extensions, data.clone(), identity.clone(), lab.env())
+            .unwrap();
+    adapter.probe().expect("native extension preflight");
+    let plan = adapter.prepare().unwrap();
+    assert_eq!(plan["to"], "codex");
+    assert_eq!(plan["extensionsOnly"], true);
+    assert_eq!(plan["expectedSid"], "");
+    assert!(std::path::Path::new(plan["extensionLaunch"]["manifest"].as_str().unwrap()).is_file());
+    let mut stale = data;
+    stale["revision"] = json!(99);
+    let mut adapter =
+        SessionConfiguration::new(Kind::Extensions, stale, identity, lab.env()).unwrap();
+    assert!(
+        adapter.probe().is_ok(),
+        "revision error must claim/fail, not decline"
+    );
+    assert!(adapter.prepare().is_err());
+}
+
+#[test]
+fn extension_apply_relaunches_only_private_stub_and_preserves_selection_on_model_change() {
+    use comandos_runtime::{pane_extensions::ExtensionStore, session_operations::Adapter};
+    let lab = OpsLab::start("extapply").expect("private tmux laboratory required");
+    let env = lab.env();
+    let identity = lab.identity();
+    let key = sc::identity_key(&identity);
+    let skill = lab.home.join(".agents/skills/demo/SKILL.md");
+    std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
+    std::fs::write(skill, "---\nname: demo\n---\nsynthetic").unwrap();
+    let config = lab.home.join(".codex/config.toml");
+    std::fs::write(&config, "# synthetic shared config\n").unwrap();
+    let original_config = std::fs::read(&config).unwrap();
+    let conn = open_journal(&lab.journal()).unwrap();
+    let clock = || 1000.0;
+    let owner = || i64::from(std::process::id());
+    let store = OperationStore::new(&conn, &owner, &clock).unwrap();
+    let ext = ExtensionStore::new(&conn, &clock).unwrap();
+    let draft = ext
+        .state(
+            &key,
+            SID,
+            "codex",
+            &json!({"mcps":{},"skills":{"shared:demo":false}}),
+        )
+        .unwrap();
+    let data = json!({"session":"audit","pane":lab.pane,"requestId":"extension-real-apply","harness":"codex","extensionsOnly":true,"extensionDraftKey":draft["key"],"revision":draft["revision"],"expectedIdentity":key,"expectedConversationId":SID,"interrupt":true});
+    let original = sc::agent_info_for_pane(&env, &lab.pane)
+        .unwrap()
+        .unwrap()
+        .pid;
+    let mut adapter = SessionConfiguration::new(
+        Kind::Extensions,
+        data.clone(),
+        identity.clone(),
+        env.clone(),
+    )
+    .unwrap()
+    .with_verify_attempts(30);
+    adapter.probe().unwrap();
+    assert!(
+        !env.hooks.join("extension-launches").exists(),
+        "probe must not materialize launch artifacts"
+    );
+    assert!(store.claim("extension-real-apply", &key, &data).unwrap());
+    let result = run_operation(&store, "extension-real-apply", &mut adapter, |_, _| Ok(()));
+    assert_eq!(
+        store.get("extension-real-apply").unwrap().unwrap()["state"],
+        "confirmed",
+        "{result}"
+    );
+    let current = sc::agent_info_for_pane(&env, &lab.pane)
+        .unwrap()
+        .unwrap()
+        .pid;
+    assert_ne!(original, current);
+    let bundle = comandos_runtime::extension_launch::launch_from_pid(current as u32)
+        .unwrap()
+        .unwrap();
+    assert_eq!(bundle["selection"]["skills"]["shared:demo"], false);
+    assert!(!store.claim("extension-real-apply", &key, &data).unwrap());
+    assert_eq!(
+        current,
+        sc::agent_info_for_pane(&env, &lab.pane)
+            .unwrap()
+            .unwrap()
+            .pid
+    );
+    assert_eq!(original_config, std::fs::read(&config).unwrap());
+    // A normal model change must map and retain the verified extension selection.
+    let mut change = request("change");
+    change["pane"] = json!(lab.pane);
+    change["requestId"] = json!("extension-preserve-change");
+    change["model"] = json!("gpt-5.5");
+    change["effort"] = json!("low");
+    let identity = lab.identity();
+    let mut normal =
+        SessionConfiguration::new(Kind::Session, change.clone(), identity.clone(), env.clone())
+            .unwrap()
+            .with_verify_attempts(30);
+    normal.probe().unwrap();
+    assert!(
+        store
+            .claim(
+                "extension-preserve-change",
+                &sc::identity_key(&identity),
+                &change
+            )
+            .unwrap()
+    );
+    let plan = normal.prepare().unwrap();
+    assert_eq!(
+        plan["extensionLaunch"]["selection"]["skills"]["shared:demo"],
+        false
+    );
+    let result = run_operation(&store, "extension-preserve-change", &mut normal, |_, _| {
+        Ok(())
+    });
+    assert_eq!(
+        store.get("extension-preserve-change").unwrap().unwrap()["state"],
+        "confirmed",
+        "{result}"
+    );
+    assert_eq!(original_config, std::fs::read(&config).unwrap());
+}
