@@ -71,6 +71,7 @@ impl WriteGuard {
                 files.push(cfg.layout_dump_path());
             }
             RunMode::Live => {
+                files.push(cfg.layout_dump_path());
                 // Candados de _base del Python (52): XDG_RUNTIME_DIR, /tmp/comandos-<uid>, /tmp.
                 files.push(cfg.runtime_dir().join(&lock));
                 files.push(PathBuf::from(format!("/tmp/comandos-{uid}")).join(&lock));
@@ -250,6 +251,20 @@ impl WriteGuard {
             nix::unistd::UnlinkatFlags::NoRemoveDir,
         )
         .map_err(|e| io(path, e))
+    }
+
+    /// El diagnóstico elimina una captura anterior sin seguir enlaces ni otras rutas.
+    pub fn remove_if_exists(&self, path: &Path) -> Result<bool, GuardError> {
+        let (dir, name) = self.resolve_parent(path, false)?;
+        match unlinkat(
+            &dir,
+            name.as_os_str(),
+            nix::unistd::UnlinkatFlags::NoRemoveDir,
+        ) {
+            Ok(()) => Ok(true),
+            Err(nix::errno::Errno::ENOENT) => Ok(false),
+            Err(error) => Err(io(path, error)),
+        }
     }
 
     /// `os.makedirs(..., exist_ok=True)` dentro de una raíz, sin seguir enlaces.

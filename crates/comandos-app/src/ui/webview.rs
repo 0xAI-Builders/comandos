@@ -13,6 +13,27 @@ pub enum WebError {
     Gtk(String),
 }
 
+#[derive(Default)]
+pub struct LoadObservation {
+    pub finished: bool,
+    pub error: Option<String>,
+}
+impl LoadObservation {
+    pub fn started(&mut self) {
+        self.finished = false;
+        self.error = None;
+    }
+    pub fn failed(&mut self, message: String) {
+        self.error = Some(message);
+    }
+    pub fn finished(&mut self) {
+        self.finished = true;
+    }
+    pub fn ready(&self) -> bool {
+        self.finished && self.error.is_none()
+    }
+}
+
 pub fn dashboard_uri(base: Option<&str>, version: &str) -> Option<String> {
     let base = base?.trim_end_matches('/');
     Some(format!(
@@ -22,6 +43,15 @@ pub fn dashboard_uri(base: Option<&str>, version: &str) -> Option<String> {
 }
 
 pub fn create(cfg: &AppConfig) -> Result<WebView, WebError> {
+    create_observed(cfg, None)
+}
+pub fn diagnostic_software_rendering(mode: RunMode, value: Option<&str>) -> bool {
+    mode != RunMode::Live && crate::layout_dump::enabled(value)
+}
+pub fn create_observed(
+    cfg: &AppConfig,
+    observation: Option<Rc<RefCell<LoadObservation>>>,
+) -> Result<WebView, WebError> {
     let manager = match cfg.mode() {
         RunMode::Shadow => webkit2gtk::WebsiteDataManager::new_ephemeral(),
         RunMode::Sandbox => webkit2gtk::WebsiteDataManager::builder()
@@ -45,6 +75,15 @@ pub fn create(cfg: &AppConfig) -> Result<WebView, WebError> {
     webview.set_hexpand(true);
     webview.set_vexpand(true);
     if let Some(settings) = WebViewExt::settings(&webview) {
+        if diagnostic_software_rendering(
+            cfg.mode(),
+            std::env::var("COMANDOS_APP_DIAGNOSTIC_SOFTWARE_RENDERING")
+                .ok()
+                .as_deref(),
+        ) {
+            settings
+                .set_hardware_acceleration_policy(webkit2gtk::HardwareAccelerationPolicy::Never);
+        }
         settings.set_enable_webaudio(true);
         settings.set_enable_javascript(cfg.mode() != RunMode::Shadow);
         settings.set_enable_write_console_messages_to_stdout(true);
@@ -77,7 +116,11 @@ pub fn create(cfg: &AppConfig) -> Result<WebView, WebError> {
     }
     let retry = Rc::new(RefCell::new(None::<glib::SourceId>));
     let retry_on_fail = retry.clone();
-    webview.connect_load_failed(move |webview, _, _, _| {
+    let failure_observation = observation.clone();
+    webview.connect_load_failed(move |webview, _, _, error| {
+        if let Some(observation) = &failure_observation {
+            observation.borrow_mut().failed(error.to_string());
+        }
         if let Some(source) = retry_on_fail.borrow_mut().take() {
             source.remove();
         }
@@ -98,6 +141,13 @@ pub fn create(cfg: &AppConfig) -> Result<WebView, WebError> {
             source.remove();
         }
     });
+    if let Some(observation) = observation {
+        webview.connect_load_changed(move |_, event| match event {
+            webkit2gtk::LoadEvent::Started => observation.borrow_mut().started(),
+            webkit2gtk::LoadEvent::Finished => observation.borrow_mut().finished(),
+            _ => {}
+        });
+    }
     if let Some(uri) = dashboard_uri(cfg.dash_url(), env!("CARGO_PKG_VERSION")) {
         webview.load_uri(&uri);
     } else {

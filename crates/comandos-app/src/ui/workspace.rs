@@ -63,6 +63,9 @@ impl GtkWorkspace {
     pub fn widget(&self) -> &gtk::Notebook {
         &self.root
     }
+    pub fn resize_pending(&self) -> bool {
+        !self.pending_resize.borrow().is_empty() || self.resize_timer.borrow().is_some()
+    }
     pub fn on_header(&self, callback: Header) {
         *self.header.borrow_mut() = Some(callback);
     }
@@ -89,6 +92,50 @@ impl GtkWorkspace {
             .parent()
             .filter(|p| p.style_context().has_class("ws-leaf"));
         Some(parent.unwrap_or(widget))
+    }
+    pub fn diagnostic_splits(&self) -> Vec<(String, Value, gtk::Widget)> {
+        fn walk(
+            group: &str,
+            node: &Value,
+            widget: &gtk::Widget,
+            out: &mut Vec<(String, Value, gtk::Widget)>,
+        ) {
+            let Some(identity) = crate::workspace_view::resize_update(group, node, 0.) else {
+                return;
+            };
+            let Some(paned) = widget.downcast_ref::<gtk::Paned>() else {
+                return;
+            };
+            out.push((
+                format!("split:{group}:{}", serde_json::json!(identity.path)),
+                serde_json::json!({"group":group,"path":identity.path,"axis":node.get("axis")}),
+                widget.clone(),
+            ));
+            if let Some(child) = paned.child1() {
+                walk(group, &node["first"], &child, out);
+            }
+            if let Some(child) = paned.child2() {
+                walk(group, &node["second"], &child, out);
+            }
+        }
+        let present = self.pages.borrow().keys().cloned().collect();
+        let doc = self.document.borrow();
+        let mut out = Vec::new();
+        for (group, widget) in self.group_pages.borrow().iter() {
+            if let Some(source) = doc
+                .get("groups")
+                .and_then(Value::as_array)
+                .and_then(|groups| {
+                    groups
+                        .iter()
+                        .find(|source| source.get("id").and_then(Value::as_str) == Some(group))
+                })
+            {
+                let projected = crate::workspace_view::prune_for_view(&source["tree"], &present);
+                walk(group, &projected, widget, &mut out);
+            }
+        }
+        out
     }
     pub fn on_resize(&self, callback: Resize) {
         *self.resize.borrow_mut() = Some(callback);

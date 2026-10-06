@@ -31,6 +31,9 @@ pub struct TabRegistry {
 }
 
 impl TabRegistry {
+    pub fn records(&self) -> impl Iterator<Item = &TabRecord> {
+        self.records.iter()
+    }
     pub fn from_json(value: &Value) -> Result<Self, TabsError> {
         let object = value.as_object().ok_or(TabsError::Malformed)?;
         let mut records = VecDeque::new();

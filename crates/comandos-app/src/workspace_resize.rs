@@ -44,6 +44,9 @@ fn node<'a>(doc: &'a Value, group: &str, path: &[usize]) -> Option<&'a Value> {
     (node.get("type").and_then(Value::as_str) == Some("split")).then_some(node)
 }
 impl ResizeQueue {
+    pub fn pending(&self) -> bool {
+        !self.pending.is_empty() || self.in_flight.is_some()
+    }
     /// Rechaza callbacks obsoletos antes de capturar identidad desde la autoridad nueva.
     pub fn record_visual(&mut self, doc: &Value, updates: &[ResizeUpdate]) -> usize {
         let mut rejected = 0;
