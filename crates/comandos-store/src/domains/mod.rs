@@ -24,6 +24,18 @@ pub struct DocHandle<'a> {
     pub lock: PathBuf,
 }
 impl DocHandle<'_> {
+    /// Compatibility writers may use their existing guarded filesystem backend
+    /// only while Legacy remains authoritative. No mode/database file is created.
+    pub fn with_legacy_authority<T>(&self, body: impl FnOnce() -> Result<T>) -> Result<T> {
+        unified::modes::with_readonly_access(self.home, self.domain, |mode, _| {
+            if mode != Mode::Legacy {
+                return Err(Error::Validation(
+                    "Escritura UI S5a pendiente: dominio fuera de Legacy".into(),
+                ));
+            }
+            body()
+        })
+    }
     pub fn read_readonly(&self) -> Result<Option<Vec<u8>>> {
         unified::modes::with_readonly_access(self.home, self.domain, |mode, db| {
             if matches!(mode, Mode::Unified | Mode::Sealed) {

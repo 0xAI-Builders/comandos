@@ -1,4 +1,4 @@
-fn main(){verify_reopen();verify_term();verify_app();pidfd_probe::verify();verify_click();
+fn main(){verify_t16_click_capture();verify_t16_consumers();verify_t16_replay();verify_reopen();verify_term();verify_app();pidfd_probe::verify();verify_click();
  let rows=Rc::new(RefCell::new(vec![Candidate{label:"fake".into(),key:"fake".into(),state:"waiting".into(),open:true}]));let calls=Rc::new(RefCell::new(Vec::new()));
  let a=rows.clone();let b=calls.clone();let activate=Rc::new(move|r:&Candidate|{b.borrow_mut().push(format!("open:{}",r.key));a.borrow_mut().clear();});
  let a=rows.clone();let b=calls.clone();let close=Rc::new(move|r:&Candidate|{b.borrow_mut().push(format!("close:{}",r.key));a.borrow_mut().clear();});

@@ -101,9 +101,21 @@ impl App {
         if self.modal_key(input.key, input.control) {
             return true;
         }
+        if input.key != *gdk::keys::constants::F1 && self.defer_copy_key(event, term_key) {
+            return true;
+        }
         self.execute_key(input, term_key, glib::monotonic_time() as f64 / 1_000_000.)
     }
     fn execute_key(self: &Rc<Self>, input: KeyInput, term_key: Option<&str>, now: f64) -> bool {
+        self.execute_key_context(input, term_key, now, false)
+    }
+    pub(super) fn execute_key_context(
+        self: &Rc<Self>,
+        input: KeyInput,
+        term_key: Option<&str>,
+        now: f64,
+        copy_context: bool,
+    ) -> bool {
         let action = ui::keys::action(input);
         if action == KeyAction::Pass {
             return false;
@@ -129,7 +141,7 @@ impl App {
                     .terms
                     .borrow()
                     .get(key)
-                    .map(|term| term.ctrl_c_action(input.selection, false, now))
+                    .map(|term| term.ctrl_c_action(input.selection, copy_context, now))
                 else {
                     return false;
                 };
@@ -381,7 +393,12 @@ impl App {
             panel.refill(rows);
         }
     }
-    fn mount_modal(self: &Rc<Self>, frame: &gtk::Frame, kind: Kind, panel: Option<Rc<Panel>>) {
+    pub(super) fn mount_modal(
+        self: &Rc<Self>,
+        frame: &gtk::Frame,
+        kind: Kind,
+        panel: Option<Rc<Panel>>,
+    ) {
         self.close_modal();
         let generation = self.modal_generation.get().wrapping_add(1);
         self.modal_generation.set(generation);
@@ -451,6 +468,7 @@ impl App {
         };
         if key == *gdk::keys::constants::Escape
             || (kind == Kind::Help
+                && self.t16.dialog.borrow().is_none()
                 && (key == *gdk::keys::constants::F1 || key == *gdk::keys::constants::question))
         {
             self.close_modal();
@@ -461,6 +479,7 @@ impl App {
         panel.is_some_and(|panel| panel.key(key, control))
     }
     pub(super) fn close_modal(&self) {
+        self.shutdown_snippets();
         if let Some(source) = self.modal_idle.borrow_mut().take() {
             source.remove();
         }

@@ -40,6 +40,7 @@ pub struct App {
     pub dash: DashClient,
     pub window: gtk::ApplicationWindow,
     english: bool,
+    t16: app_t16::Owned,
     modal_overlay: gtk::Overlay,
     modal: RefCell<Option<app_t15::Modal>>,
     modal_generation: Cell<u64>,
@@ -126,6 +127,7 @@ impl AppRuntime {
         self.app.closed.store(true, Ordering::Release);
         self.app.shutdown_protocol();
         self.app.shutdown_header();
+        self.app.shutdown_t16();
         self.app.close_modal();
         for source in self.sources {
             source.remove();
@@ -483,8 +485,11 @@ impl App {
         let strip = RefCell::new(ui::tabstrip::TabStripNotebook::new(notebook.clone()));
         let english =
             config::ui_lang(cfg.hooks_dir(), std::env::var("LANG").ok().as_deref()) == "en";
+        let closed = Arc::new(AtomicBool::new(false));
+        let t16 = app_t16::Owned::new(cfg.mode(), closed.clone());
         Rc::new(Self {
             english,
+            t16,
             modal_overlay: gtk::Overlay::new(),
             modal: RefCell::new(None),
             modal_generation: Cell::new(0),
@@ -562,7 +567,7 @@ impl App {
             generation: Arc::new(AtomicU64::new(0)),
             snapshot_busy: Arc::new(AtomicBool::new(false)),
             state_epoch: Arc::new(AtomicU64::new(0)),
-            closed: Arc::new(AtomicBool::new(false)),
+            closed,
             ipc_pending: RefCell::new(BTreeSet::new()),
             ipc_reading: Cell::new(false),
             ipc_seen: RefCell::new(Vec::new()),
@@ -913,6 +918,7 @@ impl App {
         })
         .map_err(|e| format!("{e:?}"))?;
         self.attach_term_keys(key, &term);
+        self.attach_term_t16(key, &term);
         Ok(term)
     }
     fn add_tab(self: &Rc<Self>, key: &str, label: &str, attach: bool, error: Option<&str>) {
@@ -938,13 +944,6 @@ impl App {
         } else if attach {
             match self.terminal(key) {
                 Ok(term) => {
-                    let weak = Rc::downgrade(self);
-                    let session = key.to_string();
-                    term.on_context_menu(Rc::new(move |event, point| {
-                        if let Some(app) = weak.upgrade() {
-                            app.pane_menu(&session, event, point);
-                        }
-                    }));
                     let widget = term.widget().clone().upcast();
                     self.terms.borrow_mut().insert(key.into(), term);
                     widget
@@ -1882,6 +1881,7 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
         ui::app_commands::install(&app);
         ui::header::install(&app);
         app.install_keys();
+        app.install_t16();
         let bridge_source = ui::bridge::install(&app);
         let weak = Rc::downgrade(&app);
         app.workspace.on_resize(Rc::new(move |updates| {
@@ -1914,7 +1914,12 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
                 glib::ControlFlow::Break
             }
         });
-        let mut sources = vec![poll, bridge_source, ui::presence::install(&app)];
+        let mut sources = vec![
+            poll,
+            bridge_source,
+            ui::presence::install(&app),
+            app.install_clipboard_watch(),
+        ];
         if let Some(source) = app.install_layout_diagnostic() {
             sources.push(source);
         }
@@ -2091,3 +2096,6 @@ mod foundation;
 
 #[path = "app_t13.rs"]
 mod protocol;
+
+#[path = "app_t16.rs"]
+mod app_t16;

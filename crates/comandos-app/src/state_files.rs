@@ -39,6 +39,78 @@ const ALLOWED: &[&str] = &[
 ];
 
 impl StateFiles {
+    pub fn read_snippets(&self) -> Result<Vec<Value>, StateError> {
+        let path = self.path("snippets.json")?;
+        let doc = comandos_store::domains::DomainStore {
+            home: self.config.home(),
+        }
+        .document("H/snippets.json", "ui-docs", path.clone());
+        match doc
+            .read_readonly()
+            .map_err(|e| StateError::Io(path.clone(), e.to_string()))?
+        {
+            None => Ok(Vec::new()),
+            Some(bytes) if bytes.len() <= crate::clipboard_bridge::MAX_BYTES => {
+                let value = comandos_core::json::workspace_loads_bytes(&bytes)
+                    .ok_or_else(|| StateError::Json(path, "invalid snippets JSON".into()))?;
+                Ok(value.as_array().cloned().unwrap_or_default())
+            }
+            Some(_) => Err(StateError::Name("snippets document exceeds 8 MiB".into())),
+        }
+    }
+    pub fn write_snippets_when(
+        &self,
+        expected: &[Value],
+        next: &[Value],
+        allowed: impl Fn() -> bool,
+    ) -> Result<bool, StateError> {
+        let path = self.path("snippets.json")?;
+        if !allowed() {
+            return Ok(false);
+        }
+        let doc = comandos_store::domains::DomainStore {
+            home: self.config.home(),
+        }
+        .document("H/snippets.json", "ui-docs", path.clone());
+        doc.with_legacy_authority(|| {
+            self.guard
+                .create_dir_all(self.config.hooks_dir(), 0o700)
+                .map_err(|e| comandos_store::Error::Validation(format!("{e:?}")))?;
+            let lock_path = self.config.hooks_dir().join("snippets.json.lock");
+            let lock = self
+                .guard
+                .open_lock(&lock_path)
+                .map_err(|e| comandos_store::Error::Validation(format!("{e:?}")))?;
+            let _lock = lock_exclusive(lock, &lock_path)
+                .map_err(|e| comandos_store::Error::Validation(format!("{e:?}")))?;
+            let current = self
+                .read("snippets.json")
+                .map_err(|e| comandos_store::Error::Validation(format!("{e:?}")))?;
+            if current.as_array().cloned().unwrap_or_default() != expected {
+                return Ok(false);
+            }
+            if !allowed() {
+                return Ok(false);
+            }
+            let document = Value::Array(next.to_vec());
+            let text = comandos_core::json::response_dumps(&document)
+                .map_err(comandos_store::Error::Validation)?;
+            if text.len() > crate::clipboard_bridge::MAX_BYTES {
+                return Err(comandos_store::Error::Validation(
+                    "snippets exceeds 8 MiB".into(),
+                ));
+            }
+            doc.with_legacy_authority(|| {
+                self.guard
+                    .write_atomic_when(&path, text.as_bytes(), ".snippets.json.", || {
+                        allowed() && doc.with_legacy_authority(|| Ok(true)).is_ok()
+                    })
+                    .map_err(|e| comandos_store::Error::Validation(format!("{e:?}")))?;
+                Ok(true)
+            })
+        })
+        .map_err(|e| StateError::Io(path, e.to_string()))
+    }
     pub fn new(config: AppConfig, guard: WriteGuard) -> Self {
         Self { config, guard }
     }
@@ -60,7 +132,7 @@ impl StateFiles {
     pub fn write_tabs_when(
         &self,
         value: &Value,
-        allowed: impl FnOnce() -> bool,
+        allowed: impl Fn() -> bool,
     ) -> Result<(), StateError> {
         let lock_path = self.config.hooks_dir().join("app-tabs.json.lock");
         let lock = self
@@ -79,7 +151,7 @@ impl StateFiles {
         &self,
         name: &str,
         value: &Value,
-        allowed: impl FnOnce() -> bool,
+        allowed: impl Fn() -> bool,
     ) -> Result<(), StateError> {
         if !matches!(name, "app-sessions-v2.json" | "app-tabs-snapshot.json") {
             return Err(StateError::Name(name.into()));
@@ -220,6 +292,7 @@ fn tmp_prefix(name: &str) -> Result<&'static str, StateError> {
         "app-tabs.json" => Ok("app-tabs."),
         "app-tabs-history.json" => Ok("app-tabs-history."),
         "app-tabs-snapshot.json" => Ok("app-tabs-snapshot."),
+        "snippets.json" => Ok(".snippets.json."),
         _ => Ok("app-state."),
     }
 }

@@ -15,6 +15,10 @@ pub fn image(name: &str, pixels: i32, color: &str) -> gtk::Image {
         "timer" => include_str!("../../../../dash/icons/timer.svg"),
         "bell" => include_str!("../../../../dash/icons/bell.svg"),
         "settings" => include_str!("../../../../dash/icons/settings.svg"),
+        "folder-open" => include_str!("../../../../dash/icons/folder-open.svg"),
+        "file" => include_str!("../../../../dash/icons/file.svg"),
+        "copy" => include_str!("../../../../dash/icons/copy.svg"),
+        "external-link" => include_str!("../../../../dash/icons/external-link.svg"),
         "sparkles" => include_str!("../../../../dash/icons/sparkles.svg"),
 
         _ => return gtk::Image::from_icon_name(Some(name), gtk::IconSize::SmallToolbar),

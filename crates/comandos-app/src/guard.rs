@@ -97,6 +97,7 @@ impl WriteGuard {
                     "app-tab-open.json",
                     "app-command.json",
                     "snippets.json",
+                    "snippets.json.lock",
                     "acp-panes.json",
                 ] {
                     files.push(cfg.hooks_dir().join(name));
@@ -193,6 +194,17 @@ impl WriteGuard {
         bytes: &[u8],
         tmp_prefix: &str,
     ) -> Result<(), GuardError> {
+        self.write_atomic_when(path, bytes, tmp_prefix, || true)
+    }
+
+    /// T16 checks its owner again after syncing the private temp, before publication.
+    pub fn write_atomic_when(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+        tmp_prefix: &str,
+        allowed: impl Fn() -> bool,
+    ) -> Result<(), GuardError> {
         if !plain_name(OsStr::new(tmp_prefix)) {
             return Err(GuardError::Escape(path.to_path_buf()));
         }
@@ -216,6 +228,12 @@ impl WriteGuard {
         let mut file = std::fs::File::from(fd);
         let written = file.write_all(bytes).and_then(|()| file.sync_all());
         let renamed = written.map_err(|e| io(path, e)).and_then(|()| {
+            if !allowed() {
+                return Err(GuardError::Io(
+                    path.to_path_buf(),
+                    "publication cancelled or authority changed".into(),
+                ));
+            }
             renameat(&dir, tmp.as_os_str(), &dir, name.as_os_str()).map_err(|e| io(path, e))
         });
         if renamed.is_err() {

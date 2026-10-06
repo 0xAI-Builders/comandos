@@ -345,6 +345,15 @@ impl App {
         session: &str,
         pane: Option<&str>,
     ) {
+        self.append_mark_menu_when(menu, session, pane, Rc::new(|| true));
+    }
+    pub(super) fn append_mark_menu_when(
+        self: &Rc<Self>,
+        menu: &gtk::Menu,
+        session: &str,
+        pane: Option<&str>,
+        allowed: Rc<dyn Fn() -> bool>,
+    ) {
         let mut sections = Vec::new();
         if !session.is_empty() && session != "local" {
             sections.push((
@@ -389,8 +398,9 @@ impl App {
                 let scope = *scope;
                 let session = session.to_string();
                 let pane = pane.map(str::to_string);
+                let allowed = allowed.clone();
                 item.connect_activate(move |_| {
-                    if let Some(app) = weak.upgrade().filter(|a| a.writable()) {
+                    if let Some(app) = weak.upgrade().filter(|a| a.writable() && allowed()) {
                         if scope == "pane"
                             && pane.as_deref().is_none_or(|p| {
                                 app.work_marks.borrow().pane_key(&session, p).as_deref()
@@ -430,8 +440,9 @@ impl App {
             let scope = *scope;
             let session = session.to_string();
             let pane = pane.map(str::to_string);
+            let allowed = allowed.clone();
             item.connect_activate(move |_| {
-                if let Some(app) = weak.upgrade().filter(|a| a.writable()) {
+                if let Some(app) = weak.upgrade().filter(|a| a.writable() && allowed()) {
                     if scope == "pane" {
                         if pane.as_deref().is_some_and(|p| {
                             app.work_marks.borrow().pane_key(&session, p).as_deref() == Some(&key)

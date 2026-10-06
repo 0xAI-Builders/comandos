@@ -103,6 +103,7 @@ pub fn execute() -> serde_json::Value {
         "apply_pending_favorites",
         "post_next_favorite",
         "append_mark_menu",
+        "append_mark_menu_when",
         "tick_hourglass",
     ] {
         methods.push_str(&body(adapter, &format!("fn {name}(")));

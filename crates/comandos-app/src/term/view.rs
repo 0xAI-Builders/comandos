@@ -22,6 +22,7 @@ pub type TextCallback = Rc<dyn Fn(&str)>;
 pub type ExitCallback = Rc<dyn Fn(i32)>;
 pub type ScrollCallback = Rc<dyn Fn(&str, i32, u16, u16)>;
 pub type AppKeyCallback = Rc<dyn Fn(&gdk::EventKey) -> bool>;
+pub type LinkCallback = Rc<dyn Fn(&str, &gdk::EventButton, (u16, u16), bool)>;
 pub type ContextCallback = Rc<dyn Fn(&gdk::EventButton, (u16, u16))>;
 pub struct TermOptions {
     pub argv: Vec<String>,
@@ -65,6 +66,7 @@ struct Model {
     blink_visible: bool,
     selection: Option<Selection>,
     pressed: Option<Point>,
+    primary_press: Option<super::links::PrimaryPress>,
     last_motion: Option<(u16, u16, gdk::ModifierType)>,
     ime: Ime,
     preedit: String,
@@ -85,10 +87,16 @@ struct Inner {
     timer: RefCell<Option<SourceId>>,
     closed: Cell<bool>,
     context_menu: RefCell<Option<ContextCallback>>,
+    link_event: RefCell<Option<LinkCallback>>,
+    clean_click: RefCell<Option<ContextCallback>>,
+    primary_press: RefCell<Option<ContextCallback>>,
+    replay: RefCell<crate::ui::clipboard::Replay<(gdk::EventKey, f64)>>,
     app_key: RefCell<Option<AppKeyCallback>>,
     last_ctrl_c: Cell<Option<f64>>,
     cleanup_cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    clipboard: Rc<crate::ui::clipboard::Clipboard>,
 }
+#[derive(Clone)]
 pub struct TermView {
     inner: Rc<Inner>,
 }
@@ -116,6 +124,12 @@ impl TermView {
         );
         let epoch = Instant::now();
         let preferences = options.preferences.clone();
+        let cleanup_cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let clipboard = crate::ui::clipboard::Clipboard::new(
+            options.mode,
+            Rc::new(crate::ui::clipboard::GtkClipboard),
+            cleanup_cancelled.clone(),
+        );
         let inner = Rc::new(Inner {
             area,
             im: gtk::IMMulticontext::new(),
@@ -152,6 +166,7 @@ impl TermView {
                 blink_visible: true,
                 selection: None,
                 pressed: None,
+                primary_press: None,
                 last_motion: None,
                 ime: Ime::default(),
                 preedit: String::new(),
@@ -167,9 +182,14 @@ impl TermView {
             timer: RefCell::new(None),
             closed: Cell::new(false),
             context_menu: RefCell::new(None),
+            link_event: RefCell::new(None),
+            clean_click: RefCell::new(None),
+            primary_press: RefCell::new(None),
+            replay: RefCell::new(crate::ui::clipboard::Replay::default()),
             app_key: RefCell::new(None),
             last_ctrl_c: Cell::new(None),
-            cleanup_cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            cleanup_cancelled,
+            clipboard,
         });
         inner.configure_font();
         connect_events(&inner);
@@ -182,6 +202,11 @@ impl TermView {
     }
     pub fn shutdown(&self) {
         self.inner.closed.set(true);
+        self.inner.replay.borrow_mut().cancel();
+        self.inner.link_event.borrow_mut().take();
+        self.inner.clean_click.borrow_mut().take();
+        self.inner.primary_press.borrow_mut().take();
+        self.inner.clipboard.invalidate();
         self.inner.last_ctrl_c.set(None);
         self.inner
             .cleanup_cancelled
@@ -231,6 +256,62 @@ impl TermView {
     }
     pub fn cleanup_cancellation(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
         self.inner.cleanup_cancelled.clone()
+    }
+    pub fn clipboard(&self) -> Rc<crate::ui::clipboard::Clipboard> {
+        self.inner.clipboard.clone()
+    }
+    pub fn paste_clipboard(&self, primary: bool) {
+        let weak = Rc::downgrade(&self.inner);
+        self.inner.clipboard.request(
+            if primary {
+                crate::ui::clipboard::Target::Primary
+            } else {
+                crate::ui::clipboard::Target::Clipboard
+            },
+            Box::new(move |text| {
+                if let Some(inner) = weak.upgrade().filter(|i| !i.closed.get()) {
+                    let bytes = encode_paste(&text, &inner.model.borrow().engine.modes());
+                    inner.send_event(&bytes);
+                }
+            }),
+        );
+    }
+    pub fn on_primary_press(&self, callback: ContextCallback) {
+        *self.inner.primary_press.borrow_mut() = Some(callback);
+    }
+    pub fn on_clean_click(&self, callback: ContextCallback) {
+        *self.inner.clean_click.borrow_mut() = Some(callback);
+    }
+    pub fn clear_selection(&self) {
+        self.inner.model.borrow_mut().selection = None;
+        self.inner.area.queue_draw();
+    }
+    pub fn on_link_event(&self, callback: LinkCallback) {
+        *self.inner.link_event.borrow_mut() = Some(callback);
+    }
+    pub fn key_pending(&self) -> bool {
+        self.inner.replay.borrow().pending()
+    }
+    pub fn queue_key(
+        &self,
+        event: &gdk::EventKey,
+        now: f64,
+    ) -> Result<(), crate::ui::clipboard::ClipboardError> {
+        let mut replay = self.inner.replay.borrow_mut();
+        if replay.pending() {
+            replay.push((event.clone(), now))
+        } else {
+            replay.begin((event.clone(), now))
+        }
+    }
+    pub fn finish_keys(&self, context: bool) -> Vec<((gdk::EventKey, f64), bool)> {
+        self.inner.replay.borrow_mut().finish(context)
+    }
+    pub fn forward_key(&self, event: &gdk::EventKey) -> glib::Propagation {
+        if self.inner.closed.get() {
+            return glib::Propagation::Stop;
+        }
+        self.inner.forward_key(event)
     }
     pub fn on_context_menu(&self, callback: ContextCallback) {
         *self.inner.context_menu.borrow_mut() = Some(callback);
@@ -547,11 +628,11 @@ impl Inner {
         }
         if let Some(text) = drained.clipboard {
             let target = if drained.clipboard_target == Some(ClipboardTarget::Selection) {
-                gdk::SELECTION_PRIMARY
+                crate::ui::clipboard::Target::Primary
             } else {
-                gdk::SELECTION_CLIPBOARD
+                crate::ui::clipboard::Target::Clipboard
             };
-            gtk::Clipboard::get(&target).set_text(&text);
+            self.clipboard.osc52(target, &text);
         }
         self.arm();
         !closed
@@ -694,6 +775,32 @@ impl Inner {
             callback(session, delta, col, row);
         }
     }
+    fn forward_key(self: &Rc<Self>, event: &gdk::EventKey) -> glib::Propagation {
+        if self.im.filter_keypress(event) {
+            return glib::Propagation::Stop;
+        }
+        let mut m = self.model.borrow_mut();
+        if m.ime.keydown_ignored(0) {
+            return glib::Propagation::Stop;
+        }
+        let action = key_action(event.keyval(), event.state(), &m.engine.modes());
+        m.ime.forget_commit();
+        drop(m);
+        match action {
+            KeyAction::Send(bytes) => {
+                self.send_event(&bytes);
+                glib::Propagation::Stop
+            }
+            KeyAction::ScrollPage(direction) => {
+                let mut m = self.model.borrow_mut();
+                let rows = i32::from(m.engine.size().1);
+                m.engine.scroll(-direction * rows);
+                self.area.queue_draw();
+                glib::Propagation::Stop
+            }
+            KeyAction::None => glib::Propagation::Proceed,
+        }
+    }
     fn selection_text(&self) -> Option<String> {
         let m = self.model.borrow();
         m.selection
@@ -719,6 +826,10 @@ impl Inner {
 impl Drop for Inner {
     fn drop(&mut self) {
         self.closed.set(true);
+        self.replay.borrow_mut().cancel();
+        self.link_event.borrow_mut().take();
+        self.clean_click.borrow_mut().take();
+        self.primary_press.borrow_mut().take();
         self.last_ctrl_c.set(None);
         self.cleanup_cancelled
             .store(true, std::sync::atomic::Ordering::Release);
@@ -748,6 +859,15 @@ fn connect_events(inner: &Rc<Inner>) {
     inner.area.connect_destroy(move |_| {
         if let Some(inner) = weak.upgrade() {
             inner.closed.set(true);
+            inner.last_ctrl_c.set(None);
+            inner.replay.borrow_mut().cancel();
+            inner.link_event.borrow_mut().take();
+            inner.clean_click.borrow_mut().take();
+            inner.primary_press.borrow_mut().take();
+            inner
+                .cleanup_cancelled
+                .store(true, std::sync::atomic::Ordering::Release);
+            inner.app_key.borrow_mut().take();
             for source in [&inner.read_source, &inner.write_source, &inner.timer] {
                 if let Some(id) = source.borrow_mut().take() {
                     id.remove();
@@ -868,30 +988,7 @@ fn connect_events(inner: &Rc<Inner>) {
         if inner.dispatch_app_key(event) {
             return glib::Propagation::Stop;
         }
-        if inner.im.filter_keypress(event) {
-            return glib::Propagation::Stop;
-        }
-        let mut m = inner.model.borrow_mut();
-        if m.ime.keydown_ignored(0) {
-            return glib::Propagation::Stop;
-        }
-        let action = key_action(event.keyval(), event.state(), &m.engine.modes());
-        m.ime.forget_commit();
-        drop(m);
-        match action {
-            KeyAction::Send(bytes) => {
-                inner.send_event(&bytes);
-                glib::Propagation::Stop
-            }
-            KeyAction::ScrollPage(direction) => {
-                let mut m = inner.model.borrow_mut();
-                let rows = i32::from(m.engine.size().1);
-                m.engine.scroll(-direction * rows);
-                inner.area.queue_draw();
-                glib::Propagation::Stop
-            }
-            KeyAction::None => glib::Propagation::Proceed,
-        }
+        inner.forward_key(event)
     });
     let weak = Rc::downgrade(inner);
     inner.area.connect_key_release_event(move |_, event| {
@@ -939,6 +1036,9 @@ fn connect_events(inner: &Rc<Inner>) {
         area.grab_focus();
         let (x, y) = event.position();
         let (col, row) = inner.point(x, y);
+        if let Some(callback) = inner.primary_press.borrow().clone() {
+            callback(event, (col, row));
+        }
         if event.button() == 3
             && let Some(callback) = inner.context_menu.borrow().as_ref()
         {
@@ -950,12 +1050,15 @@ fn connect_events(inner: &Rc<Inner>) {
             && (mods.2 || inner.model.borrow().engine.modes().mouse == MouseMode::Off)
         {
             let weak = Rc::downgrade(&inner);
-            gtk::Clipboard::get(&gdk::SELECTION_PRIMARY).request_text(move |_, text| {
-                if let (Some(inner), Some(text)) = (weak.upgrade(), text) {
-                    let bytes = encode_paste(text, &inner.model.borrow().engine.modes());
-                    inner.send_event(&bytes);
-                }
-            });
+            inner.clipboard.request(
+                crate::ui::clipboard::Target::Primary,
+                Box::new(move |text| {
+                    if let Some(inner) = weak.upgrade().filter(|i| !i.closed.get()) {
+                        let bytes = encode_paste(&text, &inner.model.borrow().engine.modes());
+                        inner.send_event(&bytes);
+                    }
+                }),
+            );
             return glib::Propagation::Stop;
         }
         let button = mouse_button(event.button());
@@ -971,9 +1074,20 @@ fn connect_events(inner: &Rc<Inner>) {
             inner.send_event(&bytes);
             return glib::Propagation::Stop;
         }
+        if event.button() == 1 && mods.0 {
+            inner.model.borrow_mut().primary_press.take();
+            let link = link_at(&inner.model.borrow(), inner.absolute(col, row), row, col);
+            if let Some(link) = link
+                && let Some(callback) = inner.link_event.borrow().clone()
+            {
+                callback(&link, event, (col, row), true);
+                return glib::Propagation::Stop;
+            }
+        }
         if event.button() == 1 {
             let point = inner.absolute(col, row);
             let mut m = inner.model.borrow_mut();
+            let link = link_at(&m, point, row, col);
             let mode = match event.event_type() {
                 gdk::EventType::DoubleButtonPress => SelectMode::Word,
                 gdk::EventType::TripleButtonPress => SelectMode::Line,
@@ -986,6 +1100,7 @@ fn connect_events(inner: &Rc<Inner>) {
                 }
             };
             m.pressed = Some(point);
+            m.primary_press = Some(super::links::PrimaryPress::new((x, y), (col, row), link));
             m.selection = if mode == SelectMode::Simple {
                 None
             } else {
@@ -995,6 +1110,7 @@ fn connect_events(inner: &Rc<Inner>) {
                     mode,
                 })
             };
+            drop(m);
             inner.area.queue_draw();
         }
         glib::Propagation::Stop
@@ -1057,11 +1173,15 @@ fn connect_events(inner: &Rc<Inner>) {
         let Some(inner) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
+        inner.clipboard.release_selection();
         let (x, y) = event.position();
         let (col, row) = inner.point(x, y);
-        let point = inner.absolute(col, row);
         let mods = modifiers(event.state());
         let mut m = inner.model.borrow_mut();
+        let press = m
+            .primary_press
+            .take()
+            .and_then(|p| p.release((x, y), event.button()));
         let bytes = encode_mouse(
             mouse_button(event.button()),
             MouseKind::Release,
@@ -1075,21 +1195,28 @@ fn connect_events(inner: &Rc<Inner>) {
             inner.send_event(&bytes);
             return glib::Propagation::Stop;
         }
-        let clicked = m.pressed.take() == Some(point) && m.selection.is_none();
-        let link = if clicked {
-            link_at(&m, point, row, col)
-        } else {
-            None
-        };
+        m.pressed.take();
+        let clicked = press.is_some();
+        let point = press.as_ref().map_or((col, row), |p| p.point);
+        let link = press.and_then(|p| p.link);
         drop(m);
+        if clicked && let Some(callback) = inner.clean_click.borrow().clone() {
+            callback(event, point);
+        }
+        if let Some(text) = inner.selection_text() {
+            inner
+                .clipboard
+                .copy_selection(&text, glib::monotonic_time() as f64 / 1_000_000.);
+            inner
+                .clipboard
+                .copy(crate::ui::clipboard::Target::Primary, &text);
+        }
         if let Some(link) = link {
-            inner.model.borrow_mut().selection = None;
-            if let Some(callback) = &inner.options.on_link {
+            if let Some(callback) = inner.link_event.borrow().clone() {
+                callback(&link, event, point, false);
+            } else if let Some(callback) = &inner.options.on_link {
                 callback(&link);
             }
-        } else if let Some(text) = inner.selection_text() {
-            gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD).set_text(&text);
-            gtk::Clipboard::get(&gdk::SELECTION_PRIMARY).set_text(&text);
         }
         inner.area.queue_draw();
         glib::Propagation::Stop

@@ -90,3 +90,26 @@ pub fn url_from_wrapped_text(
     }
     (!frag.is_empty()).then_some(frag)
 }
+
+/// One primary press owns its URL and cell until the matching release.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrimaryPress {
+    position: (f64, f64),
+    pub point: (u16, u16),
+    pub link: Option<String>,
+}
+impl PrimaryPress {
+    pub fn new(position: (f64, f64), point: (u16, u16), link: Option<String>) -> Self {
+        Self {
+            position,
+            point,
+            link,
+        }
+    }
+    pub fn release(self, position: (f64, f64), button: u32) -> Option<Self> {
+        (button == 1
+            && (position.0 - self.position.0).abs() < 5.
+            && (position.1 - self.position.1).abs() < 5.)
+            .then_some(self)
+    }
+}

@@ -266,11 +266,62 @@ pub fn execute_split<T: crate::restore::RestoreTmux>(
     ssh: bool,
     cancelled: impl Fn() -> bool,
 ) -> Result<(), CommandError> {
+    execute_split_at(tmux, session, side, ssh, None, cancelled)
+}
+pub fn execute_split_at<T: crate::restore::RestoreTmux>(
+    tmux: &T,
+    session: &str,
+    side: &str,
+    ssh: bool,
+    pane: Option<&str>,
+    cancelled: impl Fn() -> bool,
+) -> Result<(), CommandError> {
+    execute_split_at_expected(tmux, session, side, ssh, pane, None, cancelled)
+}
+pub fn execute_split_at_expected<T: crate::restore::RestoreTmux>(
+    tmux: &T,
+    session: &str,
+    side: &str,
+    ssh: bool,
+    pane: Option<&str>,
+    expected: Option<&str>,
+    cancelled: impl Fn() -> bool,
+) -> Result<(), CommandError> {
     let flags = split_flags(side)?;
     if tmux.mode() == crate::config::RunMode::Shadow || cancelled() {
         return Err(CommandError::Refused("split cancelled or shadow".into()));
     }
-    let target = active_pane(tmux, session)?.unwrap_or_else(|| format!("={session}:"));
+    let target = if let Some(pane) = pane {
+        if !valid_pane(pane) {
+            return Err(CommandError::Invalid("invalid split pane".into()));
+        }
+        let actual = tmux
+            .read(&["display-message", "-p", "-t", pane, "#{session_name}"])
+            .map_err(CommandError::Failed)?;
+        if actual.trim() != session {
+            return Err(CommandError::Refused("split pane moved".into()));
+        }
+        pane.to_string()
+    } else {
+        active_pane(tmux, session)?.unwrap_or_else(|| format!("={session}:"))
+    };
+    let identity = if pane.is_some() {
+        let stamp = tmux
+            .read(&[
+                "display-message",
+                "-p",
+                "-t",
+                &target,
+                "#{session_name}|#{pid}|#{session_id}|#{session_created}|#{pane_id}",
+            ])
+            .map_err(CommandError::Failed)?;
+        if stamp.trim().is_empty() || expected.is_some_and(|s| s != stamp.trim()) {
+            return Err(CommandError::Refused("split identity changed".into()));
+        }
+        Some(stamp.trim().to_string())
+    } else {
+        None
+    };
     if cancelled() {
         return Err(CommandError::Refused("split cancelled".into()));
     }
@@ -296,6 +347,20 @@ pub fn execute_split<T: crate::restore::RestoreTmux>(
     }
     if cancelled() {
         return Err(CommandError::Refused("split cancelled".into()));
+    }
+    if let Some(stamp) = identity {
+        let now = tmux
+            .read(&[
+                "display-message",
+                "-p",
+                "-t",
+                &target,
+                "#{session_name}|#{pid}|#{session_id}|#{session_created}|#{pane_id}",
+            ])
+            .map_err(CommandError::Failed)?;
+        if now.trim() != stamp || cancelled() {
+            return Err(CommandError::Refused("split identity changed".into()));
+        }
     }
     tmux.mutate(&args.iter().map(String::as_str).collect::<Vec<_>>(), None)
         .map_err(CommandError::Failed)?;

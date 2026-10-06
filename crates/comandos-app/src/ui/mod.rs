@@ -1,6 +1,7 @@
 pub mod app;
 pub mod app_commands;
 pub mod bridge;
+pub mod clipboard;
 pub mod confirm;
 pub mod drag;
 pub mod header;
@@ -9,7 +10,9 @@ pub mod hourglass;
 pub mod icons;
 pub mod keys;
 pub mod marks;
+pub mod menu;
 pub mod presence;
+pub mod snippets;
 pub mod switcher;
 pub mod tab_label;
 pub mod tabstrip;
