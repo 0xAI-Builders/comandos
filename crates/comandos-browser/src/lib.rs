@@ -1,4 +1,5 @@
 //! Protocolo y configuración del broker remoto de navegadores.
+pub mod apparmor;
 pub mod broker;
 pub mod config;
 pub mod pool;
