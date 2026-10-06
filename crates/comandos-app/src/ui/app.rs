@@ -1815,6 +1815,12 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    if cfg.mode() == RunMode::Sandbox
+        && let Err(error) = guard.create_dir_all(cfg.hooks_dir(), 0o700)
+    {
+        eprintln!("comandos-app: private state directory: {error:?}");
+        return ExitCode::from(2);
+    }
     gdk::set_allowed_backends("x11");
     glib::set_prgname(Some(cfg.wm_class()));
     if let Err(e) = gtk::init() {
@@ -2045,7 +2051,9 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
         app.workspace.widget().hide();
         app.startup();
     });
-    application.run();
+    // AppConfig already consumed our arguments. GApplication's parser must not
+    // see --mode, --tmux-socket or --dash-url again and reject a valid launch.
+    application.run_with_args::<&str>(&[]);
     ExitCode::SUCCESS
 }
 
