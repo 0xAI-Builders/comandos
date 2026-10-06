@@ -39,6 +39,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         limits: dash::limits(),
     };
     let (stop, rx) = watch::channel(false);
+    let eof = stop.clone();
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        let _ = std::io::stdin().read_line(&mut line);
+        let _ = eof.send(true);
+    });
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(300)).await;
         let _ = stop.send(true);

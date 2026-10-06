@@ -94,6 +94,15 @@ fn cut_script(html: &str, source: &str) -> String {
     let mut search_from = 0;
     while let Some(open_rel) = html[search_from..].find("<script") {
         let open = search_from + open_rel;
+        if let Some(comment) = html[search_from..].find("<!--").map(|at| search_from + at)
+            && comment < open
+        {
+            let Some(end) = html[comment + 4..].find("-->") else {
+                break;
+            };
+            search_from = comment + 4 + end + 3;
+            continue;
+        }
         if html
             .as_bytes()
             .get(open + 7)

@@ -23,7 +23,7 @@ const tick=()=>new Promise(r=>setImmediate(r));
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'comandos-news-wasm-'));
 for(const name of fs.readdirSync(artifacts))if(name.endsWith('.js')||name.endsWith('.wasm'))fs.copyFileSync(path.join(artifacts,name),path.join(temp,name));
 fs.writeFileSync(path.join(temp,'package.json'),' {"type":"module"}');
-const processFixture=spawn(executable,[],{stdio:['ignore','pipe','pipe']});
+const processFixture=spawn(executable,[],{stdio:['pipe','pipe','pipe']});
 let fixtureStderr='';processFixture.stderr.on('data',b=>fixtureStderr+=b);
 const url=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('fixture startup timeout '+fixtureStderr)),10000);processFixture.stdout.once('data',b=>{clearTimeout(timer);resolve(String(b).trim());});processFixture.once('exit',c=>reject(new Error('fixture exited '+c+' '+fixtureStderr)));});
 const fetchNative=globalThis.fetch;
@@ -49,6 +49,29 @@ try{
  let calls=0,resolve;const render=NewsReader.createRenderer(undefined,undefined,{fetchJson:()=>{calls++;return new Promise(r=>resolve=r);}});const a=render('same'),b=render('same');assert.equal(a,b);await tick();resolve({html:'<p>same</p>'});eq('coalesced actual promise',await a,await b);assert.equal(calls,1);await render('same');assert.equal(calls,1);render.dispose();
  const pending=NewsReader.createRenderer(undefined,undefined,{fetchJson:()=>new Promise(()=>{})});const cancelled=pending('never');pending.dispose();await assert.rejects(Promise.race([cancelled,new Promise((_,reject)=>setTimeout(()=>reject(new Error('cancel did not settle within 1500ms')),1500))]),/Lectura cancelada/);result.push({name:'dispose settles noncooperative transport',equal:true});
  let cacheCalls=0;const cache=NewsReader.createRenderer(undefined,undefined,{fetchJson:async(_,b)=>{cacheCalls++;return{html:'<p>'+b.text+'</p>'}}});for(let i=0;i<65;i++)await cache('t'+i);await cache('t64');assert.equal(cacheCalls,65);await cache('t0');assert.equal(cacheCalls,66);cache.dispose();result.push({name:'cache bounded 64',equal:true});
+ // Retain the independent originals; verify the oracle again instead of
+ // replacing expectations with the candidate's output.
+ const reviewOriginal=original.createRenderer(md,actualPurify);
+ const reviewActual=NewsReader.createRenderer(undefined,undefined);
+ const reviewPairs=[];
+ for(const fixture of ['review-baselines.json','repair-grammar.json']){
+  const rows=JSON.parse(fs.readFileSync(repo+'/xtask/web/fixtures/b8/'+fixture,'utf8')).cases;
+  for(const row of rows){
+   assert.equal(reviewOriginal(row.text),row.baseline,'immutable original '+row.text);
+   const candidate=await reviewActual(row.text);
+   const template=purifyDOM.window.document.createElement('template');template.innerHTML=candidate;
+   assert.equal(template.content.querySelectorAll('img,script,svg,[onerror],[onload]').length,0);
+   for(const link of template.content.querySelectorAll('a')){assert.match(link.getAttribute('href'),/^https?:\/\//i);assert.equal(link.target,'_blank');assert.equal(link.rel,'noopener noreferrer nofollow');}
+   reviewPairs.push({id:fixture+':'+reviewPairs.length,text:row.text,baseline:row.baseline,candidate});
+  }
+ }
+ const reviewNormalized=spawnSync(executable,['--normalize'],{input:JSON.stringify(reviewPairs),encoding:'utf8',timeout:10000});assert.equal(reviewNormalized.status,0,reviewNormalized.stderr);
+ const reviewDifferences=JSON.parse(reviewNormalized.stdout).filter(row=>row.difference);
+ let alphabet='';for(let u=0xd800;u<=0xdfff;u++)alphabet+='x'+String.fromCharCode(u)+'y';for(let u=0xf0000;u<0xf0800;u++)alphabet+='x\ue000'+String.fromCodePoint(u)+'y';alphabet+='\ue000\ue000\ue000';
+ assert.equal(NewsReader.inlineText(alphabet),original.inlineText(alphabet));
+ assert.equal((await reviewActual(alphabet)).trim(),'<p>'+original.inlineText(alphabet)+'</p>');reviewActual.dispose();
+ const review={actualWasm:artifacts,pairs:reviewPairs,differences:reviewDifferences,utf16:{loneSurrogates:2048,literalSentinelScalars:2048,equal:true},sanitizerNegative:true};
+ fs.writeFileSync(process.env.B8_REVIEW_OUTPUT||temp+'/review-results.json',JSON.stringify(review,null,2));assert.equal(reviewDifferences.length,0,JSON.stringify(reviewDifferences));result.push({name:'independent originals + repair grammar actual WASM, full UTF16 alphabets',equal:true});
  const domResult=await runDOM(repo,original,NewsReader,md,async(path,body)=>{const r=await fetchNative(url+path,{method:'POST',headers:{'X-Comandos-Token':'b8-disposable-fixture','Content-Type':'application/json'},body:JSON.stringify(body)});if(!r.ok)throw new Error('Markdown fixture '+r.status);return r.json();});
  const domPairs=domResult.cases.flatMap(row=>['edition','panel'].map(part=>({id:row.name+' '+part,baseline:row.baselineHTML[part],candidate:row.candidateHTML[part]})));const domNormalized=spawnSync(executable,['--normalize'],{input:JSON.stringify(domPairs),encoding:'utf8',timeout:10000});if(domNormalized.status!==0)throw new Error(domNormalized.stderr);domResult.domDifferences=JSON.parse(domNormalized.stdout).filter(row=>row.difference);
  fs.writeFileSync(process.env.B8_DOM_OUTPUT||temp+'/dom-results.json',JSON.stringify(domResult,null,2));assert.equal(domResult.domDifferences.length,0,JSON.stringify(domResult.domDifferences));result.push({name:'original product DOM actual handler comparisons',equal:true});
@@ -67,4 +90,4 @@ try{
  assert.equal(differences.length,0,'Synthetic corpus DOM differences: '+JSON.stringify(differences.slice(0,8).map(r=>({id:r.id,kind:r.kind,difference:r.difference}))));
  result.push({name:'200 synthetic + 200 real-derived original-Markdown/server actual WASM normalized DOM cases',equal:true});
  console.log(JSON.stringify({artifact:artifacts,wasmSha256:createHash('sha256').update(fs.readFileSync(artifacts+'/comandos_web_bg.wasm')).digest('hex'),originalSha256:createHash('sha256').update(fs.readFileSync(repo+'/dash/news-reader.js')).digest('hex'),results:result,routeCalls:requests.filter(r=>r.path==='/web/markdown').length},null,2));
-}finally{processFixture.kill('SIGTERM');purifyDOM.window.close();fs.rmSync(temp,{recursive:true,force:true});}
+}finally{processFixture.stdin.end();await new Promise(resolve=>{if(processFixture.exitCode!==null)resolve();else processFixture.once('exit',resolve);});purifyDOM.window.close();fs.rmSync(temp,{recursive:true,force:true});}

@@ -1,0 +1,76 @@
+use comandos_server::dash::web::markdown::{Profile, render};
+
+#[test]
+fn commented_script_does_not_hide_the_actual_script() {
+    let entry = comandos_server::dash::web::registry::Entry::script(
+        "vendor-purify",
+        "dash/vendor/purify-3.4.16.min.js",
+        "",
+        &[],
+        &[],
+    );
+    let comment = "<!-- <script src='/vendor/purify-3.4.16.min.js'></script> -->";
+    assert_eq!(
+        entry.cut(&format!(
+            "{comment}<script src='/vendor/purify-3.4.16.min.js'></script>"
+        )),
+        comment
+    );
+    let unclosed = "<!-- <script src='/vendor/purify-3.4.16.min.js'></script>";
+    assert_eq!(entry.cut(unclosed), unclosed);
+}
+
+#[test]
+fn independent_original_cases_preserve_destinations_and_markup() {
+    let cases: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../xtask/web/fixtures/b8/review-baselines.json"
+    ))
+    .unwrap();
+    for row in cases["cases"].as_array().unwrap() {
+        let text = row["text"].as_str().unwrap();
+        let baseline = row["baseline"].as_str().unwrap();
+        let actual = render(text, Profile::News);
+        assert_eq!(
+            comandos_domdiff::first_difference(baseline, &actual),
+            None,
+            "{text}: {actual}"
+        );
+    }
+}
+
+#[test]
+fn raw_html_paragraphs_and_soft_breaks_match_original_exactly() {
+    assert_eq!(
+        render("<script>\nalert(1)\n</script>", Profile::News),
+        "<p>&lt;script&gt;\nalert(1)\n&lt;/script&gt;</p>\n"
+    );
+    assert_eq!(
+        render("~~gone~~ ~single~", Profile::News),
+        "<p><s>gone</s> ~single~</p>\n"
+    );
+}
+
+#[test]
+fn additional_original_grammar_preserves_code_links_and_literal_masks() {
+    let cases: serde_json::Value =
+        serde_json::from_str(&comandos_web_view::utf16::json_to_unicode(include_str!(
+            "../../../xtask/web/fixtures/b8/repair-grammar.json"
+        )))
+        .unwrap();
+    let mut differences = Vec::new();
+    for row in cases["cases"].as_array().unwrap() {
+        let source = row["text"].as_str().unwrap();
+        let html = render(source, Profile::News);
+        if let Some(difference) =
+            comandos_domdiff::first_difference(row["baseline"].as_str().unwrap(), &html)
+        {
+            differences
+                .push(serde_json::json!({"text":source,"difference":difference,"candidate":html}));
+        }
+    }
+    println!(
+        "additional grammar differences: {}",
+        serde_json::to_string(&differences).unwrap()
+    );
+    assert!(differences.is_empty(), "{differences:?}");
+}

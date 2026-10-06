@@ -1,0 +1,113 @@
+{
+  "provenance": "Immutable independent original markdown-it + authentic DOMPurify outputs from B8 review, including its four differences. Original source policy unchanged.",
+  "cases": [
+    {
+      "text": "Visita example.org y www.example.org para detalles.",
+      "baseline": "<p>Visita example.org y www.example.org para detalles.</p>\n"
+    },
+    {
+      "text": "Nueva herramienta en github.com/org/repo, docs.example.org y example.com/test.",
+      "baseline": "<p>Nueva herramienta en github.com/org/repo, docs.example.org y example.com/test.</p>\n"
+    },
+    {
+      "text": "![**strong** alt](https://example.org/a.png)",
+      "baseline": "<p>!<a href=\"https://example.org/a.png\" target=\"_blank\" rel=\"noopener noreferrer nofollow\"><strong>strong</strong> alt</a></p>\n"
+    },
+    {
+      "text": "![alt](https://example.org/a.png \"Title\")",
+      "baseline": "<p>!<a href=\"https://example.org/a.png\" title=\"Title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">alt</a></p>\n"
+    },
+    {
+      "text": "![alt][img]\n\n[img]: https://example.org/a.png",
+      "baseline": "<p>!<a href=\"https://example.org/a.png\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">alt</a></p>\n"
+    },
+    {
+      "text": "[x](HTTPS://EXAMPLE.ORG)",
+      "baseline": "<p><a href=\"HTTPS://EXAMPLE.ORG\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x](https://example.org \"x & < >\")",
+      "baseline": "<p><a href=\"https://example.org\" title=\"x &amp; < >\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "<https://example.org?q=a&b=c>",
+      "baseline": "<p><a href=\"https://example.org?q=a&amp;b=c\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org?q=a&amp;b=c</a></p>\n"
+    },
+    {
+      "text": "<ftp://example.org>",
+      "baseline": "<p>&lt;ftp://example.org&gt;</p>\n"
+    },
+    {
+      "text": "<user@example.org>",
+      "baseline": "<p>&lt;user@example.org&gt;</p>\n"
+    },
+    {
+      "text": "Texto <span>seguro</span> final",
+      "baseline": "<p>Texto &lt;span&gt;seguro&lt;/span&gt; final</p>\n"
+    },
+    {
+      "text": "<script>\nalert(1)\n</script>",
+      "baseline": "<p>&lt;script&gt;\nalert(1)\n&lt;/script&gt;</p>\n"
+    },
+    {
+      "text": "~~gone~~ ~single~",
+      "baseline": "<p><s>gone</s> ~single~</p>\n"
+    },
+    {
+      "text": "- [x] task\n- [ ] next",
+      "baseline": "<ul>\n<li>[x] task</li>\n<li>[ ] next</li>\n</ul>\n"
+    },
+    {
+      "text": "|x|y|\n|-|-|\n|a|b|",
+      "baseline": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n<th>y</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>a</td>\n<td>b</td>\n</tr>\n</tbody>\n</table></div>"
+    },
+    {
+      "text": "https://example.org/path_(x).",
+      "baseline": "<p><a href=\"https://example.org/path_(x)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/path_(x)</a>.</p>\n"
+    },
+    {
+      "text": "https://example.org/a?x=1&y=2",
+      "baseline": "<p><a href=\"https://example.org/a?x=1&amp;y=2\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a?x=1&amp;y=2</a></p>\n"
+    },
+    {
+      "text": "https://ユーザー.example/path",
+      "baseline": "<p><a href=\"https://xn--wck1eucb.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://ユーザー.example/path</a></p>\n"
+    },
+    {
+      "text": "[safe](https://good.example@evil.example)",
+      "baseline": "<p><a href=\"https://good.example@evil.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">safe</a></p>\n"
+    },
+    {
+      "text": "[x](javascript:alert(1))",
+      "baseline": "<p>[x](javascript:alert(1))</p>\n"
+    },
+    {
+      "text": "[x](data:text/html,x)",
+      "baseline": "<p>[x](data:text/html,x)</p>\n"
+    },
+    {
+      "text": "[x](//example.org)",
+      "baseline": "<p>[x](//example.org)</p>\n"
+    },
+    {
+      "text": "<img src=x onerror=alert(1)>",
+      "baseline": "<p>&lt;img src=x onerror=alert(1)&gt;</p>\n"
+    },
+    {
+      "text": "<svg><a onload=alert(1)>x</a></svg>",
+      "baseline": "<p>&lt;svg&gt;&lt;a onload=alert(1)&gt;x&lt;/a&gt;&lt;/svg&gt;</p>\n"
+    },
+    {
+      "text": "[a <img src=x onerror=1>](https://example.org)",
+      "baseline": "<p><a href=\"https://example.org\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">a &lt;img src=x onerror=1&gt;</a></p>\n"
+    },
+    {
+      "text": "    <script>alert(1)</script>\n",
+      "baseline": "<pre><code>&lt;script&gt;alert(1)&lt;/script&gt;\n</code></pre>\n"
+    },
+    {
+      "text": "```html\n<img src=x onerror=1>\n```",
+      "baseline": "<pre><code class=\"language-html\">&lt;img src=x onerror=1&gt;\n</code></pre>\n"
+    }
+  ]
+}
