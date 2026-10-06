@@ -1,0 +1,19 @@
+### Aaá aa a aaá aaaaaa
+
+aaaaaaaa.aa/aaaaaaaaa aa aa aaaaa aaa aaaaaaaa aaa aaaaaaaaaaaa a aaaaa aaa aaaaaaaa aa Aaaaaa Aaaa aaaaaaaaaa aaaaa aa AA a aa aaaaa aa aaa aáaa a aaaaaaa a aa aaaaaaaaa aaaaa aa aaaa aaa aa aa aaaaaaá. Aa aaaa aa Aaaaaa Aaaa (000 aaaaaa, 000 aaaaaaaaaaaa) aaaaaa aa aaaaa a aaaa aaaaa aa aaa aaaaa aaaaaaaa. Aaaaa aaa aaaaaaaa aaaaaaaa aaaá «AAA-0 aaaaa aa aaaaaaaa AAAAA aaa aa a aaaa, aaa aaaaaa aaaa aaa aaa, aaa aaaa aa aa a aaaa», aaa aaaaaaaa 00% aá a 00% aa. Aa aaaaa aaaaaaaa aaaa aaaaaaaa aáaaaaa aa aaaaaaaaaaaa aaaaaaa aaaaaa aa aaaaaa aaaaaa aa aa aaaaaaaaáa.
+
+### Aa aaa aaaa aa aaaaaaaaa
+
+Aaaaaa aaaaaaaaaaa aaaaaaaaaa a aaa aaaaaaaaaa. aaa_a aaaa aaa aa aaaaaa aaa aaa aa aaa aaaaaaaaaaaa aaaa aaaa aaaaaaaaaa aaaaaaaaaaa: aaa AAAa aaaaaa aaaaaaaa a aaaaaaaa aaaaaaa aaaaaa aaa aaaaaaa aaaaaaaa, aaaa aa AA aa aaaá aa aaaaaaaa aaaaaaaa aaaa aaaaaa aaaaaa aaaaaaaaaaa. aaaaaaaaaaa aaaaaaa aaa aaaaaaa aa aaa AaaaAA + Aaaaaaaaa aaaaaaaa aa aaaaa 0.0A aa aaaaa aa aaaaaaa aaaa 0000 a aaaa aaa aa aaaaaaa; aaaaaáa aaaaaá aaa aaa aáaaaaaa aa aaaaaaaaaa aa AAA aaa aaaaaaa aa 00% a aaaaaaa aaa Aaaaaaa Aaaaaaaa aaaá aaaaaa (Aaaa + Aaaa Aaa + Aaaa). aaaaaaaa aaáaaa aaa aa aaaaa aa aaaaaa aa aaa aaaaaaaaaaaa aa aaa aa aaaaaaaa aaaaaa aaaa aaaaaaaaaa aa aa aaaaaaaaaa. aaaaaaaa aaaaaaa aaa aaa aaaa aaaaaaaaáa aaaaaaa aaaa aaa aaaaaaaáa aa aaaaaaa aaaa, aaaa aaa aaaaaa aa aa aaaa.
+
+AaaaaaA aaaaaaa aa aaaaaa aa aaaaa: aa 0000 aaa aaaaa aaaa aaaaa aa aaaa aa Aaaaaa, aaaaaaaa aáaaaa a aaaaa aa aaaá; aa 0000 aaaaaaaa aaaaa aaa aaaaaa aáaaaa, aaaaaa aaaaaaaaaa aaaaaa aa aaaaa aaaaaaaaaaa a aaaaa aaaaaaaaaaaaaaa aaaaaáaaaaa aaaaaaaaa. aaaaaaaa aaaaaaa aaa aa aaaa aa Aaaaaa aa aaaaaaaaaaa aaaaaa aaa AAAa aaaaaa aaaaaaaaaa aa aaaaaa aaaaaaaaaaa, aaaa aaaaaáa aaa aaaaaaaa aaa aaaaaa a aa aaaaaa; Aaaaaa aaa aaaaaaaaa aaaaaaaaa aaaaa aa aaaaa. Aaaa0aa aaaaaa aaa aaaaaaaá a Aaaa 0.0 aaa aa aaaa AAAAA aa aa aaa a aaaa aa aaaaaaa aaaaaaa; aa aaaaaaa aa AaaaAAA (aa aaaaa aaaaaaaa, aaa aaaáa áa aaaaaa aaa 0.0 Aaaa) aaaaaaaaá aaa aaa aa «aaaa/aaaaaaaaaa»; aaaaaaaa aaa aaa AAAa aaaaaa aaaaaa aaaaaaaa aaaaa aa aaaa AAAAA aaa aaaa aaaaaaa aaaaaaaaa. aaaaaaa_aaaaa aáaaa aaa aa aaa aaaaaaaa aa aaaaaaa aaa aaaaaaa aaa aaaaaaaaa aaaaaaa aa aaa aa aaaaáa aaaaa, a aaa aaaaaaaaaaaa aa AA aaaaaaaaa aaaaaa aa aaa. AAaaa aaaaaaa aaa aaaaaa aaaaa aaaaa aaaaaaaaa aaaaaa aa aaaaa aaaaaa, aa aa aaaaaa aaa aaaaaaaaa aaa aa aaaaaaaa, a aaa aaa aaaaa aa aaaaaaaaa aaa aaaaaaaa.
+
+### Aaa aaá aa aaaaaaa
+
+Aaaa aaaaa aaaaaaaa aaaaaaa aa aáaaaa, aa aaaa aa aa aaaaáaaaaa aa aaá aaaaaa aa aaaaaaaaa aaaaaaaaa aaaaaaaaa a aaáaaa aa: aa aaaaaaaáa aaaaa aáaaaa aaaaaa, aaaa AAAAA a aaaaaaaaa aa aaaaaaa aaaaa aa aaaaaaaa aaaaa «aaaaaa aa aaaaaaa» a «aa aaaa aa aaaaa aaaaaa», aaa aa aaaaa aa aaaaaaaaaa aa aaaaaaaa aaaaa aaaaa aaaaaaa. Aa aaaaaaa aaaaa aáaaaaaa aa aaaaaaaaaa aaaaaaa aa 00% aa AaaaAA a Aaaaaaaaa aa aaaa aaaaaaa aaaa aaaaaaa aaaaa aaaaaaa. A aa aaaaaaaaáa aa Aaaaaaa Aaaaaaaa (Aaaa + Aaaa Aaa + Aaaa) aaáaaa aaaaa aáaaa aa aa aaaaa aa aaaaaaa.
+
+### Aaá aaaaa aaa
+
+Aaaaa aaaaaaaa.aa/aaaaaaaaa a aaaaa aa aaa aaaaa aaaaaaaa. Aaaa aa aaaa aa Aaaaaa Aaaa aaaa aaa aaa aaaaaaaaaa aaaaáa aa aaaa aaaa. Aa aaa aaaaaaaa aa aaaaaaaaaaaa aaaaaa aa aa aaaaaa; aa aaaa aaaaaaaa aa aaaaaaa aa aaaaa a aa aaaaaaaáa.
+
+Aa aaa aa aaaaaa aa aaaa: aa aaaaaa aaaáa aaaá aaaaaaaa.aa, aaáaaaa aaaaaaaaaaaa aaa aa aaaaa aa aaá aaaaaaaa aaaaaa aaa aa aaaaaaáa. Aaaaaaa aaaaaaaa aaá aaaaaa aaaaa AaaaAAA aa aa aaaaa aaaaaaaa (aa aaaaaaaaaa aaaa «aaaaa aa aa 0.0 Aaaa», aaa aaaaaaaaa). Aa aaa aaaaa aa aaaaaaaaaáa aaaaaaaaaaa aa aaa aaaaaaa.

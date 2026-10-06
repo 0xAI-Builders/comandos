@@ -1,6 +1,6 @@
 use std::path::Path;
 
-const USAGE: &str = "uso: cargo run -p xtask -- web-bench audio-diff --base URL [--out FILE]";
+const USAGE: &str = "uso: cargo run -p xtask -- web-bench <audio-diff|behavior-diff|md-diff> --base URL [--out FILE]";
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter()
@@ -19,8 +19,54 @@ pub fn main(args: &[String]) -> i32 {
     match args.first().map(String::as_str) {
         Some("audio-diff") => audio_diff(args),
         Some("behavior-diff") => behavior_diff(args),
+        Some("md-diff") => md_diff(args),
         _ => usage(),
     }
+}
+
+fn md_diff(args: &[String]) -> i32 {
+    let Some(base) = flag(args, "--base") else {
+        return usage();
+    };
+    let out = flag(args, "--out").unwrap_or("docs/verification/fase3/web-markdown.json");
+    let run = || -> Result<serde_json::Value, String> {
+        let argv = crate::mcp::default_command();
+        let argv = argv.iter().map(String::as_str).collect::<Vec<_>>();
+        let mut client = crate::mcp::Client::spawn(&argv)?;
+        let mut page = client.open_page(&format!(
+            "{}/xtask/web/fixtures/b8/markdown.html",
+            base.trim_end_matches('/')
+        ))?;
+        let result = page.eval(
+            "async () => await Promise.race([(async()=>{await window.fixtureReady;return await window.runMarkdownDiff();})(),new Promise((_,reject)=>setTimeout(()=>reject(new Error('B8 remote differential deadline 25s')),25000))])",
+        );
+        let close = page.close();
+        let value = result?;
+        close?;
+        Ok(value)
+    };
+    let value = run().unwrap_or_else(|error| serde_json::json!({"status":"error","reason":error}));
+    let status = if value["status"] == "pass"
+        && value["count"] == 400
+        && value["negativeCalibration"]["detected"] == true
+        && value["proof"]["actualWasm"] == true
+    {
+        0
+    } else {
+        1
+    };
+    if let Some(parent) = Path::new(out).parent()
+        && let Err(error) = std::fs::create_dir_all(parent)
+    {
+        eprintln!("{error}");
+        return 1;
+    }
+    if let Err(error) = std::fs::write(out, format!("{value:#}\n")) {
+        eprintln!("{out}: {error}");
+        return 1;
+    }
+    println!("md-diff {}: wrote {out}", value["status"]);
+    status
 }
 
 fn audio_diff(args: &[String]) -> i32 {

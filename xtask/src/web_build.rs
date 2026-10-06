@@ -27,7 +27,7 @@ boot(me ? me.dataset.k || "" : "");
 pub const WASM_BINDGEN_VERSION: &str = "0.2.129";
 pub const WASM_OPT_VERSION: &str = "116";
 
-const USAGE: &str = "uso: cargo run -p xtask -- web-build [--crate comandos-web|comandos-term-web|comandos-web-sw|all] [--check-budget]";
+const USAGE: &str = "uso: cargo run -p xtask -- web-build [--crate comandos-web|comandos-term-web|comandos-web-sw|all] [--check-budget] [--out ABSOLUTE-ARTIFACT-DIR]";
 
 const WASM_TARGET: &str = "wasm32-unknown-unknown";
 const PROFILE: &str = "release-wasm";
@@ -583,13 +583,15 @@ pub fn build(opts: &Options) -> Result<Manifest, String> {
 }
 
 /// `(--crate elegido o None = todos, --check-budget)`.
-pub fn parse_args(args: &[String]) -> Result<(Option<String>, bool), String> {
+pub fn parse_args(args: &[String]) -> Result<(Option<String>, bool, Option<PathBuf>), String> {
     let mut krate = None;
     let mut budget = false;
+    let mut output = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--check-budget" => budget = true,
+            "--out" => output = Some(PathBuf::from(it.next().ok_or(USAGE)?)),
             "--crate" => {
                 let v = it.next().ok_or(USAGE)?;
                 if v == "all" {
@@ -603,12 +605,45 @@ pub fn parse_args(args: &[String]) -> Result<(Option<String>, bool), String> {
             _ => return Err(USAGE.to_string()),
         }
     }
-    Ok((krate, budget))
+    Ok((krate, budget, output))
+}
+
+/// Only an absent directory or an existing artifact output may be replaced.
+pub fn validate_output(out: &Path) -> Result<(), String> {
+    if !out.is_absolute() {
+        return Err("--out must be an absolute artifact directory".into());
+    }
+    if out.parent().is_none() || out.file_name().is_none() {
+        return Err("--out must name an artifact directory, never a filesystem root".into());
+    }
+    if fs::symlink_metadata(out).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err("--out cannot replace a symlink".into());
+    }
+    if !out.exists() {
+        return Ok(());
+    }
+    if !out.is_dir() {
+        return Err("--out must be a directory".into());
+    }
+    for entry in fs::read_dir(out).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let kind = entry.file_type().map_err(|e| e.to_string())?;
+        if kind.is_symlink()
+            || !(name == MANIFEST_FILE && kind.is_file() || is_hash_dir(&name) && kind.is_dir())
+        {
+            return Err(format!(
+                "refusing to replace non-artifact output {}",
+                out.display()
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Punto de entrada del subcomando; devuelve el código de salida.
 pub fn main(args: &[String]) -> i32 {
-    let (krate, check_budget) = match parse_args(args) {
+    let (krate, check_budget, output) = match parse_args(args) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("{e}");
@@ -636,12 +671,15 @@ pub fn main(args: &[String]) -> i32 {
     let result = target_dir().and_then(|target_dir| {
         let opts = Options {
             manifest_path: ws.join("Cargo.toml"),
-            out: target_dir.join("web"),
+            out: output.clone().unwrap_or_else(|| target_dir.join("web")),
             target_dir,
             crates,
             check_budget,
             tools: Tools::from_env(),
         };
+        if output.is_some() {
+            validate_output(&opts.out)?;
+        }
         build(&opts).map(|m| (opts.out, m))
     });
     match result {

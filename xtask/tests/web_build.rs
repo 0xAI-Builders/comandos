@@ -531,3 +531,29 @@ fn two_snippets_that_flatten_to_the_same_name_are_an_error() {
     );
     assert!(r.unwrap_err().contains("snippets-a-b-c.js"));
 }
+
+#[test]
+fn separate_output_preserves_default_and_refuses_source_or_roots() {
+    let args = vec!["--out".into(), "/private/artifacts".into()];
+    assert_eq!(
+        web_build::parse_args(&args).unwrap().2,
+        Some(PathBuf::from("/private/artifacts"))
+    );
+    assert_eq!(web_build::parse_args(&[]).unwrap().2, None);
+    assert!(web_build::validate_output(Path::new("relative/artifacts")).is_err());
+    assert!(web_build::validate_output(Path::new("/")).is_err());
+    assert!(web_build::validate_output(&PathBuf::from(env!("CARGO_MANIFEST_DIR"))).is_err());
+    let private = scratch("output-policy");
+    let source = private.join("source");
+    fs::create_dir_all(&source).unwrap();
+    fs::write(source.join("canary.rs"), "source unchanged").unwrap();
+    let link = private.join("artifact-link");
+    std::os::unix::fs::symlink(&source, &link).unwrap();
+    assert!(web_build::validate_output(&link).is_err());
+    assert!(web_build::validate_output(&source).is_err());
+    assert_eq!(
+        fs::read_to_string(source.join("canary.rs")).unwrap(),
+        "source unchanged"
+    );
+    fs::remove_dir_all(private).unwrap();
+}

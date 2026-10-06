@@ -1,0 +1,13 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="comandos-web" content="news-reader vendor-markdown-it vendor-purify"><title>Markdown original / actual WASM differential</title></head><body><p>Parser differential fixture. Product screenshots require the production document.</p><script type="module">
+window.fixtureReady=(async()=>{
+ for(const src of ['/dash/vendor/markdown-it-15.0.2.umd.min.js','/dash/vendor/purify-3.4.16.min.js','/dash/news-reader.js'])await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src=src;const timer=setTimeout(()=>{script.remove();reject(new Error('Original source deadline: '+src));},5000);script.onload=()=>{clearTimeout(timer);resolve();};script.onerror=()=>{clearTimeout(timer);script.remove();reject(new Error('Original source failed: '+src));};document.head.append(script);});
+ window.fixtureOriginal=window.NewsReader;
+ if(typeof DOMPurify.sanitize!=='function'||DOMPurify.isSupported!==true)throw new Error('Authentic DOMPurify unavailable');
+ const manifest=await(await fetch('/web/manifest.json')).json();const wasm='/web/'+manifest.files['comandos_web_bg.wasm'];
+ const module=await import('/web/'+manifest.files['comandos_web.js']);await module.default({module_or_path:wasm});module.boot('b8-markdown-private');
+ if(!window.__comandosReady||NewsReader===fixtureOriginal)throw new Error('Actual WASM NewsReader did not replace original');
+ const {runMarkdownDiff}=await import('./markdown.mjs');window.runMarkdownDiff=runMarkdownDiff;
+ window.fixtureWasmUrl=wasm;
+ return true;
+})();
+</script></body></html>
