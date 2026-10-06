@@ -3,6 +3,7 @@ pub mod assets;
 pub mod cleanup;
 pub mod darwin;
 pub mod full;
+pub mod guard;
 pub mod hooks_register;
 pub mod manifest;
 pub mod plan;

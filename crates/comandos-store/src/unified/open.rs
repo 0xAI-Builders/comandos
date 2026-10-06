@@ -150,3 +150,20 @@ pub(crate) fn open_existing(path: &Path) -> Result<Connection> {
     conn.pragma_update(None, "journal_mode", "WAL")?;
     Ok(conn)
 }
+
+/// Abre únicamente un esquema ya completo. Los hooks jamás ejecutan migraciones.
+pub(crate) fn open_caller(path: &Path) -> Result<Connection> {
+    let conn = super::preflight::accept(path)?;
+    let known = validate(&conn)?;
+    let uv: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    if uv != crate::usage::SCHEMA_VERSION
+        || known != UNIFIED_MIGRATIONS.iter().map(|m| m.version).collect()
+    {
+        return Err(Error::Validation(
+            "base única incompleta; el llamador no migra".into(),
+        ));
+    }
+    conn.busy_timeout(Duration::from_secs(5))?;
+    conn.pragma_update(None, "foreign_keys", true)?;
+    Ok(conn)
+}

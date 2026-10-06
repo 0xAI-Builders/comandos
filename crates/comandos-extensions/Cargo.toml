@@ -8,6 +8,7 @@ publish.workspace = true
 [dependencies]
 serde_json.workspace = true
 comandos-core = { path = "../comandos-core" }
+comandos-store = { path = "../comandos-store" }
 sha2.workspace = true
 serde = "1"
 tiktoken-rs = "=0.12.1"
@@ -27,6 +28,7 @@ chrono = "0.4"
 nix = { version = "0.31", features = ["signal", "process", "user", "fs", "resource"] }
 
 [dev-dependencies]
+comandos-oracle = { path = "../comandos-oracle" }
 # Upstream MCP falso de las pruebas de paridad; ya entran por reqwest, aquí solo
 # se habilita la parte servidor.
 hyper = { version = "1", features = ["server", "http1"] }

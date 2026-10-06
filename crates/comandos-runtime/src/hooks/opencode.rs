@@ -150,7 +150,7 @@ impl Hook {
         }
         current.extend(patch);
         let root = self.home.join(".claude/hooks/native-processes");
-        let _ = write_record(&root, pid, &current);
+        let _ = write_record(&self.home, &root, pid, &current);
         self.current = Some(current);
     }
 
@@ -168,12 +168,22 @@ impl Hook {
 }
 
 /// `mkdir` 0700 + temporal `wx` 0600 + `rename`, como el plugin.
-fn write_record(root: &Path, pid: u32, record: &Map<String, Value>) -> Option<()> {
+fn write_record(home: &Path, root: &Path, pid: u32, record: &Map<String, Value>) -> Option<()> {
+    let text = serde_json::to_string(record).ok()?;
+    super::state_file::write_process(
+        home,
+        root,
+        pid,
+        text.as_bytes(),
+        record.get("updatedAt").and_then(Value::as_i64).unwrap_or(0),
+        || legacy_record(root, pid, text.as_bytes()),
+    )
+}
+fn legacy_record(root: &Path, pid: u32, body: &[u8]) -> Option<()> {
     mkdir_all(root, 0o700)?;
     let name = format!("{pid}.json.");
     let (temp, mut file) = mktemp(root, name.as_bytes(), 10, ".tmp")?;
-    file.write_all(serde_json::to_string(record).ok()?.as_bytes())
-        .ok()?;
+    file.write_all(body).ok()?;
     drop(file);
     std::fs::rename(&temp, root.join(format!("{pid}.json"))).ok()
 }
@@ -434,4 +444,43 @@ pub fn run(args: &[String]) -> i32 {
         let _ = serde_json::to_writer(std::io::stdout().lock(), &current);
     }
     0
+}
+
+#[cfg(test)]
+mod domain_tests {
+    use super::*;
+    use comandos_store::unified::{self, Mode};
+    #[test]
+    fn process_record_survives_every_mode_with_injected_identity() {
+        let home = std::env::temp_dir().join(format!("process-domain-{}", std::process::id()));
+        mkdir_all(&home, 0o700).unwrap();
+        let db = unified::open_unified(&unified::unified_path(&home)).unwrap();
+        let path = home.join(".claude/hooks/native-processes/4321.json");
+        for mode in [Mode::Legacy, Mode::Mirror, Mode::Unified, Mode::Sealed] {
+            unified::set_mode(&db, "processes", mode, "test", 1).unwrap();
+            if mode == Mode::Sealed {
+                std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+            }
+            let mut bridge = Bridge::new(home.clone(), 4321, "private-start".into());
+            bridge.handle(Some(json!("/private")),json!({"type":"message.updated","properties":{"info":{"sessionID":"private","role":"user","modelID":"model","providerID":"provider"}}}),json!({"id":"private"}),1000,&mut |_,_|{});
+            if mode != Mode::Legacy {
+                let body = db
+                    .query_row(
+                        "SELECT body FROM native_processes WHERE pid=4321",
+                        [],
+                        |r| r.get::<_, Vec<u8>>(0),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    serde_json::from_slice::<Value>(&body).unwrap()["sessionId"],
+                    "private"
+                );
+                if mode != Mode::Sealed {
+                    assert_eq!(std::fs::read(&path).unwrap(), body);
+                }
+            }
+            assert_eq!(path.exists(), mode != Mode::Sealed);
+        }
+        std::fs::remove_dir_all(home).unwrap();
+    }
 }

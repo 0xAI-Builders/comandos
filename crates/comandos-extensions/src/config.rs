@@ -60,6 +60,19 @@ impl Drop for SyncLock {
     }
 }
 pub fn read_bytes(path: &Path) -> Result<Option<Vec<u8>>> {
+    if let Some((home, name)) = state_document(path) {
+        let bytes = comandos_store::domains::DomainStore { home: &home }
+            .document(&name, "extensions", path.to_owned())
+            .read_readonly()
+            .map_err(|e| e.to_string())?;
+        if bytes.as_ref().is_some_and(|b| b.len() > 16 * 1024 * 1024) {
+            return Err(err(path));
+        }
+        return Ok(bytes);
+    }
+    legacy_read_bytes(path)
+}
+fn legacy_read_bytes(path: &Path) -> Result<Option<Vec<u8>>> {
     let f = match File::open(path) {
         Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -80,6 +93,72 @@ pub fn json_bytes(value: &Value) -> Result<Vec<u8>> {
     Ok(b)
 }
 pub fn private_write(path: &Path, bytes: &[u8]) -> Result<()> {
+    if let Some((home, name)) = state_document(path) {
+        return write_state_with(&home, &name, path, bytes, || {
+            legacy_private_write(path, bytes)
+        });
+    }
+    legacy_private_write(path, bytes)
+}
+/// Sólo documentos de estado catalogados; secretos, respaldos y configuración quedan archivos.
+pub(crate) fn state_document(path: &Path) -> Option<(PathBuf, String)> {
+    let components = path.components().collect::<Vec<_>>();
+    let marker = [".local", "state", "comandos", "extensions"];
+    let at = components.windows(4).position(|parts| {
+        parts
+            .iter()
+            .zip(marker)
+            .all(|(part, text)| part.as_os_str() == text)
+    })?;
+    let home: PathBuf = components.iter().take(at).collect();
+    if !home.is_absolute() {
+        return None;
+    }
+    let rel = path.strip_prefix(state_dir(&home)).ok()?;
+    let normal = matches!(
+        rel.to_str(),
+        Some("snapshot.json" | "skills.json" | "client-policies.json" | "last-check.json")
+    );
+    let size =
+        rel.parent() == Some(Path::new("sizes")) && rel.file_name()?.to_str()?.ends_with(".json");
+    if !normal && !size {
+        return None;
+    }
+    Some((home, format!("state/extensions/{}", rel.to_str()?)))
+}
+pub(crate) fn write_state_with(
+    home: &Path,
+    name: &str,
+    path: &Path,
+    bytes: &[u8],
+    legacy: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    let mut lock = path.as_os_str().to_owned();
+    lock.push(".lock");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    comandos_store::domains::caller::write(
+        home,
+        "extensions",
+        Path::new(&lock),
+        || legacy().map_err(comandos_store::Error::Validation),
+        |db, origin| {
+            comandos_store::unified::doc_put(
+                db,
+                name,
+                "extensions",
+                bytes,
+                origin,
+                i64::try_from(now).unwrap_or(i64::MAX),
+            )
+            .map(|_| ())
+        },
+    )
+    .map_err(|e| e.to_string())
+}
+fn legacy_private_write(path: &Path, bytes: &[u8]) -> Result<()> {
     let parent = path.parent().ok_or_else(|| err(path))?;
     private_dir(parent)?;
     let (tmp, mut file) = loop {

@@ -222,30 +222,59 @@ fn command(value: &str, pairs: &[(String, String)], is_command: bool) -> String 
     output
 }
 
+fn string_token(text: &str, start: usize) -> Result<(usize, String, u8), String> {
+    let bytes = text.as_bytes();
+    let quote = *bytes.get(start).ok_or("missing string")?;
+    let triple = bytes.get(start..start + 3).is_some_and(|s| s == [quote; 3]);
+    let width = if triple { 3 } else { 1 };
+    let mut end = start + width;
+    loop {
+        if end >= bytes.len() {
+            return Err("unterminated configuration string".into());
+        }
+        if bytes
+            .get(end..end + width)
+            .is_some_and(|s| s.iter().all(|b| *b == quote))
+        {
+            end += width;
+            break;
+        }
+        if quote == b'"' && bytes[end] == b'\\' {
+            end += 1;
+        }
+        end += 1;
+    }
+    let token = text.get(start..end).ok_or("invalid string boundary")?;
+    let decoded = if quote == b'\'' && !triple {
+        token
+            .get(1..token.len() - 1)
+            .ok_or("invalid literal string")?
+            .to_owned()
+    } else {
+        serde_json::from_str::<String>(token)
+            .map_err(|e| e.to_string())
+            .or_else(|_| {
+                format!("v={token}")
+                    .parse::<toml::Value>()
+                    .map_err(|e| e.to_string())
+                    .and_then(|v| {
+                        v.get("v")
+                            .and_then(toml::Value::as_str)
+                            .map(String::from)
+                            .ok_or("invalid TOML string".into())
+                    })
+            })?
+    };
+    Ok((end, decoded, quote))
+}
+
+fn command_key(key: &str) -> bool {
+    matches!(key, "command" | "cmd" | "hook" | "notify" | "args")
+}
+
 pub fn rewrite(raw: &str, repo: &Path, home: &Path) -> Result<String, String> {
     let pairs = mappings(repo, home)?;
-    let mut text = raw.to_owned();
-    // argv arrays must lose an obsolete interpreter when their script becomes
-    // a native executable. Extra arguments and the rest of the document remain.
-    for (old, new) in &pairs {
-        for quote in ['"', '\''] {
-            let old_token = if quote == '"' {
-                serde_json::to_string(old).map_err(|e| e.to_string())?
-            } else {
-                format!("'{old}'")
-            };
-            let pattern = format!(
-                r#"{q}(?:bash|sh|python|python3(?:\.[0-9]+)?){q}\s*,\s*{}"#,
-                regex::escape(&old_token),
-                q = quote
-            );
-            let re = regex::Regex::new(&pattern).map_err(|e| e.to_string())?;
-            let encoded = serde_json::to_string(new).map_err(|e| e.to_string())?;
-            text = re
-                .replace_all(&text, regex::NoExpand(&encoded))
-                .into_owned();
-        }
-    }
+    let text = raw;
     let bytes = text.as_bytes();
     let mut i = 0;
     let mut copied = 0;
@@ -266,52 +295,74 @@ pub fn rewrite(raw: &str, repo: &Path, home: &Path) -> Result<String, String> {
             i = (i + 2).min(bytes.len());
             continue;
         }
+        if bytes[i] == b'=' {
+            // TOML bare keys, e.g. notify = [...], have no quoted key token.
+            let preceding = text.get(..i).unwrap_or_default().trim_end();
+            let key = preceding
+                .rsplit(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+                .next()
+                .unwrap_or_default();
+            if !key.is_empty() {
+                last_key = key.into();
+            }
+        }
         let Some(&quote) = bytes.get(i).filter(|b| matches!(b, b'"' | b'\'')) else {
             i += 1;
             continue;
         };
         let start = i;
-        i += 1;
-        while let Some(&b) = bytes.get(i) {
-            if b == quote {
-                break;
-            }
-            if quote == b'"' && b == b'\\' {
-                i += 1;
-            }
-            i += 1;
-        }
-        if i >= bytes.len() {
-            return Err("unterminated configuration string".into());
-        }
-        i += 1;
-        let token = text.get(start..i).ok_or("invalid string boundary")?;
-        let decoded = if quote == b'\'' {
-            token
-                .get(1..token.len() - 1)
-                .ok_or("invalid literal string")?
-                .to_owned()
-        } else {
-            serde_json::from_str::<String>(token)
-                .map_err(|e| e.to_string())
-                .or_else(|_| {
-                    format!("v={token}")
-                        .parse::<toml::Value>()
-                        .map_err(|e| e.to_string())
-                        .and_then(|v| {
-                            v.get("v")
-                                .and_then(toml::Value::as_str)
-                                .map(String::from)
-                                .ok_or("invalid TOML string".into())
-                        })
-                })?
-        };
+        let (end, decoded, _) = string_token(text, start)?;
+        i = end;
         let after = text.get(i..).unwrap_or_default().trim_start();
         if after.starts_with(':') || after.starts_with('=') {
             last_key = decoded;
             continue;
         }
-        let changed = command(&decoded, &pairs, last_key == "command");
+        if !command_key(&last_key) {
+            continue;
+        }
+        // Remove an interpreter only from an actual first argv element. The
+        // lexer has already skipped comments and read whole string literals.
+        let first = text
+            .get(..start)
+            .unwrap_or_default()
+            .trim_end()
+            .ends_with('[');
+        if first
+            && matches!(
+                decoded.as_str(),
+                "bash" | "sh" | "python" | "python3" | "python3.11"
+            )
+        {
+            let mut path_start = i;
+            while bytes.get(path_start).is_some_and(u8::is_ascii_whitespace) {
+                path_start += 1;
+            }
+            if bytes.get(path_start) == Some(&b',') {
+                path_start += 1;
+                while bytes.get(path_start).is_some_and(u8::is_ascii_whitespace) {
+                    path_start += 1;
+                }
+                if bytes
+                    .get(path_start)
+                    .is_some_and(|b| matches!(b, b'"' | b'\''))
+                {
+                    let (path_end, path, _) = string_token(text, path_start)?;
+                    if let Some((_, native)) = pairs.iter().find(|(old, _)| *old == path) {
+                        output.push_str(text.get(copied..start).ok_or("invalid copy boundary")?);
+                        output.push_str(&serde_json::to_string(native).map_err(|e| e.to_string())?);
+                        i = path_end;
+                        copied = i;
+                        continue;
+                    }
+                }
+            }
+        }
+        let changed = command(
+            &decoded,
+            &pairs,
+            last_key == "command" || last_key == "hook" || last_key == "cmd",
+        );
         let prefix = repo.to_str().ok_or("repo must be UTF-8")?;
         if ["bin", "hooks", "adapters"]
             .iter()

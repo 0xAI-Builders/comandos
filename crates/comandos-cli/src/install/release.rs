@@ -511,6 +511,7 @@ pub fn rollback_release(home: &Path) -> Result<Release, String> {
         .ok_or("no hay release anterior a la que volver")?;
     let current =
         current_id(&releases, &bin).ok_or("bin/comandos no es un enlace a una release")?;
+    super::guard::rollback_state(home, &releases.join(&prev))?;
     swap_link(&bin, &prev)?;
     write_previous(&releases, &current)?;
     Ok(Release {

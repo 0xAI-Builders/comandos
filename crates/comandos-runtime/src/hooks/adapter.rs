@@ -155,7 +155,8 @@ fn tonumber(value: &Value) -> Jq<f64> {
 /// El `jq -e` de los scripts de codex: el estado es un `done` de codex de hace
 /// 15 s o menos. Cualquier error de jq cuenta como "no".
 pub fn recent_codex_done(state: &Path, now: i64) -> bool {
-    let Ok(raw) = std::fs::read(state) else {
+    let home = PathBuf::from(OsStr::from_bytes(&env_bytes("HOME")));
+    let Some(raw) = super::state_file::read_state_bytes(&home, state) else {
         return false;
     };
     let text = jq_lossy(&raw);

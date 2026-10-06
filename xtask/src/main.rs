@@ -3,6 +3,7 @@ mod app_shot;
 mod parity;
 mod poll;
 mod rss;
+mod state_drill;
 mod web;
 
 use std::{io::Write, process::exit};
@@ -29,6 +30,7 @@ fn median<T: Ord + Copy>(v: &[T]) -> T {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
+        Some("state-drill") => exit(state_drill::main(&args[1..])),
         Some("rss") => {}
         Some("parity") => {
             // Falla cerrado: sin namespace de red propio no se lanza el oráculo.

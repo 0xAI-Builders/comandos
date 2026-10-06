@@ -92,3 +92,25 @@ fn retarget_dry_run_and_backup_preserve_exact_config_bytes_and_permissions() {
     );
     fs::remove_dir_all(&root).unwrap();
 }
+
+#[test]
+fn retarget_preserves_commented_examples_and_foreign_descriptions() {
+    let repo = Path::new("/old/repo");
+    let home = Path::new("/private/home");
+    let raw = r#"// ["bash", "/old/repo/adapters/codex-notify.sh"]
+/* ["python3", "/old/repo/adapters/grok-hooks.py"] */
+{"description":"Example: ['bash', '/old/repo/adapters/codex-notify.sh']",
+ "notify": ["bash", "/old/repo/adapters/codex-notify.sh"]}
+"#;
+    let rewritten = retarget::rewrite(raw, repo, home).unwrap();
+    let prefix = raw.split(" \"notify\"").next().unwrap();
+    assert!(rewritten.starts_with(prefix));
+    assert!(rewritten.contains(r#""notify": ["/private/home/.local/bin/codex-notify.sh"]"#));
+    let toml = r#"# ["bash", "/old/repo/adapters/codex-notify.sh"]
+description = '''Example ["bash", "/old/repo/adapters/codex-notify.sh"]'''
+notify = ["bash", "/old/repo/adapters/codex-notify.sh"]
+"#;
+    let rewritten = retarget::rewrite(toml, repo, home).unwrap();
+    assert!(rewritten.starts_with(toml.split("notify =").next().unwrap()));
+    assert!(rewritten.ends_with("notify = [\"/private/home/.local/bin/codex-notify.sh\"]\n"));
+}

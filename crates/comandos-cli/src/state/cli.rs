@@ -348,6 +348,12 @@ fn execute(command: &str, opts: &Options) -> Result<(Value, bool), String> {
     }
 }
 pub fn main(args: &[String]) -> i32 {
+    if args.first().is_some_and(|s| s == "drill") {
+        return super::drill::main(args.get(1..).unwrap_or_default());
+    }
+    if super::lifecycle::handles(args) {
+        return super::lifecycle::main(args);
+    }
     match parse(args).and_then(|(command, opts)| execute(command, &opts)) {
         Ok((value, failed)) => {
             println!("{value}");

@@ -25,15 +25,19 @@ pub fn verify(home: &Path, db: &Connection, name: &str) -> Result<VerifyReport> 
             "verify S3 requiere un dominio de archivo".into(),
         ));
     }
+    let (_, _guard) = unified::modes::access_mode(home, Some(db), name)?;
+    verify_locked(home, db, name)
+}
+
+pub(super) fn verify_locked(home: &Path, db: &Connection, name: &str) -> Result<VerifyReport> {
     let path = unified::modes::connection_path(db)
-        .ok_or_else(|| Error::Validation("verify requiere una base en disco".into()))?;
+        .ok_or_else(|| Error::Validation("verify requiere base en disco".into()))?;
     let specs: Vec<_> = catalog()
         .iter()
         .filter(|s| s.domain == name)
         .copied()
         .collect();
     let sources = sources::collect(home, &path, &specs)?;
-    let (_, _guard) = unified::modes::access_mode(home, Some(db), name)?;
     let mut report = VerifyReport {
         domain: name.into(),
         mismatches: vec![],

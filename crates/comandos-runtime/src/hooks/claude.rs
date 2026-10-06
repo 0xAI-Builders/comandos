@@ -80,7 +80,13 @@ impl Hook {
             session: &self.session,
             pane: &self.pane,
         };
-        if !state_file::write(&self.state_dir, &self.state_key, &self.state_file, &state) {
+        if !state_file::write_domain(
+            &self.home,
+            &self.state_dir,
+            &self.state_key,
+            &self.state_file,
+            &state,
+        ) {
             return;
         }
         let (project, detail) = (jq_lossy(&self.proj), jq_lossy(&cut(detail, 280)));
@@ -90,7 +96,7 @@ impl Hook {
             ("detail", J::S(&detail)),
             ("ts", J::I(self.now)),
         ]);
-        events_jsonl::append(&self.events, &line);
+        events_jsonl::append_domain(&self.home, &self.events, &line);
         self.lifecycle(status, true);
     }
 
@@ -143,7 +149,17 @@ pub fn run(args: &[String]) -> i32 {
     let home = path(&env_bytes("HOME"));
     let hooks_dir = home.join(".claude/hooks");
     let state_dir = hooks_dir.join("state");
-    let _ = std::fs::create_dir_all(&state_dir);
+    // Sellado no vuelve a crear la colección de archivos retirada.
+    match comandos_store::domains::caller::CallerAccess::open(&home, "session-status") {
+        Ok(access) if access.mode() != comandos_store::unified::Mode::Sealed => {
+            let _ = std::fs::create_dir_all(&state_dir);
+        }
+        Ok(_) => {}
+        Err(error) => {
+            eprintln!("comandos hook: {error}");
+            return 0;
+        }
+    }
     let conf = Conf::load(&hooks_dir, &env_bytes("LANG"));
     let adapter = matches!(
         args.first().map(String::as_str),
@@ -222,13 +238,13 @@ fn dispatch(h: &mut Hook) {
     let (title, body, full, options, sound, kind);
     match event.as_slice() {
         b"UserPromptSubmit" => {
-            let last = state_file::previous_answer(&h.state_file);
+            let last = state_file::previous_answer_domain(&h.home, &h.state_file);
             h.write_state("working", b"", b"", &last);
             h.event_v2(&name, b"");
             return;
         }
         b"GrokIdle" => {
-            let last = state_file::detail_or_last(&h.state_file);
+            let last = state_file::detail_or_last_domain(&h.home, &h.state_file);
             let msg = h.input.msg.clone();
             h.write_state("idle", &msg, b"", &last);
             if h.input.hook_event_arg == b"GrokCancelled" {
@@ -247,7 +263,7 @@ fn dispatch(h: &mut Hook) {
             return;
         }
         b"Notification" => {
-            let (prev_s, prev_t) = state_file::previous_status(&h.state_file);
+            let (prev_s, prev_t) = state_file::previous_status_domain(&h.home, &h.state_file);
             title = joined(&[
                 "🟡 [".as_bytes(),
                 &h.proj,

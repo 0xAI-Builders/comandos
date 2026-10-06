@@ -123,16 +123,18 @@ fn record_process(home: &Path, raw: &[u8], event: &str) -> Option<()> {
     }
     text.push('}');
     let root = home.join(".claude/hooks/native-processes");
-    if let Some(parent) = root.parent() {
-        std::fs::create_dir_all(parent).ok()?;
-    }
-    match std::fs::DirBuilder::new().mode(0o700).create(&root) {
-        Ok(()) => {}
-        Err(_) if root.is_dir() => {}
-        Err(_) => return None,
-    }
-    let (temp, mut file) = mktemp(&root, b".agy-", 8, "")?;
-    file.write_all(text.as_bytes()).ok()?;
-    drop(file);
-    std::fs::rename(&temp, root.join(format!("{pid}.json"))).ok()
+    super::state_file::write_process(home, &root, pid, text.as_bytes(), clock().1, || {
+        if let Some(parent) = root.parent() {
+            std::fs::create_dir_all(parent).ok()?;
+        }
+        match std::fs::DirBuilder::new().mode(0o700).create(&root) {
+            Ok(()) => {}
+            Err(_) if root.is_dir() => {}
+            Err(_) => return None,
+        }
+        let (temp, mut file) = mktemp(&root, b".agy-", 8, "")?;
+        file.write_all(text.as_bytes()).ok()?;
+        drop(file);
+        std::fs::rename(&temp, root.join(format!("{pid}.json"))).ok()
+    })
 }

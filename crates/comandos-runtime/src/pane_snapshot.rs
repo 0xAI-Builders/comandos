@@ -513,11 +513,39 @@ impl PaneInspector {
             .home
             .join(".claude/hooks/native-processes")
             .join(format!("{pid}.json"));
-        match fs::metadata(&path) {
-            Ok(m) if m.len() <= 16384 => {}
-            _ => return empty,
-        }
-        let Some((Value::Object(data), touched)) = load_json(&path)? else {
+        let access = comandos_store::domains::caller::CallerAccess::open(&self.home, "processes")
+            .map_err(|_| Unsure)?;
+        let parsed = if matches!(
+            access.mode(),
+            comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed
+        ) {
+            let Some(db) = access.db() else {
+                return Err(Unsure);
+            };
+            use rusqlite::OptionalExtension;
+            let raw = db
+                .query_row(
+                    "SELECT body FROM native_processes WHERE pid=?1",
+                    [pid],
+                    |r| r.get::<_, Vec<u8>>(0),
+                )
+                .optional()
+                .map_err(|_| Unsure)?;
+            let Some(raw) = raw.filter(|b| b.len() <= 16384) else {
+                return empty;
+            };
+            match String::from_utf8(raw) {
+                Ok(text) => loads_text(&text)?,
+                Err(_) => None,
+            }
+        } else {
+            match fs::metadata(&path) {
+                Ok(m) if m.len() <= 16384 => {}
+                _ => return empty,
+            }
+            load_json(&path)?
+        };
+        let Some((Value::Object(data), touched)) = parsed else {
             return empty;
         };
         let get = |k: &str| data.get(k).cloned().unwrap_or(Value::Null);

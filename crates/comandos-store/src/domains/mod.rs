@@ -1,4 +1,5 @@
 //! Acceso por dominio sin cambiar consumidores ni modos en producción.
+pub mod caller;
 pub mod catalog;
 mod document_dir;
 mod layout;

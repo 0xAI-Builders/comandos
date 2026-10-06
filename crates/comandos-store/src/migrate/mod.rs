@@ -7,7 +7,9 @@ pub use move_db::{
     DbLocation, Marker, MoveEstimate, MoveSpec, demote_db, estimate, estimate_at_home, move_db,
     move_estimate, resolve_configured, resolve_db, spec_for,
 };
+pub mod drill;
 pub mod journal;
+pub mod lifecycle;
 mod sources;
 #[cfg(test)]
 mod tests;

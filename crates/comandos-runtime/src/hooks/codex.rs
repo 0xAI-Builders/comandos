@@ -24,7 +24,7 @@ pub fn run(args: &[String]) -> i32 {
         first_of(v, &["last-assistant-message"], Some(""))
     });
     let state = codex_state_file(&cwd);
-    if state.is_file() && recent_codex_done(&state, clock().0) {
+    if recent_codex_done(&state, clock().0) {
         return 0;
     }
     // thread-id/turn-id: el mismo turno avisado por hook y por notify es UN evento N1.

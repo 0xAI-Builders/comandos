@@ -148,6 +148,19 @@ pub fn set_mode(conn: &Connection, name: &str, mode: Mode, by: &str, now_ms: i64
         ));
     }
     let _lock = path.as_deref().map(mode_lock).transpose()?;
+    set_mode_locked(conn, name, mode, by, now_ms)
+}
+
+// El llamador conserva el candado de modo y ha validado el acceso.
+pub(crate) fn set_mode_locked(
+    conn: &Connection,
+    name: &str,
+    mode: Mode,
+    by: &str,
+    now_ms: i64,
+) -> Result<()> {
+    check_domain(name)?;
+    let path = connection_path(conn);
     let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
     // El guardia se sincroniza antes de confirmar: un corte o fallo deja bloqueo conservador.
     if mode == Mode::Sealed

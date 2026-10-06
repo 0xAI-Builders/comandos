@@ -42,6 +42,16 @@ fn read_json(path: &Path) -> Value {
         .filter(Value::is_object)
         .unwrap_or_else(|| json!({}))
 }
+fn read_size(path: &Path) -> Value {
+    crate::config::read_bytes(path)
+        .ok()
+        .flatten()
+        .filter(|b| b.len() <= MAX_BYTES)
+        .and_then(|b| comandos_core::json::parse_slice(&b).ok())
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({}))
+}
+
 fn resolve(path: &Path) -> Option<PathBuf> {
     fn resolve_missing(path: &Path, depth: usize) -> Option<PathBuf> {
         if depth > 64 {
@@ -125,7 +135,7 @@ pub fn mcp_size(home: &Path, name: &str, spec: &Value, at: f64) -> Value {
     let Some(path) = size_path(home, name) else {
         return unknown();
     };
-    let value = read_json(&path);
+    let value = read_size(&path);
     let measured = &value["measuredAt"];
     let age = at - measured.as_f64().unwrap_or(f64::NAN);
     if value["basis"] != "tool-definitions"
@@ -251,20 +261,50 @@ pub async fn record_mcp_size_with_clock<F, Fut, C>(
     ) else {
         return;
     };
-    let Some(dir) = path.parent() else {
+    let Some(dir) = path.parent() else { return };
+    // La admisión posee un flock bloqueante: fuera del hilo async para que
+    // una medida que espera el mismo guardia no bloquee el contador en curso.
+    let caller_home = home.to_path_buf();
+    let Ok(Ok(access)) = tokio::task::spawn_blocking(move || {
+        comandos_store::domains::caller::CallerAccess::open(&caller_home, "extensions")
+    })
+    .await
+    else {
         return;
     };
-    if private_dir(dir).is_err() {
-        return;
-    }
-    let Ok(lock) = lock_file(&path.with_extension("json.lock")) else {
+    let lock = if access.mode() == comandos_store::unified::Mode::Sealed {
+        None
+    } else {
+        if private_dir(dir).is_err() {
+            return;
+        }
+        let Ok(lock) = lock_file(&path.with_extension("json.lock")) else {
+            return;
+        };
+        if !acquire_lock(&lock, tokio::time::Instant::now() + Duration::from_secs(8)).await {
+            return;
+        }
+        Some(lock)
+    };
+    let Some((_, doc_name)) = crate::config::state_document(&path) else {
         return;
     };
-    if !acquire_lock(&lock, tokio::time::Instant::now() + Duration::from_secs(8)).await {
-        return;
-    }
-    if !mcp_size(home, name, spec, clock())["tokens"].is_null()
-        && read_json(&path)["content"] == content
+    let old = access
+        .read_document(&doc_name, &path)
+        .ok()
+        .flatten()
+        .filter(|b| b.len() <= MAX_BYTES)
+        .and_then(|b| comandos_core::json::parse_slice(&b).ok())
+        .unwrap_or_else(|| json!({}));
+    // Bajo el flock original, la medida idéntica y vigente evita volver a contar.
+    let age = clock() - old["measuredAt"].as_f64().unwrap_or(f64::NAN);
+    if old["content"] == content
+        && old["configuration"] == configuration
+        && old["basis"] == "tool-definitions"
+        && old["tokenizer"] == TOKENIZER
+        && integer(&old["tokens"], true)
+        && integer(&old["measuredAt"], false)
+        && (0.0..86400.0).contains(&age)
     {
         return;
     }
@@ -273,7 +313,22 @@ pub async fn record_mcp_size_with_clock<F, Fut, C>(
         return;
     };
     let data = json!({"tokens":count,"tokenizer":TOKENIZER,"basis":"tool-definitions","configuration":configuration,"content":content,"measuredAt":clock().floor() as i64});
-    let _ = write_atomic(&path, &data);
+    let bytes = data.to_string().into_bytes();
+    let _ = access.write(
+        || Ok(write_atomic(&path, &data)?),
+        |db, origin| {
+            comandos_store::unified::doc_put(
+                db,
+                &doc_name,
+                "extensions",
+                &bytes,
+                origin,
+                (clock() * 1000.0) as i64,
+            )
+            .map(|_| ())
+        },
+    );
+    drop(lock);
 }
 /// Best-effort complete lists retain at most 64 KiB of cursor contents and
 /// 1024 cursor entries, including the expected continuation and cycle history.
