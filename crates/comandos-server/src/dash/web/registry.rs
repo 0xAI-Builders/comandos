@@ -212,7 +212,24 @@ pub struct Resolved {
     hashes: Arc<Mutex<BTreeMap<String, (FileStamp, String)>>>,
 }
 
+include!(concat!(env!("OUT_DIR"), "/web_components.rs"));
+
 impl Resolved {
+    /// Metadata belongs to this binary, not a runtime compiler path.
+    /// Original source hashes still admit gradual replacement conservatively.
+    pub fn embedded(repo: Option<PathBuf>) -> Self {
+        let entries = EMBEDDED_COMPONENTS
+            .iter()
+            .filter_map(|text| serde_json::from_str::<Value>(text).ok())
+            .filter_map(|value| entry_from_json(&value))
+            .collect();
+        Self {
+            entries,
+            repo,
+            sources: BTreeMap::new(),
+            hashes: Arc::default(),
+        }
+    }
     pub fn from_repo(entries: Vec<Entry>, repo: &Path) -> Self {
         Self {
             entries,

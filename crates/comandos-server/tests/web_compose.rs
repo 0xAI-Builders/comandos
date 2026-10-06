@@ -335,3 +335,55 @@ fn nested_vendor_scripts_match_exact_path_and_restore_original_on_dependency_fai
         Entry::script("x", "dash/vendor/other.js", &sha(vendor), &[], &[]).cut(original);
     assert_eq!(different, original);
 }
+
+#[test]
+fn embedded_metadata_survives_missing_checkout_and_preserves_source_admission() {
+    use comandos_server::dash::{self, web::WebState};
+    let dir =
+        std::env::temp_dir().join(format!("comandos-embedded-registry-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut cfg = dash::parse_args(&[], &dir, None).unwrap();
+    cfg.repo_root = Some(dir.join("absent-checkout"));
+    let web = WebState::new(&cfg);
+    let registry = &web.registry;
+    let metadata = Resolved::from_components_dir(
+        None,
+        &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../comandos-web/components"),
+    );
+    assert!(!registry.entries().is_empty());
+    assert_eq!(registry.entries(), metadata.entries());
+    let entry = registry
+        .entries()
+        .iter()
+        .find(|entry| entry.id == "quick-terminal")
+        .unwrap();
+    assert_eq!(registry.source_hash(entry), None);
+    let c = compose(
+        PAGE.as_bytes(),
+        registry,
+        &sel(&["quick-terminal"]),
+        false,
+        &Manifest::test(),
+        "n1",
+    );
+    assert!(c.active.is_empty());
+    assert_eq!(c.states["quick-terminal"], ComponentState::MissingSource);
+    let source = include_bytes!("../../../dash/quick-terminal.js");
+    std::fs::create_dir_all(dir.join("absent-checkout/dash")).unwrap();
+    std::fs::write(dir.join("absent-checkout/dash/quick-terminal.js"), source).unwrap();
+    let c = compose(
+        PAGE.as_bytes(),
+        registry,
+        &sel(&["quick-terminal"]),
+        false,
+        &Manifest::test(),
+        "n1",
+    );
+    assert_eq!(c.active, vec!["quick-terminal"]);
+    assert!(
+        !String::from_utf8(c.html)
+            .unwrap()
+            .contains("/quick-terminal.js?v=2")
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}

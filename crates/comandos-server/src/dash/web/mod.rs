@@ -67,10 +67,7 @@ pub struct WebState {
 
 impl WebState {
     pub fn new(cfg: &DashConfig) -> Self {
-        let registry = Resolved::from_components_dir(
-            cfg.repo_root.clone(),
-            &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crates/comandos-web/components"),
-        );
+        let registry = Resolved::embedded(cfg.repo_root.clone());
         let manifest = Manifest::load(&cfg.web_dir).unwrap_or_else(|_| Manifest::default());
         let selection_path = cfg.home.join(".claude/hooks/comandos-web.json");
         Self {
