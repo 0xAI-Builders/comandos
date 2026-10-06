@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex};
 /// depende de comandos-server). La prueba `mime_table_matches_statics_mime_for`
 /// de `xtask/tests/fixtures.rs` lee `statics.rs` y exige que sigan iguales.
 pub const MIME_TABLE: &[(&[&str], &str)] = &[
-    (&["html"], "text/html"),
+    (&["html", "htm"], "text/html"),
     (&["js", "mjs"], "text/javascript"),
     (&["css"], "text/css"),
     (&["json", "map"], "application/json"),
