@@ -208,11 +208,90 @@ fn destination_units(source: &str, entities: bool) -> Vec<u16> {
     units
 }
 fn normalize_units(units: Vec<u16>) -> String {
+    let mut value = String::new();
+    // mdurl's protocol whitelist is case-sensitive. Punycode preserves basic
+    // code points and permits lone surrogates, unlike WHATWG/UTS46 validation.
+    let start = if units.starts_with(&[104, 116, 116, 112, 115, 58, 47, 47]) {
+        Some(8)
+    } else if units.starts_with(&[104, 116, 116, 112, 58, 47, 47]) {
+        Some(7)
+    } else {
+        None
+    };
+    if let Some(start) = start {
+        let end = units[start..]
+            .iter()
+            .position(|u| [47, 63, 35].contains(u))
+            .map_or(units.len(), |n| start + n);
+        let host_start = units[start..end]
+            .iter()
+            .rposition(|u| *u == 64)
+            .map_or(start, |n| start + n + 1);
+        // mdurl ends the hostname at these characters, then accepts only
+        // labels whose ASCII spelling is basic hostname punctuation. An
+        // invalid label moves its suffix back into the path before Punycode.
+        let host_limit = units[host_start..end]
+            .iter()
+            .position(|u| u8::try_from(*u).is_ok_and(|b| b"%/?;#'{}|\\^`<>\" \r\n\t".contains(&b)))
+            .map_or(end, |n| host_start + n);
+        let mut host_end = host_limit;
+        if let Some(colon) = units[host_start..host_limit].iter().rposition(|u| *u == 58)
+            && units[host_start + colon + 1..host_limit]
+                .iter()
+                .all(|u| (48..=57).contains(u))
+        {
+            host_end = host_start + colon;
+        }
+        let mut label_start = host_start;
+        for label in units[host_start..host_end].split(|u| *u == 46) {
+            let basic = |u: &u16| {
+                u8::try_from(*u).is_ok_and(|b| b.is_ascii_alphanumeric() || b"+_-".contains(&b))
+            };
+            if label.len() > 63 || label.iter().any(|u| *u < 128 && !basic(u)) {
+                host_end = label_start + label.iter().take(63).take_while(|u| basic(u)).count();
+                break;
+            }
+            label_start += label.len() + 1;
+        }
+        if units[host_start..host_end].iter().any(|u| *u > 127)
+            && let Some(host) = ascii_host(units[host_start..host_end].iter().copied())
+        {
+            value.push_str(&String::from_utf16_lossy(&units[..host_start]));
+            value.push_str(&host);
+            value.push_str(&String::from_utf16_lossy(&units[host_end..]));
+            return value;
+        }
+    }
     String::from_utf16_lossy(&units)
 }
-pub(super) fn transport_destination(source: &str) -> Cow<'_, str> {
-    if source.is_ascii() {
+pub(super) fn unicode_destination(source: &str) -> Cow<'_, str> {
+    let Some((scheme, rest)) = source.split_once("://") else {
+        return Cow::Borrowed(source);
+    };
+    if !matches!(scheme, "http" | "https") {
+        return Cow::Borrowed(source);
+    }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let host = authority
+        .rsplit('@')
+        .next()
+        .unwrap_or(authority)
+        .split(':')
+        .next()
+        .unwrap_or(authority);
+    if host.is_ascii() {
+        return Cow::Borrowed(source);
+    }
+    let normalized = normalize_units(source.encode_utf16().collect());
+    if normalized == source {
         Cow::Borrowed(source)
+    } else {
+        Cow::Owned(normalized)
+    }
+}
+pub(super) fn transport_destination(source: &str) -> Cow<'_, str> {
+    if !source.contains(MARK) {
+        unicode_destination(source)
     } else {
         Cow::Owned(normalize_units(destination_units(source, false)))
     }
@@ -230,4 +309,127 @@ pub(super) fn parsed_destination(source: &str, kind: LinkType) -> Option<String>
         source,
         !matches!(kind, LinkType::Autolink | LinkType::Email),
     )))
+}
+// RFC 3492 bootstring used by the original punycode.js. Checked arithmetic
+// makes very large labels fail closed; no regex or global mutable cache.
+pub(super) fn ascii_host(units: impl IntoIterator<Item = u16>) -> Option<String> {
+    let points = char::decode_utf16(units)
+        .map(|c| {
+            c.map(u32::from)
+                .unwrap_or_else(|e| u32::from(e.unpaired_surrogate()))
+        })
+        .collect::<Vec<_>>();
+    let mut result = String::new();
+    for (i, label) in points
+        .split(|n| [46, 0x3002, 0xff0e, 0xff61].contains(n))
+        .enumerate()
+    {
+        if i > 0 {
+            result.push('.');
+        }
+        if label.iter().all(|n| *n < 128) {
+            for &n in label {
+                result.push(char::from_u32(n)?);
+            }
+        } else {
+            result.push_str("xn--");
+            result.push_str(&punycode(label)?);
+        }
+    }
+    Some(result)
+}
+fn punycode(input: &[u32]) -> Option<String> {
+    let mut out = String::new();
+    for &cp in input.iter().filter(|&&cp| cp < 128) {
+        out.push(char::from_u32(cp)?);
+    }
+    let basic = out.len() as u64;
+    let mut handled = basic;
+    if basic > 0 {
+        out.push('-');
+    }
+    let mut n = 128u64;
+    let mut delta = 0u64;
+    let mut bias = 72u64;
+    while handled < input.len() as u64 {
+        let m = u64::from(*input.iter().filter(|&&cp| u64::from(cp) >= n).min()?);
+        delta = delta.checked_add((m - n).checked_mul(handled + 1)?)?;
+        n = m;
+        for &cp in input {
+            let cp = u64::from(cp);
+            if cp < n {
+                delta = delta.checked_add(1)?;
+            }
+            if cp == n {
+                let mut q = delta;
+                let mut k = 36;
+                loop {
+                    let threshold = if k <= bias { 1 } else { (k - bias).min(26) };
+                    if q < threshold {
+                        break;
+                    }
+                    out.push(digit(threshold + (q - threshold) % (36 - threshold))?);
+                    q = (q - threshold) / (36 - threshold);
+                    k += 36;
+                }
+                out.push(digit(q)?);
+                let mut d = if handled == basic {
+                    delta / 700
+                } else {
+                    delta / 2
+                };
+                d += d / (handled + 1);
+                let mut k = 0;
+                while d > 455 {
+                    d /= 35;
+                    k += 36;
+                }
+                bias = k + 36 * d / (d + 38);
+                delta = 0;
+                handled += 1;
+            }
+        }
+        delta = delta.checked_add(1)?;
+        n += 1;
+    }
+    Some(out)
+}
+fn digit(d: u64) -> Option<char> {
+    let ascii = if d < 26 {
+        b'a' + d as u8
+    } else if d < 36 {
+        b'0' + (d - 26) as u8
+    } else {
+        return None;
+    };
+    Some(char::from(ascii))
+}
+
+// Restore only real anchor attributes produced by this renderer. Literal raw
+// HTML is escaped before sanitizing; quotes and angle brackets inside attribute
+// values are escaped too. No replacement runs over text or decoded glyphs.
+pub(super) fn restore_href_attributes(html: &str) -> Cow<'_, str> {
+    if !html.contains("data-news-href=") {
+        return Cow::Borrowed(html);
+    }
+    let mut result = String::with_capacity(html.len());
+    let mut at = 0;
+    while let Some(start) = html[at..].find("<a ").map(|n| at + n) {
+        result.push_str(&html[at..start]);
+        let mut end = start + 3;
+        let mut quoted = false;
+        while end < html.len() {
+            match html.as_bytes()[end] {
+                b'"' => quoted = !quoted,
+                b'>' if !quoted => break,
+                _ => {}
+            }
+            end += 1;
+        }
+        let tag = &html[start..end];
+        result.push_str(&tag.replace(" data-news-href=\"", " href=\""));
+        at = end;
+    }
+    result.push_str(&html[at..]);
+    Cow::Owned(result)
 }

@@ -1,0 +1,29 @@
+{
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+  "markdownit": "function",
+  "purify": "3.4.16",
+  "cases": [
+    {
+      "id": "legacy-247",
+      "text": "https://example.org/a\udc00\udc00 end",
+      "original": "<p><a href=\"https://example.org/a%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a\udc00\udc00</a> end</p>\n",
+      "candidate": "<p><a href=\"https://example.org/a%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a\udc00\udc00</a> end</p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/a%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a\udc00\udc00</a> end</p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/a%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a\udc00\udc00</a> end</p>\n"
+    },
+    {
+      "id": "legacy-248",
+      "text": "<b>https://example.org/a\udc00\udc00 end</b>",
+      "original": "<p>&lt;b&gt;<a href=\"https://example.org/a%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a\udc00\udc00</a> end&lt;/b&gt;</p>\n",
+      "candidate": "<p>&lt;b&gt;<a href=\"https://example.org/a%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a\udc00\udc00</a> end&lt;/b&gt;</p>\n",
+      "code": 200,
+      "originalDOM": "<p>&lt;b&gt;<a href=\"https://example.org/a%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a\udc00\udc00</a> end&lt;/b&gt;</p>\n",
+      "candidateDOM": "<p>&lt;b&gt;<a href=\"https://example.org/a%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a\udc00\udc00</a> end&lt;/b&gt;</p>\n"
+    }
+  ],
+  "machine": "mac-nueva",
+  "evidence": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/mac-nueva-browser/b8-uri-real-calibration-extra-2/result.json",
+  "evidence_sha256": "ab0753d76090f780865af9abe9a5e5303bb17d49a2f64d7aff3d5d7ab4943eba",
+  "original_source_sha256": "54024241c4f88930671a069b1b84f2aa39752702716b2ac906b1929bc2ccf25b"
+}

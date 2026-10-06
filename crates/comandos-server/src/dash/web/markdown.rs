@@ -31,10 +31,23 @@ fn host(url: &str) -> String {
         })
         .unwrap_or_default()
 }
-fn anchor(url: &str, title: &str) -> String {
+fn anchor(url: &str, title: &str, generated_hrefs: &mut HashSet<String>) -> String {
     let url = normalized_href(url);
+    let authority = url
+        .split_once("://")
+        .map(|(_, rest)| rest.split(['/', '?', '#']).next().unwrap_or(rest))
+        .unwrap_or_default();
+    let attribute = if !(authority.contains("xn--") || authority.contains('%'))
+        || url::Url::parse(&url).is_ok()
+    {
+        "href"
+    } else {
+        generated_hrefs.insert(url.to_string());
+        "data-news-href"
+    };
     format!(
-        "<a href=\"{}\"{} target=\"_blank\" rel=\"noopener noreferrer nofollow\">",
+        "<a {}=\"{}\"{} target=\"_blank\" rel=\"noopener noreferrer nofollow\">",
+        attribute,
         esc(&url),
         if title.is_empty() {
             String::new()
@@ -49,7 +62,7 @@ fn normalized_href(href: &str) -> Cow<'_, str> {
     // are Unicode data, never evidence of the UTF-16 transport codec.
     let href = idna_href(href);
     if href.is_ascii() {
-        return Cow::Owned(href);
+        return href;
     }
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let extra = href.bytes().filter(|byte| !byte.is_ascii()).count() * 2;
@@ -67,46 +80,8 @@ fn normalized_href(href: &str) -> Cow<'_, str> {
 }
 // markdown-it normalizes an international hostname without rewriting the
 // spelling of the scheme, port, userinfo or path.
-fn idna_href(href: &str) -> String {
-    let Some((scheme, rest)) = href.split_once("://") else {
-        return href.into();
-    };
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
-    let host_port = authority.rsplit('@').next().unwrap_or(authority);
-    let host = host_port.split(':').next().unwrap_or(host_port);
-    if host.is_ascii() {
-        return href.into();
-    }
-    // The original normalizer's protocol whitelist is case-sensitive. Its
-    // uppercase HTTP spelling percent-encodes Unicode rather than applying
-    // IDNA; keep the same bytes while the sanitizer still enforces HTTP(S).
-    let ascii = if !matches!(scheme, "http" | "https") {
-        host.as_bytes()
-            .iter()
-            .map(|byte| {
-                if byte.is_ascii() {
-                    char::from(*byte).to_string()
-                } else {
-                    format!("%{byte:02X}")
-                }
-            })
-            .collect::<String>()
-    } else {
-        let Some(ascii) = url::Url::parse(href)
-            .ok()
-            .and_then(|u| u.host_str().map(str::to_string))
-        else {
-            return href.into();
-        };
-        ascii
-    };
-    let start = scheme.len() + 3 + authority.len() - host_port.len();
-    format!(
-        "{}{}{}",
-        href.get(..start).unwrap_or_default(),
-        ascii,
-        href.get(start + host.len()..).unwrap_or_default()
-    )
+fn idna_href(href: &str) -> Cow<'_, str> {
+    uri::unicode_destination(href)
 }
 
 struct HtmlText {
@@ -339,7 +314,7 @@ fn autolinks<'a>(
                 .map(move |link| start + link.start()..start + link.end())
         })
 }
-fn linkified(text: &str) -> String {
+fn linkified(text: &str, generated_hrefs: &mut HashSet<String>) -> String {
     let mut finder = LinkFinder::new();
     finder.kinds(&[LinkKind::Url]).url_must_have_scheme(true);
     let mut out = String::new();
@@ -375,7 +350,7 @@ fn linkified(text: &str) -> String {
         out.push_str(&esc(text.get(at..link.start).unwrap_or_default()));
         // Bare destinations still originate in source, before entities.
         let href = uri::transport_destination(&href);
-        out.push_str(&anchor(&href, ""));
+        out.push_str(&anchor(&href, "", generated_hrefs));
         out.push_str(&esc(visible));
         out.push_str("</a>");
         at = link.start + visible.len();
@@ -482,6 +457,7 @@ pub fn render(text: &str, _profile: Profile) -> String {
     let source = &prepared.source;
     let mut events = Vec::new();
     let mut links: Vec<(String, String)> = Vec::new();
+    let mut generated_hrefs = HashSet::new();
     let mut code = 0usize;
     let mut skip = 0usize;
     let mut strikes = Vec::new();
@@ -590,7 +566,9 @@ pub fn render(text: &str, _profile: Profile) -> String {
                     if image {
                         events.push(Event::Text("!".into()));
                     }
-                    events.push(Event::Html(anchor(&dest_url, &title).into()));
+                    events.push(Event::Html(
+                        anchor(&dest_url, &title, &mut generated_hrefs).into(),
+                    ));
                     links.push((dest_url.to_string(), String::new()));
                 } else {
                     events.push(Event::Text(prepared.original(range).into()));
@@ -634,7 +612,7 @@ pub fn render(text: &str, _profile: Profile) -> String {
                 if code > 0 || !links.is_empty() {
                     events.push(Event::Text(t.into()));
                 } else {
-                    let rendered = linkified(&t);
+                    let rendered = linkified(&t, &mut generated_hrefs);
                     events.push(Event::Html(rendered.into()));
                 }
             }
@@ -648,12 +626,16 @@ pub fn render(text: &str, _profile: Profile) -> String {
             Event::Html(t) => {
                 events.push(Event::Start(Tag::Paragraph));
                 events.push(Event::Html(
-                    linkified(&prepared.text_token(t.trim_end_matches('\n'), range)).into(),
+                    linkified(
+                        &prepared.text_token(t.trim_end_matches('\n'), range),
+                        &mut generated_hrefs,
+                    )
+                    .into(),
                 ));
                 events.push(Event::End(TagEnd::Paragraph));
             }
             Event::InlineHtml(t) => events.push(Event::Html(
-                linkified(&prepared.text_token(&t, range)).into(),
+                linkified(&prepared.text_token(&t, range), &mut generated_hrefs).into(),
             )),
             Event::Start(Tag::Strikethrough) => events.push(Event::Html("<s>".into())),
             Event::End(TagEnd::Strikethrough) => events.push(Event::Html("</s>".into())),
@@ -703,15 +685,35 @@ pub fn render(text: &str, _profile: Profile) -> String {
     let attrs = ["href", "target", "rel", "class", "title"]
         .into_iter()
         .collect();
-    ammonia::Builder::default()
+    let clean = ammonia::Builder::default()
         .tags(tags)
-        .tag_attributes(HashMap::new())
+        // Only our generated anchors can supply this internal attribute: raw
+        // HTML has already become text. Enforce the same HTTP(S) policy before
+        // restoring its structural name after Ammonia's tree sanitization.
+        .tag_attributes(
+            [("a", ["data-news-href"].into_iter().collect())]
+                .into_iter()
+                .collect(),
+        )
+        .attribute_filter(move |element, attribute, value| {
+            if attribute == "data-news-href"
+                && (element != "a"
+                    || !http_url(value)
+                    || value.chars().any(char::is_control)
+                    || !generated_hrefs.contains(value))
+            {
+                None
+            } else {
+                Some(Cow::Borrowed(value))
+            }
+        })
         .generic_attributes(attrs)
         .url_schemes(["http", "https"].into_iter().collect())
         .url_relative(ammonia::UrlRelative::Deny)
         .link_rel(None)
         .clean(&raw)
-        .to_string()
+        .to_string();
+    uri::restore_href_attributes(&clean).into_owned()
 }
 /// Scoped browser-string decoder; other POST domains retain their existing JSON policy.
 pub fn parse_request(raw: &[u8]) -> Option<serde_json::Value> {

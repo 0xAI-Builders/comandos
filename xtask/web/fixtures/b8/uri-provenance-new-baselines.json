@@ -1,0 +1,457 @@
+{
+  "original": "54024241c4f88930671a069b1b84f2aa39752702716b2ac906b1929bc2ccf25b",
+  "cases": [
+    {
+      "text": "[x](https://example.org/&#xe000;&#xf0000;)",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[nested [label]](https://example.org/&#xe000;&#xf0000; \"title\")",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "text": "[code `]([`](https://example.org/&#xe000;&#xf0000;)",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://example.org/&#xe000;&#xf0000;",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[ref]\n\n[ref]: <https://example.org/&#xe000;&#xf0000;> 'title'",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "text": "| x |\n|---|\n|[x](https://example.org/&#xe000;&#xf0000;)|",
+      "baseline": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>"
+    },
+    {
+      "text": "[x](https://example.org/&#xf0000;)",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[nested [label]](https://example.org/&#xf0000; \"title\")",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "text": "[code `]([`](https://example.org/&#xf0000;)",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://example.org/&#xf0000;",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[ref]\n\n[ref]: <https://example.org/&#xf0000;> 'title'",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "text": "| x |\n|---|\n|[x](https://example.org/&#xf0000;)|",
+      "baseline": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>"
+    },
+    {
+      "text": "[x](https://example.org/&#xe000;\ud800)",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[nested [label]](https://example.org/&#xe000;\ud800 \"title\")",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "text": "[code `]([`](https://example.org/&#xe000;\ud800)",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://example.org/&#xe000;\ud800",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[ref]\n\n[ref]: <https://example.org/&#xe000;\ud800> 'title'",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "text": "| x |\n|---|\n|[x](https://example.org/&#xe000;\ud800)|",
+      "baseline": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>"
+    },
+    {
+      "text": "[x](https://example.org/\ud800&#xe000;&#xf0000;)",
+      "baseline": "<p><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[nested [label]](https://example.org/\ud800&#xe000;&#xf0000; \"title\")",
+      "baseline": "<p><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "text": "[code `]([`](https://example.org/\ud800&#xe000;&#xf0000;)",
+      "baseline": "<p><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://example.org/\ud800&#xe000;&#xf0000;",
+      "baseline": "<p><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[ref]\n\n[ref]: <https://example.org/\ud800&#xe000;&#xf0000;> 'title'",
+      "baseline": "<p><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "text": "| x |\n|---|\n|[x](https://example.org/\ud800&#xe000;&#xf0000;)|",
+      "baseline": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>"
+    },
+    {
+      "text": "[x](https://example.org/&#xe000;)",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[nested [label]](https://example.org/&#xe000; \"title\")",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "text": "[code `]([`](https://example.org/&#xe000;)",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://example.org/&#xe000;",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[ref]\n\n[ref]: <https://example.org/&#xe000;> 'title'",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "text": "| x |\n|---|\n|[x](https://example.org/&#xe000;)|",
+      "baseline": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>"
+    },
+    {
+      "text": "[x](https://example.org/&#xd800;)",
+      "baseline": "<p><a href=\"https://example.org/&amp;#xd800;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[nested [label]](https://example.org/&#xd800; \"title\")",
+      "baseline": "<p><a href=\"https://example.org/&amp;#xd800;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "text": "[code `]([`](https://example.org/&#xd800;)",
+      "baseline": "<p><a href=\"https://example.org/&amp;#xd800;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://example.org/&#xd800;",
+      "baseline": "<p><a href=\"https://example.org/&amp;#xd800;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[ref]\n\n[ref]: <https://example.org/&#xd800;> 'title'",
+      "baseline": "<p><a href=\"https://example.org/&amp;#xd800;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "text": "| x |\n|---|\n|[x](https://example.org/&#xd800;)|",
+      "baseline": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/&amp;#xd800;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>"
+    },
+    {
+      "text": "[x](https://example.org/&#55296;)",
+      "baseline": "<p><a href=\"https://example.org/&amp;#55296;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[nested [label]](https://example.org/&#55296; \"title\")",
+      "baseline": "<p><a href=\"https://example.org/&amp;#55296;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "text": "[code `]([`](https://example.org/&#55296;)",
+      "baseline": "<p><a href=\"https://example.org/&amp;#55296;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://example.org/&#55296;",
+      "baseline": "<p><a href=\"https://example.org/&amp;#55296;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[ref]\n\n[ref]: <https://example.org/&#55296;> 'title'",
+      "baseline": "<p><a href=\"https://example.org/&amp;#55296;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "text": "| x |\n|---|\n|[x](https://example.org/&#55296;)|",
+      "baseline": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/&amp;#55296;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>"
+    },
+    {
+      "text": "[x](https://example.org/&#x110000;)",
+      "baseline": "<p><a href=\"https://example.org/&amp;#x110000;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[nested [label]](https://example.org/&#x110000; \"title\")",
+      "baseline": "<p><a href=\"https://example.org/&amp;#x110000;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "text": "[code `]([`](https://example.org/&#x110000;)",
+      "baseline": "<p><a href=\"https://example.org/&amp;#x110000;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://example.org/&#x110000;",
+      "baseline": "<p><a href=\"https://example.org/&amp;#x110000;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[ref]\n\n[ref]: <https://example.org/&#x110000;> 'title'",
+      "baseline": "<p><a href=\"https://example.org/&amp;#x110000;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "text": "| x |\n|---|\n|[x](https://example.org/&#x110000;)|",
+      "baseline": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/&amp;#x110000;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>"
+    },
+    {
+      "text": "[x](https://example.org/&#xe000;&#xe000;&#xf0000;)",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[nested [label]](https://example.org/&#xe000;&#xe000;&#xf0000; \"title\")",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "text": "[code `]([`](https://example.org/&#xe000;&#xe000;&#xf0000;)",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://example.org/&#xe000;&#xe000;&#xf0000;",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[ref]\n\n[ref]: <https://example.org/&#xe000;&#xe000;&#xf0000;> 'title'",
+      "baseline": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "text": "| x |\n|---|\n|[x](https://example.org/&#xe000;&#xe000;&#xf0000;)|",
+      "baseline": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>"
+    },
+    {
+      "text": "[x](https://a\ud800.example/path)",
+      "baseline": "<p><a href=\"https://xn--a-rc4g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://a\ud800.example/path",
+      "baseline": "<p><a href=\"https://xn--a-rc4g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "<https://a\ud800.example/path>",
+      "baseline": "<p><a href=\"https://xn--a-rc4g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example/path</a></p>\n"
+    },
+    {
+      "text": "[x](HTTPS://a\ud800.example/path)",
+      "baseline": "<p><a href=\"HTTPS://a%EF%BF%BD.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x](https://user@a\ud800.example:8080/path)",
+      "baseline": "<p><a href=\"https://user@xn--a-rc4g.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x](https://a\udc00.example/path)",
+      "baseline": "<p><a href=\"https://xn--a-9z5g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://a\udc00.example/path",
+      "baseline": "<p><a href=\"https://xn--a-9z5g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "<https://a\udc00.example/path>",
+      "baseline": "<p><a href=\"https://xn--a-9z5g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\udc00.example/path</a></p>\n"
+    },
+    {
+      "text": "[x](HTTPS://a\udc00.example/path)",
+      "baseline": "<p><a href=\"HTTPS://a%EF%BF%BD.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x](https://user@a\udc00.example:8080/path)",
+      "baseline": "<p><a href=\"https://user@xn--a-9z5g.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x](https://a.example/path)",
+      "baseline": "<p><a href=\"https://xn--a-so7g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://a.example/path",
+      "baseline": "<p><a href=\"https://xn--a-so7g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "<https://a.example/path>",
+      "baseline": "<p><a href=\"https://xn--a-so7g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a.example/path</a></p>\n"
+    },
+    {
+      "text": "[x](HTTPS://a.example/path)",
+      "baseline": "<p><a href=\"HTTPS://a%EE%80%80.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x](https://user@a.example:8080/path)",
+      "baseline": "<p><a href=\"https://user@xn--a-so7g.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x](https://a󰀀.example/path)",
+      "baseline": "<p><a href=\"https://xn--a-so7gp7960g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://a󰀀.example/path",
+      "baseline": "<p><a href=\"https://xn--a-so7gp7960g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "<https://a󰀀.example/path>",
+      "baseline": "<p><a href=\"https://xn--a-so7gp7960g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a󰀀.example/path</a></p>\n"
+    },
+    {
+      "text": "[x](HTTPS://a󰀀.example/path)",
+      "baseline": "<p><a href=\"HTTPS://a%EE%80%80%F3%B0%80%80.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x](https://user@a󰀀.example:8080/path)",
+      "baseline": "<p><a href=\"https://user@xn--a-so7gp7960g.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x](https://a&#xe000;&#xf0000;.example/path)",
+      "baseline": "<p><a href=\"https://xn--a-so7gp7960g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://a&#xe000;&#xf0000;.example/path",
+      "baseline": "<p><a href=\"https://xn--a-so7gp7960g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "<https://a&#xe000;&#xf0000;.example/path>",
+      "baseline": "<p><a href=\"https://a&amp;#xe000;&amp;#xf0000;.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a&amp;#xe000;&amp;#xf0000;.example/path</a></p>\n"
+    },
+    {
+      "text": "[x](HTTPS://a&#xe000;&#xf0000;.example/path)",
+      "baseline": "<p><a href=\"HTTPS://a%EE%80%80%F3%B0%80%80.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x](https://user@a&#xe000;&#xf0000;.example:8080/path)",
+      "baseline": "<p><a href=\"https://user@xn--a-so7gp7960g.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x](https://a\ud800&#xe000;.example/path)",
+      "baseline": "<p><a href=\"https://xn--a-rc4gy8r.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x][ref]\n\n[ref]: https://a\ud800&#xe000;.example/path",
+      "baseline": "<p><a href=\"https://xn--a-rc4gy8r.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "<https://a\ud800&#xe000;.example/path>",
+      "baseline": "<p><a href=\"https://a%EF%BF%BD&amp;#xe000;.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800&amp;#xe000;.example/path</a></p>\n"
+    },
+    {
+      "text": "[x](HTTPS://a\ud800&#xe000;.example/path)",
+      "baseline": "<p><a href=\"HTTPS://a%EF%BF%BD%EE%80%80.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[x](https://user@a\ud800&#xe000;.example:8080/path)",
+      "baseline": "<p><a href=\"https://user@xn--a-rc4gy8r.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "<a data-news-href=\"javascript:alert(1)\" href=\"https://a\ud800.example\">x</a>",
+      "baseline": "<p>&lt;a data-news-href=\"javascript:alert(1)\" href=\"<a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\"&gt;x&lt;/a&gt;</p>\n"
+    },
+    {
+      "text": "<a data-news-href=\"https://a\ud800.example\" onerror=\"x\">x</a>",
+      "baseline": "<p>&lt;a data-news-href=\"<a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\" onerror=\"x\"&gt;x&lt;/a&gt;</p>\n"
+    },
+    {
+      "text": "`<a data-news-href=\"https://a\ud800.example\">x</a>`",
+      "baseline": "<p><code>&lt;a data-news-href=\"https://a\ud800.example\"&gt;x&lt;/a&gt;</code></p>\n"
+    },
+    {
+      "text": "```html\n<a data-news-href=\"https://a\ud800.example\" onload=\"x\">x</a>\n```",
+      "baseline": "<pre><code class=\"language-html\">&lt;a data-news-href=\"https://a\ud800.example\" onload=\"x\"&gt;x&lt;/a&gt;\n</code></pre>\n"
+    },
+    {
+      "text": "&lt;a data-news-href=&quot;https://a\ud800.example&quot; onload=&quot;x&quot;&gt;x&lt;/a&gt;",
+      "baseline": "<p>&lt;a data-news-href=\"<a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\" onload=\"x\"&gt;x&lt;/a&gt;</p>\n"
+    },
+    {
+      "text": "[x](https://a\ud800.example \"title data-news-href=\\\"javascript:alert(1)\\\" > <a href=x>\")",
+      "baseline": "<p><a href=\"https://xn--a-rc4g.example\" title=\"title data-news-href=&quot;javascript:alert(1)&quot; > <a href=x>\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "[data-news-href=\"https://a\ud800.example\"](https://a\ud800.example)",
+      "baseline": "<p><a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">data-news-href=\"https://a\ud800.example\"</a></p>\n"
+    },
+    {
+      "text": "` data-news-href=\"https://a\ud800.example\"`",
+      "baseline": "<p><code> data-news-href=\"https://a\ud800.example\"</code></p>\n"
+    },
+    {
+      "text": "[x](javascript:alert(1) \"data-news-href=\"https://a\ud800.example\"\")",
+      "baseline": "<p>[x](javascript:alert(1) \"data-news-href=\"<a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\"\")</p>\n"
+    },
+    {
+      "text": "prefix https://example.org/\udc00\udc00 end",
+      "baseline": ""
+    },
+    {
+      "text": "<b>https://example.org/\udc00\udc00 end</b>",
+      "baseline": ""
+    },
+    {
+      "text": "[x](https://example.org/\udc00\udc00)",
+      "baseline": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "`https://example.org/\udc00\udc00`",
+      "baseline": ""
+    },
+    {
+      "text": "[https://example.org/\udc00\udc00](https://example.org/ok)",
+      "baseline": ""
+    },
+    {
+      "text": "prefix https://example.org/\udc00\udfff end",
+      "baseline": ""
+    },
+    {
+      "text": "<b>https://example.org/\udc00\udfff end</b>",
+      "baseline": ""
+    },
+    {
+      "text": "[x](https://example.org/\udc00\udfff)",
+      "baseline": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "`https://example.org/\udc00\udfff`",
+      "baseline": ""
+    },
+    {
+      "text": "[https://example.org/\udc00\udfff](https://example.org/ok)",
+      "baseline": ""
+    },
+    {
+      "text": "prefix https://example.org/\udfff\udc00 end",
+      "baseline": ""
+    },
+    {
+      "text": "<b>https://example.org/\udfff\udc00 end</b>",
+      "baseline": ""
+    },
+    {
+      "text": "[x](https://example.org/\udfff\udc00)",
+      "baseline": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "`https://example.org/\udfff\udc00`",
+      "baseline": ""
+    },
+    {
+      "text": "[https://example.org/\udfff\udc00](https://example.org/ok)",
+      "baseline": ""
+    },
+    {
+      "text": "prefix https://example.org/\udfff\udfff end",
+      "baseline": ""
+    },
+    {
+      "text": "<b>https://example.org/\udfff\udfff end</b>",
+      "baseline": ""
+    },
+    {
+      "text": "[x](https://example.org/\udfff\udfff)",
+      "baseline": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "text": "`https://example.org/\udfff\udfff`",
+      "baseline": ""
+    },
+    {
+      "text": "[https://example.org/\udfff\udfff](https://example.org/ok)",
+      "baseline": ""
+    }
+  ]
+}
