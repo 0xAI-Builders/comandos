@@ -231,6 +231,10 @@ fn flags_default_off_and_parse_explicit_replay() {
     assert_eq!(c.term, TermMode::Native);
     assert_eq!(c.webterm_compat, [4780, 4779]);
     assert!(c.shadow_readonly && c.no_usage_effects);
+    assert!(
+        !c.usage_effects,
+        "la sombra no inicia los efectos del carril de uso"
+    );
     assert!(dash::parse_args(&["--term=invalid".into()], &home.root, None).is_err());
 }
 

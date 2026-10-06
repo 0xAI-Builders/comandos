@@ -19,7 +19,16 @@ pub struct Program {
     pub prefix: Vec<OsString>,
     pub env: Vec<(OsString, OsString)>,
     pub env_remove: Vec<OsString>,
+    /// `env_clear` antes de `env`: el hijo solo ve `env` (pruebas confinadas;
+    /// en producción siempre `false`, el entorno del proceso como el Python).
+    pub env_clear: bool,
 }
+
+/// Variables del frente que ningún hijo hereda: el ajuste de malloc del
+/// drop-in de `cc-dash` es solo del frente. Un `tmux` que arranca el servidor
+/// (o `systemd-run --scope … tmux new-session`) se lo pasaría a cada pane,
+/// agente y terminal.
+pub const CHILD_ENV_REMOVE: &[&str] = &[comandos_core::malloc_tuning::GLIBC_TUNABLES_ENV];
 
 impl Program {
     /// Hereda el entorno del proceso, como `subprocess.run`.
@@ -29,7 +38,28 @@ impl Program {
             prefix: Vec::new(),
             env: Vec::new(),
             env_remove: Vec::new(),
+            env_clear: false,
         }
+    }
+
+    /// La orden con el prefijo y el entorno del programa, sin las variables de
+    /// `CHILD_ENV_REMOVE`. Todo hijo del frente sale de aquí.
+    pub fn command(&self) -> tokio::process::Command {
+        let mut cmd = tokio::process::Command::new(&self.path);
+        cmd.args(&self.prefix);
+        if self.env_clear {
+            cmd.env_clear();
+        }
+        for name in CHILD_ENV_REMOVE {
+            cmd.env_remove(name);
+        }
+        for name in &self.env_remove {
+            cmd.env_remove(name);
+        }
+        for (name, value) in &self.env {
+            cmd.env(name, value);
+        }
+        cmd
     }
 }
 
@@ -48,7 +78,8 @@ pub enum RunError {
     Decode,
 }
 
-fn universal(bytes: Vec<u8>) -> Result<String, RunError> {
+/// `text=True`: UTF-8 estricto con saltos universales.
+pub(crate) fn universal(bytes: Vec<u8>) -> Result<String, RunError> {
     let text = String::from_utf8(bytes).map_err(|_| RunError::Decode)?;
     Ok(text.replace("\r\n", "\n").replace('\r', "\n"))
 }
@@ -58,19 +89,35 @@ pub async fn run_program(
     args: &[&str],
     timeout: Duration,
 ) -> Result<Output, RunError> {
-    let mut cmd = tokio::process::Command::new(&program.path);
-    cmd.args(&program.prefix)
-        .args(args)
+    run(program, args, None, timeout).await
+}
+
+/// `run_program` con `cwd=…`: un directorio que no existe (o no se puede
+/// abrir) da `Spawn`, como el `FileNotFoundError` de `subprocess.run`.
+pub async fn run_program_in(
+    program: &Program,
+    args: &[&str],
+    cwd: &Path,
+    timeout: Duration,
+) -> Result<Output, RunError> {
+    run(program, args, Some(cwd), timeout).await
+}
+
+async fn run(
+    program: &Program,
+    args: &[&str],
+    cwd: Option<&Path>,
+    timeout: Duration,
+) -> Result<Output, RunError> {
+    let mut cmd = program.command();
+    if let Some(cwd) = cwd {
+        cmd.current_dir(cwd);
+    }
+    cmd.args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    for name in &program.env_remove {
-        cmd.env_remove(name);
-    }
-    for (name, value) in &program.env {
-        cmd.env(name, value);
-    }
     let child = cmd.spawn().map_err(RunError::Spawn)?;
     // Al vencer, el futuro se suelta con el hijo dentro y kill_on_drop lo mata.
     let out = tokio::time::timeout(timeout, child.wait_with_output())
@@ -213,5 +260,26 @@ impl TmuxError {
             TmuxError::Timeout { .. } => HandlerError::Timeout,
             _ => HandlerError::Failure,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_child_drops_the_front_malloc_tuning() {
+        let mut program = Program::named("tmux");
+        program.env.push(("TMUX_TMPDIR".into(), "/x".into()));
+        let cmd = program.command();
+        let envs: Vec<_> = cmd.as_std().get_envs().collect();
+        assert!(
+            envs.contains(&(std::ffi::OsStr::new("GLIBC_TUNABLES"), None)),
+            "{envs:?}"
+        );
+        assert!(envs.contains(&(
+            std::ffi::OsStr::new("TMUX_TMPDIR"),
+            Some(std::ffi::OsStr::new("/x"))
+        )));
     }
 }

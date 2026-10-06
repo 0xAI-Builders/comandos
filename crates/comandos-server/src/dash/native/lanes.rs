@@ -26,6 +26,10 @@ pub trait LaneBackend: Sized + Send + 'static {
     fn admit(&self) -> Result<(), Refusal>;
 }
 
+/// Espera antes de reintentar un trabajo que declinó por un fallo pasajero
+/// de la puerta (`with_retry`).
+pub const TRANSIENT_RETRY: std::time::Duration = std::time::Duration::from_millis(250);
+
 pub struct Lane<B: LaneBackend> {
     path: PathBuf,
     enabled: AtomicBool,
@@ -177,6 +181,26 @@ impl<B: LaneBackend> Lane<B> {
         }
     }
 
+    /// Como `with`, para los trabajos que van después del punto de declinar
+    /// (D1 de GET `/usage/state`): un `Decline` con el carril aún encendido es
+    /// pasajero (la puerta dio `SQLITE_BUSY`, el trabajo no empezó y no dejó
+    /// efectos) y se reintenta una vez pasados `TRANSIENT_RETRY`. Lo que
+    /// devuelva el reintento (o el primer intento con el carril apagado) es la
+    /// respuesta: el que llama convierte ese `Decline` en 500.
+    pub async fn with_retry<T, F>(&self, job: F) -> Result<T, Fault>
+    where
+        F: FnOnce(&mut B) -> T + Clone + Send + 'static,
+        T: Send + 'static,
+    {
+        match self.with(job.clone()).await {
+            Err(Fault::Decline) if self.enabled() => {
+                tokio::time::sleep(TRANSIENT_RETRY).await;
+                self.with(job).await
+            }
+            other => other,
+        }
+    }
+
     /// Apagado ordenado: sin línea en stderr; lo que llegue tarde se reenvía.
     pub async fn shutdown(&self) {
         self.enabled.store(false, Ordering::Release);
@@ -194,7 +218,7 @@ pub struct UsageBackend {
 }
 
 impl LaneBackend for UsageBackend {
-    const ROUTES: &'static str = "GET /pomodoro, GET /sovereignty y GET /state";
+    const ROUTES: &'static str = "GET /pomodoro, GET /sovereignty, GET /state, GET /analytics/week, GET /accounts, GET /extension-usage y GET /usage/state";
 
     fn open(path: &Path) -> Result<Self, Refusal> {
         // Sondeo sin PRAGMAs: `open_usage_db_at` pide `journal_mode=wal`, y una
@@ -218,6 +242,34 @@ impl LaneBackend for UsageBackend {
         backend.admit()?;
         usage::ensure_schema(&backend.conn).map_err(|e| Refusal::Unopened(e.to_string()))?;
         Ok(backend)
+    }
+
+    fn admit(&self) -> Result<(), Refusal> {
+        gate(&self.conn)
+    }
+}
+
+/// La misma base en un segundo carril para la importación de uso de GET
+/// `/usage/state` (D2): escribe durante segundos y en el carril de uso pararía
+/// las rutas que leen. Misma puerta y misma apertura que `UsageBackend`; la base
+/// está en WAL y las lecturas del otro carril no esperan.
+pub struct UsageImportBackend {
+    pub conn: Connection,
+}
+
+impl UsageImportBackend {
+    /// La puerta de esquema, para comprobarla antes de cada lote de escritura
+    /// dentro de una importación larga.
+    pub fn admits(conn: &Connection) -> bool {
+        gate(conn).is_ok()
+    }
+}
+
+impl LaneBackend for UsageImportBackend {
+    const ROUTES: &'static str = "GET /usage/state y su importación de uso";
+
+    fn open(path: &Path) -> Result<Self, Refusal> {
+        UsageBackend::open(path).map(|b| Self { conn: b.conn })
     }
 
     fn admit(&self) -> Result<(), Refusal> {
@@ -363,6 +415,62 @@ mod tests {
         assert!(matches!(lane.with(|_| 4).await, Err(Fault::Decline)));
         assert_eq!(lane.refusals(), 1);
         lane.shutdown().await;
+    }
+
+    /// Doble de puerta para `with_retry`: el guion de `admit`, en orden.
+    struct Busy {
+        calls: Arc<Counter>,
+        script: Vec<Result<(), Refusal>>,
+    }
+
+    static BUSY_SCRIPT: Mutex<Vec<Result<(), Refusal>>> = Mutex::new(Vec::new());
+    static BUSY_CALLS: std::sync::OnceLock<Arc<Counter>> = std::sync::OnceLock::new();
+
+    impl LaneBackend for Busy {
+        const ROUTES: &'static str = "GET /prueba";
+
+        fn open(_: &Path) -> Result<Self, Refusal> {
+            Ok(Self {
+                calls: BUSY_CALLS.get_or_init(Arc::default).clone(),
+                script: BUSY_SCRIPT
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .clone(),
+            })
+        }
+
+        fn admit(&self) -> Result<(), Refusal> {
+            let at = self.calls.fetch_add(1, Ordering::AcqRel);
+            self.script.get(at).cloned().unwrap_or(Ok(()))
+        }
+    }
+
+    #[tokio::test]
+    async fn with_retry_retries_a_transient_decline_once() {
+        let busy = || Err(Refusal::Unopened("database is locked".into()));
+        *BUSY_SCRIPT.lock().unwrap() = vec![busy(), Ok(()), busy(), busy()];
+        let lane = Lane::<Busy>::new(PathBuf::from("/no-existe/reintento.sqlite"));
+        let runs = Arc::new(Counter::new(0));
+        let job = {
+            let runs = runs.clone();
+            move |_: &mut Busy| runs.fetch_add(1, Ordering::AcqRel) + 1
+        };
+        // Un `SQLITE_BUSY` en la puerta: el reintento corre el trabajo una vez.
+        let started = std::time::Instant::now();
+        assert!(matches!(lane.with_retry(job.clone()).await, Ok(1)));
+        assert!(started.elapsed() >= TRANSIENT_RETRY);
+        // Dos seguidos: el segundo es la respuesta (`Decline`) y no hubo efectos.
+        assert!(matches!(
+            lane.with_retry(job.clone()).await,
+            Err(Fault::Decline)
+        ));
+        assert_eq!(runs.load(Ordering::Acquire), 1);
+        assert!(lane.enabled(), "un fallo pasajero no apaga el carril");
+        // Carril apagado: sin reintento ni espera.
+        lane.shutdown().await;
+        let started = std::time::Instant::now();
+        assert!(matches!(lane.with_retry(job).await, Err(Fault::Decline)));
+        assert!(started.elapsed() < TRANSIENT_RETRY);
     }
 
     /// Doble de apertura: la primera falla como `SQLITE_BUSY`, las demás abren.

@@ -17,6 +17,13 @@ struct Fixture {
 }
 impl Fixture {
     async fn start(cap: usize, handler_token: bool) -> Self {
+        Self::start_with_token(cap, handler_token, None).await
+    }
+    async fn start_with_token(
+        cap: usize,
+        handler_token: bool,
+        token_file: Option<std::path::PathBuf>,
+    ) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let (stop, rx) = watch::channel(false);
@@ -51,12 +58,16 @@ impl Fixture {
                 }
             }));
         }
+        if token_file.is_some() {
+            route = route.with_admission(Arc::new(|_| WsAdmission::DashboardTokenOrigin));
+        }
         let mut limits = comandos_server::dash::limits();
         limits.connections = 2;
         limits.websockets = cap;
         limits.shutdown_grace = Duration::from_millis(200);
         let config = Config {
             token: b"fixture-token".to_vec(),
+            token_file,
             asset_exists: Arc::new(|_| false),
             handler: Arc::new(|_| {
                 Box::pin(async { Ok(Reply::bytes(StatusCode::NOT_FOUND, "text/plain", "missing")) })
@@ -318,6 +329,7 @@ async fn shutdown_aborts_and_drops_noncooperative_websocket_handler() {
     limits.shutdown_grace = Duration::from_millis(100);
     let config = Config {
         token: b"fixture-token".to_vec(),
+        token_file: None,
         asset_exists: Arc::new(|_| false),
         handler: Arc::new(|_| {
             Box::pin(async { Ok(Reply::bytes(StatusCode::NOT_FOUND, "text/plain", "missing")) })
@@ -343,4 +355,51 @@ async fn shutdown_aborts_and_drops_noncooperative_websocket_handler() {
     timeout(WAIT, task).await.unwrap().unwrap().unwrap();
     assert!(dropped.load(Ordering::SeqCst));
     drop(client);
+}
+
+#[tokio::test]
+async fn websocket_uses_rotated_dashboard_token_without_restart() {
+    let dir = std::env::temp_dir().join(format!(
+        "comandos-ws-token-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("dash-token");
+    std::fs::write(&path, b"fixture-token").unwrap();
+    let fixture = Fixture::start_with_token(2, false, Some(path.clone())).await;
+    let mut request = fixture.request("/echo");
+    request.headers_mut().insert(
+        "Origin",
+        format!("http://{}", fixture.address).parse().unwrap(),
+    );
+    request
+        .headers_mut()
+        .insert("X-Comandos-Token", "fixture-token".parse().unwrap());
+    let (mut old, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    old.close(None).await.unwrap();
+    drop(old);
+    std::fs::write(&path, b"rotated-fixture-token-longer").unwrap();
+    let mut request = fixture.request("/echo");
+    request.headers_mut().insert(
+        "Origin",
+        format!("http://{}", fixture.address).parse().unwrap(),
+    );
+    request.headers_mut().insert(
+        "X-Comandos-Token",
+        "rotated-fixture-token-longer".parse().unwrap(),
+    );
+    let result = tokio_tungstenite::connect_async(request).await;
+    assert!(
+        result.is_ok(),
+        "token nuevo rechazado después de rotación: {result:?}"
+    );
+    let (mut current, _) = result.unwrap();
+    current.close(None).await.unwrap();
+    drop(current);
+    fixture.stop().await;
+    std::fs::remove_dir_all(dir).unwrap();
 }

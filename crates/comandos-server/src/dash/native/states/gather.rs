@@ -26,17 +26,16 @@ use comandos_runtime::{
     },
     hooks::py::float_value,
     model_catalog::catalog_paths,
+    pane_observe::{acp_state, claude_conversation, codex_conversation, grok_home_for},
     pane_snapshot::{PaneInspector, PaneRef},
     providers::{self, RegistryCache},
-    tui_state::{GrokMetadataCache, Obs, StateTracker, TranscriptCache, screen_state},
+    tui_state::{GrokMetadataCache, StateTracker, TranscriptCache, screen_state},
 };
 use rusqlite::{Connection, types::ValueRef};
 use serde_json::{Map, Value};
 use std::{
     collections::{HashMap, HashSet},
-    ffi::OsStr,
     fs,
-    os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
     process::Stdio,
     sync::{Arc, Mutex, MutexGuard},
@@ -49,13 +48,15 @@ const SSH_TIMEOUT: Duration = Duration::from_secs(3);
 const IDENTITY_FORMAT: &str = "#{socket_path}\t#{pid}\t#{session_id}\t#{session_name}\t#{pane_id}\t#{pane_pid}\t#{pane_current_command}\t#{pane_current_path}";
 
 /// Lo que el trabajo bloqueante conserva entre cómputos (D1, D5): las cachés
-/// del Python que el frente tiene propias. Se toma sin `await` dentro.
+/// del Python que el frente tiene propias. Se toma sin `await` dentro. El
+/// registro de proveedores no vive aquí: es `Native::registry`, la caché
+/// única (B9) que comparten `/state`, `/usage/state` y `/providers`, con su
+/// propio candado corto (este se sostiene todo el escaneo de `/proc`).
 pub struct Blocking {
     records: RecordCache,
     transcripts: TranscriptCache,
     grok: GrokMetadataCache,
     accounts: AccountCache,
-    registry: RegistryCache,
 }
 
 impl Default for Blocking {
@@ -66,7 +67,6 @@ impl Default for Blocking {
             transcripts: TranscriptCache::new(128, 2_097_152),
             grok: GrokMetadataCache::new(128),
             accounts: AccountCache::default(),
-            registry: RegistryCache::default(),
         }
     }
 }
@@ -96,7 +96,7 @@ struct Scan {
 /// `MOTOR_RESULT` desde su espejo `H/motor-results.json` (D1): ausente → `{}`;
 /// ilegible, incierto, no objeto o con un valor que no es objeto → declinar
 /// (la memoria del Python es desconocida).
-fn motor_results(hooks: &Path) -> Result<Map<String, Value>, StateFault> {
+pub(crate) fn motor_results(hooks: &Path) -> Result<Map<String, Value>, StateFault> {
     match files::read_json_strict(&hooks.join("motor-results.json")) {
         Strict::Missing => Ok(Map::new()),
         Strict::Value(Value::Object(map)) if map.values().all(Value::is_object) => Ok(map),
@@ -104,13 +104,14 @@ fn motor_results(hooks: &Path) -> Result<Map<String, Value>, StateFault> {
     }
 }
 
-/// Paso 2: registro, agentes, `/proc`, inspector, registros de estado,
-/// resultados del motor, tiers y pestañas.
-fn scan(
+/// `load_provider_registry()` con la caché única del frente (`Native::registry`,
+/// B9 de la 2e). Su candado solo cubre la carga (lectura, validación e
+/// hidratación): nadie lo sostiene mientras escanea `/proc`, así que un
+/// `/usage/state` o un `/providers` no esperan al escaneo de `/state`.
+pub(crate) fn load_registry(
     opts: &NativeOptions,
-    panes: Vec<PaneRow>,
-    shared: &Mutex<Blocking>,
-) -> Result<Scan, StateFault> {
+    cache: &Mutex<RegistryCache>,
+) -> Result<Value, StateFault> {
     let repo = opts.repo_root.as_ref().ok_or(StateFault::Decline)?;
     let catalog = catalog_paths(
         &opts.home,
@@ -118,21 +119,27 @@ fn scan(
         opts.codex_home.as_deref(),
         opts.grok_home.as_deref(),
     );
-    let mut cache = lock(shared);
-    let registry = cache
-        .registry
+    lock(cache)
         .load(&repo.join("config/providers.json"), &catalog)
-        .map_err(unsure)?;
+        .map_err(unsure)
+}
+
+/// Agentes de `/proc` emparejados con los panes: `agent_pane_maps(procs,
+/// panes, ownership)` (6103) tras `agent_procs()` (5992), y los agentes
+/// externos de `read_states`. Lee `AGENTS` de `cc-notify.conf`.
+pub(crate) fn agent_maps(
+    opts: &NativeOptions,
+    registry: &Value,
+    panes: &[PaneRow],
+) -> Result<(AgentMaps, HashSet<(String, String)>), StateFault> {
     let conf = providers::read_conf(&opts.hooks.join("cc-notify.conf")).map_err(unsure)?;
     let conf_agents = conf
         .iter()
         .find(|(k, _)| k == "AGENTS")
         .map(|(_, v)| v.as_str());
-    let agents = providers::agent_set(conf_agents, &registry);
-    let aliases = providers::process_aliases(&agents, &registry);
+    let agents = providers::agent_set(conf_agents, registry);
+    let aliases = providers::process_aliases(&agents, registry);
     let proc_root = opts.proc_root.as_path();
-    // `PaneInspector()` se crea al empezar `read_states`.
-    let inspector = PaneInspector::new(&opts.home, proc_root).map_err(unsure)?;
     let procs = agent_procs(proc_root, &aliases).map_err(unsure)?;
     // Padres y `cmdline` de `/proc` con cachés locales de este cómputo.
     let mut parents: HashMap<i64, i64> = HashMap::new();
@@ -141,10 +148,27 @@ fn scan(
             .entry(pid)
             .or_insert_with(|| agent_procs::parent_pid(proc_root, pid))
     };
-    let owners = process_owners(&procs, &panes, &mut parent);
+    let owners = process_owners(&procs, panes, &mut parent);
     let mut cmdline = |pid: i64| agent_procs::proc_cmdline(proc_root, pid);
-    let maps = agent_pane_maps(&procs, &panes, &owners, &mut cmdline, &mut parent);
+    let maps = agent_pane_maps(&procs, panes, &owners, &mut cmdline, &mut parent);
     let external = external_agents(&procs, &owners, &mut parent);
+    Ok((maps, external))
+}
+
+/// Paso 2: registro, agentes, `/proc`, inspector, registros de estado,
+/// resultados del motor, tiers y pestañas.
+fn scan(
+    opts: &NativeOptions,
+    panes: Vec<PaneRow>,
+    shared: &Mutex<Blocking>,
+    registry: &Mutex<RegistryCache>,
+) -> Result<Scan, StateFault> {
+    // El registro primero, con su candado corto y antes del de las cachés.
+    let registry = load_registry(opts, registry)?;
+    let mut cache = lock(shared);
+    // `PaneInspector()` se crea al empezar `read_states`.
+    let inspector = PaneInspector::new(&opts.home, opts.proc_root.as_path()).map_err(unsure)?;
+    let (maps, external) = agent_maps(opts, &registry, &panes)?;
     let tabs = light::tab_labels(&opts.hooks)?;
     let history = light::read_tab_history(&opts.hooks)?;
     let records = cache.records.scan(&opts.hooks.join("state"))?;
@@ -167,7 +191,7 @@ fn scan(
 
 /// `session_labels` (6700): etiquetas de pestañas más el historial de las
 /// sesiones vivas que no tienen etiqueta propia o la tienen igual al nombre.
-fn session_labels(
+pub(crate) fn session_labels(
     tabs: Vec<(String, String)>,
     live: &HashSet<String>,
     history: &[Map<String, Value>],
@@ -216,7 +240,8 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
     }
     // Con un fallo del contexto recordado (R3) el cómputo acabaría declinando
     // si alguna tarjeta lo necesita: se reenvía antes del trabajo de tmux y
-    // `/proc`, para que un heredado lento o caído no lo repita en cada sondeo.
+    // `/proc`, para que una guardia que el frente no reproduce (o la primera
+    // lectura de límites aún pendiente) no lo repita en cada sondeo.
     *phase = "fallo del contexto de sugerencias recordado";
     if native.states.context.failing((opts.clock)()) {
         return Err(StateFault::Decline);
@@ -237,11 +262,12 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
     // 2. Escaneo bloqueante.
     *phase = "escaneo (registro, /proc, registros de estado, motor-results, tiers, pestañas)";
     let shared = native.states.shared.clone();
+    let registry_cache = native.registry.clone();
     let scan_opts = opts.clone();
     let scanned = native
         .states
         .serial
-        .run(move || scan(&scan_opts, panes, &shared))
+        .run(move || scan(&scan_opts, panes, &shared, &registry_cache))
         .await?;
     // 3. `session_labels()`: `tmux_sessions()` sin capturar sus excepciones.
     *phase = "sesiones de tmux";
@@ -275,7 +301,7 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
         native
             .states
             .context
-            .get(opts, &native.states.serial, &registry, (opts.clock)())
+            .get(native, &registry, (opts.clock)())
             .await?
     } else {
         Arc::new(SuggestContext::default())
@@ -406,19 +432,12 @@ impl CardEffects for RealEffects<'_> {
         let program = self.opts().ssh.clone();
         let host = host.to_owned();
         async move {
-            let mut cmd = tokio::process::Command::new(&program.path);
-            cmd.args(&program.prefix)
-                .args(["-O", "check", host.as_str()])
+            let mut cmd = program.command();
+            cmd.args(["-O", "check", host.as_str()])
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .kill_on_drop(true);
-            for name in &program.env_remove {
-                cmd.env_remove(name);
-            }
-            for (name, value) in &program.env {
-                cmd.env(name, value);
-            }
             // `subprocess.run(..., timeout=3)` dentro de `try/except Exception`.
             let Ok(mut child) = cmd.spawn() else {
                 return false;
@@ -470,59 +489,6 @@ fn latest_session_config(
         out.insert(name, value);
     }
     Ok(Some(out))
-}
-
-/// `grok_metadata_for_pid` (1495): `GROK_HOME` del `environ` (o `~/.grok`),
-/// `expanduser` con el `HOME` del frente y `realpath`.
-fn grok_home_for(proc_root: &Path, home: &Path, pid: i64) -> Result<PathBuf, StateFault> {
-    let env = agent_procs::read_environ(proc_root, pid);
-    let raw = env
-        .get(b"GROK_HOME".as_slice())
-        .map(|v| String::from_utf8_lossy(v).into_owned())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| "~/.grok".to_owned());
-    let expanded = expanduser(&raw, home)?;
-    Ok(PathBuf::from(OsStr::from_bytes(&agent_procs::realpath(
-        expanded.as_bytes(),
-    ))))
-}
-
-/// `os.path.expanduser` con `HOME` = `home`; `~usuario` no se reproduce.
-fn expanduser(raw: &str, home: &Path) -> Result<String, StateFault> {
-    if raw != "~" && !raw.starts_with("~/") {
-        if raw.starts_with('~') {
-            return Err(StateFault::Decline);
-        }
-        return Ok(raw.to_owned());
-    }
-    let home = home.to_str().ok_or(StateFault::Decline)?;
-    let tail = raw.get(1..).unwrap_or("");
-    let joined = format!("{}{tail}", home.trim_end_matches('/'));
-    Ok(if joined.is_empty() {
-        "/".into()
-    } else {
-        joined
-    })
-}
-
-/// `glob.has_magic`.
-fn has_magic(text: &str) -> bool {
-    text.contains(['*', '?', '['])
-}
-
-/// `acp_state_for_pane` (1904): `{}` ante cualquier excepción; un valor
-/// verdadero que no es objeto llega a `observe_pane` y su `.get` lanza.
-fn acp_state(hooks: &Path, pane: &str) -> Result<Obs, StateFault> {
-    match files::read_json_strict(&hooks.join("acp-panes.json")) {
-        Strict::Unsure => Err(StateFault::Decline),
-        Strict::Missing | Strict::Unreadable => Ok(Map::new()),
-        Strict::Value(Value::Object(data)) => match data.get(pane).filter(|v| truthy(v)) {
-            None => Ok(Map::new()),
-            Some(Value::Object(state)) => Ok(state.clone()),
-            Some(_) => Err(StateFault::Failure),
-        },
-        Strict::Value(_) => Ok(Map::new()),
-    }
 }
 
 /// Lo que `_pane_identity` sacó de tmux.
@@ -679,78 +645,6 @@ fn gather_evidence(
     })))
 }
 
-/// El rollout raíz que tiene abierto ESTE proceso: `fd` de `/proc/<pid>/fd/*`
-/// que acaban en `<id>.jsonl`, en el orden de `read_dir`, hasta uno con modelo.
-fn codex_conversation(
-    transcripts: &mut TranscriptCache,
-    proc_root: &Path,
-    pid: i64,
-    id: &str,
-) -> Result<Obs, StateFault> {
-    let mut conversation = Map::new();
-    let suffix = format!("{id}.jsonl");
-    let Ok(listing) = fs::read_dir(proc_root.join(pid.to_string()).join("fd")) else {
-        return Ok(conversation);
-    };
-    for entry in listing.flatten() {
-        if entry.file_name().as_bytes().first() == Some(&b'.') {
-            continue;
-        }
-        let fd = entry.path();
-        let Ok(target) = fs::read_link(&fd) else {
-            continue;
-        };
-        if !target.as_os_str().as_bytes().ends_with(suffix.as_bytes()) {
-            continue;
-        }
-        let context = transcripts.read("codex", id, &fd).map_err(unsure)?;
-        if context.get("model").is_some_and(truthy) {
-            conversation = context;
-        }
-        if conversation.get("model").is_some_and(truthy) {
-            break;
-        }
-    }
-    Ok(conversation)
-}
-
-/// `glob(<config>/projects/*/<id>.jsonl)`: exactamente una → su transcript.
-fn claude_conversation(
-    transcripts: &mut TranscriptCache,
-    root: &Path,
-    id: &str,
-) -> Result<Obs, StateFault> {
-    let root_text = root.to_str().ok_or(StateFault::Decline)?;
-    // Comodines en la ruta o el id harían otro patrón; un `/` en el id, otra ruta.
-    if has_magic(root_text) || has_magic(id) || id.contains('/') {
-        return Err(StateFault::Decline);
-    }
-    let projects = root.join("projects");
-    let name = format!("{id}.jsonl");
-    let mut found = Vec::new();
-    if let Ok(listing) = fs::read_dir(&projects) {
-        for entry in listing.flatten() {
-            if entry.file_name().as_bytes().first() == Some(&b'.') {
-                continue;
-            }
-            // `_iterdir(..., dironly=True)`: `entry.is_dir()` sigue enlaces.
-            let dir = entry.path();
-            if !fs::metadata(&dir).is_ok_and(|m| m.is_dir()) {
-                continue;
-            }
-            let candidate = dir.join(&name);
-            // `_glob0`: `os.path.lexists`.
-            if fs::symlink_metadata(&candidate).is_ok() {
-                found.push(candidate);
-            }
-        }
-    }
-    match found.as_slice() {
-        [only] => transcripts.read("claude", id, only).map_err(unsure),
-        _ => Ok(Map::new()),
-    }
-}
-
 impl RealEffects<'_> {
     /// `observe_pane` dentro del `try` de `reconcile_card_config` (6884):
     /// identidad por tmux, evidencia en un hilo de bloqueo, pantalla y el
@@ -836,17 +730,6 @@ pub fn new_tracker() -> Mutex<StateTracker> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn expanduser_like_python() {
-        let home = Path::new("/home/u/");
-        assert_eq!(expanduser("~/.grok", home).unwrap(), "/home/u/.grok");
-        assert_eq!(expanduser("~", home).unwrap(), "/home/u");
-        assert_eq!(expanduser("/x/y", home).unwrap(), "/x/y");
-        assert_eq!(expanduser("rel", home).unwrap(), "rel");
-        assert_eq!(expanduser("~otro/x", home), Err(StateFault::Decline));
-        assert_eq!(expanduser("~/x", Path::new("/")).unwrap(), "/x");
-    }
 
     #[test]
     fn session_labels_fill_from_live_history() {

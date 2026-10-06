@@ -322,7 +322,10 @@ async fn model_status_declines_pending_confirmation_and_motor_result() {
         )],
     );
     let legacy = FakeLegacy::start().await;
-    let front = front(&home, legacy.port, home.options()).await;
+    let mut opts = home.options();
+    opts.cuts_off
+        .insert(comandos_server::dash::native::Cut::Ops);
+    let front = front(&home, legacy.port, opts).await;
     for target in [
         "/model/status?operationKey=s4%7C%254",
         "/model/status?operationKey=sin-registro",

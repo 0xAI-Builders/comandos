@@ -1,19 +1,22 @@
 //! H. GET /model/status (8325, `session_operation_status` 6217) sobre el
-//! journal `H/session-operations.sqlite3`. Sin registro (el `MOTOR_RESULT`
-//! vive en la memoria del Python) o con `awaiting_confirmation`
-//! (`refresh_session_confirmation` observa el proceso y escribe) se declina.
-//! `recover_abandoned` va antes, como en el Python: es idempotente, así que
-//! declinar después equivale a declinar antes.
-//!
-//! El dueño de una operación en curso es el proceso que la reclamó (el Python
-//! heredado o cc-app), nunca el frente: la recuperación pregunta por el pid
-//! guardado en la fila, y solo la marca abandonada si ese pid ya no existe.
+//! journal y MotorResults. Los casos sin fila o pendientes de confirmación
+//! pertenecen al corte Ops; con ese corte apagado se conservan sus Decline.
+//! Antes del barrido idempotente se comprueba la certeza de MotorResults.
+//! El dueño de cada operación es el proceso que la reclamó: heredado o frente.
+//! La recuperación solo la marca abandonada si ese pid ya no existe.
+//! Toda la GET vive en una tarea registrada: confirmar el journal y registrar
+//! configuración/uso se completan aunque el cliente cierre la conexión.
 use super::{Answer, Entry, Fault, Key, Native, NativeRoute, Verb, light, py, query::Query};
+use super::{
+    Cut,
+    ops::{configure, results::MotorResults},
+};
 use comandos_core::json::truthy;
 use comandos_runtime::session_operations::{self as ops, OperationStore};
 use http::StatusCode;
 use rusqlite::{Connection, OptionalExtension};
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
+use std::sync::Arc;
 
 pub const ROUTES: &[Entry] = &[Entry {
     verb: Verb::Get,
@@ -28,9 +31,22 @@ enum Status {
     Ok(Map<String, Value>),
     BadRequest(&'static str),
     Decline,
+    Missing,
+    Pending(Value),
 }
 
-pub async fn answer(native: &Native, request: &crate::Request) -> Answer {
+pub async fn answer(native: &Arc<Native>, request: &crate::Request) -> Answer {
+    let worker = Arc::clone(native);
+    let request = request.clone();
+    let job = native
+        .tasks()
+        .spawn_handle(async move { run(&worker, &request).await })
+        .map_err(|_| Fault::Error(crate::HandlerError::Failure))?;
+    job.await
+        .map_err(|_| Fault::Error(crate::HandlerError::Failure))?
+}
+
+async fn run(native: &Arc<Native>, request: &crate::Request) -> Answer {
     let query = Query::parse(&request.target)?;
     // `str((query.get(k) or [""])[0])`.
     let operation = query.first("operationKey").unwrap_or("").to_owned();
@@ -50,12 +66,49 @@ pub async fn answer(native: &Native, request: &crate::Request) -> Answer {
     if !operation_id.is_empty() && !id_ok {
         return light::error(StatusCode::BAD_REQUEST, "operationId inválido");
     }
+    let enabled = !native.options().cuts_off.contains(&Cut::Ops);
+    let results = MotorResults::shared(native.options());
+    // MotorResults debe ser legible ANTES del barrido que puede escribir.
+    let cached = if enabled {
+        let results = Arc::clone(&results);
+        Some(
+            tokio::task::spawn_blocking(move || {
+                if !results.certain() {
+                    return Err(Fault::Decline);
+                }
+                Ok(results.all())
+            })
+            .await
+            .map_err(|_| Fault::Error(crate::HandlerError::Failure))??,
+        )
+    } else {
+        None
+    };
     let (session, pane) = (session.to_owned(), pane.to_owned());
     let clock = native.options().clock_seconds.clone();
     let status = native
         .journal
         .with(move |journal| status_in(&journal.conn, &session, &pane, &operation_id, &*clock))
         .await?;
+    let status = match status {
+        Status::Missing if enabled => {
+            let all = cached.as_ref().expect("checked above");
+            let mut result = object_or_empty(all.get(&operation)).ok_or(Fault::Decline)?;
+            if result.is_empty() {
+                result = json!({"stage":"preparando cambio", "stageCode":"prepare", "ts":0})
+                    .as_object()
+                    .expect("object")
+                    .clone();
+            }
+            Status::Ok(result)
+        }
+        Status::Pending(row) if enabled => {
+            let row = configure::refresh_session_confirmation(native, row).await?;
+            result_from_record(row)
+        }
+        Status::Missing | Status::Pending(_) => Status::Decline,
+        other => other,
+    };
     match status {
         Status::Ok(mut result) => {
             result.insert("operationKey".into(), Value::String(operation));
@@ -63,7 +116,7 @@ pub async fn answer(native: &Native, request: &crate::Request) -> Answer {
             light::read_reply(&Value::Object(result))
         }
         Status::BadRequest(message) => light::error(StatusCode::BAD_REQUEST, message),
-        Status::Decline => Err(Fault::Decline),
+        Status::Decline | Status::Missing | Status::Pending(_) => Err(Fault::Decline),
     }
 }
 
@@ -72,7 +125,7 @@ pub async fn answer(native: &Native, request: &crate::Request) -> Answer {
 /// (`PermissionError`) o éxito → vivo. 0 es el propio grupo de procesos y un
 /// negativo es un grupo, igual que en el Python. Cualquier otro error haría
 /// subir una excepción en el Python (500): se reenvía sin escribir.
-fn alive(pid: i64) -> ops::Result<bool> {
+pub(crate) fn alive(pid: i64) -> ops::Result<bool> {
     use nix::{errno::Errno, sys::signal::kill, unistd::Pid};
     // Fuera de `pid_t` el Python lanza `OverflowError`: `recovery_is_certain`
     // ya lo declinó; si una fila nueva cuela entre medias, «vivo» no escribe.
@@ -89,7 +142,7 @@ fn alive(pid: i64) -> ops::Result<bool> {
 /// Antes de recuperar: ningún dueño pendiente puede salirse de lo que
 /// `os.kill` acepta como pid (un no entero da `TypeError`; fuera de `pid_t`,
 /// `OverflowError`: el Python respondería 500). Si no, se declina sin escribir.
-fn recovery_is_certain(conn: &Connection) -> Result<bool, rusqlite::Error> {
+pub(crate) fn recovery_is_certain(conn: &Connection) -> Result<bool, rusqlite::Error> {
     let unusual: Option<i64> = conn
         .query_row(
             "SELECT 1 FROM session_operations WHERE state NOT IN \
@@ -172,14 +225,18 @@ fn status_in(
         }
     }
     let Some(record) = record else {
-        return Status::Decline;
+        return Status::Missing;
     };
+    if record.get("state").and_then(Value::as_str) == Some("awaiting_confirmation") {
+        return Status::Pending(record);
+    }
+    result_from_record(record)
+}
+
+fn result_from_record(record: Value) -> Status {
     let Some(state) = record.get("state").and_then(Value::as_str) else {
         return Status::Decline;
     };
-    if state == "awaiting_confirmation" {
-        return Status::Decline;
-    }
     let (Some(id), Some(updated)) = (record.get("id"), record.get("updated")) else {
         return Status::Decline;
     };

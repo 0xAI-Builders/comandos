@@ -1,7 +1,7 @@
 //! F. GET /pomodoro (8321, `pomodoro_payload` 6528): bloque y progreso de
 //! app-state, cola de `H/focus-queue.jsonl`, ajustes de la base de uso y la
-//! ruta de sonido de los avisos. POST /pomodoro sigue en el Python: despierta
-//! su scheduler en memoria (`_POMODORO_WAKE`).
+//! ruta de sonido de los avisos. POST /pomodoro vive en `push.rs` (corte
+//! `services`, P3) y despierta el planificador de `background::pomodoro`.
 use super::{
     Answer, Entry, Fault, Key, Native, NativeRoute, Verb,
     files::{self, Strict},
@@ -93,7 +93,7 @@ pub async fn answer(native: &Native) -> Answer {
 
 /// `output[key] = json.loads(value)` con `except Exception: pass`. Un valor no
 /// textual (BLOB: `json.loads(bytes)` sí decodifica) o incierto declina.
-fn settings(rows: Vec<(String, Option<String>)>) -> Result<Map<String, Value>, Fault> {
+pub(crate) fn settings(rows: Vec<(String, Option<String>)>) -> Result<Map<String, Value>, Fault> {
     let mut out = Map::new();
     for (key, value) in rows {
         match value.as_deref().map(files::loads_strict) {

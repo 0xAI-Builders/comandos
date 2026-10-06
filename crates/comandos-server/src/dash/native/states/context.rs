@@ -1,21 +1,18 @@
 //! `_suggestion_context` (6953): `guard`, rutas seleccionables y latencia
 //! medida, recalculados cuando tienen más de 60 s (`now - at > 60`).
 //!
-//! `guard` y la latencia salen del heredado (D1): GET `/usage/guard` es
-//! exactamente `token_guard_with_forecast()` y GET `/usage/analytics?days=7`,
-//! `experiment_analytics(USAGE_DB, 7)`. Solo las respuestas que el heredado da
-//! cuando esa función lanza son el `except` del Python (`{}` / tabla vacía):
-//! el 500 y el 504 de `_guard_request` y, en la analítica, el 400 de su
-//! `except ValueError`. Cualquier otro status (401, 403, 404, 502…), heredado
-//! caído, plazo vencido o un 200 que no se puede leer como el Python (p. ej.
-//! un sustituto suelto): no se sabe qué vería el Python → declinar, y el fallo
-//! se recuerda unos segundos para no repetir la espera en cada sondeo (R3).
-//! Las rutas se calculan en Rust (`selectable_routes`).
-use super::{StateFault, serial::Serial, suggest::SuggestContext, suggest::latency_from};
-use crate::dash::native::{NativeOptions, subrequest};
-use comandos_core::json::workspace_loads;
+//! Todo se calcula en el frente (Tarea 5a de la 2e): `guard` es
+//! `token_guard_with_forecast` y la latencia, `experiment_analytics(USAGE_DB, 7)`,
+//! ambos por el carril de uso (`usage::guard`); las rutas, `selectable_routes`.
+//! La excepción del Python es su `except` (`{}` o tabla vacía). Lo que el frente
+//! no puede reproducir con certeza (error SQL, valor no decodificable, la caché
+//! de límites aún vacía, el carril apagado) declina: GET `/state` se reenvía,
+//! como con el heredado caído de la 2d, y el fallo se recuerda unos segundos
+//! para no repetir el cómputo en cada sondeo (R3).
+use super::{StateFault, serial::Serial, suggest::SuggestContext};
+use crate::dash::native::{Native, NativeOptions, usage::guard};
 use comandos_runtime::{accounts, providers};
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::{
     collections::BTreeSet,
     net::SocketAddr,
@@ -28,13 +25,16 @@ use std::{
 
 /// Vigencia del contexto (la condición del Python es `>`).
 const MAX_AGE_MS: i64 = 60_000;
-/// Plazo de cada subconsulta al heredado (R3).
-const SUBREQUEST_TIMEOUT: Duration = Duration::from_secs(2);
-/// Cuánto se recuerda un fallo del heredado: esos cómputos declinan sin
-/// volver a esperar (R3).
+/// Cuánto se recuerda un fallo: esos cómputos declinan sin volver a
+/// calcular (R3).
 const FAILURE_MEMORY_MS: i64 = 5_000;
 /// `socket.create_connection(..., timeout=0.3)` de `proxy_alive` (3697).
 const PROXY_TIMEOUT: Duration = Duration::from_millis(300);
+/// Plazo de cada consulta del contexto (guardia, que incluye la espera de la
+/// primera lectura de límites, y latencia): el de la subconsulta al heredado
+/// de la 2d (`SUBREQUEST_TIMEOUT`). Un carril de uso ocupado por otro trabajo
+/// largo no alarga GET `/state` más que antes: al vencer, declina.
+pub const QUERY_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Sin fallo recordado.
 const NO_FAILURE: i64 = i64::MIN;
@@ -69,12 +69,11 @@ impl Context {
         self.failed_at.store(now_ms, Ordering::Release);
     }
 
-    /// El contexto vigente o uno nuevo; `Err(Decline)` si el heredado no dio
-    /// una respuesta que el frente pueda reproducir.
+    /// El contexto vigente o uno nuevo; `Err(Decline)` si el frente no puede
+    /// reproducir lo que vería el Python.
     pub async fn get(
         &self,
-        opts: &NativeOptions,
-        serial: &Serial,
+        native: &Native,
         registry: &Value,
         now_ms: i64,
     ) -> Result<Arc<SuggestContext>, StateFault> {
@@ -88,76 +87,37 @@ impl Context {
             return Err(StateFault::Decline);
         }
         // Las rutas primero (locales: registro, cuentas y el sondeo de 300 ms
-        // del proxy): si fallan, no se pregunta al heredado, y el fallo se
-        // recuerda igual que el del heredado.
-        let routes = match routes(opts, serial, registry.clone()).await {
+        // del proxy): si fallan, no se lee la base ni se piden los límites.
+        let routes = match routes(native.options(), &native.states.serial, registry.clone()).await {
             Ok(routes) => routes,
             Err(fault) => {
                 self.remember_failure(now_ms);
                 return Err(fault);
             }
         };
-        let (guard, latency) = tokio::join!(
-            legacy_json(opts, "/usage/guard", false),
-            legacy_json(opts, "/usage/analytics?days=7", true),
-        );
-        let (Ok(guard), Ok(latency)) = (guard, latency) else {
+        // Cualquier fallo del carril (también un pánico del trabajo, que el
+        // `except` del Python no explica) o un plazo vencido declina: nunca un
+        // 500 que el Python no daría. El trabajo ya encolado en el carril
+        // termina solo y su resultado se descarta (no tiene efectos).
+        let Ok(Ok(guard)) =
+            tokio::time::timeout(QUERY_TIMEOUT, guard::token_guard_with_forecast(native)).await
+        else {
+            self.remember_failure(now_ms);
+            return Err(StateFault::Decline);
+        };
+        let Ok(Ok(latency)) = tokio::time::timeout(QUERY_TIMEOUT, guard::latency(native)).await
+        else {
             self.remember_failure(now_ms);
             return Err(StateFault::Decline);
         };
         let ctx = Arc::new(SuggestContext {
-            guard: guard.unwrap_or_else(|| json!({})),
+            guard: guard.unwrap_or_else(|| Value::Object(serde_json::Map::new())),
             routes,
-            latency: latency.map(|v| latency_from(&v)).unwrap_or_default(),
+            latency,
         });
         self.failed_at.store(NO_FAILURE, Ordering::Release);
         *ready = Some((now_ms, ctx.clone()));
         Ok(ctx)
-    }
-}
-
-/// `Ok(Some(valor))` con 200 y JSON legible; `Ok(None)` con la respuesta de
-/// la excepción de la función (el `except` del Python); `Err` si no hay
-/// respuesta, el 200 no se puede leer o el status no corresponde a esa
-/// excepción. `value_error`: la ruta captura `ValueError` con un 400.
-async fn legacy_json(
-    opts: &NativeOptions,
-    target: &str,
-    value_error: bool,
-) -> Result<Option<Value>, ()> {
-    match subrequest::get(opts.legacy, &opts.legacy_token, target, SUBREQUEST_TIMEOUT).await {
-        Ok((200, body)) => {
-            let text = std::str::from_utf8(&body).map_err(|_| ())?;
-            workspace_loads(text).map(Some).map_err(|_| ())
-        }
-        Ok((status, body)) if python_except(status, &body, value_error) => Ok(None),
-        Ok(_) | Err(_) => Err(()),
-    }
-}
-
-/// La respuesta del heredado cuando la función de la ruta lanza: `_fail` de
-/// `_guard_request` (`{"error": "Error interno del tablero"}` con 500,
-/// `{"error": "Tiempo de espera agotado"}` con 504, ambos excepciones que el
-/// `except Exception` de `_suggestion_context` captura) o, si la ruta lo
-/// tiene, el 400 `{"error": str(e)}` de su `except ValueError`.
-fn python_except(status: u16, body: &[u8], value_error: bool) -> bool {
-    let Some(Value::Object(map)) = std::str::from_utf8(body)
-        .ok()
-        .and_then(|text| workspace_loads(text).ok())
-    else {
-        return false;
-    };
-    let Some(Value::String(message)) = map.get("error") else {
-        return false;
-    };
-    if map.len() != 1 {
-        return false;
-    }
-    match status {
-        500 => message == "Error interno del tablero",
-        504 => message == "Tiempo de espera agotado",
-        400 => value_error,
-        _ => false,
     }
 }
 
@@ -181,10 +141,11 @@ async fn routes(
     )
     .await
     .is_ok_and(|connected| connected.is_ok());
-    let (home, cwd, search) = (
+    let (home, cwd, search, dirs) = (
         opts.home.clone(),
         opts.cwd.clone(),
         opts.search_path.clone(),
+        opts.user_bin_dirs.clone(),
     );
     serial
         .run(move || {
@@ -193,7 +154,9 @@ async fn routes(
             else {
                 return Ok(BTreeSet::new());
             };
-            let available = |name: &str| providers::which(name, search.as_deref(), &home).is_some();
+            let available = |name: &str| {
+                providers::which_in_dirs(name, search.as_deref(), &home, &dirs).is_some()
+            };
             let installed = providers::which_path("cc-model-proxy", search.as_deref()).is_some();
             let facts = providers::runtime_facts(
                 &registry,
@@ -206,35 +169,4 @@ async fn routes(
             Ok(providers::selectable_routes(&registry, &facts)?)
         })
         .await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::python_except;
-
-    #[test]
-    fn only_the_function_exception_is_the_python_except() {
-        let internal = br#"{"error": "Error interno del tablero"}"#;
-        let timeout = br#"{"error": "Tiempo de espera agotado"}"#;
-        let value = br#"{"error": "invalid literal"}"#;
-        assert!(python_except(500, internal, false));
-        assert!(python_except(504, timeout, false));
-        assert!(python_except(400, value, true));
-        // Otro status u otro cuerpo: no se sabe qué vería el Python.
-        assert!(!python_except(400, value, false));
-        assert!(!python_except(500, timeout, false));
-        assert!(!python_except(
-            500,
-            br#"{"error": "Error interno del tablero", "x": 1}"#,
-            false
-        ));
-        assert!(!python_except(401, internal, true));
-        assert!(!python_except(
-            403,
-            br#"{"error": "Host no permitido"}"#,
-            true
-        ));
-        assert!(!python_except(404, internal, true));
-        assert!(!python_except(502, b"Bad Gateway", true));
-    }
 }

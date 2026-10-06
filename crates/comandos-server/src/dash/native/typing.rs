@@ -24,7 +24,7 @@
 //!   petición declinada y otra nativa al mismo pane no se esperan entre sí.
 use super::{
     Answer, Entry, Fault, Key, Native, NativeRoute, Verb,
-    light::{data, error, load, tmux_sessions},
+    light::{data, error, tmux_sessions},
     py, reply,
     tmux::Tmux,
 };
@@ -35,7 +35,7 @@ use http::StatusCode;
 use serde_json::{Map, Value, json};
 use std::{
     collections::{HashSet, VecDeque},
-    path::{Path, PathBuf},
+    path::Path,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -179,40 +179,12 @@ pub fn retry_reply(state: &TypingState, request: &Request) -> Option<Reply> {
 
 /// `resolve_project_session` (6183) hasta saber si ALGÚN estado nombra esta
 /// sesión: si sí, el Python sigue con procesos (`agent_procs`) → se declina.
+/// El bucle de registros es el de `target::first_state_record` (una sola
+/// implementación); la resolución completa (`target::resolve_project_session`)
+/// no se usa aquí para no cambiar la ruta viva: lo hará la tarea que porte
+/// las rutas de sesión con su oráculo.
 pub fn project_session_matches(state: &Path, sess: &str) -> Result<bool, Fault> {
-    let entries = match std::fs::read_dir(state) {
-        Ok(entries) => entries,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(_) => return Err(Fault::Decline),
-    };
-    for entry in entries {
-        let entry = entry.map_err(|_| Fault::Decline)?;
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        // `glob("*.json")`: sin ocultos.
-        if name.starts_with('.') || !name.ends_with(".json") {
-            continue;
-        }
-        let path: PathBuf = entry.path();
-        // `open()` de un directorio: IsADirectoryError → `continue`.
-        if path.is_dir() {
-            continue;
-        }
-        let Some(doc) = load(&path)? else { continue };
-        // `.get` de un no-dict o `re.sub` de un no-str: excepción → 500 en el Python.
-        let Value::Object(doc) = doc else {
-            return Err(Fault::Decline);
-        };
-        let project = match doc.get("project") {
-            None => "",
-            Some(Value::String(p)) => p.as_str(),
-            Some(_) => return Err(Fault::Decline),
-        };
-        if super::py::session_name(project) == sess {
-            return Ok(true);
-        }
-    }
-    Ok(false)
+    Ok(super::target::first_state_record(state, sess)?.is_some())
 }
 
 pub async fn answer(native: &Native, request: &Request) -> Answer {

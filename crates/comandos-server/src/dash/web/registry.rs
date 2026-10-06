@@ -1,9 +1,11 @@
+use super::file_stamp::FileStamp;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -196,6 +198,7 @@ pub struct Resolved {
     entries: Vec<Entry>,
     repo: Option<PathBuf>,
     sources: BTreeMap<String, String>,
+    hashes: Arc<Mutex<BTreeMap<String, (FileStamp, String)>>>,
 }
 
 impl Resolved {
@@ -204,6 +207,7 @@ impl Resolved {
             entries,
             repo: Some(repo.to_path_buf()),
             sources: BTreeMap::new(),
+            hashes: Arc::default(),
         }
     }
 
@@ -228,6 +232,7 @@ impl Resolved {
             entries,
             repo,
             sources: BTreeMap::new(),
+            hashes: Arc::default(),
         }
     }
 
@@ -239,6 +244,7 @@ impl Resolved {
                 .iter()
                 .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
                 .collect(),
+            hashes: Arc::default(),
         }
     }
 
@@ -247,16 +253,29 @@ impl Resolved {
     }
 
     pub fn source_hash(&self, entry: &Entry) -> Option<String> {
-        let text = self.source_text(entry)?;
-        Some(sha256_hex(text.as_bytes()))
-    }
-
-    fn source_text(&self, entry: &Entry) -> Option<String> {
         if let Some(text) = self.sources.get(&entry.source) {
-            return Some(text.clone());
+            return Some(sha256_hex(text.as_bytes()));
         }
         let repo = self.repo.as_ref()?;
-        fs::read_to_string(repo.join(&entry.source)).ok()
+        let path = repo.join(&entry.source);
+        let mut hashes = self.hashes.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(stamp) = FileStamp::read(&path) else {
+            hashes.remove(&entry.source);
+            return None;
+        };
+        if let Some((cached_stamp, hash)) = hashes.get(&entry.source)
+            && *cached_stamp == stamp
+        {
+            return Some(hash.clone());
+        }
+        let text = fs::read(&path).ok()?;
+        if FileStamp::read(&path).as_ref() != Some(&stamp) {
+            hashes.remove(&entry.source);
+            return None;
+        }
+        let hash = sha256_hex(&text);
+        hashes.insert(entry.source.clone(), (stamp, hash.clone()));
+        Some(hash)
     }
 }
 

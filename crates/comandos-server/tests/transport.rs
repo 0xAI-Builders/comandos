@@ -68,6 +68,7 @@ impl Fixture {
         let config = Config {
             websocket: None,
             token: b"fixture-token".to_vec(),
+            token_file: None,
             asset_exists: Arc::new(|p| p == "/workspace.css"),
             handler,
             limits,
@@ -210,6 +211,7 @@ async fn review_stalled_reader_releases_stream_and_connection_capacity() {
             async move {
                 match receiver {
                     Some(receiver) => Ok(Reply {
+                        cache: comandos_server::ReplyCache::NoStore,
                         status: StatusCode::OK,
                         headers: http::HeaderMap::new(),
                         body: ReplyBody::Stream(receiver),
@@ -263,6 +265,7 @@ async fn review_quiet_event_stream_can_outlive_write_and_handler_timeouts() {
             let receiver = receiver.lock().unwrap().take().unwrap();
             async move {
                 Ok(Reply {
+                    cache: comandos_server::ReplyCache::NoStore,
                     status: StatusCode::OK,
                     headers: http::HeaderMap::new(),
                     body: ReplyBody::Stream(receiver),
@@ -725,6 +728,7 @@ async fn invalid_limits_and_empty_tokens_fail_before_accepting() {
             Config {
                 websocket: None,
                 token,
+                token_file: None,
                 asset_exists: Arc::new(|_| false),
                 handler: echo(),
                 limits: l,

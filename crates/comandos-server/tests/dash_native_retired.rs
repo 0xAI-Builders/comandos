@@ -12,7 +12,7 @@ const BODY: &str = r#"{"error": "El chat de CommandOS se retir\u00f3; usa la bar
 async fn retired_routes_answer_operator_410() {
     let home = TestHome::new("retired");
     let front = front(&home, dead_port(), home.options()).await;
-    assert_eq!(GET_PATHS.len() + POST_PATHS.len(), 31);
+    assert_eq!(GET_PATHS.len() + POST_PATHS.len(), 37);
     for path in GET_PATHS {
         for target in [path.to_string(), format!("{path}?x=1")] {
             let wire = get(front.port, &target).await;
@@ -26,23 +26,24 @@ async fn retired_routes_answer_operator_410() {
         let wire = request_body(front.port, "POST", path, "", "{}").await;
         assert_eq!((wire.status, wire.text().as_str()), (410, BODY), "{path}");
     }
-    // Lo que no es exactamente una ruta retirada sigue su camino.
-    assert_eq!(
-        get(front.port, "/proxy").await.status,
-        502,
-        "reenviada al heredado (muerto)"
-    );
-    assert_eq!(get(front.port, "/eventsx").await.status, 502);
+    // El residuo ya responde los sufijos desconocidos como Python.
+    let py = oracle(&home)
+        .await
+        .expect("Python requerido para el oráculo");
+    for (method, body) in [("GET", ""), ("POST", "{}")] {
+        let rust = request_body(front.port, method, "/proxy-extra", "", body).await;
+        let python = request_body(py.port, method, "/proxy-extra", "", body).await;
+        assert_eq!(
+            (rust.status, rust.text()),
+            (python.status, python.text()),
+            "{method}"
+        );
+    }
+    assert_eq!(get(front.port, "/eventsx").await.status, 410);
     assert_eq!(
         get(front.port, "/events/v2").await.status,
         200,
         "nativa del dominio B"
-    );
-    assert_eq!(
-        request_body(front.port, "POST", "/proxy", "", "{}")
-            .await
-            .status,
-        502
     );
     front.stop().await;
 }
@@ -134,23 +135,23 @@ fn collect_sources(dir: &Path, only_web: bool, sources: &mut Vec<std::path::Path
 
 /// Método equivocado: el Python contesta él mismo, así que se reenvía.
 #[tokio::test]
-async fn wrong_method_is_forwarded() {
+async fn wrong_method_uses_residual_static_or_post_preamble() {
     let home = TestHome::new("retired-method");
     let legacy = FakeLegacy::start().await;
     let front = front(&home, legacy.port, home.options()).await;
     assert_eq!(
         get(front.port, "/pause").await.status,
-        200,
+        404,
         "GET a ruta solo POST"
     );
     assert_eq!(
         request_body(front.port, "POST", "/usage/guard", "", "{}")
             .await
             .status,
-        200,
+        400,
         "POST a ruta solo GET"
     );
     let seen = legacy.requests();
-    assert_eq!(seen.len(), 2, "{seen:?}");
+    assert_eq!(seen.len(), 0, "{seen:?}");
     front.stop().await;
 }

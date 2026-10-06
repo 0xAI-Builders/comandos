@@ -82,6 +82,16 @@ fn python_lines_and_names() {
     assert_eq!(py::is_pane("12"), Some(false));
     // `\d` de Python acepta dígitos árabes: no se adivina, se declina.
     assert_eq!(py::is_pane("%١٢"), None);
+    // Con no-ASCII que no puede ser `\d` (letra, prefijo, longitud) el «no»
+    // es exacto: `re.fullmatch` da `None` también en el Python.
+    assert_eq!(py::is_pane("%é"), Some(false));
+    assert_eq!(py::is_pane("ñ"), Some(false));
+    assert_eq!(py::is_pane("%1é"), Some(false));
+    assert_eq!(py::is_pane("é%1"), Some(false));
+    assert_eq!(py::is_pane(&format!("%{}", "١".repeat(8))), Some(false));
+    // Numérico para Unicode pero no Nd (`Ⅷ`, `½`): el Python dice «no», el
+    // frente no lo distingue de un dígito y declina (lado seguro).
+    assert_eq!(py::is_pane("%Ⅷ"), None);
     // SESSION_RE es ASCII explícito: el no-ASCII es un «no» exacto.
     assert!(!py::is_session("١"));
     assert_eq!(py::take_chars("ñandú", 3), "ñan");
@@ -192,6 +202,7 @@ async fn tmux_timeout_missing_and_decode_errors() {
             prefix: vec![OsString::from("-f"), "/dev/null".into(), "--".into()],
             env: vec![],
             env_remove: vec![],
+            env_clear: false,
         },
         timeout: Duration::from_millis(300),
     };
@@ -217,6 +228,7 @@ async fn tmux_timeout_missing_and_decode_errors() {
             prefix: vec![OsString::from("a\\r\\nb\\rc\\n%.0s")],
             env: vec![],
             env_remove: vec![],
+            env_clear: false,
         },
         timeout: Duration::from_secs(5),
     };
@@ -227,6 +239,7 @@ async fn tmux_timeout_missing_and_decode_errors() {
             prefix: vec![OsString::from("\\377%.0s")],
             env: vec![],
             env_remove: vec![],
+            env_clear: false,
         },
         timeout: Duration::from_secs(5),
     };

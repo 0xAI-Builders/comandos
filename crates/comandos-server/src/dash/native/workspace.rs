@@ -4,7 +4,7 @@
 //! 6448; GET 8487, 8530, 8539; POST 8662, 8665, 8751).
 //!
 //! `workspace_sync` corre entera en el worker; la identidad de sesión (tmux)
-//! fuera. POST /workspace/close-group sigue en el Python (`close_app_tab`).
+//! fuera. POST /workspace/close-group es del corte `tabs` (`tabs.rs`, 2f-1/T2).
 //!
 //! POST /workspace/sort en modo `by` (Fase 2d) calcula `/state` con la caché
 //! del frente ANTES de su trabajo en la base (excepción 3a de los rulings: la
@@ -68,7 +68,7 @@ const fn entry(verb: Verb, key: Key, route: WorkspaceRoute) -> Entry {
     }
 }
 
-/// POST `/workspace/close-group` NO está: cierra pestañas (`close_app_tab`).
+/// POST `/workspace/close-group` está en `tabs.rs` (corte `tabs`): cierra pestañas.
 pub const ROUTES: &[Entry] = &[
     entry(Verb::Get, Key::Path("/workspace"), WorkspaceRoute::Get),
     entry(
@@ -212,6 +212,17 @@ pub fn sync(
     hooks: &Path,
     now_seconds: f64,
 ) -> Result<WorkspaceState, Fault> {
+    sync_with_reason(backend, hooks, now_seconds, "auto")
+}
+
+/// `workspace_sync(reason=…)`: `close_app_tab` pasa `"user"` (sin la puerta de
+/// fase `ready` ni la negativa a vaciar el workspace de `"auto"`).
+pub fn sync_with_reason(
+    backend: &StateBackend,
+    hooks: &Path,
+    now_seconds: f64,
+    reason: &str,
+) -> Result<WorkspaceState, Fault> {
     let store = store(&backend.conn)?;
     for _ in 0..3 {
         let current = store
@@ -236,7 +247,7 @@ pub fn sync(
             &json!(current.revision),
             &wanted,
             &request_id,
-            "auto",
+            reason,
             now_seconds,
         ) {
             Ok(saved) => return Ok(saved),

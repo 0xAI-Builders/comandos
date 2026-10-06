@@ -55,6 +55,7 @@ async fn prefs_get_lists_installed_catalog_fonts() {
         )],
         env: vec![],
         env_remove: vec![],
+        env_clear: false,
     };
     let front = front(&home, dead_port(), opts).await;
     let body = get(front.port, "/prefs").await.text();
@@ -305,6 +306,7 @@ async fn tmux_hung_times_out() {
             prefix: vec!["-f".into(), "/dev/null".into(), "--".into()],
             env: vec![],
             env_remove: vec![],
+            env_clear: false,
         },
         timeout: Duration::from_millis(300),
     };

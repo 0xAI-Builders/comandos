@@ -16,16 +16,13 @@ pub async fn handle(
         WebRoute::Index => index(state, request).await,
         WebRoute::Gate => gate(state, request).await,
         WebRoute::Ready => ready(state, request),
-        WebRoute::Status => status_with_term(
-            &super::WebState::new(&state.config),
-            state.term_control.status(),
-        ),
+        WebRoute::Status => status_with_term(&state.web, state.term_control.status()),
         WebRoute::Asset(rel) => asset(state, &rel).await,
     }
 }
 
 async fn index(state: &DashState, request: &Request) -> Result<Reply, HandlerError> {
-    let web = super::WebState::new(&state.config);
+    let web = &state.web;
     if query_value(&request.target, "web").as_deref() == Some("off") {
         return statics::serve(&state.config.dash_dir, request).await;
     }
@@ -42,13 +39,13 @@ async fn index(state: &DashState, request: &Request) -> Result<Reply, HandlerErr
         &web.registry,
         &selection,
         shadow,
-        &web.manifest,
+        &web.manifest(),
         "pending",
     );
     if preview.active.is_empty() {
         return statics::serve(&state.config.dash_dir, request).await;
     }
-    let nonce = match super::gate::global().insert() {
+    let nonce = match web.gate.insert() {
         Inserted::Nonce(k) => k,
         Inserted::Full => {
             return statics::serve(&state.config.dash_dir, request).await;
@@ -59,7 +56,7 @@ async fn index(state: &DashState, request: &Request) -> Result<Reply, HandlerErr
         &web.registry,
         &selection,
         shadow,
-        &web.manifest,
+        &web.manifest(),
         &nonce,
     );
     let mut reply = Reply::bytes(StatusCode::OK, "text/html", composed.html);
@@ -72,11 +69,11 @@ async fn index(state: &DashState, request: &Request) -> Result<Reply, HandlerErr
     Ok(reply)
 }
 
-async fn gate(_state: &DashState, request: &Request) -> Result<Reply, HandlerError> {
+async fn gate(state: &DashState, request: &Request) -> Result<Reply, HandlerError> {
     let Some(k) = query_value(&request.target, "k") else {
         return Ok(Reply::bytes(StatusCode::OK, "text/javascript", fallback()));
     };
-    let Some(mut rx) = super::gate::global().subscribe(&k) else {
+    let Some(mut rx) = state.web.gate.subscribe(&k) else {
         return Ok(Reply::bytes(StatusCode::OK, "text/javascript", fallback()));
     };
     let ready = tokio::time::timeout(Duration::from_secs(8), async move {
@@ -91,7 +88,7 @@ async fn gate(_state: &DashState, request: &Request) -> Result<Reply, HandlerErr
     })
     .await
     .unwrap_or(false);
-    super::gate::global().finish(&k);
+    state.web.gate.finish(&k);
     if ready {
         Ok(Reply::bytes(
             StatusCode::OK,
@@ -103,14 +100,14 @@ async fn gate(_state: &DashState, request: &Request) -> Result<Reply, HandlerErr
     }
 }
 
-fn ready(_state: &DashState, request: &Request) -> Result<Reply, HandlerError> {
+fn ready(state: &DashState, request: &Request) -> Result<Reply, HandlerError> {
     let k = request
         .data
         .as_ref()
         .and_then(|v| v.get("k"))
         .and_then(|v| v.as_str())
         .unwrap_or_default();
-    if !super::gate::global().mark_ready(k) {
+    if !state.web.gate.mark_ready(k) {
         return Reply::json(
             StatusCode::BAD_REQUEST,
             &serde_json::json!({"error":"nonce desconocido"}),
@@ -132,15 +129,16 @@ pub fn status_with_term(
 
 fn status_value(web: &super::WebState, term: Option<serde_json::Value>) -> serde_json::Value {
     let selection = web.selection();
+    let page = fs::read(web.dash_dir.join("index.html")).unwrap_or_default();
     let c = super::compose::compose(
-        &[],
+        &page,
         &web.registry,
         &selection,
         false,
-        &web.manifest,
+        &web.manifest(),
         "status",
     );
-    let (in_flight, gate_full) = super::gate::global().snapshot();
+    let (in_flight, gate_full) = web.gate.snapshot();
     let mut value = serde_json::json!({
         "components": super::status::states_json(&c.states),
         "active": c.active,
@@ -159,16 +157,15 @@ async fn asset(state: &DashState, rel: &str) -> Result<Reply, HandlerError> {
     if !super::assets::valid_relative(rel) {
         return dash::not_found();
     }
-    let web = super::WebState::new(&state.config);
+    let web = &state.web;
     let path = web.web_dir.join(rel);
     let bytes = tokio::fs::read(&path)
         .await
         .map_err(|_| HandlerError::Failure)?;
     let mut reply = Reply::bytes(StatusCode::OK, statics::mime_for(rel), bytes);
-    reply.headers.insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("public, max-age=31536000, immutable"),
-    );
+    if web.manifest().is_versioned(rel) {
+        reply.cache = crate::ReplyCache::Immutable;
+    }
     Ok(reply)
 }
 

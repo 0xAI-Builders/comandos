@@ -33,6 +33,7 @@ async fn profiles_confine_routes_rewrite_ws_and_hold_port() {
         cfg.shadow_readonly = true;
         cfg.term_replay_dir = Some(home.root.clone());
         let state = Arc::new(DashState {
+            web: dash::web::WebState::new(&cfg),
             config: cfg,
             asset_exists: Arc::new(|_| false),
             native: None,

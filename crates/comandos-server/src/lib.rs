@@ -68,10 +68,18 @@ pub enum ReplyBody {
         receiver: mpsc::Receiver<io::Result<Bytes>>,
     },
 }
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ReplyCache {
+    #[default]
+    NoStore,
+    /// Only versioned build artifacts opt into persistent caching.
+    Immutable,
+}
 pub struct Reply {
     pub status: StatusCode,
     pub headers: HeaderMap,
     pub body: ReplyBody,
+    pub cache: ReplyCache,
 }
 impl Reply {
     pub fn bytes(status: StatusCode, content_type: &'static str, body: impl Into<Bytes>) -> Self {
@@ -84,6 +92,7 @@ impl Reply {
             status,
             headers,
             body: ReplyBody::Bytes(body.into()),
+            cache: ReplyCache::NoStore,
         }
     }
     pub fn json(status: StatusCode, value: &Value) -> Result<Self, HandlerError> {
@@ -115,7 +124,12 @@ pub struct Limits {
     pub shutdown_grace: Duration,
 }
 pub struct Config {
+    /// Token del arranque (validado por `serve`).
     pub token: Vec<u8>,
+    /// Archivo del token (`~/.claude/hooks/dash-token` del tablero): si está,
+    /// la puerta usa lo que dice el archivo en cada petición, como el Python
+    /// (rotarlo surte efecto sin reiniciar). `None`: siempre `token`.
+    pub token_file: Option<std::path::PathBuf>,
     pub asset_exists: AssetExists,
     pub handler: Handler,
     pub websocket: Option<WsRoute>,
@@ -124,6 +138,7 @@ pub struct Config {
 
 struct State {
     config: Config,
+    token: dash::token::TokenCache,
     body_budget: Arc<Semaphore>,
     websockets: Arc<Semaphore>,
     ws_tasks: std::sync::Mutex<JoinSet<()>>,
@@ -219,7 +234,8 @@ fn response(reply: Reply, close: bool) -> http::Response<OutputBody> {
     *response.status_mut() = reply.status;
     *response.headers_mut() = reply.headers;
     // The maintained transport derives framing from the actual body. An adapter
-    // cannot accidentally send conflicting framing or make another response cacheable.
+    // cannot accidentally send conflicting framing. Cache policy is explicit;
+    // relayed Cache-Control headers never make an API response cacheable.
     let headers = response.headers_mut();
     match declared {
         // `insert` keeps a relayed header in its original position.
@@ -236,7 +252,10 @@ fn response(reply: Reply, close: bool) -> http::Response<OutputBody> {
     headers.remove(http::header::TRANSFER_ENCODING);
     headers.insert(
         http::header::CACHE_CONTROL,
-        http::HeaderValue::from_static("no-store"),
+        http::HeaderValue::from_static(match reply.cache {
+            ReplyCache::NoStore => "no-store",
+            ReplyCache::Immutable => "public, max-age=31536000, immutable",
+        }),
     );
     if close {
         headers.insert(
@@ -342,18 +361,19 @@ async fn dispatch(
     } else {
         false
     };
-    let admission =
-        match access::request_admission(&policy_request, &state.config.token, file_exists) {
-            Ok(admission) => admission,
-            Err(error) => {
-                return reject(
-                    error.status,
-                    error.message,
-                    error.close || !body.is_end_stream(),
-                );
-            }
-        };
-    let internal_producer = access::internal_producer(&policy_request, &state.config.token);
+    // El token vigente (un `stat` del archivo; se relee solo si cambió).
+    let expected = state.token.current();
+    let admission = match access::request_admission(&policy_request, &expected, file_exists) {
+        Ok(admission) => admission,
+        Err(error) => {
+            return reject(
+                error.status,
+                error.message,
+                error.close || !body.is_end_stream(),
+            );
+        }
+    };
+    let internal_producer = access::internal_producer(&policy_request, &expected);
     if method == access::Method::Get && !body.is_end_stream() {
         // No GET endpoint consumes a body. Closing prevents it being mistaken for
         // a subsequent keep-alive request; this is explicit wire hardening.
@@ -409,13 +429,13 @@ async fn dispatch(
             admission,
             WsAdmission::Dashboard | WsAdmission::DashboardTokenOrigin
         ) {
-            if let Some(error) = access::security_gate(&policy_request, &state.config.token) {
+            if let Some(error) = access::security_gate(&policy_request, &expected) {
                 return reject(error.status, error.message, true);
             }
             if admission == WsAdmission::DashboardTokenOrigin
                 && !access::token_matches(
                     access::presented_token(&borrowed, &target).as_bytes(),
-                    &state.config.token,
+                    &expected,
                 )
             {
                 return reject(
@@ -576,12 +596,14 @@ pub async fn serve(
         ));
     }
     let connections = Arc::new(Semaphore::new(limits.connections));
+    let token = dash::token::TokenCache::new(config.token.clone(), config.token_file.clone())?;
     let (stop_connections, connection_shutdown) = watch::channel(false);
     let state = Arc::new(State {
         body_budget: Arc::new(Semaphore::new(limits.buffered_wire_bytes as usize)),
         websockets: Arc::new(Semaphore::new(limits.websockets)),
         ws_tasks: std::sync::Mutex::new(JoinSet::new()),
         shutdown: connection_shutdown.clone(),
+        token,
         config,
     });
     let mut tasks = JoinSet::new();

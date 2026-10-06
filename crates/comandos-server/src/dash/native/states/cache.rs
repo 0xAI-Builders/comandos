@@ -80,9 +80,10 @@ impl StatesCache {
         }
     }
 
-    fn enter(&self, now_ms: &NowMs) -> Role {
+    fn enter(&self, now_ms: &NowMs, fresh: bool) -> Role {
         let mut inner = self.lock();
-        if let Some(last) = &inner.last
+        if !fresh
+            && let Some(last) = &inner.last
             && now_ms() - inner.at_ms < TTL_MS
         {
             return Role::Hit(last.clone());
@@ -103,8 +104,40 @@ impl StatesCache {
         F: Fn() -> Fut,
         Fut: Future<Output = Result<States, StateFault>>,
     {
+        self.get_with(now_ms, compute, false).await
+    }
+
+    /// `read_states()` sin caché (POST `/export`) dentro del mismo vuelo único:
+    /// nunca sirve el resultado guardado, pero se une al cómputo que esté en
+    /// vuelo (que empezó o empieza mientras se atiende la petición) o lidera uno
+    /// nuevo. Así nunca hay dos cómputos a la vez —cada uno copia el rastreador
+    /// de configuración y el último que termina pisaría al otro— y una ráfaga
+    /// de exportaciones hace un solo cómputo. Su resultado queda en la caché
+    /// como el de cualquier líder.
+    pub async fn get_fresh<F, Fut>(
+        &self,
+        now_ms: &NowMs,
+        compute: F,
+    ) -> Result<Arc<States>, StateFault>
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output = Result<States, StateFault>>,
+    {
+        self.get_with(now_ms, compute, true).await
+    }
+
+    async fn get_with<F, Fut>(
+        &self,
+        now_ms: &NowMs,
+        compute: F,
+        fresh: bool,
+    ) -> Result<Arc<States>, StateFault>
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output = Result<States, StateFault>>,
+    {
         loop {
-            match self.enter(now_ms) {
+            match self.enter(now_ms, fresh) {
                 Role::Hit(last) => return last,
                 Role::Follow(mut rx) => {
                     let seen = rx
@@ -293,6 +326,106 @@ mod tests {
         assert!(cache.get(&now, compute).await.is_err());
         assert!(cache.get(&now, compute).await.is_err());
         assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    /// Cómputo falso que cuenta cuántos hubo y cuántos llegaron a solaparse;
+    /// espera a `gate` para que todos los llamadores entren antes de terminar.
+    struct Probe {
+        calls: AtomicUsize,
+        active: AtomicUsize,
+        max_active: AtomicUsize,
+        gate: tokio::sync::Notify,
+    }
+
+    impl Probe {
+        fn new() -> Self {
+            Self {
+                calls: AtomicUsize::new(0),
+                active: AtomicUsize::new(0),
+                max_active: AtomicUsize::new(0),
+                gate: tokio::sync::Notify::new(),
+            }
+        }
+
+        async fn compute(&self) -> Result<States, StateFault> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            let now = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+            self.max_active.fetch_max(now, Ordering::SeqCst);
+            self.gate.notified().await;
+            self.active.fetch_sub(1, Ordering::SeqCst);
+            Ok(states("fresco"))
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn fresh_burst_shares_one_computation_with_polls() {
+        // Ronda 1 de la T6 (2f-1): una ráfaga de `/export` mezclada con
+        // sondeos de `/state` hace un solo cómputo y nunca dos a la vez.
+        let cache = StatesCache::default();
+        let probe = Probe::new();
+        let now = || 1_000;
+        let compute = || probe.compute();
+        let release = async {
+            for _ in 0..5 {
+                tokio::task::yield_now().await;
+            }
+            probe.gate.notify_waiters();
+        };
+        let (a, b, c, d, ()) = tokio::join!(
+            cache.get_fresh(&now, compute),
+            cache.get(&now, compute),
+            cache.get_fresh(&now, compute),
+            cache.get_fresh(&now, compute),
+            release,
+        );
+        for result in [a, b, c, d] {
+            assert_eq!(result.unwrap().body, "fresco");
+        }
+        assert_eq!(probe.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(probe.max_active.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn fresh_skips_the_cached_result_but_polls_reuse_it() {
+        let cache = StatesCache::default();
+        let calls = AtomicUsize::new(0);
+        let now = || 1_000;
+        let compute = || async {
+            let n = calls.fetch_add(1, Ordering::SeqCst);
+            Ok(states(if n == 0 { "uno" } else { "dos" }))
+        };
+        assert_eq!(cache.get(&now, compute).await.unwrap().body, "uno");
+        // Vigente para `/state`, pero `/export` relee.
+        assert_eq!(cache.get_fresh(&now, compute).await.unwrap().body, "dos");
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        // Lo releído queda en la caché para el siguiente sondeo.
+        assert_eq!(cache.get(&now, compute).await.unwrap().body, "dos");
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn fresh_after_a_running_poll_never_overlaps() {
+        // Un sondeo ya en vuelo y una exportación que llega después: la
+        // exportación sigue al líder en vez de lanzar un segundo cómputo.
+        let cache = StatesCache::default();
+        let probe = Probe::new();
+        let now = || 1_000;
+        let compute = || probe.compute();
+        let late = async {
+            tokio::task::yield_now().await;
+            cache.get_fresh(&now, compute).await
+        };
+        let release = async {
+            for _ in 0..5 {
+                tokio::task::yield_now().await;
+            }
+            probe.gate.notify_waiters();
+        };
+        let (poll, export, ()) = tokio::join!(cache.get(&now, compute), late, release);
+        assert_eq!(poll.unwrap().body, "fresco");
+        assert_eq!(export.unwrap().body, "fresco");
+        assert_eq!(probe.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(probe.max_active.load(Ordering::SeqCst), 1);
     }
 
     #[test]

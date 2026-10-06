@@ -55,6 +55,7 @@ pub fn config(profile: CompatProfile, state: Arc<DashState>) -> Config {
     });
     Config {
         token: state.config.token.clone(),
+        token_file: state.config.token_file.clone(),
         asset_exists: Arc::new(|_| false),
         handler,
         websocket: Some(websocket),

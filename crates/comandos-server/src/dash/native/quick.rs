@@ -1,7 +1,10 @@
 //! POST `/terminal/quick` (`quick_terminal_request` 5513 del `bin/cc-dash`
-//! confirmado, `lib/quick_terminal.py`) solo con `place == "sidebar"` (D7):
-//! la terminal de la barra no se registra como pestaña, así que no toca
-//! `app-tabs-meta.json` ni el candado de proceso del Python.
+//! confirmado, `lib/quick_terminal.py`). Con `place == "sidebar"` (D7 de la
+//! 2d) la terminal vive en la barra y no se registra como pestaña. Sin él
+//! (2f-1, Tarea 5) el `register` del Python es `quick_terminal_register`
+//! (`sessions::quick_register`): la pestaña `scratch` y el workspace; esa
+//! rama declina con el corte `tabs` apagado y lee el registro antes del
+//! reclamo (`sessions::quick_register_ready`).
 //!
 //! El worker de la base solo ve trabajos cortos: el reclamo (`_claim`, con la
 //! reserva de la carpeta dentro de la misma transacción) y el cierre
@@ -16,10 +19,10 @@
 //! se declina: un servidor tmux que naciera en el cgroup del frente moriría con
 //! él al reiniciar el servicio (riesgo R2 del preflight).
 use super::{
-    Answer, Entry, Fault, Key, Native, NativeRoute, Verb,
+    Answer, Cut, Entry, Fault, Key, Native, NativeRoute, Verb, cut_is_off,
     light::data,
     py::{self, repr_ascii},
-    reply,
+    reply, sessions,
     tmux::{Program, RunError, TmuxError, run_program},
 };
 use crate::{HandlerError, Request};
@@ -63,6 +66,19 @@ pub fn scope_program(path: impl Into<PathBuf>) -> Program {
     program
 }
 
+/// `scope_cmd(["tmux", …])`: `systemd-run --user --scope --collect --quiet
+/// <tmux> <prefijo de tmux> …`. El entorno de tmux (el socket privado en las
+/// pruebas) pasa al programa del scope. Lo usan `/terminal/quick` y
+/// `/ssh-key-setup`.
+pub fn scoped_tmux(scope: &Program, tmux: &Program) -> Program {
+    let mut program = scope.clone();
+    program.prefix.push(tmux.path.clone().into_os_string());
+    program.prefix.extend(tmux.prefix.iter().cloned());
+    program.env.extend(tmux.env.iter().cloned());
+    program.env_remove.extend(tmux.env_remove.iter().cloned());
+    program
+}
+
 /// `shutil.which("systemd-run")` sobre el `PATH` del frente (A5): solo `PATH`,
 /// sin los bins de usuario de `provider_registry.which`.
 pub fn find_scope(search_path: Option<&OsStr>) -> Option<Program> {
@@ -71,7 +87,8 @@ pub fn find_scope(search_path: Option<&OsStr>) -> Option<Program> {
 
 pub async fn answer(native: &Arc<Native>, request: &Request) -> Answer {
     let data = data(request)?;
-    if !matches!(data.get("place"), Some(Value::String(place)) if place == "sidebar") {
+    let sidebar = matches!(data.get("place"), Some(Value::String(place)) if place == "sidebar");
+    if !sidebar && cut_is_off(&native.options().cuts_off, Cut::Tabs) {
         return Err(Fault::Decline);
     }
     let Some(scope) = native.options().scope.clone() else {
@@ -85,6 +102,9 @@ pub async fn answer(native: &Arc<Native>, request: &Request) -> Answer {
         );
     }
     let id = raw.as_str().ok_or_else(failure)?.to_owned();
+    if !sidebar {
+        sessions::quick_register_ready(native).await?;
+    }
     // Reclamo, lanzamiento y cierre en su propia tarea: si el cliente se va a
     // mitad, también con el reclamo en el worker, soltar la petición no deja la
     // fila en `launching` sin lanzador (el reintento esperaría 15 s y daría 409
@@ -92,14 +112,14 @@ pub async fn answer(native: &Arc<Native>, request: &Request) -> Answer {
     // hilo del Python también termina aunque el cliente se vaya.
     let job = tokio::spawn({
         let native = native.clone();
-        async move { claim_and_launch(&native, id, scope).await }
+        async move { claim_and_launch(&native, id, scope, sidebar).await }
     });
     job.await.map_err(|_| failure())?
 }
 
 /// El bucle de reclamos de `quick_terminal_request` y, con un reclamo
 /// propio, el lanzamiento y el cierre.
-async fn claim_and_launch(native: &Native, id: String, scope: Program) -> Answer {
+async fn claim_and_launch(native: &Native, id: String, scope: Program, sidebar: bool) -> Answer {
     let seconds = native.options().clock_seconds.clone();
     let deadline = seconds() + WAIT_SECONDS;
     let terminal = loop {
@@ -129,7 +149,7 @@ async fn claim_and_launch(native: &Native, id: String, scope: Program) -> Answer
             Err(_) => return Err(failure()),
         }
     };
-    launch_and_finish(native, id, terminal, scope).await
+    launch_and_finish(native, id, terminal, scope, sidebar).await
 }
 
 /// `launch` + `_finish` + la respuesta, tras un reclamo propio. Aquí ya no se
@@ -140,8 +160,17 @@ async fn launch_and_finish(
     id: String,
     terminal: Terminal,
     scope: Program,
+    sidebar: bool,
 ) -> Answer {
-    let outcome = launch(native, &terminal, &scope).await;
+    let outcome = match launch(native, &terminal, &scope).await {
+        // `register(session, os.path.basename(cwd), cwd)` dentro del mismo
+        // `try`, también si la sesión ya existía; en la barra, nada.
+        Ok(()) if !sidebar => {
+            let label = terminal.cwd.rsplit('/').next().unwrap_or("");
+            sessions::quick_register(native, &terminal.session, label, &terminal.cwd).await
+        }
+        other => other,
+    };
     let stored = outcome
         .as_ref()
         .err()
@@ -210,18 +239,7 @@ async fn launch(native: &Native, t: &Terminal, scope: &Program) -> Result<(), St
     if exists.ok {
         return Ok(());
     }
-    // `scope_cmd(["tmux", "new-session", …])`: `systemd-run --user --scope
-    // --collect --quiet <tmux> <prefijo de tmux> new-session …`. El entorno de
-    // tmux (el socket privado en las pruebas) pasa al programa del scope.
-    let mut program = scope.clone();
-    program
-        .prefix
-        .push(tmux.program.path.clone().into_os_string());
-    program.prefix.extend(tmux.program.prefix.iter().cloned());
-    program.env.extend(tmux.program.env.iter().cloned());
-    program
-        .env_remove
-        .extend(tmux.program.env_remove.iter().cloned());
+    let program = scoped_tmux(scope, &tmux.program);
     let args = [
         "new-session",
         "-d",
@@ -275,7 +293,7 @@ async fn launch(native: &Native, t: &Terminal, scope: &Program) -> Result<(), St
         .await
         .map_err(|e| tmux_text(&e))?;
     }
-    // Registro: nada; la terminal vive en la barra (`place == "sidebar"`).
+    // El registro lo hace `launch_and_finish` (nada en la barra).
     Ok(())
 }
 

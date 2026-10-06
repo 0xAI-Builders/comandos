@@ -201,7 +201,7 @@ const DYNAMIC_GET: &[Match] = &[
     RawExact("/chains"),
 ];
 
-fn is_dynamic_get(target: &str) -> bool {
+pub(crate) fn is_dynamic_get(target: &str) -> bool {
     // Con `//` al inicio `urlsplit` vería un host; esas rutas nunca son
     // estáticas (segmento vacío), así que basta con `path_of`.
     let path = path_of(target);

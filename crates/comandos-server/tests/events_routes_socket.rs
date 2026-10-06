@@ -101,6 +101,7 @@ impl Fixture {
         let config = Config {
             websocket: None,
             token: b"socket-fixture-token".to_vec(),
+            token_file: None,
             asset_exists: Arc::new(|_| false),
             handler: worker.handler(),
             limits,
