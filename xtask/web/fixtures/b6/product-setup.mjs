@@ -2,6 +2,9 @@
 export async function prepareB6(){
  const q=new URLSearchParams(location.search),kind=q.get('__b6');
  const T0=2000000000000;Date.now=()=>T0;window.productApiCalls=[];
+ // Pause current and subsequently rendered CSS sprites at the same instant.
+ const freeze=document.createElement('style');freeze.dataset.b6Clock='paused';
+ freeze.textContent='*,*::before,*::after{animation-play-state:paused!important}';document.head.append(freeze);
  if(kind==='marks'){
   openTerms.clear();openTerms.set('a',{label:'Terminal A'});openTerms.set('b',{label:'Terminal B'});ensureFrame=()=>{};
   WorkspaceDock.adopt({schema:1,revision:4242,tabs:{a:{session:'a',paneKeys:['a']},b:{session:'b',paneKeys:['b']}},groups:[{id:'ga',tree:{type:'tab',tabId:'a'}},{id:'gb',tree:{type:'tab',tabId:'b'}}]});activeTerm='a';document.body.classList.add('app','split');showView('term:a');renderTabbar();
@@ -28,8 +31,32 @@ export async function prepareB6(){
   if(done&&productProof.mode!=='break')throw new Error('Completion did not suggest manual break');if(productProof.actions.length)throw new Error('Rendering initiated an automatic block');
  }
  for(const animation of document.getAnimations()){try{animation.finish()}catch{animation.pause();animation.currentTime=0}}
- // Deterministic rendering of the original progress sprite, not its wall clock.
- document.querySelectorAll('.pm-motion-progress>.pm-pixel').forEach(e=>{e.style.backgroundPositionX='-0px'});
+ // The manual sprite follows the actual public clock function at our shared time.
+ const clockFrame=ComandosPomodoro.hourglassFrame(null,T0,ComandosPomodoro.ui.state.flipAt);
+ document.querySelectorAll('.pm-motion-progress>.pm-pixel').forEach(e=>{e.style.backgroundPositionX=`-${clockFrame*32}px`});
+ // Background sprites must really decode; equal missing images are not parity.
+ const sources=new Set(Array.from(document.querySelectorAll('.pm-pixel')).flatMap(e=>{const bg=getComputedStyle(e).backgroundImage;const m=bg.match(/^url\(["']?(.*?)["']?\)$/);return m?[m[1]]:[]}));
+ if(kind!=='marks'&&!sources.size)throw new Error('B6 product contains no sprite resources');
+ const assets=await Promise.all(Array.from(sources,async src=>{
+  const image=new Image();image.src=src;let timer;
+  try{await Promise.race([image.decode(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(`B6 sprite decode timed out: ${src}`)),5000)})]);}
+  finally{clearTimeout(timer);}
+  if(!image.naturalWidth||!image.naturalHeight)throw new Error(`B6 sprite not decoded: ${src}`);
+  return {url:new URL(src,location.href).pathname,width:image.naturalWidth,height:image.naturalHeight};
+ }));
+ await document.fonts.ready;
+ // Font loading and initial refreshes can move the header after two animation frames.
+ // Fail closed if the product rectangles do not settle, rather than crop stale bounds.
+ let prior='',stable=0;const deadline=performance.now()+5000;
+ while(performance.now()<deadline){
+  await new Promise(r=>setTimeout(r,100));
+  const boxes=['#btn-pomo','#pomo-panel','#tabbar','.wm-menu'].map(s=>{const e=document.querySelector(s);if(!e)return null;const r=e.getBoundingClientRect();return [r.x,r.y,r.width,r.height]});
+  const state=JSON.stringify([boxes,document.documentElement.scrollWidth,document.documentElement.scrollHeight,document.fonts.status]);
+  stable=state===prior?stable+1:0;prior=state;if(stable>=5)break;
+ }
+ if(stable<5)throw new Error('B6 product layout did not settle within 5 seconds');
  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+ productProof.captureAssets=assets;
+ productProof.captureClock={now:T0,frame:clockFrame,stableSamples:stable,animations:document.getAnimations().map(a=>({name:a.animationName||null,state:a.playState,time:a.currentTime}))};
  return productProof;
 }
