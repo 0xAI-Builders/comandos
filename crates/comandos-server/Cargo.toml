@@ -6,6 +6,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+comandos-web-view = { path = "../comandos-web-view" }
 comandos-term = { path = "../comandos-term" }
 pty-process = { version = "=0.5.3", features = ["async"] }
 tokio-tungstenite = { version = "=0.30.0", default-features = false, features = ["handshake", "connect"] }

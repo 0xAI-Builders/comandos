@@ -220,6 +220,7 @@ pub fn desktop_device() -> String {
 
 #[derive(Clone)]
 pub struct NativeOptions {
+    pub term_target: crate::dash::term::attach::TmuxTarget,
     pub state_db: PathBuf,
     /// `~/.claude/hooks` (el `HOOKS` del Python).
     pub hooks: PathBuf,
@@ -265,6 +266,7 @@ pub struct NativeOptions {
 impl NativeOptions {
     pub fn for_home(home: &Path, state_db: PathBuf) -> Self {
         Self {
+            term_target: crate::dash::term::attach::TmuxTarget::User,
             state_db,
             hooks: home.join(".claude/hooks"),
             clock: Arc::new(wall_clock_ms),

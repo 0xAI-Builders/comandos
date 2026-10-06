@@ -2,3 +2,7 @@
 pub mod attach;
 pub mod bridge;
 pub mod replay;
+
+pub mod routes;
+pub use routes::TermMode;
+pub mod compat;

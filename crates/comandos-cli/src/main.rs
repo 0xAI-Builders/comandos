@@ -27,12 +27,16 @@ fn main() {
         }),
         Command::Hook(args) => comandos_runtime::hooks::run(&args),
         Command::Dash(args) => comandos_server::dash::main(&args),
+        Command::Webterm(args) => comandos_cli::webterm::main(&args),
+        Command::WebtermAttach(args) => comandos_cli::webterm_attach::main(&args),
         Command::Version => {
             println!("comandos {}", env!("CARGO_PKG_VERSION"));
             0
         }
         Command::Help => {
-            println!("uso: comandos <ext|hook|events|install|dash|--version>");
+            println!(
+                "uso: comandos <ext|hook|events|install|dash|webterm|webterm-attach|--version>"
+            );
             0
         }
         Command::Unknown(w) => {

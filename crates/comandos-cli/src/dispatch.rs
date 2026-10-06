@@ -6,6 +6,8 @@ pub enum Command {
     Events(Vec<String>),
     Install(Vec<String>),
     Dash(Vec<String>),
+    Webterm(Vec<String>),
+    WebtermAttach(Vec<String>),
     Version,
     Help,
     Unknown(String),
@@ -25,6 +27,8 @@ const ALIASES: &[(&str, &[&str])] = &[
     ("grok-hooks.py", &["hook", "grok"]),
     ("comandos-events", &["events"]),
     ("cc-dash", &["dash"]),
+    ("cc-webterm", &["webterm"]),
+    ("cc-webterm-attach", &["webterm-attach"]),
 ];
 
 pub fn resolve(argv0: &str, args: &[String]) -> Command {
@@ -40,6 +44,8 @@ pub fn resolve(argv0: &str, args: &[String]) -> Command {
         Some("events") => Command::Events(words[1..].to_vec()),
         Some("install") => Command::Install(words[1..].to_vec()),
         Some("dash") => Command::Dash(words[1..].to_vec()),
+        Some("webterm") => Command::Webterm(words[1..].to_vec()),
+        Some("webterm-attach") => Command::WebtermAttach(words[1..].to_vec()),
         Some("--version") | Some("version") => Command::Version,
         None | Some("--help") | Some("help") => Command::Help,
         Some(other) => Command::Unknown(other.to_string()),
