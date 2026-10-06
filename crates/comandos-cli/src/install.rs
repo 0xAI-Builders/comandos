@@ -14,6 +14,7 @@ pub mod proxy;
 mod record;
 pub mod release;
 pub mod retarget;
+pub mod telegram;
 pub mod wsl;
 pub use manifest::STATE_PROTOCOL;
 

@@ -347,11 +347,28 @@ fn app_backup_is_not_overwritten_and_rollback_restores_complete_original() {
         .unwrap(),
         b"old"
     );
+    let backup = home
+        .0
+        .join("Applications/ComandOS.app.previous/Contents/MacOS/comandos-app-mac");
+    use std::os::unix::fs::MetadataExt;
+    let inode = backup.metadata().unwrap().ino();
+    assert!(
+        run(&home.0, &["--app", source.to_str().unwrap()])
+            .status
+            .success()
+    );
+    assert_eq!(backup.metadata().unwrap().ino(), inode);
+    fs::write(
+        source.join("Contents/MacOS/comandos-app-mac"),
+        b"another release",
+    )
+    .unwrap();
     assert!(
         !run(&home.0, &["--app", source.to_str().unwrap()])
             .status
             .success()
     );
+    assert_eq!(fs::read(&backup).unwrap(), b"old");
     assert!(
         run(&home.0, &["--rollback", "ComandOS.app"])
             .status

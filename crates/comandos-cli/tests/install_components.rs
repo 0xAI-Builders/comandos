@@ -129,3 +129,69 @@ fn wsl_systemd_edit_preserves_other_sections_and_native_dependencies_omit_python
     assert!(packages.contains(&"libwebkit2gtk-4.1-0"));
     assert!(!packages.iter().any(|p| p.contains("python")));
 }
+
+#[test]
+fn legacy_restore_cli_is_readonly_in_preview_and_preserves_new_user_files() {
+    use comandos_cli::install::cleanup;
+    let root = std::env::temp_dir().join(format!("restore-cli-{}", std::process::id()));
+    fs::create_dir(&root).unwrap();
+    fs::write(root.join("old-file"), b"original").unwrap();
+    let manifest = cleanup::stage(&root, &["old-file".into()], false)
+        .unwrap()
+        .unwrap();
+    let run = |extra: &[&str]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_comandos"))
+            .args([
+                "install",
+                "--home",
+                root.to_str().unwrap(),
+                "--restore-legacy",
+                manifest.to_str().unwrap(),
+            ])
+            .args(extra)
+            .output()
+            .unwrap()
+    };
+    assert!(run(&["--dry-run"]).status.success());
+    assert!(!root.join("old-file").exists());
+    fs::write(root.join("old-file"), b"new user file").unwrap();
+    assert!(!run(&[]).status.success());
+    assert_eq!(fs::read(root.join("old-file")).unwrap(), b"new user file");
+    fs::remove_file(root.join("old-file")).unwrap();
+    assert!(run(&[]).status.success());
+    assert_eq!(fs::read(root.join("old-file")).unwrap(), b"original");
+    assert!(!root.join(".local/share/comandos/bin").exists());
+    fs::remove_dir_all(root).unwrap();
+}
+#[test]
+fn telegram_retirement_selects_only_owned_links_and_never_credentials() {
+    use comandos_cli::install::telegram;
+    let root = std::env::temp_dir().join(format!("telegram-select-{}", std::process::id()));
+    fs::create_dir(&root).unwrap();
+    let repo = root.join("repo");
+    fs::create_dir_all(repo.join("bin")).unwrap();
+    fs::create_dir(repo.join("lib")).unwrap();
+    fs::write(repo.join("bin/cc-dash"), b"marker").unwrap();
+    fs::write(repo.join("lib/platform.sh"), b"marker").unwrap();
+    fs::create_dir_all(root.join(".local/bin")).unwrap();
+    fs::create_dir_all(root.join(".claude/hooks")).unwrap();
+    symlink(
+        repo.join("bin/cc-telegram"),
+        root.join(".local/bin/cc-telegram"),
+    )
+    .unwrap();
+    symlink(
+        "/foreign/hooks/md2tg.py",
+        root.join(".claude/hooks/md2tg.py"),
+    )
+    .unwrap();
+    fs::write(root.join(".claude/hooks/telegram.env"), b"credentials").unwrap();
+    assert_eq!(
+        telegram::paths(&root),
+        vec![std::path::PathBuf::from(".local/bin/cc-telegram")]
+    );
+    telegram::apply(&root, true).unwrap();
+    assert!(root.join(".local/bin/cc-telegram").is_symlink());
+    assert!(!root.join(".local/share").exists());
+    fs::remove_dir_all(root).unwrap();
+}

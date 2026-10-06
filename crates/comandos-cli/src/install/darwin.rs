@@ -569,6 +569,22 @@ pub fn install_app(home: &Path, source: &Path, dry: bool) -> Result<(), String> 
     let old = previous(home);
     check(&dest)?;
     check(&old)?;
+    if before
+        .as_ref()
+        .is_some_and(|prior| prior.hash == incoming.hash)
+        && app_record(home).symlink_metadata().is_ok()
+    {
+        let _lock = if dry { None } else { Some(lock(home)?) };
+        check_app_record(home)?;
+        if validate_bundle(&dest)?.hash != incoming.hash {
+            return Err("app changed during reinstall admission".into());
+        }
+        println!(
+            "app {} already installed; original backup retained",
+            dest.display()
+        );
+        return Ok(());
+    }
     if old.symlink_metadata().is_ok() || app_record(home).symlink_metadata().is_ok() {
         return Err("app backup/record already exists; rollback before reinstall".into());
     }
@@ -655,34 +671,34 @@ pub fn install_app(home: &Path, source: &Path, dry: bool) -> Result<(), String> 
     println!("app {}", dest.display());
     Ok(())
 }
+fn check_app_record(home: &Path) -> Result<bool, String> {
+    let raw = read(&app_record(home), true)?.ok_or("no app rollback record")?;
+    let v: Value = serde_json::from_slice(&raw).map_err(|e| e.to_string())?;
+    if v.get("version").and_then(Value::as_u64) != Some(1) {
+        return Err("unknown app rollback record".into());
+    }
+    let installed = v
+        .get("installed")
+        .and_then(Value::as_str)
+        .ok_or("invalid installed app hash")?;
+    if validate_bundle(&app_path(home))?.hash != installed {
+        return Err("installed app modified; refusing rollback".into());
+    }
+    match v.get("previous") {
+        Some(Value::String(hash)) if tree(&previous(home))?.hash == *hash => Ok(true),
+        Some(Value::Null) if previous(home).symlink_metadata().is_err() => Ok(false),
+        _ => Err("previous app backup changed or missing".into()),
+    }
+}
 pub fn rollback_app(home: &Path, dry: bool) -> Result<(), String> {
     home_check(home)?;
-    let inspect = || -> Result<bool, String> {
-        let raw = read(&app_record(home), true)?.ok_or("no app rollback record")?;
-        let v: Value = serde_json::from_slice(&raw).map_err(|e| e.to_string())?;
-        if v.get("version").and_then(Value::as_u64) != Some(1) {
-            return Err("unknown app rollback record".into());
-        }
-        let installed = v
-            .get("installed")
-            .and_then(Value::as_str)
-            .ok_or("invalid installed app hash")?;
-        if validate_bundle(&app_path(home))?.hash != installed {
-            return Err("installed app modified; refusing rollback".into());
-        }
-        match v.get("previous") {
-            Some(Value::String(hash)) if tree(&previous(home))?.hash == *hash => Ok(true),
-            Some(Value::Null) if previous(home).symlink_metadata().is_err() => Ok(false),
-            _ => Err("previous app backup changed or missing".into()),
-        }
-    };
-    let _ = inspect()?;
+    let _ = check_app_record(home)?;
     if dry {
         println!("dry-run: restore app {}", app_path(home).display());
         return Ok(());
     }
     let _lock = lock(home)?;
-    let has_previous = inspect()?;
+    let has_previous = check_app_record(home)?;
     let parked = home.join("Applications").join(format!(
         ".ComandOS.rollback-{}-{}",
         std::process::id(),

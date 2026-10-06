@@ -32,6 +32,7 @@ pub fn run(args: &[String]) -> Result<i32, String> {
     let mut dry = false;
     let mut extensions = false;
     let mut retarget = None;
+    let mut restore = None;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -51,6 +52,14 @@ pub fn run(args: &[String]) -> Result<i32, String> {
             }
             "--dry-run" if !dry => dry = true,
             "--extensions" if !extensions => extensions = true,
+            "--restore-legacy" => {
+                let Some(value) = iter.next() else {
+                    return Ok(2);
+                };
+                if restore.replace(PathBuf::from(value)).is_some() {
+                    return Ok(2);
+                }
+            }
             "--retarget-repo" => {
                 let Some(value) = iter.next() else {
                     return Ok(2);
@@ -69,6 +78,30 @@ pub fn run(args: &[String]) -> Result<i32, String> {
             "HOME must be an existing directory: {}",
             home.display()
         ));
+    }
+    if let Some(backup) = restore {
+        if source.is_some() || extensions || retarget.is_some() {
+            return Ok(2);
+        }
+        let manifest = if backup.is_absolute() {
+            backup
+        } else {
+            if backup.components().count() != 1
+                || !matches!(
+                    backup.components().next(),
+                    Some(std::path::Component::Normal(_))
+                )
+            {
+                return Ok(2);
+            }
+            home.join(".local/share/comandos/backups")
+                .join(backup)
+                .join("manifest.json")
+        };
+        for line in super::cleanup::restore(&home, &manifest, dry)? {
+            println!("{line}");
+        }
+        return Ok(0);
     }
     let platform = Platform::current();
     if platform == Platform::WslUbuntu && !super::wsl::prepare(&home, dry)? {
@@ -132,12 +165,30 @@ pub fn run(args: &[String]) -> Result<i32, String> {
         }
     }
     // Stage and verify the GTK artifact using its existing reversible installer.
-    if source.join("comandos-app").is_file() {
+    let mut app_source = source.join(if platform == Platform::Darwin {
+        "comandos-app-mac"
+    } else {
+        "comandos-app"
+    });
+    if platform == Platform::Darwin && !app_source.is_file() {
+        app_source = source.join("ComandOS.app/Contents/MacOS/comandos-app-mac");
+    }
+    if app_source.is_file() {
         let app = if dry {
-            release::preview_app(&home, &source.join("comandos-app"))?
+            release::preview_app(&home, &app_source)?
         } else {
-            release::stage_app(&home, &source.join("comandos-app"))?
+            release::stage_app(&home, &app_source)?
         };
+        if !actions
+            .iter()
+            .any(|action| matches!(action, Action::Link { name, .. } if name == "cc-app"))
+        {
+            actions.push(Action::Link {
+                name: "cc-app".into(),
+                at: home.join(".local/bin/cc-app"),
+                target: app.path.clone(),
+            });
+        }
         for action in &mut actions {
             if let Action::Link { name, target, .. } = action
                 && name == "cc-app"
@@ -145,6 +196,9 @@ pub fn run(args: &[String]) -> Result<i32, String> {
                 *target = app.path.clone();
             }
         }
+    }
+    if platform == Platform::Darwin && source.join("ComandOS.app").is_dir() {
+        super::darwin::install_app(&home, &source.join("ComandOS.app"), dry)?;
     }
     println!(
         "{}release {}: {}",
@@ -181,6 +235,9 @@ pub fn run(args: &[String]) -> Result<i32, String> {
             )?;
         }
         super::extensions::apply(&home, platform, dry)?;
+    }
+    if std::env::var("COMANDOS_RETIRE_TELEGRAM").as_deref() == Ok("1") {
+        super::telegram::apply(&home, dry)?;
     }
     Ok(0)
 }

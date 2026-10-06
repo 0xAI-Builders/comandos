@@ -151,6 +151,17 @@ pub fn restore(home: &Path, manifest: &Path, dry: bool) -> Result<Vec<String>, S
     if !backup.starts_with(home.join(".local/share/comandos/backups")) {
         return Err("manifest outside installation backups".into());
     }
+    if !manifest.symlink_metadata().is_ok_and(|m| m.is_file()) {
+        return Err("cleanup manifest must be a regular file".into());
+    }
+    let _lock = if dry {
+        None
+    } else {
+        Some(
+            FileLock::exclusive(&home.join(".local/share/comandos/install-cleanup.lock"))
+                .map_err(|e| e.to_string())?,
+        )
+    };
     let record: Value = serde_json::from_slice(&fs::read(manifest).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
     if record["version"] != 1 || record["home"].as_str() != home.to_str() {
@@ -194,8 +205,6 @@ pub fn restore(home: &Path, manifest: &Path, dry: bool) -> Result<Vec<String>, S
         })
         .collect();
     if !dry {
-        let _lock = FileLock::exclusive(&home.join(".local/share/comandos/install-cleanup.lock"))
-            .map_err(|e| e.to_string())?;
         for (source, target) in moves {
             if target.symlink_metadata().is_ok() {
                 return Err(format!("restore would overwrite {}", target.display()));
