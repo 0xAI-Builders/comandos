@@ -76,6 +76,11 @@ struct FakeTmux {
     reads: Cell<usize>,
     replace_at: usize,
     fail: &'static str,
+    cancelled: Cell<bool>,
+    cancel_at: usize,
+    changed_socket: Cell<bool>,
+    socket_at: usize,
+    other_socket: PathBuf,
     socket: PathBuf,
 }
 impl FakeTmux {
@@ -87,6 +92,11 @@ impl FakeTmux {
             reads: Cell::new(0),
             replace_at: usize::MAX,
             fail: "",
+            cancelled: Cell::new(false),
+            cancel_at: usize::MAX,
+            changed_socket: Cell::new(false),
+            socket_at: usize::MAX,
+            other_socket: std::env::temp_dir().join("fake-private-S-other"),
             socket: std::env::temp_dir().join("fake-private-S"),
         }
     }
@@ -96,13 +106,23 @@ impl TmuxIo for FakeTmux {
         self.mode
     }
     fn socket(&self) -> &Path {
-        &self.socket
+        if self.changed_socket.get() {
+            &self.other_socket
+        } else {
+            &self.socket
+        }
     }
     fn read(&self, args: &[&str]) -> Result<TmuxOut, TmuxError> {
         self.commands
             .borrow_mut()
             .push((args.iter().map(|s| s.to_string()).collect(), vec![]));
         self.reads.set(self.reads.get() + 1);
+        if self.reads.get() == self.cancel_at {
+            self.cancelled.set(true);
+        }
+        if self.reads.get() == self.socket_at {
+            self.changed_socket.set(true);
+        }
         if self.reads.get() >= self.replace_at {
             self.identity.set(2);
         }
@@ -166,6 +186,54 @@ fn paste_is_utf8_stdin_exact_target_and_owns_only_its_named_buffer() {
         a.iter()
             .any(|v| v.contains("touch") || v == "new-session" || v == "send-keys")
     }));
+}
+#[test]
+fn cancellation_inside_identity_read_prevents_load_or_paste_and_cleans_owned_buffer() {
+    for cancel_at in [3, 4] {
+        let mut t = FakeTmux::new();
+        t.cancel_at = cancel_at;
+        assert!(paste_snippet_when("fixture", "exact data", &t, || !t.cancelled.get()).is_err());
+        let commands = t.commands.borrow();
+        assert!(!commands.iter().any(|(args, _)| args[0] == "paste-buffer"));
+        assert_eq!(
+            commands
+                .iter()
+                .filter(|(args, _)| args[0] == "load-buffer")
+                .count(),
+            usize::from(cancel_at == 4)
+        );
+        assert_eq!(
+            commands
+                .iter()
+                .filter(|(args, _)| args[0] == "delete-buffer")
+                .count(),
+            usize::from(cancel_at == 4)
+        );
+    }
+}
+#[test]
+fn socket_changed_during_identity_read_cannot_load_paste_or_cleanup_on_other_server() {
+    for socket_at in [3, 4, 5] {
+        let mut t = FakeTmux::new();
+        t.socket_at = socket_at;
+        if socket_at == 5 {
+            t.cancel_at = 4;
+        }
+        assert!(paste_snippet_when("fixture", "exact data", &t, || !t.cancelled.get()).is_err());
+        let commands = t.commands.borrow();
+        assert!(
+            !commands
+                .iter()
+                .any(|(args, _)| args[0] == "paste-buffer" || args[0] == "delete-buffer")
+        );
+        assert_eq!(
+            commands
+                .iter()
+                .filter(|(args, _)| args[0] == "load-buffer")
+                .count(),
+            usize::from(socket_at != 3)
+        );
+    }
 }
 #[test]
 fn paste_failure_cleans_created_buffer_but_load_failure_cannot_claim_one() {

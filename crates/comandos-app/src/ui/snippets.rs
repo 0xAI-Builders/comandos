@@ -185,7 +185,10 @@ pub fn paste_snippet_when(
         let now = tmux
             .read(&["display-message", "-p", "-t", &target, IDENTITY])
             .map_err(error)?;
-        if !now.ok() || now.stdout.trim() != captured.stdout.trim() {
+        if !allowed() {
+            return Err(ClipboardError::Cancelled);
+        }
+        if tmux.socket() != socket || !now.ok() || now.stdout.trim() != captured.stdout.trim() {
             Err(ClipboardError::DestinationChanged)
         } else {
             Ok(())
@@ -238,6 +241,7 @@ pub fn paste_snippet_when(
             && tmux
                 .read(&["display-message", "-p", "-t", &target, IDENTITY])
                 .is_ok_and(|out| out.ok() && out.stdout.trim() == captured.stdout.trim())
+            && tmux.socket() == socket
         {
             let _ = tmux.mutate(&["delete-buffer", "-b", &buffer], None);
         }
