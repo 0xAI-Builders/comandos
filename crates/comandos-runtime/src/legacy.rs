@@ -18,6 +18,7 @@ pub fn import_legacy(conn: &Connection, path: &Path) -> Result<u64> {
     } else {
         None
     };
+    comandos_store::migrate::move_db::admit_write(conn)?;
     let done = conn
         .query_row(
             "SELECT value FROM workspace_meta WHERE key = ?",

@@ -117,6 +117,23 @@ fn backup(conn: &Connection, version: i64, now_seconds: f64) -> Result<Option<Pa
     Ok(Some(target))
 }
 
+// The public migration runner also supports caller-supplied catalogs. Keep
+// those deliberate migrations working while enforcing the released catalog
+// for production initialization, and moved sentinels for every catalog.
+fn admit_migration(conn: &Connection, migrations: &[Migration]) -> Result<()> {
+    let released = migrations.iter().all(|m| {
+        MIGRATIONS
+            .iter()
+            .chain(UNIFIED_MIGRATIONS)
+            .any(|known| m.version == known.version && m.name == known.name && m.sql == known.sql)
+    });
+    if released {
+        crate::migrate::move_db::admit_write(conn)
+    } else {
+        crate::migrate::move_db::admit_explicit_migration(conn)
+    }
+}
+
 /// Apply every missing version under the writer lock. An older executable
 /// never downgrades an already newer schema. `now_seconds` is supplied by the
 /// native clock, allowing deterministic cross-language migration verification.
@@ -145,6 +162,7 @@ pub fn migrate(
     if !now_seconds.is_finite() || now_seconds < 0.0 {
         return Err(Error::Validation("fecha de migración inválida".into()));
     }
+    admit_migration(conn, migrations)?;
     let has_tables=conn.query_row("SELECT 1 FROM sqlite_master WHERE type='table' AND name NOT IN ('schema_migrations') LIMIT 1",[],|r|r.get::<_,i64>(0)).optional()?.is_some();
     let saved = if has_tables {
         backup(conn, current, now_seconds)?
@@ -152,6 +170,7 @@ pub fn migrate(
         None
     };
     let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    admit_migration(conn, migrations)?;
     let existing = applied(conn)?;
     pending.retain(|m| !existing.contains(&m.version));
     pending.sort_by_key(|m| m.version);

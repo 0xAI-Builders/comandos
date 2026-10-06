@@ -404,11 +404,8 @@ pub fn tool_event(conn: &Connection, payload: &Value) -> Result<()> {
 /// `init_db` de Python: tablas base y migración aditiva hasta la versión 11
 /// dentro de una transacción inmediata (un solo escritor entre hooks).
 fn init_db(conn: &Connection) -> Result<()> {
-    conn.execute_batch(BASE_SCHEMA)?;
-    if user_version(conn)? >= SCHEMA_VERSION {
-        return Ok(());
-    }
     with_transaction(conn, || {
+        conn.execute_batch(BASE_SCHEMA)?;
         let current = user_version(conn)?;
         if current < SCHEMA_VERSION {
             migrate_schema(conn, current)?;
@@ -676,55 +673,57 @@ fn unix_secs() -> i64 {
 /// `str()` de Python de un contenedor no se reproduce). `now` es
 /// `int(time.time())` (sin `created_at` en el evento). Devuelve el `id`.
 pub fn record_change(conn: &Connection, event: &Map<String, Value>, now: i64) -> Result<String> {
-    let text = |key: &str, limit: usize| -> Result<String> {
-        match event.get(key) {
-            None | Some(Value::Null) => Ok(String::new()),
-            Some(Value::String(s)) => Ok(s.chars().take(limit).collect()),
-            Some(_) => Err(Error::Validation(format!("{key}: no es texto"))),
+    with_transaction(conn, || {
+        let text = |key: &str, limit: usize| -> Result<String> {
+            match event.get(key) {
+                None | Some(Value::Null) => Ok(String::new()),
+                Some(Value::String(s)) => Ok(s.chars().take(limit).collect()),
+                Some(_) => Err(Error::Validation(format!("{key}: no es texto"))),
+            }
+        };
+        let or = |value: String, fallback: &str| {
+            if value.is_empty() {
+                fallback.to_owned()
+            } else {
+                value
+            }
+        };
+        if event.get("created_at").is_some_and(truthy) {
+            return Err(Error::Validation("created_at explícito no portado".into()));
         }
-    };
-    let or = |value: String, fallback: &str| {
-        if value.is_empty() {
-            fallback.to_owned()
-        } else {
-            value
-        }
-    };
-    if event.get("created_at").is_some_and(truthy) {
-        return Err(Error::Validation("created_at explícito no portado".into()));
-    }
-    let id = stable_id(&[
-        "change".to_owned(),
-        now.to_string(),
-        text("tmux_session", usize::MAX)?,
-        text("tmux_pane", usize::MAX)?,
-        text("after_model", usize::MAX)?,
-        text("after_route", usize::MAX)?,
-    ]);
-    conn.execute(
-        "insert into usage_changes
+        let id = stable_id(&[
+            "change".to_owned(),
+            now.to_string(),
+            text("tmux_session", usize::MAX)?,
+            text("tmux_pane", usize::MAX)?,
+            text("after_model", usize::MAX)?,
+            text("after_route", usize::MAX)?,
+        ]);
+        conn.execute(
+            "insert into usage_changes
           (id,created_at,origin,kind,tmux_session,tmux_pane,project,
            before_model,before_effort,before_route,after_model,after_effort,after_route,status,note)
           values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) on conflict(id) do nothing",
-        rusqlite::params![
-            id,
-            now,
-            or(text("origin", 40)?, "manual"),
-            or(text("kind", 24)?, "switch"),
-            text("tmux_session", 80)?,
-            text("tmux_pane", 32)?,
-            text("project", 120)?,
-            text("before_model", 120)?,
-            text("before_effort", 16)?,
-            text("before_route", 80)?,
-            text("after_model", 120)?,
-            text("after_effort", 16)?,
-            text("after_route", 80)?,
-            or(text("status", 24)?, "applied"),
-            text("note", 200)?,
-        ],
-    )?;
-    Ok(id)
+            rusqlite::params![
+                id,
+                now,
+                or(text("origin", 40)?, "manual"),
+                or(text("kind", 24)?, "switch"),
+                text("tmux_session", 80)?,
+                text("tmux_pane", 32)?,
+                text("project", 120)?,
+                text("before_model", 120)?,
+                text("before_effort", 16)?,
+                text("before_route", 80)?,
+                text("after_model", 120)?,
+                text("after_effort", 16)?,
+                text("after_route", 80)?,
+                or(text("status", 24)?, "applied"),
+                text("note", 200)?,
+            ],
+        )?;
+        Ok(id)
+    })
 }
 
 pub(crate) fn stable_id(parts: &[String]) -> String {

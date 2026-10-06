@@ -166,6 +166,7 @@ pub fn build_edition(
                 conn,
                 TransactionBehavior::Immediate,
             ))?;
+            comandos_store::migrate::move_db::admit_write(conn).map_err(|e| e.to_string())?;
             sql(tx.execute(
                 "UPDATE news_jobs SET state='failed',finished_at_ms=?,error=? WHERE edition_id=?",
                 params![now, clip(&error, 300), id],
@@ -479,6 +480,7 @@ fn store(
         conn,
         TransactionBehavior::Immediate,
     ))?;
+    comandos_store::migrate::move_db::admit_write(conn).map_err(|e| e.to_string())?;
     let mut ids = HashMap::new();
     for src in sources {
         sql(tx.execute("INSERT INTO news_sources (url,original_url,title,origin,category,published_at_ms,discovered_at_ms,verified_at_ms,fetch_status,fetch_error,meta) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(url) DO UPDATE SET title=excluded.title,fetch_status=excluded.fetch_status,fetch_error=excluded.fetch_error,meta=excluded.meta,published_at_ms=COALESCE(excluded.published_at_ms,news_sources.published_at_ms),verified_at_ms=CASE WHEN excluded.fetch_status='ok' THEN excluded.verified_at_ms ELSE news_sources.verified_at_ms END",params![s(&src["url"]),s(&src["originalUrl"]),s(&src["title"]),s(&src["origin"]),s(&src["category"]),src["publishedAt"].as_i64(),src["discoveredAt"].as_i64(),(src["fetchStatus"]=="ok").then_some(now),s(&src["fetchStatus"]),src["fetchError"].as_str(),src["meta"].to_string()]))?;

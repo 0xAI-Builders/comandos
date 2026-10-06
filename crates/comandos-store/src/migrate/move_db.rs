@@ -183,8 +183,11 @@ fn read_home(legacy: &Path) -> Result<PathBuf> {
         .ok_or_else(|| Error::Validation("SQLite sin padre".into()))
 }
 fn marker(conn: &Connection) -> Result<bool> {
+    marker_for_catalog(conn, true)
+}
+fn marker_for_catalog(conn: &Connection, check_versions: bool) -> Result<bool> {
     let uv: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    if uv > crate::usage::SCHEMA_VERSION && uv != unified::MOVED_SENTINEL {
+    if check_versions && uv > crate::usage::SCHEMA_VERSION && uv != unified::MOVED_SENTINEL {
         return Err(Error::Validation(
             "base creada por una versión más nueva de ComandOS".into(),
         ));
@@ -199,9 +202,11 @@ fn marker(conn: &Connection) -> Result<bool> {
             let (version, name) = row?;
             if version == 1000 && name == "moved-to-comandos.sqlite3" {
                 moved = true;
-            } else if !crate::state::MIGRATIONS
-                .iter()
-                .any(|m| m.version == version)
+            } else if version == unified::MOVED_SENTINEL
+                || (check_versions
+                    && !crate::state::MIGRATIONS
+                        .iter()
+                        .any(|m| m.version == version))
             {
                 return Err(Error::Validation(
                     "base creada por una versión más nueva de ComandOS".into(),
@@ -215,6 +220,14 @@ fn marker(conn: &Connection) -> Result<bool> {
 /// conexión vieja que estuvo esperando el traslado. El llamador reabre por
 /// resolve_db; esta puerta no redirige una transacción ya iniciada.
 pub fn admit_write(conn: &Connection) -> Result<()> {
+    admit_for_catalog(conn, true)
+}
+// Explicit custom migrations own their catalog (including versions outside
+// ComandOS); they still cannot mutate a moved source or a future unified DB.
+pub(crate) fn admit_explicit_migration(conn: &Connection) -> Result<()> {
+    admit_for_catalog(conn, false)
+}
+fn admit_for_catalog(conn: &Connection, check_versions: bool) -> Result<()> {
     let unified: bool = conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='domain_modes')",
         [],
@@ -223,7 +236,7 @@ pub fn admit_write(conn: &Connection) -> Result<()> {
     if unified {
         return unified::validate_schema(conn).map(|_| ());
     }
-    if marker(conn)? {
+    if marker_for_catalog(conn, check_versions)? {
         return Err(Error::Validation(
             "base movida: reabrir por resolve_db".into(),
         ));

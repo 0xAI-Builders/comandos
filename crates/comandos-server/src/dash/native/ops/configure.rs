@@ -660,11 +660,18 @@ fn fail_claimed(conn: &Connection, opts: &NativeOptions, request_id: &str) {
     let staged = with_store(conn, opts, |s| {
         s.stage(request_id, "failed", None, Some(&result))
     });
-    if staged.is_err() {
-        let _ = conn.execute(
-            "UPDATE session_operations SET state='failed',result=?,updated=? WHERE id=?",
-            rusqlite::params![result.to_string(), (opts.clock_seconds)(), request_id],
-        );
+    if staged.is_err()
+        && let Ok(tx) =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+        && comandos_store::migrate::move_db::admit_write(conn).is_ok()
+        && conn
+            .execute(
+                "UPDATE session_operations SET state='failed',result=?,updated=? WHERE id=?",
+                rusqlite::params![result.to_string(), (opts.clock_seconds)(), request_id],
+            )
+            .is_ok()
+    {
+        let _ = tx.commit();
     }
     eprintln!("comandos dash: la operación {request_id} no pudo iniciarse");
 }
@@ -1005,5 +1012,46 @@ pub fn motor_queue_resume(opts: &NativeOptions) {
         {
             return;
         }
+    }
+}
+
+#[cfg(test)]
+mod sqlite_writer_tests {
+    use super::*;
+    struct Cleanup(std::path::PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    #[test]
+    fn failed_operation_fallback_cannot_write_cached_moved_journal() {
+        let home =
+            std::env::temp_dir().join(comandos_runtime::fresh_id("s4-fail-claimed").unwrap());
+        std::fs::create_dir(&home).unwrap();
+        let _cleanup = Cleanup(home.clone());
+        let spec = comandos_store::migrate::spec_for(&home, "db-operations").unwrap();
+        let cached = comandos_runtime::session_operations::open_journal(&spec.legacy).unwrap();
+        cached.execute_batch("INSERT INTO session_operations VALUES('private-op','pane','hash','{}','confirmed',1,'{}','{}',1)").unwrap();
+        comandos_store::migrate::move_db(
+            &spec,
+            &home.join(".local/share/comandos/comandos.sqlite3"),
+            &home.join(".local/share/comandos/backups/test"),
+            4000,
+        )
+        .unwrap();
+        let opts = NativeOptions::for_home(&home, home.join("private-app-state.sqlite3"));
+        fail_claimed(&cached, &opts, "private-op");
+        let state: String = cached
+            .query_row(
+                "SELECT state FROM session_operations WHERE id='private-op'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(state, "confirmed");
+        assert!(cached.is_autocommit());
+        drop(cached);
+        std::fs::remove_dir_all(home).unwrap();
     }
 }
