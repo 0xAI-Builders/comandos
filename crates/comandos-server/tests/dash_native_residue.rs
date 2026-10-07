@@ -349,14 +349,27 @@ fn mime_table_matches_python_for_checkout_extensions() {
 #[tokio::test]
 async fn prefix_quirks_match_python_and_retired_variants_never_forward() {
     use comandos_server::dash::native::{NativeRoute, route};
-    use support::{FakeLegacy, front, get, twin::Twin};
-    let Some(twin) = Twin::start_with("residue-prefixes", |_| {}, support::twin::TwinOpts {
-        fakebin_extra: vec![("fc-list".into(), "#!/bin/sh\nexit 0\n".into())],
-            python_prelude: format!("_week = dash.analytics_week_payload\ndash.analytics_week_payload = lambda offset, now=None, **kw: _week(offset, now={}, **kw)\n", support::NOW_MS as f64 / 1000.0),
-        ..Default::default()
-    }).await else {
+    use support::{FakeLegacy, front, get, twin::TwinRun};
+    if !support::tmux_available() {
         return;
-    };
+    }
+    let a = TestHome::new_short("residue-prefixes-a");
+    let b = TestHome::new_short("residue-prefixes-b");
+    let extra = vec![("fc-list".into(), "#!/bin/sh\nexit 0\n".into())];
+    let options = support::http_golden::confined_front_options(&a, &extra);
+    support::oracle::confined_fakebin(&b, &extra);
+    let py = support::http_golden::FrozenHttp::new_rooted_with_fakebin(
+        &b, "server-http-residue-prefixes", &[
+            ".claude/hooks/comandos-usage.sqlite", ".local/state/comandos/app-state.sqlite3",
+            ".claude/hooks/prefs.json", ".claude/hooks/cc-notify.conf",
+            ".claude/hooks/app-tabs.json", ".claude/hooks/app-tab-active.json",
+            ".claude/hooks/app-tabs-history.json", ".claude/hooks/app-tab-models.json",
+        ],
+        &format!("_week = dash.analytics_week_payload\ndash.analytics_week_payload = lambda offset, now=None, **kw: _week(offset, now={}, **kw)\n", support::NOW_MS as f64 / 1000.0),
+        &extra,
+    ).await;
+    let relay = FakeLegacy::start().await;
+    let native = front(&a, relay.port, options).await;
     // Every former unmatched, still-live RawPrefix branch. No CLI/process mutation.
     for prefix in [
         "/state",
@@ -377,7 +390,10 @@ async fn prefix_quirks_match_python_and_retired_variants_never_forward() {
     ] {
         for suffix in ["X", "/x"] {
             let path = format!("{prefix}{suffix}");
-            let pair = twin.get(&path).await;
+            let pair = TwinRun {
+                front: get(native.port, &path).await,
+                oracle: py.get(&path).await,
+            };
             if prefix == "/usage/state" {
                 assert_eq!(pair.front.status, pair.oracle.status, "{path}");
                 let mut a: Value = serde_json::from_slice(&pair.front.body).unwrap();
@@ -392,6 +408,7 @@ async fn prefix_quirks_match_python_and_retired_variants_never_forward() {
             }
         }
     }
+    native.stop().await;
     // Retirements intentionally differ from Python; assert the native410 with a
     // poison relay instead of declaring them equal to the old live endpoint.
     let home = TestHome::new("residue-retired-prefixes");

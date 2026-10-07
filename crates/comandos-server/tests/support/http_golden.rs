@@ -17,6 +17,7 @@ pub struct FrozenHttp<'a> {
     home: &'a TestHome,
     domain: PathBuf,
     prelude: String,
+    fakebin_extra: Vec<(String, String)>,
     original: Option<Oracle>,
     family: &'static str,
     files: Vec<&'static str>,
@@ -24,7 +25,7 @@ pub struct FrozenHttp<'a> {
 }
 impl<'a> FrozenHttp<'a> {
     pub async fn new(home: &'a TestHome, family: &'static str, files: &[&'static str]) -> Self {
-        Self::new_inner(home, family, files, home.hooks(), "").await
+        Self::new_inner(home, family, files, home.hooks(), "", &[]).await
     }
     pub async fn new_rooted_with(
         home: &'a TestHome,
@@ -32,7 +33,24 @@ impl<'a> FrozenHttp<'a> {
         files: &[&'static str],
         prelude: &str,
     ) -> Self {
-        Self::new_inner(home, family, files, home.root.clone(), prelude).await
+        Self::new_inner(home, family, files, home.root.clone(), prelude, &[]).await
+    }
+    pub async fn new_rooted_with_fakebin(
+        home: &'a TestHome,
+        family: &'static str,
+        files: &[&'static str],
+        prelude: &str,
+        fakebin_extra: &[(String, String)],
+    ) -> Self {
+        Self::new_inner(
+            home,
+            family,
+            files,
+            home.root.clone(),
+            prelude,
+            fakebin_extra,
+        )
+        .await
     }
     async fn new_inner(
         home: &'a TestHome,
@@ -40,6 +58,7 @@ impl<'a> FrozenHttp<'a> {
         files: &[&'static str],
         domain: PathBuf,
         prelude: &str,
+        fakebin_extra: &[(String, String)],
     ) -> Self {
         let original = if matches!(
             std::env::var("COMANDOS_ORACLE").as_deref(),
@@ -47,6 +66,7 @@ impl<'a> FrozenHttp<'a> {
         ) {
             let reference = frozen::reference(&home.root).unwrap();
             let opts = OracleOpts {
+                fakebin_extra: fakebin_extra.to_vec(),
                 python_prelude: format!(
                     "dash.time.time = lambda: {}\ndash.motor_queue_resume = lambda: None\ndash.start_pomodoro_scheduler = lambda: None",
                     NOW_MS / 1000
@@ -70,6 +90,7 @@ impl<'a> FrozenHttp<'a> {
             home,
             domain,
             prelude: prelude.to_owned(),
+            fakebin_extra: fakebin_extra.to_vec(),
             original,
             family,
             files: files.to_vec(),
@@ -102,6 +123,9 @@ impl<'a> FrozenHttp<'a> {
         let mut input = json!({"source_commit":frozen::SOURCE_COMMIT,"source_sha256":"4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24", "python":"CPython 3.10.12","clock_ms":NOW_MS,"request":request,"effect_files":self.files});
         if !self.prelude.is_empty() {
             input["fixture_prelude"] = json!(self.prelude);
+        }
+        if !self.fakebin_extra.is_empty() {
+            input["fixture_fakebin"] = json!(self.fakebin_extra);
         }
         let output = comandos_oracle::text_with_tree_at(
             &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
@@ -209,4 +233,35 @@ fn original_request(
         .read_to_end(&mut response)
         .map_err(|e| e.to_string())?;
     Ok(super::parse(&response))
+}
+
+/// Same native child confinement as Twin, with no original process required.
+pub fn confined_front_options(
+    home: &TestHome,
+    extra: &[(String, String)],
+) -> comandos_server::dash::native::NativeOptions {
+    use comandos_server::dash::native::quick::scope_program;
+    let fakebin = super::oracle::confined_fakebin(home, extra);
+    let mut options = home.options();
+    options.tmux.program.path = fakebin.join("tmux");
+    options.scope = Some(scope_program(fakebin.join("systemd-run")));
+    let mut search = fakebin.clone().into_os_string();
+    search.push(":");
+    search.push(home.root.join("bin"));
+    options.search_path = Some(search);
+    options.user_bin_dirs = super::twin::home_bin_dirs();
+    let child_env: Vec<(std::ffi::OsString, std::ffi::OsString)> = home
+        .confined_env()
+        .into_iter()
+        .map(|(key, value)| (key.into(), value.into()))
+        .collect();
+    options.child_env = Some(child_env.clone());
+    options.display = Some(None);
+    options.ssh = options.program(fakebin.join("ssh"));
+    if let Some(scope) = &mut options.scope {
+        scope.env_clear = true;
+        scope.env = child_env;
+    }
+    super::assert_private_tmux(&options);
+    options
 }
