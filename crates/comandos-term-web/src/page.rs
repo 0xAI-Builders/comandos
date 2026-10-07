@@ -888,7 +888,10 @@ pub fn boot_term(k: &str) -> Result<(), JsValue> {
 }
 thread_local! {static NATIVE_BOOTED:std::cell::Cell<bool>=const{std::cell::Cell::new(false)};}
 fn native_report(k: &str, mounted: &[&str], failed: Option<(&str, &JsValue)>, phase: &str) {
-    let report = json!({"k":k,"mounted":mounted,"failed":failed.map(|(id,e)|vec![json!({"id":id,"error":string_field(e,"message").or_else(||e.as_string()).unwrap_or_else(||"terminal boot failed".into())})]).unwrap_or_default()});
+    // These entries are already Values. Re-serializing them through json!
+    // retains serde's RawValue emitter and its full Value deserializer.
+    let mut report = json!({"k":k,"mounted":mounted,"failed":[]});
+    report["failed"] = Value::Array(failed.map(|(id,e)|vec![json!({"id":id,"error":string_field(e,"message").or_else(||e.as_string()).unwrap_or_else(||"terminal boot failed".into())})]).unwrap_or_default());
     let _ = Reflect::set(
         &js_sys::global(),
         &"__comandosBootReport".into(),
@@ -1036,7 +1039,12 @@ fn attach_main() -> Result<(), JsValue> {
             .unwrap_or_else(|| "sutil".into()),
     );
     let host = element("term").ok_or_else(|| JsValue::from_str("sin #term"))?;
-    let opts=value(&json!({"fontFamily":FONT,"fontSize":14,"lineHeight":1.2,"letterSpacing":0,"cursorBlink":true,"scrollback":10000,"theme":comandos_web_dom::port::to_json(&value(crate::page_theme::theme(&theme).unwrap_or(crate::page_theme::THEMES.first().map_or("{}",|(_,v)|v))))}).to_string());
+    let mut options = json!({"fontFamily":FONT,"fontSize":14,"lineHeight":1.2,"letterSpacing":0,"cursorBlink":true,"scrollback":10000});
+    options["theme"] = comandos_web_dom::port::to_json(&value(
+        crate::page_theme::theme(&theme)
+            .unwrap_or(crate::page_theme::THEMES.first().map_or("{}", |(_, v)| v)),
+    ));
+    let opts = value(&options.to_string());
     let term = Rc::new(RefCell::new(WebTerm::new(host.clone(), opts)?));
     let page = Rc::new(RefCell::new(Page {
         term: Some(term.clone()),

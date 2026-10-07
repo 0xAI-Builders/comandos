@@ -59,6 +59,7 @@ pub(crate) fn decimal(value: f64) -> String {
     result
 }
 
+#[allow(clippy::manual_is_multiple_of)] // Keep the measured integer arithmetic unchanged.
 fn lower_midpoint(value: f64, coefficient: u64, exponent: i32) -> bool {
     let bits = value.to_bits();
     let biased = ((bits >> 52) & 0x7ff) as i32;

@@ -895,9 +895,65 @@ async fn pane_action(
             _ => "Activando panel…",
         },
     );
-    let result=async{let result=panes_request(&ui,action,&pane,direction).await?;if !is_live(&ui)||ui.borrow().pane_revision!=revision{return Ok(JsValue::UNDEFINED);}
-if action=="select"||action=="split"{let selected=if action=="split"{get(&result,"opened")}else{from_json(&pane["id"])?};let focus=if action=="split"{let opened=Array::from(&get(&result,"panes")).iter().find(|p|js_sys::Object::is(&get(p,"id"),&selected));if let Some(p)=opened{panes_request(&ui,"select",&to_json(&p),None).await?}else{object()}}else{result};if !is_live(&ui)||ui.borrow().pane_revision!=revision{return Ok(JsValue::UNDEFINED);}let keys=get(&focus,"clientKeys");if keys.is_string()&&!truthy(&call(&terminal(&ui),"sendInput",&[keys,false.into()])?){return Ok(JsValue::UNDEFINED);}
-if truthy(&selected){call(&global("parent"),"postMessage",&[from_json(&json!({"source":"comandos-term","type":"pane-selected","pane":to_json(&selected)}))?,get(&global("location"),"origin")])?;}call(&id("pane-dialog"),"close",&[])?;}else{cancel_close(&ui);render_panes(&ui,get(&result,"panes"))?;text("pane-status","Split cerrado. Los demás paneles siguen abiertos.");}Ok(JsValue::UNDEFINED)}.await;
+    let result = async {
+        let result = panes_request(&ui, action, &pane, direction).await?;
+        if !is_live(&ui) || ui.borrow().pane_revision != revision {
+            return Ok(JsValue::UNDEFINED);
+        }
+        if action == "select" || action == "split" {
+            let selected = if action == "split" {
+                get(&result, "opened")
+            } else {
+                from_json(&pane["id"])?
+            };
+            let focus = if action == "split" {
+                let opened = Array::from(&get(&result, "panes"))
+                    .iter()
+                    .find(|p| js_sys::Object::is(&get(p, "id"), &selected));
+                if let Some(p) = opened {
+                    panes_request(&ui, "select", &to_json(&p), None).await?
+                } else {
+                    object()
+                }
+            } else {
+                result
+            };
+            if !is_live(&ui) || ui.borrow().pane_revision != revision {
+                return Ok(JsValue::UNDEFINED);
+            }
+            let keys = get(&focus, "clientKeys");
+            if keys.is_string()
+                && !truthy(&call(&terminal(&ui), "sendInput", &[keys, false.into()])?)
+            {
+                return Ok(JsValue::UNDEFINED);
+            }
+            if truthy(&selected) {
+                call(
+                    &global("parent"),
+                    "postMessage",
+                    &[
+                        {
+                            let mut message =
+                                json!({"source":"comandos-term","type":"pane-selected"});
+                            message["pane"] = to_json(&selected);
+                            from_json(&message)?
+                        },
+                        get(&global("location"), "origin"),
+                    ],
+                )?;
+            }
+            call(&id("pane-dialog"), "close", &[])?;
+        } else {
+            cancel_close(&ui);
+            render_panes(&ui, get(&result, "panes"))?;
+            text(
+                "pane-status",
+                "Split cerrado. Los demás paneles siguen abiertos.",
+            );
+        }
+        Ok(JsValue::UNDEFINED)
+    }
+    .await;
     if let Err(e) = result
         && is_live(&ui)
         && ui.borrow().pane_revision == revision

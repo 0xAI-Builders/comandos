@@ -476,7 +476,11 @@ fn resize(rc: &Shared) {
     let rc = rc.clone();
     spawn_local(async move {
         let session = rc.borrow().session.clone();
-        let result=fetch(&rc,"/terminal-panes",Some(json!({"session":session,"action":"resize","pane":want["pane"],"axis":want["axis"],"size":want["size"]})),None).await;
+        let mut body = json!({"session":session,"action":"resize"});
+        for key in ["pane", "axis", "size"] {
+            body[key] = want[key].clone();
+        }
+        let result = fetch(&rc, "/terminal-panes", Some(body), None).await;
         {
             let mut s = rc.borrow_mut();
             if let Ok(data) = result
