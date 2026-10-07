@@ -14,7 +14,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use support::{FakeAnswer, FakeOauth, NOW_MS, TestHome, oracle::run_python, seed_usage};
+use support::{FakeAnswer, FakeOauth, NOW_MS, TestHome, seed_usage};
 
 const NOW: f64 = NOW_MS as f64 / 1000.0;
 
@@ -169,13 +169,15 @@ fn forecasts_match_python_rules() {
         (json!([]), false),
     ];
     let encoded = Value::Array(cases.iter().map(|(rows, _)| rows.clone()).collect()).to_string();
-    let Some(out) = run_python(
+    let fixture = TestHome::new("guard-forecasts");
+    let out = support::http_golden::python_files(
+        &fixture.root,
+        "server-guard-forecasts",
+        &[],
         FORECASTS,
         &[NOW.to_string().as_ref(), std::ffi::OsStr::new(&encoded)],
-        &TestHome::new("guard-forecasts").root,
-    ) else {
-        return;
-    };
+        &json!({"local_report":{"r":1}}),
+    );
     let lines: Vec<&str> = out.lines().collect();
     assert_eq!(lines.len(), cases.len(), "{out}");
     let mut raised = 0;
@@ -340,15 +342,22 @@ async fn guard_and_latency_match_python() {
     ));
     let _ = std::fs::remove_dir_all(&python_home);
     copy_tree(&home.root, &python_home);
-    let out = run_python(
+    // The source quota writes belong only to its disposable clone. Capture
+    // input rows and OAuth script; real native refresh and writes run below.
+    let fixture = json!({
+        "usage": comandos_oracle::snapshot_sqlite(&home.usage_db(), &[("<HOME>", home.root.as_path())]).unwrap(),
+        "oauth": {"tok-main":oauth_answer()},
+        "credential": {"claudeAiOauth":{"accessToken":"tok-main"}},
+    });
+    let out = support::http_golden::python_files(
+        &python_home,
+        "server-guard-refresh",
+        &[],
         GUARD,
         &[python_home.as_os_str(), NOW.to_string().as_ref()],
-        &python_home,
+        &fixture,
     );
     let _ = std::fs::remove_dir_all(&python_home);
-    let Some(out) = out else {
-        return;
-    };
     let python = workspace_loads(&out).unwrap();
 
     let oauth = Arc::new(FakeOauth::default());

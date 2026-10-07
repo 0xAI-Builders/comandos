@@ -99,6 +99,11 @@ impl<'a> FrozenHttp<'a> {
             prime_targets: Vec::new(),
         }
     }
+    /// A real source listener exists only in explicit record/check.
+    /// Concurrency fixtures must supply their own real native actor in replay.
+    pub fn source_port(&self) -> Option<u16> {
+        self.original.as_ref().map(|original| original.port)
+    }
     /// Only volatile fixture values explicitly identified by the caller are aliased.
     pub fn alias(&mut self, token: &str, value: &str) {
         self.aliases.push((token.to_owned(), PathBuf::from(value)));
@@ -314,6 +319,52 @@ pub fn dash_files(
         &roots,
         || {
             let stdout = frozen::run_dash_original(home, code, opts)?;
+            copy_domain(&domain, &capsule, files);
+            Ok(stdout)
+        },
+    )
+    .unwrap();
+    if !matches!(
+        std::env::var("COMANDOS_ORACLE").as_deref(),
+        Ok("record" | "check")
+    ) {
+        copy_domain(&capsule, &domain, files);
+    }
+    output
+}
+
+/// Standalone immutable script with declared hook-document effects. Fixture
+/// metadata covers inputs outside those documents; logs and actors stay native.
+pub fn python_files(
+    home: &Path,
+    family: &str,
+    files: &[&str],
+    script: &str,
+    args: &[&std::ffi::OsStr],
+    fixture: &Value,
+) -> String {
+    let domain = home.join(".claude/hooks");
+    let capsule = home.join(".oracle/python-effects");
+    copy_domain(&domain, &capsule, files);
+    let roots = [("<HOME>", home)];
+    let input = json!({"source_commit":frozen::SOURCE_COMMIT,
+        "source_sha256":"4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+        "python":"CPython 3.10.12", "script":script,
+        "args":args.iter().map(|arg| arg.to_str().expect("UTF-8 fixture argument")).collect::<Vec<_>>(),
+        "effect_files":files,"fixture":fixture});
+    let input: Value = serde_json::from_slice(&comandos_oracle::normalize(
+        &serde_json::to_vec(&input).unwrap(),
+        &roots,
+    ))
+    .unwrap();
+    let output = comandos_oracle::text_with_tree_at(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        family,
+        &input,
+        &capsule,
+        &roots,
+        || {
+            let stdout = frozen::run_python_original(script, args, home)?;
             copy_domain(&domain, &capsule, files);
             Ok(stdout)
         },
