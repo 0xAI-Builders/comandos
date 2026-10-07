@@ -758,6 +758,26 @@ pub fn runtime() -> io::Result<tokio::runtime::Runtime> {
 
 /// Punto de entrada del binario: runtime monohilo, señales y código de salida.
 pub fn main(args: &[String]) -> i32 {
+    // Help must not load HOME, create the access token/runtime directory, or bind.
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        println!(
+            "uso: comandos dash [PUERTO] [OPCIONES]\n\n\
+             Puerto predeterminado: {DEFAULT_PORT}\n\
+             Opciones:\n\
+               --term off|ttyd|native\n\
+               --term-replay-dir DIR\n\
+               --webterm-compat PUERTOS\n\
+               --legacy-port PUERTO\n\
+               --no-native\n\
+               --no-usage-effects\n\
+               --shadow-readonly\n\
+               --background legacy|front\n\
+               --cuts-off LISTA\n\
+               --no-open\n\
+               --help, -h"
+        );
+        return 0;
+    }
     let cfg = match from_env(args) {
         Ok(cfg) => cfg,
         Err(StartError::Usage(message)) => {

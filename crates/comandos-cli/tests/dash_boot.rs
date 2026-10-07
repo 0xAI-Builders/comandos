@@ -46,6 +46,42 @@ fn base(home: &PathBuf) -> Command {
     command
 }
 
+#[test]
+fn dash_help_needs_no_home_and_creates_no_runtime_files() {
+    let home = temp_home("help-no-home");
+    let output = base(&home)
+        .env_remove("HOME")
+        .args(["dash", "--help"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&output.stdout).starts_with("uso: comandos dash"));
+    assert!(output.stderr.is_empty());
+    assert!(!home.join("run").exists());
+    assert!(!home.join(".claude/hooks/dash-token").exists());
+}
+
+#[test]
+fn cc_dash_short_help_skips_invalid_configuration_without_writes() {
+    let home = temp_home("help-alias");
+    let link = home.join("cc-dash");
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_comandos"), &link).unwrap();
+    let mut command = base(&home);
+    // argv[0] must exercise the installed alias, including its dash dispatch.
+    use std::os::unix::process::CommandExt;
+    let output = command
+        .arg0(&link)
+        .env("COMANDOS_DASH_TERM", "invalid-help-fixture")
+        .arg("-h")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&output.stdout).starts_with("uso: comandos dash"));
+    assert!(output.stderr.is_empty());
+    assert!(!home.join("run").exists());
+    assert!(!home.join(".claude/hooks/dash-token").exists());
+}
+
 // Every owned frontend is reaped even when an assertion fails. Taking the
 // child transfers that responsibility to wait_with_output after SIGTERM.
 struct Front(Option<std::process::Child>);
