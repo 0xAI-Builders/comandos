@@ -6,7 +6,6 @@ use comandos_server::dash::native::{
     Fault, Native, NativeOptions,
     tmux::{Program, Tmux},
     usage::state,
-    wall_clock_ms,
 };
 use std::{
     path::Path,
@@ -14,7 +13,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use support::{TestHome, get, oracle::oracle, seed_usage, tmux_available};
+use support::{TestHome, get, http_golden::FrozenHttp, seed_usage, tmux_available};
 
 /// Los campos de `enrich_limits` que dependen del `time.time()` de cada lado:
 /// se comparan con tolerancia relativa en vez de borrarse.
@@ -75,6 +74,66 @@ fn assert_same_body(ours: &[u8], theirs: &str, live: &[&str]) {
     }
 }
 
+// Preserve the original comparison's volatility boundary while retaining the
+// real pace/burn/runsOutIn values for its existing tolerance assertions.
+async fn frozen_usage(home: &TestHome, py: &FrozenHttp<'_>, tag: &str, live: &[&str]) -> String {
+    let source = if let Some(port) = py.source_port() {
+        let wire = get(port, "/usage/state").await;
+        assert_eq!(wire.status, 200, "{}", wire.text());
+        let (masked, timed) = mask(&wire.text(), live);
+        let mut body: serde_json::Value = serde_json::from_str(&masked).unwrap();
+        for (row, values) in body["limits"]
+            .as_array_mut()
+            .into_iter()
+            .flatten()
+            .zip(timed)
+        {
+            for (key, value) in TIMED.into_iter().zip(values) {
+                if let Some(value) = value {
+                    row[key] = serde_json::json!(value);
+                }
+            }
+        }
+        Some(comandos_core::json::response_dumps(&body).unwrap())
+    } else {
+        None
+    };
+    let repo = std::fs::canonicalize(support::repo()).unwrap();
+    let mut owned = Vec::new();
+    if !live.is_empty() {
+        let output = support::run_tmux(
+            home,
+            &["display-message", "-p", "-t", "=cx:", "#{pid}\t#{pane_pid}"],
+        );
+        let parts: Vec<_> = output.trim_end().split('\t').collect();
+        assert_eq!(parts.len(), 2);
+        owned.push(("<TMUX-PID>", std::path::PathBuf::from(parts[0])));
+        owned.push(("<PANE-PID>", std::path::PathBuf::from(parts[1])));
+        let start = comandos_runtime::session_configuration::server_start(
+            &home.options().proc_root,
+            parts[0],
+        )
+        .unwrap();
+        if !start.is_empty() {
+            owned.push(("<SERVER-START>", std::path::PathBuf::from(start)));
+        }
+    }
+    let mut roots = vec![("<HOME>", home.root.as_path()), ("<REPO>", repo.as_path())];
+    roots.extend(owned.iter().map(|(token, path)| (*token, path.as_path())));
+    let expected = comandos_oracle::oracle_at(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "usage-state",
+        &serde_json::json!({"source":support::frozen::SOURCE_COMMIT,"python":"3.10.12",
+            "clock_ms":support::NOW_MS,"fixture":tag,"live":live,"target":"/usage/state"}),
+        || {
+            source
+                .map(|text| comandos_oracle::normalize(text.as_bytes(), &roots))
+                .ok_or("original HTTP required in record/check".into())
+        },
+    );
+    String::from_utf8(comandos_oracle::restore(&expected, &roots)).unwrap()
+}
+
 /// `tmux` que siempre sale con 1 (sin servidor): ninguna prueba sin paneles
 /// alcanza un tmux de verdad, ni siquiera el privado.
 fn no_tmux(opts: &mut NativeOptions) {
@@ -119,7 +178,7 @@ fn seed_basic(home: &TestHome, now: i64) {
 #[tokio::test]
 async fn usage_state_body_matches_python_without_live_panes() {
     let home = TestHome::new("ustate");
-    let now = wall_clock_ms() / 1000;
+    let now = support::NOW_MS / 1000;
     seed_basic(&home, now);
     home.write(
         "cc-notify.conf",
@@ -142,18 +201,16 @@ async fn usage_state_body_matches_python_without_live_panes() {
         ),
     )
     .unwrap();
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
+    let mut py = FrozenHttp::new(&home, "usage-state-source", &[]).await;
+    py.prime_unchanged("/usage/state").await;
     let mut opts = home.options();
-    opts.clock = Arc::new(wall_clock_ms);
+    opts.clock_seconds = Arc::new(|| support::NOW_MS as f64 / 1000.0);
     no_tmux(&mut opts);
     let native = Native::new(opts);
     warm_limits(&native).await;
     let ours = state::compute(&native).await.ok().unwrap();
-    let theirs = get(py.port, "/usage/state").await;
-    assert_eq!(theirs.status, 200, "{}", theirs.text());
-    assert_same_body(&ours.body.to_vec(), &theirs.text(), &[]);
+    let theirs = frozen_usage(&home, &py, "no-live-pane-limits", &[]).await;
+    assert_same_body(&ours.body.to_vec(), &theirs, &[]);
     assert!(ours.live_panes.is_empty());
     assert!(ours.tmux_panes.is_none(), "list-panes falló: no se sabe");
     let body: serde_json::Value = serde_json::from_slice(&ours.body.to_vec()).unwrap();
@@ -367,25 +424,23 @@ async fn usage_state_live_pane_matches_python() {
         eprintln!("git no está: se salta");
         return;
     }
-    let now = wall_clock_ms() / 1000;
+    let now = support::NOW_MS / 1000;
     seed_basic(&home, now);
     let codex = support::fake_agent(&home, "codex");
     agent_pane(&home, "cx", &repo, &codex);
     tokio::time::sleep(Duration::from_millis(300)).await;
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
+    let mut py = FrozenHttp::new(&home, "usage-state-source", &[]).await;
+    py.prime_unchanged("/usage/state").await;
     let mut opts = home.options();
-    opts.clock = Arc::new(wall_clock_ms);
+    opts.clock_seconds = Arc::new(|| support::NOW_MS as f64 / 1000.0);
     let native = Native::new(opts);
     warm_limits(&native).await;
     let ours = state::compute(&native).await.ok().unwrap();
-    let theirs = get(py.port, "/usage/state").await;
-    assert_eq!(theirs.status, 200, "{}", theirs.text());
+    let theirs = frozen_usage(&home, &py, "live-codex-private-git", &["cx"]).await;
     let bytes = ours.body.to_vec();
     let text = std::str::from_utf8(&bytes).unwrap();
     assert!(text.contains("\"cx\""), "{text}");
-    assert_same_body(&bytes, &theirs.text(), &["cx"]);
+    assert_same_body(&bytes, &theirs, &["cx"]);
 }
 
 /// Tiempos de un cómputo con 5000 turnos en la ventana: sin memo (un salto de
