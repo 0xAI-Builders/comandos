@@ -219,12 +219,32 @@ async fn extension_usage_matches_python() {
 }
 
 #[tokio::test]
-async fn extension_usage_prefix_is_still_forwarded() {
+async fn extension_usage_prefix_matches_original_without_forwarding() {
     let home = TestHome::new("ext-prefix");
+    home.write("cc-notify.conf", "DESKTOP_NOTIFY=0\n");
+    let py = FrozenHttp::new_rooted_with(
+        &home,
+        "server-http-extension-usage",
+        &[
+            ".claude/hooks/comandos-usage.sqlite",
+            ".claude/hooks/cc-notify.conf",
+        ],
+        "",
+    )
+    .await;
     let legacy = FakeLegacy::start().await;
     let front = front(&home, legacy.port, home.options()).await;
     let wire = get(front.port, "/extension-usageX").await;
-    assert_eq!(wire.text(), r#"{"legacy": true}"#);
+    let expected = py.get("/extension-usageX").await;
+    assert_eq!(
+        (wire.status, wire.text()),
+        (expected.status, expected.text())
+    );
+    assert_eq!(wire.status, 200);
+    assert!(
+        legacy.requests().is_empty(),
+        "original RawPrefix must be owned natively"
+    );
     front.stop().await;
 }
 
