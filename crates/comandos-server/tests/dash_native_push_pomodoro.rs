@@ -28,8 +28,8 @@ use std::{
 };
 use support::{
     NOW_MS, TestHome,
+    frozen_twin::{Twin, TwinOpts, normalize},
     oracle::{OracleOpts, oracle_with},
-    twin::{Twin, TwinOpts, normalize},
 };
 
 fn post_request(target: &str, body: &Value) -> Request {
@@ -148,12 +148,14 @@ async fn push_and_pomodoro_post_match_python_twin() {
     let opts = TwinOpts {
         // El reloj del temporizador del oráculo es el del frente (`NOW_MS`).
         python_prelude: format!("dash.POMODORO_CLOCK = lambda: {NOW_MS}"),
+        oracle_files: vec![".claude/hooks/focus-queue.jsonl"],
+        response_normalizer: Some(("pomodoro-uuid-ts", |_, body| ids(body))),
         ..TwinOpts::default()
     };
     let Some(twin) = Twin::start_with("pomo-twin", seed, opts).await else {
         return;
     };
-    let same = |run: &support::twin::TwinRun, status: u16| {
+    let same = |run: &support::frozen_twin::TwinRun, status: u16| {
         assert_eq!(run.front.status, status, "{}", run.front.text());
         assert_eq!(run.oracle.status, status, "{}", run.oracle.text());
         assert_eq!(ids(&run.front.text()), ids(&run.oracle.text()));
@@ -377,15 +379,9 @@ async fn pomodoro_post_wakes_scheduler() {
     native.shutdown().await;
 }
 
-#[tokio::test]
-async fn two_schedulers_settle_once() {
-    let home = TestHome::new_short("pomo-two");
-    // Un bloque de foco de 1 min que venció hace 9 min, con la política de
-    // foco activa desde antes (el cierre paga un premio). Además, lo que migra
-    // el dueño (el Python, con `legacy`): un `focus.json` ya vencido (no se
-    // adopta, pero se renombra) y dos bloques del historial.
+fn seed_expired(home: &TestHome) {
     let now = wall_clock_ms();
-    seed_legacy(&home, now / 1000 - 60);
+    seed_legacy(home, now / 1000 - 60);
     std::fs::create_dir_all(home.state_db().parent().unwrap()).unwrap();
     {
         let conn = comandos_store::state::connect(&home.state_db()).unwrap();
@@ -406,6 +402,87 @@ async fn two_schedulers_settle_once() {
             )
             .unwrap();
     }
+}
+
+fn scheduler_summary(home: &TestHome) -> Value {
+    let event = "pomodoro:vencido:completed";
+    json!({
+        "measured": count(home, "select count(*) from pomodoro_records where provenance='measured'"),
+        "legacy": count(home, "select count(*) from pomodoro_records where provenance='legacy-planned'"),
+        "rewards": count(home, "select count(*) from focus_rewards"),
+        "focus_absent": !home.hooks().join("focus.json").exists(),
+        "migrated": migrated(home),
+        "events": count(home, &format!("select count(*) from events where event_id='{event}'")),
+        "receipts": count(home, &format!("select count(*) from event_receipts where event_id='{event}'")),
+        "sound": count(home, &format!("select count(*) from deliveries where event_id='{event}' and channel='sound'"))
+    })
+}
+
+async fn settle(home: &TestHome) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while vencido(home).as_deref() != Some("completed") || migrated(home) == 0 {
+        assert!(Instant::now() < deadline, "nadie cerró el bloque");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(2500)).await;
+}
+
+async fn original_scheduler(home: &TestHome) -> support::oracle::Oracle {
+    let reference = support::frozen::reference(&home.root).unwrap();
+    oracle_with(
+        home,
+        OracleOpts {
+            extra_env: vec![(
+                "COMANDOS_ORACLE_REFERENCE_ROOT".into(),
+                reference.display().to_string(),
+            )],
+            ..OracleOpts::default()
+        },
+    )
+    .await
+    .expect("record/check requires immutable original scheduler")
+}
+
+/// Only the immutable source actor runs on this independent seeded HOME.
+/// No native result, live PID, wall-clock number or scheduler effect is recorded.
+async fn scheduler_original() -> Value {
+    let source = if matches!(
+        std::env::var("COMANDOS_ORACLE").as_deref(),
+        Ok("record" | "check")
+    ) {
+        let home = TestHome::new_short("pomo-source-only");
+        seed_expired(&home);
+        let actor = original_scheduler(&home).await;
+        settle(&home).await;
+        let output = serde_json::to_vec(&scheduler_summary(&home)).unwrap();
+        drop(actor);
+        Some(output)
+    } else {
+        None
+    };
+    let output = comandos_oracle::oracle_at(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "server-pomodoro-scheduler",
+        &json!({"source_commit":support::frozen::SOURCE_COMMIT,
+            "source_sha256":"4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+            "python":"CPython 3.10.12", "fixture": {"block":"vencido", "age_ms":600000,
+                "target_ms":60000,"policy_age_ms":700000,"legacy_focus_age_s":60,
+                "history":[["h1",25,1700000000000i64,1700001500000i64],
+                           ["h2",50,1700003000000i64,1700006000000i64]]}}),
+        || source.ok_or_else(|| "original requires record/check".into()),
+    );
+    serde_json::from_slice(&output).unwrap()
+}
+
+#[tokio::test]
+async fn two_schedulers_settle_once() {
+    let home = TestHome::new_short("pomo-two");
+    // Un bloque de foco de 1 min que venció hace 9 min, con la política de
+    // foco activa desde antes (el cierre paga un premio). Además, lo que migra
+    // el dueño (el Python, con `legacy`): un `focus.json` ya vencido (no se
+    // adopta, pero se renombra) y dos bloques del historial.
+    seed_expired(&home);
+    let expected = scheduler_original().await;
     assert_eq!(vencido(&home).as_deref(), Some("running"));
     let mut opts = home.options();
     opts.clock = Arc::new(wall_clock_ms);
@@ -415,15 +492,30 @@ async fn two_schedulers_settle_once() {
     assert!(native.ready().await);
     // Los dos planificadores sobre la MISMA base (P51): el del frente y el
     // del `cc-dash` confinado, que arranca el suyo en `main()`.
-    let (runner, py) = tokio::join!(
-        async { background::start(&native) },
-        oracle_with(&home, OracleOpts::default())
-    );
+    let runner = background::start(&native);
     assert!(runner.pomodoro());
-    let Some(py) = py else {
-        runner.stop();
-        native.shutdown().await;
-        return;
+    // Replay retains two actual schedulers on the shared SQLite database.
+    // Record/check retains the original concurrent Python/native pairing.
+    let explicit = matches!(
+        std::env::var("COMANDOS_ORACLE").as_deref(),
+        Ok("record" | "check")
+    );
+    let py = if explicit {
+        Some(original_scheduler(&home).await)
+    } else {
+        None
+    };
+    let peer = if explicit {
+        None
+    } else {
+        let mut options = home.options();
+        options.clock = Arc::new(wall_clock_ms);
+        options.background = Background::front();
+        let peer = Arc::new(Native::new(options));
+        assert!(peer.ready().await);
+        let runner = background::start(&peer);
+        assert!(runner.pomodoro());
+        Some((peer, runner))
     };
     let deadline = Instant::now() + Duration::from_secs(10);
     while vencido(&home).as_deref() != Some("completed") || migrated(&home) == 0 {
@@ -474,7 +566,12 @@ async fn two_schedulers_settle_once() {
         ),
         1
     );
+    assert_eq!(scheduler_summary(&home), expected);
     drop(py);
+    if let Some((peer, runner)) = peer {
+        runner.stop();
+        peer.shutdown().await;
+    }
     runner.stop();
     native.shutdown().await;
 }
