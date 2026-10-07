@@ -176,7 +176,7 @@ impl Journal {
                         .and_then(Path::parent)
                         .and_then(Path::parent)
                         .ok_or("alias without HOME")?;
-                    for suffix in ["target", "orig"] {
+                    for suffix in ["target", "orig", "installed"] {
                         self.file(
                             &home
                                 .join(".local/share/comandos/rollback")
@@ -386,7 +386,8 @@ impl Journal {
                 } else {
                     target.clone()
                 };
-                self.observed.insert(at.clone(), Before::Link(target));
+                self.observed
+                    .insert(at.clone(), Before::Link(target.clone()));
                 let orig = home
                     .join(".local/share/comandos/rollback")
                     .join(format!("{name}.orig"));
@@ -404,6 +405,13 @@ impl Journal {
                     _ => b"ABSENT\n".to_vec(),
                 };
                 self.observed.insert(record, Before::File(raw, 0o644));
+                if name != "cc-app" {
+                    use std::os::unix::ffi::OsStrExt;
+                    self.observed.insert(
+                        super::record::installed_path(home, name),
+                        Before::File(target.as_os_str().as_bytes().to_vec(), 0o600),
+                    );
+                }
             }
             Action::WriteIfAbsent { path, bytes, mode } => {
                 let mut current = Self::default();

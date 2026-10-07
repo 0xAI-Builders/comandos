@@ -283,6 +283,7 @@ fn apply_inner(
                     j.checkpoint(&[
                         at.clone(),
                         super::record::path(home, name),
+                        super::record::installed_path(home, name),
                         home.join(".local/share/comandos/rollback")
                             .join(format!("{name}.orig")),
                     ])?;

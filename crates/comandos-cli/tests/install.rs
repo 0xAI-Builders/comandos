@@ -35,6 +35,209 @@ fn record(home: &Path, name: &str) -> String {
     fs::read_to_string(home.join(format!(".local/share/comandos/rollback/{name}.target"))).unwrap()
 }
 
+// An external edit must not be overwritten by a rollback receipt describing
+// the original state. Exercise each receipt kind, including its saved backup.
+fn alias_fixture_marker(home: &Path) {
+    let marker = staged(home);
+    fs::create_dir_all(marker.parent().unwrap()).unwrap();
+    fs::write(marker, b"private alias destination, never executed").unwrap();
+}
+fn rollback_external_edit(original: &str, replacement: &str) {
+    use std::os::unix::fs::MetadataExt;
+    let home = temp_home();
+    let alias = home.join(".local/bin/cc-cas-test");
+    match original {
+        "link" => symlink(home.join("original-target"), &alias).unwrap(),
+        "file" => fs::write(&alias, b"original file").unwrap(),
+        "absent" => {}
+        _ => unreachable!(),
+    }
+    alias_fixture_marker(&home);
+    assert!(install(&home, &["--link", "cc-cas-test"]).success());
+    let receipt = record(&home, "cc-cas-test");
+    let backup = home.join(".local/share/comandos/rollback/cc-cas-test.orig");
+    let saved = fs::read(&backup).ok();
+    fs::remove_file(&alias).unwrap();
+    match replacement {
+        "link" => symlink(home.join("external-target"), &alias).unwrap(),
+        "file" => fs::write(&alias, b"external replacement").unwrap(),
+        "absent" => {}
+        _ => unreachable!(),
+    }
+    let inode = fs::symlink_metadata(&alias).ok().map(|m| m.ino());
+    for args in [
+        vec!["--rollback", "cc-cas-test", "--dry-run"],
+        vec!["--rollback", "cc-cas-test"],
+    ] {
+        assert!(
+            !install(&home, &args).success(),
+            "rollback overwrote {replacement} after {original}"
+        );
+        assert_eq!(record(&home, "cc-cas-test"), receipt);
+        assert_eq!(fs::read(&backup).ok(), saved);
+        assert_eq!(fs::symlink_metadata(&alias).ok().map(|m| m.ino()), inode);
+        match replacement {
+            "link" => assert_eq!(fs::read_link(&alias).unwrap(), home.join("external-target")),
+            "file" => assert_eq!(fs::read(&alias).unwrap(), b"external replacement"),
+            "absent" => assert!(alias.symlink_metadata().is_err()),
+            _ => unreachable!(),
+        }
+    }
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn rollback_preserves_modified_symlink_and_all_receipt_kinds() {
+    for original in ["link", "file", "absent"] {
+        rollback_external_edit(original, "link");
+    }
+}
+#[test]
+fn rollback_preserves_external_regular_file_and_all_receipt_kinds() {
+    for original in ["link", "file", "absent"] {
+        rollback_external_edit(original, "file");
+    }
+}
+#[test]
+fn rollback_preserves_deleted_alias_and_original_backups() {
+    for original in ["link", "file"] {
+        rollback_external_edit(original, "absent");
+    }
+}
+
+#[test]
+fn rollback_repeated_original_link_is_read_only() {
+    use std::os::unix::fs::MetadataExt;
+    let home = temp_home();
+    let alias = home.join(".local/bin/cc-cas-test");
+    let original = home.join("original-target");
+    symlink(&original, &alias).unwrap();
+    alias_fixture_marker(&home);
+    assert!(install(&home, &["--link", "cc-cas-test"]).success());
+    assert!(install(&home, &["--rollback", "cc-cas-test"]).success());
+    let inode = fs::symlink_metadata(&alias).unwrap().ino();
+    assert!(install(&home, &["--rollback", "cc-cas-test"]).success());
+    assert_eq!(fs::read_link(&alias).unwrap(), original);
+    assert_eq!(fs::symlink_metadata(&alias).unwrap().ino(), inode);
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn rollback_native_component_requires_exact_installed_target() {
+    use comandos_cli::install::{
+        components,
+        plan::{Action, apply_with},
+    };
+    let home = temp_home();
+    let candidate = home.join("private-notifyd");
+    fs::write(&candidate, b"private component fixture, never executed").unwrap();
+    fs::set_permissions(&candidate, fs::Permissions::from_mode(0o755)).unwrap();
+    let first = components::stage(&home, "comandos-notifyd", &candidate, false).unwrap();
+    let alias = home.join(".local/bin/cc-notifyd");
+    apply_with(
+        &[Action::Link {
+            name: "cc-notifyd".into(),
+            at: alias.clone(),
+            target: first.clone(),
+        }],
+        false,
+        &mut |_| panic!("unexpected external action"),
+    )
+    .unwrap();
+    assert!(install(&home, &["--rollback", "cc-notifyd", "--dry-run"]).success());
+    fs::write(&candidate, b"other valid private component, never executed").unwrap();
+    let other = components::stage(&home, "comandos-notifyd", &candidate, false).unwrap();
+    fs::remove_file(&alias).unwrap();
+    symlink(&other, &alias).unwrap();
+    assert!(!install(&home, &["--rollback", "cc-notifyd"]).success());
+    assert_eq!(fs::read_link(&alias).unwrap(), other);
+    fs::remove_file(&alias).unwrap();
+    symlink(&first, &alias).unwrap();
+    assert!(install(&home, &["--rollback", "cc-notifyd"]).success());
+    assert!(alias.symlink_metadata().is_err());
+    assert!(install(&home, &["--rollback", "cc-notifyd"]).success());
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn rollback_historical_component_without_exact_receipt_declines() {
+    let home = temp_home();
+    let rollback = home.join(".local/share/comandos/rollback");
+    fs::create_dir_all(&rollback).unwrap();
+    let alias = home.join(".local/bin/cc-notifyd");
+    let target =
+        home.join(".local/share/comandos/components/comandos-notifyd/private/comandos-notifyd");
+    symlink(&target, &alias).unwrap();
+    fs::write(rollback.join("cc-notifyd.target"), b"ABSENT\n").unwrap();
+    assert!(!install(&home, &["--rollback", "cc-notifyd"]).success());
+    assert_eq!(fs::read_link(&alias).unwrap(), target);
+    assert_eq!(record(&home, "cc-notifyd"), "ABSENT\n");
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn full_link_failure_restores_exact_target_sidecar_with_original_alias() {
+    use comandos_cli::install::plan::{Action, apply_with};
+    let home = temp_home();
+    alias_fixture_marker(&home);
+    assert!(install(&home, &["--link", "cc-cas-test"]).success());
+    let alias = home.join(".local/bin/cc-cas-test");
+    let prior = record(&home, "cc-cas-test");
+    let sidecar = home.join(".local/share/comandos/rollback/cc-cas-test.installed");
+    let before = fs::read(&sidecar).ok();
+    let candidate = home.join("replacement-marker");
+    fs::write(&candidate, b"new private marker").unwrap();
+    let actions = [
+        Action::Link {
+            name: "cc-cas-test".into(),
+            at: alias.clone(),
+            target: candidate,
+        },
+        Action::WriteIfAbsent {
+            path: home.join("private-font.ttf"),
+            bytes: b"private font-cache failure marker, never registered",
+            mode: 0o644,
+        },
+        Action::InstallFonts(home.join("unused-private-fonts")),
+    ];
+    let error = apply_with(&actions, false, &mut |_| {
+        Err("private injected font failure".into())
+    })
+    .unwrap_err();
+    assert!(error.contains("private injected font failure"));
+    assert_eq!(fs::read_link(&alias).unwrap(), staged(&home));
+    assert_eq!(record(&home, "cc-cas-test"), prior);
+    assert_eq!(fs::read(&sidecar).ok(), before);
+    assert!(
+        before.is_some(),
+        "installed target sidecar was never persisted"
+    );
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn link_rejects_invalid_installed_receipt_before_changing_original_record() {
+    let home = temp_home();
+    alias_fixture_marker(&home);
+    let alias = home.join(".local/bin/cc-cas-test");
+    let original = home.join("current-original");
+    symlink(&original, &alias).unwrap();
+    let rollback = home.join(".local/share/comandos/rollback");
+    fs::create_dir_all(&rollback).unwrap();
+    let receipt = rollback.join("cc-cas-test.target");
+    fs::write(&receipt, b"LINK:older-original\n").unwrap();
+    let invalid = rollback.join("cc-cas-test.installed");
+    symlink(home.join("external-receipt"), &invalid).unwrap();
+    assert!(!install(&home, &["--link", "cc-cas-test"]).success());
+    assert_eq!(fs::read_link(alias).unwrap(), original);
+    assert_eq!(fs::read(receipt).unwrap(), b"LINK:older-original\n");
+    assert_eq!(
+        fs::read_link(invalid).unwrap(),
+        home.join("external-receipt")
+    );
+    fs::remove_dir_all(home).unwrap();
+}
+
 #[test]
 fn link_and_rollback_round_trip() {
     let home = temp_home();

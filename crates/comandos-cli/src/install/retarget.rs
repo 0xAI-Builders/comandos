@@ -187,6 +187,11 @@ fn mappings(repo: &Path, home: &Path) -> Result<Vec<(String, String)>, String> {
 fn command(value: &str, pairs: &[(String, String)], is_command: bool) -> String {
     let mut output = value.to_owned();
     for (old, new) in pairs {
+        // Most command arguments are foreign. Do not compile replacement
+        // patterns for paths that do not occur in this string.
+        if !output.contains(old) {
+            continue;
+        }
         if output == *old {
             output = if is_command {
                 comandos_core::text::shlex_quote(new)

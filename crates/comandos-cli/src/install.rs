@@ -377,7 +377,11 @@ fn preview_link(home: &Path, staged: &Path, name: &str) -> Result<(), String> {
 
 fn preview_rollback(home: &Path, name: &str) -> Result<(), String> {
     let path = link_path(home, name);
-    let action = match record::read(home, name)? {
+    let rec = record::read(home, name)?;
+    if name != "cc-app" {
+        check_rollback_alias(home, name, &rec)?;
+    }
+    let action = match rec {
         Record::File(orig) => {
             if !orig.symlink_metadata().is_ok_and(|m| m.is_file()) {
                 return Err(format!("{} no es un respaldo regular", orig.display()));
@@ -603,6 +607,9 @@ fn link(home: &Path, staged: &Path, name: &str) -> Result<(), String> {
     let rollback_dir = home.join(".local/share/comandos/rollback");
     fs::create_dir_all(&rollback_dir)
         .map_err(|e| format!("no se pudo crear {}: {e}", rollback_dir.display()))?;
+    // A malformed exact-target receipt must fail before moving an original or
+    // replacing its rollback record.
+    let _ = record::installed(home, name)?;
     let mut backup = None;
     match fs::symlink_metadata(&path) {
         Ok(m) if m.file_type().is_symlink() => {
@@ -625,16 +632,22 @@ fn link(home: &Path, staged: &Path, name: &str) -> Result<(), String> {
         }
         Err(e) => return Err(format!("no se pudo inspeccionar {}: {e}", path.display())),
     }
-    swap_symlink(staged, &path).inspect_err(|_| {
-        if let Some(orig) = &backup {
-            let _ = fs::rename(orig, &path);
-        }
-    })
+    record::write_installed(home, name, staged)
+        .and_then(|()| swap_symlink(staged, &path))
+        .inspect_err(|_| {
+            if let Some(orig) = &backup {
+                let _ = fs::rename(orig, &path);
+            }
+        })
 }
 
 fn rollback(home: &Path, name: &str) -> Result<(), String> {
     let path = link_path(home, name);
-    match record::read(home, name)? {
+    let rec = record::read(home, name)?;
+    if name != "cc-app" && check_rollback_alias(home, name, &rec)? {
+        return Ok(());
+    }
+    match rec {
         Record::File(orig) => fs::rename(&orig, &path).map_err(|e| {
             format!(
                 "no se pudo restaurar {} desde {}: {e}",
@@ -653,4 +666,33 @@ fn rollback(home: &Path, name: &str) -> Result<(), String> {
         }
         Record::Link(target) => swap_symlink(&target, &path),
     }
+}
+
+/// Refuse external alias edits before touching its original receipt or backup.
+/// True means the original link/absence is already restored and needs no write.
+fn check_rollback_alias(home: &Path, name: &str, rec: &Record) -> Result<bool, String> {
+    let path = link_path(home, name);
+    release::check_app_parents(&path)?;
+    match path.symlink_metadata() {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            let current = fs::read_link(&path).map_err(|e| e.to_string())?;
+            if *rec == Record::Link(current.clone()) {
+                return Ok(true);
+            }
+            // Historical receipts can prove only the stable CLI target; there
+            // is no recorded exact target for historical component aliases.
+            let expected = record::installed(home, name)?
+                .unwrap_or_else(|| home.join(".local/share/comandos/bin/comandos"));
+            if current == expected {
+                return Ok(false);
+            }
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound && *rec == Record::Absent => return Ok(true),
+        Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e.to_string()),
+        _ => {}
+    }
+    Err(format!(
+        "{} fue modificado; el rollback no lo sobrescribe",
+        path.display()
+    ))
 }
