@@ -293,6 +293,77 @@ fn copy_preserves_rowids_storage_classes_and_invalid_utf8_text() {
 }
 
 #[test]
+fn usage_move_and_demote_preserve_optional_session_profiles_exactly() {
+    let h = Home::new();
+    let spec = h.source("db-usage");
+    let old = Connection::open(&spec.legacy).unwrap();
+    old.execute_batch("CREATE TABLE session_profiles(id TEXT PRIMARY KEY,name TEXT NOT NULL,payload TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);INSERT INTO session_profiles(rowid,id,name,payload,created_at,updated_at) VALUES(700,'profile','ñ',' { \"name\": \"ñ\" } ',1,9223372036854775807),(900,'opaque','bytes',CAST(X'80FF00' AS TEXT),2,3)").unwrap();
+    let profile_rows = |c: &Connection| -> Vec<(i64, String, String, String, String, i64, i64)> {
+        c.prepare("SELECT rowid,id,name,typeof(payload),hex(payload),created_at,updated_at FROM session_profiles ORDER BY rowid").unwrap()
+            .query_map([], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?))).unwrap()
+            .collect::<rusqlite::Result<_>>().unwrap()
+    };
+    let before = profile_rows(&old);
+    drop(old);
+    move_db(&spec, &h.db(), &h.backup("profiles"), 4000).unwrap();
+    let new = unified::open_unified(&h.db()).unwrap();
+    assert_eq!(profile_rows(&new), before);
+    drop(new);
+    demote_db(&spec, &h.db()).unwrap();
+    let old = Connection::open(&spec.legacy).unwrap();
+    assert_eq!(profile_rows(&old), before);
+    assert_eq!(
+        old.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        11
+    );
+    comandos_store::migrate::verify_backup(&h.backup("profiles").join("manifest.json")).unwrap();
+}
+
+#[test]
+fn usage_without_profiles_demotes_profiles_created_in_unified() {
+    let h = Home::new();
+    let spec = h.source("db-usage");
+    move_db(&spec, &h.db(), &h.backup("absent-profiles"), 4000).unwrap();
+    let new = unified::open_unified(&h.db()).unwrap();
+    comandos_store::session_profiles::list_profiles(&new).unwrap();
+    new.execute_batch("INSERT INTO session_profiles(rowid,id,name,payload,created_at,updated_at) VALUES(1234,'new-profile','New',' { \"kept\": true } ',8,9)").unwrap();
+    drop(new);
+    demote_db(&spec, &h.db()).unwrap();
+    let old = Connection::open(&spec.legacy).unwrap();
+    let row = old
+        .query_row(
+            "SELECT rowid,payload FROM session_profiles WHERE id='new-profile'",
+            [],
+            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
+        )
+        .unwrap();
+    assert_eq!(row, (1234, " { \"kept\": true } ".to_string()));
+    assert_eq!(
+        old.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        11
+    );
+}
+
+#[test]
+fn optional_profiles_do_not_allow_unknown_usage_tables() {
+    let h = Home::new();
+    let spec = h.source("db-usage");
+    let old = Connection::open(&spec.legacy).unwrap();
+    comandos_store::session_profiles::list_profiles(&old).unwrap();
+    old.execute_batch(
+        "CREATE TABLE unknown_user_data(value BLOB);INSERT INTO unknown_user_data VALUES(X'80FF')",
+    )
+    .unwrap();
+    drop(old);
+    let before = tree(&h.0);
+    let error = move_db(&spec, &h.db(), &h.backup("unknown"), 4000).unwrap_err();
+    assert!(error.to_string().contains("tablas SQLite no previstas"));
+    assert_eq!(tree(&h.0), before);
+}
+
+#[test]
 fn writer_blocked_during_move_resumes_on_unified() {
     use std::{
         sync::mpsc,

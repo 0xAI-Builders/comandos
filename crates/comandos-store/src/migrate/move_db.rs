@@ -370,10 +370,24 @@ fn table_names(conn: &Connection) -> Result<BTreeSet<String>> {
         .query_map([], |r| r.get(0))?
         .collect::<rusqlite::Result<_>>()?)
 }
+
+// Profiles are created lazily by both legacy and native APIs, outside usage's
+// required schema. Copy them in either direction when present; other optional
+// or unknown tables still fail the source catalog check.
+fn mapped_tables(conn: &Connection, spec: &MoveSpec) -> Result<Vec<(&'static str, &'static str)>> {
+    let mut tables = spec.tables.to_vec();
+    if spec.domain == "db-usage" && table_names(conn)?.contains("session_profiles") {
+        tables.push(("session_profiles", "session_profiles"));
+    }
+    Ok(tables)
+}
+
 fn validate_source(conn: &Connection, spec: &MoveSpec) -> Result<bool> {
     let moved = marker(conn)?;
-    let mut expected: BTreeSet<String> =
-        spec.tables.iter().map(|(from, _)| (*from).into()).collect();
+    let mut expected: BTreeSet<String> = mapped_tables(conn, spec)?
+        .iter()
+        .map(|(from, _)| (*from).into())
+        .collect();
     if spec.marker == Marker::SchemaMigrationsRow {
         expected.insert("schema_migrations".into());
     }
@@ -507,11 +521,16 @@ fn copy_tables(
     inverse: bool,
     timing: Option<(Instant, u64)>,
 ) -> Result<(u64, String)> {
-    let pairs: Vec<_> = spec
-        .tables
-        .iter()
-        .map(|(from, to)| if inverse { (*to, *from) } else { (*from, *to) })
+    let pairs: Vec<_> = mapped_tables(source, spec)?
+        .into_iter()
+        .map(|(from, to)| if inverse { (to, from) } else { (from, to) })
         .collect();
+    if pairs.iter().any(|(_, to)| *to == "session_profiles") {
+        // The caller owns the migration transaction, including its admission
+        // and source marker. Reuse the API's DDL without admitting a normal
+        // writer to the marked legacy database during demotion.
+        target.execute_batch(crate::session_profiles::SCHEMA)?;
+    }
     for (from, to) in &pairs {
         let autoincrement = |conn: &Connection, table: &str| -> Result<bool> {
             let sql: String = conn.query_row(
@@ -670,7 +689,7 @@ fn backup_sqlite(spec: &MoveSpec, dest: &Path) -> Result<BackupManifest> {
         if validate_source(&target, spec)? {
             return Err(Error::Validation("respaldo de una base ya movida".into()));
         }
-        for (table, _) in spec.tables {
+        for (table, _) in mapped_tables(source, spec)? {
             if digest(source, table)? != digest(&target, table)? {
                 return Err(Error::Validation(
                     "respaldo SQLite difiere de la fuente".into(),

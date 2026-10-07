@@ -50,11 +50,14 @@ const FIELDS: &[&str] = &[
     "createdAt",
 ];
 
+pub(crate) const SCHEMA: &str = "CREATE TABLE IF NOT EXISTS session_profiles (id TEXT PRIMARY KEY,name TEXT NOT NULL,payload TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL)";
+
 fn schema(conn: &Connection) -> Result<()> {
     crate::with_transaction(conn, || {
-    conn.execute_batch("CREATE TABLE IF NOT EXISTS session_profiles (id TEXT PRIMARY KEY,name TEXT NOT NULL,payload TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL)")?;
-    Ok(())
-    }).map_err(|e| Fault::Uncertain(e.to_string()))
+        conn.execute_batch(SCHEMA)?;
+        Ok(())
+    })
+    .map_err(|e| Fault::Uncertain(e.to_string()))
 }
 fn admit_write(conn: &Connection) -> Result<()> {
     crate::migrate::move_db::admit_write(conn).map_err(|e| Fault::Uncertain(e.to_string()))
