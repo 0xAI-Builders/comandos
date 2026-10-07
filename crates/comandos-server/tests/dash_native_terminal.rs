@@ -8,12 +8,78 @@ use std::{
     time::{Duration, Instant},
 };
 use support::{
-    FakeLegacy, TestHome, Wire, dead_port, front, get, oracle::oracle, request_body, tmux_available,
+    FakeLegacy, TestHome, Wire, dead_port, front, get, http_golden::FrozenHttp, request_body,
+    tmux_available,
 };
 
 fn tmux(home: &TestHome, args: &[&str]) -> String {
     // `-S` al socket privado: nunca el servidor del usuario.
     support::run_tmux(home, args)
+}
+
+// Read actor identities independently from the owned private tmux/kernel.
+fn terminal_roots(home: &TestHome) -> Vec<(&'static str, std::path::PathBuf)> {
+    let mut roots = vec![
+        ("<HOME>", home.root.clone()),
+        ("<REPO>", std::fs::canonicalize(support::repo()).unwrap()),
+    ];
+    let ids = tmux(
+        home,
+        &["list-panes", "-t", "=s1:", "-F", "#{pid}\t#{pane_pid}"],
+    );
+    for (index, line) in ids.lines().enumerate() {
+        let (server, pane) = line.split_once('\t').unwrap();
+        if index == 0 {
+            roots.push(("<TMUX-PID>", server.into()));
+            let start = comandos_runtime::session_configuration::server_start(
+                &home.options().proc_root,
+                server,
+            )
+            .unwrap();
+            if !start.is_empty() {
+                roots.push(("<SERVER-START>", start.into()));
+            }
+        }
+        roots.push((
+            if index == 0 {
+                "<PANE0-PID>"
+            } else {
+                "<PANE1-PID>"
+            },
+            pane.into(),
+        ));
+    }
+    for (pane, token) in [("%0", "<PANE0-VERSION>"), ("%1", "<PANE1-VERSION>")] {
+        let output = tmux(
+            home,
+            &[
+                "display-message",
+                "-p",
+                "-t",
+                pane,
+                &comandos_runtime::session_configuration::identity_format(),
+            ],
+        );
+        let mut identity = comandos_runtime::session_configuration::identity_from_output(
+            true, &output, "s1", pane,
+        )
+        .unwrap();
+        let pid = identity["pid"].as_str().unwrap();
+        let start =
+            comandos_runtime::session_configuration::server_start(&home.options().proc_root, pid)
+                .unwrap();
+        identity.insert("server_start".into(), start.into());
+        let version =
+            comandos_runtime::terminal_panes::version(&serde_json::Value::Object(identity))
+                .unwrap();
+        roots.push((token, version.into()));
+    }
+    roots
+}
+fn terminal_aliases(home: &TestHome, py: &mut FrozenHttp<'_>) {
+    for (token, path) in terminal_roots(home) {
+        py.alias(token, path.to_str().unwrap());
+    }
 }
 
 fn seen(wire: &Wire) -> (u16, Option<String>, String) {
@@ -69,9 +135,8 @@ async fn terminal_routes_match_python_oracle() {
     }
     let home = TestHome::new("term-oracle");
     two_panes(&home);
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
+    let mut py = FrozenHttp::new(&home, "terminal-routes", &[]).await;
+    terminal_aliases(&home, &mut py);
     let front = front(&home, dead_port(), home.options()).await;
     let list = r#"{"session": "s1"}"#;
     let listed = request_body(front.port, "POST", "/terminal-panes", "", list).await;
@@ -147,7 +212,7 @@ async fn terminal_routes_match_python_oracle() {
     ];
     for (path, body) in &cases {
         assert_eq!(
-            seen(&request_body(py.port, "POST", path, "", body).await),
+            seen(&py.request("POST", path, "", body).await),
             seen(&request_body(front.port, "POST", path, "", body).await),
             "{path} {body}"
         );
@@ -235,9 +300,8 @@ async fn terminal_panes_mutations_match_python_oracle() {
     let home = TestHome::new("term-mut-oracle");
     two_panes(&home);
     tmux(&home, &["set-option", "-g", "default-command", "cat"]);
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
+    let mut py = FrozenHttp::new(&home, "terminal-mutations", &[]).await;
+    terminal_aliases(&home, &mut py);
     let front = front(&home, dead_port(), home.options()).await;
     let listed = request_body(
         front.port,
@@ -255,7 +319,7 @@ async fn terminal_panes_mutations_match_python_oracle() {
     let resize = r#"{"session": "s1", "action": "resize", "pane": "%1", "axis": "x", "size": 30}"#
         .to_owned();
     for body in [&select, &resize] {
-        let a = request_body(py.port, "POST", "/terminal-panes", "", body).await;
+        let a = py.request("POST", "/terminal-panes", "", body).await;
         let b = request_body(front.port, "POST", "/terminal-panes", "", body).await;
         assert_eq!(a.status, 200, "{body}: {}", a.text());
         assert_eq!(seen(&a), seen(&b), "{body}");
@@ -263,20 +327,55 @@ async fn terminal_panes_mutations_match_python_oracle() {
     let split = format!(
         r#"{{"session": "s1", "action": "split", "pane": "%0", "identity": "{identity}", "direction": "down"}}"#
     );
-    let a = request_body(py.port, "POST", "/terminal-panes", "", &split).await;
-    assert_eq!(a.status, 200, "{}", a.text());
-    let opened: serde_json::Value = serde_json::from_str(&a.text()).unwrap();
-    let opened = opened["opened"].as_str().unwrap().to_owned();
-    tmux(&home, &["kill-pane", "-t", &opened]);
-    tmux(&home, &["select-pane", "-t", "%0"]);
-    let b = request_body(front.port, "POST", "/terminal-panes", "", &split).await;
-    assert_eq!(
-        (a.status, a.header("content-type").map(str::to_owned)),
-        (b.status, b.header("content-type").map(str::to_owned))
+    let source = if let Some(port) = py.source_port() {
+        let a = request_body(port, "POST", "/terminal-panes", "", &split).await;
+        assert_eq!(a.status, 200, "{}", a.text());
+        let opened: serde_json::Value = serde_json::from_str(&a.text()).unwrap();
+        let opened = opened["opened"].as_str().unwrap().to_owned();
+        tmux(&home, &["kill-pane", "-t", &opened]);
+        tmux(&home, &["select-pane", "-t", "%0"]);
+        Some((a, opened))
+    } else {
+        None
+    };
+    let roots = terminal_roots(&home);
+    let roots: Vec<_> = roots
+        .iter()
+        .map(|(token, path)| (*token, path.as_path()))
+        .collect();
+    let input: serde_json::Value = serde_json::from_slice(&comandos_oracle::normalize(
+        &serde_json::to_vec(&serde_json::json!({"source":support::frozen::SOURCE_COMMIT,
+            "python":"3.10.12", "path":"/terminal-panes", "body":split,
+            "before_panes":["%0","%1"], "normalize":"panes_without_volatile"}))
+        .unwrap(),
+        &roots,
+    ))
+    .unwrap();
+    let expected = comandos_oracle::oracle_at(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "terminal-split",
+        &input,
+        || {
+            let (a, _) = source
+                .as_ref()
+                .ok_or("original split required in record/check")?;
+            serde_json::to_vec(&serde_json::json!({"status":a.status,
+                "type":a.header("content-type"),"body":panes_without_volatile(&a.text())}))
+            .map_err(|e| e.to_string())
+        },
     );
-    assert_ne!(a.text(), b.text(), "el panel nuevo tiene otro id");
+    let expected: serde_json::Value = serde_json::from_slice(&expected).unwrap();
+    let b = request_body(front.port, "POST", "/terminal-panes", "", &split).await;
+    assert_eq!(expected["status"], b.status);
+    assert_eq!(expected["type"].as_str(), b.header("content-type"));
+    if let Some((a, _)) = source {
+        assert_ne!(a.text(), b.text(), "el panel nuevo tiene otro id");
+    }
+    let opened: serde_json::Value = serde_json::from_str(&b.text()).unwrap();
+    assert!(!["%0", "%1"].contains(&opened["opened"].as_str().unwrap()));
+    assert_eq!(opened["panes"].as_array().unwrap().len(), 3);
     assert_eq!(
-        panes_without_volatile(&a.text()),
+        expected["body"].as_str().unwrap(),
         panes_without_volatile(&b.text())
     );
     front.stop().await;
