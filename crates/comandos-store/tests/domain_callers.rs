@@ -188,3 +188,79 @@ fn caller_lease_allows_other_readers_and_blocks_mode_flip_until_drop() {
     drop(db);
     fs::remove_dir_all(home).unwrap();
 }
+
+#[test]
+#[ignore = "gate de latencia con una base privada de 172 MB; ejecutar explícitamente"]
+fn large_mirrored_caller_admission_has_bounded_latency() {
+    use std::time::{Duration, Instant};
+    let home = std::env::temp_dir().join(format!("caller-large-gate-{}", std::process::id()));
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&home)
+        .unwrap();
+    let path = unified::unified_path(&home);
+    let writer = unified::open_unified(&path).unwrap();
+    writer.execute_batch("PRAGMA wal_autocheckpoint=0; CREATE TABLE unrelated_payload(body BLOB); INSERT INTO unrelated_payload VALUES(zeroblob(172000000)); PRAGMA wal_checkpoint(TRUNCATE);").unwrap();
+    unified::set_mode(&writer, "session-status", Mode::Mirror, "private gate", 1).unwrap();
+    assert!(fs::metadata(&path).unwrap().len() >= 172_000_000);
+    let start = Instant::now();
+    let access = caller::CallerAccess::open(&home, "session-status").unwrap();
+    let elapsed = start.elapsed();
+    let mode = access.mode();
+    drop(access);
+    drop(writer);
+    fs::remove_dir_all(home).unwrap();
+    assert_eq!(mode, Mode::Mirror);
+    eprintln!("172MB_metadata_admission_us={}", elapsed.as_micros());
+    assert!(
+        elapsed < Duration::from_millis(50),
+        "schema admission took {elapsed:?}; unrelated payload must not determine hook latency"
+    );
+}
+
+#[test]
+fn caller_metadata_gate_handles_schema_overflow_indices_and_latest_wal_versions() {
+    let home = std::env::temp_dir().join(format!("caller-schema-trees-{}", std::process::id()));
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&home)
+        .unwrap();
+    let path = unified::unified_path(&home);
+    let writer = unified::open_unified(&path).unwrap();
+    writer.execute_batch("PRAGMA wal_autocheckpoint=0; PRAGMA wal_checkpoint(TRUNCATE); CREATE INDEX migration_versions_idx ON schema_migrations(version)").unwrap();
+    writer
+        .execute(
+            "UPDATE schema_migrations SET name=?1 WHERE version=101",
+            ["x".repeat(32_768)],
+        )
+        .unwrap();
+    for index in 0..180 {
+        writer.execute_batch(&format!("CREATE TABLE schema_growth_{index}(one TEXT,two TEXT,three TEXT,four TEXT,five TEXT,six TEXT,seven TEXT,eight TEXT,nine TEXT,ten TEXT)")).unwrap();
+    }
+    unified::set_mode(
+        &writer,
+        "session-status",
+        Mode::Mirror,
+        "private tree check",
+        1,
+    )
+    .unwrap();
+    let access = caller::CallerAccess::open(&home, "session-status").unwrap();
+    assert_eq!(access.mode(), Mode::Mirror);
+    drop(access);
+    writer
+        .execute("INSERT INTO schema_migrations VALUES(105,'future',0)", [])
+        .unwrap();
+    let wal = std::path::PathBuf::from(format!("{}-wal", path.display()));
+    let before = (fs::read(&path).unwrap(), fs::read(&wal).unwrap());
+    let error = match caller::CallerAccess::open(&home, "session-status") {
+        Ok(_) => panic!("accepted a future migration in the WAL"),
+        Err(error) => error.to_string(),
+    };
+    assert!(error.contains("versión más nueva"), "{error}");
+    assert_eq!((fs::read(&path).unwrap(), fs::read(&wal).unwrap()), before);
+    drop(writer);
+    fs::remove_dir_all(home).unwrap();
+}

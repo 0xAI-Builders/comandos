@@ -5,6 +5,7 @@ mod logs;
 pub(crate) mod modes;
 mod open;
 mod preflight;
+mod schema_snapshot;
 pub use collections::*;
 pub use documents::*;
 pub use logs::*;

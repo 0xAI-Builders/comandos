@@ -215,7 +215,7 @@ fn read_snapshot<T>(
             "journal activo: apertura requiere fuente estable".into(),
         ));
     }
-    let value = if let Some(wal) = &source.wal {
+    let value = if let Some(wal) = source.wal.as_ref().filter(|wal| wal.len != 0) {
         let scratch = Scratch::new_outside(path, home)?;
         let staged = scratch.0.join("db.sqlite3");
         let dbhash = copy(path, &staged, db)?;
@@ -244,7 +244,83 @@ fn read_snapshot<T>(
     Ok((source, value))
 }
 fn inspect(path: &Path) -> Result<StableSource> {
+    let source = StableSource::capture(path)?;
+    if source.wal.as_ref().is_some_and(|wal| wal.len != 0)
+        && source
+            .db
+            .as_ref()
+            .is_some_and(|db| db.mode & 0o7777 == 0o600)
+        && source.parent.mode & 0o7777 == 0o700
+        && source
+            .journal
+            .as_ref()
+            .is_none_or(|journal| journal.len == 0)
+        && let Some(stable) = inspect_schema(path, source)?
+    {
+        return Ok(stable);
+    }
     read_snapshot(path, None, true, validate).map(|(source, _)| source)
+}
+
+/// SQLite remains the schema authority. Only its metadata pages are staged;
+/// unrelated payloads do not determine admission latency. Unsupported layouts
+/// discard this candidate and use the existing complete snapshot instead.
+fn inspect_schema(path: &Path, source: StableSource) -> Result<Option<StableSource>> {
+    let Some(db) = source.db.as_ref() else {
+        return Ok(None);
+    };
+    let Some(wal) = source.wal.as_ref() else {
+        return Ok(None);
+    };
+    let scratch = Scratch::new_outside(path, None)?;
+    let staged = scratch.0.join("db.sqlite3");
+    let walpath = suffix(path, "-wal");
+    let staged_wal = suffix(&staged, "-wal");
+    let walhash = copy(&walpath, &staged_wal, wal)?;
+    let base = File::open(path)?;
+    if Identity::of(&base.metadata()?) != *db {
+        return Err(Error::Validation(CHANGED.into()));
+    }
+    let mut snapshot = match super::schema_snapshot::prepare(base, &staged, &staged_wal) {
+        Ok(snapshot) => snapshot,
+        Err(_) => return Ok(None),
+    };
+    source.check(path)?;
+    // The first tree contains sqlite_schema. Let SQLite locate version and
+    // planner tables, including covering indices on the migration table.
+    let roots = (|| -> Result<Vec<u32>> {
+        let conn = open_wal_snapshot(&staged)?;
+        Ok(conn.prepare("SELECT rootpage FROM sqlite_schema WHERE rootpage>0 AND (tbl_name='schema_migrations' OR name IN ('sqlite_stat1','sqlite_stat2','sqlite_stat3','sqlite_stat4'))")?
+            .query_map([], |row| row.get(0))?
+            .collect::<rusqlite::Result<_>>()?)
+    })();
+    let roots = match roots {
+        Ok(roots) => roots,
+        Err(_) => return Ok(None),
+    };
+    for root in roots {
+        if snapshot.copy_tree(root).is_err() {
+            return Ok(None);
+        }
+    }
+    if snapshot.finish().is_err() {
+        source.check(path)?;
+        return Ok(None);
+    }
+    source.check(path)?;
+    let conn = open_wal_snapshot(&staged)?;
+    let result = validate(&conn);
+    if transfer(&walpath, None, wal)? != walhash {
+        return Err(Error::Validation(CHANGED.into()));
+    }
+    source.check(path)?;
+    match result {
+        Ok(_) => Ok(Some(source)),
+        // A planner or extension may require pages outside these trees. The
+        // complete snapshot determines its result instead of accepting holes.
+        Err(Error::Sql(_)) => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 /// Snapshot de lectura sin crear DB, SHM ni candados en la fuente/HOME.
 /// Los callbacks sólo consultan SQLite; las escrituras están prohibidas.
