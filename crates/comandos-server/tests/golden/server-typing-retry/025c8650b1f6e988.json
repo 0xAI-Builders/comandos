@@ -1,0 +1,24 @@
+{
+  "input": {
+    "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+    "python": "CPython 3.10.12",
+    "fixture": {
+      "session": "s1",
+      "panes": [
+        "%0",
+        "%1"
+      ],
+      "command": "cat",
+      "size": [
+        200,
+        40
+      ]
+    },
+    "sequence": 1,
+    "operation": "request",
+    "args": "{\"session\": \"s1\", \"pane\": \"%0\", \"text\": \"dí;x\", \"requestId\": \"same\"}",
+    "normalize": "original durationMs only"
+  },
+  "output_b64": "eyJzdGF0dXMiOjIwMCwiYm9keSI6WzEyMywzNCwxMTEsMTA3LDM0LDU4LDMyLDExNiwxMTQsMTE3LDEwMSw0NCwzMiwzNCwxMTYsMTIxLDExMiwxMDEsMTAwLDM0LDU4LDMyLDUyLDQ0LDMyLDM0LDEwMCwxMTcsMTE0LDk3LDExNiwxMDUsMTExLDExMCw3NywxMTUsMzQsNTgsMzIsNDgsNDQsMzIsMzQsMTE0LDEwMSwxMTMsMTE3LDEwMSwxMTUsMTE2LDczLDEwMCwzNCw1OCwzMiwzNCwxMTUsOTcsMTA5LDEwMSwzNCwxMjVdLCJoZWFkZXJzIjpbWyJzZXJ2ZXIiLCJTaW1wbGVIVFRQLzAuNiBQeXRob24vMy4xMC4xMiJdLFsiZGF0ZSIsIlN1biwgMDQgT2N0IDIwMjYgMTI6MDA6MDAgR01UIl0sWyJjb250ZW50LXR5cGUiLCJhcHBsaWNhdGlvbi9qc29uIl0sWyJjYWNoZS1jb250cm9sIiwibm8tc3RvcmUiXSxbImNvbnRlbnQtbGVuZ3RoIiwiNjIiXV19"
+}

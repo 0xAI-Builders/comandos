@@ -12,9 +12,141 @@ use comandos_server::{
     },
 };
 use std::{ffi::OsString, time::Duration};
-use support::{
-    FakeLegacy, TestHome, Wire, dead_port, front, get, oracle::oracle, request_body, tmux_available,
-};
+use support::{FakeLegacy, TestHome, Wire, dead_port, front, get, request_body, tmux_available};
+
+struct TypedOriginal<'a> {
+    source: Option<support::oracle::Oracle>,
+    home: &'a TestHome,
+    family: &'static str,
+    sequence: std::sync::atomic::AtomicUsize,
+}
+impl<'a> TypedOriginal<'a> {
+    async fn start(home: &'a TestHome, family: &'static str) -> Self {
+        let source = if matches!(
+            std::env::var("COMANDOS_ORACLE").as_deref(),
+            Ok("record" | "check")
+        ) {
+            let root = support::frozen::reference(&home.root).unwrap();
+            let opts = support::oracle::OracleOpts {
+                python_prelude: format!("dash.time.time=lambda: {}", support::NOW_MS / 1000),
+                extra_env: vec![(
+                    "COMANDOS_ORACLE_REFERENCE_ROOT".into(),
+                    root.display().to_string(),
+                )],
+                ..Default::default()
+            };
+            Some(
+                support::oracle::oracle_with(home, opts)
+                    .await
+                    .expect("record/check original"),
+            )
+        } else {
+            None
+        };
+        Self {
+            source,
+            home,
+            family,
+            sequence: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+    fn expected(
+        &self,
+        operation: &str,
+        args: serde_json::Value,
+        actual: Option<serde_json::Value>,
+    ) -> serde_json::Value {
+        let roots = [("<HOME>", self.home.root.as_path())];
+        let input = serde_json::json!({"source_commit":support::frozen::SOURCE_COMMIT,
+            "source_sha256":"4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+            "python":"CPython 3.10.12","fixture":{"session":"s1","panes":["%0","%1"],"command":"cat","size":[200,40]},
+            "sequence":self.sequence.fetch_add(1,std::sync::atomic::Ordering::SeqCst),
+            "operation":operation,"args":args,"normalize":"original durationMs only"});
+        let output = comandos_oracle::oracle_at(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+            self.family,
+            &input,
+            || {
+                Ok(comandos_oracle::normalize(
+                    &serde_json::to_vec(&actual.expect("record/check original observation"))
+                        .unwrap(),
+                    &roots,
+                ))
+            },
+        );
+        serde_json::from_slice(&comandos_oracle::restore(&output, &roots)).unwrap()
+    }
+    async fn request(&self, body: &str) -> Wire {
+        let actual = if let Some(source) = &self.source {
+            let mut wire = request_body(source.port, "POST", "/pane/type", "", body).await;
+            wire.body = masked(&wire.text()).into_bytes();
+            for (name, value) in &mut wire.headers {
+                if name == "content-length" {
+                    *value = wire.body.len().to_string();
+                }
+            }
+            Some(serde_json::json!({"status":wire.status,"body":wire.body,"headers":wire.headers}))
+        } else {
+            None
+        };
+        let value = self.expected("request", serde_json::json!(body), actual);
+        Wire {
+            status: value["status"].as_u64().unwrap().try_into().unwrap(),
+            body: serde_json::from_value(value["body"].clone()).unwrap(),
+            headers: serde_json::from_value(value["headers"].clone()).unwrap(),
+        }
+    }
+    async fn capture(&self, pane: &str) -> String {
+        let actual = if self.source.is_some() {
+            Some(serde_json::json!(typed_in(self.home, pane).await))
+        } else {
+            None
+        };
+        self.expected("capture", serde_json::json!(pane), actual)
+            .as_str()
+            .unwrap()
+            .into()
+    }
+}
+
+async fn busy_sequence(home: &TestHome, port: u16, pane: &str, same_id: bool) -> serde_json::Value {
+    let (letter, id) = if same_id {
+        ('k', "doble")
+    } else {
+        ('y', "largo")
+    };
+    let long = format!(
+        r#"{{"session":"s1","pane":"{pane}","text":"{}","requestId":"{id}"}}"#,
+        letter.to_string().repeat(300)
+    );
+    let initial = long.clone();
+    let first =
+        tokio::spawn(async move { request_body(port, "POST", "/pane/type", "", &initial).await });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let short = if same_id {
+        long
+    } else {
+        format!(r#"{{"session":"s1","pane":"{pane}","text":"z","requestId":"corto"}}"#)
+    };
+    let busy = seen(&request_body(port, "POST", "/pane/type", "", &short).await);
+    let first = first.await.unwrap();
+    assert_eq!(first.status, 200);
+    let retry = request_body(port, "POST", "/pane/type", "", &short).await;
+    assert_eq!(retry.status, 200);
+    if same_id {
+        assert_eq!(
+            seen(&first),
+            seen(&retry),
+            "actual cache preserves durationMs"
+        );
+    }
+    let text = typed_in(home, pane).await;
+    assert_eq!(text.matches(letter).count(), 300, "{pane}");
+    if !same_id {
+        assert_eq!(text.matches('z').count(), 1, "{pane}");
+    }
+    serde_json::json!({"busy":busy,"first_status":first.status,"retry_status":retry.status,"capture":text})
+}
 
 fn tmux(home: &TestHome, args: &[&str]) -> String {
     // `-S` al socket privado: nunca el servidor del usuario.
@@ -134,9 +266,7 @@ async fn pane_type_errors_match_python_oracle() {
     }
     let home = TestHome::new("type-oracle");
     cat_session(&home);
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
+    let py = TypedOriginal::start(&home, "server-typing-errors").await;
     let front = front(&home, dead_port(), home.options()).await;
     let long = "x".repeat(2001);
     let cases = [
@@ -160,7 +290,7 @@ async fn pane_type_errors_match_python_oracle() {
     ];
     for body in &cases {
         assert_eq!(
-            seen(&request_body(py.port, "POST", "/pane/type", "", body).await),
+            seen(&py.request(body).await),
             seen(&request_body(front.port, "POST", "/pane/type", "", body).await),
             "{body}"
         );
@@ -179,14 +309,12 @@ async fn pane_type_and_retry_match_python_oracle() {
     }
     let home = TestHome::new("type-oracle-ok");
     cat_session(&home);
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
+    let py = TypedOriginal::start(&home, "server-typing-retry").await;
     let front = front(&home, dead_port(), home.options()).await;
     let on = |pane: &str| {
         format!(r#"{{"session": "s1", "pane": "{pane}", "text": "dí;x", "requestId": "same"}}"#)
     };
-    let py_first = request_body(py.port, "POST", "/pane/type", "", &on("%0")).await;
+    let py_first = py.request(&on("%0")).await;
     let rs_first = request_body(front.port, "POST", "/pane/type", "", &on("%1")).await;
     assert_eq!(py_first.status, 200, "{}", py_first.text());
     assert_eq!(
@@ -197,11 +325,11 @@ async fn pane_type_and_retry_match_python_oracle() {
         py_first.header("content-type"),
         rs_first.header("content-type")
     );
-    let py_again = request_body(py.port, "POST", "/pane/type", "", &on("%0")).await;
+    let py_again = py.request(&on("%0")).await;
     let rs_again = request_body(front.port, "POST", "/pane/type", "", &on("%1")).await;
     assert_eq!(seen(&py_first), seen(&py_again));
     assert_eq!(seen(&rs_first), seen(&rs_again));
-    assert_eq!(typed_in(&home, "%0").await, "dí;x");
+    assert_eq!(py.capture("%0").await, "dí;x");
     assert_eq!(typed_in(&home, "%1").await, "dí;x");
     front.stop().await;
 }
@@ -214,47 +342,27 @@ async fn pane_type_busy_pane_matches_python_oracle() {
     }
     let home = TestHome::new("type-busy-oracle");
     cat_session(&home);
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
+    let py = TypedOriginal::start(&home, "server-typing-busy").await;
     let front = front(&home, dead_port(), home.options()).await;
-    let mut busy = Vec::new();
-    for (port, pane) in [(py.port, "%0"), (front.port, "%1")] {
-        let long = format!(
-            r#"{{"session": "s1", "pane": "{pane}", "text": "{}", "requestId": "largo"}}"#,
-            "y".repeat(300)
-        );
-        let first =
-            tokio::spawn(async move { request_body(port, "POST", "/pane/type", "", &long).await });
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        let short =
-            format!(r#"{{"session": "s1", "pane": "{pane}", "text": "z", "requestId": "corto"}}"#);
-        busy.push(seen(
-            &request_body(port, "POST", "/pane/type", "", &short).await,
-        ));
-        assert_eq!(first.await.unwrap().status, 200);
-        // El 409 no se guardó: con el pane libre, ese mismo id sí teclea.
-        assert_eq!(
-            request_body(port, "POST", "/pane/type", "", &short)
-                .await
-                .status,
-            200
-        );
-    }
-    assert_eq!(busy[0], busy[1]);
-    assert_eq!(
-        busy[1],
-        (
-            409,
-            r#"{"error": "Ya se est\u00e1 escribiendo en ese pane; espera a que termine.", "code": "typing_in_progress"}"#
-                .to_owned()
-        )
+    let actual = if let Some(source) = &py.source {
+        Some(busy_sequence(&home, source.port, "%0", false).await)
+    } else {
+        None
+    };
+    let original = py.expected(
+        "busy-sequence",
+        serde_json::json!({"same_id":false,"pane":"%0"}),
+        actual,
     );
-    for pane in ["%0", "%1"] {
-        let text = typed_in(&home, pane).await;
-        assert_eq!(text.matches('y').count(), 300, "{pane}");
-        assert_eq!(text.matches('z').count(), 1, "{pane}");
-    }
+    let native = busy_sequence(&home, front.port, "%1", false).await;
+    assert_eq!(native, original);
+    assert_eq!(
+        native["busy"],
+        serde_json::json!([
+            409,
+            "{\"error\": \"Ya se est\\u00e1 escribiendo en ese pane; espera a que termine.\", \"code\": \"typing_in_progress\"}"
+        ])
+    );
     front.stop().await;
 }
 
@@ -313,17 +421,41 @@ async fn declined_request_id_is_answered_by_python_cache() {
         "state/proyecto.json",
         r#"{"project": "s1", "session": "s1"}"#,
     );
-    let Some(py) = oracle(&home).await else {
-        return;
+    let py = TypedOriginal::start(&home, "server-typing-forwarded-cache").await;
+    let actor_home = TestHome::new("type-fallback-rust");
+    let mut actor_options = actor_home.options();
+    actor_options.tmux = home.options().tmux;
+    let actor = if py.source.is_none() {
+        Some(front(&actor_home, dead_port(), actor_options).await)
+    } else {
+        None
     };
-    let front = front(&home, py.port, home.options()).await;
+    let backend = py
+        .source
+        .as_ref()
+        .map_or_else(|| actor.as_ref().unwrap().port, |source| source.port);
+    let front = front(&home, backend, home.options()).await;
     let body = r#"{"session": "s1", "pane": "%0", "text": "una", "requestId": "py-1"}"#;
     let first = request_body(front.port, "POST", "/pane/type", "", body).await;
     assert_eq!(first.status, 200, "{}", first.text());
     std::fs::remove_file(home.hooks().join("state/proyecto.json")).unwrap();
     let again = request_body(front.port, "POST", "/pane/type", "", body).await;
     assert_eq!(seen(&first), seen(&again));
-    assert_eq!(typed_text(&home).await, "una", "una sola vez");
+    let capture = typed_text(&home).await;
+    let actual=py.source.as_ref().map(|_|serde_json::json!({"status":first.status,"body":masked(&first.text()),"capture":capture}));
+    let expected = py.expected(
+        "forwarded-cache",
+        serde_json::json!({"body":body,"retry_after_state_removed":true}),
+        actual,
+    );
+    assert_eq!(
+        serde_json::json!({"status":first.status,"body":masked(&first.text()),"capture":capture}),
+        expected
+    );
+    assert_eq!(capture, "una", "una sola vez");
+    if let Some(actor) = actor {
+        actor.stop().await;
+    }
     front.stop().await;
 }
 
@@ -477,35 +609,21 @@ async fn same_request_id_while_typing_matches_python_oracle() {
     }
     let home = TestHome::new("type-same-rid");
     cat_session(&home);
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
+    let py = TypedOriginal::start(&home, "server-typing-concurrent-id").await;
     let front = front(&home, dead_port(), home.options()).await;
-    let mut seen_busy = Vec::new();
-    for (port, pane) in [(py.port, "%0"), (front.port, "%1")] {
-        let body = format!(
-            r#"{{"session": "s1", "pane": "{pane}", "text": "{}", "requestId": "doble"}}"#,
-            "k".repeat(300)
-        );
-        let again = body.clone();
-        let first =
-            tokio::spawn(async move { request_body(port, "POST", "/pane/type", "", &again).await });
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        seen_busy.push(seen(
-            &request_body(port, "POST", "/pane/type", "", &body).await,
-        ));
-        let first = first.await.unwrap();
-        assert_eq!(first.status, 200, "{}", first.text());
-        let retry = request_body(port, "POST", "/pane/type", "", &body).await;
-        assert_eq!(seen(&first), seen(&retry), "{pane}: la respuesta guardada");
-        assert_eq!(
-            typed_in(&home, pane).await.matches('k').count(),
-            300,
-            "{pane}"
-        );
-    }
-    assert_eq!(seen_busy[0], seen_busy[1]);
-    assert_eq!(seen_busy[1].0, 409);
+    let actual = if let Some(source) = &py.source {
+        Some(busy_sequence(&home, source.port, "%0", true).await)
+    } else {
+        None
+    };
+    let original = py.expected(
+        "busy-sequence",
+        serde_json::json!({"same_id":true,"pane":"%0"}),
+        actual,
+    );
+    let native = busy_sequence(&home, front.port, "%1", true).await;
+    assert_eq!(native, original);
+    assert_eq!(native["busy"][0], 409);
     front.stop().await;
 }
 
