@@ -1,0 +1,29 @@
+{
+  "input": {
+    "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+    "python": "CPython 3.10.12",
+    "fixture": {
+      "fakebin": [
+        [
+          "google-chrome",
+          "#!/bin/sh\nprintf '%s\\0' google-chrome \"$@\" \"$(printf '\\036')\" >> \"$HOME/fakebin.log\"\nout=\"\"\nfor a in \"$@\"; do\n  case \"$a\" in --print-to-pdf=*) out=\"${a#--print-to-pdf=}\";; esac\n  last=\"$a\"\ndone\nif grep -q SINSALIDA \"$last\"; then\n  exit 1\nfi\nif grep -q NOPDF \"$last\"; then\n  echo \"  chrome se cayó  \" >&2\n  exit 3\nfi\ncp \"$last\" \"$out\"\n"
+        ]
+      ],
+      "prelude": "",
+      "keep_loops": [],
+      "environment": [
+        [
+          "TZ",
+          "America/Mexico_City"
+        ]
+      ],
+      "response_normalizer": "input-original-date-buffer-home"
+    },
+    "after_request": 6,
+    "observation": 0,
+    "operation": "exported-documents",
+    "args": null
+  },
+  "output_b64": "W1siY2xhdWRlLU1pLXByb3llY3RvLS0tRkVDSEEudHh0IiwiTk9QREZcbnNvbG8gbGFzdCJdLFsiY2xhdWRlLXMxLUZFQ0hBLnBkZiIsIjwhZG9jdHlwZSBodG1sPjxtZXRhIGNoYXJzZXQ9J3V0Zi04Jz48c3R5bGU+XG5ib2R5e2ZvbnQtZmFtaWx5OidJbnRlcicsc3lzdGVtLXVpLHNhbnMtc2VyaWY7Zm9udC1zaXplOjEyLjVweDtjb2xvcjojMUIyMTMwO1xuICBsaW5lLWhlaWdodDoxLjU1O21heC13aWR0aDo3NjBweDttYXJnaW46MjRweCBhdXRvfVxuaDF7Zm9udC1zaXplOjE3cHg7Ym9yZGVyLWJvdHRvbToycHggc29saWQgIzVCNEJENjtwYWRkaW5nLWJvdHRvbTo2cHh9XG5oM3tmb250LXNpemU6MTMuNXB4O2NvbG9yOiM1QjRCRDY7bWFyZ2luOjE0cHggMCA0cHh9XG4ubWV0YXtjb2xvcjojODg5MkE2O2ZvbnQtc2l6ZToxMC41cHg7bWFyZ2luLWJvdHRvbToxNHB4fVxuY29kZSxwcmV7Zm9udC1mYW1pbHk6J0pldEJyYWlucyBNb25vJyxtb25vc3BhY2U7Zm9udC1zaXplOjExcHg7YmFja2dyb3VuZDojRjJGNEY4O1xuICBib3JkZXItcmFkaXVzOjRweDtwYWRkaW5nOjFweCA0cHh9XG5wcmV7ZGlzcGxheTpibG9jaztwYWRkaW5nOjlweCAxMXB4O21hcmdpbjo4cHggMDt3aGl0ZS1zcGFjZTpwcmUtd3JhcDtcbiAgYm9yZGVyOjFweCBzb2xpZCAjRDlERUU4fVxudGFibGV7Ym9yZGVyLWNvbGxhcHNlOmNvbGxhcHNlO21hcmdpbjo4cHggMDtmb250LXNpemU6MTEuNXB4fVxudGgsdGR7Ym9yZGVyOjFweCBzb2xpZCAjQzNDQUQ4O3BhZGRpbmc6NHB4IDlweDt0ZXh0LWFsaWduOmxlZnR9XG50aHtiYWNrZ3JvdW5kOiNFREYwRjY7Y29sb3I6IzVCNEJENn1cbmhye2JvcmRlcjpub25lO2JvcmRlci10b3A6MXB4IHNvbGlkICNEOURFRTg7bWFyZ2luOjEwcHggMH1cbjwvc3R5bGU+PGgxPnMxPC9oMT48ZGl2IGNsYXNzPSdtZXRhJz5SZXNwdWVzdGEgZGUgQ2xhdWRlIMK3IENVQU5ETyDCtyBDb21hbmRPUzwvZGl2PjxoMz5Uw610dWxvICZsdDt4Jmd0OzwvaDM+PGI+bmVncml0YTwvYj4geSA8aT5jdXJzaXZhPC9pPiwgPGNvZGU+Y8OzZGlnbzwvY29kZT4gZW5sYWNlPGJyPjxicj48dGFibGU+PHRyPjx0aD5hPC90aD48dGg+YjwvdGg+PC90cj48dHI+PHRkPjEgJmFtcDsgMjwvdGQ+PHRkPiYjeDI3O3EmI3gyNzs8L3RkPjwvdHI+PC90YWJsZT48cHJlPmxldCB4ID0gJnF1b3Q7Jmx0O3kmZ3Q7JnF1b3Q7O1xuPC9wcmU+4oCiIHVubzxicj4gIOKAoiBkb3M8YnI+PGhyPmZpbjxicj4iXSxbImNsYXVkZS1zMS1GRUNIQS50eHQiLCIjIFTDrXR1bG8gPHg+XG4qKm5lZ3JpdGEqKiB5ICpjdXJzaXZhKiwgYGPDs2RpZ29gIFtlbmxhY2VdKGh0dHA6Ly9lLngpXG5cbnwgYSB8IGIgfFxufC0tLXw6LTp8XG58IDEgJiAyIHwgJ3EnIHxcbmBgYFxubGV0IHggPSBcIjx5PlwiO1xuYGBgXG4tIHVub1xuICAqIGRvc1xuLS0tXG5maW4iXV0="
+}

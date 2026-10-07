@@ -1,0 +1,18 @@
+{
+  "input": {
+    "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+    "python": "CPython 3.10.12",
+    "fixture": {
+      "fakebin": [],
+      "prelude": "",
+      "keep_loops": [],
+      "environment": []
+    },
+    "after_request": 3,
+    "observation": 2,
+    "operation": "input-mutators-comparable",
+    "args": null
+  },
+  "output_b64": "W1sic2VuZC1rZXlzIiwiLVgiLCItTiIsIjIiLCItdCIsIj1zMToiLCJzY3JvbGwtZG93biJdXQ=="
+}

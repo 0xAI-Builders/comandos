@@ -1,0 +1,29 @@
+{
+  "input": {
+    "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+    "python": "CPython 3.10.12",
+    "fixture": {
+      "fakebin": [
+        [
+          "google-chrome",
+          "#!/bin/sh\nprintf '%s\\0' google-chrome \"$@\" \"$(printf '\\036')\" >> \"$HOME/fakebin.log\"\nout=\"\"\nfor a in \"$@\"; do\n  case \"$a\" in --print-to-pdf=*) out=\"${a#--print-to-pdf=}\";; esac\n  last=\"$a\"\ndone\nif grep -q SINSALIDA \"$last\"; then\n  exit 1\nfi\nif grep -q NOPDF \"$last\"; then\n  echo \"  chrome se cayó  \" >&2\n  exit 3\nfi\ncp \"$last\" \"$out\"\n"
+        ]
+      ],
+      "prelude": "",
+      "keep_loops": [],
+      "environment": [
+        [
+          "TZ",
+          "America/Mexico_City"
+        ]
+      ],
+      "response_normalizer": "input-original-date-buffer-home"
+    },
+    "after_request": 6,
+    "observation": 1,
+    "operation": "input-fake-calls-comparable",
+    "args": null
+  },
+  "output_b64": "W1sieGRnLW9wZW4iLFsifi9Eb3dubG9hZHMvY2xhdWRlLXMxLUZFQ0hBLnR4dCJdXSxbImdvb2dsZS1jaHJvbWUiLFsiLS1oZWFkbGVzcyIsIi0tZGlzYWJsZS1ncHUiLCItLXByaW50LXRvLXBkZj1+L0Rvd25sb2Fkcy9jbGF1ZGUtczEtRkVDSEEucGRmIiwiLS1uby1wZGYtaGVhZGVyLWZvb3RlciIsIn4vRG93bmxvYWRzL2NsYXVkZS1zMS1GRUNIQS5odG1sIl1dLFsieGRnLW9wZW4iLFsifi9Eb3dubG9hZHMvY2xhdWRlLXMxLUZFQ0hBLnBkZiJdXSxbImdvb2dsZS1jaHJvbWUiLFsiLS1oZWFkbGVzcyIsIi0tZGlzYWJsZS1ncHUiLCItLXByaW50LXRvLXBkZj1+L0Rvd25sb2Fkcy9jbGF1ZGUtTWktcHJveWVjdG8tLS1GRUNIQS5wZGYiLCItLW5vLXBkZi1oZWFkZXItZm9vdGVyIiwifi9Eb3dubG9hZHMvY2xhdWRlLU1pLXByb3llY3RvLS0tRkVDSEEuaHRtbCJdXSxbInhkZy1vcGVuIixbIn4vRG93bmxvYWRzL2NsYXVkZS1NaS1wcm95ZWN0by0tLUZFQ0hBLnR4dCJdXSxbImdvb2dsZS1jaHJvbWUiLFsiLS1oZWFkbGVzcyIsIi0tZGlzYWJsZS1ncHUiLCItLXByaW50LXRvLXBkZj1+L0Rvd25sb2Fkcy9jbGF1ZGUtczQtRkVDSEEucGRmIiwiLS1uby1wZGYtaGVhZGVyLWZvb3RlciIsIn4vRG93bmxvYWRzL2NsYXVkZS1zNC1GRUNIQS5odG1sIl1dXQ=="
+}

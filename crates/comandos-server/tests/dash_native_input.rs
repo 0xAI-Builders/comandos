@@ -19,10 +19,11 @@ use serde_json::{Value, json};
 use std::time::Duration;
 use support::{
     TestHome,
-    oracle::{FakeCall, confined_fakebin, run_dash},
+    frozen_twin::{Twin, TwinOpts, normalize},
+    oracle::{FakeCall, confined_fakebin},
     run_tmux,
     tabs::{normalize_home, seed_registry},
-    twin::{Twin, TwinOpts, normalize, tmux_stdin},
+    twin::tmux_stdin,
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -95,7 +96,24 @@ fn take_mutations(t: &Twin) -> (Vec<Vec<String>>, Vec<Vec<String>>) {
             .map(|c| c.iter().map(|a| comparable(home, a)).collect())
             .collect()
     };
-    let (a, b) = (t.tmux_mutations_a(), t.tmux_mutations_b());
+    let a = t.tmux_mutations_a();
+    let b: Vec<Vec<String>> =
+        serde_json::from_value(t.observe("input-mutators-comparable", &Value::Null, || {
+            let calls = support::twin::tmux_log(&t.b)
+                .into_iter()
+                .filter(|call| {
+                    call.first()
+                        .is_some_and(|name| support::twin::TMUX_MUTATORS.contains(&name.as_str()))
+                })
+                .map(|call| {
+                    call.iter()
+                        .map(|arg| comparable(&t.b, arg))
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            json!(calls)
+        }))
+        .unwrap();
     (side(&t.a, a), side(&t.b, b))
 }
 
@@ -114,26 +132,64 @@ fn take_fakes(t: &Twin) -> (Calls, Calls) {
             })
             .collect::<Vec<_>>()
     };
-    let (a, b) = (t.fake_calls_a(), t.fake_calls_b());
+    let a = t.fake_calls_a();
+    let b: Vec<FakeCall> = t
+        .observe("input-fake-calls-comparable", &Value::Null, || {
+            json!(
+                support::oracle::fake_calls(&t.b.root)
+                    .iter()
+                    .map(|call| json!([
+                        call.name,
+                        call.args
+                            .iter()
+                            .map(|arg| comparable(&t.b, arg))
+                            .collect::<Vec<_>>()
+                    ]))
+                    .collect::<Vec<_>>()
+            )
+        })
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|call| FakeCall {
+            name: call[0].as_str().unwrap().into(),
+            args: serde_json::from_value(call[1].clone()).unwrap(),
+        })
+        .collect();
     (side(&t.a, a), side(&t.b, b))
 }
 
 /// `capture-pane` de los dos lados cuando dejan de cambiar (el `cat` escribe
 /// su eco un poco después de que tmux reciba las teclas).
 async fn captures(t: &Twin, target: &str) -> (String, String) {
-    let mut last = (String::new(), String::new());
+    // The source observation is frozen once; native convergence is measured
+    // against it in every mode without polling a synthetic source actor.
+    let expected = t
+        .observe("stable-pane-capture", &json!(target), || {
+            let mut previous = String::new();
+            for _ in 0..20 {
+                std::thread::sleep(Duration::from_millis(100));
+                let now = run_tmux(&t.b, &["capture-pane", "-p", "-S", "-", "-t", target]);
+                if now == previous {
+                    return json!(now);
+                }
+                previous = now;
+            }
+            json!(previous)
+        })
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let mut previous = String::new();
     for _ in 0..20 {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        let now = (
-            t.tmux_a(&["capture-pane", "-p", "-S", "-", "-t", target]),
-            t.tmux_b(&["capture-pane", "-p", "-S", "-", "-t", target]),
-        );
-        if now == last && now.0 == now.1 {
-            return now;
+        let now = t.tmux_a(&["capture-pane", "-p", "-S", "-", "-t", target]);
+        if now == previous && now == expected {
+            return (now, expected);
         }
-        last = now;
+        previous = now;
     }
-    last
+    (previous, expected)
 }
 
 #[tokio::test]
@@ -191,7 +247,12 @@ async fn input_routes_match_python() {
     );
     // Lo que recibió `load-buffer` por stdin, byte a byte, en los dos lados.
     let pasted = tmux_stdin(&t.a);
-    assert_eq!(pasted, tmux_stdin(&t.b));
+    let original_stdin: Vec<Vec<u8>> =
+        serde_json::from_value(t.observe("load-buffer-stdin", &Value::Null, || {
+            json!(tmux_stdin(&t.b))
+        }))
+        .unwrap();
+    assert_eq!(pasted, original_stdin);
     assert_eq!(
         pasted,
         vec![b"linea1\nlinea2".to_vec(), b"al cero".to_vec()]
@@ -275,7 +336,19 @@ async fn notifyd_requests_get_python_statuses() {
         ("/focus", r#"{"session":"s1"}"#),
     ] {
         let front = notifyd_post(t.front.port, path, body).await;
-        let oracle = notifyd_post(t.oracle.port, path, body).await;
+        let actual = if let Some(port) = t.source_port() {
+            Some(notifyd_post(port, path, body).await)
+        } else {
+            None
+        };
+        let oracle = t
+            .observe(
+                "notifyd-http10-status",
+                &json!({"path":path,"body":body}),
+                || json!(actual.expect("record/check source listener")),
+            )
+            .as_u64()
+            .unwrap() as u16;
         assert_eq!(front, oracle, "{path} {body}");
     }
     let (a, b) = take_mutations(&t);
@@ -421,6 +494,7 @@ fn exported(home: &TestHome) -> Vec<(String, String)> {
 #[tokio::test]
 async fn export_matches_python() {
     let opts = TwinOpts {
+        response_normalizer: Some(("input-original-date-buffer-home", comparable)),
         fakebin_extra: vec![("google-chrome".into(), FAKE_CHROME.into())],
         oracle_env: vec![("TZ".into(), "America/Mexico_City".into())],
         ..TwinOpts::default()
@@ -442,7 +516,12 @@ async fn export_matches_python() {
         let (front, oracle) = (body_of(&t.a, &run.front), body_of(&t.b, &run.oracle));
         assert_eq!(front, oracle, "{body}");
     }
-    assert_eq!(exported(&t.a), exported(&t.b));
+    let expected: Vec<(String, String)> =
+        serde_json::from_value(
+            t.observe("exported-documents", &Value::Null, || json!(exported(&t.b))),
+        )
+        .unwrap();
+    assert_eq!(exported(&t.a), expected);
     assert_eq!(exported(&t.a).len(), 3, "{:?}", exported(&t.a));
     let (a, b) = take_fakes(&t);
     assert_eq!(a, b);
@@ -489,13 +568,18 @@ fn md_to_html_matches_python() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("cases.json"), json!(cases).to_string()).unwrap();
     let code = format!(
-        "import json\ncases = json.load(open({path:?}))\nprint(json.dumps([dash.md_to_html(c) for c in cases]))",
-        path = dir.join("cases.json").display().to_string()
+        "import json\ncases = json.loads({cases})\nprint(json.dumps([dash.md_to_html(c) for c in cases]))",
+        cases = serde_json::to_string(&json!(cases).to_string()).unwrap()
     );
-    let Some(out) = run_dash(&home, &code) else {
-        return;
-    };
+    let out = support::http_golden::dash_files(
+        &home,
+        "server-input-markdown",
+        &[],
+        &code,
+        &Default::default(),
+    );
     let python: Vec<String> = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(python.len(), cases.len());
     for (case, want) in cases.iter().zip(&python) {
         assert_eq!(
             &comandos_server::dash::native::input::md_to_html(case),
@@ -527,6 +611,7 @@ async fn export_burst_shares_one_state_computation() {
     // sondeos concurrentes hace un solo cómputo (nunca dos a la vez, así el
     // rastreador de configuración no se pisa).
     let opts = TwinOpts {
+        response_normalizer: Some(("input-original-date-buffer-home", comparable)),
         fakebin_extra: vec![("google-chrome".into(), FAKE_CHROME.into())],
         oracle_env: vec![("TZ".into(), "America/Mexico_City".into())],
         front: Some(Box::new(|o| {

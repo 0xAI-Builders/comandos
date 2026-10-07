@@ -65,12 +65,15 @@ pub const TMUX_MUTATORS: &[&str] = &[
 
 /// Ajuste de las opciones del frente antes de servir (B3).
 pub type FrontHook = Box<dyn FnOnce(&mut NativeOptions) + Send>;
+type ResponseNormalizer = Option<(&'static str, fn(&TestHome, &str) -> String)>;
 
 /// Opciones de `Twin::start_with`; `Twin::start` usa los valores por omisión.
 #[derive(Default)]
 pub struct TwinOpts {
     /// Explicit ordinary document effects relative to HOME; never actors or logs.
     pub oracle_files: Vec<&'static str>,
+    /// Existing caller normalization applied before freezing/checking output.
+    pub response_normalizer: ResponseNormalizer,
     /// Ejecutables extra en el `fakebin` de LOS DOS lados (nombre → texto).
     pub fakebin_extra: Vec<(String, String)>,
     /// Ajuste de `NativeOptions` del frente (tras el confinamiento; se vuelve
@@ -102,6 +105,7 @@ pub struct Twin {
     pub front: Front,
     oracle: Option<Oracle>,
     tag: String,
+    response_normalizer: ResponseNormalizer,
     fixture: Value,
     files: Vec<&'static str>,
     request_id: AtomicUsize,
@@ -169,8 +173,12 @@ impl Twin {
         confined_fakebin(&b, &opts.fakebin_extra);
         seed(&a);
         seed(&b);
-        let fixture = json!({"fakebin":opts.fakebin_extra,"prelude":opts.python_prelude,
+        let response_normalizer = opts.response_normalizer;
+        let mut fixture = json!({"fakebin":opts.fakebin_extra,"prelude":opts.python_prelude,
             "keep_loops":opts.keep_loops,"environment":opts.oracle_env});
+        if let Some((name, _)) = response_normalizer {
+            fixture["response_normalizer"] = json!(name);
+        }
         let mut fixture_text = serde_json::to_string(&fixture).unwrap();
         for (i, port) in opts.allow_ports.iter().enumerate() {
             fixture_text = fixture_text.replace(&port.to_string(), &format!("<FIXTURE_PORT_{i}>"));
@@ -245,6 +253,7 @@ impl Twin {
             front,
             oracle,
             tag: tag.into(),
+            response_normalizer,
             fixture,
             files,
             request_id: AtomicUsize::new(0),
@@ -349,7 +358,10 @@ impl Twin {
             &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
             &format!("server-twin-{}",self.tag),&input,&capsule,&roots,
             || {
-                let wire=actual.ok_or("original HTTP requires record/check")?;
+                let mut wire=actual.ok_or("original HTTP requires record/check")?;
+                if let Some((_,normalize)) = self.response_normalizer {
+                    wire.body = normalize(&self.b, &wire.text()).into_bytes();
+                }
                 super::http_golden::copy_domain(&self.b.root,&capsule,&self.files);
                 serde_json::to_string(&json!({"status":wire.status,"headers":wire.headers,"body":comandos_oracle::normalize(&wire.body,&roots)})).map_err(|error|error.to_string())
             },
