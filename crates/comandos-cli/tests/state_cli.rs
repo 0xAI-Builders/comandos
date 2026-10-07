@@ -151,6 +151,10 @@ fn migrate_verify_backups_and_injected_status_roundtrip() {
 #[test]
 fn sqlite_move_dry_run_and_inverse_cli_roundtrip() {
     let h = Fixture::new();
+    let proc = h.0.join("private-proc");
+    let repo = h.0.join("private-repo");
+    fs::create_dir(&proc).unwrap();
+    fs::create_dir(&repo).unwrap();
     let source = h.0.join(".claude/hooks/operator/actions.sqlite");
     let operator = comandos_store::operator::open_operator_db_at(&source).unwrap();
     operator
@@ -169,7 +173,14 @@ fn sqlite_move_dry_run_and_inverse_cli_roundtrip() {
     assert!(estimate["copy_ms"].as_u64().unwrap() > 0);
     assert_eq!(fs::read(&source).unwrap(), before);
     assert!(!h.0.join(".local").exists());
-    let out = h.command(&["move", "db-operator"]);
+    let out = h.command(&[
+        "move",
+        "db-operator",
+        "--proc-root",
+        proc.to_str().unwrap(),
+        "--repo",
+        repo.to_str().unwrap(),
+    ]);
     assert!(
         out.status.success(),
         "{}",

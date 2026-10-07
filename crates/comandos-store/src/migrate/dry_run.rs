@@ -138,17 +138,21 @@ pub(super) fn with_snapshot<T>(
 }
 pub(super) fn run(opts: &MigrateOptions, specs: &[SourceSpec]) -> Result<MigrateReport> {
     let sources = sources::collect(&opts.home, &opts.db, specs)?;
-    let usage = super::spec_for(&opts.home, "db-usage")?;
-    let usage_estimate = match fs::symlink_metadata(&usage.legacy) {
-        Ok(_)
-            if !crate::domains::catalog::UnifiedControlFiles::inspect(&opts.db)?
-                .is_control(&usage.legacy)? =>
-        {
-            Some(super::estimate_at_home(&opts.home, &usage)?.copy_ms)
+    let usage_estimate = if opts.domains.is_none() {
+        let usage = super::spec_for(&opts.home, "db-usage")?;
+        match fs::symlink_metadata(&usage.legacy) {
+            Ok(_)
+                if !crate::domains::catalog::UnifiedControlFiles::inspect(&opts.db)?
+                    .is_control(&usage.legacy)? =>
+            {
+                Some(super::estimate_at_home(&opts.home, &usage)?.copy_ms)
+            }
+            Ok(_) => None,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e.into()),
         }
-        Ok(_) => None,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => return Err(e.into()),
+    } else {
+        None
     };
     with_snapshot(&opts.home, &opts.db, |conn| {
         let run_id = if opts.resume {

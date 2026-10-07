@@ -221,10 +221,10 @@ fn parse(args: &[String]) -> Result<(&str, Options), String> {
             "--domain" if matches!(command, "migrate" | "verify") => opts
                 .domains
                 .push(args.next().ok_or("falta --domain")?.clone()),
-            "--proc-root" if command == "status" => {
+            "--proc-root" if matches!(command, "status" | "move") => {
                 opts.proc_root = args.next().ok_or("falta --proc-root")?.into()
             }
-            "--repo" if command == "status" => {
+            "--repo" if matches!(command, "status" | "move") => {
                 opts.repo = args.next().ok_or("falta --repo")?.into()
             }
             _ if matches!(command, "move" | "demote")
@@ -275,6 +275,9 @@ fn execute(command: &str, opts: &Options) -> Result<(Value, bool), String> {
                 migrate::demote_db(&spec, &db).map_err(|e|e.to_string())?;
                 return Ok((json!({"domain":domain,"direction":"inverse","source":spec.legacy,"target":db}),false));
             }
+            super::preflight::can_unify(&super::preflight::domain_writers(
+                &opts.proc_root, &opts.home, &opts.repo, domain,
+            )).map_err(|reasons| format!("traslado bloqueado; no se detendrá ninguna sesión: {}", reasons.join("; ")))?;
             let id=migrate::journal::new_id(migrate::journal::now_ms().map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
             let backup=opts.home.join(".local/share/comandos/backups").join(id);
             migrate::move_db(&spec, &db, &backup,4000).map_err(|e|e.to_string())?;
@@ -363,5 +366,137 @@ pub fn main(args: &[String]) -> i32 {
             eprintln!("{error}");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod move_admission_tests {
+    use super::*;
+    use std::{
+        os::unix::fs::{DirBuilderExt, symlink},
+        sync::atomic::{AtomicU64, Ordering},
+    };
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    struct Fixture(Options);
+    impl Fixture {
+        fn new() -> Self {
+            let home = std::env::temp_dir().join(format!(
+                "state-move-admission-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            let opts = Options {
+                proc_root: home.join("private-proc"),
+                repo: home.join("private-repo"),
+                home,
+                dry_run: false,
+                resume: false,
+                domains: vec!["db-operator".into()],
+            };
+            for path in [
+                &opts.proc_root,
+                &opts.repo,
+                &opts.home.join(".local/share/comandos"),
+            ] {
+                fs::DirBuilder::new()
+                    .recursive(true)
+                    .mode(0o700)
+                    .create(path)
+                    .unwrap();
+            }
+            let db = comandos_store::operator::open_operator_db_at(
+                &opts.home.join(".claude/hooks/operator/actions.sqlite"),
+            )
+            .unwrap();
+            db.conn
+                .execute("INSERT INTO actions(id,detail) VALUES('preserved','ñ')", [])
+                .unwrap();
+            drop(db);
+            Self(opts)
+        }
+        fn source(&self) -> PathBuf {
+            self.0.home.join(".claude/hooks/operator/actions.sqlite")
+        }
+        fn writer(&self, protocol: Option<u32>) {
+            let release = self
+                .0
+                .home
+                .join(".local/share/comandos/releases/private-writer");
+            fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(&release)
+                .unwrap();
+            if let Some(protocol) = protocol {
+                fs::write(
+                    release.join("manifest.json"),
+                    format!("{{\"state_protocol\":{protocol}}}"),
+                )
+                .unwrap();
+            }
+            let proc = self.0.proc_root.join("4242");
+            fs::create_dir(&proc).unwrap();
+            let exe = release.join("comandos");
+            symlink(&exe, proc.join("exe")).unwrap();
+            fs::write(proc.join("cmdline"), format!("{}\0dash\0", exe.display())).unwrap();
+        }
+        fn assert_no_move(&self, before: &[u8]) {
+            assert_eq!(fs::read(self.source()).unwrap(), before);
+            assert!(!comandos_store::unified::unified_path(&self.0.home).exists());
+            assert!(!self.0.home.join(".local/share/comandos/backups").exists());
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0.home);
+        }
+    }
+    #[test]
+    fn move_refuses_incompatible_writer_before_source_or_destination_mutation() {
+        let f = Fixture::new();
+        f.writer(None);
+        let before = fs::read(f.source()).unwrap();
+        let result = execute("move", &f.0);
+        assert!(result.is_err(), "moved despite a live protocol0 writer");
+        assert!(result.unwrap_err().contains("4242"));
+        f.assert_no_move(&before);
+    }
+    #[test]
+    fn move_refuses_incomplete_writer_census_before_source_or_destination_mutation() {
+        let mut f = Fixture::new();
+        f.0.proc_root = f.0.home.join("missing-private-proc");
+        let before = fs::read(f.source()).unwrap();
+        let result = execute("move", &f.0);
+        assert!(result.is_err(), "moved despite an incomplete writer census");
+        assert!(result.unwrap_err().contains("preflight incompleto"));
+        f.assert_no_move(&before);
+    }
+    #[test]
+    fn move_accepts_a_capable_writer_and_preserves_rows() {
+        let f = Fixture::new();
+        f.writer(Some(crate::install::STATE_PROTOCOL));
+        execute("move", &f.0).unwrap();
+        let migrated = comandos_store::operator::open_operator_db_at(&f.source()).unwrap();
+        assert_eq!(migrated.table, "operator_actions");
+        let detail: String = migrated
+            .conn
+            .query_row(
+                "SELECT detail FROM operator_actions WHERE id='preserved'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(detail, "ñ");
+    }
+    #[test]
+    fn move_estimate_remains_read_only_with_incompatible_writers() {
+        let mut f = Fixture::new();
+        f.writer(None);
+        f.0.dry_run = true;
+        let before = fs::read(f.source()).unwrap();
+        let (estimate, failed) = execute("move", &f.0).unwrap();
+        assert!(!failed);
+        assert_eq!(estimate["dry_run"], true);
+        f.assert_no_move(&before);
     }
 }

@@ -184,6 +184,65 @@ fn releases_lists_current_first_and_prunes_to_five() {
 }
 
 #[test]
+fn keep_releases_stages_and_rolls_back_without_deleting_previous_payloads() {
+    use std::os::unix::{fs::MetadataExt, fs::symlink};
+    let h = home("keep-releases");
+    let rel = h.join(".local/share/comandos/releases");
+    let mut originals = Vec::new();
+    for i in 0..8 {
+        let d = rel.join(format!("{i:012x}"));
+        fs::create_dir_all(&d).unwrap();
+        let binary = d.join("comandos");
+        fs::write(&binary, [i as u8]).unwrap();
+        originals.push((binary.clone(), binary.metadata().unwrap().ino()));
+    }
+    let pointer = h.join(".local/share/comandos/bin/comandos");
+    fs::create_dir_all(pointer.parent().unwrap()).unwrap();
+    let previous = Path::new("../releases/000000000000/comandos");
+    symlink(previous, &pointer).unwrap();
+    let output = run(&h, &["--stage", "--keep-releases"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_link(&pointer).unwrap(),
+        Path::new("../releases")
+            .join(sha12(Path::new(comandos())))
+            .join("comandos")
+    );
+    for (i, (binary, inode)) in originals.iter().enumerate() {
+        assert_eq!(fs::read(binary).unwrap(), vec![i as u8]);
+        assert_eq!(binary.metadata().unwrap().ino(), *inode);
+    }
+    assert!(run(&h, &["--rollback-release"]).status.success());
+    assert_eq!(fs::read_link(pointer).unwrap(), previous);
+    fs::remove_dir_all(h).unwrap();
+}
+
+#[test]
+fn keep_releases_dry_run_is_read_only_and_rejects_unrelated_routes() {
+    let h = home("keep-releases-preview");
+    let output = run(&h, &["--keep-releases", "--stage", "--dry-run"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fs::read_dir(&h).unwrap().count(), 0);
+    for args in [
+        vec!["--keep-releases", "--link", "cc-acp"],
+        vec!["--keep-releases", "--rollback-release"],
+        vec!["--stage", "--keep-releases", "--keep-releases"],
+    ] {
+        assert_eq!(run(&h, &args).status.code(), Some(2));
+        assert_eq!(fs::read_dir(&h).unwrap().count(), 0);
+    }
+    fs::remove_dir_all(h).unwrap();
+}
+
+#[test]
 fn rollback_without_previous_fails_cleanly() {
     let h = home("noprev");
     assert!(run(&h, &["--stage"]).status.success());

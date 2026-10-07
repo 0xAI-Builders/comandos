@@ -105,7 +105,7 @@ pub fn migrate(opts: &MigrateOptions) -> Result<MigrateReport> {
         db: opts.db.clone(),
         dry_run: true,
         resume: false,
-        domains: None,
+        domains: opts.domains.clone(),
         now_ms: opts.now_ms,
     };
     let preflight_report = dry_run::run(&preflight, &[])?;

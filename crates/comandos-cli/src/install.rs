@@ -32,10 +32,10 @@ use std::{
 /// Directorio de artefactos web que `--stage` copia a la release (T4).
 const WEB_SOURCE_ENV: &str = "COMANDOS_WEB_SOURCE";
 const HOOK_NAMES: &[&str] = &["cc-notify.sh", "cc-status.sh", "cc-usage-tool.sh"];
-const USAGE: &str = "uso: comandos install [--home DIR] [--dry-run] (--stage [--web DIR] | --stage-app RUTA_ABSOLUTA | --link NOMBRE | --darwin-agent [--no-launchctl] | --app RUTA.app | --rollback NOMBRE [--no-launchctl] | --rollback-release | --releases)";
+const USAGE: &str = "uso: comandos install [--home DIR] [--dry-run] (--stage [--web DIR] [--keep-releases] | --stage-app RUTA_ABSOLUTA | --link NOMBRE | --darwin-agent [--no-launchctl] | --app RUTA.app | --rollback NOMBRE [--no-launchctl] | --rollback-release | --releases)";
 
 enum Action {
-    Stage(Option<PathBuf>),
+    Stage(Option<PathBuf>, bool),
     StageApp(PathBuf),
     DarwinAgent,
     DarwinApp(PathBuf),
@@ -66,7 +66,7 @@ pub fn run(args: &[String]) -> Result<i32, String> {
     match action {
         Action::DarwinAgent => darwin::agent(&home, dry_run, no_launchctl)?,
         Action::DarwinApp(source) => darwin::install_app(&home, &source, dry_run)?,
-        Action::Stage(flag) => {
+        Action::Stage(flag, keep_releases) => {
             let me = std::env::current_exe()
                 .map_err(|e| format!("no se pudo ubicar el ejecutable: {e}"))?;
             let web = web_source(flag, &me);
@@ -81,7 +81,11 @@ pub fn run(args: &[String]) -> Result<i32, String> {
                 );
                 return Ok(0);
             }
-            let r = release::stage_release_without_install_lock(&home, &me, &web)?;
+            let r = if keep_releases {
+                release::stage_release_unpruned(&home, &me, &web)?
+            } else {
+                release::stage_release_without_install_lock(&home, &me, &web)?
+            };
             match (&web, r.web_files) {
                 (
                     release::WebSource::Explicit(p) | release::WebSource::OwnRelease { dir: p, .. },
@@ -182,6 +186,7 @@ fn parse(args: &[String]) -> Option<(PathBuf, Action, bool, bool)> {
     let mut web = None;
     let mut dry_run = false;
     let mut no_launchctl = false;
+    let mut keep_releases = false;
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         let next = match arg.as_str() {
@@ -203,7 +208,14 @@ fn parse(args: &[String]) -> Option<(PathBuf, Action, bool, bool)> {
                 dry_run = true;
                 continue;
             }
-            "--stage" => Action::Stage(None),
+            "--stage" => Action::Stage(None, false),
+            "--keep-releases" => {
+                if keep_releases {
+                    return None;
+                }
+                keep_releases = true;
+                continue;
+            }
             "--darwin-agent" => Action::DarwinAgent,
             "--app" => Action::DarwinApp(PathBuf::from(it.next()?)),
             "--no-launchctl" => {
@@ -232,8 +244,9 @@ fn parse(args: &[String]) -> Option<(PathBuf, Action, bool, bool)> {
     }
     // `--web` solo acompaña a `--stage`.
     let action = match (action?, web) {
-        (Action::Stage(_), web) => Action::Stage(web),
+        (Action::Stage(..), web) => Action::Stage(web, keep_releases),
         (_, Some(_)) => return None,
+        (_, None) if keep_releases => return None,
         (other, None) => other,
     };
     let home = home?;
