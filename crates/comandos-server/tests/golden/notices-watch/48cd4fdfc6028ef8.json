@@ -1,0 +1,10 @@
+{
+  "input": {
+    "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "python": "3.10.12",
+    "clock_ms": 1791115200000,
+    "fixture_timer": "_do_GET monotonic; document timestamps fixed",
+    "target": "/notices/watch?rev=3.0.0&wait=1"
+  },
+  "output_b64": "WzIwMCwie1wicmV2XCI6IFwiMy4wLjBcIiwgXCJiYWRnZVwiOiAzLCBcInVucmVhZFwiOiBbXCJlMVwiLCBcImUyXCIsIFwiZTNcIl0sIFwicGVuZGluZ1wiOiBbXCJlMVwiXSwgXCJsYXRlc3RcIjogM30iXQ=="
+}
