@@ -101,6 +101,13 @@ pub trait OnResize {
 
 /// Event Loop for notifying the renderer about terminal events.
 pub trait EventListener {
+    /// Whether clipboard load requests have a consumer. A declining listener
+    /// does not need the allocated reply formatter; existing listeners retain
+    /// the full ClipboardLoad event and its original formatter by default.
+    fn accepts_clipboard_load(&self) -> bool {
+        true
+    }
+
     fn send_event(&self, _event: Event) {}
 }
 

@@ -1762,6 +1762,10 @@ impl<T: EventListener> Handler for Term<T> {
             _ => return,
         };
 
+        if !self.event_proxy.accepts_clipboard_load() {
+            return;
+        }
+
         let terminator = terminator.to_owned();
 
         self.event_proxy.send_event(Event::ClipboardLoad(

@@ -277,6 +277,12 @@ impl Collector {
 }
 
 impl EventListener for Collector {
+    // Clipboard reads have always been ignored by this collector. Refuse
+    // before constructing a reply callback that would be discarded unchanged.
+    fn accepts_clipboard_load(&self) -> bool {
+        false
+    }
+
     fn send_event(&self, event: Event) {
         let mut pending = self.0.take();
         match event {
