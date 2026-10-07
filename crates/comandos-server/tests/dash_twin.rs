@@ -22,10 +22,8 @@ use std::{
 };
 use support::{
     TestHome,
-    oracle::{
-        FakeCall, OracleOpts, fake_calls, run_dash, run_dash_with, tmux_guard, write_executable,
-    },
-    twin::{Twin, TwinOpts, normalize},
+    frozen_twin::{Twin, TwinOpts, normalize},
+    oracle::{FakeCall, OracleOpts, fake_calls, tmux_guard, write_executable},
 };
 
 #[test]
@@ -124,9 +122,22 @@ print(json.dumps(out))
         extra_env: vec![("CANARY_PORT".into(), allowed.to_string())],
         ..OracleOpts::default()
     };
-    let Some(text) = run_dash_with(&home, code, &opts) else {
-        return;
-    };
+    let roots = [("<HOME>", home.root.as_path())];
+    let input = serde_json::json!({"source_commit":support::frozen::SOURCE_COMMIT,
+        "source_sha256":"4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+        "python":"CPython 3.10.12", "code":code,"allowed_ports":["private fixture listener"],"CANARY_PORT":"private fixture listener"});
+    let bytes = comandos_oracle::oracle_at(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "server-twin-network-canary",
+        &input,
+        || {
+            Ok(comandos_oracle::normalize(
+                support::frozen::run_dash_original(&home, code, &opts)?.as_bytes(),
+                &roots,
+            ))
+        },
+    );
+    let text = String::from_utf8(comandos_oracle::restore(&bytes, &roots)).unwrap();
     let out: serde_json::Value = serde_json::from_str(text.trim()).unwrap();
     for name in [
         "tcp-4777",
@@ -172,8 +183,8 @@ print(json.dumps(out))
 /// que anotan, y lo que no está en la lista (`curl`) no existe.
 #[test]
 fn canary_panes_only_see_fakes() {
-    if !support::tmux_available() || !python_available() {
-        eprintln!("tmux o python3 no están instalados: se salta");
+    if !support::tmux_available() {
+        eprintln!("tmux no está instalado: se salta");
         return;
     }
     let home = TestHome::new_short("canary-pane");
@@ -334,10 +345,19 @@ async fn twin_starts_confined_and_compares_files() {
     else {
         return;
     };
-    // Oráculo: prólogo instalado y proceso sin escritorio, HOME = B.
-    let marker = std::fs::read_to_string(twin.b.root.join(".comandos-twin-guard")).unwrap();
+    // Original guard is an immutable expectation. Listener ownership and
+    // process environment remain actual queries against our Rust child in replay.
+    let marker = String::from_utf8(twin.original_file(".comandos-twin-guard").unwrap()).unwrap();
     assert!(marker.contains("red cerrada"), "{marker}");
-    let environ = std::fs::read(format!("/proc/{}/environ", twin.oracle.pid())).unwrap();
+    let rust_actor = if twin.source_pid().is_none() {
+        Some(support::owned_actor::OwnedActor::start(&twin.b))
+    } else {
+        None
+    };
+    let pid = twin
+        .source_pid()
+        .unwrap_or_else(|| rust_actor.as_ref().unwrap().pid());
+    let environ = std::fs::read(format!("/proc/{pid}/environ")).unwrap();
     let vars: Vec<String> = environ
         .split(|b| *b == 0)
         .map(|v| String::from_utf8_lossy(v).into_owned())
@@ -374,7 +394,14 @@ async fn twin_starts_confined_and_compares_files() {
         twin.front_options.user_bin_dirs
     );
     // El oráculo importa el `sitecustomize.py` del confinamiento.
-    assert!(vars.iter().any(|v| v.starts_with("PYTHONPATH=")));
+    if twin.source_pid().is_some() {
+        assert!(vars.iter().any(|v| v.starts_with("PYTHONPATH=")));
+    } else {
+        assert!(
+            !vars.iter().any(|v| v.starts_with("PYTHONPATH=")),
+            "Rust replay actor has no Python dependency"
+        );
+    }
     assert_eq!(twin.front_options.desktop_device, "gemelo");
     assert!(twin.a.root.join("fakebin/mi-falso").exists());
     // Los dos lados responden.
@@ -404,15 +431,6 @@ fn has_session(home: &TestHome, name: &str) -> bool {
         .is_ok_and(|s| s.success())
 }
 
-fn python_available() -> bool {
-    Command::new("python3")
-        .args(["-c", "import sys"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
-}
-
 /// Espera (5 s) a que `path` contenga `needle` y devuelve su texto.
 fn wait_for(path: &Path, needle: &str) -> String {
     let started = Instant::now();
@@ -428,9 +446,13 @@ fn wait_for(path: &Path, needle: &str) -> String {
 #[test]
 fn run_dash_loads_the_module() {
     let home = TestHome::new_short("run-dash");
-    let Some(text) = run_dash(&home, "print(callable(dash.scope_cmd))") else {
-        return;
-    };
+    let text = support::http_golden::dash_files(
+        &home,
+        "server-twin-module-load",
+        &[],
+        "print(callable(dash.scope_cmd))",
+        &Default::default(),
+    );
     assert_eq!(text.trim(), "True");
 }
 
@@ -545,9 +567,13 @@ fn canary_registry_binaries_resolve_to_fakes() {
          print(json.dumps([[n, shutil.which(n), providers.which(n), acp.which(n)] for n in names]))",
         names = serde_json::to_string(&names).unwrap()
     );
-    let Some(text) = run_dash(&home, &code) else {
-        return;
-    };
+    let text = support::http_golden::dash_files(
+        &home,
+        "server-twin-registry-resolution",
+        &[],
+        &code,
+        &Default::default(),
+    );
     let rows: Vec<Vec<serde_json::Value>> = serde_json::from_str(text.trim()).unwrap();
     assert_eq!(rows.len(), names.len());
     for row in rows {
@@ -673,9 +699,13 @@ fn canary_unlisted_names_resolve_nowhere_real() {
          print(json.dumps([[n, providers.which(n), acp.which(n)] for n in names]))",
         names = serde_json::to_string(&names).unwrap()
     );
-    let Some(text) = run_dash(&home, &code) else {
-        return;
-    };
+    let text = support::http_golden::dash_files(
+        &home,
+        "server-twin-registry-resolution",
+        &[],
+        &code,
+        &Default::default(),
+    );
     let rows: Vec<Vec<serde_json::Value>> = serde_json::from_str(text.trim()).unwrap();
     assert_eq!(rows.len(), names.len());
     for (row, rust) in rows.iter().zip(&rust) {
@@ -689,11 +719,10 @@ fn canary_unlisted_names_resolve_nowhere_real() {
 /// nunca porque algo acepte conexiones ahí (el oráculo de otra prueba).
 #[tokio::test]
 async fn oracle_ready_means_its_own_listener() {
-    use support::oracle::{listens_on, oracle};
+    use support::oracle::listens_on;
     let home = TestHome::new_short("oracle-own");
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
+    support::oracle::confined_fakebin(&home, &[]);
+    let py = support::owned_actor::OwnedActor::start(&home);
     assert!(listens_on(py.pid(), py.port));
     assert!(!listens_on(std::process::id(), py.port));
     // Puerto de los oráculos: fuera del rango efímero de `dead_port()`.

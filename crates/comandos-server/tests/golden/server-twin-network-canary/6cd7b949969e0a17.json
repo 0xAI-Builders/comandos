@@ -1,0 +1,13 @@
+{
+  "input": {
+    "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+    "python": "CPython 3.10.12",
+    "code": "\nimport os, socket, urllib.request, urllib.error, json\nout = {}\ndef attempt(name, fn):\n    try:\n        fn()\n        out[name] = \"abierto\"\n    except (OSError, urllib.error.URLError) as exc:\n        out[name] = \"cerrado\"\nfor port in (4777, 4778, 4779, 4780, 4781, 4782):\n    attempt(f\"tcp-{port}\", lambda port=port: socket.create_connection((\"127.0.0.1\", port), timeout=1).close())\n# Solo con el puerto ya cerrado a nivel de socket: un canario no debe poder\n# mandar un aviso real si el confinamiento estuviera roto.\nif out[\"tcp-4778\"] == \"cerrado\":\n    attempt(\"urlopen-4778\", lambda: urllib.request.urlopen(\"http://127.0.0.1:4778/\", timeout=1))\nif out[\"tcp-4780\"] == \"cerrado\":\n    attempt(\"urlopen-4780\", lambda: urllib.request.urlopen(\"http://127.0.0.1:4780/\", timeout=1))\nattempt(\"dns\", lambda: socket.getaddrinfo(\"example.com\", 443))\nattempt(\"udp\", lambda: socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(b\"x\", (\"1.1.1.1\", 53)))\nattempt(\"unix-runtime\", lambda: socket.socket(socket.AF_UNIX).connect(\"/run/user/%d/bus\" % os.getuid()))\nattempt(\"permitido\", lambda: socket.create_connection((\"127.0.0.1\", int(os.environ[\"CANARY_PORT\"])), timeout=1).close())\nout[\"env\"] = {k: os.environ.get(k) for k in (\"DISPLAY\", \"WAYLAND_DISPLAY\", \"DBUS_SESSION_BUS_ADDRESS\", \"TMUX\", \"HOME\", \"PATH\", \"SHELL\", \"CLAUDE_CONFIG_DIR\")}\nout[\"loops\"] = [getattr(dash, n).__name__ for n in (\"_model_watch_loop\", \"_news_editions_loop\", \"_notices_push_loop\", \"_limits_snapshot_loop\")]\nprint(json.dumps(out))\n",
+    "allowed_ports": [
+      "private fixture listener"
+    ],
+    "CANARY_PORT": "private fixture listener"
+  },
+  "output_b64": "eyJ0Y3AtNDc3NyI6ICJjZXJyYWRvIiwgInRjcC00Nzc4IjogImNlcnJhZG8iLCAidGNwLTQ3NzkiOiAiY2VycmFkbyIsICJ0Y3AtNDc4MCI6ICJjZXJyYWRvIiwgInRjcC00NzgxIjogImNlcnJhZG8iLCAidGNwLTQ3ODIiOiAiY2VycmFkbyIsICJ1cmxvcGVuLTQ3NzgiOiAiY2VycmFkbyIsICJ1cmxvcGVuLTQ3ODAiOiAiY2VycmFkbyIsICJkbnMiOiAiY2VycmFkbyIsICJ1ZHAiOiAiY2VycmFkbyIsICJ1bml4LXJ1bnRpbWUiOiAiY2VycmFkbyIsICJwZXJtaXRpZG8iOiAiYWJpZXJ0byIsICJlbnYiOiB7IkRJU1BMQVkiOiBudWxsLCAiV0FZTEFORF9ESVNQTEFZIjogbnVsbCwgIkRCVVNfU0VTU0lPTl9CVVNfQUREUkVTUyI6IG51bGwsICJUTVVYIjogbnVsbCwgIkhPTUUiOiAiPEhPTUU+IiwgIlBBVEgiOiAiPEhPTUU+L2Zha2ViaW4iLCAiU0hFTEwiOiAiL2Jpbi9iYXNoIiwgIkNMQVVERV9DT05GSUdfRElSIjogbnVsbH0sICJsb29wcyI6IFsiX3R3aW5fbG9vcF9vZmYiLCAiX3R3aW5fbG9vcF9vZmYiLCAiX3R3aW5fbG9vcF9vZmYiLCAiX3R3aW5fbG9vcF9vZmYiXX0K"
+}

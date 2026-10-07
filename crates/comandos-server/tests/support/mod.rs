@@ -8,6 +8,7 @@ pub mod http_golden;
 pub mod news;
 pub mod ops;
 pub mod oracle;
+pub mod owned_actor;
 pub mod services;
 pub mod tabs;
 pub mod twin;

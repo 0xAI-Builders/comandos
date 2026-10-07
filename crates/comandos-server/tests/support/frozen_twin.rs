@@ -303,6 +303,9 @@ impl Twin {
         self.original_request("POST", path, body).await
     }
 
+    pub fn source_pid(&self) -> Option<u32> {
+        self.oracle.as_ref().map(Oracle::pid)
+    }
     pub fn source_port(&self) -> Option<u16> {
         self.oracle.as_ref().map(|source| source.port)
     }
