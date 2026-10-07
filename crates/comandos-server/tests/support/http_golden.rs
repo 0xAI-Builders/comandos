@@ -23,10 +23,11 @@ pub struct FrozenHttp<'a> {
     files: Vec<&'static str>,
     aliases: Vec<(String, PathBuf)>,
     prime_targets: Vec<String>,
+    allowed_port_count: usize,
 }
 impl<'a> FrozenHttp<'a> {
     pub async fn new(home: &'a TestHome, family: &'static str, files: &[&'static str]) -> Self {
-        Self::new_inner(home, family, files, home.hooks(), "", &[]).await
+        Self::new_inner(home, family, files, home.hooks(), "", &[], &[]).await
     }
     pub async fn new_rooted_with(
         home: &'a TestHome,
@@ -34,7 +35,7 @@ impl<'a> FrozenHttp<'a> {
         files: &[&'static str],
         prelude: &str,
     ) -> Self {
-        Self::new_inner(home, family, files, home.root.clone(), prelude, &[]).await
+        Self::new_inner(home, family, files, home.root.clone(), prelude, &[], &[]).await
     }
     pub async fn new_rooted_with_fakebin(
         home: &'a TestHome,
@@ -50,6 +51,29 @@ impl<'a> FrozenHttp<'a> {
             home.root.clone(),
             prelude,
             fakebin_extra,
+            &[],
+        )
+        .await
+    }
+    /// Explicit source-only loopback holes for owned fixture listeners.
+    /// Replay never starts the source or invents a listener; the caller retains
+    /// its real native actor and assertions. Golden provenance pins port roles,
+    /// not ephemeral operating-system port numbers.
+    pub async fn new_rooted_with_ports(
+        home: &'a TestHome,
+        family: &'static str,
+        files: &[&'static str],
+        prelude: &str,
+        allow_ports: &[u16],
+    ) -> Self {
+        Self::new_inner(
+            home,
+            family,
+            files,
+            home.root.clone(),
+            prelude,
+            &[],
+            allow_ports,
         )
         .await
     }
@@ -60,6 +84,7 @@ impl<'a> FrozenHttp<'a> {
         domain: PathBuf,
         prelude: &str,
         fakebin_extra: &[(String, String)],
+        allow_ports: &[u16],
     ) -> Self {
         let original = if matches!(
             std::env::var("COMANDOS_ORACLE").as_deref(),
@@ -68,6 +93,7 @@ impl<'a> FrozenHttp<'a> {
             let reference = frozen::reference(&home.root).unwrap();
             let opts = OracleOpts {
                 fakebin_extra: fakebin_extra.to_vec(),
+                allow_ports: allow_ports.to_vec(),
                 python_prelude: format!(
                     "dash.time.time = lambda: {}\ndash.motor_queue_resume = lambda: None\ndash.start_pomodoro_scheduler = lambda: None",
                     NOW_MS / 1000
@@ -87,16 +113,24 @@ impl<'a> FrozenHttp<'a> {
         } else {
             None
         };
+        let mut provenance_prelude = prelude.to_owned();
+        for (role, port) in allow_ports.iter().enumerate() {
+            provenance_prelude = regex::Regex::new(&format!(r"\b{port}\b"))
+                .unwrap()
+                .replace_all(&provenance_prelude, format!("<FIXTURE_PORT_{role}>"))
+                .into_owned();
+        }
         Self {
             home,
             domain,
-            prelude: prelude.to_owned(),
+            prelude: provenance_prelude,
             fakebin_extra: fakebin_extra.to_vec(),
             original,
             family,
             files: files.to_vec(),
             aliases: Vec::new(),
             prime_targets: Vec::new(),
+            allowed_port_count: allow_ports.len(),
         }
     }
     /// A real source listener exists only in explicit record/check.
@@ -147,6 +181,9 @@ impl<'a> FrozenHttp<'a> {
         let mut input = json!({"source_commit":frozen::SOURCE_COMMIT,"source_sha256":"4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24", "python":"CPython 3.10.12","clock_ms":NOW_MS,"request":request,"effect_files":self.files});
         if !self.prelude.is_empty() {
             input["fixture_prelude"] = json!(self.prelude);
+        }
+        if self.allowed_port_count != 0 {
+            input["fixture_allowed_ports"] = json!(self.allowed_port_count);
         }
         if !self.fakebin_extra.is_empty() {
             input["fixture_fakebin"] = json!(self.fakebin_extra);
