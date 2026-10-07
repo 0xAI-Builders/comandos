@@ -24,11 +24,28 @@ use std::{
     time::Duration,
 };
 use support::{
-    FakeLegacy, Front, TestHome, front, get,
-    oracle::{OracleOpts, run_dash_with},
-    twin::{Twin, TwinOpts},
+    FakeLegacy, Front, TestHome, front,
+    frozen_twin::{Twin, TwinOpts},
+    get,
+    oracle::OracleOpts,
 };
 
+const CHAIN_FILES: &[&str] = &[
+    ".config/comandos/cadenas/nueva-cadena.md",
+    ".config/comandos/cadenas/nueva-cadena-2.md",
+    ".config/comandos/cadenas/deploy.md",
+    ".config/comandos/cadenas/mal.md",
+    ".config/comandos/cadenas/revision-diaria.md",
+    ".config/comandos/cadenas/revision-diaria-2.md",
+];
+fn original_cli_log(t: &Twin) -> String {
+    t.observe("cli-log", &Value::Null, || {
+        json!(std::fs::read_to_string(t.b.root.join("cli.log")).unwrap_or_default())
+    })
+    .as_str()
+    .unwrap()
+    .to_owned()
+}
 const CLAUDE_HELP: &str = "Usage: claude [options] [command] [prompt]
 
 Claude Code - starts an interactive session by default
@@ -145,6 +162,8 @@ impl SharedElf {
         fakebin.push(("codex".into(), self.launcher()));
         TwinOpts {
             fakebin_extra: fakebin,
+            fixture_aliases: vec![("<SHARED_ELF>".into(), self.0.clone())],
+            oracle_files: CHAIN_FILES.to_vec(),
             ..TwinOpts::default()
         }
     }
@@ -191,6 +210,7 @@ async fn same(t: &Twin, path: &str) -> String {
 fn opts() -> TwinOpts {
     TwinOpts {
         fakebin_extra: fakes(),
+        oracle_files: CHAIN_FILES.to_vec(),
         ..TwinOpts::default()
     }
 }
@@ -216,12 +236,15 @@ async fn catalog_binaries_resolve_inside_the_home() {
         }
     }
     let code = format!(
-        "import os, sys\nsys.path.insert(0, os.path.join({:?}, 'lib'))\nimport providers, shutil\nprint([providers.which(n) for n in {names:?}], shutil.which('opencode'))\n",
-        support::repo().display().to_string()
+        "import providers, shutil\nprint([providers.which(n) for n in {names:?}], shutil.which('opencode'))\n"
     );
-    let Some(out) = run_dash_with(&t.b, &code, &OracleOpts::default()) else {
-        return;
-    };
+    let out = support::http_golden::dash_files(
+        &t.b,
+        "server-catalog-resolution",
+        &[],
+        &code,
+        &OracleOpts::default(),
+    );
     assert!(!out.contains("/home/someguy/.local"), "{out}");
     assert!(!out.contains(".opencode/bin"), "{out}");
 }
@@ -265,7 +288,11 @@ async fn commands_catalog_matches_python() {
             .filter(|l| l.ends_with("--help"))
             .count()
     };
-    assert_eq!(helps(&t.a), helps(&t.b));
+    let expected_helps = original_cli_log(&t)
+        .lines()
+        .filter(|line| line.ends_with(" --help"))
+        .count();
+    assert_eq!(helps(&t.a), expected_helps);
     // Las tres ayudas con texto se guardan; las vacías (grok, opencode) se
     // vuelven a pedir en cada petición, como en el Python.
     assert_eq!(helps(&t.a), 3 + 2 * 3);
@@ -300,7 +327,13 @@ async fn commands_catalog_without_snapshot_matches_python() {
             .count()
     };
     assert_eq!(versions(&t.a), 5);
-    assert_eq!(versions(&t.b), 5);
+    assert_eq!(
+        original_cli_log(&t)
+            .lines()
+            .filter(|line| line.ends_with(" --version"))
+            .count(),
+        5
+    );
 }
 
 /// `?refresh=1` fuerza un ciclo del vigilante (Tarea 6): ya no declina (el
@@ -400,7 +433,16 @@ async fn chains_post_os_error_matches_python() {
         std::fs::create_dir_all(home.root.join(".config/comandos")).unwrap();
         std::fs::write(home.root.join(CHAIN_DIR), "no soy un directorio").unwrap();
     };
-    let Some(t) = Twin::start_with("chains-os", seed, opts()).await else {
+    let Some(t) = Twin::start_with(
+        "chains-os",
+        seed,
+        TwinOpts {
+            oracle_files: Vec::new(),
+            ..opts()
+        },
+    )
+    .await
+    else {
         return;
     };
     let run = t
@@ -439,7 +481,13 @@ async fn opencode_models_cold_and_cached_match_python() {
             .count()
     };
     assert_eq!(models(&t.a), 1);
-    assert_eq!(models(&t.b), 1);
+    assert_eq!(
+        original_cli_log(&t)
+            .lines()
+            .filter(|line| line.starts_with("opencode models"))
+            .count(),
+        1
+    );
 }
 
 /// Un `opencode` que no imprime nada: `[]` (la lista vacía no se guarda).

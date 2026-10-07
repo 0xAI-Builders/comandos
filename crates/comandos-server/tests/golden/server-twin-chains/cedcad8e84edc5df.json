@@ -1,0 +1,48 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "fixture": {
+        "fakebin": [
+          [
+            "claude",
+            "#!/bin/sh\nprintf '%s\\n' \"$(basename \"$0\") $*\" >> \"$HOME/cli.log\"\ncase \"$1\" in\n--version) echo 2.1.286;;\n--help) cat <<'AYUDA'\nUsage: claude [options] [command] [prompt]\n\nClaude Code - starts an interactive session by default\n\nOptions:\n  --dangerously-skip-permissions                    Bypass all permission checks. Recommended only for sandboxes.\n  --model <model>                                   Model for the current session\n  -c, --continue                                    Continue the most recent conversation\n\nCommands:\n  mcp                                               Configure and manage MCP servers\n  update|upgrade                                    Check for updates and install if available\nAYUDA\n;;\nesac\n"
+          ],
+          [
+            "grok",
+            "#!/bin/sh\nprintf '%s\\n' \"$(basename \"$0\") $*\" >> \"$HOME/cli.log\"\ncase \"$1\" in\n--version) echo 'grok 1.0.44';;\n--help) cat <<'AYUDA'\nAYUDA\n;;\nesac\n"
+          ],
+          [
+            "agy",
+            "#!/bin/sh\nprintf '%s\\n' \"$(basename \"$0\") $*\" >> \"$HOME/cli.log\"\ncase \"$1\" in\n--version) echo v1.2.14;;\n--help) cat <<'AYUDA'\nUsage of agy:\n  -yolo\n    \tAuto-approve all tool executions\nAYUDA\n;;\nesac\n"
+          ],
+          [
+            "opencode",
+            "#!/bin/sh\nprintf '%s\\n' \"$(basename \"$0\") $*\" >> \"$HOME/cli.log\"\ncase \"$1\" in\n--version) echo 1.18.33;;\n--help) cat <<'AYUDA'\nAYUDA\n;;\nmodels) cat <<'MODELOS'\nopencode/big-pickle\n{\"id\": \"big-pickle\", \"providerID\": \"opencode\", \"name\": \"Big Pickle\", \"status\": \"active\", \"capabilities\": {\"toolcall\": true, \"input\": {\"text\": true}, \"output\": {\"text\": true}}, \"limit\": {\"context\": 200000}}\nanthropic/claude-x\n{\"id\": \"claude-x\", \"providerID\": \"anthropic\", \"name\": \"Claude X\", \"capabilities\": {\"toolcall\": true}, \"limit\": {\"context\": \"1000\"}}\ngroq/whisper\n{\"id\": \"whisper\", \"providerID\": \"groq\", \"capabilities\": {\"toolcall\": false}}\nopenrouter/free-one\n{\"id\": \"free-one\", \"providerID\": \"openrouter\", \"status\": \"deprecated\"}\nbroken {\"id\": \n{\"id\": \"~alias\", \"providerID\": \"opencode\"}\nMODELOS\nif [ -f \"$HOME/oc-second\" ]; then echo '{\"id\": \"late\", \"providerID\": \"zz\"}'; fi\ntouch \"$HOME/oc-second\";;\nesac\n"
+          ]
+        ],
+        "prelude": "",
+        "keep_loops": [],
+        "environment": []
+      },
+      "sequence": 7,
+      "request": {
+        "method": "POST",
+        "path": "/chains",
+        "body": "{\"name\": \"Tipo\", \"steps\": [{\"kind\": \"bash\", \"text\": \"x\"}]}"
+      },
+      "effect_files": [
+        ".config/comandos/cadenas/nueva-cadena.md",
+        ".config/comandos/cadenas/nueva-cadena-2.md",
+        ".config/comandos/cadenas/deploy.md",
+        ".config/comandos/cadenas/mal.md",
+        ".config/comandos/cadenas/revision-diaria.md",
+        ".config/comandos/cadenas/revision-diaria-2.md"
+      ]
+    },
+    "before_sha256": "13dd5a77f395518c39593c367117f64441e042ed393442b79d68e6ac9969c437"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjo0MDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCI2NVwiXV0sXCJib2R5XCI6WzEyMywzNCwxMDEsMTE0LDExNCwxMTEsMTE0LDM0LDU4LDMyLDM0LDgwLDk3LDExNSwxMTEsMzIsMTA1LDExMCwxMTgsOTIsMTE3LDQ4LDQ4LDEwMSw0OSwxMDgsMTA1LDEwMCwxMTEsMzIsNDksNTgsMzIsMTE2LDEwNSwxMTIsMTExLDMyLDM5LDk4LDk3LDExNSwxMDQsMzksMzIsNDAsMTE3LDExNSw5NywzMiwxMTUsMTA0LDEwMSwxMDgsMTA4LDMyLDExMSwzMiwxMTIsOTcsMTEwLDEwMSw0MSwzNCwxMjVdfSIsInRyZWUiOnsiLmNvbmZpZyI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmNvbmZpZy9jb21hbmRvcyI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmNvbmZpZy9jb21hbmRvcy9jYWRlbmFzIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCIuY29uZmlnL2NvbWFuZG9zL2NhZGVuYXMvZGVwbG95Lm1kIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6Ikl5QkdhV3BoQ2dveExpQndZVzVsT2lCdFlXdGxJSFJsYzNRSyJ9LCIuY29uZmlnL2NvbWFuZG9zL2NhZGVuYXMvbnVldmEtY2FkZW5hLTIubWQiOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiSXlCT2RXVjJZU0JqWVdSbGJtRUtDakV1SUhCaGJtVTZJSEIzWkFvPSJ9LCIuY29uZmlnL2NvbWFuZG9zL2NhZGVuYXMvbnVldmEtY2FkZW5hLm1kIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6Ikl5Qk9kV1YyWVNCallXUmxibUVLQ2pFdUlITm9aV3hzT2lCc2N3bz0ifX19"
+}

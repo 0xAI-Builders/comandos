@@ -72,6 +72,7 @@ type ResponseNormalizer = Option<(&'static str, fn(&TestHome, &str) -> String)>;
 pub struct TwinOpts {
     /// Explicit ordinary document effects relative to HOME; never actors or logs.
     pub oracle_files: Vec<&'static str>,
+    pub fixture_aliases: Vec<(String, std::path::PathBuf)>,
     /// Existing caller normalization applied before freezing/checking output.
     pub response_normalizer: ResponseNormalizer,
     /// Ejecutables extra en el `fakebin` de LOS DOS lados (nombre → texto).
@@ -108,6 +109,7 @@ pub struct Twin {
     response_normalizer: ResponseNormalizer,
     fixture: Value,
     files: Vec<&'static str>,
+    aliases: Vec<(String, std::path::PathBuf)>,
     request_id: AtomicUsize,
     observation_id: AtomicUsize,
     _legacy: FakeLegacy,
@@ -174,12 +176,21 @@ impl Twin {
         seed(&a);
         seed(&b);
         let response_normalizer = opts.response_normalizer;
+        let aliases = opts.fixture_aliases;
         let mut fixture = json!({"fakebin":opts.fakebin_extra,"prelude":opts.python_prelude,
             "keep_loops":opts.keep_loops,"environment":opts.oracle_env});
         if let Some((name, _)) = response_normalizer {
             fixture["response_normalizer"] = json!(name);
         }
-        let mut fixture_text = serde_json::to_string(&fixture).unwrap();
+        let fixture_roots: Vec<(&str, &Path)> = aliases
+            .iter()
+            .map(|(name, path)| (name.as_str(), path.as_path()))
+            .collect();
+        let mut fixture_text = String::from_utf8(comandos_oracle::normalize(
+            &serde_json::to_vec(&fixture).unwrap(),
+            &fixture_roots,
+        ))
+        .unwrap();
         for (i, port) in opts.allow_ports.iter().enumerate() {
             fixture_text = fixture_text.replace(&port.to_string(), &format!("<FIXTURE_PORT_{i}>"));
         }
@@ -256,6 +267,7 @@ impl Twin {
             response_normalizer,
             fixture,
             files,
+            aliases,
             request_id: AtomicUsize::new(0),
             observation_id: AtomicUsize::new(0),
             _legacy: legacy,
@@ -297,7 +309,12 @@ impl Twin {
 
     /// Expected source observations, never materialized as logs or processes.
     pub fn observe(&self, operation: &str, args: &Value, run: impl FnOnce() -> Value) -> Value {
-        let roots = [("<HOME>", self.b.root.as_path())];
+        let mut roots = vec![("<HOME>", self.b.root.as_path())];
+        roots.extend(
+            self.aliases
+                .iter()
+                .map(|(name, path)| (name.as_str(), path.as_path())),
+        );
         let input = json!({"source_commit":super::frozen::SOURCE_COMMIT,
             "source_sha256":"4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
             "python":"CPython 3.10.12", "fixture":self.fixture,
@@ -337,7 +354,12 @@ impl Twin {
     async fn original_request(&self, method: &str, path: &str, body: &str) -> Wire {
         let capsule = self.b.root.join(".oracle/twin-effects");
         super::http_golden::copy_domain(&self.b.root, &capsule, &self.files);
-        let roots = [("<HOME>", self.b.root.as_path())];
+        let mut roots = vec![("<HOME>", self.b.root.as_path())];
+        roots.extend(
+            self.aliases
+                .iter()
+                .map(|(name, path)| (name.as_str(), path.as_path())),
+        );
         let input = json!({"source_commit":super::frozen::SOURCE_COMMIT,
             "source_sha256":"4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
             "python":"CPython 3.10.12", "fixture":self.fixture,
