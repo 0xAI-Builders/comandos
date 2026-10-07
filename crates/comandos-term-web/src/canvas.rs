@@ -30,6 +30,8 @@ use comandos_term::{
     glyphs::{self, DrawOp},
     render::{CursorShape, CursorView, Run, RunKind, Underline},
 };
+mod box_index;
+use box_index::BoxIndex;
 use std::{
     borrow::Borrow,
     collections::HashMap,
@@ -1182,12 +1184,12 @@ fn set_dash(ctx: &CanvasRenderingContext2d, segments: &[f64]) -> Result<(), JsVa
 /// definiciones en cada llamada).
 #[derive(Default)]
 struct BoxCache {
-    ops: HashMap<char, Vec<DrawOp>>,
+    ops: BoxIndex<Vec<DrawOp>>,
 }
 
 impl BoxCache {
     fn ops(&mut self, c: char, m: &CellMetrics, font_size: f64) -> &[DrawOp] {
-        self.ops.entry(c).or_insert_with(|| {
+        self.ops.entry(c, || {
             let mut out = Vec::new();
             let metrics = glyphs::CellMetrics {
                 cell_w: f64::from(m.dev_w),
