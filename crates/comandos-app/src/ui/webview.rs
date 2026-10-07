@@ -236,14 +236,60 @@ pub(crate) fn encode_query(raw: &str) -> String {
     out
 }
 
-pub fn terminal_uri(path: &std::path::Path, session: &str, token: &str, theme: &str) -> String {
-    format!(
-        "{}?auth={}&arg={}&theme={}",
-        gio::File::for_path(path).uri(),
+/// Admit only an explicitly configured native listener. This never starts a
+/// service or ttyd fallback; native page/bundle admission stays with the server.
+pub fn native_terminal_backend(mode: RunMode, base: &str) -> Result<(), String> {
+    if mode != RunMode::Live {
+        return Err("web terminal backend refused in isolated mode".into());
+    }
+    let (base, _) = comandos_desktop::dash_client::loopback_only(base)?;
+    let agent = ureq::Agent::new_with_config(
+        ureq::Agent::config_builder()
+            .timeout_global(Some(Duration::from_secs(2)))
+            .max_redirects(0)
+            .proxy(None)
+            .build(),
+    );
+    let mut response = agent
+        .get(format!("{base}/term/token"))
+        .call()
+        .map_err(|e| {
+            format!("Native web terminal unavailable; configure and enable dash --term native: {e}")
+        })?;
+    if response.status().as_u16() != 200
+        || response
+            .headers()
+            .get("x-comandos-term")
+            .and_then(|h| h.to_str().ok())
+            != Some("native")
+    {
+        return Err("Configured dashboard does not advertise a native web terminal; legacy fallback refused".into());
+    }
+    let body = response
+        .body_mut()
+        .with_config()
+        .limit(1024)
+        .read_to_string()
+        .map_err(|e| format!("Invalid native terminal admission: {e}"))?;
+    let value: serde_json::Value =
+        serde_json::from_str(&body).map_err(|_| "Invalid native terminal admission".to_string())?;
+    if value.get("token").and_then(serde_json::Value::as_str) != Some("") {
+        return Err("Invalid native terminal admission".into());
+    }
+    Ok(())
+}
+
+pub fn terminal_uri(base: &str, session: &str, token: &str, theme: &str) -> Result<String, String> {
+    let (base, _) = comandos_desktop::dash_client::loopback_only(base)?;
+    if token.is_empty() {
+        return Err("Web terminal access token unavailable".into());
+    }
+    Ok(format!(
+        "{base}/term/?web=native&auth={}&arg={}&theme={}",
         encode_query(token),
         encode_query(session),
         encode_query(theme)
-    )
+    ))
 }
 pub fn terminal_view(cfg: &AppConfig, uri: &str) -> Result<WebView, WebError> {
     if cfg.mode() != RunMode::Live {
@@ -253,8 +299,6 @@ pub fn terminal_view(cfg: &AppConfig, uri: &str) -> Result<WebView, WebError> {
     }
     let view = WebView::new();
     if let Some(settings) = WebViewExt::settings(&view) {
-        settings.set_allow_file_access_from_file_urls(true);
-        settings.set_allow_universal_access_from_file_urls(true);
         settings.set_enable_write_console_messages_to_stdout(true);
     }
     view.load_uri(uri);

@@ -760,8 +760,10 @@ impl App {
             )));
             return;
         }
-        let Some(root) = self.cfg.repo_root().map(std::path::Path::to_path_buf) else {
-            slot.add(&gtk::Label::new(Some("Web terminal assets unavailable")));
+        let Some(base) = self.cfg.dash_url().map(str::to_owned) else {
+            slot.add(&gtk::Label::new(Some(
+                "Native web terminal requires a configured dashboard URL",
+            )));
             return;
         };
         let session = key.strip_prefix("xterm-").unwrap_or("local").to_string();
@@ -778,27 +780,15 @@ impl App {
                 if cancelled.load(Ordering::Acquire) {
                     return Err("webterm request cancelled".into());
                 }
-                let backend = DashClient::new(Some("http://127.0.0.1:4779"), RunMode::Live)
-                    .map_err(|e| format!("{e:?}"))?;
-                if backend.get("/token", Duration::from_millis(400)).is_err() {
-                    crate::proc::spawn_detached(
-                        root.join("bin/cc-webterm")
-                            .to_str()
-                            .ok_or("invalid webterm path")?,
-                        &[],
-                    )
-                    .map_err(|e| format!("{e:?}"))?;
+                ui::webview::native_terminal_backend(RunMode::Live, &base)?;
+                if cancelled.load(Ordering::Acquire) {
+                    return Err("webterm request cancelled".into());
                 }
                 let token = dash
                     .get("/webterm-token", Duration::from_secs(2))
                     .map_err(|e| format!("{e:?}"))?;
                 let token = token.get("token").and_then(Value::as_str).unwrap_or("");
-                Ok::<_, String>(ui::webview::terminal_uri(
-                    &root.join("dash/term.html"),
-                    &session,
-                    token,
-                    "noche",
-                ))
+                ui::webview::terminal_uri(&base, &session, token, "noche")
             },
             move |result| {
                 let (Some(app), Some(slot)) = (weak.upgrade(), weak_slot.upgrade()) else {
