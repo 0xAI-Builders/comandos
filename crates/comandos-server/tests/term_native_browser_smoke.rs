@@ -94,9 +94,6 @@ async fn serve_real_terminal_and_verify_browser_input() {
             .is_empty(),
         "server shutdown must reap its private terminal client"
     );
-    assert!(
-        legacy.requests().is_empty(),
-        "Terminal stays native"
-    );
+    assert!(legacy.requests().is_empty(), "Terminal stays native");
     result.expect("owned remote browser deadline");
 }

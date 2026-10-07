@@ -1,6 +1,7 @@
 //! Una conexión a `app-state.sqlite3` para todas las rutas nativas, con la
 //! puerta de esquema: si el Python migró a una versión que este binario no
 //! conoce, se rechaza (y el frente reenvía todo al heredado).
+use super::EventFactsFactory;
 use crate::{
     Reply, Request,
     events_routes::{EventRoutes, NativeFacts, Unanswered},
@@ -76,10 +77,15 @@ pub struct StateBackend {
     pub conn: Connection,
     unified: bool,
     /// Se crea al primer uso: su `import_done` es el `_EVENTS_V2_LEGACY` del Python.
-    events: Option<EventRoutes<NativeFacts>>,
+    events: Option<CachedEvents>,
     /// `focus_progress.ensure_policy` de `pomodoro_store()` ya se hizo en este
     /// proceso (el Python lo repite por hilo; es idempotente).
     pub(crate) pomodoro_policy: bool,
+}
+
+enum CachedEvents {
+    Native(EventRoutes<NativeFacts>),
+    Injected(EventRoutes<Box<dyn crate::events_routes::Facts + Send>>),
 }
 
 impl StateBackend {
@@ -161,10 +167,32 @@ impl StateBackend {
         legacy: &Path,
         request: &Request,
     ) -> Result<Option<Reply>, Unanswered> {
-        let routes = self.events.get_or_insert_with(|| {
-            EventRoutes::new_domain(home.to_path_buf(), legacy.to_path_buf(), NativeFacts)
+        self.events_with_facts(home, legacy, request, None)
+    }
+
+    pub(super) fn events_with_facts(
+        &mut self,
+        home: &Path,
+        legacy: &Path,
+        request: &Request,
+        factory: Option<&EventFactsFactory>,
+    ) -> Result<Option<Reply>, Unanswered> {
+        let routes = self.events.get_or_insert_with(|| match factory {
+            None => CachedEvents::Native(EventRoutes::new_domain(
+                home.to_path_buf(),
+                legacy.to_path_buf(),
+                NativeFacts,
+            )),
+            Some(make) => CachedEvents::Injected(EventRoutes::new_domain(
+                home.to_path_buf(),
+                legacy.to_path_buf(),
+                make(),
+            )),
         });
-        routes.handle_native(&self.conn, request)
+        match routes {
+            CachedEvents::Native(routes) => routes.handle_native(&self.conn, request),
+            CachedEvents::Injected(routes) => routes.handle_native(&self.conn, request),
+        }
     }
 }
 

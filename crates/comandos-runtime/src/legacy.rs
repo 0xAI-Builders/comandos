@@ -7,19 +7,57 @@ use std::path::Path;
 
 pub const LEGACY_MARKER: &str = "events.legacy_import";
 
+/// Observations made inside the import transaction. Paths and database effects
+/// stay owned by the importer; callers may share their intake clock and IDs.
+pub trait ImportFacts {
+    fn now_ms(&mut self) -> Result<u64>;
+    fn fresh_id(&mut self, prefix: &str) -> Result<String>;
+}
+struct NativeImportFacts;
+impl ImportFacts for NativeImportFacts {
+    fn now_ms(&mut self) -> Result<u64> {
+        crate::now_ms()
+    }
+    fn fresh_id(&mut self, prefix: &str) -> Result<String> {
+        crate::fresh_id(prefix)
+    }
+}
+
 /// Import once, without a pane/session target or live-state side effects.
 /// Existing callers can group this import with their own transaction.
 pub fn import_legacy(conn: &Connection, path: &Path) -> Result<u64> {
-    import_with(conn, || match std::fs::read(path) {
-        Ok(bytes) => Ok(bytes),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
-        Err(e) => Err(e.into()),
-    })
+    import_legacy_with_facts(conn, path, &mut NativeImportFacts)
+}
+pub fn import_legacy_with_facts(
+    conn: &Connection,
+    path: &Path,
+    facts: &mut impl ImportFacts,
+) -> Result<u64> {
+    import_with(
+        conn,
+        || match std::fs::read(path) {
+            Ok(bytes) => Ok(bytes),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
+            Err(e) => Err(e.into()),
+        },
+        facts,
+    )
 }
 pub fn import_legacy_bytes(conn: &Connection, bytes: &[u8]) -> Result<u64> {
-    import_with(conn, || Ok(bytes.to_vec()))
+    import_legacy_bytes_with_facts(conn, bytes, &mut NativeImportFacts)
 }
-fn import_with(conn: &Connection, read: impl FnOnce() -> Result<Vec<u8>>) -> Result<u64> {
+pub fn import_legacy_bytes_with_facts(
+    conn: &Connection,
+    bytes: &[u8],
+    facts: &mut impl ImportFacts,
+) -> Result<u64> {
+    import_with(conn, || Ok(bytes.to_vec()), facts)
+}
+fn import_with(
+    conn: &Connection,
+    read: impl FnOnce() -> Result<Vec<u8>>,
+    facts: &mut impl ImportFacts,
+) -> Result<u64> {
     let tx = if conn.is_autocommit() {
         Some(Transaction::new_unchecked(
             conn,
@@ -94,9 +132,9 @@ fn import_with(conn: &Connection, read: impl FnOnce() -> Result<Vec<u8>>) -> Res
                 &json!({"source":"legacy-timeline","sourceEventId":format!("legacy:{digest}:{occurrence}"),
                 "projectKey":project_key,"kind":kind,"evidence":"historical","correlation":"unknown","occurredAtMs":milliseconds,
                 "title":project,"excerpt":row["detail"].as_str().unwrap_or("")}),
-                crate::now_ms()?,
-                &crate::fresh_id("event")?,
-                &crate::fresh_id("receipt")?,
+                facts.now_ms()?,
+                &facts.fresh_id("event")?,
+                &facts.fresh_id("receipt")?,
             )?;
             count += 1;
         }
@@ -104,7 +142,7 @@ fn import_with(conn: &Connection, read: impl FnOnce() -> Result<Vec<u8>>) -> Res
             "INSERT INTO workspace_meta VALUES (?, ?)",
             params![
                 LEGACY_MARKER,
-                json!({"at":crate::now_ms()? as f64/1000.0,"count":count}).to_string()
+                json!({"at":facts.now_ms()? as f64/1000.0,"count":count}).to_string()
             ],
         )?;
     }

@@ -19,6 +19,28 @@ pub trait Facts {
     fn process_start(&mut self, pid: &str) -> Option<String>;
 }
 
+impl<F: Facts + ?Sized> Facts for Box<F> {
+    fn now_ms(&mut self) -> comandos_store::Result<u64> {
+        (**self).now_ms()
+    }
+    fn fresh_id(&mut self, prefix: &str) -> comandos_store::Result<String> {
+        (**self).fresh_id(prefix)
+    }
+    fn process_start(&mut self, pid: &str) -> Option<String> {
+        (**self).process_start(pid)
+    }
+}
+
+struct ImportFacts<'a, F>(&'a mut F);
+impl<F: Facts> comandos_runtime::legacy::ImportFacts for ImportFacts<'_, F> {
+    fn now_ms(&mut self) -> comandos_store::Result<u64> {
+        self.0.now_ms()
+    }
+    fn fresh_id(&mut self, prefix: &str) -> comandos_store::Result<String> {
+        self.0.fresh_id(prefix)
+    }
+}
+
 pub struct NativeFacts;
 
 impl Facts for NativeFacts {
@@ -284,9 +306,17 @@ impl<F: Facts> EventRoutes<F> {
                             }
                         }
                     })?;
-                comandos_runtime::legacy::import_legacy_bytes(conn, &bytes)?;
+                comandos_runtime::legacy::import_legacy_bytes_with_facts(
+                    conn,
+                    &bytes,
+                    &mut ImportFacts(&mut self.facts),
+                )?;
             } else {
-                comandos_runtime::legacy::import_legacy(conn, &self.legacy_path)?;
+                comandos_runtime::legacy::import_legacy_with_facts(
+                    conn,
+                    &self.legacy_path,
+                    &mut ImportFacts(&mut self.facts),
+                )?;
             }
             self.import_done = true;
         }

@@ -385,6 +385,11 @@ pub fn wall_clock_ms() -> i64 {
 /// Segundos Unix con la precisión de `time.time()`; las pruebas lo sustituyen.
 pub type SecondsClock = Arc<dyn Fn() -> f64 + Send + Sync>;
 
+/// One facts instance per state worker, created lazily at its first event.
+/// The default native path keeps its concrete facts and allocates no box.
+pub type EventFactsFactory =
+    Arc<dyn Fn() -> Box<dyn crate::events_routes::Facts + Send> + Send + Sync>;
+
 /// `time.time()` del Python: los nanosegundos de `CLOCK_REALTIME` (el de
 /// `SystemTime`) convertidos como `_PyTime_AsSecondsDouble`.
 pub fn python_time() -> f64 {
@@ -439,6 +444,9 @@ pub struct NativeOptions {
     pub clock: Clock,
     /// `time.time()` de las escrituras del journal (`recover_abandoned`).
     pub clock_seconds: SecondsClock,
+    /// Optional event intake observations; None retains the native clock,
+    /// UUID generator and kernel process identity without a per-request lock.
+    pub events_facts: Option<EventFactsFactory>,
     /// `tmux` como lo llama el Python (entorno heredado, plazo 5 s).
     pub tmux: tmux::Tmux,
     /// `fc-list` de `_installed_font_families` (7603).
@@ -591,6 +599,7 @@ impl NativeOptions {
             hooks: home.join(".claude/hooks"),
             clock: Arc::new(wall_clock_ms),
             clock_seconds: Arc::new(python_time),
+            events_facts: None,
             tmux: tmux::Tmux::system(),
             fc_list: tmux::Program::named("fc-list"),
             usage_db: home.join(".claude/hooks/comandos-usage.sqlite"),
