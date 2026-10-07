@@ -107,7 +107,7 @@ fn no_tmux(opts: &mut NativeOptions) {
 }
 
 #[tokio::test]
-async fn usage_state_is_native_and_imports_after_grace() {
+async fn usage_state_and_source_prefix_stay_native_and_import_after_grace() {
     let home = TestHome::new("import-grace");
     seed_usage(&home, "");
     claude_line(&home, "m1");
@@ -127,9 +127,29 @@ async fn usage_state_is_native_and_imports_after_grace() {
         wait_turns(&home, 1).await,
         "la importación del frente escribió el turno"
     );
-    // `/usage/stateX` sigue siendo del Python.
-    let _ = get(front.port, "/usage/stateX").await;
-    assert_eq!(legacy.requests().len(), 1);
+    // Immutable source2674 admits this prefix too. Compare the complete
+    // response; native import and its real row above remain authoritative.
+    let mut original = support::http_golden::FrozenHttp::new(
+        &home,
+        "server-usage-state-prefix",
+        &["comandos-usage.sqlite"],
+    )
+    .await;
+    original.prime_unchanged("/usage/state").await;
+    let expected = original.get("/usage/stateX").await;
+    let prefix = get(front.port, "/usage/stateX").await;
+    assert_eq!(prefix.status, expected.status);
+    assert_eq!(prefix.body, expected.body);
+    let source_canonical = original.get("/usage/state").await;
+    assert_eq!(expected.status, source_canonical.status);
+    assert_eq!(expected.body, source_canonical.body);
+    let native_canonical = get(front.port, "/usage/state").await;
+    assert_eq!(prefix.status, native_canonical.status);
+    assert_eq!(prefix.body, native_canonical.body);
+    assert!(
+        legacy.requests().is_empty(),
+        "the admitted prefix stays native"
+    );
     front.stop().await;
 }
 
