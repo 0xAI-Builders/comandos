@@ -302,11 +302,31 @@ const _: () = assert!(TEXTURE_SIZE <= UNCACHED_LIMIT);
 /// Mapa acotado: al pasar de `cap` entradas se descarta la más antigua
 /// (FIFO). Para cachés cuya clave puede venir de la salida (colores de 24
 /// bits).
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Bounded<K, V> {
     cap: usize,
     map: HashMap<K, V>,
-    order: std::collections::VecDeque<K>,
+    order: Vec<K>,
+    oldest: usize,
+}
+
+// Keep the public Debug queue in logical FIFO order, including after wrapping.
+impl<K: std::fmt::Debug, V: std::fmt::Debug> std::fmt::Debug for Bounded<K, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        struct Order<'a, K>(&'a [K], usize);
+        impl<K: std::fmt::Debug> std::fmt::Debug for Order<'_, K> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.debug_list()
+                    .entries(self.0[self.1..].iter().chain(&self.0[..self.1]))
+                    .finish()
+            }
+        }
+        f.debug_struct("Bounded")
+            .field("cap", &self.cap)
+            .field("map", &self.map)
+            .field("order", &Order(&self.order, self.oldest))
+            .finish()
+    }
 }
 
 impl<K: std::hash::Hash + Eq + Clone, V> Bounded<K, V> {
@@ -314,7 +334,8 @@ impl<K: std::hash::Hash + Eq + Clone, V> Bounded<K, V> {
         Bounded {
             cap: cap.max(1),
             map: HashMap::new(),
-            order: std::collections::VecDeque::new(),
+            order: Vec::new(),
+            oldest: 0,
         }
     }
 
@@ -324,14 +345,15 @@ impl<K: std::hash::Hash + Eq + Clone, V> Bounded<K, V> {
 
     pub fn insert(&mut self, k: K, v: V) {
         if self.map.insert(k.clone(), v).is_none() {
-            self.order.push_back(k);
-        }
-        while self.map.len() > self.cap {
-            match self.order.pop_front() {
-                Some(old) => {
-                    self.map.remove(&old);
+            if self.order.len() < self.cap {
+                self.order.push(k);
+            } else {
+                let old = std::mem::replace(&mut self.order[self.oldest], k);
+                self.map.remove(&old);
+                self.oldest += 1;
+                if self.oldest == self.cap {
+                    self.oldest = 0;
                 }
-                None => break,
             }
         }
     }
@@ -347,6 +369,7 @@ impl<K: std::hash::Hash + Eq + Clone, V> Bounded<K, V> {
     pub fn clear(&mut self) {
         self.map.clear();
         self.order.clear();
+        self.oldest = 0;
     }
 }
 
