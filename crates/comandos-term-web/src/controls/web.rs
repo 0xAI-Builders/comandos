@@ -61,9 +61,6 @@ fn attr(el: &JsValue, k: &str, v: &str) {
 fn classes(el: &JsValue, k: &str, on: bool) {
     let _ = call(&get(el, "classList"), "toggle", &[k.into(), on.into()]);
 }
-fn promise(f: impl std::future::Future<Output = Result<JsValue, JsValue>> + 'static) -> JsValue {
-    wasm_bindgen_futures::future_to_promise(f).into()
-}
 fn bind(
     ui: &Ui,
     el: JsValue,

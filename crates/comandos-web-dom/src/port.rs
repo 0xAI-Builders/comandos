@@ -31,6 +31,16 @@ pub fn invoke(f: &JsValue, args: &[JsValue]) -> Result<JsValue, JsValue> {
             &args.iter().cloned().collect::<Array>(),
         )
 }
+/// Adapt Rust work to a Promise through one shared resolver/rejecter future.
+/// Erase the action's type before js-sys adds its executor wrapper, preserving
+/// its next-microtask scheduling and rejection value.
+pub fn promise(
+    f: impl std::future::Future<Output = Result<JsValue, JsValue>> + 'static,
+) -> JsValue {
+    let task: std::pin::Pin<Box<dyn std::future::Future<Output = Result<JsValue, JsValue>>>> =
+        Box::pin(f);
+    wasm_bindgen_futures::future_to_promise(task).into()
+}
 pub async fn wait(v: Result<JsValue, JsValue>) -> Result<JsValue, JsValue> {
     wasm_bindgen_futures::JsFuture::from(Promise::resolve(&v?)).await
 }
