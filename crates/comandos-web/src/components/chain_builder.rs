@@ -44,7 +44,7 @@ pub fn valid_command(text: &str) -> bool {
 mod web {
     //! Browser interop only: DOM, callbacks, and Promise settlement; editor logic is Rust.
     use super::{SaveGate, js_space, valid_command};
-    use crate::components::web_support::{all, promise, query};
+    use crate::components::web_support::{all, query};
     use comandos_web_dom::{bridge::global_set, port::*};
     use js_sys::{Array, Set};
     use std::{cell::RefCell, rc::Rc};

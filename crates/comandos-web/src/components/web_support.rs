@@ -88,11 +88,6 @@ pub async fn request(method: &str, path: &str, body: JsValue) -> Result<JsValue,
     set(&out, "body", &parsed)?;
     Ok(out)
 }
-pub fn promise(
-    f: impl std::future::Future<Output = Result<JsValue, JsValue>> + 'static,
-) -> JsValue {
-    wasm_bindgen_futures::future_to_promise(f).into()
-}
 pub fn toast(message: &str) {
     let _ = invoke(&global("toast"), &[message.into(), true.into()]);
 }
