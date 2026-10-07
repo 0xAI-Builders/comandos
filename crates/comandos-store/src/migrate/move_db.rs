@@ -371,13 +371,36 @@ fn table_names(conn: &Connection) -> Result<BTreeSet<String>> {
         .collect::<rusqlite::Result<_>>()?)
 }
 
-// Profiles are created lazily by both legacy and native APIs, outside usage's
-// required schema. Copy them in either direction when present; other optional
-// or unknown tables still fail the source catalog check.
+fn optional_tables(spec: &MoveSpec) -> &'static [(&'static str, &'static str)] {
+    match spec.domain {
+        "db-usage" => &[("session_profiles", crate::session_profiles::SCHEMA)],
+        "db-operations" => &[
+            (
+                "pane_extension_drafts",
+                crate::pane_extensions::DRAFTS_SCHEMA,
+            ),
+            (
+                "pane_extension_templates",
+                crate::pane_extensions::TEMPLATES_SCHEMA,
+            ),
+        ],
+        _ => &[],
+    }
+}
+
+// These known tables are created lazily, outside the required schemas. Copy
+// each in either direction when present; unknown tables still fail the source
+// catalog check, and older databases do not need optional tables added.
 fn mapped_tables(conn: &Connection, spec: &MoveSpec) -> Result<Vec<(&'static str, &'static str)>> {
     let mut tables = spec.tables.to_vec();
-    if spec.domain == "db-usage" && table_names(conn)?.contains("session_profiles") {
-        tables.push(("session_profiles", "session_profiles"));
+    let optional = optional_tables(spec);
+    if !optional.is_empty() {
+        let present = table_names(conn)?;
+        tables.extend(
+            optional
+                .iter()
+                .filter_map(|(name, _)| present.contains(*name).then_some((*name, *name))),
+        );
     }
     Ok(tables)
 }
@@ -534,11 +557,14 @@ fn copy_tables(
         .into_iter()
         .map(|(from, to)| if inverse { (to, from) } else { (from, to) })
         .collect();
-    if pairs.iter().any(|(_, to)| *to == "session_profiles") {
+    for (table, schema) in optional_tables(spec) {
+        if !pairs.iter().any(|(_, to)| to == table) {
+            continue;
+        }
         // The caller owns the migration transaction, including its admission
         // and source marker. Reuse the API's DDL without admitting a normal
         // writer to the marked legacy database during demotion.
-        target.execute_batch(crate::session_profiles::SCHEMA)?;
+        target.execute_batch(schema)?;
     }
     for (from, to) in &pairs {
         let autoincrement = |conn: &Connection, table: &str| -> Result<bool> {

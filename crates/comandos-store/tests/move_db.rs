@@ -450,6 +450,98 @@ fn unrecognized_source_columns_are_refused_without_touching_source() {
     assert!(!h.db().exists());
 }
 
+fn extension_tables(c: &Connection) {
+    c.execute_batch("CREATE TABLE pane_extension_drafts(key TEXT PRIMARY KEY,identity TEXT NOT NULL,conversation TEXT NOT NULL,harness TEXT NOT NULL,desired TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 0,updated REAL NOT NULL);CREATE TABLE pane_extension_templates(id TEXT PRIMARY KEY,name TEXT NOT NULL,selection TEXT NOT NULL,updated REAL NOT NULL)").unwrap();
+}
+fn projected_rows(c: &Connection, sql: &str) -> Vec<Vec<rusqlite::types::Value>> {
+    let mut stmt = c.prepare(sql).unwrap();
+    let n = stmt.column_count();
+    stmt.query_map([], |row| (0..n).map(|i| row.get(i)).collect())
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap()
+}
+#[test]
+fn operations_move_and_demote_preserve_optional_extension_rows_exactly() {
+    let h = Home::new();
+    let spec = h.source("db-operations");
+    let old = Connection::open(&spec.legacy).unwrap();
+    extension_tables(&old);
+    old.execute_batch("INSERT INTO pane_extension_drafts(rowid,key,identity,conversation,harness,desired,revision,updated) VALUES(5000,'key','identity','ñ','codex',CAST(X'80FF00' AS TEXT),9223372036854775807,1.25);INSERT INTO pane_extension_templates(rowid,id,name,selection,updated) VALUES(7000,'template','ñ',X'00FF',2.5)").unwrap();
+    let queries = [
+        "SELECT rowid,key,identity,conversation,harness,typeof(desired),hex(desired),revision,updated FROM pane_extension_drafts ORDER BY rowid",
+        "SELECT rowid,id,name,typeof(selection),hex(selection),updated FROM pane_extension_templates ORDER BY rowid",
+    ];
+    let before: Vec<_> = queries
+        .iter()
+        .map(|sql| projected_rows(&old, sql))
+        .collect();
+    drop(old);
+    move_db(&spec, &h.db(), &h.backup("extensions"), 4000).unwrap();
+    let new = unified::open_unified(&h.db()).unwrap();
+    assert_eq!(
+        queries
+            .iter()
+            .map(|sql| projected_rows(&new, sql))
+            .collect::<Vec<_>>(),
+        before
+    );
+    drop(new);
+    demote_db(&spec, &h.db()).unwrap();
+    let old = Connection::open(&spec.legacy).unwrap();
+    assert_eq!(
+        queries
+            .iter()
+            .map(|sql| projected_rows(&old, sql))
+            .collect::<Vec<_>>(),
+        before
+    );
+    assert_eq!(
+        old.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    comandos_store::migrate::verify_backup(&h.backup("extensions").join("manifest.json")).unwrap();
+}
+#[test]
+fn operations_demote_preserves_templates_created_after_move_without_creating_drafts() {
+    let h = Home::new();
+    let spec = h.source("db-operations");
+    move_db(&spec, &h.db(), &h.backup("no-extensions"), 4000).unwrap();
+    let new = unified::open_unified(&h.db()).unwrap();
+    new.execute_batch("CREATE TABLE pane_extension_templates(id TEXT PRIMARY KEY,name TEXT NOT NULL,selection TEXT NOT NULL,updated REAL NOT NULL);INSERT INTO pane_extension_templates(rowid,id,name,selection,updated) VALUES(1234,'new','ñ',' { \"skills\": {} } ',8.125)").unwrap();
+    let query = "SELECT rowid,id,name,selection,updated FROM pane_extension_templates";
+    let before = projected_rows(&new, query);
+    drop(new);
+    demote_db(&spec, &h.db()).unwrap();
+    let old = Connection::open(&spec.legacy).unwrap();
+    assert_eq!(projected_rows(&old, query), before);
+    assert!(
+        !old.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='pane_extension_drafts')",
+            [],
+            |r| r.get::<_, bool>(0)
+        )
+        .unwrap()
+    );
+}
+#[test]
+fn optional_extensions_do_not_allow_unknown_operations_tables() {
+    let h = Home::new();
+    let spec = h.source("db-operations");
+    let old = Connection::open(&spec.legacy).unwrap();
+    extension_tables(&old);
+    old.execute_batch(
+        "CREATE TABLE unknown_user_data(value BLOB);INSERT INTO unknown_user_data VALUES(X'80FF')",
+    )
+    .unwrap();
+    drop(old);
+    let before = tree(&h.0);
+    let error = move_db(&spec, &h.db(), &h.backup("unknown-operations"), 4000).unwrap_err();
+    assert!(error.to_string().contains("tablas SQLite no previstas"));
+    assert_eq!(tree(&h.0), before);
+}
+
 #[test]
 fn writer_blocked_during_move_resumes_on_unified() {
     use std::{

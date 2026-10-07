@@ -5,6 +5,7 @@ pub mod intake;
 pub mod marks;
 pub mod migrate;
 pub mod news;
+pub mod pane_extensions;
 pub mod session_profiles;
 pub mod snapshot_files;
 #[path = "state_db/mod.rs"]

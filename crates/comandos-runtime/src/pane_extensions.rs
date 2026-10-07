@@ -93,7 +93,8 @@ impl<'a> ExtensionStore<'a> {
         OperationStore::new(connection, &|| 0, clock)
             .map_err(|e| Fault::Persistence(e.to_string()))?;
         atomic(connection, || {
-            connection.execute_batch("CREATE TABLE IF NOT EXISTS pane_extension_drafts (key TEXT PRIMARY KEY,identity TEXT NOT NULL,conversation TEXT NOT NULL,harness TEXT NOT NULL,desired TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 0,updated REAL NOT NULL);CREATE TABLE IF NOT EXISTS pane_extension_templates (id TEXT PRIMARY KEY,name TEXT NOT NULL,selection TEXT NOT NULL,updated REAL NOT NULL)")?;
+            connection.execute_batch(comandos_store::pane_extensions::DRAFTS_SCHEMA)?;
+            connection.execute_batch(comandos_store::pane_extensions::TEMPLATES_SCHEMA)?;
             Ok(())
         })?;
         Ok(Self { connection, clock })
