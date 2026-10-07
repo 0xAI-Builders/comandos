@@ -1,7 +1,7 @@
-//! Oráculo real: el `cc-dash` Python del repositorio detrás del frente Rust.
+//! Immutable source replies behind the real Rust forwarding transport.
 //! Pedir al Python directo y pedir al frente debe dar el mismo status,
 //! `Content-Type`, `Content-Length` y cuerpo, con y sin token remoto.
-//! Sin `python3` la prueba se salta con un aviso (no `#[ignore]`).
+//! Replay serves frozen original replies over a real private Rust listener; no Python.
 mod support;
 use comandos_server::{
     dash::{DashConfig, parse_args, transport_config},
@@ -35,15 +35,6 @@ impl Drop for Legacy {
         let _ = self.child.wait();
         let _ = fs::remove_dir_all(&self.home);
     }
-}
-
-fn python_available() -> bool {
-    Command::new("python3")
-        .args(["-c", "import sys"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
 }
 
 fn free_port() -> u16 {
@@ -90,8 +81,14 @@ fn launch(port: u16) -> Legacy {
         std::env::var("PATH").unwrap_or_default()
     );
     let stderr = fs::File::create(home.join("cc-dash.err")).unwrap();
-    let repo = repo();
-    let child = Command::new("python3")
+    assert!(matches!(
+        std::env::var("COMANDOS_ORACLE").as_deref(),
+        Ok("record" | "check")
+    ));
+    let repo = support::frozen::reference(&home).unwrap();
+    let interpreter = std::env::var("COMANDOS_SERVER_ORACLE_PYTHON")
+        .unwrap_or_else(|_| "/usr/bin/python3".into());
+    let child = Command::new(interpreter)
         .arg(repo.join("bin/cc-dash"))
         .arg(port.to_string())
         .arg("--no-open")
@@ -131,7 +128,7 @@ async fn wait_listening(legacy: &mut Legacy, port: u16) {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 struct Answer {
     status: u16,
     content_type: Option<String>,
@@ -179,29 +176,23 @@ async fn ask(port: u16, raw: &str) -> Answer {
 
 #[tokio::test]
 async fn front_answers_exactly_like_the_python() {
-    if !python_available() {
-        println!("sin python3: prueba saltada");
-        return;
+    let explicit = matches!(
+        std::env::var("COMANDOS_ORACLE").as_deref(),
+        Ok("record" | "check")
+    );
+    let source_port = free_port();
+    let mut legacy = explicit.then(|| launch(source_port));
+    if let Some(source) = legacy.as_mut() {
+        wait_listening(source, source_port).await;
     }
-    let py_port = free_port();
-    let mut legacy = launch(py_port);
-    wait_listening(&mut legacy, py_port).await;
-
-    let home = legacy.home.join("front");
-    fs::create_dir_all(&home).unwrap();
-    let mut cfg: DashConfig = parse_args(&[], &home, Some(&py_port.to_string())).unwrap();
-    cfg.dash_dir = repo().join("dash");
-    cfg.token = TOKEN.as_bytes().to_vec();
-    // Esta prueba compara el reenvío puro de la 2a.
-    cfg.native = false;
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let front_port = listener.local_addr().unwrap().port();
-    let (stop, shutdown) = watch::channel(false);
-    let front = tokio::spawn(serve(listener, transport_config(cfg), shutdown));
-
+    let fixture = support::TestHome::new("forward-frozen");
+    let source_home = legacy
+        .as_ref()
+        .map_or(fixture.root.as_path(), |source| source.home.as_path());
+    let roots = [("<HOME>", source_home)];
     let remote = "Host: test.ts.net\r\nX-Forwarded-For: 100.64.0.9\r\n";
     let token = format!("X-Comandos-Token: {TOKEN}\r\n");
-    let mut seen = Vec::new();
+    let mut cases = Vec::new();
     for auth in ["", token.as_str()] {
         for (method, path, body) in [
             ("GET", "/prefs", ""),
@@ -220,12 +211,128 @@ async fn front_answers_exactly_like_the_python() {
             let raw = format!(
                 "{method} {path} HTTP/1.1\r\n{remote}{auth}{framing}Connection: close\r\n\r\n{body}"
             );
-            let direct = ask(py_port, &raw).await;
-            let relayed = ask(front_port, &raw).await;
-            let label = format!("{method} {path} token={}", !auth.is_empty());
-            assert_eq!(relayed, direct, "{label}");
-            seen.push((label, direct.status));
+            let input = serde_json::json!({"source_commit":support::frozen::SOURCE_COMMIT,
+                "source_sha256":"4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+                "python":"CPython 3.10.12", "request":raw,"fixture":{"app_tabs":{},"token":TOKEN}});
+            let actual = if explicit {
+                Some(ask(source_port, &raw).await)
+            } else {
+                None
+            };
+            let expected = comandos_oracle::oracle_at(
+                &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+                "server-forward-original",
+                &input,
+                || {
+                    let actual = actual.unwrap();
+                    Ok(comandos_oracle::normalize(
+                        &serde_json::to_vec(&serde_json::json!({"status":actual.status,"content_type":actual.content_type,
+                            "content_length":actual.content_length,"body":actual.body})).unwrap(),
+                        &roots,
+                    ))
+                },
+            );
+            let value: serde_json::Value =
+                serde_json::from_slice(&comandos_oracle::restore(&expected, &roots)).unwrap();
+            let expected = Answer {
+                status: value["status"].as_u64().unwrap().try_into().unwrap(),
+                content_type: value["content_type"].as_str().map(str::to_owned),
+                content_length: value["content_length"].as_str().map(str::to_owned),
+                body: value["body"].as_str().unwrap().to_owned(),
+            };
+            cases.push((
+                raw,
+                format!("{method} {path} token={}", !auth.is_empty()),
+                expected,
+            ));
         }
+    }
+    // Replay has an actual HTTP actor that serves immutable wire expectations,
+    // with no invented domain effects. Record/check forwards to CPython itself.
+    let replay_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let replay_port = replay_listener.local_addr().unwrap().port();
+    let replies = cases.clone();
+    let observed = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let requests = observed.clone();
+    let (replay_stop, mut replay_shutdown) = watch::channel(false);
+    let replay = tokio::spawn(async move {
+        loop {
+            let mut stream = tokio::select! {
+                _=replay_shutdown.changed()=>break,
+                result=replay_listener.accept()=>result.unwrap().0,
+            };
+            let mut buffer = Vec::new();
+            loop {
+                let mut chunk = [0; 4096];
+                let n = stream.read(&mut chunk).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                buffer.extend_from_slice(&chunk[..n]);
+                if let Some(end) = buffer.windows(4).position(|window| window == b"\r\n\r\n") {
+                    let head = String::from_utf8_lossy(&buffer[..end]);
+                    let length = head
+                        .lines()
+                        .filter_map(|line| line.split_once(':'))
+                        .find(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+                        .map_or(0, |(_, value)| value.trim().parse::<usize>().unwrap());
+                    if buffer.len() >= end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            let raw = String::from_utf8(buffer).unwrap();
+            requests.lock().unwrap().push(raw.clone());
+            let first = raw.lines().next().unwrap();
+            let auth = raw.lines().any(|line| {
+                line.split_once(':')
+                    .is_some_and(|(name, _)| name.eq_ignore_ascii_case("X-Comandos-Token"))
+            });
+            let (_, _, answer) = replies
+                .iter()
+                .find(|(case, _, _)| {
+                    case.lines().next() == Some(first)
+                        && case.lines().any(|line| {
+                            line.split_once(':').is_some_and(|(name, _)| {
+                                name.eq_ignore_ascii_case("X-Comandos-Token")
+                            })
+                        }) == auth
+                })
+                .expect("recorded forwarding case");
+            let response = format!(
+                "HTTP/1.1 {} frozen\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                answer.status,
+                answer.content_type.as_deref().unwrap_or("text/plain"),
+                answer.content_length.as_deref().unwrap(),
+                answer.body
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+        }
+    });
+    let py_port = if explicit { source_port } else { replay_port };
+    let home = fixture.root.join("front");
+    fs::create_dir_all(&home).unwrap();
+    let mut cfg: DashConfig = parse_args(&[], &home, Some(&py_port.to_string())).unwrap();
+    cfg.dash_dir = repo().join("dash");
+    cfg.token = TOKEN.as_bytes().to_vec();
+    // Esta prueba compara el reenvío puro de la 2a.
+    cfg.native = false;
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let front_port = listener.local_addr().unwrap().port();
+    let (stop, shutdown) = watch::channel(false);
+    let front = tokio::spawn(serve(listener, transport_config(cfg), shutdown));
+
+    let mut seen = Vec::new();
+    for (raw, label, direct) in cases {
+        let relayed = ask(front_port, &raw).await;
+        assert_eq!(relayed, direct, "{label}");
+        seen.push((label, direct.status));
+    }
+    if !explicit {
+        assert!(
+            !observed.lock().unwrap().is_empty(),
+            "real native forwarding reaches the private Rust actor"
+        );
     }
     // Los casos cubren puerta cerrada, rutas reales y errores del Python.
     let statuses: Vec<u16> = seen.iter().map(|(_, s)| *s).collect();
@@ -236,5 +343,7 @@ async fn front_answers_exactly_like_the_python() {
 
     stop.send(true).unwrap();
     timeout(WAIT, front).await.unwrap().unwrap().unwrap();
+    replay_stop.send(true).unwrap();
+    timeout(WAIT, replay).await.unwrap().unwrap();
     drop(legacy);
 }

@@ -1,0 +1,13 @@
+{
+  "input": {
+    "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+    "python": "CPython 3.10.12",
+    "request": "GET /prefs HTTP/1.1\r\nHost: test.ts.net\r\nX-Forwarded-For: 100.64.0.9\r\nX-Comandos-Token: dash-harness-test-token\r\nConnection: close\r\n\r\n",
+    "fixture": {
+      "app_tabs": {},
+      "token": "dash-harness-test-token"
+    }
+  },
+  "output_b64": "eyJzdGF0dXMiOjIwMCwiY29udGVudF90eXBlIjoiYXBwbGljYXRpb24vanNvbiIsImNvbnRlbnRfbGVuZ3RoIjoiNDgzIiwiYm9keSI6IntcInRoZW1lXCI6IFwibm9jaGVcIiwgXCJmb250X2ZhbWlseVwiOiBcIlVidW50dSBTYW5zIE1vbm9cIiwgXCJmb250X3NpemVcIjogMTMsIFwiY3Vyc29yX3NoYXBlXCI6IFwiYmxvY2tcIiwgXCJjdXJzb3JfYmxpbmtcIjogdHJ1ZSwgXCJ0ZXJtaW5hbF9wYWRkaW5nXCI6IDgsIFwidGVybWluYWxfb3BhY2l0eVwiOiAxMDAsIFwibGlnYXR1cmVzXCI6IHRydWUsIFwiYnV0dG9uX3N0eWxlXCI6IFwic3V0aWxcIiwgXCJ0YWJzX2xheW91dFwiOiBcInJvd1wiLCBcImZvbnRzXCI6IFt7XCJmYW1pbHlcIjogXCJVYnVudHUgTW9ub1wiLCBcImxhYmVsXCI6IFwiVWJ1bnR1IE1vbm8gXFx1MDBiNyBjbFxcdTAwZTFzaWNhIDIwMTFcIiwgXCJhMTF5XCI6IGZhbHNlfSwge1wiZmFtaWx5XCI6IFwiRGVqYVZ1IFNhbnMgTW9ub1wiLCBcImxhYmVsXCI6IFwiRGVqYVZ1IFNhbnMgTW9ub1wiLCBcImExMXlcIjogZmFsc2V9LCB7XCJmYW1pbHlcIjogXCJNb25vc3BhY2VcIiwgXCJsYWJlbFwiOiBcIk1vbm9zcGFjZSBkZWwgc2lzdGVtYVwiLCBcImExMXlcIjogZmFsc2V9XX0ifQ=="
+}
