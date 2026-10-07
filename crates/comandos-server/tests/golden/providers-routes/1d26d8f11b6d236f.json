@@ -1,0 +1,20 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "clock_ms": 1791115200000,
+      "request": {
+        "method": "GET",
+        "target": "/accounts?harness=codex&harness=claude",
+        "extra": "",
+        "body": ""
+      },
+      "effect_files": [],
+      "fixture_prelude": "dash.PROXY_FILE = os.path.join(os.environ['HOME'], 'repo', 'config', 'proxy.json')"
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjoyMDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCIxNzZcIl1dLFwiYm9keVwiOlsxMjMsMzQsMTA0LDk3LDExNCwxMTAsMTAxLDExNSwxMTUsMzQsNTgsMzIsMzQsOTksMTExLDEwMCwxMDEsMTIwLDM0LDQ0LDMyLDM0LDk3LDk5LDk5LDExMSwxMTcsMTEwLDExNiwxMTUsMzQsNTgsMzIsOTEsMTIzLDM0LDk3LDEwOCwxMDUsOTcsMTE1LDM0LDU4LDMyLDM0LDEwOSw5NywxMDUsMTEwLDM0LDQ0LDMyLDM0LDEwNSwxMDAsMTAxLDExMCwxMTYsMTA1LDExNiwxMjEsMzQsNTgsMzIsMzQsMzQsNDQsMzIsMzQsMTE1LDEwMSwxMDgsMTAxLDk5LDExNiw5Nyw5OCwxMDgsMTAxLDM0LDU4LDMyLDExNiwxMTQsMTE3LDEwMSw0NCwzMiwzNCwxMDgsMTA1LDEwOSwxMDUsMTE2LDExNSwzNCw1OCwzMiw5MSw5MywxMjUsNDQsMzIsMTIzLDM0LDk3LDEwOCwxMDUsOTcsMTE1LDM0LDU4LDMyLDM0LDExNiwxMTQsOTcsOTgsOTcsMTA2LDExMSwzNCw0NCwzMiwzNCwxMDUsMTAwLDEwMSwxMTAsMTE2LDEwNSwxMTYsMTIxLDM0LDU4LDMyLDM0LDM0LDQ0LDMyLDM0LDExNSwxMDEsMTA4LDEwMSw5OSwxMTYsOTcsOTgsMTA4LDEwMSwzNCw1OCwzMiwxMDIsOTcsMTA4LDExNSwxMDEsNDQsMzIsMzQsMTA4LDEwNSwxMDksMTA1LDExNiwxMTUsMzQsNTgsMzIsOTEsOTMsMTI1LDkzLDEyNV19IiwidHJlZSI6e319"
+}

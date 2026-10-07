@@ -1,0 +1,11 @@
+{
+  "input": {
+    "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "python": "3.10.12",
+    "script": "\nimport importlib.machinery, importlib.util, json, os, sys\nrepo, plans = sys.argv[1], sys.argv[2]\nsys.path.insert(0, os.path.join(repo, \"bin\"))\nloader = importlib.machinery.SourceFileLoader(\"cc_dash_oracle\", os.path.join(repo, \"bin/cc-dash\"))\nspec = importlib.util.spec_from_loader(loader.name, loader)\ndash = importlib.util.module_from_spec(spec)\nloader.exec_module(dash)\ndash.OPTIMIZATION_FILE = plans\ntry:\n    print(json.dumps(dash.optimization_plans()))\nexcept Exception as e:\n    print(json.dumps({\"raise\": type(e).__name__}))\n",
+    "plans": {
+      "otra": 1
+    }
+  },
+  "output_b64": "eyJwbGFucyI6IFtdLCAiYWN0aXZlIjogIiJ9Cg=="
+}
