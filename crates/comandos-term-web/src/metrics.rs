@@ -172,7 +172,7 @@ pub fn parse_css_int(value: &str) -> f64 {
     let end = digits
         .find(|c: char| !c.is_ascii_digit())
         .unwrap_or(digits.len());
-    match digits.get(..end).and_then(|d| d.parse::<f64>().ok()) {
+    match digits.get(..end).and_then(crate::number_text::parse) {
         Some(n) => sign * n,
         None => f64::NAN,
     }

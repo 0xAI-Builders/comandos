@@ -601,7 +601,44 @@ impl Place {
 fn coord(token: &str, vars: &Vars) -> Option<f64> {
     match token.strip_prefix('{').and_then(|t| t.strip_suffix('}')) {
         Some(expr) => vars.eval(expr),
-        None => token.parse::<f64>().ok(),
+        // Only the immutable definition literals reach this branch. Preserve
+        // their exact f64 values without a runtime decimal parser per glyph.
+        None => Some(match token {
+            "-1" => -1.0,
+            "-.5" => -0.5,
+            "0" => 0.0,
+            ".05" => 0.05,
+            ".0667" => 0.0667,
+            ".1" => 0.1,
+            ".174" | "0.174" => 0.174,
+            ".2" | "0.2" => 0.2,
+            ".22" => 0.22,
+            "0.224" => 0.224,
+            ".2667" => 0.2667,
+            ".3" => 0.3,
+            ".4" => 0.4,
+            ".422" | "0.422" => 0.422,
+            "0.448" => 0.448,
+            ".45" => 0.45,
+            ".5" | "0.5" => 0.5,
+            ".55" => 0.55,
+            "0.552" => 0.552,
+            "0.578" => 0.578,
+            ".6" => 0.6,
+            ".7" => 0.7,
+            ".7333" => 0.7333,
+            "0.776" => 0.776,
+            ".78" => 0.78,
+            ".8" | "0.8" => 0.8,
+            ".826" => 0.826,
+            ".9" => 0.9,
+            ".9333" => 0.9333,
+            ".95" => 0.95,
+            "1" => 1.0,
+            "1.5" => 1.5,
+            "2" => 2.0,
+            _ => return None,
+        }),
     }
 }
 

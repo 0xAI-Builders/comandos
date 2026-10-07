@@ -117,6 +117,52 @@ pub(crate) fn clamp(value: f64, min: f64, max: f64) -> f64 {
     }
 }
 
+/// Preserve Rust's floating-number grammar, using the browser's IEEE-754
+/// conversion on WASM instead of carrying a second decimal parser.
+pub(crate) fn parse(source: &str) -> Option<f64> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        source.parse().ok()
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let unsigned = source.strip_prefix(['+', '-']).unwrap_or(source);
+        let negative = source.starts_with('-');
+        if unsigned.eq_ignore_ascii_case("nan") {
+            return Some(if negative { -f64::NAN } else { f64::NAN });
+        }
+        if unsigned.eq_ignore_ascii_case("inf") || unsigned.eq_ignore_ascii_case("infinity") {
+            return Some(if negative {
+                f64::NEG_INFINITY
+            } else {
+                f64::INFINITY
+            });
+        }
+        let mut bytes = unsigned.bytes().peekable();
+        let mut digits = 0;
+        while bytes.next_if(u8::is_ascii_digit).is_some() {
+            digits += 1;
+        }
+        if bytes.next_if_eq(&b'.').is_some() {
+            while bytes.next_if(u8::is_ascii_digit).is_some() {
+                digits += 1;
+            }
+        }
+        if digits == 0 {
+            return None;
+        }
+        if bytes.next_if(|c| matches!(c, b'e' | b'E')).is_some() {
+            bytes.next_if(|c| matches!(c, b'+' | b'-'));
+            bytes.next_if(u8::is_ascii_digit)?;
+            while bytes.next_if(u8::is_ascii_digit).is_some() {}
+        }
+        if bytes.next().is_some() {
+            return None;
+        }
+        Some(js_sys::Number::parse_float(source))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

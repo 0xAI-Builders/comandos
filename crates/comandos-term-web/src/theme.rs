@@ -94,7 +94,9 @@ pub fn parse_color(css: &str) -> Option<[u8; 3]> {
         .strip_prefix("rgba(")
         .or_else(|| css.strip_prefix("rgb("))?
         .strip_suffix(')')?;
-    let mut parts = inner.split(',').map(|p| p.trim().parse::<f64>().ok());
+    let mut parts = inner
+        .split(',')
+        .map(|p| crate::number_text::parse(p.trim()));
     let mut channel = || -> Option<u8> {
         let v = parts.next()??;
         // `round` de un valor ya acotado a 0..=255 cabe en u8.

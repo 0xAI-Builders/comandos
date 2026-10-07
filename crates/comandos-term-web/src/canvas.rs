@@ -1417,7 +1417,7 @@ impl Canvas2d {
             style
                 .get_property_value(name)
                 .ok()
-                .and_then(|v| v.trim_end_matches("px").parse::<f64>().ok())
+                .and_then(|v| crate::number_text::parse(v.trim_end_matches("px")))
                 .unwrap_or(0.0)
         };
         self.observed = Some(((css("width"), css("height")), (w, h)));

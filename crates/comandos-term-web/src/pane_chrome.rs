@@ -9,7 +9,15 @@ pub fn text(v: &Value, key: &str) -> String {
         .unwrap_or_default()
 }
 pub fn number(v: &Value, key: &str) -> f64 {
-    v.get(key).and_then(Value::as_f64).unwrap_or(0.0)
+    #[cfg(not(target_arch = "wasm32"))]
+    let number = v.get(key).and_then(Value::as_f64);
+    #[cfg(target_arch = "wasm32")]
+    let number = v
+        .get(key)
+        .and_then(Value::as_number)
+        .and_then(|value| crate::number_text::parse(&value.to_string()))
+        .filter(|value| value.is_finite());
+    number.unwrap_or(0.0)
 }
 pub fn escape(s: &str) -> String {
     s.chars()
