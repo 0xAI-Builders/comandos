@@ -88,6 +88,7 @@ fn inspect(
         basename(Path::new(first)).starts_with("python") || exe_name.starts_with("python");
     let mut python_repo = false;
     let mut python_script = None;
+    let mut known_python_writer = false;
     if is_python {
         let entrypoint = python_entrypoint(&argv)?;
         let candidate = Path::new(entrypoint);
@@ -100,6 +101,11 @@ fn inspect(
         let resolved = fs::canonicalize(&absolute)
             .or_else(|_| comandos_store::domains::catalog::control_path_identity(&absolute))
             .map_err(|e| format!("entrypoint Python sin identidad: {e}"))?;
+        // Un controlador lanzado fuera del checkout no puede omitir los
+        // entrypoints legado conocidos. Los argumentos de datos no cuentan.
+        let script = basename(&resolved);
+        known_python_writer = domain.python_writers.contains(&script.as_str())
+            || (script == "cc-dash" && domain.rust_writers.contains(&"dash"));
         let repo = fs::canonicalize(repo).map_err(|e| format!("repo sin identidad: {e}"))?;
         if let Ok(relative) = resolved.strip_prefix(&repo) {
             python_repo = true;
@@ -113,11 +119,12 @@ fn inspect(
     let rust_match = rust
         .as_deref()
         .is_some_and(|command| matches_rust(domain, command));
-    let python_match = python_repo
-        && python_script.as_deref().is_some_and(|script| {
-            domain.python_writers.contains(&script)
-                || (script == "cc-dash" && domain.rust_writers.contains(&"dash"))
-        });
+    let python_match = known_python_writer
+        || (python_repo
+            && python_script.as_deref().is_some_and(|script| {
+                domain.python_writers.contains(&script)
+                    || (script == "cc-dash" && domain.rust_writers.contains(&"dash"))
+            }));
     // Solo el entrypoint puede demostrar el alcance. Sus argumentos no son escritores.
     let ambiguous_python = python_repo
         && !python_script.as_deref().is_some_and(|script| {
@@ -131,7 +138,7 @@ fn inspect(
     if !(rust_match || python_match || ambiguous_python || ambiguous_rust) {
         return Ok(None);
     }
-    let protocol = if ambiguous_rust || ambiguous_python {
+    let protocol = if is_python || ambiguous_rust || ambiguous_python {
         0
     } else {
         in_release.as_deref().map(release_protocol).unwrap_or(0)

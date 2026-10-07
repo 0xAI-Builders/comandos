@@ -106,6 +106,34 @@ fn domain_python_registry_is_not_global() {
         assert!(f.check(no).is_ok(), "{script}");
     }
 }
+
+#[test]
+fn known_python_writers_block_from_outside_the_declared_checkout() {
+    for (script, yes, no) in [
+        ("cc-app", "tabs", "logs"),
+        ("cc-dash", "db-app-state", "session-status"),
+        ("cc-extensions", "extensions", "tabs"),
+        ("cc_usage.py", "db-usage", "logs"),
+    ] {
+        let f = Fixture::new(&format!("external-writer-{script}"));
+        f.process(
+            777,
+            &PathBuf::from("/usr/bin/python3"),
+            &["python3", f.repo.join("bin").join(script).to_str().unwrap()],
+        );
+        // A controller launched elsewhere must still see the original writer.
+        let writers = domain_writers(&f.proc, &f.home, &f.home, yes);
+        assert_eq!(writers.len(), 1, "omitted legacy writer {script}");
+        assert_eq!(writers[0].pid, 777);
+        assert_eq!(writers[0].protocol, 0);
+        assert!(!writers[0].python_repo);
+        assert!(can_unify(&writers).is_err(), "admitted {script}");
+        assert!(
+            domain_writers(&f.proc, &f.home, &f.home, no).is_empty(),
+            "unrelated domain blocked by {script}"
+        );
+    }
+}
 #[test]
 fn unreadable_and_ambiguous_processes_fail_closed() {
     let f = Fixture::new("broken");
