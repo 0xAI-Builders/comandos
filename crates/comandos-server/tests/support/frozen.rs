@@ -45,6 +45,8 @@ pub fn reference(home: &Path) -> Result<PathBuf, String> {
 }
 
 /// Execute the immutable server module only inside an explicit oracle closure.
+/// As in run_dash_with, python_prelude is HTTP-only; module code must prefix
+/// its fixture clock/setup explicitly so that it appears in golden provenance.
 pub fn run_dash_original(
     home: &super::TestHome,
     code: &str,

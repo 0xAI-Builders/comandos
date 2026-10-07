@@ -3,6 +3,7 @@
 //! cabeceras que se comprueban son las que viajan, también en HEAD y 304.
 #![allow(dead_code)]
 pub mod frozen;
+pub mod frozen_twin;
 pub mod http_golden;
 pub mod news;
 pub mod ops;

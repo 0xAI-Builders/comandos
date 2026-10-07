@@ -193,7 +193,7 @@ impl<'a> FrozenHttp<'a> {
         }
     }
 }
-fn copy_domain(from: &Path, to: &Path, files: &[&str]) {
+pub(super) fn copy_domain(from: &Path, to: &Path, files: &[&str]) {
     fs::create_dir_all(to).unwrap();
     for file in files {
         assert!(
@@ -234,7 +234,7 @@ fn copy_domain(from: &Path, to: &Path, files: &[&str]) {
         }
     }
 }
-fn original_request(
+pub(super) fn original_request(
     port: u16,
     method: &str,
     target: &str,

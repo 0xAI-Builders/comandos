@@ -1,0 +1,27 @@
+{
+  "input": {
+    "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+    "python": "CPython 3.10.12",
+    "fixture": {
+      "fakebin": [
+        [
+          "tailscale",
+          "#!/bin/sh\nprintf '%s\\0' tailscale \"$@\" \"$(printf '\\036')\" >> \"$HOME/tailscale.log\"\nd=\"$HOME/tailscale\"\ncase \"$*\" in\n  \"status --json\")\n    [ -f \"$d/status.json\" ] || exit 1\n    cat \"$d/status.json\"; exit 0 ;;\n  \"status --self --json\")\n    [ -f \"$d/self.txt\" ] && cat \"$d/self.txt\"; exit 0 ;;\n  \"status\")\n    [ -f \"$d/logged-in\" ] && exit 0\n    echo \"Logged out.\" >&2; exit 1 ;;\n  \"serve status\")\n    [ -f \"$d/serve.txt\" ] && cat \"$d/serve.txt\"; exit 0 ;;\n  \"serve reset\"|\"serve --https=443 off\"|\"serve --https=8443 off\")\n    : > \"$d/serve.txt\"; exit 0 ;;\n  serve\\ *)\n    if [ -f \"$d/serve-fail\" ]; then cat \"$d/serve-fail\" >&2; exit 1; fi\n    for a in \"$@\"; do last=$a; done\n    printf '|-- proxy %s\\n' \"$last\" >> \"$d/serve.txt\"; exit 0 ;;\nesac\necho \"tailscale falso: orden desconocida: $*\" >&2\nexit 2\n"
+        ],
+        [
+          "cc-webterm",
+          "#!/bin/sh\nprintf '%s\\0' cc-webterm \"$@\" \"$(printf '\\036')\" >> \"$HOME/fakebin.log\"\nif [ -f \"$HOME/webterm-fail\" ]; then cat \"$HOME/webterm-fail\" >&2; exit 3; fi\nexit 0\n"
+        ]
+      ],
+      "prelude": "",
+      "keep_loops": [],
+      "environment": []
+    },
+    "after_request": 2,
+    "observation": 0,
+    "operation": "tailscale-calls",
+    "args": null
+  },
+  "output_b64": "W1sic3RhdHVzIiwiLS1qc29uIl0sWyJzZXJ2ZSIsInN0YXR1cyJdXQ=="
+}

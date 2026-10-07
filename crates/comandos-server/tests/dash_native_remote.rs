@@ -22,15 +22,46 @@ use serde_json::Value;
 use std::{sync::Arc, time::Duration};
 use support::{
     TestHome,
-    oracle::{OracleOpts, confined_fakebin, run_dash_with},
+    frozen_twin::{Twin, TwinOpts},
+    oracle::{OracleOpts, confined_fakebin},
     services::{calls_of, remote_fakes, tailscale_log, tailscale_set, unhome},
-    twin::{Twin, TwinOpts},
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
 };
 
+const REMOTE_DOCUMENTS: &[&str] = &[
+    ".claude/hooks/webterm-enabled",
+    ".claude/hooks/webterm-mode.json",
+    "tailscale/serve.txt",
+];
+fn original_tailscale(t: &Twin) -> Vec<Vec<String>> {
+    serde_json::from_value(t.observe("tailscale-calls", &Value::Null, || {
+        serde_json::json!(tailscale_log(&t.b))
+    }))
+    .unwrap()
+}
+fn original_calls(t: &Twin, name: &str) -> Vec<Vec<String>> {
+    serde_json::from_value(t.observe(
+        "fake-program-calls",
+        &serde_json::json!({"name":name,"normalize_qr_output":name == "qrencode"}),
+        || {
+            let mut calls = calls_of(&t.b, name);
+            if name == "qrencode" {
+                // Original assertions deliberately omit the mktemp -o path.
+                // Retain its position/type while normalizing only that name.
+                for call in &mut calls {
+                    assert_eq!(call[0], "-o");
+                    assert!(call[1].ends_with(".png"));
+                    call[1] = "<QR_OUTPUT>.png".into();
+                }
+            }
+            serde_json::json!(calls)
+        },
+    ))
+    .unwrap()
+}
 const STATUS_JSON: &str = r#"{"Self":{"DNSName":"maquina.tail1.ts.net."},"Peer":{}}"#;
 
 /// Lo mismo en los dos lados del gemelo.
@@ -78,7 +109,7 @@ async fn same(t: &Twin, method: &str, path: &str) -> (u16, String) {
 }
 
 fn logs_equal(t: &Twin) {
-    assert_eq!(tailscale_log(&t.a), tailscale_log(&t.b), "tailscale.log");
+    assert_eq!(tailscale_log(&t.a), original_tailscale(t), "tailscale.log");
     // Retired script/process calls are intentionally absent from the native backend.
     assert!(calls_of(&t.a, "cc-webterm").is_empty());
     assert!(calls_of(&t.a, "pkill").is_empty());
@@ -102,6 +133,7 @@ async fn qr_url_goes_by_stdin_not_argv() {
     let mut fakes = remote_fakes();
     fakes.push(("qrencode".into(), QRENCODE.into()));
     let opts = TwinOpts {
+        oracle_files: REMOTE_DOCUMENTS.to_vec(),
         fakebin_extra: fakes,
         ..TwinOpts::default()
     };
@@ -120,7 +152,7 @@ async fn qr_url_goes_by_stdin_not_argv() {
     assert_eq!(run.front.body, run.oracle.body);
     assert_eq!(&run.front.body[..], b"PNG-FALSO");
     let front = calls_of(&t.a, "qrencode");
-    let oracle = calls_of(&t.b, "qrencode");
+    let oracle = original_calls(&t, "qrencode");
     assert_eq!(front.len(), 1);
     assert_eq!(oracle.len(), 1);
     let front = &front[0];
@@ -137,7 +169,7 @@ async fn qr_url_goes_by_stdin_not_argv() {
     assert_eq!(oracle[0].len(), 7);
     assert_eq!(oracle[0][6], url);
     assert_eq!(
-        std::fs::read_to_string(t.b.root.join("qrencode.stdin")).unwrap(),
+        String::from_utf8(t.original_file("qrencode.stdin").unwrap()).unwrap(),
         ""
     );
     assert_eq!(front[..1], oracle[0][..1]);
@@ -147,6 +179,7 @@ async fn qr_url_goes_by_stdin_not_argv() {
 #[tokio::test]
 async fn remote_routes_match_python() {
     let opts = TwinOpts {
+        oracle_files: REMOTE_DOCUMENTS.to_vec(),
         fakebin_extra: remote_fakes(),
         ..TwinOpts::default()
     };
@@ -288,6 +321,7 @@ async fn remote_routes_match_python() {
 #[tokio::test]
 async fn remote_off_never_resets() {
     let opts = TwinOpts {
+        oracle_files: REMOTE_DOCUMENTS.to_vec(),
         fakebin_extra: remote_fakes(),
         ..TwinOpts::default()
     };
@@ -318,13 +352,16 @@ async fn remote_off_never_resets() {
         !front.iter().flatten().any(|a| a == "reset"),
         "el frente nunca ejecuta `tailscale serve reset`: {front:?}"
     );
-    let oracle = tailscale_log(&t.b);
+    let oracle = original_tailscale(&t);
     assert!(oracle.contains(&vec!["serve".to_owned(), "reset".to_owned()]));
     // Orden del frente: 443 off, 8443 off, después la terminal web.
     let pos = |v: &Vec<String>| front.iter().position(|c| c == v).unwrap();
     assert!(pos(&off("443")) < pos(&off("8443")));
     assert!(calls_of(&t.a, "cc-webterm").is_empty());
-    assert_eq!(calls_of(&t.b, "cc-webterm"), vec![vec!["off".to_owned()]]);
+    assert_eq!(
+        original_calls(&t, "cc-webterm"),
+        vec![vec!["off".to_owned()]]
+    );
 }
 
 /// Servidor HTTP de la prueba: `200` en `/term/token` y `404` en lo demás.
@@ -367,6 +404,7 @@ async fn remote_on_with_healthy_webterm_matches_python() {
          dash.webterm_health = _twin_health\n"
     );
     let opts = TwinOpts {
+        oracle_files: REMOTE_DOCUMENTS.to_vec(),
         fakebin_extra: remote_fakes(),
         python_prelude: prelude,
         allow_ports: vec![port],
@@ -456,11 +494,35 @@ async fn restore_runs_only_with_front_background() {
         fakebin_extra: remote_fakes(),
         ..OracleOpts::default()
     };
-    let Some(out) = run_dash_with(&python, code, &opts) else {
-        return;
-    };
-    assert_eq!(out.trim(), "True");
-    assert_eq!(tailscale_log(&python), tailscale_log(&home));
-    assert_eq!(calls_of(&python, "cc-webterm"), vec![Vec::<String>::new()]);
+    let input = serde_json::json!({"source_commit":support::frozen::SOURCE_COMMIT,
+        "source_sha256":"4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+        "python":"CPython 3.10.12", "code":code, "fixture_fakebin":opts.fakebin_extra,
+        "webterm_enabled":true});
+    let roots = [("<HOME>", python.root.as_path())];
+    let expected = comandos_oracle::oracle_at(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "server-remote-restore",
+        &input,
+        || {
+            let stdout = support::frozen::run_dash_original(&python, code, &opts)?;
+            let output = serde_json::json!({"stdout":stdout,"tailscale":tailscale_log(&python),
+                "webterm_calls":calls_of(&python,"cc-webterm")});
+            Ok(comandos_oracle::normalize(
+                &serde_json::to_vec(&output).unwrap(),
+                &roots,
+            ))
+        },
+    );
+    let expected: Value =
+        serde_json::from_slice(&comandos_oracle::restore(&expected, &roots)).unwrap();
+    assert_eq!(expected["stdout"].as_str().unwrap().trim(), "True");
+    assert_eq!(
+        expected["tailscale"],
+        serde_json::json!(tailscale_log(&home))
+    );
+    assert_eq!(
+        expected["webterm_calls"],
+        serde_json::json!([Vec::<String>::new()])
+    );
     assert!(calls_of(&home, "cc-webterm").is_empty());
 }

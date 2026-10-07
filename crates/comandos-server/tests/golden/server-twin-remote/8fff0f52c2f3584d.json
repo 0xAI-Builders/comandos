@@ -1,0 +1,37 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "fixture": {
+        "fakebin": [
+          [
+            "tailscale",
+            "#!/bin/sh\nprintf '%s\\0' tailscale \"$@\" \"$(printf '\\036')\" >> \"$HOME/tailscale.log\"\nd=\"$HOME/tailscale\"\ncase \"$*\" in\n  \"status --json\")\n    [ -f \"$d/status.json\" ] || exit 1\n    cat \"$d/status.json\"; exit 0 ;;\n  \"status --self --json\")\n    [ -f \"$d/self.txt\" ] && cat \"$d/self.txt\"; exit 0 ;;\n  \"status\")\n    [ -f \"$d/logged-in\" ] && exit 0\n    echo \"Logged out.\" >&2; exit 1 ;;\n  \"serve status\")\n    [ -f \"$d/serve.txt\" ] && cat \"$d/serve.txt\"; exit 0 ;;\n  \"serve reset\"|\"serve --https=443 off\"|\"serve --https=8443 off\")\n    : > \"$d/serve.txt\"; exit 0 ;;\n  serve\\ *)\n    if [ -f \"$d/serve-fail\" ]; then cat \"$d/serve-fail\" >&2; exit 1; fi\n    for a in \"$@\"; do last=$a; done\n    printf '|-- proxy %s\\n' \"$last\" >> \"$d/serve.txt\"; exit 0 ;;\nesac\necho \"tailscale falso: orden desconocida: $*\" >&2\nexit 2\n"
+          ],
+          [
+            "cc-webterm",
+            "#!/bin/sh\nprintf '%s\\0' cc-webterm \"$@\" \"$(printf '\\036')\" >> \"$HOME/fakebin.log\"\nif [ -f \"$HOME/webterm-fail\" ]; then cat \"$HOME/webterm-fail\" >&2; exit 3; fi\nexit 0\n"
+          ]
+        ],
+        "prelude": "",
+        "keep_loops": [],
+        "environment": []
+      },
+      "sequence": 2,
+      "request": {
+        "method": "GET",
+        "path": "/remote-qr.png",
+        "body": ""
+      },
+      "effect_files": [
+        ".claude/hooks/webterm-enabled",
+        ".claude/hooks/webterm-mode.json",
+        "tailscale/serve.txt"
+      ]
+    },
+    "before_sha256": "60ab1f752da311d8e0eab04b3a96b7222f38dcb47fcdf0ad23aacebb4f3690a5"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjoyMDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJpbWFnZS9wbmdcIl0sW1wiY2FjaGUtY29udHJvbFwiLFwibm8tc3RvcmVcIl0sW1wiY29udGVudC1sZW5ndGhcIixcIjQ1OFwiXV0sXCJib2R5XCI6WzEzNyw4MCw3OCw3MSwxMywxMCwyNiwxMCwwLDAsMCwxMyw3Myw3Miw2OCw4MiwwLDAsMSw0MCwwLDAsMSw0MCwxLDMsMCwwLDAsMjA5LDIwMSwyNTQsOTAsMCwwLDAsNiw4MCw3Niw4NCw2OSwwLDAsMCwyNTUsMjU1LDI1NSwxNjUsMjE3LDE1OSwyMjEsMCwwLDAsMiwxMTYsODIsNzgsODMsMjU1LDI1NSwyMDAsMTgxLDIyMywxOTksMCwwLDAsOSwxMTIsNzIsODksMTE1LDAsMCwxMSwxOCwwLDAsMTEsMTgsMSwyMTAsMjIxLDEyNiwyNTIsMCwwLDEsOTIsNzMsNjgsNjUsODQsMTA0LDEyOSwyMzcsMTQ5LDIwMywxNDYsMTk1LDY0LDgsMywyNDksMjU1LDE1OSwzOCwyMSwzNSwxMjksMTc2LDE1Nyw3MSwyNDksMTcyLDIwMSwxMTAsMTAyLDEyLDIzNyw3NSwxNTEsMTUyLDY4LDI1NCwxNzksMTk0LDE0OCwxNjksMTY3LDg0LDIxMiwxNzAsMjMsMTg0LDE5MSwxNSwyMjEsNDksMTgxLDQwLDEzNiw5OSw1NywxODcsMjAyLDE0MiwxNjksNzcsMTQ5LDIxMSwyMTAsNzEsMTI4LDE4MSw0OCwyNDUsMTQ1LDEwLDE4NCwxMiwxNjYsMjA4LDIxMiwyMywxNzAsMzksODYsMjQ0LDE1NCwxODYsMTYzLDQ4LDE4MSw4MSwxNjcsNzYsMjIyLDEyMiwyMzYsMTUyLDkwLDg0LDc2LDI0NSwyNDQsNjUsMTk5LDE0OCw4MiwxNzksNTYsMTgyLDE1MSwxNTAsNDEsMTYxLDE2MiwyMDQsMTAyLDM3LDQ5LDEyMywxMjgsNTcsMTgyLDk3LDEwNiw4MywyMDEsMjAzLDEyLDcwLDE3Nyw4NywxMzMsOTUsMTY2LDIzMCwxNzEsMjE3LDYyLDE5OSw0MCwxNCw4MywyMywyMzQsMjE2LDk4LDkwLDQzLDEzMCwxNjYsNzgsMjAsMTg3LDIyMCw0MiwxNTAsMTE2LDEzOCwxMzgsMTY5LDE2MSwyNTAsNzQsMTMxLDIwOCwyMzQsNzEsNTksNTUsMTY1LDIwLDU4LDE4OSwzOCwxMzAsMTMyLDc3LDQxLDE5Nyw4LDE0Miw4NiwxNDAsMjM3LDc2LDE4MSw0MSwxNjEsNTIsMTMxLDUxLDE3MCwxMjAsMTI1LDE5NiwxNTUsMiwxMTcsNCwxNDQsNTMsNCwxNDUsNDcsMTY5LDEyMyw4Myw2NywzNywxNzUsMTg2LDE2NCwyMTgsMTU2LDcsODMsMTM5LDEwLDEzMiwxNywyMTUsOTAsMjAyLDI1MywzOCw4Niw3Nyw3NywxOTAsMjAyLDIyMiwyMzQsMjIxLDc2LDE3MywxNjksMTA0LDY2LDMxLDI1LDE5MSwyMjAsMjM4LDc3LDQ5LDk1LDE0OSwxOTIsMjI0LDc4LDE4OSwxNjksMTIyLDc3LDQxLDE4MSw2MSwyMTAsMTEyLDExNiwyMTksMTQ4LDgwLDEzNSwxOTcsMTYwLDIyMiwxNzIsMjIzLDEzNSwyNDYsNTksMjM5LDE1Miw5MCw4NiwyMzUsMTM2LDEyLDI0MiwxMjEsMjMwLDIxNywxNDgsODgsMTMzLDE5MSwyMjYsMjQsNjMsNCwyMTAsMjEyLDE1MywxMzAsNjcsMTI0LDIyOCw3OSwxNyw4Myw2Nyw4NSwyNDIsMjA4LDE3MSwzLDcxLDg3LDY0LDgzLDE1NSw1OCw3NSwyMzgsMTg2LDE2OSwxMjMsMTM4LDMsMTcyLDIwMSwyMzUsMTEsMjA4LDIxMiw4MCw2MSwxODEsNTksMTQwLDk3LDIzNCwxNTAsMTMwLDIwMyw5OSw2OCwyNDEsMTQzLDE4NiwzNiwyMTEsMTQ4LDQwLDI1MywxODEsNzYsMTUzLDEyMiw3MCwxODksMCwxODEsMTQ3LDIzOSwxMTIsMTgyLDI2LDMxLDQ2LDAsMCwwLDAsNzMsNjksNzgsNjgsMTc0LDY2LDk2LDEzMF19IiwidHJlZSI6eyJ0YWlsc2NhbGUiOnsia2luZCI6ImRpcmVjdG9yeSIsIm1vZGUiOjUwOX0sInRhaWxzY2FsZS9zZXJ2ZS50eHQiOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZkMwdElIQnliM2g1SUdoMGRIQTZMeTh4TWpjdU1DNHdMakU2TkRjM053bz0ifX19"
+}

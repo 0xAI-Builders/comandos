@@ -1,0 +1,37 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "fixture": {
+        "fakebin": [
+          [
+            "tailscale",
+            "#!/bin/sh\nprintf '%s\\0' tailscale \"$@\" \"$(printf '\\036')\" >> \"$HOME/tailscale.log\"\nd=\"$HOME/tailscale\"\ncase \"$*\" in\n  \"status --json\")\n    [ -f \"$d/status.json\" ] || exit 1\n    cat \"$d/status.json\"; exit 0 ;;\n  \"status --self --json\")\n    [ -f \"$d/self.txt\" ] && cat \"$d/self.txt\"; exit 0 ;;\n  \"status\")\n    [ -f \"$d/logged-in\" ] && exit 0\n    echo \"Logged out.\" >&2; exit 1 ;;\n  \"serve status\")\n    [ -f \"$d/serve.txt\" ] && cat \"$d/serve.txt\"; exit 0 ;;\n  \"serve reset\"|\"serve --https=443 off\"|\"serve --https=8443 off\")\n    : > \"$d/serve.txt\"; exit 0 ;;\n  serve\\ *)\n    if [ -f \"$d/serve-fail\" ]; then cat \"$d/serve-fail\" >&2; exit 1; fi\n    for a in \"$@\"; do last=$a; done\n    printf '|-- proxy %s\\n' \"$last\" >> \"$d/serve.txt\"; exit 0 ;;\nesac\necho \"tailscale falso: orden desconocida: $*\" >&2\nexit 2\n"
+          ],
+          [
+            "cc-webterm",
+            "#!/bin/sh\nprintf '%s\\0' cc-webterm \"$@\" \"$(printf '\\036')\" >> \"$HOME/fakebin.log\"\nif [ -f \"$HOME/webterm-fail\" ]; then cat \"$HOME/webterm-fail\" >&2; exit 3; fi\nexit 0\n"
+          ]
+        ],
+        "prelude": "",
+        "keep_loops": [],
+        "environment": []
+      },
+      "sequence": 9,
+      "request": {
+        "method": "POST",
+        "path": "/remote-webterm-on",
+        "body": "{}"
+      },
+      "effect_files": [
+        ".claude/hooks/webterm-enabled",
+        ".claude/hooks/webterm-mode.json",
+        "tailscale/serve.txt"
+      ]
+    },
+    "before_sha256": "273a008bd08e2a619993e3a64dfdf93ea67723b2adca1bbb9f084071e5d7b4af"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjo0MDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCIxMDZcIl1dLFwiYm9keVwiOlsxMjMsMzQsMTAxLDExNCwxMTQsMTExLDExNCwzNCw1OCwzMiwzNCw5MSw2OSwxMTQsMTE0LDExMCwxMTEsMzIsNTAsOTMsMzIsNzgsMTExLDMyLDExNSwxMTcsOTksMTA0LDMyLDEwMiwxMDUsMTA4LDEwMSwzMiwxMTEsMTE0LDMyLDEwMCwxMDUsMTE0LDEwMSw5OSwxMTYsMTExLDExNCwxMjEsNTgsMzIsMzksNjAsNzIsNzksNzcsNjksNjIsNDcsNDYsMTA4LDExMSw5OSw5NywxMDgsNDcsOTgsMTA1LDExMCw0Nyw5OSw5OSw0NSwxMTksMTAxLDk4LDExNiwxMDEsMTE0LDEwOSwzOSwzNCwxMjVdfSIsInRyZWUiOnsidGFpbHNjYWxlIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCJ0YWlsc2NhbGUvc2VydmUudHh0Ijp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImZDMHRJSEJ5YjNoNUlHaDBkSEE2THk4eE1qY3VNQzR3TGpFNk5EYzNOd3A4TFMwZ2NISnZlSGtnYUhSMGNEb3ZMekV5Tnk0d0xqQXVNVG8wTnpjM0Nud3RMU0J3Y205NGVTQm9kSFJ3T2k4dk1USTNMakF1TUM0eE9qUTNOemNLZkMwdElIQnliM2g1SUdoMGRIQTZMeTh4TWpjdU1DNHdMakU2TkRjNE1DOTBaWEp0Q253dExTQndjbTk0ZVNCb2RIUndPaTh2TVRJM0xqQXVNQzR4T2pRM056a0tmQzB0SUhCeWIzaDVJR2gwZEhBNkx5OHhNamN1TUM0d0xqRTZORGMzTndvPSJ9fX0="
+}
