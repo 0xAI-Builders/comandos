@@ -9,7 +9,7 @@ use comandos_server::{
 };
 use rusqlite::params;
 use std::sync::Arc;
-use support::{FakeLegacy, TestHome, dead_port, front, get, oracle::oracle};
+use support::{FakeLegacy, TestHome, dead_port, front, get, http_golden::FrozenHttp};
 
 /// Un pid que no existe: por encima de cualquier `pid_max`.
 const DEAD: i64 = 2_147_483_647;
@@ -127,10 +127,12 @@ async fn model_status_matches_python_oracle() {
     let home = TestHome::new("ops-oracle");
     let me = i64::from(std::process::id());
     seed(&home, &rows(me));
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
-    let front = front(&home, dead_port(), home.options()).await;
+    // Source supplies expected responses only: the native request itself owns
+    // recovery, so replay never restores a recorded live process owner PID.
+    let py = FrozenHttp::new(&home, "operations-status", &[]).await;
+    let mut opts = home.options();
+    opts.clock_seconds = Arc::new(|| support::NOW_MS as f64 / 1000.0);
+    let front = front(&home, dead_port(), opts).await;
     for (at, target) in [
         "/model/status?operationKey=s1%7C%251",
         "/model/status?operationKey=s1%7C%251&operationId=op-ok",
@@ -150,9 +152,9 @@ async fn model_status_matches_python_oracle() {
         // Rust primero en la mitad de los casos: recover_abandoned es idempotente.
         let (a, b) = if at % 2 == 0 {
             let b = get(front.port, target).await;
-            (get(py.port, target).await, b)
+            (py.get(target).await, b)
         } else {
-            let a = get(py.port, target).await;
+            let a = py.get(target).await;
             (a, get(front.port, target).await)
         };
         assert_eq!((a.status, a.text()), (b.status, b.text()), "{target}");
@@ -214,16 +216,19 @@ async fn model_status_recovery_writes_python_bytes() {
     ];
     seed(&py_home, &dead);
     seed(&rust_home, &dead);
-    let Some(py) = oracle(&py_home).await else {
-        return;
-    };
+    let py = FrozenHttp::new(
+        &py_home,
+        "operations-recovery",
+        &["session-operations.sqlite3"],
+    )
+    .await;
     let front = front(&rust_home, dead_port(), rust_home.options()).await;
     for target in [
         "/model/status?operationKey=s5%7C%255",
         "/model/status?operationKey=s6&operationId=op-app",
         "/model/status?operationKey=s10",
     ] {
-        let (a, b) = (get(py.port, target).await, get(front.port, target).await);
+        let (a, b) = (py.get(target).await, get(front.port, target).await);
         assert_eq!(a.status, 200, "{}", a.text());
         assert_eq!((a.status, masked(&a.text())), (b.status, masked(&b.text())));
     }
@@ -460,17 +465,16 @@ async fn model_status_recovery_timestamps_are_python_doubles() {
     assert_ne!(hex(updated), hex(1_791_115_200_123.0 / 1000.0));
     assert_eq!(hex(updated), hex(at));
     // El Python, con los mismos nanosegundos (`int / float` = `(double)ns / 1e9`).
-    let Ok(out) = std::process::Command::new("python3")
-        .args([
-            "-c",
-            &format!("import struct; print(struct.pack('<d', {NANOS} / 1e9).hex(), struct.pack('<d', 1791115200000000000 // 10**9 * 1.0).hex())"),
-        ])
-        .output()
-    else {
-        eprintln!("sin python3: se omite la comparación con el oráculo");
-        return;
-    };
-    let text = String::from_utf8(out.stdout).unwrap();
+    let script = format!(
+        "import struct; print(struct.pack('<d', {NANOS} / 1e9).hex(), struct.pack('<d', 1791115200000000000 // 10**9 * 1.0).hex())"
+    );
+    let expected = comandos_oracle::oracle_at(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "operations-python-seconds",
+        &serde_json::json!({"python":"3.10.12", "script":script}),
+        || support::frozen::run_python_original(&script, &[], &home.root).map(String::into_bytes),
+    );
+    let text = String::from_utf8(expected).unwrap();
     let mut python = text.split_whitespace();
     assert_eq!(python.next(), Some(hex(updated).as_str()));
     assert_eq!(

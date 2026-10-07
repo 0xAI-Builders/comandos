@@ -11,7 +11,7 @@ mod support;
 
 use comandos_server::dash::native::{files::FileLock, settings};
 use serde_json::{Value, json};
-use std::{os::unix::fs::PermissionsExt, process::Command};
+use std::os::unix::fs::PermissionsExt;
 use support::{
     FakeLegacy, TestHome, front, get, request_body,
     services::{calls, mode, seed_services, settle_calls, unhome},
@@ -374,16 +374,30 @@ fn popup_payload_matches_json_dumps() {
             sys.stdout.write(json.dumps({\"title\": str(title)[:200], \"body\": str(body)[:400], \
             \"session\": \"\", \"kind\": \"waiting\" if kind == \"waiting\" else \"done\", \
             \"project\": str(project)[:80], \"options\": \"\", \"full\": str(body)[:400]}))";
-        let Ok(out) = Command::new("python3")
-            .env_clear()
-            .env("PYTHONIOENCODING", "utf-8")
-            .args(["-c", script, title, body, project, kind])
-            .output()
-        else {
-            eprintln!("python3 no está instalado: se salta");
-            return;
-        };
-        assert_eq!(rust, String::from_utf8(out.stdout).unwrap());
+        let home = TestHome::new("popup-json-dumps");
+        // run_python_original prepends its source root; this pure script uses
+        // only the four supplied values, so discard that repository argument.
+        let script = script.replace("sys.argv[1:5]", "sys.argv[2:6]");
+        let expected = comandos_oracle::oracle_at(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+            "settings-popup-json",
+            &json!({"python":"3.10.12", "script":script,
+                "title":title, "body":body, "project":project, "kind":kind}),
+            || {
+                support::frozen::run_python_original(
+                    &script,
+                    &[
+                        title.as_ref(),
+                        body.as_ref(),
+                        project.as_ref(),
+                        kind.as_ref(),
+                    ],
+                    &home.root,
+                )
+                .map(String::into_bytes)
+            },
+        );
+        assert_eq!(rust, String::from_utf8(expected).unwrap());
     }
     // Sanidad del orden de claves.
     let value: Value =

@@ -1,0 +1,7 @@
+{
+  "input": {
+    "python": "3.10.12",
+    "script": "import struct; print(struct.pack('<d', 1791115200123456789 / 1e9).hex(), struct.pack('<d', 1791115200000000000 // 10**9 * 1.0).hex())"
+  },
+  "output_b64": "YjdlNjA3ZjA4ZmIwZGE0MSAwMDAwMDBmMDhmYjBkYTQxCg=="
+}

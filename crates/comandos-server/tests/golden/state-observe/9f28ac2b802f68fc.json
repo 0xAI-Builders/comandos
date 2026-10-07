@@ -1,0 +1,1391 @@
+{
+  "input": {
+    "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "python": "3.10.12",
+    "script": "\nimport importlib.machinery, importlib.util, json, os, sys, types\nrepo, case = sys.argv[1:3]\nsys.path.insert(0, os.path.join(repo, \"bin\"))\nloader = importlib.machinery.SourceFileLoader(\"cc_dash_oracle\", os.path.join(repo, \"bin/cc-dash\"))\nspec = importlib.util.spec_from_loader(loader.name, loader)\ndash = importlib.util.module_from_spec(spec)\nloader.exec_module(dash)\nc = json.load(open(case))\ndash.load_provider_registry = lambda: c[\"registry\"]\nout = []\nfor k in c[\"cases\"]:\n    dash.time.time = lambda k=k: k[\"now\"]\n    dash._pane_identity = lambda s, p, k=k: dict(k[\"identity\"])\n    dash.account_for_pid = lambda pid, agent, k=k: dict(k[\"account\"])\n    dash._proc_cmdline = lambda pid, k=k: list(k[\"cmdline\"])\n    dash.glob.glob = lambda pattern, k=k: list(k[\"glob\"])\n    dash.os.readlink = lambda fd, k=k: k[\"link\"]\n    dash._TUI_TRANSCRIPTS = types.SimpleNamespace(read=lambda h, s, p, k=k: dict(k[\"transcript\"]))\n    dash.grok_metadata_for_pid = lambda pid, k=k: dict(k[\"grok\"])\n    dash.acp_state_for_pane = lambda pane, k=k: dict(k[\"acp\"])\n    dash.pane_visible_config = lambda pane, harness, k=k: dict(k[\"visible\"])\n    dash._process_start = lambda pid, k=k: k[\"start\"]\n    dash._read_environ = lambda pid, k=k: {kk.encode(): v.encode() for kk, v in k[\"environ\"].items()}\n    inspector = lambda row, k=k: dict(k[\"snap\"])\n    info = {\"session\": k[\"session\"], \"pane\": k[\"pane\"], \"cwd\": \"/w\", \"agent\": k[\"agent\"], \"pid\": k[\"pid\"]}\n    out.append(dash.observe_pane(k[\"session\"], k[\"pane\"], info, inspector))\nprint(json.dumps(out))\n",
+    "case": {
+      "registry": {
+        "version": 2,
+        "harnesses": {
+          "claude": {
+            "label": "Claude Code",
+            "icon": "anthropic",
+            "binary": "claude",
+            "processNames": [
+              "claude"
+            ],
+            "launchDriver": "claude",
+            "accountEnv": "CLAUDE_CONFIG_DIR",
+            "defaultHome": "~/.claude",
+            "accountsRoot": "~/.claude-accounts",
+            "authFile": ".credentials.json",
+            "capabilities": {
+              "models": true,
+              "effort": true,
+              "accounts": true,
+              "liveAccountSwitch": true,
+              "resume": true,
+              "splits": true
+            }
+          },
+          "codex": {
+            "label": "Codex CLI",
+            "icon": "openai",
+            "binary": "codex",
+            "processNames": [
+              "codex",
+              "node"
+            ],
+            "launchDriver": "codex",
+            "accountEnv": "CODEX_HOME",
+            "defaultHome": "~/.codex",
+            "accountsRoot": "~/.codex-accounts",
+            "authFile": "auth.json",
+            "capabilities": {
+              "models": true,
+              "effort": true,
+              "accounts": true,
+              "liveAccountSwitch": false,
+              "resume": true,
+              "splits": true
+            }
+          },
+          "grok": {
+            "label": "Grok Build",
+            "icon": "xai",
+            "binary": "grok",
+            "minimumVersion": "1.0.5",
+            "processNames": [
+              "grok",
+              "grok-linux-x86_64"
+            ],
+            "launchDriver": "grok",
+            "accountEnv": "GROK_HOME",
+            "defaultHome": "~/.grok",
+            "accountsRoot": "~/.grok-accounts",
+            "authFile": "auth.json",
+            "color": "208",
+            "models": [
+              {
+                "id": "grok-4.6",
+                "name": "Grok 4.6",
+                "tag": "coding recomendado · 500k ctx",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "grok-4.5",
+                "name": "Grok 4.5",
+                "tag": "500k ctx",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "defaultEffort": "high"
+              }
+            ],
+            "capabilities": {
+              "models": true,
+              "effort": true,
+              "accounts": true,
+              "liveAccountSwitch": false,
+              "resume": true,
+              "splits": true,
+              "mcp": true,
+              "hooks": true,
+              "skills": true,
+              "subagents": true
+            }
+          },
+          "acp": {
+            "label": "ComandOS ACP",
+            "icon": "layers",
+            "binary": "cc-acp",
+            "processNames": [
+              "cc-acp"
+            ],
+            "launchDriver": "acp",
+            "description": "ComandOS como cliente ACP: cualquier agente (Claude Code, Codex, Grok, OpenCode, Antigravity) con SU suscripción, en un pane. Sin API keys.",
+            "capabilities": {
+              "models": true,
+              "effort": true,
+              "accounts": false,
+              "liveAccountSwitch": false,
+              "resume": true,
+              "splits": true,
+              "motorAccounts": true
+            }
+          },
+          "opencode": {
+            "label": "OpenCode",
+            "icon": "opencode",
+            "binary": "opencode",
+            "processNames": [
+              "opencode"
+            ],
+            "launchDriver": "opencode",
+            "capabilities": {
+              "models": true,
+              "effort": false,
+              "accounts": false,
+              "resume": false,
+              "splits": true
+            }
+          },
+          "agy": {
+            "label": "Antigravity",
+            "icon": "gemini",
+            "binary": "agy",
+            "processNames": [
+              "agy"
+            ],
+            "launchDriver": "agy",
+            "capabilities": {
+              "models": true,
+              "effort": true,
+              "accounts": false,
+              "liveAccountSwitch": false,
+              "resume": true,
+              "splits": true
+            }
+          },
+          "gemini": {
+            "label": "Gemini CLI",
+            "icon": "gemini",
+            "binary": "gemini",
+            "processNames": [
+              "gemini"
+            ],
+            "launchDriver": "gemini",
+            "capabilities": {
+              "models": false,
+              "effort": false,
+              "accounts": false,
+              "resume": false,
+              "splits": true
+            }
+          },
+          "shell": {
+            "label": "Shell",
+            "icon": "terminal",
+            "binary": null,
+            "processNames": [
+              "bash",
+              "zsh",
+              "fish"
+            ],
+            "launchDriver": "shell",
+            "capabilities": {
+              "models": false,
+              "effort": false,
+              "accounts": false,
+              "resume": false,
+              "splits": true
+            }
+          }
+        },
+        "claudeEngines": {
+          "claude": {
+            "label": "Claude",
+            "icon": "anthropic",
+            "modelMatch": "^(?:claude-|opus$|sonnet$|haiku$|fable$)",
+            "transport": "anthropic",
+            "experimental": false,
+            "supportsEffort": true,
+            "preservesThinking": true
+          },
+          "codex": {
+            "label": "Codex",
+            "icon": "openai",
+            "modelMatch": "^(?:gpt-|o[0-9]|codex)",
+            "transport": "cc-proxy",
+            "experimental": false,
+            "supportsEffort": true,
+            "preservesThinking": true
+          },
+          "grok": {
+            "label": "Grok",
+            "icon": "xai",
+            "modelMatch": "^(?:grok-|xai/)",
+            "transport": "grok-subscription",
+            "experimental": true,
+            "supportsEffort": true,
+            "preservesThinking": true,
+            "authSource": "~/.grok/auth.json",
+            "limitations": [
+              "La ruta Claude Code + Grok usa el endpoint de suscripción del CLI, no una API pública estable.",
+              "Puede requerir actualización cuando xAI cambie su servicio de CLI."
+            ]
+          }
+        },
+        "matrixHarnesses": [
+          "claude",
+          "codex",
+          "grok",
+          "acp",
+          "opencode",
+          "agy"
+        ],
+        "motors": {
+          "claude": {
+            "label": "Claude",
+            "icon": "anthropic",
+            "modelMatch": "^(?:claude-|opus$|sonnet$|haiku$|fable$)",
+            "models": [
+              {
+                "id": "claude-fable-5-1",
+                "name": "Fable 5.1",
+                "tag": "más inteligente · 1M ctx",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "claude-fable-5[1m]",
+                "name": "Fable 5",
+                "tag": "más inteligente · 1M ctx",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "claude-opus-5-5",
+                "name": "Opus 5.5",
+                "tag": "potente",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "claude-opus-5",
+                "name": "Opus 5",
+                "tag": "potente",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "claude-sonnet-5-5",
+                "name": "Sonnet 5.5",
+                "tag": "rápido y barato",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "claude-sonnet-5",
+                "name": "Sonnet 5",
+                "tag": "rápido y barato",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "codex": {
+            "label": "Codex",
+            "icon": "openai",
+            "modelMatch": "^(?:gpt-|o[0-9]|codex)",
+            "models": [
+              {
+                "id": "gpt-6-astra",
+                "name": "GPT-6 Astra",
+                "tag": "OpenAI lo libera por oleadas · aún no en tu cuenta",
+                "soon": true,
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "gpt-5.6-sol[1m]",
+                "name": "GPT-5.6 Sol",
+                "tag": "más inteligente · 1M ctx",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "gpt-5.6-terra",
+                "name": "GPT-5.6 Terra",
+                "tag": "equilibrado",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "gpt-5.6-luna",
+                "name": "GPT-5.6 Luna",
+                "tag": "rápido y barato",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "gpt-5.5",
+                "name": "GPT-5.5",
+                "tag": "generación anterior",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "grok": {
+            "label": "Grok",
+            "icon": "xai",
+            "modelMatch": "^(?:grok-|xai/)",
+            "models": [
+              {
+                "id": "grok-4.6",
+                "name": "Grok 4.6",
+                "tag": "coding recomendado · 500k ctx",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "grok-4.5",
+                "name": "Grok 4.5",
+                "tag": "500k ctx",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "defaultEffort": "high"
+              }
+            ]
+          },
+          "opencode": {
+            "label": "OpenCode",
+            "icon": "opencode",
+            "modelMatch": "^(?:opencode/|openrouter/|groq/|cerebras/)",
+            "models": [
+              {
+                "id": "opencode/big-pickle",
+                "name": "Big Pickle (free)",
+                "tag": "gratis · sin login",
+                "efforts": [],
+                "defaultEffort": ""
+              },
+              {
+                "id": "opencode/nemotron-3-ultra-free",
+                "name": "Nemotron 3 Ultra (free)",
+                "tag": "gratis",
+                "efforts": [],
+                "defaultEffort": ""
+              },
+              {
+                "id": "openrouter/anthropic/claude-fable-5.1",
+                "name": "Fable 5.1 (OpenRouter)",
+                "tag": "vía tu OpenRouter",
+                "efforts": [],
+                "defaultEffort": ""
+              },
+              {
+                "id": "openrouter/~openai/gpt-latest",
+                "name": "GPT latest (OpenRouter)",
+                "tag": "vía tu OpenRouter",
+                "efforts": [],
+                "defaultEffort": ""
+              },
+              {
+                "id": "groq/llama-3.1-8b-instant",
+                "name": "Llama 3.1 8B (Groq)",
+                "tag": "rápido · vía Groq",
+                "efforts": [],
+                "defaultEffort": ""
+              },
+              {
+                "id": "groq/llama-3.3-70b-versatile",
+                "name": "Llama 3.3 70B (Groq)",
+                "tag": "vía Groq",
+                "efforts": [],
+                "defaultEffort": ""
+              },
+              {
+                "id": "groq/openai/gpt-oss-120b",
+                "name": "GPT-OSS 120B (Groq)",
+                "tag": "vía tu Groq",
+                "efforts": [],
+                "defaultEffort": ""
+              },
+              {
+                "id": "groq/openai/gpt-oss-20b",
+                "name": "GPT-OSS 20B (Groq)",
+                "tag": "vía Groq",
+                "efforts": [],
+                "defaultEffort": ""
+              },
+              {
+                "id": "groq/qwen/qwen3.6-27b",
+                "name": "Qwen3.6 27B (Groq)",
+                "tag": "vía Groq",
+                "efforts": [],
+                "defaultEffort": ""
+              },
+              {
+                "id": "groq/qwen/qwen3.8-27b",
+                "name": "Qwen3.8 27B (Groq)",
+                "tag": "vía Groq",
+                "efforts": [],
+                "defaultEffort": ""
+              }
+            ]
+          },
+          "agy": {
+            "label": "Antigravity",
+            "icon": "gemini",
+            "modelMatch": "^(?:gemini-|claude-sonnet-4-6|claude-opus-4-6|gpt-oss-)",
+            "models": [
+              {
+                "id": "claude-sonnet-4-6",
+                "name": "Claude Sonnet 4.6",
+                "tag": "Claude con tu suscripción Antigravity",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "claude-opus-4-6-thinking",
+                "name": "Claude Opus 4.6 (thinking)",
+                "tag": "Claude con tu suscripción Antigravity",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "gemini-3.1-pro-high",
+                "name": "Gemini 3.1 Pro (high)",
+                "tag": "más inteligente",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "gemini-3.1-pro-low",
+                "name": "Gemini 3.1 Pro (low)",
+                "tag": "rápido",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "gemini-3.8-flash-high",
+                "name": "Gemini 3.8 Flash (high)",
+                "tag": "rápido · reciente",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "gemini-3.8-flash-medium",
+                "name": "Gemini 3.8 Flash (medium)",
+                "tag": "equilibrado",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "gemini-3.8-flash-low",
+                "name": "Gemini 3.8 Flash (low)",
+                "tag": "el más rápido",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "gemini-3.7-flash-high",
+                "name": "Gemini 3.7 Flash (high)",
+                "tag": "estable",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "defaultEffort": "high"
+              },
+              {
+                "id": "gpt-oss-120b-medium",
+                "name": "GPT-OSS 120B",
+                "tag": "abierto",
+                "efforts": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "defaultEffort": "medium"
+              }
+            ]
+          }
+        },
+        "routes": [
+          {
+            "id": "claude:claude",
+            "harness": "claude",
+            "motor": "claude",
+            "transport": "anthropic-subscription",
+            "authRequirements": [
+              "harness:claude"
+            ],
+            "actionScopes": [
+              "new_session",
+              "session_motor",
+              "session_model"
+            ],
+            "accountScopes": [
+              "harness"
+            ],
+            "driver": "claude",
+            "experimental": false
+          },
+          {
+            "id": "claude:codex",
+            "harness": "claude",
+            "motor": "codex",
+            "transport": "gateway-messages",
+            "authRequirements": [
+              "harness:claude",
+              "motor:codex",
+              "gateway"
+            ],
+            "actionScopes": [
+              "new_session",
+              "session_motor",
+              "session_model"
+            ],
+            "accountScopes": [
+              "harness",
+              "motor"
+            ],
+            "driver": "claude",
+            "experimental": false
+          },
+          {
+            "id": "claude:grok",
+            "harness": "claude",
+            "motor": "grok",
+            "transport": "gateway-messages",
+            "authRequirements": [
+              "harness:claude",
+              "motor:grok",
+              "gateway"
+            ],
+            "actionScopes": [
+              "new_session",
+              "session_motor",
+              "session_model"
+            ],
+            "accountScopes": [
+              "harness",
+              "motor"
+            ],
+            "driver": "claude",
+            "experimental": true,
+            "liveVerified": true
+          },
+          {
+            "id": "codex:codex",
+            "harness": "codex",
+            "motor": "codex",
+            "transport": "native",
+            "authRequirements": [
+              "harness:codex"
+            ],
+            "actionScopes": [
+              "new_session",
+              "session_model"
+            ],
+            "accountScopes": [
+              "harness"
+            ],
+            "driver": "codex",
+            "experimental": false
+          },
+          {
+            "id": "grok:grok",
+            "harness": "grok",
+            "motor": "grok",
+            "transport": "native",
+            "authRequirements": [
+              "harness:grok"
+            ],
+            "actionScopes": [
+              "new_session",
+              "session_model"
+            ],
+            "accountScopes": [
+              "harness"
+            ],
+            "driver": "grok",
+            "experimental": false
+          },
+          {
+            "id": "codex:grok",
+            "harness": "codex",
+            "motor": "grok",
+            "transport": "gateway-responses",
+            "authRequirements": [
+              "harness:codex",
+              "motor:grok",
+              "gateway"
+            ],
+            "actionScopes": [
+              "new_session",
+              "session_motor",
+              "session_model"
+            ],
+            "accountScopes": [
+              "harness",
+              "motor"
+            ],
+            "driver": "codex",
+            "experimental": true,
+            "liveVerified": false,
+            "reasonCode": "route_not_live_verified"
+          },
+          {
+            "id": "grok:codex",
+            "harness": "grok",
+            "motor": "codex",
+            "transport": "gateway-messages",
+            "authRequirements": [
+              "harness:grok",
+              "motor:codex",
+              "gateway"
+            ],
+            "actionScopes": [
+              "new_session",
+              "session_motor",
+              "session_model"
+            ],
+            "accountScopes": [
+              "harness",
+              "motor"
+            ],
+            "driver": "grok",
+            "experimental": true,
+            "liveVerified": false,
+            "reasonCode": "route_not_live_verified"
+          },
+          {
+            "id": "acp:claude",
+            "harness": "acp",
+            "motor": "claude",
+            "transport": "acp-stdio",
+            "authRequirements": [
+              "motor:claude"
+            ],
+            "actionScopes": [
+              "new_session",
+              "session_motor",
+              "session_model"
+            ],
+            "accountScopes": [
+              "motor"
+            ],
+            "driver": "acp",
+            "experimental": false,
+            "liveVerified": true
+          },
+          {
+            "id": "acp:codex",
+            "harness": "acp",
+            "motor": "codex",
+            "transport": "acp-stdio",
+            "authRequirements": [
+              "motor:codex"
+            ],
+            "actionScopes": [
+              "new_session",
+              "session_motor",
+              "session_model"
+            ],
+            "accountScopes": [
+              "motor"
+            ],
+            "driver": "acp",
+            "experimental": false,
+            "liveVerified": true
+          },
+          {
+            "id": "acp:grok",
+            "harness": "acp",
+            "motor": "grok",
+            "transport": "acp-stdio",
+            "authRequirements": [
+              "motor:grok"
+            ],
+            "actionScopes": [
+              "new_session",
+              "session_motor",
+              "session_model"
+            ],
+            "accountScopes": [
+              "motor"
+            ],
+            "driver": "acp",
+            "experimental": false,
+            "liveVerified": true
+          },
+          {
+            "id": "acp:opencode",
+            "harness": "acp",
+            "motor": "opencode",
+            "transport": "acp-stdio",
+            "authRequirements": [],
+            "actionScopes": [
+              "new_session",
+              "session_motor",
+              "session_model"
+            ],
+            "accountScopes": [],
+            "driver": "acp",
+            "experimental": false,
+            "liveVerified": true
+          },
+          {
+            "id": "acp:agy",
+            "harness": "acp",
+            "motor": "agy",
+            "transport": "agy-stream",
+            "authRequirements": [],
+            "actionScopes": [
+              "new_session",
+              "session_motor",
+              "session_model"
+            ],
+            "accountScopes": [],
+            "driver": "acp",
+            "experimental": false,
+            "liveVerified": true
+          },
+          {
+            "id": "opencode:opencode",
+            "harness": "opencode",
+            "motor": "opencode",
+            "transport": "native",
+            "authRequirements": [],
+            "actionScopes": [
+              "new_session",
+              "session_model"
+            ],
+            "accountScopes": [],
+            "driver": "opencode",
+            "experimental": false
+          },
+          {
+            "id": "agy:agy",
+            "harness": "agy",
+            "motor": "agy",
+            "transport": "native",
+            "authRequirements": [],
+            "actionScopes": [
+              "new_session",
+              "session_model"
+            ],
+            "accountScopes": [],
+            "driver": "agy",
+            "experimental": false
+          }
+        ],
+        "exclusions": [
+          {
+            "id": "codex:claude",
+            "harness": "codex",
+            "motor": "claude",
+            "productState": "unsupported_protocol",
+            "reasonCode": "unsupported_protocol",
+            "message": "Codex CLI solo admite Responses; Claude subscription no expone ese protocolo."
+          },
+          {
+            "id": "grok:claude",
+            "harness": "grok",
+            "motor": "claude",
+            "productState": "subscription_incompatible",
+            "reasonCode": "subscription_not_accepted",
+            "message": "Grok Build requiere API key Anthropic; Claude Max no se puede reenviar."
+          }
+        ],
+        "coreHarnesses": [
+          "claude",
+          "codex",
+          "grok"
+        ],
+        "acpAgents": {
+          "claude": {
+            "label": "Claude Code (ACP)",
+            "command": [
+              "claude-agent-acp"
+            ],
+            "requires": [
+              "claude"
+            ],
+            "env": {
+              "CLAUDE_CODE_EXECUTABLE": "which:claude"
+            },
+            "accountsProvider": "claude",
+            "modelVia": "acp",
+            "effortEnv": "MAX_THINKING_TOKENS",
+            "effortEnvMap": {
+              "low": "1024",
+              "medium": "4096",
+              "high": "16000",
+              "xhigh": "32000",
+              "max": "63999"
+            },
+            "dangerMode": "bypassPermissions",
+            "resume": true
+          },
+          "codex": {
+            "label": "Codex (ACP)",
+            "command": [
+              "codex-acp"
+            ],
+            "accountsProvider": "codex",
+            "modelArgs": [
+              "-c",
+              "model=\"{model}\""
+            ],
+            "effortArgs": [
+              "-c",
+              "model_reasoning_effort=\"{effort}\""
+            ],
+            "dangerMode": "full-access",
+            "resume": false
+          },
+          "grok": {
+            "label": "Grok Build (ACP)",
+            "command": [
+              "grok",
+              "agent",
+              "--no-leader",
+              "{model_args}",
+              "{effort_args}",
+              "{danger_args}",
+              "stdio"
+            ],
+            "accountsProvider": "grok",
+            "modelArgs": [
+              "-m",
+              "{model}"
+            ],
+            "effortArgs": [
+              "--reasoning-effort",
+              "{effort}"
+            ],
+            "dangerArgs": [
+              "--always-approve"
+            ],
+            "modelVia": "acp",
+            "resume": false
+          },
+          "opencode": {
+            "label": "OpenCode (ACP)",
+            "command": [
+              "opencode",
+              "acp"
+            ],
+            "modelEnv": "OPENCODE_CONFIG_CONTENT",
+            "modelEnvTemplate": "{\"model\":\"{model}\"}",
+            "resume": false
+          },
+          "agy": {
+            "label": "Antigravity (stream-json)",
+            "transport": "agy-stream",
+            "command": [
+              "agy",
+              "-p",
+              "",
+              "--input-format",
+              "stream-json",
+              "--output-format",
+              "stream-json"
+            ],
+            "modelArgs": [
+              "--model",
+              "{model}"
+            ],
+            "effortArgs": [
+              "--effort",
+              "{effort}"
+            ],
+            "dangerArgs": [
+              "--dangerously-skip-permissions"
+            ],
+            "resume": false
+          }
+        }
+      },
+      "cases": [
+        {
+          "agent": "codex",
+          "pid": 11,
+          "session": "s",
+          "pane": "%11",
+          "now": 1791115200.25,
+          "identity": {
+            "socket_path": "/tmp/tmux-1/default",
+            "pid": "42",
+            "server_start": "9",
+            "session_id": "$1",
+            "pane_id": "%11",
+            "pane_pid": "7",
+            "pane_current_command": "codex",
+            "session_name": "s"
+          },
+          "account": {
+            "account": "work",
+            "accountEmail": "w@x"
+          },
+          "cmdline": [
+            "codex",
+            "-m",
+            "gpt-5.5",
+            "-c",
+            "model_reasoning_effort=\"high\"",
+            "--effort",
+            "-x",
+            "--model"
+          ],
+          "glob": [
+            "/proc/11/fd/3"
+          ],
+          "link": "/home/u/.codex/sessions/rollout-c1.jsonl",
+          "transcript": {
+            "model": "gpt-5.6-sol",
+            "effort": "xhigh",
+            "revision": "r1"
+          },
+          "grok": {},
+          "acp": {},
+          "visible": {},
+          "start": "1234",
+          "environ": {},
+          "snap": {
+            "resume_id": "c1"
+          }
+        },
+        {
+          "agent": "codex",
+          "pid": 11,
+          "session": "s",
+          "pane": "%11",
+          "now": 1791115203.25,
+          "identity": {
+            "socket_path": "/tmp/tmux-1/default",
+            "pid": "42",
+            "server_start": "9",
+            "session_id": "$1",
+            "pane_id": "%11",
+            "pane_pid": "7",
+            "pane_current_command": "codex",
+            "session_name": "s"
+          },
+          "account": {
+            "account": "work",
+            "accountEmail": "w@x"
+          },
+          "cmdline": [
+            "codex",
+            "-m",
+            "gpt-5.5",
+            "-c",
+            "model_reasoning_effort=\"high\"",
+            "--effort",
+            "-x",
+            "--model"
+          ],
+          "glob": [
+            "/proc/11/fd/3"
+          ],
+          "link": "/home/u/.codex/sessions/rollout-c1.jsonl",
+          "transcript": {
+            "model": "gpt-5.6-sol",
+            "effort": "xhigh",
+            "revision": "r1"
+          },
+          "grok": {},
+          "acp": {},
+          "visible": {
+            "model": "gpt-5.6-luna",
+            "effort": "low"
+          },
+          "start": "1234",
+          "environ": {},
+          "snap": {
+            "resume_id": "c1"
+          }
+        },
+        {
+          "agent": "claude",
+          "pid": 12,
+          "session": "s",
+          "pane": "%12",
+          "now": 1791115200.25,
+          "identity": {
+            "socket_path": "/tmp/tmux-1/default",
+            "pid": "42",
+            "server_start": "9",
+            "session_id": "$1",
+            "pane_id": "%12",
+            "pane_pid": "7",
+            "pane_current_command": "claude",
+            "session_name": "s"
+          },
+          "account": {
+            "account": "",
+            "accountEmail": ""
+          },
+          "cmdline": [
+            "claude"
+          ],
+          "glob": [
+            "/home/u/.claude-work/projects/x/s2.jsonl"
+          ],
+          "link": "",
+          "transcript": {
+            "model": "gpt-5.6-luna",
+            "effort": ""
+          },
+          "grok": {},
+          "acp": {},
+          "visible": {},
+          "start": "1234",
+          "environ": {
+            "ANTHROPIC_BASE_URL": "http://127.0.0.1:18765"
+          },
+          "snap": {
+            "resume_id": "s2",
+            "claude_config_dir": "/home/u/.claude-work"
+          }
+        },
+        {
+          "agent": "grok",
+          "pid": 13,
+          "session": "s",
+          "pane": "%13",
+          "now": 1791115200.25,
+          "identity": {
+            "socket_path": "/tmp/tmux-1/default",
+            "pid": "42",
+            "server_start": "9",
+            "session_id": "$1",
+            "pane_id": "%13",
+            "pane_pid": "7",
+            "pane_current_command": "grok",
+            "session_name": "s"
+          },
+          "account": {
+            "account": "main",
+            "accountEmail": ""
+          },
+          "cmdline": [
+            "grok",
+            "--model",
+            "grok-4.6"
+          ],
+          "glob": [],
+          "link": "",
+          "transcript": {},
+          "grok": {
+            "sessionId": "g1",
+            "model": "grok-4.5",
+            "effort": "",
+            "lastActiveAt": "t"
+          },
+          "acp": {},
+          "visible": {},
+          "start": "1234",
+          "environ": {},
+          "snap": {
+            "resume_id": "g1"
+          }
+        },
+        {
+          "agent": "acp",
+          "pid": 14,
+          "session": "s",
+          "pane": "%14",
+          "now": 1791115200.25,
+          "identity": {
+            "socket_path": "/tmp/tmux-1/default",
+            "pid": "42",
+            "server_start": "9",
+            "session_id": "$1",
+            "pane_id": "%14",
+            "pane_pid": "7",
+            "pane_current_command": "acp",
+            "session_name": "s"
+          },
+          "account": {
+            "account": "main",
+            "accountEmail": ""
+          },
+          "cmdline": [
+            "cc-acp",
+            "--model",
+            "x"
+          ],
+          "glob": [],
+          "link": "",
+          "transcript": {},
+          "grok": {},
+          "acp": {
+            "pid": 14,
+            "sessionId": "a1",
+            "agent": "codex",
+            "account": "work",
+            "observedModel": "gpt-5.6-sol",
+            "observedEffort": "high",
+            "requestedModel": "",
+            "model": "gpt-5.5",
+            "effortSource": "protocol"
+          },
+          "visible": {},
+          "start": "1234",
+          "environ": {},
+          "snap": {
+            "acp": {
+              "sessionId": "a1"
+            }
+          }
+        },
+        {
+          "agent": "acp",
+          "pid": 15,
+          "session": "s",
+          "pane": "%15",
+          "now": 1791115200.25,
+          "identity": {
+            "socket_path": "/tmp/tmux-1/default",
+            "pid": "42",
+            "server_start": "9",
+            "session_id": "$1",
+            "pane_id": "%15",
+            "pane_pid": "7",
+            "pane_current_command": "acp",
+            "session_name": "s"
+          },
+          "account": {
+            "account": "main",
+            "accountEmail": ""
+          },
+          "cmdline": [
+            "acp"
+          ],
+          "glob": [],
+          "link": "",
+          "transcript": {},
+          "grok": {},
+          "acp": {
+            "pid": 99,
+            "sessionId": "a2",
+            "agent": "codex"
+          },
+          "visible": {},
+          "start": "1234",
+          "environ": {},
+          "snap": {
+            "acp": {
+              "sessionId": "a2"
+            }
+          }
+        },
+        {
+          "agent": "opencode",
+          "pid": 16,
+          "session": "s",
+          "pane": "%16",
+          "now": 1791115200.25,
+          "identity": {
+            "socket_path": "/tmp/tmux-1/default",
+            "pid": "42",
+            "server_start": "9",
+            "session_id": "$1",
+            "pane_id": "%16",
+            "pane_pid": "7",
+            "pane_current_command": "opencode",
+            "session_name": "s"
+          },
+          "account": {
+            "account": "main",
+            "accountEmail": ""
+          },
+          "cmdline": [
+            "opencode"
+          ],
+          "glob": [],
+          "link": "",
+          "transcript": {},
+          "grok": {},
+          "acp": {},
+          "visible": {},
+          "start": "1234",
+          "environ": {},
+          "snap": {
+            "resume_id": "o1",
+            "nativeMetadata": {
+              "sessionId": "o1",
+              "model": "opencode/big",
+              "effort": "max",
+              "updatedAt": 5
+            }
+          }
+        },
+        {
+          "agent": "gemini",
+          "pid": 17,
+          "session": "s",
+          "pane": "%17",
+          "now": 1791115200.25,
+          "identity": {
+            "socket_path": "/tmp/tmux-1/default",
+            "pid": "42",
+            "server_start": "9",
+            "session_id": "$1",
+            "pane_id": "%17",
+            "pane_pid": "7",
+            "pane_current_command": "gemini",
+            "session_name": "s"
+          },
+          "account": {
+            "account": "main",
+            "accountEmail": ""
+          },
+          "cmdline": [
+            "gemini"
+          ],
+          "glob": [],
+          "link": "",
+          "transcript": {},
+          "grok": {},
+          "acp": {},
+          "visible": {},
+          "start": "1234",
+          "environ": {},
+          "snap": {}
+        },
+        {
+          "agent": "codex",
+          "pid": 18,
+          "session": "s",
+          "pane": "%18",
+          "now": 1791115200.25,
+          "identity": {
+            "socket_path": "/tmp/tmux-1/default",
+            "pid": "42",
+            "server_start": "9",
+            "session_id": "$1",
+            "pane_id": "%18",
+            "pane_pid": "7",
+            "pane_current_command": "codex",
+            "session_name": "s"
+          },
+          "account": {
+            "account": "main",
+            "accountEmail": ""
+          },
+          "cmdline": [
+            "node",
+            "--model",
+            "gpt-5.5",
+            "-c",
+            "model_reasoning_effort='low'"
+          ],
+          "glob": [],
+          "link": "",
+          "transcript": {},
+          "grok": {},
+          "acp": {},
+          "visible": {},
+          "start": "1234",
+          "environ": {},
+          "snap": {}
+        }
+      ]
+    }
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbe1wiaGFybmVzc1wiOiBcImNvZGV4XCIsIFwicGlkXCI6IDExLCBcImNvbnZlcnNhdGlvbklkXCI6IFwiYzFcIiwgXCJtb2RlbFwiOiBcImdwdC01LjYtc29sXCIsIFwiZWZmb3J0XCI6IFwieGhpZ2hcIiwgXCJzb3VyY2VcIjogXCJjb252ZXJzYXRpb25cIiwgXCJvYnNlcnZlZEF0XCI6IDE3OTExMTUyMDAuMjUsIFwiaWRlbnRpdHlcIjogXCIvdG1wL3RtdXgtMS9kZWZhdWx0fDQyfDl8JDF8JTExfDdcIiwgXCJoYXJuZXNzQWNjb3VudFwiOiBcIndvcmtcIiwgXCJldmlkZW5jZUF0XCI6IDE3OTExMTUyMDAuMjUsIFwibW90b3JcIjogXCJjb2RleFwiLCBcIm1vdG9yQWNjb3VudFwiOiBcIndvcmtcIiwgXCJjb25maXJtZWRcIjogdHJ1ZSwgXCJhY2NvdW50U291cmNlXCI6IFwicHJvY2Vzcy1lbnZpcm9ubWVudFwiLCBcImxpbWl0YXRpb25zXCI6IFtdfSwge1wiaGFybmVzc1wiOiBcImNvZGV4XCIsIFwicGlkXCI6IDExLCBcImNvbnZlcnNhdGlvbklkXCI6IFwiYzFcIiwgXCJtb2RlbFwiOiBcImdwdC01LjYtbHVuYVwiLCBcImVmZm9ydFwiOiBcImxvd1wiLCBcInNvdXJjZVwiOiBcInBhbmVcIiwgXCJvYnNlcnZlZEF0XCI6IDE3OTExMTUyMDMuMjUsIFwiaWRlbnRpdHlcIjogXCIvdG1wL3RtdXgtMS9kZWZhdWx0fDQyfDl8JDF8JTExfDdcIiwgXCJoYXJuZXNzQWNjb3VudFwiOiBcIndvcmtcIiwgXCJldmlkZW5jZUF0XCI6IDE3OTExMTUyMDMuMjUsIFwibW90b3JcIjogXCJjb2RleFwiLCBcIm1vdG9yQWNjb3VudFwiOiBcIndvcmtcIiwgXCJjb25maXJtZWRcIjogdHJ1ZSwgXCJhY2NvdW50U291cmNlXCI6IFwicHJvY2Vzcy1lbnZpcm9ubWVudFwiLCBcImxpbWl0YXRpb25zXCI6IFtdfSwge1wiaGFybmVzc1wiOiBcImNsYXVkZVwiLCBcInBpZFwiOiAxMiwgXCJjb252ZXJzYXRpb25JZFwiOiBcInMyXCIsIFwibW9kZWxcIjogXCJncHQtNS42LWx1bmFcIiwgXCJlZmZvcnRcIjogXCJcIiwgXCJzb3VyY2VcIjogXCJjb252ZXJzYXRpb25cIiwgXCJvYnNlcnZlZEF0XCI6IDE3OTExMTUyMDAuMjUsIFwiaWRlbnRpdHlcIjogXCIvdG1wL3RtdXgtMS9kZWZhdWx0fDQyfDl8JDF8JTEyfDdcIiwgXCJoYXJuZXNzQWNjb3VudFwiOiBcInVua25vd25cIiwgXCJldmlkZW5jZUF0XCI6IDE3OTExMTUyMDAuMjUsIFwibW90b3JcIjogXCJjb2RleFwiLCBcIm1vdG9yQWNjb3VudFwiOiBcIm1haW5cIiwgXCJjb25maXJtZWRcIjogdHJ1ZSwgXCJhY2NvdW50U291cmNlXCI6IFwicHJvY2Vzcy1lbnZpcm9ubWVudFwiLCBcImxpbWl0YXRpb25zXCI6IFtcImVmZm9ydC11bm9ic2VydmVkXCJdfSwge1wiaGFybmVzc1wiOiBcImdyb2tcIiwgXCJwaWRcIjogMTMsIFwiY29udmVyc2F0aW9uSWRcIjogXCJnMVwiLCBcIm1vZGVsXCI6IFwiZ3Jvay00LjVcIiwgXCJlZmZvcnRcIjogXCJcIiwgXCJzb3VyY2VcIjogXCJjb252ZXJzYXRpb25cIiwgXCJvYnNlcnZlZEF0XCI6IDE3OTExMTUyMDAuMjUsIFwiaWRlbnRpdHlcIjogXCIvdG1wL3RtdXgtMS9kZWZhdWx0fDQyfDl8JDF8JTEzfDdcIiwgXCJoYXJuZXNzQWNjb3VudFwiOiBcIm1haW5cIiwgXCJldmlkZW5jZUF0XCI6IDE3OTExMTUyMDAuMjUsIFwibW90b3JcIjogXCJncm9rXCIsIFwibW90b3JBY2NvdW50XCI6IFwibWFpblwiLCBcImNvbmZpcm1lZFwiOiB0cnVlLCBcImFjY291bnRTb3VyY2VcIjogXCJwcm9jZXNzLWVudmlyb25tZW50XCIsIFwibGltaXRhdGlvbnNcIjogW1wiZWZmb3J0LXVub2JzZXJ2ZWRcIl19LCB7XCJoYXJuZXNzXCI6IFwiYWNwXCIsIFwicGlkXCI6IDE0LCBcImNvbnZlcnNhdGlvbklkXCI6IFwiYTFcIiwgXCJtb2RlbFwiOiBcImdwdC01LjYtc29sXCIsIFwiZWZmb3J0XCI6IFwiaGlnaFwiLCBcInNvdXJjZVwiOiBcImNvbnZlcnNhdGlvblwiLCBcIm9ic2VydmVkQXRcIjogMTc5MTExNTIwMC4yNSwgXCJpZGVudGl0eVwiOiBcIi90bXAvdG11eC0xL2RlZmF1bHR8NDJ8OXwkMXwlMTR8N1wiLCBcImhhcm5lc3NBY2NvdW50XCI6IFwibWFpblwiLCBcIm1vdG9yXCI6IFwiY29kZXhcIiwgXCJtb3RvckFjY291bnRcIjogXCJ3b3JrXCIsIFwiZWZmb3J0U291cmNlXCI6IFwicHJvdG9jb2xcIiwgXCJyZXF1ZXN0ZWRNb2RlbFwiOiBcImdwdC01LjVcIiwgXCJyZXF1ZXN0ZWRFZmZvcnRcIjogXCJcIiwgXCJldmlkZW5jZUF0XCI6IDE3OTExMTUyMDAuMjUsIFwiY29uZmlybWVkXCI6IHRydWUsIFwiYWNjb3VudFNvdXJjZVwiOiBcImFjcC1zdGF0ZVwiLCBcImxpbWl0YXRpb25zXCI6IFtdfSwge1wiaGFybmVzc1wiOiBcImFjcFwiLCBcInBpZFwiOiAxNSwgXCJjb252ZXJzYXRpb25JZFwiOiBcImEyXCIsIFwibW9kZWxcIjogXCJcIiwgXCJlZmZvcnRcIjogXCJcIiwgXCJzb3VyY2VcIjogXCJjb252ZXJzYXRpb25cIiwgXCJvYnNlcnZlZEF0XCI6IDE3OTExMTUyMDAuMjUsIFwiaWRlbnRpdHlcIjogXCIvdG1wL3RtdXgtMS9kZWZhdWx0fDQyfDl8JDF8JTE1fDdcIiwgXCJoYXJuZXNzQWNjb3VudFwiOiBcIm1haW5cIiwgXCJtb3RvclwiOiBcImFjcFwiLCBcIm1vdG9yQWNjb3VudFwiOiBcInVua25vd25cIiwgXCJlZmZvcnRTb3VyY2VcIjogXCJ1bmNvbmZpcm1lZFwiLCBcInJlcXVlc3RlZE1vZGVsXCI6IFwiXCIsIFwicmVxdWVzdGVkRWZmb3J0XCI6IFwiXCIsIFwiZXZpZGVuY2VBdFwiOiAxNzkxMTE1MjAwLjI1LCBcImNvbmZpcm1lZFwiOiBmYWxzZSwgXCJhY2NvdW50U291cmNlXCI6IFwiYWNwLXN0YXRlXCIsIFwibGltaXRhdGlvbnNcIjogW1wiZWZmb3J0LXVub2JzZXJ2ZWRcIl19LCB7XCJoYXJuZXNzXCI6IFwib3BlbmNvZGVcIiwgXCJwaWRcIjogMTYsIFwiY29udmVyc2F0aW9uSWRcIjogXCJvMVwiLCBcIm1vZGVsXCI6IFwib3BlbmNvZGUvYmlnXCIsIFwiZWZmb3J0XCI6IFwibWF4XCIsIFwic291cmNlXCI6IFwiY29udmVyc2F0aW9uXCIsIFwib2JzZXJ2ZWRBdFwiOiAxNzkxMTE1MjAwLjI1LCBcImlkZW50aXR5XCI6IFwiL3RtcC90bXV4LTEvZGVmYXVsdHw0Mnw5fCQxfCUxNnw3XCIsIFwiaGFybmVzc0FjY291bnRcIjogXCJtYWluXCIsIFwiZXZpZGVuY2VBdFwiOiAxNzkxMTE1MjAwLjI1LCBcIm1vdG9yXCI6IFwib3BlbmNvZGVcIiwgXCJtb3RvckFjY291bnRcIjogXCJtYWluXCIsIFwiY29uZmlybWVkXCI6IHRydWUsIFwiYWNjb3VudFNvdXJjZVwiOiBcInByb2Nlc3MtZW52aXJvbm1lbnRcIiwgXCJsaW1pdGF0aW9uc1wiOiBbXCJuYXRpdmUtcnVudGltZS1zdGF0ZS11bmF2YWlsYWJsZVwiXX0sIHtcImhhcm5lc3NcIjogXCJnZW1pbmlcIiwgXCJwaWRcIjogMTcsIFwiY29udmVyc2F0aW9uSWRcIjogXCJcIiwgXCJtb2RlbFwiOiBcIlwiLCBcImVmZm9ydFwiOiBcIlwiLCBcInNvdXJjZVwiOiBcInVuY29uZmlybWVkXCIsIFwib2JzZXJ2ZWRBdFwiOiAxNzkxMTE1MjAwLjI1LCBcImlkZW50aXR5XCI6IFwiL3RtcC90bXV4LTEvZGVmYXVsdHw0Mnw5fCQxfCUxN3w3XCIsIFwiaGFybmVzc0FjY291bnRcIjogXCJtYWluXCIsIFwibW90b3JcIjogXCJnZW1pbmlcIiwgXCJtb3RvckFjY291bnRcIjogXCJtYWluXCIsIFwiY29uZmlybWVkXCI6IGZhbHNlLCBcImFjY291bnRTb3VyY2VcIjogXCJwcm9jZXNzLWVudmlyb25tZW50XCIsIFwibGltaXRhdGlvbnNcIjogW1wibmF0aXZlLXJ1bnRpbWUtc3RhdGUtdW5hdmFpbGFibGVcIiwgXCJlZmZvcnQtdW5vYnNlcnZlZFwiXX0sIHtcImhhcm5lc3NcIjogXCJjb2RleFwiLCBcInBpZFwiOiAxOCwgXCJjb252ZXJzYXRpb25JZFwiOiBcIlwiLCBcIm1vZGVsXCI6IFwiZ3B0LTUuNVwiLCBcImVmZm9ydFwiOiBcImxvd1wiLCBcInNvdXJjZVwiOiBcInByb2Nlc3NcIiwgXCJvYnNlcnZlZEF0XCI6IDE3OTExMTUyMDAuMjUsIFwiaWRlbnRpdHlcIjogXCIvdG1wL3RtdXgtMS9kZWZhdWx0fDQyfDl8JDF8JTE4fDdcIiwgXCJoYXJuZXNzQWNjb3VudFwiOiBcIm1haW5cIiwgXCJtb3RvclwiOiBcImNvZGV4XCIsIFwibW90b3JBY2NvdW50XCI6IFwibWFpblwiLCBcImNvbmZpcm1lZFwiOiBmYWxzZSwgXCJhY2NvdW50U291cmNlXCI6IFwicHJvY2Vzcy1lbnZpcm9ubWVudFwiLCBcImxpbWl0YXRpb25zXCI6IFtdfV1cbiIsIm1vZGVscyI6bnVsbH0="
+}
