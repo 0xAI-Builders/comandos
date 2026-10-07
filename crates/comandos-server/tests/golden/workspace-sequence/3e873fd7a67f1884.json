@@ -1,0 +1,23 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "clock_ms": 1791115200000,
+      "request": {
+        "method": "POST",
+        "target": "/workspace",
+        "extra": "",
+        "body": "{\"document\":{\"bindings\":{\"k-s1\":{\"conversation\":{\"agent\":\"claude\",\"id\":\"r1\"},\"paneId\":\"%1\",\"pid\":4242,\"session\":\"s1\",\"startTime\":17.5},\"k-s2\":{\"conversation\":{\"agent\":\"acp\",\"id\":\"acp-1\"},\"paneId\":\"%1\",\"pid\":7,\"session\":\"s2\",\"startTime\":null}},\"groups\":[{\"id\":\"group-local\",\"tree\":{\"tabId\":\"local\",\"type\":\"tab\"}},{\"id\":\"group-s2\",\"tree\":{\"tabId\":\"s2\",\"type\":\"tab\"}},{\"id\":\"group-s1\",\"tree\":{\"tabId\":\"s1\",\"type\":\"tab\"}}],\"schema\":1,\"tabs\":{\"local\":{\"label\":\"⌂ local\",\"paneKeys\":[],\"session\":\"local\"},\"s1\":{\"label\":\"Uno ñ\",\"paneKeys\":[\"k-s1\"],\"session\":\"s1\"},\"s2\":{\"label\":\"Dos\",\"paneKeys\":[\"k-s2\"],\"session\":\"s2\"}}},\"expectedRevision\":1}"
+      },
+      "effect_files": [
+        ".claude/hooks/app-tabs.json",
+        ".claude/hooks/prefs.json"
+      ],
+      "oracle_sequence": 31
+    },
+    "before_sha256": "17bf94c81841f79012c8afe7bb3c3fe1b0c7ab5e883b34dbb1010e7c37cd9cd0"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjo0MDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCIzNlwiXV0sXCJib2R5XCI6WzEyMywzNCwxMDEsMTE0LDExNCwxMTEsMTE0LDM0LDU4LDMyLDM0LDExNCwxMDEsMTEzLDExNywxMDEsMTE1LDExNiw3MywxMDAsMzIsMTA1LDExMCwxMTgsOTIsMTE3LDQ4LDQ4LDEwMSw0OSwxMDgsMTA1LDEwMCwxMTEsMzQsMTI1XX0iLCJ0cmVlIjp7Ii5jbGF1ZGUiOnsia2luZCI6ImRpcmVjdG9yeSIsIm1vZGUiOjUwOX0sIi5jbGF1ZGUvaG9va3MiOnsia2luZCI6ImRpcmVjdG9yeSIsIm1vZGUiOjUwOX0sIi5jbGF1ZGUvaG9va3MvYXBwLXRhYnMuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJleUp6TVNJNklDSlZibThndzdFaUxDQWljeklpT2lBaVJHOXpJaXdnSW1oMVlpSTZJQ0pQWTNWc2RHRWlMQ0FpYldGc0lHNXZiV0p5WlNJNklDSjRJaXdnSW5Neklqb2dJaUo5In0sIi5jbGF1ZGUvaG9va3MvcHJlZnMuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJleUptWVhadmNtbDBaWE1pT2lCYkluTXlJbDE5In19fQ=="
+}

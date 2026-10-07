@@ -4,8 +4,28 @@ mod support;
 use serde_json::{Value, json};
 use std::{process::Stdio, sync::Arc};
 use support::{
-    FakeLegacy, TestHome, Wire, dead_port, front, get, oracle::oracle, request_body, tmux_available,
+    FakeLegacy, TestHome, Wire, dead_port, front, get, http_golden::FrozenHttp, request_body,
+    tmux_available,
 };
+
+fn pin_fixture_schema(home: &TestHome) {
+    let conn = comandos_runtime::open_state(&home.state_db(), 5000).unwrap();
+    conn.execute(
+        "UPDATE schema_migrations SET applied_at=?",
+        [support::NOW_MS as f64 / 1000.0],
+    )
+    .unwrap();
+}
+
+fn shared_native_startup_policy(home: &TestHome) {
+    let conn = comandos_runtime::open_state(&home.state_db(), 5000).unwrap();
+    comandos_store::focus::ensure_policy(
+        &conn,
+        &comandos_core::focus::policy_v1(),
+        support::NOW_MS,
+    )
+    .unwrap();
+}
 
 fn parse(text: &str) -> Value {
     serde_json::from_str(text).unwrap()
@@ -344,29 +364,65 @@ async fn exotic_inputs_decline_to_legacy() {
 #[tokio::test]
 async fn workspace_sync_interop_no_duplicate_revision() {
     let home = TestHome::new("ws-interop");
+    pin_fixture_schema(&home);
     home.write("app-tabs.json", r#"{"s1": "Uno"}"#);
     let front = front(&home, dead_port(), home.options()).await;
-    let Some(py) = oracle(&home).await else {
-        front.stop().await;
-        return;
-    };
+    shared_native_startup_policy(&home);
+    let py = FrozenHttp::new_rooted_with(
+        &home,
+        "workspace-shared",
+        &[
+            ".local/state/comandos/app-state.sqlite3",
+            ".claude/hooks/app-tabs.json",
+            ".claude/hooks/prefs.json",
+        ],
+        "",
+    )
+    .await;
     let rs = get(front.port, "/workspace").await.text();
-    let python = get(py.port, "/workspace").await.text();
+    let python = py.get("/workspace").await.text();
     assert_eq!(rs, python, "mismos bytes y misma revisión");
     assert_eq!(parse(&rs)["revision"], 1);
     home.write("app-tabs.json", r#"{"s1": "Uno", "s2": "Dos"}"#);
     // Veinte sincronizaciones concurrentes, mitad en cada proceso.
     let mut tasks = Vec::new();
     for i in 0..20 {
-        let port = if i % 2 == 0 { front.port } else { py.port };
+        let port = if i % 2 == 0 {
+            front.port
+        } else {
+            py.source_port().unwrap_or(front.port)
+        };
         tasks.push(tokio::spawn(
             async move { get(port, "/workspace").await.text() },
         ));
     }
     let mut bodies = Vec::new();
-    for task in tasks {
-        bodies.push(task.await.unwrap());
+    let mut source_bodies = Vec::new();
+    for (i, task) in tasks.into_iter().enumerate() {
+        let body = task.await.unwrap();
+        if i % 2 == 1 && py.source_port().is_some() {
+            source_bodies.push(body.clone());
+        }
+        bodies.push(body);
     }
+    let expected = comandos_oracle::oracle_at(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "workspace-concurrent",
+        &json!({"source":support::frozen::SOURCE_COMMIT,"python":"3.10.12",
+            "clock_ms":support::NOW_MS,"target":"/workspace","requests":20,"source_requests":10,
+            "before_tabs":{"s1":"Uno"},"after_tabs":{"s1":"Uno","s2":"Dos"}}),
+        || {
+            assert_eq!(source_bodies.len(), 10);
+            serde_json::to_vec(&source_bodies).map_err(|e| e.to_string())
+        },
+    );
+    let expected: Vec<String> = serde_json::from_slice(&expected).unwrap();
+    assert_eq!(expected.len(), 10);
+    assert!(
+        bodies
+            .iter()
+            .all(|body| expected.iter().all(|source| source == body))
+    );
     assert!(
         bodies.iter().all(|b| *b == bodies[0]),
         "todas ven el mismo acomodo"
@@ -398,7 +454,7 @@ async fn workspace_sync_interop_no_duplicate_revision() {
         "/workspace/client?deviceId=x",
         "/workspace/close-group?groupId=nope",
     ] {
-        let (a, b) = (get(py.port, target).await, get(front.port, target).await);
+        let (a, b) = (py.get(target).await, get(front.port, target).await);
         assert_eq!((a.status, a.text()), (b.status, b.text()), "{target}");
     }
     front.stop().await;
@@ -442,20 +498,26 @@ async fn every_route_and_error_matches_python_oracle() {
         seed(home);
         identities &= tmux_sessions(home, &["s1", "s2"]);
     }
+    pin_fixture_schema(&py_home);
+    pin_fixture_schema(&rs_home);
     let mut opts = rs_home.options();
-    opts.clock = Arc::new(comandos_server::dash::native::wall_clock_ms);
+    opts.clock = Arc::new(|| support::NOW_MS);
     let front = front(&rs_home, dead_port(), opts).await;
-    let Some(py) = oracle(&py_home).await else {
-        front.stop().await;
-        return;
-    };
+    let mut py = FrozenHttp::new_rooted_with(
+        &py_home,
+        "workspace-sequence",
+        &[".claude/hooks/app-tabs.json", ".claude/hooks/prefs.json"],
+        "",
+    )
+    .await;
+    py.sequence_requests();
     let mut step = 0;
     let mut both = async |method: &str, path: &str, body: Option<String>| -> Value {
         step += 1;
         let (a, b) = match &body {
-            None => (get(py.port, path).await, get(front.port, path).await),
+            None => (py.get(path).await, get(front.port, path).await),
             Some(body) => (
-                request_body(py.port, method, path, "", body).await,
+                py.request(method, path, "", body).await,
                 request_body(front.port, method, path, "", body).await,
             ),
         };
@@ -565,6 +627,7 @@ async fn every_route_and_error_matches_python_oracle() {
 #[tokio::test]
 async fn snapshot_edges_match_python_oracle() {
     let home = TestHome::new("ws-snap-edges");
+    pin_fixture_schema(&home);
     home.write("app-tabs.json", r#"{"s1": "Uno"}"#);
     let pane = |extra: Value| {
         let mut pane = json!({"id": "%1", "active": true, "key": "k1"});
@@ -578,12 +641,20 @@ async fn snapshot_edges_match_python_oracle() {
     };
     home.write("app-sessions-v2.json", &pane(json!({"acp": "x"})));
     let front = front(&home, dead_port(), home.options()).await;
-    let Some(py) = oracle(&home).await else {
-        front.stop().await;
-        return;
-    };
+    shared_native_startup_policy(&home);
+    let py = FrozenHttp::new_rooted_with(
+        &home,
+        "workspace-shared",
+        &[
+            ".local/state/comandos/app-state.sqlite3",
+            ".claude/hooks/app-tabs.json",
+            ".claude/hooks/prefs.json",
+        ],
+        "",
+    )
+    .await;
     let (a, b) = (
-        get(py.port, "/workspace").await,
+        py.get("/workspace").await,
         get(front.port, "/workspace").await,
     );
     assert_eq!(seen(&a), seen(&b));
@@ -599,7 +670,7 @@ async fn snapshot_edges_match_python_oracle() {
         &pane(json!({"resume_id": "r9"})),
     );
     let rs = get(front.port, "/workspace").await;
-    let python = get(py.port, "/workspace").await;
+    let python = py.get("/workspace").await;
     assert_eq!(seen(&rs), seen(&python));
     assert_eq!(
         parse(&rs.text())["bindings"]["k1"]["conversation"]["id"],
@@ -613,14 +684,25 @@ async fn snapshot_edges_match_python_oracle() {
 #[tokio::test]
 async fn client_mixed_stamps_forward_to_python_500() {
     let home = TestHome::new("ws-mixed-stamps");
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
-    let front = front(&home, py.port, home.options()).await;
-    let direct = request_body(py.port, "POST", "/workspace/client", "", MIXED_STAMPS).await;
+    pin_fixture_schema(&home);
+    shared_native_startup_policy(&home);
+    let py = FrozenHttp::new_rooted_with(
+        &home,
+        "workspace-mixed-stamps",
+        &[".local/state/comandos/app-state.sqlite3"],
+        "",
+    )
+    .await;
+    let direct = py
+        .request("POST", "/workspace/client", "", MIXED_STAMPS)
+        .await;
+    let legacy =
+        support::FixedLegacy::start(direct.status, Box::leak(direct.text().into_boxed_str())).await;
+    let front = front(&home, legacy.port, home.options()).await;
     let forwarded = request_body(front.port, "POST", "/workspace/client", "", MIXED_STAMPS).await;
     assert_eq!(direct.status, 500, "{}", direct.text());
     assert_eq!(seen(&direct), seen(&forwarded));
+    assert_eq!(legacy.requests(), ["POST /workspace/client HTTP/1.1"]);
     let conn = rusqlite::Connection::open(home.state_db()).unwrap();
     let clients: i64 = conn
         .query_row("SELECT COUNT(*) FROM workspace_clients", [], |r| r.get(0))
@@ -649,15 +731,21 @@ async fn sort_by_matches_python_oracle() {
     for home in [&py_home, &rs_home] {
         seed_by(home);
     }
+    pin_fixture_schema(&py_home);
+    pin_fixture_schema(&rs_home);
     let mut opts = rs_home.options();
-    opts.clock = Arc::new(comandos_server::dash::native::wall_clock_ms);
+    opts.clock = Arc::new(|| support::NOW_MS);
     let front = front(&rs_home, dead_port(), opts).await;
-    let Some(py) = oracle(&py_home).await else {
-        front.stop().await;
-        return;
-    };
+    let mut py = FrozenHttp::new_rooted_with(
+        &py_home,
+        "workspace-sequence",
+        &[".claude/hooks/app-tabs.json", ".claude/hooks/prefs.json"],
+        "",
+    )
+    .await;
+    py.sequence_requests();
     let (a, b) = (
-        get(py.port, "/workspace").await,
+        py.get("/workspace").await,
         get(front.port, "/workspace").await,
     );
     assert_eq!(seen(&a), seen(&b));
@@ -672,7 +760,7 @@ async fn sort_by_matches_python_oracle() {
         (r#"{"by": null}"#, 400),
         (r#"{}"#, 400),
     ] {
-        let expected = request_body(py.port, "POST", "/workspace/sort", "", body).await;
+        let expected = py.request("POST", "/workspace/sort", "", body).await;
         let got = request_body(front.port, "POST", "/workspace/sort", "", body).await;
         assert_eq!(seen(&got), seen(&expected), "{body}");
         assert_eq!(got.status, status, "{body}: {}", got.text());
@@ -689,7 +777,7 @@ async fn sort_by_matches_python_oracle() {
         home.write("app-tabs.json", "[1]");
     }
     let body = r#"{"by": "alpha"}"#;
-    let expected = request_body(py.port, "POST", "/workspace/sort", "", body).await;
+    let expected = py.request("POST", "/workspace/sort", "", body).await;
     let got = request_body(front.port, "POST", "/workspace/sort", "", body).await;
     assert_eq!(
         (got.status, got.text()),

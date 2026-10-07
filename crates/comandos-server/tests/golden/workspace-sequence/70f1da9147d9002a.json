@@ -1,0 +1,23 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "clock_ms": 1791115200000,
+      "request": {
+        "method": "POST",
+        "target": "/workspace/sort",
+        "extra": "",
+        "body": "{\"by\": null}"
+      },
+      "effect_files": [
+        ".claude/hooks/app-tabs.json",
+        ".claude/hooks/prefs.json"
+      ],
+      "oracle_sequence": 7
+    },
+    "before_sha256": "bed8e038a96dc6010b19d08d18a1f94677955a7dc7885ef4346cd18ca317c557"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjo0MDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCIzMFwiXV0sXCJib2R5XCI6WzEyMywzNCwxMDEsMTE0LDExNCwxMTEsMTE0LDM0LDU4LDMyLDM0LDc5LDExNCwxMDAsMTAxLDExMCwzMiwxMDAsMTAxLDExNSw5OSwxMTEsMTEwLDExMSw5OSwxMDUsMTAwLDExMSwzNCwxMjVdfSIsInRyZWUiOnsiLmNsYXVkZSI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmNsYXVkZS9ob29rcyI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmNsYXVkZS9ob29rcy9hcHAtdGFicy5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImV5SmlaWFJoSWpvZ0lrSmxkR0VpTENBaVlXeG1ZU0k2SUNKQmJHWmhJbjA9In0sIi5jbGF1ZGUvaG9va3MvcHJlZnMuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJleUptWVhadmNtbDBaWE1pT2lCYkltRnNabUVpWFgwPSJ9fX0="
+}
