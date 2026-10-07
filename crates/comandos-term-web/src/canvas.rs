@@ -31,6 +31,7 @@ use comandos_term::{
     render::{CursorShape, CursorView, Run, RunKind, Underline},
 };
 mod box_index;
+mod pattern_key;
 use box_index::BoxIndex;
 use std::{
     borrow::Borrow,
@@ -1205,7 +1206,7 @@ impl BoxCache {
 
 /// Tramas ░▒▓ por color (xterm.js las guarda por `fillStyle`), acotadas.
 struct PatternCache {
-    patterns: Bounded<(usize, [u8; 3]), CanvasPattern>,
+    patterns: Bounded<pattern_key::Key, CanvasPattern>,
 }
 
 /// Tramas guardadas como mucho (3 máscaras × colores en pantalla).
@@ -1230,7 +1231,7 @@ impl PatternCache {
         mask: &'static [&'static [u8]],
         color: [u8; 3],
     ) -> Result<CanvasPattern, JsValue> {
-        let key = (mask.as_ptr() as usize, color);
+        let key = pattern_key::key(mask.as_ptr() as usize, color);
         if let Some(p) = self.patterns.get(&key) {
             return Ok(p.clone());
         }
