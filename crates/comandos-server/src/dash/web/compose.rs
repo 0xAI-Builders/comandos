@@ -37,23 +37,13 @@ impl Selection {
         )
     }
     pub fn load_domain(home: &Path, path: &Path) -> Self {
-        comandos_store::unified::with_readonly_access(home, "ui-docs", |mode, db| {
-            if matches!(
-                mode,
-                comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed
-            ) {
-                let body = db
-                    .map(|db| comandos_store::unified::doc_get(db, "hooks/comandos-web.json"))
-                    .transpose()?
-                    .flatten();
-                Ok(body
-                    .and_then(|doc| String::from_utf8(doc.body).ok())
-                    .map_or_else(Self::empty, |text| Self::from_text(&text)))
-            } else {
-                Ok(Self::load(path))
-            }
-        })
-        .unwrap_or_else(|_| Self::empty())
+        comandos_store::domains::DomainStore { home }
+            .document("hooks/comandos-web.json", "ui-docs", path.to_owned())
+            .read_readonly()
+            .ok()
+            .flatten()
+            .and_then(|body| String::from_utf8(body).ok())
+            .map_or_else(Self::empty, |text| Self::from_text(&text))
     }
 
     pub fn refresh(&mut self, path: &Path) {

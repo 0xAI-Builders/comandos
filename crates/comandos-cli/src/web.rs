@@ -1,7 +1,8 @@
+use comandos_store::domains::caller::CallerAccess;
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
-    env, fs,
+    env,
     io::{Read, Write},
     net::TcpStream,
     path::PathBuf,
@@ -9,6 +10,7 @@ use std::{
 };
 
 const INVENTORY: &str = include_str!("../../../xtask/web/inventory.json");
+const SELECTION_DOC: &str = "hooks/comandos-web.json";
 
 pub fn main(args: &[String]) -> i32 {
     match run(args) {
@@ -32,38 +34,53 @@ fn set(id: &str, mode: &str) -> Result<(), (i32, String)> {
     if !known_ids().contains(id) {
         return Err((2, format!("comandos web: componente desconocido: {id}")));
     }
-    let path = selection_path()?;
-    let mut on = BTreeSet::new();
-    let mut shadow = BTreeSet::new();
-    if let Ok(text) = fs::read_to_string(&path)
-        && let Ok(value) = serde_json::from_str::<Value>(&text)
-    {
-        on = strings(&value, "on");
-        shadow = strings(&value, "shadow");
+    if !matches!(mode, "on" | "shadow" | "off") {
+        return Err((2, usage()));
     }
-    on.remove(id);
-    shadow.remove(id);
-    match mode {
-        "on" => {
-            on.insert(id.to_string());
-        }
-        "shadow" => {
-            shadow.insert(id.to_string());
-        }
-        "off" => {}
-        _ => return Err((2, usage())),
-    }
-    let value = json!({
-        "on": on.into_iter().collect::<Vec<_>>(),
-        "shadow": shadow.into_iter().collect::<Vec<_>>(),
-    });
-    let text = serde_json::to_string(&value).map_err(|e| {
-        (
-            1,
-            format!("comandos web: no se pudo serializar selección: {e}"),
+    let (access, path) = selection_access()?;
+    let mut lock = path.as_os_str().to_owned();
+    lock.push(".lock");
+    access
+        .update_document(
+            SELECTION_DOC,
+            "ui-docs",
+            &path,
+            &PathBuf::from(lock),
+            chrono::Utc::now().timestamp_millis(),
+            |old| {
+                let mut on = BTreeSet::new();
+                let mut shadow = BTreeSet::new();
+                if let Some(value) = old
+                    .and_then(|bytes| std::str::from_utf8(bytes).ok())
+                    .and_then(|text| serde_json::from_str::<Value>(text).ok())
+                {
+                    on = strings(&value, "on");
+                    shadow = strings(&value, "shadow");
+                }
+                on.remove(id);
+                shadow.remove(id);
+                if mode == "on" {
+                    on.insert(id.to_string());
+                } else if mode == "shadow" {
+                    shadow.insert(id.to_string());
+                }
+                let value = json!({
+                    "on": on.into_iter().collect::<Vec<_>>(),
+                    "shadow": shadow.into_iter().collect::<Vec<_>>(),
+                });
+                serde_json::to_vec(&value).map(Some).map_err(|e| {
+                    comandos_store::Error::Validation(format!(
+                        "comandos web: no se pudo serializar selección: {e}"
+                    ))
+                })
+            },
+            |body| {
+                let text = std::str::from_utf8(body)
+                    .map_err(|e| comandos_store::Error::Validation(e.to_string()))?;
+                comandos_server::dash::native::files::write_text_atomic(&path, text)
+                    .map_err(comandos_store::Error::Io)
+            },
         )
-    })?;
-    comandos_server::dash::native::files::write_text_atomic(&path, &text)
         .map_err(|e| (1, format!("{}: {e}", path.display())))?;
     Ok(())
 }
@@ -75,9 +92,13 @@ fn status() -> Result<(), (i32, String)> {
             Ok(())
         }
         None => {
-            let path = selection_path()?;
-            let text =
-                fs::read_to_string(&path).unwrap_or_else(|_| "{\"on\":[],\"shadow\":[]}".into());
+            let (home, path) = selection_location()?;
+            let text = comandos_store::domains::DomainStore { home: &home }
+                .document(SELECTION_DOC, "ui-docs", path.clone())
+                .read_readonly()
+                .map_err(|e| (1, format!("{}: {e}", path.display())))?
+                .and_then(|bytes| String::from_utf8(bytes).ok())
+                .unwrap_or_else(|| "{\"on\":[],\"shadow\":[]}".into());
             println!("{text}");
             Ok(())
         }
@@ -100,12 +121,20 @@ fn get_status() -> Option<String> {
     Some(body.to_string())
 }
 
-fn selection_path() -> Result<PathBuf, (i32, String)> {
+fn selection_access() -> Result<(CallerAccess, PathBuf), (i32, String)> {
+    let (home, path) = selection_location()?;
+    let access =
+        CallerAccess::open(&home, "ui-docs").map_err(|e| (1, format!("comandos web: {e}")))?;
+    Ok((access, path))
+}
+
+fn selection_location() -> Result<(PathBuf, PathBuf), (i32, String)> {
     let home = env::var_os("HOME")
         .filter(|h| !h.is_empty())
         .map(PathBuf::from)
         .ok_or_else(|| (2, "HOME no está definido".to_string()))?;
-    Ok(home.join(".claude/hooks/comandos-web.json"))
+    let path = home.join(".claude/hooks/comandos-web.json");
+    Ok((home, path))
 }
 
 fn known_ids() -> BTreeSet<String> {

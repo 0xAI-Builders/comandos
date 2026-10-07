@@ -266,6 +266,42 @@ pub fn with_readonly_access<T>(
     name: &str,
     body: impl FnOnce(Mode, Option<&Connection>) -> Result<T>,
 ) -> Result<T> {
+    with_readonly_controls(home, name, |path| {
+        if read_identity(path)?.is_some() {
+            super::with_readonly_unified(home, path, |conn| {
+                body(mode_of(Some(conn), name)?, Some(conn))
+            })
+        } else {
+            validate_missing_readonly(path)?;
+            body(Mode::Legacy, None)
+        }
+    })
+}
+
+/// Fixed mode-only admission. The callback runs once while the original shared
+/// mode lease and ReadControls remain held; arbitrary SQL readers still use
+/// with_readonly_access and its complete snapshot.
+pub fn with_readonly_mode<T>(
+    home: &Path,
+    name: &str,
+    body: impl FnOnce(Mode) -> Result<T>,
+) -> Result<T> {
+    with_readonly_controls(home, name, |path| {
+        let mode = if read_identity(path)?.is_some() {
+            super::readonly_unified_mode(home, path, name)?
+        } else {
+            validate_missing_readonly(path)?;
+            Mode::Legacy
+        };
+        body(mode)
+    })
+}
+
+fn with_readonly_controls<T>(
+    home: &Path,
+    name: &str,
+    body: impl FnOnce(&Path) -> Result<T>,
+) -> Result<T> {
     check_domain(name)?;
     let path = super::unified_path(home);
     if !home.is_absolute() || !path.is_absolute() {
@@ -292,30 +328,28 @@ pub fn with_readonly_access<T>(
         None
     };
     controls.check(&path)?;
-    let result = if read_identity(&path)?.is_some() {
-        super::with_readonly_unified(home, &path, |conn| {
-            body(mode_of(Some(conn), name)?, Some(conn))
-        })
-    } else {
-        // No base cannot override any durable seal, including another domain.
-        for domain in crate::domains::catalog::DOMAINS {
-            if guarded(&path, domain.name)? {
-                return Err(Error::Validation(
-                    "dominio sellado y base no disponible".into(),
-                ));
-            }
-        }
-        if read_identity(&read_suffix(&path, "-wal"))?.is_some()
-            || read_identity(&read_suffix(&path, "-journal"))?.is_some()
-        {
-            return Err(Error::Validation(
-                "base ausente con WAL/journal presente".into(),
-            ));
-        }
-        body(Mode::Legacy, None)
-    };
+    let result = body(&path);
     controls.check(&path)?;
     result
+}
+
+fn validate_missing_readonly(path: &Path) -> Result<()> {
+    // No base cannot override any durable seal, including another domain.
+    for domain in crate::domains::catalog::DOMAINS {
+        if guarded(path, domain.name)? {
+            return Err(Error::Validation(
+                "dominio sellado y base no disponible".into(),
+            ));
+        }
+    }
+    if read_identity(&read_suffix(path, "-wal"))?.is_some()
+        || read_identity(&read_suffix(path, "-journal"))?.is_some()
+    {
+        return Err(Error::Validation(
+            "base ausente con WAL/journal presente".into(),
+        ));
+    }
+    Ok(())
 }
 type ReadStamp = (u64, u64, u64, u32, i64, i64, i64, i64);
 fn read_stamp(meta: &fs::Metadata) -> ReadStamp {

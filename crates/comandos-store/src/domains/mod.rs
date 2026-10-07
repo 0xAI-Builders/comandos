@@ -166,10 +166,13 @@ impl DocHandle<'_> {
         Ok(true)
     }
     pub fn read_readonly(&self) -> Result<Option<Vec<u8>>> {
-        unified::modes::with_readonly_access(self.home, self.domain, |mode, db| {
+        unified::with_readonly_mode(self.home, self.domain, |mode| {
             if matches!(mode, Mode::Unified | Mode::Sealed) {
-                let db = db.ok_or_else(|| Error::Validation("estado único sin base".into()))?;
-                return Ok(unified::doc_get(db, self.name)?.map(|d| d.body));
+                return unified::with_readonly_unified(
+                    self.home,
+                    &unified::unified_path(self.home),
+                    |db| Ok(unified::doc_get(db, self.name)?.map(|d| d.body)),
+                );
             }
             legacy::read(&self.file)
         })

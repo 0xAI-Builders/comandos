@@ -31,4 +31,4 @@ impl Origin {
     }
 }
 
-pub use modes::with_readonly_access;
+pub use modes::{with_readonly_access, with_readonly_mode};
