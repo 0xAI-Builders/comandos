@@ -6,5 +6,4 @@
     clippy::indexing_slicing,
     clippy::disallowed_methods
 )]
-pub mod oracle;
 pub mod tmux;
