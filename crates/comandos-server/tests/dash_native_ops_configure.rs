@@ -10,7 +10,7 @@ use comandos_runtime::session_operations::{Journal, OperationStore, open_journal
 use comandos_server::dash::native::{Fault, Native, ops::configure::session_configure};
 use serde_json::{Value, json};
 use std::sync::Arc;
-use support::{TestHome, ops::clone_home, oracle};
+use support::{TestHome, ops::clone_home};
 
 fn answer(result: Result<(http::StatusCode, Value), Fault>) -> Value {
     match result {
@@ -112,11 +112,17 @@ async fn replay_and_conflict_match_python() {
     assert_eq!(rust[1][0], json!(409), "{rust}");
     assert_eq!(rust[2][0], json!(202), "{rust}");
     let code = format!(
-        "import json\nout = [list(dash.session_configure(json.loads(s))) for s in {:?}]\nprint(json.dumps(out))",
+        "import json,sqlite3,os\n# Fixture: two claims at clock 1000, one confirmed and one waiting; owner is the live test process.\nconn=sqlite3.connect(os.path.join(dash.HOOKS, 'session-operations.sqlite3'))\nbefore=list(conn.iterdump())\nout = [list(dash.session_configure(json.loads(s))) for s in {:?}]\nassert list(conn.iterdump()) == before, 'cached requests must not mutate the journal'\nprint(json.dumps(out))",
         [data.to_string(), other.to_string(), waiting.to_string()]
     );
-    let Some(expected) = oracle::run_dash(&twin, &code) else {
-        return;
-    };
+    // The native journal and its actual live owner are authoritative in replay.
+    // No source journal, PID or actor is restored from the expected response.
+    let expected = support::http_golden::dash_files(
+        &twin,
+        "server-ops-configure-cached",
+        &[],
+        &code,
+        &Default::default(),
+    );
     assert_eq!(response_dumps(&rust).unwrap(), expected.trim_end());
 }
