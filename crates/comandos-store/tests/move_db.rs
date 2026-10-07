@@ -543,6 +543,20 @@ fn optional_extensions_do_not_allow_unknown_operations_tables() {
 }
 
 #[test]
+fn orphan_receipts_are_rejected_before_backup_or_target_changes() {
+    let h = Home::new();
+    let spec = h.source("db-app-state");
+    let old = Connection::open(&spec.legacy).unwrap();
+    old.execute_batch("PRAGMA foreign_keys=OFF;INSERT INTO event_receipts VALUES('orphan','missing-event','comandos',42,0)").unwrap();
+    drop(old);
+    let before = tree(&h.0);
+    let error = move_db(&spec, &h.db(), &h.backup("invalid-receipts"), 4000).unwrap_err();
+    assert!(error.to_string().contains("db-app-state"));
+    assert!(error.to_string().contains("event_receipts: 1"));
+    assert_eq!(tree(&h.0), before);
+}
+
+#[test]
 fn writer_blocked_during_move_resumes_on_unified() {
     use std::{
         sync::mpsc,

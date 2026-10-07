@@ -438,6 +438,21 @@ fn validate_source(conn: &Connection, spec: &MoveSpec) -> Result<bool> {
             ));
         }
     }
+    let violations: Vec<(String, i64)> = conn
+        .prepare("SELECT \"table\",count(*) FROM pragma_foreign_key_check GROUP BY \"table\" ORDER BY \"table\"")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    if !violations.is_empty() {
+        let tables = violations
+            .iter()
+            .map(|(table, count)| format!("{table}: {count}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(Error::Validation(format!(
+            "{}: referencias SQLite huérfanas ({tables}); revisar o recuperar el origen antes de trasladar; no se omiten datos",
+            spec.domain
+        )));
+    }
     Ok(moved)
 }
 type Column = (String, String, i64, Option<String>, i64);
