@@ -1,3 +1,4 @@
+use super::resize::ResizeRequest;
 use super::*;
 use crate::number_text::decimal;
 use comandos_web_dom::{events, timers};
@@ -27,8 +28,8 @@ struct State {
     local_at: f64,
     remote: Option<String>,
     prefix: f64,
-    want: Option<Value>,
-    sent: Option<Value>,
+    want: Option<ResizeRequest>,
+    sent: Option<ResizeRequest>,
     inflight: bool,
     acct: Option<String>,
     disposed: bool,
@@ -476,10 +477,7 @@ fn resize(rc: &Shared) {
     let rc = rc.clone();
     spawn_local(async move {
         let session = rc.borrow().session.clone();
-        let mut body = json!({"session":session,"action":"resize"});
-        for key in ["pane", "axis", "size"] {
-            body[key] = want[key].clone();
-        }
+        let body = want.body(&session);
         let result = fetch(&rc, "/terminal-panes", Some(body), None).await;
         {
             let mut s = rc.borrow_mut();
@@ -1012,9 +1010,11 @@ pub fn attach() -> Result<(), JsValue> {
                     && let Some(nb) = nb
                 {
                     let key = if g.vertical { "width" } else { "height" };
-                    s.want = Some(
-                        json!({"pane":g.pane,"axis":if g.vertical{"x"}else{"y"},"size":((number(p,key)+number(&nb,key))/2.).floor().max(2.)}),
-                    );
+                    s.want = Some(ResizeRequest::new(
+                        g.pane,
+                        g.vertical,
+                        ((number(p, key) + number(&nb, key)) / 2.).floor().max(2.),
+                    ));
                 }
                 drop(s);
                 resize(&state);
@@ -1050,7 +1050,7 @@ pub fn attach() -> Result<(), JsValue> {
         let size = (if g.vertical { x } else { y } - start)
             .min(room - 2.)
             .max(2.);
-        s.want = Some(json!({"pane":g.pane,"axis":if g.vertical{"x"}else{"y"},"size":size}));
+        s.want = Some(ResizeRequest::new(g.pane, g.vertical, size));
         drop(s);
         resize(&state);
     });

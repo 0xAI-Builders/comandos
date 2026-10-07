@@ -1,5 +1,7 @@
 //! Pane frames, resize gutters and account controls from the terminal tail.
 //! Geometry is independent of the renderer; the DOM adapter uses live WebTerm cells.
+#[cfg(target_arch = "wasm32")]
+mod resize;
 use serde_json::Value;
 
 pub fn text(v: &Value, key: &str) -> String {

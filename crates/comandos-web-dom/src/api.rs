@@ -148,7 +148,7 @@ pub fn error_message(status_text: &str, j: &Value, is_post: bool, ok: bool) -> O
         if j.is_null() {
             return Some(Failure::ReadNull("ok"));
         }
-        if field(j, "ok") != Some(&Value::Bool(false)) {
+        if !matches!(field(j, "ok"), Some(Value::Bool(false))) {
             return None;
         }
     }

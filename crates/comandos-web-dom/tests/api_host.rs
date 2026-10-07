@@ -245,3 +245,27 @@ fn lone_surrogates_become_u_fffd_unlike_js() {
     let v = walk(J::Obj(vec![("t", J::Str(utf16_lossy(&[0x78, 0xDC00])))]));
     assert_eq!(v["t"], "x\u{FFFD}");
 }
+
+#[test]
+fn post_error_requires_literal_false_for_all_value_kinds() {
+    for flag in [
+        json!(null),
+        json!(false),
+        json!(true),
+        json!(0),
+        json!(-0.0),
+        json!("false"),
+        json!([]),
+        json!([false]),
+        json!({}),
+        json!({"ok":false}),
+    ] {
+        let expected = if flag == Value::Bool(false) {
+            Some(Failure::Message(DEFAULT_ERROR.into()))
+        } else {
+            None
+        };
+        assert_eq!(error_message("", &json!({"ok":flag}), true, true), expected);
+    }
+    assert_eq!(error_message("", &json!({}), true, true), None);
+}
