@@ -419,7 +419,7 @@ fn validate_source(conn: &Connection, spec: &MoveSpec) -> Result<bool> {
 }
 type Column = (String, String, i64, Option<String>, i64);
 fn columns(conn: &Connection, table: &str) -> Result<Vec<Column>> {
-    Ok(conn
+    let mut columns: Vec<Column> = conn
         .prepare(&format!("PRAGMA table_info({})", quote(table)))?
         .query_map([], |r| {
             Ok((
@@ -430,7 +430,11 @@ fn columns(conn: &Connection, table: &str) -> Result<Vec<Column>> {
                 r.get(5)?,
             ))
         })?
-        .collect::<rusqlite::Result<_>>()?)
+        .collect::<rusqlite::Result<_>>()?;
+    // ALTER TABLE appends released columns; fresh schemas can put them in a
+    // different position. Match the complete column definitions by name.
+    columns.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+    Ok(columns)
 }
 fn hash_value(hash: &mut Sha256, value: ValueRef<'_>) {
     match value {
@@ -456,8 +460,13 @@ fn hash_value(hash: &mut Sha256, value: ValueRef<'_>) {
     }
 }
 fn digest(conn: &Connection, table: &str) -> Result<(u64, String)> {
+    let names = columns(conn, table)?
+        .into_iter()
+        .map(|c| quote(&c.0))
+        .collect::<Vec<_>>()
+        .join(",");
     let mut stmt = conn.prepare(&format!(
-        "SELECT rowid,* FROM {} ORDER BY rowid",
+        "SELECT rowid,{names} FROM {} ORDER BY rowid",
         quote(table)
     ))?;
     let columns = stmt.column_count();

@@ -364,6 +364,93 @@ fn optional_profiles_do_not_allow_unknown_usage_tables() {
 }
 
 #[test]
+fn usage_upgraded_column_layout_roundtrips_by_column_name() {
+    let h = Home::new();
+    let spec = h.source("db-usage");
+    let old = Connection::open(&spec.legacy).unwrap();
+    // Released upgrades append columns with ALTER TABLE, unlike a fresh v11
+    // schema. These are the two layouts found in the real-data snapshot.
+    old.execute_batch(
+        "DROP TABLE usage_experiment_runs;
+         DROP TABLE usage_experiments;
+         CREATE TABLE usage_experiments (
+           id TEXT PRIMARY KEY,label TEXT NOT NULL,task_type TEXT NOT NULL,
+           status TEXT NOT NULL,design TEXT NOT NULL DEFAULT 'paired',
+           created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
+         ALTER TABLE usage_experiments ADD COLUMN project_id TEXT NOT NULL DEFAULT '';
+         ALTER TABLE usage_experiments ADD COLUMN primary_metric TEXT NOT NULL DEFAULT 'outcome';
+         ALTER TABLE usage_experiments ADD COLUMN min_pairs INTEGER NOT NULL DEFAULT 10;
+         CREATE TABLE usage_experiment_runs (
+           id TEXT PRIMARY KEY,experiment_id TEXT NOT NULL,interaction_id TEXT NOT NULL DEFAULT '',
+           variant_index INTEGER NOT NULL,harness TEXT NOT NULL,motor TEXT NOT NULL,
+           model TEXT NOT NULL,effort TEXT NOT NULL DEFAULT '',route_id TEXT NOT NULL,
+           harness_account TEXT NOT NULL DEFAULT 'unknown',motor_account TEXT NOT NULL DEFAULT 'unknown',
+           tmux_session TEXT NOT NULL DEFAULT '',tmux_pane TEXT NOT NULL DEFAULT '',
+           status TEXT NOT NULL DEFAULT 'planned',started_at INTEGER,finished_at INTEGER,
+           FOREIGN KEY(experiment_id) REFERENCES usage_experiments(id) ON DELETE CASCADE);
+         ALTER TABLE usage_experiment_runs ADD COLUMN task_id TEXT NOT NULL DEFAULT '';
+         ALTER TABLE usage_experiment_runs ADD COLUMN project_id TEXT NOT NULL DEFAULT '';
+         ALTER TABLE usage_experiment_runs ADD COLUMN launch_order INTEGER NOT NULL DEFAULT 0;
+         INSERT INTO usage_experiments(rowid,id,label,task_type,status,created_at,updated_at,project_id,min_pairs)
+           VALUES(5419,'historical','ñ','code','running',7,9,'project',12);
+         INSERT INTO usage_experiment_runs(rowid,id,experiment_id,variant_index,harness,motor,model,route_id,task_id,launch_order,started_at)
+           VALUES(1048577,'run','historical',0,'codex','openai',CAST(X'80FF00' AS TEXT),'route','task',4,11);",
+    ).unwrap();
+    let queries = [
+        "SELECT rowid,id,label,task_type,status,design,created_at,updated_at,project_id,primary_metric,min_pairs FROM usage_experiments ORDER BY rowid",
+        "SELECT rowid,id,experiment_id,interaction_id,variant_index,harness,motor,typeof(model),hex(model),effort,route_id,harness_account,motor_account,tmux_session,tmux_pane,status,started_at,finished_at,task_id,project_id,launch_order FROM usage_experiment_runs ORDER BY rowid",
+    ];
+    let read = |c: &Connection, query: &str| -> Vec<Vec<rusqlite::types::Value>> {
+        let mut stmt = c.prepare(query).unwrap();
+        let n = stmt.column_count();
+        stmt.query_map([], |row| (0..n).map(|i| row.get(i)).collect())
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap()
+    };
+    let before: Vec<_> = queries.iter().map(|sql| read(&old, sql)).collect();
+    drop(old);
+    move_db(&spec, &h.db(), &h.backup("upgraded-layout"), 4000).unwrap();
+    let new = unified::open_unified(&h.db()).unwrap();
+    assert_eq!(
+        queries
+            .iter()
+            .map(|sql| read(&new, sql))
+            .collect::<Vec<_>>(),
+        before
+    );
+    drop(new);
+    demote_db(&spec, &h.db()).unwrap();
+    let old = Connection::open(&spec.legacy).unwrap();
+    assert_eq!(
+        queries
+            .iter()
+            .map(|sql| read(&old, sql))
+            .collect::<Vec<_>>(),
+        before
+    );
+    assert_eq!(
+        old.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        11
+    );
+}
+
+#[test]
+fn unrecognized_source_columns_are_refused_without_touching_source() {
+    let h = Home::new();
+    let spec = h.source("db-operator");
+    let old = Connection::open(&spec.legacy).unwrap();
+    old.execute_batch("ALTER TABLE actions ADD COLUMN unknown_user_data BLOB;UPDATE actions SET unknown_user_data=X'80FF'").unwrap();
+    drop(old);
+    let before = fs::read(&spec.legacy).unwrap();
+    let error = move_db(&spec, &h.db(), &h.backup("unknown-column"), 4000).unwrap_err();
+    assert!(error.to_string().contains("columnas incompatibles"));
+    assert_eq!(fs::read(&spec.legacy).unwrap(), before);
+    assert!(!h.db().exists());
+}
+
+#[test]
 fn writer_blocked_during_move_resumes_on_unified() {
     use std::{
         sync::mpsc,
