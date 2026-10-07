@@ -22,6 +22,7 @@ pub fn reference(home: &Path) -> Result<PathBuf, String> {
             "config",
             "dash/index.html",
             "dash/term.html",
+            "tests/fixtures/analytics",
         ])
         .output()
         .map_err(|e| e.to_string())?;

@@ -22,6 +22,7 @@ pub struct FrozenHttp<'a> {
     family: &'static str,
     files: Vec<&'static str>,
     aliases: Vec<(String, PathBuf)>,
+    prime_targets: Vec<String>,
 }
 impl<'a> FrozenHttp<'a> {
     pub async fn new(home: &'a TestHome, family: &'static str, files: &[&'static str]) -> Self {
@@ -95,11 +96,29 @@ impl<'a> FrozenHttp<'a> {
             family,
             files: files.to_vec(),
             aliases: Vec::new(),
+            prime_targets: Vec::new(),
         }
     }
     /// Only volatile fixture values explicitly identified by the caller are aliased.
     pub fn alias(&mut self, token: &str, value: &str) {
         self.aliases.push((token.to_owned(), PathBuf::from(value)));
+    }
+    /// A response discarded by the original fixture can prime its in-memory
+    /// cache in record/check. Require identical domain effects before/after;
+    /// replay therefore needs no source process or fabricated effects.
+    pub async fn prime_unchanged(&mut self, target: &str) {
+        let capsule = self.home.root.join(".oracle/http-prime");
+        let roots = [("<HOME>", self.home.root.as_path())];
+        copy_domain(&self.domain, &capsule, &self.files);
+        let before = comandos_oracle::snapshot_tree(&capsule, &roots).unwrap();
+        if let Some(original) = &self.original {
+            original_request(original.port, "GET", target, "", "").unwrap();
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+        copy_domain(&self.domain, &capsule, &self.files);
+        let after = comandos_oracle::snapshot_tree(&capsule, &roots).unwrap();
+        assert_eq!(before, after, "original cache prime mutated domain effects");
+        self.prime_targets.push(target.to_owned());
     }
     pub async fn get(&self, target: &str) -> Wire {
         self.request("GET", target, "", "").await
@@ -126,6 +145,9 @@ impl<'a> FrozenHttp<'a> {
         }
         if !self.fakebin_extra.is_empty() {
             input["fixture_fakebin"] = json!(self.fakebin_extra);
+        }
+        if !self.prime_targets.is_empty() {
+            input["fixture_cache_primes"] = json!(self.prime_targets);
         }
         let output = comandos_oracle::text_with_tree_at(
             &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
