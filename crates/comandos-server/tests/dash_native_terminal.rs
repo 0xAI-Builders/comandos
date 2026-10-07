@@ -361,10 +361,12 @@ async fn terminal_panes_mutations_match_python_oracle() {
                 .ok_or("original split required in record/check")?;
             serde_json::to_vec(&serde_json::json!({"status":a.status,
                 "type":a.header("content-type"),"body":panes_without_volatile(&a.text())}))
+            .map(|bytes| comandos_oracle::normalize(&bytes, &roots))
             .map_err(|e| e.to_string())
         },
     );
-    let expected: serde_json::Value = serde_json::from_slice(&expected).unwrap();
+    let expected: serde_json::Value =
+        serde_json::from_slice(&comandos_oracle::restore(&expected, &roots)).unwrap();
     let b = request_body(front.port, "POST", "/terminal-panes", "", &split).await;
     assert_eq!(expected["status"], b.status);
     assert_eq!(expected["type"].as_str(), b.header("content-type"));
