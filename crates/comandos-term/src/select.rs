@@ -743,7 +743,7 @@ fn valid_web_url(url: &str) -> bool {
         && host
             .chars()
             .next()
-            .is_some_and(|c| c.is_alphanumeric() || matches!(c, '[' | '_' | '-'))
+            .is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, '[' | '_' | '-'))
 }
 
 /// Tramo de glifos `[from, to)` como `UrlSpan` (extremos inclusivos).
@@ -1027,6 +1027,44 @@ pub fn ligature_runs(text: &str) -> Vec<(usize, usize)> {
 mod tests {
     use super::*;
     use crate::engine::{GridSize, Palette};
+
+    #[test]
+    fn ascii_host_guard_preserves_every_original_ascii_prefix() {
+        let previous = |url: &str| {
+            let Some((_, rest)) = url.split_once("://") else {
+                return false;
+            };
+            let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+            let host = authority.rsplit('@').next().unwrap_or_default();
+            host.is_ascii()
+                && host
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_alphanumeric() || matches!(c, '[' | '_' | '-'))
+        };
+        for byte in 0..=127u8 {
+            for prefix in ["", "user@", "user:pass@"] {
+                let url = format!("https://{prefix}{}example.mx/p?q=1#f", char::from(byte));
+                assert_eq!(valid_web_url(&url), previous(&url), "{url:?}");
+            }
+        }
+        for host in [
+            "",
+            "é.mx",
+            "a雪.mx",
+            "K.mx",
+            "ſ.mx",
+            "Σ.mx",
+            "😀.mx",
+            "[::1]",
+            "_host",
+            "-host",
+            "EXAMPLE.MX",
+        ] {
+            let url = format!("https://{host}/p");
+            assert_eq!(valid_web_url(&url), previous(&url), "{url:?}");
+        }
+    }
 
     #[test]
     fn row_glyphs_reads_tabs_as_spaces() {
