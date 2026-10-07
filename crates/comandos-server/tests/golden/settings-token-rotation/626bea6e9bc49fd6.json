@@ -1,0 +1,10 @@
+{
+  "input": {
+    "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "python": "3.10.12",
+    "target": "/webterm-token",
+    "authorization": "token-nuevo-rotado",
+    "current_token": "\u001ftoken-nuevo-rotado\n"
+  },
+  "output_b64": "WzIwMCwie1widG9rZW5cIjogXCJ0b2tlbi1udWV2by1yb3RhZG9cIn0iXQ=="
+}

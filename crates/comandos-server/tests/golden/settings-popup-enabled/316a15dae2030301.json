@@ -1,0 +1,23 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "clock_ms": 1791115200000,
+      "request": {
+        "method": "POST",
+        "target": "/notify-popup",
+        "extra": "",
+        "body": "{\"title\":\"Título ñ\",\"body\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"project\":false,\"kind\":\"other\"}"
+      },
+      "effect_files": [
+        ".claude/hooks/cc-notify.conf"
+      ],
+      "fixture_prelude": "\n_fixture_popup_status = 200\n_fixture_popup_stall = 'true'\n_original_popup_urlopen = dash.urllib.request.urlopen\ndef _popup_urlopen(req, **kwargs):\n    assert req.full_url == 'http://127.0.0.1:4778/notify'\n    req = dash.urllib.request.Request('http://127.0.0.1:<FIXTURE_PORT_0>/notify', data=req.data, headers=dict(req.header_items()))\n    return _original_popup_urlopen(req, **kwargs)\ndash.urllib.request.urlopen = _popup_urlopen\n",
+      "fixture_allowed_ports": 1
+    },
+    "before_sha256": "309990d04d203e56592e73bb5490d5161163b1b6e203ede9becb11884a8f79e0"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjoyMDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCIyOFwiXV0sXCJib2R5XCI6WzEyMywzNCwxMTEsMTA3LDM0LDU4LDMyLDExNiwxMTQsMTE3LDEwMSw0NCwzMiwzNCwxMTIsMTExLDExMiwxMTcsMTEyLDM0LDU4LDMyLDEwMiw5NywxMDgsMTE1LDEwMSwxMjVdfSIsInRyZWUiOnsiLmNsYXVkZSI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmNsYXVkZS9ob29rcyI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmNsYXVkZS9ob29rcy9jYy1ub3RpZnkuY29uZiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJSRVZUUzFSUFVGOU9UMVJKUmxrOU1Rbz0ifX19"
+}

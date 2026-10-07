@@ -1,0 +1,23 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "clock_ms": 1791115200000,
+      "request": {
+        "method": "POST",
+        "target": "/fs/mkdir",
+        "extra": "",
+        "body": "{\"path\":\"\"}"
+      },
+      "effect_files": [
+        "cc-notify.conf",
+        "dash-token"
+      ],
+      "oracle_sequence": 30
+    },
+    "before_sha256": "82f8ae267ac60de589880a0e5d60788632830f593e618969ec1f0ffc0cd45766"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjoyMDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCI4MlwiXV0sXCJib2R5XCI6WzEyMywzNCwxMTEsMTA3LDM0LDU4LDMyLDExNiwxMTQsMTE3LDEwMSw0NCwzMiwzNCwxMTIsOTcsMTE2LDEwNCwzNCw1OCwzMiwzNCw2MCw3Miw3OSw3Nyw2OSw2MiwzNCwxMjVdfSIsInRyZWUiOnsiY2Mtbm90aWZ5LmNvbmYiOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiSXlCaGFuVnpkR1Z6SUdSbElIQnlkV1ZpWVFwRVJWTkxWRTlRWDA1UFZFbEdXVDB3Q2xaUFRGVk5SVDAxTlFwVFQxVk9SRjlFVDA1RlBTOWlhVzR2YzJnS1UwOVZUa1JmUVZSVVJVNVVTVTlPUFM5dWJ5MWxlR2x6ZEdVdmMyOXVhV1J2TG05bllRcFBWRkpCSUQwZ2VBcERRMTlNUVU1SFBXVnVDbE5RUlVGTFgwUlBUa1U5TUFvPSJ9LCJkYXNoLXRva2VuIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6IlpHRnphQzF1WVhScGRtVXRkR1Z6ZEMxMGIydGxiZz09In19fQ=="
+}

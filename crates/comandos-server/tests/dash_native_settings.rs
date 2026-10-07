@@ -14,18 +14,87 @@ use serde_json::{Value, json};
 use std::os::unix::fs::PermissionsExt;
 use support::{
     FakeLegacy, TestHome, front, get, request_body,
-    services::{calls, mode, seed_services, settle_calls, unhome},
-    twin::Twin,
+    services::{calls, mode, seed_services, unhome},
 };
+
+struct FrozenSettings<'a> {
+    a: &'a TestHome,
+    b: &'a TestHome,
+    front: support::Front,
+    py: support::http_golden::FrozenHttp<'a>,
+    family: &'static str,
+}
+impl<'a> FrozenSettings<'a> {
+    async fn new(a: &'a TestHome, b: &'a TestHome, family: &'static str) -> Self {
+        let opts = support::http_golden::confined_front_options(a, &[]);
+        let front = front(a, support::dead_port(), opts).await;
+        let mut py =
+            support::http_golden::FrozenHttp::new(b, family, &["cc-notify.conf", "dash-token"])
+                .await;
+        py.sequence_requests();
+        Self {
+            a,
+            b,
+            front,
+            py,
+            family,
+        }
+    }
+    async fn request(&self, method: &str, path: &str, body: &str) -> support::twin::TwinRun {
+        let oracle = self.py.request(method, path, "", body).await;
+        let front = request_body(self.front.port, method, path, "", body).await;
+        support::twin::TwinRun { front, oracle }
+    }
+    fn files_equal(&self, files: &[&str]) -> Result<(), String> {
+        for file in files {
+            assert_eq!(
+                std::fs::read(self.a.hooks().join(file)).unwrap(),
+                std::fs::read(self.b.hooks().join(file)).unwrap()
+            );
+        }
+        Ok(())
+    }
+    async fn calls(&self, expected: usize, step: usize) -> Vec<(String, Vec<String>)> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let source_ready = self.py.source_port().is_none()
+                || (calls(self.b).len() >= expected && calls(self.a) == calls(self.b));
+            if calls(self.a).len() >= expected && source_ready {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "private command actors did not produce expected calls"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let bytes = comandos_oracle::oracle_at(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+            "settings-calls",
+            &json!({"source":support::frozen::SOURCE_COMMIT,"python":"3.10.12","fixture":self.family,"step":step,"minimum_calls":expected}),
+            || serde_json::to_vec(&calls(self.b)).map_err(|e| e.to_string()),
+        );
+        let expected: Vec<(String, Vec<String>)> = serde_json::from_slice(&bytes).unwrap();
+        while calls(self.a) != expected && std::time::Instant::now() < deadline {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert_eq!(
+            calls(self.a),
+            expected,
+            "actual private Native command transcript"
+        );
+        expected
+    }
+}
 
 /// La misma petición a los dos lados: estado y cuerpo iguales con las rutas
 /// de cada HOME normalizadas; después `cc-notify.conf` (bytes y modo) y las
 /// llamadas a los falsos.
-async fn same(t: &Twin, method: &str, path: &str, body: &str) -> (u16, String) {
+async fn same(t: &FrozenSettings<'_>, method: &str, path: &str, body: &str) -> (u16, String) {
     let run = t.request(method, path, body).await;
     let (fa, fb) = (
-        unhome(&t.a, &run.front.text()),
-        unhome(&t.b, &run.oracle.text()),
+        unhome(t.a, &run.front.text()),
+        unhome(t.b, &run.oracle.text()),
     );
     assert_eq!(
         run.front.status, run.oracle.status,
@@ -34,15 +103,18 @@ async fn same(t: &Twin, method: &str, path: &str, body: &str) -> (u16, String) {
     assert_eq!(fa, fb, "{method} {path} {body}");
     t.files_equal(&["cc-notify.conf"]).unwrap();
     let conf = |h: &TestHome| mode(&h.hooks().join("cc-notify.conf"));
-    assert_eq!(conf(&t.a), conf(&t.b), "modo de cc-notify.conf");
+    assert_eq!(conf(t.a), conf(t.b), "modo de cc-notify.conf");
     (run.front.status, fa)
 }
 
 #[tokio::test]
 async fn settings_routes_match_python() {
-    let Some(t) = Twin::start("settings", seed_services).await else {
-        return;
-    };
+    let (a, b) = (TestHome::new("settings-a"), TestHome::new("settings-b"));
+    for h in [&a, &b] {
+        seed_services(h);
+    }
+    let t = FrozenSettings::new(&a, &b, "settings-routes").await;
+    let mut step = 0;
     let mut launched = 0;
     for (method, path, body, launches) in [
         ("GET", "/conf", "", 0),
@@ -115,17 +187,22 @@ async fn settings_routes_match_python() {
     ] {
         same(&t, method, path, body).await;
         launched += launches;
-        settle_calls(&t.a, &t.b, launched).await;
-        assert_eq!(
-            calls(&t.a),
-            calls(&t.b),
-            "programas tras {method} {path} {body}"
-        );
+        t.calls(launched, step).await;
+        step += 1;
     }
     // Lo creado por `/fs/mkdir`, igual en los dos lados (con su modo).
     for rel in ["codebase/nueva", "codebase/x/y/z", "Música/nueva"] {
         assert!(t.a.root.join(rel).is_dir(), "{rel}");
-        assert_eq!(mode(&t.a.root.join(rel)), mode(&t.b.root.join(rel)));
+        let expected = comandos_oracle::oracle_at(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+            "settings-directory-modes",
+            &json!({"source":support::frozen::SOURCE_COMMIT,"fixture":"settings-routes","directory":rel}),
+            || Ok(mode(&t.b.root.join(rel)).into_bytes()),
+        );
+        assert_eq!(
+            mode(&t.a.root.join(rel)),
+            std::str::from_utf8(&expected).unwrap()
+        );
     }
     // La voz con `piper` y su modelo: `/bin/sh -c` con el guion del Python.
     for home in [&t.a, &t.b] {
@@ -134,8 +211,8 @@ async fn settings_routes_match_python() {
         std::fs::write(voices.join("es_MX-ald-medium.onnx"), "").unwrap();
     }
     same(&t, "POST", "/test", r#"{"kind":"voice"}"#).await;
-    settle_calls(&t.a, &t.b, launched + 2).await;
-    let (ca, cb) = (calls(&t.a), calls(&t.b));
+    let cb = t.calls(launched + 2, step).await;
+    let ca = calls(t.a);
     assert_eq!(ca, cb);
     assert!(
         ca.iter().any(|(name, _)| name == "piper"),
@@ -171,9 +248,14 @@ async fn settings_routes_match_python() {
 
 #[tokio::test]
 async fn webterm_token_is_created_like_python() {
-    let Some(t) = Twin::start("settings-token", seed_services).await else {
-        return;
-    };
+    let (a, b) = (
+        TestHome::new("settings-token-a"),
+        TestHome::new("settings-token-b"),
+    );
+    for h in [&a, &b] {
+        seed_services(h);
+    }
+    let t = FrozenSettings::new(&a, &b, "settings-token").await;
     // El token del tablero, tal cual (con espacios a los lados quitados).
     for home in [&t.a, &t.b] {
         std::fs::write(home.hooks().join("dash-token"), "  token-de-prueba \n").unwrap();
@@ -186,28 +268,52 @@ async fn webterm_token_is_created_like_python() {
         std::fs::write(&path, "\n").unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
     }
-    let run = t.get("/webterm-token").await;
-    assert_eq!(run.front.status, 200);
-    assert_eq!(run.oracle.status, 200);
     let token = |text: String| -> String {
         let value: Value = serde_json::from_str(&text).unwrap();
         value["token"].as_str().unwrap().to_owned()
     };
-    let (ta, tb) = (token(run.front.text()), token(run.oracle.text()));
+    let source = if let Some(port) = t.py.source_port() {
+        let first = get(port, "/webterm-token").await;
+        assert_eq!(first.status, 200);
+        let tok = token(first.text());
+        let path = t.b.hooks().join("dash-token");
+        let again = get(port, "/webterm-token").await;
+        Some(
+            json!({"length":tok.len(), "urlsafe":tok.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_'),
+            "file_matches":std::fs::read_to_string(&path).unwrap()==tok,
+            "mode":mode(&path),"reused":token(again.text())==tok}),
+        )
+    } else {
+        None
+    };
+    let expected = comandos_oracle::oracle_at(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "settings-token-properties",
+        &json!({"source":support::frozen::SOURCE_COMMIT,"python":"3.10.12","before_token":"\n","before_mode":"640","target":"/webterm-token"}),
+        || {
+            serde_json::to_vec(&source.ok_or("source token properties required in record/check")?)
+                .map_err(|e| e.to_string())
+        },
+    );
+    let expected: Value = serde_json::from_slice(&expected).unwrap();
+    let made = get(t.front.port, "/webterm-token").await;
+    assert_eq!(made.status, 200);
+    let ta = token(made.text());
     assert_eq!(ta.len(), 43);
-    assert_eq!(tb.len(), 43);
     assert!(
         ta.bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
     );
-    for (home, tok) in [(&t.a, &ta), (&t.b, &tb)] {
-        let path = home.hooks().join("dash-token");
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), *tok);
-        // `O_CREAT` sobre un archivo existente no cambia su modo.
-        assert_eq!(mode(&path), "640");
-    }
-    let again = t.get("/webterm-token").await;
-    assert_eq!(token(again.front.text()), ta);
+    let path = t.a.hooks().join("dash-token");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), ta);
+    assert_eq!(mode(&path), "640");
+    let again = get(t.front.port, "/webterm-token").await;
+    let reused = token(again.text()) == ta;
+    assert!(reused);
+    assert_eq!(
+        expected,
+        json!({"length":ta.len(),"urlsafe":true,"file_matches":true,"mode":mode(&path),"reused":reused})
+    );
     // Ausente: se crea 0600.
     let dir = TestHome::new("settings-token-new");
     std::fs::remove_file(dir.hooks().join("dash-token")).unwrap();
@@ -263,19 +369,31 @@ async fn notify_popup_enabled_matches_python_without_fallback() {
     use comandos_server::dash::native::usage::pane_models::HyperNotify;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
-    use support::twin::TwinOpts;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     for (status, stall) in [(204, false), (503, false), (200, true)] {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
         let addr = listener.local_addr().unwrap();
         let bodies = Arc::new(Mutex::new(Vec::new()));
         let received = Arc::clone(&bodies);
-        let server = tokio::spawn(async move {
-            let mut jobs = tokio::task::JoinSet::new();
-            loop {
-                let (mut socket, _) = listener.accept().await.unwrap();
-                let received = Arc::clone(&received);
-                jobs.spawn(async move {
+        // Original HTTP capture is blocking; the genuine notifyd actor owns
+        // a separate reactor so it can serve while that capture waits.
+        let (server_stop, mut stopped) = tokio::sync::watch::channel(false);
+        let server = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            runtime.block_on(async move {
+                let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+                let mut jobs = tokio::task::JoinSet::new();
+                loop {
+                    let (mut socket, _) = tokio::select! {
+                        result = listener.accept() => result.unwrap(),
+                        _ = stopped.changed() => return,
+                    };
+                    let received = Arc::clone(&received);
+                    jobs.spawn(async move {
                     let mut bytes = Vec::new();
                     let mut chunk = [0; 1024];
                     loop {
@@ -311,25 +429,64 @@ async fn notify_popup_enabled_matches_python_without_fallback() {
                     );
                     let _ = socket.write_all(reply.as_bytes()).await;
                 });
-            }
+                }
+            });
         });
-        let twin = Twin::start_with("popup-native", |h| h.write("cc-notify.conf", "DESKTOP_NOTIFY=1\n"), TwinOpts {
-            front: Some(Box::new(move |opts| opts.notifyd = Arc::new(HyperNotify { addr }))),
-            allow_ports: vec![addr.port()],
-            python_prelude: format!(r#"
+        let (a, b) = (
+            TestHome::new("popup-native-a"),
+            TestHome::new("popup-native-b"),
+        );
+        for home in [&a, &b] {
+            home.write("cc-notify.conf", "DESKTOP_NOTIFY=1\n");
+        }
+        let mut opts = support::http_golden::confined_front_options(&a, &[]);
+        opts.notifyd = Arc::new(HyperNotify { addr });
+        let native = front(&a, support::dead_port(), opts).await;
+        let prelude = format!(
+            r#"
+_fixture_popup_status = {status}
+_fixture_popup_stall = '{stall}'
 _original_popup_urlopen = dash.urllib.request.urlopen
 def _popup_urlopen(req, **kwargs):
     assert req.full_url == 'http://127.0.0.1:4778/notify'
     req = dash.urllib.request.Request('http://127.0.0.1:{}/notify', data=req.data, headers=dict(req.header_items()))
     return _original_popup_urlopen(req, **kwargs)
 dash.urllib.request.urlopen = _popup_urlopen
-"#, addr.port()),
-            ..Default::default()
-        }).await.expect("private popup oracle");
+"#,
+            addr.port()
+        );
+        let py = support::http_golden::FrozenHttp::new_rooted_with_ports(
+            &b,
+            "settings-popup-enabled",
+            &[".claude/hooks/cc-notify.conf"],
+            &prelude,
+            &[addr.port()],
+        )
+        .await;
         let body =
             json!({"title":"Título ñ", "body":"b".repeat(430), "project":false, "kind":"other"})
                 .to_string();
-        let pair = twin.post("/notify-popup", &body).await;
+        let oracle = py.request("POST", "/notify-popup", "", &body).await;
+        let source_payload = if py.source_port().is_some() {
+            Some(bodies.lock().unwrap()[0].clone())
+        } else {
+            None
+        };
+        let expected_payload = comandos_oracle::oracle_at(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+            "settings-popup-payload",
+            &json!({"source":support::frozen::SOURCE_COMMIT,"python":"3.10.12","status":status,"stall":stall,"body":body}),
+            || {
+                source_payload
+                    .ok_or_else(|| "source notifyd payload required in record/check".to_owned())
+                    .map(String::into_bytes)
+            },
+        );
+        let actual = request_body(native.port, "POST", "/notify-popup", "", &body).await;
+        let pair = support::twin::TwinRun {
+            front: actual,
+            oracle,
+        };
         pair.assert_same();
         assert_eq!(pair.front.status, 200);
         assert_eq!(
@@ -337,21 +494,33 @@ dash.urllib.request.urlopen = _popup_urlopen
             json!({"ok":true,"popup":status == 204 && !stall})
         );
         let sent = bodies.lock().unwrap().clone();
-        assert_eq!(sent.len(), 2);
-        assert_eq!(sent[0], sent[1], "payload byte parity");
+        assert_eq!(sent.len(), if py.source_port().is_some() { 2 } else { 1 });
+        assert_eq!(
+            sent.last().unwrap().as_bytes(),
+            expected_payload,
+            "actual native notifyd payload byte parity"
+        );
         assert_eq!(
             serde_json::from_str::<Value>(&sent[0]).unwrap()["project"],
             "ComandOS"
         );
-        for h in [&twin.a, &twin.b] {
+        for h in [&a, &b] {
             h.write("cc-notify.conf", "DESKTOP_NOTIFY=0\n");
         }
-        let disabled = twin.post("/notify-popup", &body).await;
+        let disabled = support::twin::TwinRun {
+            oracle: py.request("POST", "/notify-popup", "", &body).await,
+            front: request_body(native.port, "POST", "/notify-popup", "", &body).await,
+        };
         disabled.assert_same();
         assert!(disabled.front.text().contains("false"));
-        assert_eq!(bodies.lock().unwrap().len(), 2, "disabled: no network");
-        server.abort();
-        let _ = server.await;
+        assert_eq!(
+            bodies.lock().unwrap().len(),
+            sent.len(),
+            "disabled: no network"
+        );
+        native.stop().await;
+        let _ = server_stop.send(true);
+        server.join().unwrap();
     }
 }
 
@@ -448,11 +617,8 @@ async fn token_rotation_takes_effect_without_restart() {
     use comandos_server::dash::{serve_with, token_path};
     let home = TestHome::new_short("token-rot");
     seed_services(&home);
-    let Some(py) =
-        support::oracle::oracle_with(&home, support::oracle::OracleOpts::default()).await
-    else {
-        return;
-    };
+    let py =
+        support::http_golden::FrozenHttp::new(&home, "settings-token-rotation-source", &[]).await;
     let legacy = FakeLegacy::start().await;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -464,14 +630,31 @@ async fn token_rotation_takes_effect_without_restart() {
     let task = tokio::spawn(serve_with(listener, cfg, Some(opts), shutdown));
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    let both = |target: &'static str, token: String| {
-        let py = py.port;
-        async move {
-            (
-                remote_get(port, target, &token).await,
-                remote_get(py, target, &token).await,
-            )
-        }
+    let both = async |target: &'static str, token: String| {
+        let current = std::fs::read_to_string(token_path(&home.root)).unwrap();
+        let source = if let Some(source_port) = py.source_port() {
+            Some(remote_get(source_port, target, &token).await)
+        } else {
+            None
+        };
+        let expected = comandos_oracle::oracle_at(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+            "settings-token-rotation",
+            &json!({"source":support::frozen::SOURCE_COMMIT,"python":"3.10.12","target":target,"authorization":token,"current_token":current}),
+            || {
+                let wire = source.ok_or("source token rotation required in record/check")?;
+                serde_json::to_vec(&(wire.status, wire.text())).map_err(|e| e.to_string())
+            },
+        );
+        let (status, text): (u16, String) = serde_json::from_slice(&expected).unwrap();
+        (
+            remote_get(port, target, &token).await,
+            support::Wire {
+                status,
+                headers: vec![],
+                body: text.into_bytes(),
+            },
+        )
     };
     let old = support::TOKEN.to_owned();
     let (a, b) = both("/conf", old.clone()).await;
