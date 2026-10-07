@@ -308,6 +308,7 @@ async fn apply_relaunches_only_the_private_fake_agent_and_replays_once() {
     let Some(t) = Twin::start_with(
         "ext-apply",
         |home| {
+            support::ops::install_extension_launcher(home);
             support::ops::seed_fake_codex(home);
             std::fs::write(
                 home.root.join(".codex/config.toml"),

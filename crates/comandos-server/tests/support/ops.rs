@@ -46,6 +46,35 @@ pub struct FakeCodex {
     pub binary: PathBuf,
 }
 
+/// Install the real native executor only into this test's owned HOME. The
+/// binary selection matches the runtime operation fixtures.
+pub fn install_extension_launcher(home: &TestHome) {
+    let native = std::env::var_os("COMANDOS_EXTENSION_SESSION_NATIVE_FIXTURE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join("comandos")
+        });
+    assert!(
+        native.is_file(),
+        "build comandos-cli first or provide COMANDOS_EXTENSION_SESSION_NATIVE_FIXTURE for the private extension fixture"
+    );
+    let installed = home.root.join(".local/share/comandos/bin/comandos");
+    let alias = comandos_runtime::extension_launch::helper_for_home(&home.root);
+    std::fs::create_dir_all(installed.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(alias.parent().unwrap()).unwrap();
+    std::fs::copy(native, &installed).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&installed, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::os::unix::fs::symlink(installed, &alias).unwrap();
+    comandos_runtime::extension_launch::require_helper(&home.root).unwrap();
+}
+
 impl FakeCodex {
     /// Compila el stub como `<dir>/codex`; `None` (con aviso) sin `cc`.
     pub fn build(dir: &Path) -> Option<Self> {
