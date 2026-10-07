@@ -1,0 +1,17 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "code": "dash.time.time = lambda: 50.0\ndash.motor_result_set('legacy|%1', True, 'py')\ndash.time.time = lambda: 300.0\ndash.motor_result_set('shared|%1', False, 'py nuevo')",
+      "effect_files": [
+        "motor-results.json"
+      ],
+      "fakebin": [],
+      "fixture_env": []
+    },
+    "before_sha256": "00a70657bfe0a4525453e54240bcd2f405fc04bdcfd5a6271f94123f22d04d74"
+  },
+  "output_b64": "eyJzdGRvdXQiOiIiLCJ0cmVlIjp7Im1vdG9yLXJlc3VsdHMuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjM4NCwiYm9keV9iNjQiOiJleUp6YUdGeVpXUjhKVEVpT2lCN0ltOXJJam9nWm1Gc2MyVXNJQ0prWlhSaGFXd2lPaUFpY0hrZ2JuVmxkbThpTENBaWRITWlPaUF6TURBdU1IMHNJQ0pzWldkaFkzbDhKVEVpT2lCN0ltOXJJam9nZEhKMVpTd2dJbVJsZEdGcGJDSTZJQ0p3ZVNJc0lDSjBjeUk2SURVd0xqQjlmUT09In19fQ=="
+}

@@ -289,7 +289,16 @@ pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> 
         eprintln!("python3 no está instalado: se salta la comparación con el oráculo");
         return None;
     }
-    let repo = super::repo();
+    run_python_at(script, args, home, &super::repo(), "python3")
+}
+
+pub(super) fn run_python_at(
+    script: &str,
+    args: &[&OsStr],
+    home: &Path,
+    repo: &Path,
+    interpreter: &str,
+) -> Option<String> {
     let fakebin = home.join("fakebin");
     let runtime = home.join("xdg-runtime");
     let tmux = home.join("tmux");
@@ -303,7 +312,7 @@ pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> 
         fakebin.display(),
         std::env::var("PATH").unwrap_or_default()
     );
-    let mut command = Command::new("python3");
+    let mut command = Command::new(interpreter);
     // B1: sin las claves de D7 del shell del desarrollador y con un `LANG` fijo.
     for key in D7_KEYS {
         command.env_remove(key);
@@ -311,9 +320,9 @@ pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> 
     let out = command
         .arg("-c")
         .arg(script)
-        .arg(&repo)
+        .arg(repo)
         .args(args)
-        .current_dir(&repo)
+        .current_dir(repo)
         .env("LANG", "C.UTF-8")
         .env_remove("LC_ALL")
         .env_remove("LC_CTYPE")

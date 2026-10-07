@@ -1,0 +1,17 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "code": "dash.MOTOR_RESULT.clear()\ndash.time.time = lambda: 200.0\ndash.motor_result_set('legacy|%2', True, 'py')",
+      "effect_files": [
+        "motor-results.json"
+      ],
+      "fakebin": [],
+      "fixture_env": []
+    },
+    "before_sha256": "528050ac8758c4f25cd6ffcff1ccf46fcf5d9e470c1b70290db00566488f112b"
+  },
+  "output_b64": "eyJzdGRvdXQiOiIiLCJ0cmVlIjp7Im1vdG9yLXJlc3VsdHMuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjM4NCwiYm9keV9iNjQiOiJleUpzWldkaFkzbDhKVElpT2lCN0ltOXJJam9nZEhKMVpTd2dJbVJsZEdGcGJDSTZJQ0p3ZVNJc0lDSjBjeUk2SURJd01DNHdmWDA9In19fQ=="
+}

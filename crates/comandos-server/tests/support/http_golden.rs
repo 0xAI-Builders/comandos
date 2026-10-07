@@ -287,3 +287,43 @@ pub fn confined_front_options(
     super::assert_private_tmux(&options);
     options
 }
+
+/// Source module effects limited to the named hook documents. Native callers
+/// still execute their operations; recorded expected effects never include actors.
+pub fn dash_files(
+    home: &TestHome,
+    family: &str,
+    files: &[&str],
+    code: &str,
+    opts: &OracleOpts,
+) -> String {
+    let domain = home.hooks();
+    let capsule = home.root.join(".oracle/module-effects");
+    copy_domain(&domain, &capsule, files);
+    let roots = [("<HOME>", home.root.as_path())];
+    let normalized = comandos_oracle::normalize(code.as_bytes(), &roots);
+    let input = json!({"source_commit":frozen::SOURCE_COMMIT,
+        "source_sha256":"4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+        "python":"CPython 3.10.12", "code":String::from_utf8(normalized).unwrap(),
+        "effect_files":files,"fakebin":opts.fakebin_extra,"fixture_env":opts.extra_env});
+    let output = comandos_oracle::text_with_tree_at(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        family,
+        &input,
+        &capsule,
+        &roots,
+        || {
+            let stdout = frozen::run_dash_original(home, code, opts)?;
+            copy_domain(&domain, &capsule, files);
+            Ok(stdout)
+        },
+    )
+    .unwrap();
+    if !matches!(
+        std::env::var("COMANDOS_ORACLE").as_deref(),
+        Ok("record" | "check")
+    ) {
+        copy_domain(&capsule, &domain, files);
+    }
+    output
+}

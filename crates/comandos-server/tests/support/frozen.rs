@@ -43,3 +43,59 @@ pub fn reference(home: &Path) -> Result<PathBuf, String> {
     }
     Ok(target)
 }
+
+/// Execute the immutable server module only inside an explicit oracle closure.
+pub fn run_dash_original(
+    home: &super::TestHome,
+    code: &str,
+    opts: &super::oracle::OracleOpts,
+) -> Result<String, String> {
+    assert!(
+        matches!(
+            std::env::var("COMANDOS_ORACLE").as_deref(),
+            Ok("record" | "check")
+        ),
+        "original source execution requires record/check"
+    );
+    let reference = reference(&home.root)?;
+    let mut extra_env = opts.extra_env.clone();
+    assert!(
+        !extra_env
+            .iter()
+            .any(|(key, _)| key == "COMANDOS_ORACLE_REFERENCE_ROOT")
+    );
+    extra_env.push((
+        "COMANDOS_ORACLE_REFERENCE_ROOT".into(),
+        reference.display().to_string(),
+    ));
+    let options = super::oracle::OracleOpts {
+        fakebin_extra: opts.fakebin_extra.clone(),
+        python_prelude: opts.python_prelude.clone(),
+        allow_ports: opts.allow_ports.clone(),
+        keep_loops: opts.keep_loops.clone(),
+        extra_env,
+    };
+    super::oracle::run_dash_with(home, code, &options)
+        .ok_or_else(|| "explicit record/check requires Python".into())
+}
+
+/// Preserve standalone fixture setup while importing the immutable source root.
+/// Invoke only from a golden record/check closure; replay never probes Python.
+pub fn run_python_original(
+    script: &str,
+    args: &[&std::ffi::OsStr],
+    home: &Path,
+) -> Result<String, String> {
+    assert!(
+        matches!(
+            std::env::var("COMANDOS_ORACLE").as_deref(),
+            Ok("record" | "check")
+        ),
+        "original source execution requires record/check"
+    );
+    let reference = reference(home)?;
+    let interpreter = std::env::var("COMANDOS_SERVER_ORACLE_PYTHON")
+        .unwrap_or_else(|_| "/usr/bin/python3".into());
+    super::oracle::run_python_at(script, args, home, &reference, &interpreter)
+        .ok_or_else(|| "explicit record/check requires CPython 3.10.12".into())
+}

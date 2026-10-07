@@ -6,7 +6,7 @@ mod support;
 use comandos_server::dash::native::ops::results::MotorResults;
 use serde_json::{Map, Value, json};
 use std::sync::Arc;
-use support::{TestHome, ops::clone_home, oracle};
+use support::{TestHome, ops::clone_home};
 
 fn read(home: &TestHome) -> Vec<u8> {
     std::fs::read(home.hooks().join("motor-results.json")).unwrap()
@@ -41,13 +41,14 @@ fn motor_results_trim_matches_python() {
             1000.0,
         )
         .unwrap();
-    let Some(_) = oracle::run_dash(
+    support::http_golden::dash_files(
         &twin,
+        "server-motor-results",
+        &["motor-results.json"],
         "dash.time.time = lambda: 1000.0\n\
          dash.motor_result_set('nuevo|%1', False, 'detalle ñ', operationId='op-1', vacío=None)",
-    ) else {
-        return;
-    };
+        &Default::default(),
+    );
     assert_eq!(read(&home), read(&twin));
     assert_eq!(results.all().len(), 200);
 }
@@ -74,16 +75,17 @@ fn motor_stage_and_long_detail_match_python() {
         .set("c|%3", true, &long, &[("rolledBack", json!(false))])
         .unwrap();
     results.stage("d|%4", "aplicando", "", &[]).unwrap();
-    let Some(_) = oracle::run_dash(
+    support::http_golden::dash_files(
         &twin,
+        "server-motor-results",
+        &["motor-results.json"],
         "dash.time.time = lambda: 1234.5\n\
          long = 'é' * 250\n\
          dash.motor_stage('a|%1', long, 'c' * 50, operationId='x')\n\
          dash.motor_result_set('c|%3', True, long, rolledBack=False)\n\
          dash.motor_stage('d|%4', 'aplicando')",
-    ) else {
-        return;
-    };
+        &Default::default(),
+    );
     assert_eq!(read(&home), read(&twin));
 }
 
@@ -118,14 +120,15 @@ fn legacy_overwrite_keeps_rust_entries_visible() {
         .set_with_ts("rust|%1", true, "mío", &[], 100.0)
         .unwrap();
     assert!(on_disk(&home).contains_key("rust|%1"));
-    let Some(_) = oracle::run_dash(
+    support::http_golden::dash_files(
         &home,
+        "server-motor-results",
+        &["motor-results.json"],
         "dash.MOTOR_RESULT.clear()\n\
          dash.time.time = lambda: 200.0\n\
          dash.motor_result_set('legacy|%2', True, 'py')",
-    ) else {
-        return;
-    };
+        &Default::default(),
+    );
     let disk = on_disk(&home);
     assert!(!disk.contains_key("rust|%1"), "el Python pisó el archivo");
     let all = results.all();
@@ -151,15 +154,16 @@ fn rust_writes_keep_legacy_entries_and_newer_ts_wins() {
     results
         .set_with_ts("shared|%1", true, "rust viejo", &[], 100.0)
         .unwrap();
-    let Some(_) = oracle::run_dash(
+    support::http_golden::dash_files(
         &home,
+        "server-motor-results",
+        &["motor-results.json"],
         "dash.time.time = lambda: 50.0\n\
          dash.motor_result_set('legacy|%1', True, 'py')\n\
          dash.time.time = lambda: 300.0\n\
          dash.motor_result_set('shared|%1', False, 'py nuevo')",
-    ) else {
-        return;
-    };
+        &Default::default(),
+    );
     // El Python cargó el archivo al importar: conserva la clave de Rust.
     assert_eq!(
         results.get("shared|%1").unwrap()["detail"],
