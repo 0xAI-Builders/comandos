@@ -244,6 +244,13 @@ fn read_snapshot<T>(
     Ok((source, value))
 }
 fn inspect(path: &Path) -> Result<StableSource> {
+    read_metadata(path, None, validate).map(|(source, _)| source)
+}
+fn read_metadata<T>(
+    path: &Path,
+    home: Option<&Path>,
+    body: impl Fn(&Connection) -> Result<T>,
+) -> Result<(StableSource, T)> {
     let source = StableSource::capture(path)?;
     if source.wal.as_ref().is_some_and(|wal| wal.len != 0)
         && source
@@ -255,24 +262,29 @@ fn inspect(path: &Path) -> Result<StableSource> {
             .journal
             .as_ref()
             .is_none_or(|journal| journal.len == 0)
-        && let Some(stable) = inspect_schema(path, source)?
+        && let Some(value) = metadata_snapshot(path, home, source, &body)?
     {
-        return Ok(stable);
+        return Ok(value);
     }
-    read_snapshot(path, None, true, validate).map(|(source, _)| source)
+    read_snapshot(path, home, true, body)
 }
 
 /// SQLite remains the schema authority. Only its metadata pages are staged;
 /// unrelated payloads do not determine admission latency. Unsupported layouts
 /// discard this candidate and use the existing complete snapshot instead.
-fn inspect_schema(path: &Path, source: StableSource) -> Result<Option<StableSource>> {
+fn metadata_snapshot<T>(
+    path: &Path,
+    home: Option<&Path>,
+    source: StableSource,
+    body: impl Fn(&Connection) -> Result<T>,
+) -> Result<Option<(StableSource, T)>> {
     let Some(db) = source.db.as_ref() else {
         return Ok(None);
     };
     let Some(wal) = source.wal.as_ref() else {
         return Ok(None);
     };
-    let scratch = Scratch::new_outside(path, None)?;
+    let scratch = Scratch::new_outside(path, home)?;
     let staged = scratch.0.join("db.sqlite3");
     let walpath = suffix(path, "-wal");
     let staged_wal = suffix(&staged, "-wal");
@@ -286,11 +298,11 @@ fn inspect_schema(path: &Path, source: StableSource) -> Result<Option<StableSour
         Err(_) => return Ok(None),
     };
     source.check(path)?;
-    // The first tree contains sqlite_schema. Let SQLite locate version and
-    // planner tables, including covering indices on the migration table.
+    // The first tree contains sqlite_schema. Let SQLite locate version, mode
+    // and planner tables, including their covering indices.
     let roots = (|| -> Result<Vec<u32>> {
         let conn = open_wal_snapshot(&staged)?;
-        Ok(conn.prepare("SELECT rootpage FROM sqlite_schema WHERE rootpage>0 AND (tbl_name='schema_migrations' OR name IN ('sqlite_stat1','sqlite_stat2','sqlite_stat3','sqlite_stat4'))")?
+        Ok(conn.prepare("SELECT rootpage FROM sqlite_schema WHERE rootpage>0 AND (tbl_name IN ('schema_migrations','domain_modes') OR name IN ('sqlite_stat1','sqlite_stat2','sqlite_stat3','sqlite_stat4'))")?
             .query_map([], |row| row.get(0))?
             .collect::<rusqlite::Result<_>>()?)
     })();
@@ -309,13 +321,13 @@ fn inspect_schema(path: &Path, source: StableSource) -> Result<Option<StableSour
     }
     source.check(path)?;
     let conn = open_wal_snapshot(&staged)?;
-    let result = validate(&conn);
+    let result = body(&conn);
     if transfer(&walpath, None, wal)? != walhash {
         return Err(Error::Validation(CHANGED.into()));
     }
     source.check(path)?;
     match result {
-        Ok(_) => Ok(Some(source)),
+        Ok(value) => Ok(Some((source, value))),
         // A planner or extension may require pages outside these trees. The
         // complete snapshot determines its result instead of accepting holes.
         Err(Error::Sql(_)) => Ok(None),
@@ -348,16 +360,44 @@ pub fn with_readonly_unified<T>(
         ));
     }
     read_snapshot(path, Some(home), true, |conn| {
-        validate(conn)?;
-        for domain in crate::domains::catalog::DOMAINS {
-            if super::modes::guarded(path, domain.name)?
-                != (super::mode_of(Some(conn), domain.name)? == super::Mode::Sealed)
-            {
-                return Err(Error::Validation(
-                    "guardia y modo sin confirmar en snapshot".into(),
-                ));
-            }
+        validate_readonly_unified(conn, path)?;
+        body(conn)
+    })
+    .map(|(_, value)| value)
+}
+fn validate_readonly_unified(conn: &Connection, path: &Path) -> Result<()> {
+    validate(conn)?;
+    for domain in crate::domains::catalog::DOMAINS {
+        if super::modes::guarded(path, domain.name)?
+            != (super::mode_of(Some(conn), domain.name)? == super::Mode::Sealed)
+        {
+            return Err(Error::Validation(
+                "guardia y modo sin confirmar en snapshot".into(),
+            ));
         }
+    }
+    Ok(())
+}
+// Fixed metadata-only operations: arbitrary read callbacks keep the complete
+// snapshot above, because their tables may contain unrelated payload pages.
+pub(crate) fn readonly_unified_mode(home: &Path, path: &Path, domain: &str) -> Result<super::Mode> {
+    unified_metadata(home, path, |conn| super::mode_of(Some(conn), domain))
+}
+pub(crate) fn validate_unified_metadata(home: &Path, path: &Path) -> Result<()> {
+    unified_metadata(home, path, |_| Ok(()))
+}
+fn unified_metadata<T>(
+    home: &Path,
+    path: &Path,
+    body: impl Fn(&Connection) -> Result<T>,
+) -> Result<T> {
+    if !home.is_absolute() || !path.is_absolute() {
+        return Err(Error::Validation(
+            "snapshot requiere rutas absolutas".into(),
+        ));
+    }
+    read_metadata(path, Some(home), |conn| {
+        validate_readonly_unified(conn, path)?;
         body(conn)
     })
     .map(|(_, value)| value)

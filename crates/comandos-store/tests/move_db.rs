@@ -185,6 +185,76 @@ fn read_only_snapshot_and_resolve_missing_create_no_paths_or_shm() {
 }
 
 #[test]
+#[ignore = "gate de resolución con una base privada de 172 MB; ejecutar explícitamente"]
+fn large_mirrored_database_resolution_has_bounded_latency() {
+    use std::time::{Duration, Instant};
+    let h = Home::new();
+    let path = h.db();
+    let writer = unified::open_unified(&path).unwrap();
+    writer.execute_batch("PRAGMA wal_autocheckpoint=0; CREATE TABLE unrelated_payload(body BLOB); INSERT INTO unrelated_payload VALUES(zeroblob(172000000)); PRAGMA wal_checkpoint(TRUNCATE)").unwrap();
+    unified::set_mode(
+        &writer,
+        "session-status",
+        unified::Mode::Mirror,
+        "private gate",
+        1,
+    )
+    .unwrap();
+    let legacy = h.spec("db-app-state").legacy;
+    let before = tree(&h.0);
+    let started = Instant::now();
+    let resolved = resolve_db(&legacy, &path).unwrap();
+    let elapsed = started.elapsed();
+    assert_eq!(resolved, DbLocation::Legacy(legacy));
+    assert_eq!(tree(&h.0), before);
+    eprintln!("172MB_metadata_resolution_us={}", elapsed.as_micros());
+    assert!(
+        elapsed < Duration::from_millis(50),
+        "mode resolution took {elapsed:?}; unrelated payload must not determine hook latency"
+    );
+}
+
+#[test]
+fn database_resolution_consumes_wal_modes_and_rejects_future_schema_unchanged() {
+    let h = Home::new();
+    let path = h.db();
+    let writer = unified::open_unified(&path).unwrap();
+    writer
+        .execute_batch("PRAGMA wal_autocheckpoint=0; PRAGMA wal_checkpoint(TRUNCATE)")
+        .unwrap();
+    for domain in [
+        "db-operator",
+        "db-news",
+        "db-operations",
+        "db-app-state",
+        "db-usage",
+    ] {
+        let legacy = h.spec(domain).legacy;
+        unified::set_mode(&writer, domain, unified::Mode::Mirror, "private modes", 1).unwrap();
+        let before = tree(&h.0);
+        assert_eq!(
+            resolve_db(&legacy, &path).unwrap(),
+            DbLocation::Legacy(legacy.clone())
+        );
+        assert_eq!(tree(&h.0), before);
+        unified::set_mode(&writer, domain, unified::Mode::Unified, "private modes", 2).unwrap();
+        let before = tree(&h.0);
+        assert_eq!(
+            resolve_db(&legacy, &path).unwrap(),
+            DbLocation::Unified(path.clone())
+        );
+        assert_eq!(tree(&h.0), before);
+    }
+    writer
+        .execute("INSERT INTO schema_migrations VALUES(105,'future',0)", [])
+        .unwrap();
+    let before = tree(&h.0);
+    let error = resolve_db(&h.spec("db-app-state").legacy, &path).unwrap_err();
+    assert!(error.to_string().contains("versión más nueva"), "{error}");
+    assert_eq!(tree(&h.0), before);
+}
+
+#[test]
 fn move_crash_before_sentinel_is_redone() {
     let h = Home::new();
     let spec = h.source("db-app-state");

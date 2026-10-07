@@ -278,13 +278,12 @@ fn resolve_db_snapshot(legacy: &Path, target: &Path) -> Result<DbLocation> {
     if let Some(domain) = domain
         && unified::modes::guarded(target, domain)?
     {
-        unified::with_readonly_unified(&home, target, |_| Ok(()))?;
+        unified::validate_unified_metadata(&home, target)?;
         return Ok(DbLocation::Unified(target.to_owned()));
     }
     if let Some(domain) = domain
         && target.exists()
-        && unified::with_readonly_unified(&home, target, |c| unified::mode_of(Some(c), domain))?
-            == unified::Mode::Unified
+        && unified::readonly_unified_mode(&home, target, domain)? == unified::Mode::Unified
     {
         return Ok(DbLocation::Unified(target.to_owned()));
     }
@@ -297,7 +296,7 @@ fn resolve_db_snapshot(legacy: &Path, target: &Path) -> Result<DbLocation> {
     }
     let moved = unified::with_readonly_db(&home, legacy, marker)?;
     if moved {
-        unified::with_readonly_unified(&home, target, |_| Ok(()))?;
+        unified::validate_unified_metadata(&home, target)?;
         Ok(DbLocation::Unified(target.to_owned()))
     } else {
         Ok(DbLocation::Legacy(legacy.to_owned()))
