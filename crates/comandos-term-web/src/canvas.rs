@@ -30,7 +30,11 @@ use comandos_term::{
     glyphs::{self, DrawOp},
     render::{CursorShape, CursorView, Run, RunKind, Underline},
 };
-use std::collections::HashMap;
+use std::{
+    borrow::Borrow,
+    collections::HashMap,
+    hash::{Hash, Hasher},
+};
 use wasm_bindgen::{Clamped, JsCast, JsValue, prelude::wasm_bindgen};
 use web_sys::{
     CanvasPattern, CanvasRenderingContext2d, Document, HtmlCanvasElement, ImageData, Path2d, Window,
@@ -597,12 +601,68 @@ pub const MAX_ENTRIES: usize = 8192;
 /// código no tienen tope de longitud).
 pub const MAX_KEY_BYTES: usize = 256 * 1024;
 
+// A combined text/style key avoids one hash-table implementation and one
+// hash-table lookup for multiscalar glyphs. The single-character table and
+// allocation-free fast path remain unchanged.
+#[derive(PartialEq, Eq)]
+struct GlyphKey<K> {
+    text: String,
+    style: K,
+}
+trait GlyphKeyView<K> {
+    fn text(&self) -> &str;
+    fn style(&self) -> &K;
+}
+impl<K> GlyphKeyView<K> for GlyphKey<K> {
+    fn text(&self) -> &str {
+        &self.text
+    }
+    fn style(&self) -> &K {
+        &self.style
+    }
+}
+struct GlyphQuery<'a, K> {
+    text: &'a str,
+    style: &'a K,
+}
+impl<K> GlyphKeyView<K> for GlyphQuery<'_, K> {
+    fn text(&self) -> &str {
+        self.text
+    }
+    fn style(&self) -> &K {
+        self.style
+    }
+}
+impl<K: Hash> Hash for GlyphKey<K> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.text.hash(state);
+        self.style.hash(state);
+    }
+}
+impl<K: Hash> Hash for dyn GlyphKeyView<K> + '_ {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.text().hash(state);
+        self.style().hash(state);
+    }
+}
+impl<K: Eq> PartialEq for dyn GlyphKeyView<K> + '_ {
+    fn eq(&self, other: &Self) -> bool {
+        self.text() == other.text() && self.style() == other.style()
+    }
+}
+impl<K: Eq> Eq for dyn GlyphKeyView<K> + '_ {}
+impl<'a, K: 'a> Borrow<dyn GlyphKeyView<K> + 'a> for GlyphKey<K> {
+    fn borrow(&self) -> &(dyn GlyphKeyView<K> + 'a) {
+        self
+    }
+}
+
 /// Índice texto + estilo → glifo del atlas, con sus topes. La generación
 /// cambia en cada vaciado: un glifo guardado siempre es de la generación
 /// actual (`cached_glyph` vacía antes de rasterizar, nunca después).
 pub struct GlyphIndex<K, S> {
     single: HashMap<(char, K), S>,
-    multi: HashMap<String, HashMap<K, S>>,
+    multi: HashMap<GlyphKey<K>, S>,
     /// Entradas guardadas (incluidas las vacías, que no ocupan página).
     entries: usize,
     key_bytes: usize,
@@ -626,7 +686,10 @@ impl<K: Copy + Eq + std::hash::Hash, S: Copy> GlyphIndex<K, S> {
         let mut chars = text.chars();
         match (chars.next(), chars.next()) {
             (Some(c), None) => self.single.get(&(c, *key)).copied(),
-            _ => self.multi.get(text).and_then(|m| m.get(key)).copied(),
+            _ => {
+                let query = GlyphQuery { text, style: key };
+                self.multi.get(&query as &dyn GlyphKeyView<K>).copied()
+            }
         }
     }
 
@@ -644,10 +707,13 @@ impl<K: Copy + Eq + std::hash::Hash, S: Copy> GlyphIndex<K, S> {
                 self.single.insert((c, key), slot);
             }
             _ => {
-                self.multi
-                    .entry(text.to_string())
-                    .or_default()
-                    .insert(key, slot);
+                self.multi.insert(
+                    GlyphKey {
+                        text: text.to_owned(),
+                        style: key,
+                    },
+                    slot,
+                );
             }
         }
     }
@@ -682,10 +748,8 @@ impl<K: Copy + Eq + std::hash::Hash, S: Copy> GlyphIndex<K, S> {
         for ((c, k), slot) in &self.single {
             f(c.encode_utf8(&mut buf), k, slot);
         }
-        for (text, map) in &self.multi {
-            for (k, slot) in map {
-                f(text, k, slot);
-            }
+        for (key, slot) in &self.multi {
+            f(&key.text, &key.style, slot);
         }
     }
 }
