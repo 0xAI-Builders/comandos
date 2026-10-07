@@ -1,0 +1,162 @@
+{
+  "recorded_utc": "2026-10-07T21:28:46.592585+00:00",
+  "functional_source_commit": "b95b4bfd18c1729160cf08572e7fc561300f1cb3",
+  "migration_complete": false,
+  "live_cutover": false,
+  "memory_optimization_deferred_by_user": true,
+  "ordinary_tests": {
+    "full_collection_receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/workspace-functional-integrated-result.json",
+    "full_collection_exit": 101,
+    "full_collection_primary_suites": 424,
+    "full_collection_passed": 3319,
+    "full_collection_failed": 1,
+    "full_collection_ignored": 68,
+    "sole_failure": "Mac HTTP test fixture selected an occupied fixed port",
+    "corrected_fixture_receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/mac-http-final-green-result.json",
+    "corrected_fixture_passed": 6,
+    "corrected_fixture_failed": 0,
+    "combined_distinct_ordinary_passed": 3320,
+    "full_collection_rerun": false
+  },
+  "verified_repairs": [
+    "native namespace proof without owned shell and all five capability fields checked",
+    "per-client MCP resource subscriptions and logging with confirmed upstream state",
+    "mode-correct side-layout test fixture",
+    "HTTP lifecycle tests retain exclusively bound sandbox ports",
+    "compact development/test Cargo profiles"
+  ],
+  "checks": {
+    "strict_clippy_5_packages_all_targets": {
+      "exit": 0,
+      "receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/functional-close-clippy-result.json"
+    },
+    "linux_native_release": {
+      "exit": 0,
+      "seconds": 204.26960530504584,
+      "receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/functional-final-linux-release-result.json"
+    },
+    "macos_native_release": {
+      "exit": 0,
+      "seconds": 530.4871528600343,
+      "receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/final-macos-result.json",
+      "machine": "Mac nueva",
+      "gui_acceptance": false
+    },
+    "private_full_installer": {
+      "exit": 0,
+      "web_regular_files": 63,
+      "frontend_replacements": 33,
+      "receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/functional-final-private-installer-result.json"
+    },
+    "private_172mb_reads": {
+      "exit": 0,
+      "document_us": 4586,
+      "selection_us": 3438,
+      "budget_us_each": 50000,
+      "receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/functional-final-web-read-gate-result.json"
+    },
+    "release_hook_store_gate": {
+      "exit": 101,
+      "median_us": 3823,
+      "required_below_us": 3000,
+      "receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/functional-final-hook-store-release-gate-result.json"
+    },
+    "private_200_full_hooks": {
+      "passed": false,
+      "runs": 200,
+      "errors": 0,
+      "median_ms": 57.4785245,
+      "p95_ms": 108.935341,
+      "median_p95_budget_ms": 100,
+      "all_private_workers_reaped": true,
+      "private_source_unchanged": true,
+      "receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/hook-mirror-latency-b95b4bfd-after-cleanup/result.json"
+    }
+  },
+  "artifacts": {
+    "linux": {
+      "source_commit": "b95b4bfd18c1729160cf08572e7fc561300f1cb3",
+      "linux_release_build": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/functional-final-linux-release-result.json",
+      "artifacts": [
+        {
+          "name": "comandos",
+          "path": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/native-install-artifacts-b95b4bfd/comandos",
+          "source_path": "/home/someguy/codebase/0xJesus/ComandOS/.build/target-integration-acp/release/comandos",
+          "source_commit": "b95b4bfd18c1729160cf08572e7fc561300f1cb3",
+          "sha256": "372167b140edcc1b2118c65861a8e74a029b5514baa61afa6de6c009da2ed172",
+          "bytes": 44315576
+        },
+        {
+          "name": "comandos-app",
+          "path": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/native-install-artifacts-b95b4bfd/comandos-app",
+          "source_path": "/home/someguy/codebase/0xJesus/ComandOS/.build/target-integration-acp/release/comandos-app",
+          "source_commit": "b95b4bfd18c1729160cf08572e7fc561300f1cb3",
+          "sha256": "9d5c0380a4a4628c089ad23bc2e34b13fa2760587c908ca1b6b1664f7a1c7f1a",
+          "bytes": 11349016
+        },
+        {
+          "name": "comandos-notifyd",
+          "path": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/native-install-artifacts-b95b4bfd/comandos-notifyd",
+          "source_path": "/home/someguy/codebase/0xJesus/ComandOS/.build/target-integration-acp/release/comandos-notifyd",
+          "source_commit": "b95b4bfd18c1729160cf08572e7fc561300f1cb3",
+          "sha256": "6904089f95319367e107cb6c09b725ec33d8c821f43a874226f1cb12e9ec7ac4",
+          "bytes": 949352
+        },
+        {
+          "name": "cc-model-proxy",
+          "path": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/native-install-artifacts-b95b4bfd/cc-model-proxy",
+          "source_path": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/native-install-artifacts-92f74c7a/cc-model-proxy",
+          "source_commit": "92f74c7aafe9bc8bcc8fe6c559b8755cc518a9bc",
+          "sha256": "b82971f9befabec44ea3483ef9744fe18a8123651cab8798b9f45ace8e37c9ce",
+          "bytes": 21595616
+        }
+      ],
+      "proxy_vendor_source_unchanged_since_92f74c7a": true,
+      "live_install": false
+    },
+    "macos": {
+      "source_commit": "b95b4bfd18c1729160cf08572e7fc561300f1cb3",
+      "artifacts": [
+        {
+          "path": "/Users/jesuscreativestudio/.local/share/comandos-validation/darwin-runtime-20261006/build-b95b4bfd-native-release/artifacts/comandos",
+          "sha256": "4c352b77b87094dd375756116fbdbc690f52637470010502f89cf4fb1899456e",
+          "bytes": 40769424,
+          "file": "/Users/jesuscreativestudio/.local/share/comandos-validation/darwin-runtime-20261006/build-92f74c7a-native-release/target/release/comandos: Mach-O 64-bit executable x86_64",
+          "build_cache_path": "/Users/jesuscreativestudio/.local/share/comandos-validation/darwin-runtime-20261006/build-92f74c7a-native-release/target/release/comandos"
+        },
+        {
+          "path": "/Users/jesuscreativestudio/.local/share/comandos-validation/darwin-runtime-20261006/build-b95b4bfd-native-release/artifacts/comandos-app-mac",
+          "sha256": "7e2887d9065f881312fe46a4075f13e1848b877eb8e7dc9371220bc1e5918f4e",
+          "bytes": 3133056,
+          "file": "/Users/jesuscreativestudio/.local/share/comandos-validation/darwin-runtime-20261006/build-92f74c7a-native-release/target/release/comandos-app-mac: Mach-O 64-bit executable x86_64",
+          "build_cache_path": "/Users/jesuscreativestudio/.local/share/comandos-validation/darwin-runtime-20261006/build-92f74c7a-native-release/target/release/comandos-app-mac"
+        }
+      ],
+      "build_accepted": true,
+      "gui_launched": false,
+      "live_install": false
+    }
+  },
+  "cleanup": {
+    "deleted_directories": 73,
+    "deleted_allocated_bytes": 1265279008768,
+    "available_after_latest_bytes": 1330436513792,
+    "receipts": [
+      "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/cargo-cleanup-receipt.json",
+      "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/final-cargo-cleanup-receipt.json"
+    ],
+    "active_targets_preserved": [
+      "/home/someguy/codebase/0xJesus/ComandOS/.build/target",
+      "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-fase2d/.build/target",
+      "/home/someguy/codebase/0xJesus/ComandOS/.build/target-integration-acp/release"
+    ],
+    "release_cache_allocated_size_human": "2.2GiB",
+    "source_data_releases_and_agent_histories_preserved": true
+  },
+  "remaining": [
+    "performance acceptance:release Mirror write under3ms and full-hook p95<=100ms",
+    "GTK/Cocoa full GUI acceptance; ordinary gtk_smoke did not initialize a display",
+    "memory reduction deferred last",
+    "live cutover and storage promotion/retirement guards; 796-original-record repair remains unapplied"
+  ]
+}
