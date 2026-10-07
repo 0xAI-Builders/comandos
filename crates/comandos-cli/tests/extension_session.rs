@@ -377,3 +377,39 @@ fn namespace_child_proof_never_changes_parent_target() {
         eprintln!("private user/mount namespace unavailable: executor refused safely");
     }
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn namespace_check_rejects_uncleared_bounding_capabilities() {
+    let status = fs::read_to_string("/proc/self/status").unwrap();
+    let bounding = status
+        .lines()
+        .find_map(|line| line.strip_prefix("CapBnd:"))
+        .map(|value| u64::from_str_radix(value.trim(), 16).unwrap())
+        .unwrap();
+    if bounding == 0 {
+        eprintln!("test process already has an empty capability bounding set");
+        return;
+    }
+    let f = Fixture::new();
+    let target = f.home.join("target");
+    fs::write(&target, b"child").unwrap();
+    let proof = f.private("check.json", &json!({"target":target,"home":f.home}));
+    let out = f
+        .command(false)
+        .arg("--namespace-check")
+        .arg(proof)
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a zero effective set must not admit a nonzero bounding set"
+    );
+    assert!(out.stdout.is_empty());
+    assert_eq!(
+        out.stderr,
+        format!("{}\n", launch::executor::ERROR).as_bytes()
+    );
+    assert_eq!(fs::read(target).unwrap(), b"child");
+}

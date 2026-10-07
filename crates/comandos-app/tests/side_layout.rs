@@ -93,12 +93,19 @@ fn layout_document_authority_guard_cas_and_cancel_cover_four_modes() {
         let files = StateFiles::new(cfg.clone(), WriteGuard::from_config(&cfg, ":fixture"));
         for name in ["app-layout.json", "app-pane-position.json"] {
             let old = json!({"leftPos":300,"position":310,"unknown":{"ñ":"😀"}});
-            files.write(name, &old).unwrap();
             let db = unified::open_unified(&unified::unified_path(cfg.home())).unwrap();
+            // Each document starts with the same legacy fixture, including the second
+            // document after the previous iteration changed this shared domain's mode.
+            unified::set_mode(&db, "app-ui", Mode::Legacy, "fixture", 0).unwrap();
+            files.write(name, &old).unwrap();
+            let path = root.join("hooks").join(name);
+            let lock = root.join("hooks").join(format!("{name}.lock"));
+            std::fs::remove_file(&lock).unwrap();
+            let key = format!("hooks/{name}");
             let authoritative = json!({"leftPos":900,"position":910});
             unified::doc_put(
                 &db,
-                &format!("H/{name}"),
+                &key,
                 "app-ui",
                 comandos_core::json::response_dumps(&authoritative)
                     .unwrap()
@@ -108,34 +115,122 @@ fn layout_document_authority_guard_cas_and_cancel_cover_four_modes() {
             )
             .unwrap();
             unified::set_mode(&db, "app-ui", mode, "fixture", 1).unwrap();
+            let expected = if matches!(mode, Mode::Unified | Mode::Sealed) {
+                authoritative.clone()
+            } else {
+                old.clone()
+            };
             assert_eq!(
                 files.read_ui_document(name).unwrap(),
-                if matches!(mode, Mode::Unified | Mode::Sealed) {
-                    authoritative
-                } else {
-                    old.clone()
-                }
+                expected,
+                "{mode:?}/{name}: authority"
             );
+            let snapshot = || {
+                let origin: String = db
+                    .query_row(
+                        "SELECT origin FROM documents WHERE name=?1",
+                        [&key],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
+                (
+                    std::fs::read(&path).unwrap(),
+                    unified::doc_get(&db, &key).unwrap().unwrap(),
+                    origin,
+                )
+            };
+            let initial = snapshot();
             let next = json!({"leftPos":490,"position":510,"unknown":{"ñ":"😀"}});
-            let result = files.write_ui_document_when(name, &old, &next, || true);
-            if mode == Mode::Legacy {
-                assert!(result.unwrap());
-                assert_eq!(files.read(name).unwrap(), next);
+            if matches!(mode, Mode::Unified | Mode::Sealed) {
                 assert!(
                     !files
-                        .write_ui_document_when(name, &old, &json!({"bad":true}), || true)
-                        .unwrap()
+                        .write_ui_document_when(name, &old, &next, || true)
+                        .unwrap(),
+                    "{mode:?}/{name}: stale legacy CAS"
                 );
-                assert!(
-                    !files
-                        .write_ui_document_when(name, &next, &json!({"bad":true}), || false)
-                        .unwrap()
+                assert_eq!(
+                    snapshot(),
+                    initial,
+                    "{mode:?}/{name}: stale CAS preserves state"
                 );
-            } else {
-                assert!(result.is_err());
-                assert_eq!(files.read(name).unwrap(), old);
-                assert!(!root.join("hooks").join(format!("{name}.lock")).exists());
             }
+            assert!(
+                files
+                    .write_ui_document_when(name, &expected, &next, || true)
+                    .unwrap(),
+                "{mode:?}/{name}: authoritative CAS succeeds"
+            );
+            assert_eq!(
+                files.read_ui_document(name).unwrap(),
+                next,
+                "{mode:?}/{name}: new authority"
+            );
+            let published = snapshot();
+            assert_eq!(
+                comandos_core::json::workspace_loads_bytes(&published.0).unwrap(),
+                if mode == Mode::Sealed {
+                    old.clone()
+                } else {
+                    next.clone()
+                },
+                "{mode:?}/{name}: legacy mirror"
+            );
+            if mode == Mode::Legacy {
+                assert_eq!(published.1, initial.1, "{mode:?}/{name}: DB untouched");
+                assert_eq!(published.2, "import", "{mode:?}/{name}: origin untouched");
+            } else {
+                assert_eq!(
+                    comandos_core::json::workspace_loads_bytes(&published.1.body).unwrap(),
+                    next,
+                    "{mode:?}/{name}: DB body"
+                );
+                assert_eq!(
+                    published.1.revision,
+                    initial.1.revision + 1,
+                    "{mode:?}/{name}: revision"
+                );
+                assert_eq!(
+                    published.2,
+                    if mode == Mode::Mirror {
+                        "mirror"
+                    } else {
+                        "unified"
+                    },
+                    "{mode:?}/{name}: origin"
+                );
+            }
+            assert_eq!(
+                lock.exists(),
+                mode != Mode::Sealed,
+                "{mode:?}/{name}: lock policy"
+            );
+            assert!(
+                !files
+                    .write_ui_document_when(name, &expected, &json!({"bad":true}), || true)
+                    .unwrap(),
+                "{mode:?}/{name}: outdated CAS"
+            );
+            assert_eq!(
+                snapshot(),
+                published,
+                "{mode:?}/{name}: outdated CAS preserves state"
+            );
+            assert!(
+                !files
+                    .write_ui_document_when(name, &next, &json!({"bad":true}), || false)
+                    .unwrap(),
+                "{mode:?}/{name}: cancellation"
+            );
+            assert_eq!(
+                snapshot(),
+                published,
+                "{mode:?}/{name}: cancellation preserves state"
+            );
+            assert_eq!(
+                lock.exists(),
+                mode != Mode::Sealed,
+                "{mode:?}/{name}: final lock policy"
+            );
         }
         std::fs::remove_dir_all(root).unwrap();
     }

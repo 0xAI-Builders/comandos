@@ -4,14 +4,30 @@ use comandos_runtime::{capabilities::Paths, extension_launch as e};
 use serde_json::{Value, json};
 fn install_private_native_fixture(root: &std::path::Path) {
     use std::os::unix::fs::symlink;
+    let executable = std::env::var_os("COMANDOS_EXTENSION_SESSION_NATIVE_FIXTURE")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join("comandos")
+        });
+    assert!(
+        executable.is_file(),
+        "build comandos-cli first or provide COMANDOS_EXTENSION_SESSION_NATIVE_FIXTURE for the private extension fixture"
+    );
     let native = root.join(".local/share/comandos/bin/comandos");
     let alias = e::helper_for_home(root);
     std::fs::create_dir_all(native.parent().unwrap()).unwrap();
     std::fs::create_dir_all(alias.parent().unwrap()).unwrap();
-    std::fs::copy(std::env::current_exe().unwrap(), &native).unwrap();
+    std::fs::copy(executable, &native).unwrap();
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&native, std::fs::Permissions::from_mode(0o700)).unwrap();
     symlink(&native, &alias).unwrap();
+    e::require_helper(root).unwrap();
 }
 fn remove_private_native_fixture(root: &std::path::Path) {
     std::fs::remove_file(e::helper_for_home(root)).unwrap();

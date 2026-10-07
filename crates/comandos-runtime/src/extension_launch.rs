@@ -2355,26 +2355,32 @@ fn namespace_preflight(runtime_dir: &Path, home: &Path) -> Result<(), LaunchErro
                 .into(),
         )
     };
+    let helper = require_helper(home)?;
     let directory = runtime_dir.join(format!("namespace-proof-{}", uuid4_hex()?));
     fs::DirBuilder::new()
         .mode(0o700)
         .create(&directory)
         .map_err(|_| LaunchError::Other)?;
+    struct ProbeDirectory(PathBuf);
+    impl Drop for ProbeDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    let _cleanup = ProbeDirectory(directory.clone());
     let target = directory.join("target");
     let source = directory.join("source");
     write_private(&target, b"parent").map_err(|_| LaunchError::Other)?;
     write_private(&source, b"child").map_err(|_| LaunchError::Other)?;
-    // Positional argv carries paths; neither user commands nor configuration are evaluated.
-    let script = r#"/usr/bin/mount --bind "$1" "$2" || exit 1
-exec /usr/bin/setpriv --no-new-privs --bounding-set=-all --inh-caps=-all --ambient-caps=-all /bin/sh -c '
-[ "$HOME" = "$2" ] || exit 1
-[ "$(/usr/bin/cat "$1")" = child ] || exit 1
-while read -r key value extra; do
- case "$key" in CapInh:|CapPrm:|CapEff:|CapBnd:|CapAmb:) [ "$value" = 0000000000000000 ] || exit 1;; esac
-done < /proc/self/status
-printf namespace-proof-ok
-' proof "$2" "$3"
-"#;
+    let proof = directory.join("proof.json");
+    let data = json!({"mounts":[{"source":source,"target":target}],"target":target,"home":home});
+    write_private(
+        &proof,
+        response_dumps(&data)
+            .map_err(|_| LaunchError::Other)?
+            .as_bytes(),
+    )
+    .map_err(|_| LaunchError::Other)?;
     let output = directory.join("output");
     let stdout = fs::OpenOptions::new()
         .write(true)
@@ -2382,22 +2388,9 @@ printf namespace-proof-ok
         .mode(0o600)
         .open(&output)
         .map_err(|_| LaunchError::Other)?;
-    let mut child = match std::process::Command::new("/usr/bin/unshare")
-        .args([
-            "--user",
-            "--mount",
-            "--keep-caps",
-            "--propagation",
-            "private",
-            "--map-user",
-        ])
-        .arg(uid().to_string())
-        .arg("--map-group")
-        .arg(nix::unistd::getgid().as_raw().to_string())
-        .args(["--", "/bin/sh", "-c", script, "proof"])
-        .arg(&source)
-        .arg(&target)
-        .arg(home)
+    let mut child = match std::process::Command::new(helper)
+        .arg("--namespace-proof")
+        .arg(&proof)
         .env_clear()
         .env("HOME", home)
         .env("PATH", "/usr/bin:/bin")
@@ -2408,10 +2401,7 @@ printf namespace-proof-ok
         .spawn()
     {
         Ok(c) => c,
-        Err(_) => {
-            let _ = fs::remove_dir_all(&directory);
-            return Err(refused());
-        }
+        Err(_) => return Err(refused()),
     };
     let success = wait_namespace_probe(
         &mut child,
@@ -2424,9 +2414,8 @@ printf namespace-proof-ok
         },
     );
     let verified = success
-        && fs::read(&output).is_ok_and(|b| b == b"namespace-proof-ok")
+        && fs::read(&output).is_ok_and(|b| b == b"namespace-proof-ok\n")
         && fs::read(&target).is_ok_and(|b| b == b"parent");
-    let _ = fs::remove_dir_all(&directory);
     if verified { Ok(()) } else { Err(refused()) }
 }
 

@@ -361,6 +361,12 @@ fn namespace(mounts: &[Value]) -> Result<(), LaunchError> {
         MsFlags::MS_REC | MsFlags::MS_PRIVATE,
         None,
     ))?;
+    bind_mounts(mounts)?;
+    other(nix::sys::prctl::set_no_new_privs())
+}
+#[cfg(target_os = "linux")]
+fn bind_mounts(mounts: &[Value]) -> Result<(), LaunchError> {
+    use nix::mount::{MsFlags, mount};
     for entry in mounts {
         let source = Path::new(entry["source"].as_str().ok_or(LaunchError::Other)?);
         let target = Path::new(entry["target"].as_str().ok_or(LaunchError::Other)?);
@@ -372,25 +378,129 @@ fn namespace(mounts: &[Value]) -> Result<(), LaunchError> {
             None,
         ))?;
     }
-    other(nix::sys::prctl::set_no_new_privs())
+    Ok(())
 }
 #[cfg(not(target_os = "linux"))]
 fn namespace(_mounts: &[Value]) -> Result<(), LaunchError> {
     Err(LaunchError::Other)
 }
+#[cfg(target_os = "linux")]
 fn namespace_proof(path: &Path) -> Result<(), LaunchError> {
-    let data = py_json_bytes(&other(fs::read(path))?)?.map_err(LaunchError::Value)?;
+    let mut data = py_json_bytes(&other(fs::read(path))?)?.map_err(LaunchError::Value)?;
     let mounts = data["mounts"].as_array().ok_or(LaunchError::Other)?;
-    platform_mounts(mounts)?;
-    namespace(mounts)?;
-    // Check capabilities after exec, as in the original --namespace-proof.
+    if nix::unistd::getuid().as_raw() == 0 {
+        return Err(LaunchError::Other);
+    }
     let exe = other(std::env::current_exe())?;
-    let error = std::process::Command::new(exe)
+    match data.get("namespaceReady") {
+        None => {
+            // unshare conserva capacidades tras exec; setpriv aún podrá retirar CapBnd.
+            let mut inherited = Map::new();
+            for name in ["user", "mnt"] {
+                let link = other(fs::read_link(format!("/proc/self/ns/{name}")))?;
+                inherited.insert(name.into(), link.to_str().ok_or(LaunchError::Other)?.into());
+            }
+            let staged = path
+                .parent()
+                .ok_or(LaunchError::Other)?
+                .join(format!("namespace-ready-{}.json", uuid4_hex()?));
+            let object = data.as_object_mut().ok_or(LaunchError::Other)?;
+            object.insert("namespaceReady".into(), Value::Bool(true));
+            object.insert("namespaceParent".into(), Value::Object(inherited));
+            other(write_private(
+                &staged,
+                other(response_dumps(&data))?.as_bytes(),
+            ))?;
+            let _ = std::process::Command::new("/usr/bin/unshare")
+                .args([
+                    "--user",
+                    "--mount",
+                    "--keep-caps",
+                    "--propagation",
+                    "private",
+                    "--map-user",
+                ])
+                .arg(nix::unistd::getuid().as_raw().to_string())
+                .arg("--map-group")
+                .arg(nix::unistd::getgid().as_raw().to_string())
+                .arg("--")
+                .arg(exe)
+                .args(["extension-session", "--namespace-proof"])
+                .arg(staged)
+                .exec();
+            return Err(LaunchError::Other);
+        }
+        Some(Value::Bool(true)) => {}
+        _ => return Err(LaunchError::Other),
+    }
+    // Guardar las identidades antes de unshare evita leer procfs de otro namespace.
+    let inherited = data
+        .get("namespaceParent")
+        .and_then(Value::as_object)
+        .ok_or(LaunchError::Other)?;
+    for name in ["user", "mnt"] {
+        let current = other(fs::read_link(format!("/proc/self/ns/{name}")))?;
+        let previous = inherited
+            .get(name)
+            .and_then(Value::as_str)
+            .ok_or(LaunchError::Other)?;
+        if current.to_str().ok_or(LaunchError::Other)? == previous {
+            return Err(LaunchError::Other);
+        }
+    }
+    for (name, id) in [
+        ("uid", nix::unistd::getuid().as_raw()),
+        ("gid", nix::unistd::getgid().as_raw()),
+    ] {
+        let mapping = other(fs::read_to_string(format!("/proc/self/{name}_map")))?;
+        let mut fields = mapping.split_whitespace();
+        let read_id = |field: Option<&str>| field.and_then(|value| value.parse::<u32>().ok());
+        if read_id(fields.next()) != Some(id)
+            || read_id(fields.next()) != Some(id)
+            || read_id(fields.next()) != Some(1)
+            || fields.next().is_some()
+        {
+            return Err(LaunchError::Other);
+        }
+    }
+    if other(fs::read_to_string("/proc/self/setgroups"))?.trim() != "deny" {
+        return Err(LaunchError::Other);
+    }
+    bind_mounts(mounts)?;
+    // Retirar todos los conjuntos antes del último exec, sin evaluar comandos shell.
+    let _ = std::process::Command::new("/usr/bin/setpriv")
+        .args([
+            "--no-new-privs",
+            "--bounding-set=-all",
+            "--inh-caps=-all",
+            "--ambient-caps=-all",
+            "--",
+        ])
+        .arg(exe)
         .args(["extension-session", "--namespace-check"])
         .arg(path)
         .exec();
-    let _ = error;
     Err(LaunchError::Other)
+}
+#[cfg(not(target_os = "linux"))]
+fn namespace_proof(_path: &Path) -> Result<(), LaunchError> {
+    Err(LaunchError::Other)
+}
+fn capabilities_are_zero(status: &str) -> bool {
+    const FIELDS: [&str; 5] = ["CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"];
+    FIELDS.iter().all(|field| {
+        let mut values = status.lines().filter_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            (name == *field).then_some(value.trim())
+        });
+        let Some(value) = values.next() else {
+            return false;
+        };
+        value.len() == 16
+            && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+            && u64::from_str_radix(value, 16) == Ok(0)
+            && values.next().is_none()
+    })
 }
 fn namespace_check(path: &Path) -> Result<(), LaunchError> {
     let data = py_json_bytes(&other(fs::read(path))?)?.map_err(LaunchError::Value)?;
@@ -401,11 +511,7 @@ fn namespace_check(path: &Path) -> Result<(), LaunchError> {
         return Err(LaunchError::Other);
     }
     let status = other(fs::read_to_string("/proc/self/status"))?;
-    let effective = status
-        .lines()
-        .find_map(|l| l.strip_prefix("CapEff:"))
-        .and_then(|v| u64::from_str_radix(v.trim(), 16).ok());
-    if effective != Some(0) {
+    if !capabilities_are_zero(&status) {
         return Err(LaunchError::Other);
     }
     println!("namespace-proof-ok");
@@ -496,5 +602,54 @@ pub fn main(args: &[String]) -> i32 {
         1
     } else {
         0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    const CAPABILITY_FIELDS: [&str; 5] = ["CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"];
+
+    fn status(change: Option<(&str, &str)>, omit: Option<&str>) -> String {
+        CAPABILITY_FIELDS
+            .iter()
+            .filter(|field| Some(**field) != omit)
+            .map(|field| {
+                let value = change
+                    .filter(|(changed, _)| changed == field)
+                    .map_or("0000000000000000", |(_, value)| value);
+                format!("{field}:\t{value}\n")
+            })
+            .collect()
+    }
+
+    #[test]
+    fn namespace_capabilities_require_all_five_unique_valid_zero_fields() {
+        let complete = status(None, None);
+        assert!(super::capabilities_are_zero(&format!(
+            "Name:\tprivate-proof\n{complete}"
+        )));
+        for field in CAPABILITY_FIELDS {
+            assert!(
+                !super::capabilities_are_zero(&status(None, Some(field))),
+                "missing {field}"
+            );
+            assert!(
+                !super::capabilities_are_zero(&format!("{complete}{field}:\t0000000000000000\n")),
+                "duplicate {field}"
+            );
+            for value in [
+                "0000000000000001",
+                "g000000000000000",
+                "0000000000000000 extra",
+                "",
+                "+000000000000000",
+                "00000000000000000",
+            ] {
+                assert!(
+                    !super::capabilities_are_zero(&status(Some((field, value)), None)),
+                    "invalid or nonzero {field}: {value:?}"
+                );
+            }
+        }
     }
 }

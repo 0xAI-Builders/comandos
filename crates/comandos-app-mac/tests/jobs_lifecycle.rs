@@ -15,11 +15,24 @@ use std::{
     },
     time::{Duration, Instant},
 };
+// Keep the successful bind open: concurrent fixtures cannot select its port.
+// The sandbox API admits only this loopback band, so OS-assigned port 0 is unsuitable.
+fn sandbox_listener() -> TcpListener {
+    (7200..=7399)
+        .find_map(|port| match TcpListener::bind(("127.0.0.1", port)) {
+            Ok(listener) => Some(listener),
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => None,
+            Err(error) => panic!("cannot bind owned HTTP fixture on {port}: {error}"),
+        })
+        .expect("no available owned HTTP fixture port in the sandbox band")
+}
+
 #[test]
 fn error_payloads_never_publish_fake_credentials() {
     use comandos_app_mac::jobs::Backend;
     use std::io::Write;
-    let listener = TcpListener::bind("127.0.0.1:7347").unwrap();
+    let listener = sandbox_listener();
+    let dash_url = format!("http://{}", listener.local_addr().unwrap());
     let server = std::thread::spawn(move || {
         let (mut socket, _) = listener.accept().unwrap();
         let mut buf = [0; 4096];
@@ -39,7 +52,7 @@ fn error_payloads_never_publish_fake_credentials() {
             tmux_socket: std::env::temp_dir().join("never-used"),
             hooks: std::env::temp_dir(),
         },
-        dash_url: "http://127.0.0.1:7347".into(),
+        dash_url,
         dump_dom: None,
     };
     let service = SystemBackend::new(&cfg).unwrap();
@@ -50,7 +63,8 @@ fn error_payloads_never_publish_fake_credentials() {
 }
 #[test]
 fn close_interrupts_a_real_owned_http_read_and_joins_worker() {
-    let listener = TcpListener::bind("127.0.0.1:7346").unwrap();
+    let listener = sandbox_listener();
+    let dash_url = format!("http://{}", listener.local_addr().unwrap());
     let (tx, rx) = mpsc::channel();
     let server = std::thread::spawn(move || {
         let (mut socket, _) = listener.accept().unwrap();
@@ -69,7 +83,7 @@ fn close_interrupts_a_real_owned_http_read_and_joins_worker() {
             tmux_socket: home.join("never-used-owned-socket"),
             hooks: home.join("never-read-hooks"),
         },
-        dash_url: "http://127.0.0.1:7346".into(),
+        dash_url,
         dump_dom: None,
     };
     let backend = Arc::new(SystemBackend::new(&cfg).unwrap());
