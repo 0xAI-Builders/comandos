@@ -999,10 +999,12 @@ fn attach_main() -> Result<(), JsValue> {
     let params = web_sys::UrlSearchParams::new_with_str(&w.location().search()?)?;
     let session = params.get("arg").unwrap_or_default();
     let auth = params.get("auth").unwrap_or_default();
-    let theme = params
-        .get("theme")
-        .unwrap_or_else(|| "noche".into())
-        .to_lowercase();
+    // Match the original String.toLowerCase at the browser boundary instead
+    // of retaining Rust's Unicode case tables solely for this query value.
+    let theme = String::from(
+        js_sys::JsString::from(params.get("theme").unwrap_or_else(|| "noche".into()))
+            .to_lower_case(),
+    );
     let base = params
         .get("ws")
         .filter(|s| !s.is_empty())
