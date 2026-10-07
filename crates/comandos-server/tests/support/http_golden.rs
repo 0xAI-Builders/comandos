@@ -24,6 +24,7 @@ pub struct FrozenHttp<'a> {
     aliases: Vec<(String, PathBuf)>,
     prime_targets: Vec<String>,
     allowed_port_count: usize,
+    request_sequence: Option<std::sync::atomic::AtomicU64>,
 }
 impl<'a> FrozenHttp<'a> {
     pub async fn new(home: &'a TestHome, family: &'static str, files: &[&'static str]) -> Self {
@@ -131,7 +132,18 @@ impl<'a> FrozenHttp<'a> {
             aliases: Vec::new(),
             prime_targets: Vec::new(),
             allowed_port_count: allow_ports.len(),
+            request_sequence: None,
         }
+    }
+    /// Opt in when source state outside the effect whitelist changes between
+    /// otherwise identical requests. Preserve the actual request order in the
+    /// golden key without restoring that state or fabricating its effects.
+    pub fn sequence_requests(&mut self) {
+        assert!(
+            self.request_sequence.is_none(),
+            "oracle sequence already enabled"
+        );
+        self.request_sequence = Some(std::sync::atomic::AtomicU64::new(0));
     }
     /// A real source listener exists only in explicit record/check.
     /// Concurrency fixtures must supply their own real native actor in replay.
@@ -179,6 +191,10 @@ impl<'a> FrozenHttp<'a> {
         ))
         .unwrap();
         let mut input = json!({"source_commit":frozen::SOURCE_COMMIT,"source_sha256":"4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24", "python":"CPython 3.10.12","clock_ms":NOW_MS,"request":request,"effect_files":self.files});
+        if let Some(sequence) = &self.request_sequence {
+            input["oracle_sequence"] =
+                json!(sequence.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+        }
         if !self.prelude.is_empty() {
             input["fixture_prelude"] = json!(self.prelude);
         }
