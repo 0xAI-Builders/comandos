@@ -280,7 +280,7 @@ pub mod web {
                 } else {
                     invoke(&get(&opts, "load"), &[])
                 };
-                Ok(wasm_bindgen_futures::future_to_promise(async move {
+                Ok(promise(async move {
                     if local {
                         return Ok("local".into());
                     }
@@ -309,8 +309,7 @@ pub mod web {
                         s.last_saved = text.as_string();
                     }
                     Ok("restored".into())
-                })
-                .into())
+                }))
             })?;
             let st = state.clone();
             let opts_flush = opts.clone();
@@ -346,7 +345,7 @@ pub mod web {
                 set(&payload, "draftsPatch", &patch)?;
                 let saved = invoke(&get(&opts_flush, "save"), &[payload]);
                 let st = st.clone();
-                Ok(wasm_bindgen_futures::future_to_promise(async move {
+                Ok(promise(async move {
                     if wait(saved).await.is_ok() {
                         Ok(true.into())
                     } else {
@@ -355,8 +354,7 @@ pub mod web {
                         }
                         Ok(false.into())
                     }
-                })
-                .into())
+                }))
             });
             set(&out, "flush", &flush)?;
             method(&out, "changed", move |args| {
@@ -391,7 +389,7 @@ pub mod web {
                 let text = args.get(0);
                 let load = invoke(&get(&options, "load"), &[]);
                 let key = k.clone();
-                Ok(wasm_bindgen_futures::future_to_promise(async move {
+                Ok(promise(async move {
                     let loaded = match wait(load).await {
                         Ok(v) => v,
                         Err(_) => return from_json(&serde_json::json!({"state":"unavailable"})),
@@ -414,8 +412,7 @@ pub mod web {
                     } else {
                         from_json(&serde_json::json!({"state":"found","index":index}))
                     }
-                })
-                .into())
+                }))
             })?;
             method(&out, "remember", move |args| {
                 let line: JsValue = js_line_at(args.get(0), args.get(1))
