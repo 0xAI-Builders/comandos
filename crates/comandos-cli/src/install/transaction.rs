@@ -432,7 +432,7 @@ impl Journal {
                 let prior = fs::read(path).ok();
                 if prior
                     .as_deref()
-                    .is_none_or(|v| v == *original || v == bytes.as_slice())
+                    .is_none_or(|v| super::plan::unit_is_owned(path, v, original, bytes))
                 {
                     self.observed
                         .insert(path.clone(), Before::File(bytes.clone(), 0o644));

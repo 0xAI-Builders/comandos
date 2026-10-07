@@ -101,6 +101,14 @@ fn installed_executable_discovers_its_sibling_web_bundle_outside_checkout() {
     );
 }
 #[test]
+fn empty_cargo_target_dir_still_discovers_installed_bundle() {
+    let fixture = Fixture::new();
+    assert_eq!(
+        fixture.probe(Some(Path::new(""))),
+        fixture.0.join("releases/private-id/web")
+    );
+}
+#[test]
 fn explicit_absolute_cargo_target_dir_overrides_installed_bundle() {
     let fixture = Fixture::new();
     let target = fixture.0.join("explicit-build");

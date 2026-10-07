@@ -71,6 +71,23 @@ fn unit(home: &Path, name: &str, source: &'static [u8], old: &str, new: &str) ->
     }
 }
 
+/// Only exact generated revisions are owned; user edits stay untouched.
+pub(super) fn unit_is_owned(path: &Path, prior: &[u8], original: &[u8], generated: &[u8]) -> bool {
+    prior == original
+        || prior == generated
+        || (path
+            .file_name()
+            .is_some_and(|name| name == "cc-dash.service")
+            && original == assets::DASH_UNIT
+            && prior
+                == String::from_utf8_lossy(assets::DASH_UNIT)
+                    .replace(
+                        "%h/.local/bin/cc-dash",
+                        "%h/.local/share/comandos/bin/comandos dash",
+                    )
+                    .as_bytes())
+}
+
 pub fn plan(home: &Path, platform: Platform, release: &Path) -> Vec<Action> {
     let binary = home.join(".local/share/comandos/bin/comandos");
     let mut result = Vec::new();
@@ -140,7 +157,7 @@ pub fn plan(home: &Path, platform: Platform, release: &Path) -> Vec<Action> {
             "cc-dash.service",
             assets::DASH_UNIT,
             "%h/.local/bin/cc-dash",
-            "%h/.local/share/comandos/bin/comandos dash",
+            "%h/.local/share/comandos/bin/comandos dash --term native",
         ));
         result.push(unit(
             home,
@@ -301,7 +318,7 @@ fn apply_inner(
                         if prior == *bytes && !meta.file_type().is_symlink() {
                             continue;
                         }
-                        if prior != *original && prior != *bytes {
+                        if !unit_is_owned(path, &prior, original, bytes) {
                             report.push(format!("preserved customized unit {}", path.display()));
                             continue;
                         }

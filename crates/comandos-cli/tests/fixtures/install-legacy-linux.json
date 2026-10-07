@@ -263,7 +263,7 @@
       "kind": "link",
       "target": "{{REPO}}/systemd/cc-dash.service",
       "sha256": "e3cf9831f92e24f056ecac5ec844df0627e858b141d782ae98eb827b6fb87b71",
-      "native_sha256": "43bb09e63da458e373d376628a2740aacf84bb2e2d1858b982651cc31501a07b"
+      "native_sha256": "25420dda63c192190a288641e15cfbe277303f3b9f3e34097be7a4d6067c35aa"
     },
     ".config/systemd/user/cc-notifyd.service": {
       "kind": "link",

@@ -191,7 +191,7 @@ pub fn agent_plist(home: &Path) -> Result<String, String> {
 <plist version="1.0"><dict>
   <key>Label</key><string>com.0xai.cc-dash</string>
   <key>ProgramArguments</key><array>
-    <string>{h}/.local/share/comandos/bin/comandos</string><string>dash</string><string>--no-open</string>
+    <string>{h}/.local/share/comandos/bin/comandos</string><string>dash</string><string>--term</string><string>native</string><string>--no-open</string>
   </array>
   <key>EnvironmentVariables</key><dict>
     <!-- launchd no hereda el PATH del shell: sin Homebrew aquí, cc-dash no

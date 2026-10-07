@@ -54,7 +54,7 @@ const ORIGINAL: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 </dict></plist>
 "#;
 #[test]
-fn agent_matches_original_heredoc_with_two_documented_substitutions() {
+fn agent_preserves_original_heredoc_and_selects_native_terminal() {
     let script = include_str!("../../../install.sh");
     let heredoc = script
         .split("<<PLIST\n")
@@ -71,7 +71,7 @@ fn agent_matches_original_heredoc_with_two_documented_substitutions() {
         .replace(
             "<string>$BIN/cc-dash</string>",
             &format!(
-                "<string>{}/.local/share/comandos/bin/comandos</string><string>dash</string>",
+                "<string>{}/.local/share/comandos/bin/comandos</string><string>dash</string><string>--term</string><string>native</string>",
                 home.0.display()
             ),
         )

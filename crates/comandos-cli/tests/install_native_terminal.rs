@@ -45,6 +45,21 @@ fn put(path: &Path, bytes: &[u8], mode: u32) {
     fs::write(path, bytes).unwrap();
     fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
 }
+fn acknowledge_private_agents_setup(action: &Action, expected_home: &Path) {
+    let Action::ExtensionOperation {
+        home,
+        operation,
+        quiescent,
+        ..
+    } = action
+    else {
+        panic!("unexpected private installer action: {action:?}")
+    };
+    assert_eq!(home, expected_home);
+    assert_eq!(operation, "agents-setup");
+    // This callback starts no worker; acknowledge that private test boundary.
+    *quiescent.borrow_mut() = true;
+}
 #[test]
 fn linux_generated_dashboard_service_explicitly_selects_native_terminal() {
     let home = Home::new();
@@ -126,6 +141,35 @@ fn previous_generated_rust_dashboard_unit_upgrades_to_native_terminal() {
 }
 
 #[test]
+fn customized_previous_generated_dashboard_unit_is_preserved() {
+    let home = Home::new();
+    let custom = format!(
+        "{}\n# user changed dashboard configuration\nEnvironment=PRIVATE_SETTING=1\n",
+        ORIGINAL_UNIT.replace(
+            "%h/.local/bin/cc-dash",
+            "%h/.local/share/comandos/bin/comandos dash"
+        )
+    );
+    put(&home.unit(), custom.as_bytes(), 0o640);
+    let inode = home.unit().metadata().unwrap().ino();
+    let report = plan::apply_with(&[home.unit_action()], false, &mut |_| {
+        panic!("customized predecessor tool call")
+    })
+    .unwrap();
+    assert!(
+        report
+            .iter()
+            .any(|r| r.starts_with("preserved customized unit "))
+    );
+    assert_eq!(fs::read(home.unit()).unwrap(), custom.as_bytes());
+    assert_eq!(home.unit().metadata().unwrap().ino(), inode);
+    assert_eq!(
+        home.unit().metadata().unwrap().permissions().mode() & 0o777,
+        0o640
+    );
+}
+
+#[test]
 fn linux_generated_unit_is_idempotent_without_restarting_services() {
     let home = Home::new();
     let mut reloads = 0;
@@ -200,21 +244,29 @@ fn linux_custom_regular_and_symlink_units_preserve_exact_bytes_modes_and_inodes(
 }
 #[test]
 fn linux_generated_unit_late_failure_restores_original_bytes_and_mode() {
-    let home = Home::new();
-    put(&home.unit(), ORIGINAL_UNIT.as_bytes(), 0o640);
-    let actions = [home.unit_action(), Action::AgentsSetup(home.0.clone())];
-    let error = plan::apply_with(&actions, false, &mut |action| {
-        assert!(matches!(action, Action::AgentsSetup(_)));
-        Err("private later installation failure".into())
-    })
-    .unwrap_err();
-    assert!(error.contains("private later installation failure"));
-    assert!(!error.contains("retained recovery journal"), "{error}");
-    assert_eq!(fs::read(home.unit()).unwrap(), ORIGINAL_UNIT.as_bytes());
-    assert_eq!(
-        home.unit().metadata().unwrap().permissions().mode() & 0o777,
-        0o640
-    );
+    for prior in [
+        ORIGINAL_UNIT.to_string(),
+        ORIGINAL_UNIT.replace(
+            "%h/.local/bin/cc-dash",
+            "%h/.local/share/comandos/bin/comandos dash",
+        ),
+    ] {
+        let home = Home::new();
+        put(&home.unit(), prior.as_bytes(), 0o640);
+        let actions = [home.unit_action(), Action::AgentsSetup(home.0.clone())];
+        let error = plan::apply_with(&actions, false, &mut |action| {
+            acknowledge_private_agents_setup(action, &home.0);
+            Err("private later installation failure".into())
+        })
+        .unwrap_err();
+        assert!(error.contains("private later installation failure"));
+        assert!(!error.contains("retained recovery journal"), "{error}");
+        assert_eq!(fs::read(home.unit()).unwrap(), prior.as_bytes());
+        assert_eq!(
+            home.unit().metadata().unwrap().permissions().mode() & 0o777,
+            0o640
+        );
+    }
 }
 #[test]
 fn linux_generated_unit_rollback_refuses_a_foreign_edit_and_keeps_its_journal() {
@@ -225,7 +277,7 @@ fn linux_generated_unit_rollback_refuses_a_foreign_edit_and_keeps_its_journal() 
         &[home.unit_action(), Action::AgentsSetup(home.0.clone())],
         false,
         &mut |action| {
-            assert!(matches!(action, Action::AgentsSetup(_)));
+            acknowledge_private_agents_setup(action, &home.0);
             put(&home.unit(), custom, 0o600);
             Err("private failure after foreign edit".into())
         },

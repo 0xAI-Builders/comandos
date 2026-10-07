@@ -400,13 +400,18 @@ pub fn from_env(args: &[String]) -> Result<DashConfig, StartError> {
     let cwd = std::env::current_dir()
         .map_err(|e| StartError::Config(format!("directorio actual: {e}")))?;
     let workspace = cfg.repo_root.clone().unwrap_or_else(|| cwd.clone());
-    cfg.web_dir = comandos_core::web_assets::out_dir_from(
-        std::env::var_os("CARGO_TARGET_DIR")
-            .as_deref()
-            .map(Path::new),
-        &cwd,
-        &workspace,
-    );
+    let target = std::env::var_os("CARGO_TARGET_DIR");
+    let target = target.as_deref().map(Path::new);
+    let installed_web = if target.is_none_or(|path| path.as_os_str().is_empty()) {
+        std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|dir| dir.join("web")))
+            .filter(|dir| dir.join(comandos_core::web_assets::MANIFEST_FILE).is_file())
+    } else {
+        None
+    };
+    cfg.web_dir = installed_web
+        .unwrap_or_else(|| comandos_core::web_assets::out_dir_from(target, &cwd, &workspace));
     if std::env::var(NATIVE_ENV).is_ok_and(|v| v == "0") {
         cfg.native = false;
     }
