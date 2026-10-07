@@ -264,3 +264,97 @@ fn stdin_after_option_terminator_blocks_with_external_cwd() {
     symlink(&f.home, f.proc.join("123/cwd")).unwrap();
     assert!(f.check("logs").is_err());
 }
+
+#[test]
+fn confirmed_kernel_thread_without_exe_is_not_a_writer() {
+    let f = Fixture::new("confirmed-kernel");
+    let p = f.proc.join("42");
+    fs::create_dir(&p).unwrap();
+    fs::write(
+        p.join("status"),
+        "Name:\tkthreadd\nUid:\t0\t0\t0\t0\nKthread:\t1\n",
+    )
+    .unwrap();
+    fs::write(p.join("cmdline"), b"").unwrap();
+    assert!(domain_writers(&f.proc, &f.home, &f.repo, "tabs").is_empty());
+    assert!(f.check("tabs").is_ok());
+}
+
+#[test]
+fn privileged_userspace_without_readable_exe_still_blocks() {
+    let f = Fixture::new("privileged-userspace");
+    let p = f.proc.join("1");
+    fs::create_dir(&p).unwrap();
+    fs::write(
+        p.join("status"),
+        "Name:\tsystemd\nUid:\t0\t0\t0\t0\nKthread:\t0\n",
+    )
+    .unwrap();
+    fs::write(p.join("cmdline"), b"/sbin/init\0").unwrap();
+    let writers = domain_writers(&f.proc, &f.home, &f.repo, "tabs");
+    assert_eq!(writers.len(), 1);
+    assert_eq!(writers[0].pid, 1);
+    assert!(can_unify(&writers).is_err());
+}
+
+#[test]
+fn absent_or_malformed_kernel_field_does_not_exclude_ambiguous_process() {
+    let f = Fixture::new("invalid-kernel-field");
+    let p = f.proc.join("42");
+    fs::create_dir(&p).unwrap();
+    for status in [
+        None,
+        Some("Name:\tkthreadd\nUid:\t0\t0\t0\t0\n"),
+        Some("Kthread:\t\n"),
+        Some("Kthread:\t01\n"),
+        Some("Kthread:\t+1\n"),
+        Some("Kthread:\t1 junk\n"),
+        Some("Kthread:\t2\n"),
+        Some("Kthread 1\n"),
+        Some("Kthread:\t1\nKthread:\t1\n"),
+        Some("Kthread:\t1\nKthread:\t0\n"),
+    ] {
+        match status {
+            Some(text) => fs::write(p.join("status"), text).unwrap(),
+            None => {
+                let _ = fs::remove_file(p.join("status"));
+            }
+        }
+        assert!(
+            f.check("tabs").is_err(),
+            "ambiguous status incorrectly excluded: {status:?}"
+        );
+    }
+}
+
+#[test]
+fn unreadable_kernel_status_does_not_exclude_ambiguous_process() {
+    let f = Fixture::new("unreadable-kernel-status");
+    let p = f.proc.join("42");
+    fs::create_dir_all(p.join("status")).unwrap();
+    assert!(f.check("tabs").is_err());
+}
+
+#[test]
+fn external_legacy_python_with_foreign_uid_remains_a_writer() {
+    let f = Fixture::new("foreign-legacy-python");
+    let script = f.root.join("outside-checkout/cc-app");
+    fs::create_dir(script.parent().unwrap()).unwrap();
+    fs::write(&script, b"fixture legacy entrypoint").unwrap();
+    f.process(
+        777,
+        &PathBuf::from("/usr/bin/python3"),
+        &["python3", script.to_str().unwrap()],
+    );
+    fs::write(
+        f.proc.join("777/status"),
+        "Name:\tpython3\nUid:\t4242\t4242\t4242\t4242\nKthread:\t0\n",
+    )
+    .unwrap();
+    let writers = domain_writers(&f.proc, &f.home, &f.repo, "tabs");
+    assert_eq!(writers.len(), 1);
+    assert_eq!(writers[0].pid, 777);
+    assert!(!writers[0].python_repo);
+    assert_eq!(writers[0].protocol, 0);
+    assert!(can_unify(&writers).is_err());
+}

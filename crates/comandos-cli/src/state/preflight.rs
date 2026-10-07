@@ -22,7 +22,7 @@ fn blocked(pid: i32, path: &Path, reason: impl std::fmt::Display) -> WriterProc 
         python_repo: false,
     }
 }
-/// Nunca ignora errores de /proc; se representan como escritores sin capacidad.
+/// Salvo kernel confirmado, las lecturas incompletas son escritores sin capacidad.
 pub fn domain_writers(proc_root: &Path, home: &Path, repo: &Path, name: &str) -> Vec<WriterProc> {
     let Some(domain) = domain(name) else {
         return vec![blocked(0, proc_root, format!("dominio desconocido {name}"))];
@@ -64,6 +64,19 @@ pub fn domain_writers(proc_root: &Path, home: &Path, repo: &Path, name: &str) ->
     writers.sort_by_key(|w| w.pid);
     writers
 }
+/// Linux exposes Kthread in /proc/PID/status. Only one exact affirmative field
+/// excludes a process; missing, unreadable or malformed status proves nothing.
+fn confirmed_kernel_thread(path: &Path) -> bool {
+    let Ok(status) = fs::read_to_string(path.join("status")) else {
+        return false;
+    };
+    let mut fields = status.lines().filter_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        (key == "Kthread").then_some(value.trim())
+    });
+    fields.next() == Some("1") && fields.next().is_none()
+}
+
 fn inspect(
     pid: i32,
     path: &Path,
@@ -71,6 +84,9 @@ fn inspect(
     repo: &Path,
     domain: &Domain,
 ) -> Result<Option<WriterProc>, String> {
+    if confirmed_kernel_thread(path) {
+        return Ok(None);
+    }
     let exe = fs::read_link(path.join("exe")).map_err(|e| format!("exe ilegible: {e}"))?;
     let bytes = fs::read(path.join("cmdline")).map_err(|e| format!("cmdline ilegible: {e}"))?;
     let argv: Vec<String> = bytes
