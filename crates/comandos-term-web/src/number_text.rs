@@ -13,9 +13,17 @@ pub(crate) fn decimal(value: f64) -> String {
         .into();
     };
     let source = number.to_string();
+    // Both integer texts come from the finite JSON formatter, never input.
+    // Keep an invariant failure signal without formatting ParseIntError.
     let (mantissa, exponent) = source
         .split_once(['e', 'E'])
-        .map(|(m, e)| (m, e.parse::<i32>().expect("JSON float exponent")))
+        .map(|(m, e)| {
+            (
+                m,
+                e.parse::<i32>()
+                    .unwrap_or_else(|_| panic!("JSON float exponent")),
+            )
+        })
         .unwrap_or((&source, 0));
     let negative = mantissa.starts_with('-');
     let mantissa = mantissa.trim_start_matches('-');
@@ -34,7 +42,9 @@ pub(crate) fn decimal(value: f64) -> String {
     // JSON's shortest formatter chooses the even decimal at an exact tie;
     // Rust Display chooses the larger magnitude. Detect that midpoint using
     // integer factors, without a second float conversion or formatter.
-    let coefficient = digits.parse::<u64>().expect("JSON float significand");
+    let coefficient = digits
+        .parse::<u64>()
+        .unwrap_or_else(|_| panic!("JSON float significand"));
     if lower_midpoint(value, coefficient, decimal_exponent) {
         digits = (coefficient + 1).to_string();
     }

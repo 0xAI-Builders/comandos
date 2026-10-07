@@ -214,3 +214,23 @@ fn css_and_pane_number_edges_keep_existing_contract() {
         0.
     );
 }
+
+#[wasm_bindgen_test]
+fn decimal_invariants_preserve_original_display_for_every_exponent_and_seeded_bits() {
+    for exponent in 0..=2047u64 {
+        for fraction in [0, 1, 0x0007_ffff_ffff_ffff, 0x000f_ffff_ffff_ffff] {
+            for sign in [0, 1u64 << 63] {
+                let value = f64::from_bits(sign | (exponent << 52) | fraction);
+                assert_eq!(number_text::decimal(value), value.to_string());
+            }
+        }
+    }
+    let mut bits = 0x1234_5678_9abc_def0_u64;
+    for _ in 0..100000 {
+        bits ^= bits << 13;
+        bits ^= bits >> 7;
+        bits ^= bits << 17;
+        let value = f64::from_bits(bits);
+        assert_eq!(number_text::decimal(value), value.to_string());
+    }
+}
