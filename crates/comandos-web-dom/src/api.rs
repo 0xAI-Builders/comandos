@@ -197,13 +197,22 @@ pub fn from_tree<C, E>(
     root: C,
     mut inspect: impl FnMut(&C) -> Result<Node<C>, E>,
 ) -> Result<Value, E> {
+    walk_tree(root, |value, _| inspect(value))
+}
+
+// Frames already track the current container depth. Share the traversal with
+// bounded browser conversions without rebuilding every child as (value, depth).
+fn walk_tree<C, E>(
+    root: C,
+    mut inspect: impl FnMut(&C, usize) -> Result<Node<C>, E>,
+) -> Result<Value, E> {
     let mut stack: Vec<Frame<C>> = Vec::new();
     let mut next = Some(root);
     loop {
         // Visita: un valor hecho (`Some`, con `None` = omitido) o un marco nuevo.
         let mut done: Option<Option<Value>> = match next.take() {
             None => None,
-            Some(c) => match inspect(&c)? {
+            Some(c) => match inspect(&c, stack.len())? {
                 Node::Null => Some(Some(Value::Null)),
                 Node::Bool(b) => Some(Some(Value::Bool(b))),
                 Node::Number(n) => Some(Some(Value::Number(n))),
@@ -274,7 +283,7 @@ pub use web::{auth_token, get, post, serialized_value};
 
 #[cfg(target_arch = "wasm32")]
 mod web {
-    use super::{ApiError, Failure, Node, error_message, from_tree, utf16_lossy};
+    use super::{ApiError, Failure, Node, error_message, utf16_lossy, walk_tree};
     use js_sys::{Array, JSON, JsString, Object, Promise, Reflect};
     use serde_json::Value;
     use wasm_bindgen::prelude::wasm_bindgen;
@@ -424,9 +433,6 @@ export function api_read_ok(j) { return j.ok; }
         Ok(utf16_lossy(&s.iter().collect::<Vec<_>>()))
     }
 
-    fn inspect(v: &JsValue) -> Result<Node<JsValue>, ApiError> {
-        inspect_with_strings(v, None)
-    }
     fn inspect_with_strings(v: &JsValue, policy: Option<bool>) -> Result<Node<JsValue>, ApiError> {
         if v.is_null() {
             return Ok(Node::Null);
@@ -466,39 +472,30 @@ export function api_read_ok(j) { return j.ok; }
         Ok(Node::Object(fields))
     }
 
-    /// Convert a JSON.stringify result using the engine and the existing tree
+    /// Convert a JSON.stringify result using the engine and the shared tree
     /// walker. Unlike API responses, this keeps serde_json's 127-container
     /// limit and either rejects lone surrogates or uses the lossless encoding.
     pub fn serialized_value(text: &str, lossless_utf16: bool) -> Option<Value> {
-        let root = JSON::parse(text).ok()?;
-        from_tree((root, 0usize), |(v, depth)| {
-            let node = inspect_with_strings(v, Some(lossless_utf16))?;
-            Ok::<_, ApiError>(match node {
-                Node::Array(items) if *depth < 127 => {
-                    Node::Array(items.into_iter().map(|v| (v, depth + 1)).collect())
-                }
-                Node::Object(fields) if *depth < 127 => Node::Object(
-                    fields
-                        .into_iter()
-                        .map(|(k, v)| (k, (v, depth + 1)))
-                        .collect(),
-                ),
-                Node::Array(_) | Node::Object(_) => {
-                    return Err(ApiError {
-                        message: "JSON demasiado anidado".into(),
-                    });
-                }
-                Node::Null => Node::Null,
-                Node::Bool(v) => Node::Bool(v),
-                Node::Number(v) => Node::Number(v),
-                Node::Str(v) => Node::Str(v),
-                Node::Skip => Node::Skip,
-            })
+        browser_value(JSON::parse(text).ok()?, Some(lossless_utf16), 127).ok()
+    }
+
+    fn browser_value(
+        root: JsValue,
+        policy: Option<bool>,
+        max_depth: usize,
+    ) -> Result<Value, ApiError> {
+        walk_tree(root, |value, depth| {
+            let node = inspect_with_strings(value, policy)?;
+            if depth >= max_depth && matches!(node, Node::Array(_) | Node::Object(_)) {
+                return Err(ApiError {
+                    message: "JSON demasiado anidado".into(),
+                });
+            }
+            Ok(node)
         })
-        .ok()
     }
 
     fn to_value(j: &JsValue) -> Result<Value, ApiError> {
-        from_tree(j.clone(), inspect)
+        browser_value(j.clone(), None, usize::MAX)
     }
 }

@@ -87,3 +87,25 @@ fn serde_internal_names_remain_ordinary_js_fields() {
         );
     }
 }
+
+#[wasm_bindgen_test]
+fn mixed_containers_and_sibling_branches_keep_original_depth_limit() {
+    for depth in [126, 127, 128, 129] {
+        let mut text = String::from("true");
+        for level in 0..depth {
+            text = if level % 2 == 0 {
+                format!("[{text},null]")
+            } else {
+                format!("{{\"empty\":[],\"deep\":{text},\"after\":false}}")
+            };
+        }
+        let previous = serde_json::from_str::<Value>(&text).ok();
+        for lossless in [false, true] {
+            assert_eq!(
+                comandos_web_dom::api::serialized_value(&text, lossless),
+                previous,
+                "depth={depth} lossless={lossless}"
+            );
+        }
+    }
+}
