@@ -2,10 +2,9 @@
 //! (sin base, el resultado vacío tras las validaciones y sin crearla, D8) y con el
 //! cc-dash del repo sobre una base sembrada.
 mod support;
-use comandos_server::dash::native::wall_clock_ms;
 use serde_json::{Value, json};
 use std::{process::Command, sync::Arc};
-use support::{FakeLegacy, TestHome, dead_port, front, get, oracle::oracle, seed_usage};
+use support::{FakeLegacy, TestHome, dead_port, front, get, http_golden::FrozenHttp, seed_usage};
 
 /// `lastSeen` depende del segundo de la siembra: se iguala.
 fn masked(text: &str) -> String {
@@ -20,55 +19,65 @@ fn masked(text: &str) -> String {
 
 /// `(status, cuerpo)` de `extension_usage` del Python sobre una base que no existe,
 /// con el `except (ValueError, OSError)` de la ruta (`bin/cc-dash`).
-fn python_without_db(home: &TestHome, cases: &[(&str, &str, &str)]) -> Option<Vec<(u16, String)>> {
-    let repo = support::repo();
+fn python_without_db(home: &TestHome, cases: &[(&str, &str, &str)]) -> Vec<(u16, String)> {
+    const SCRIPT: &str = r#"import json,sys
+sys.path[:0] = [sys.argv[3],sys.argv[4]]
+import session_profiles
+for s,p,d in json.loads(sys.argv[1]):
+    try:
+        print(200,json.dumps(session_profiles.extension_usage(sys.argv[2],s,p,days=d)))
+    except (ValueError,OSError) as e:
+        print(400,json.dumps({'error':str(e)}))
+"#;
     let args: Vec<Value> = cases.iter().map(|(s, p, d)| json!([s, p, d])).collect();
-    let script = format!(
-        "import json, sys\n\
-         sys.path[:0] = [{bin:?}, {lib:?}]\n\
-         import session_profiles\n\
-         for s, p, d in json.loads(sys.argv[1]):\n\
-         \x20   try:\n\
-         \x20       print(200, json.dumps(session_profiles.extension_usage({db:?}, s, p, days=d)))\n\
-         \x20   except (ValueError, OSError) as e:\n\
-         \x20       print(400, json.dumps({{'error': str(e)}}))\n",
-        bin = repo.join("bin").display().to_string(),
-        lib = repo.join("lib").display().to_string(),
-        db = home
-            .root
-            .join("no-existe/comandos-usage.sqlite")
-            .display()
-            .to_string(),
+    let db = home.root.join("no-existe/comandos-usage.sqlite");
+    let output = comandos_oracle::oracle_at(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "server-extension-usage-no-db",
+        &json!({"source_commit":support::frozen::SOURCE_COMMIT,
+            "source":"lib/session_profiles.py::extension_usage", "python":"CPython 3.10.12",
+            "script":SCRIPT, "cases":args, "database":"absent"}),
+        || {
+            let reference = support::frozen::reference(&home.root)?;
+            let output = Command::new(
+                std::env::var("COMANDOS_SERVER_ORACLE_PYTHON").unwrap_or_else(|_| "python3".into()),
+            )
+            .arg("-c")
+            .arg(SCRIPT)
+            .arg(Value::Array(args.clone()).to_string())
+            .arg(&db)
+            .arg(reference.join("lib"))
+            .arg(reference.join("bin"))
+            .env_clear()
+            .env("HOME", &home.root)
+            .env("LANG", "C.UTF-8")
+            .env("PYTHONDONTWRITEBYTECODE", "1")
+            .output()
+            .map_err(|e| e.to_string())?;
+            if !output.status.success() {
+                return Err(String::from_utf8_lossy(&output.stderr).into_owned());
+            }
+            serde_json::to_vec(
+                &json!({"stdout":String::from_utf8(output.stdout).map_err(|e| e.to_string())?,
+                "db_created":db.exists()}),
+            )
+            .map_err(|e| e.to_string())
+        },
     );
-    let output = Command::new("python3")
-        .arg("-c")
-        .arg(script)
-        .arg(Value::Array(args).to_string())
-        .env("HOME", &home.root)
-        .env("LANG", "C.UTF-8")
-        .env_remove("LC_ALL")
-        .env_remove("COMANDOS_USAGE_DB")
-        .env_remove("COMANDOS_STATE_DB")
-        .output();
-    let Ok(output) = output else {
-        eprintln!("python3 no está instalado: se salta la comparación con el oráculo");
-        return None;
-    };
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
+    let output: Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(
+        output["db_created"], false,
+        "original read must not create its database"
     );
-    Some(
-        String::from_utf8(output.stdout)
-            .unwrap()
-            .lines()
-            .map(|line| {
-                let (status, body) = line.split_once(' ').unwrap();
-                (status.parse().unwrap(), body.to_owned())
-            })
-            .collect(),
-    )
+    output["stdout"]
+        .as_str()
+        .unwrap()
+        .lines()
+        .map(|line| {
+            let (status, body) = line.split_once(' ').unwrap();
+            (status.parse().unwrap(), body.to_owned())
+        })
+        .collect()
 }
 
 /// Sin base: las validaciones van primero (los 400 del Python) y después el
@@ -129,9 +138,7 @@ async fn extension_usage_without_db_matches_python_and_never_creates_it() {
     );
     assert_eq!(legacy.requests().len(), 2, "{:?}", legacy.requests());
     let inputs: Vec<(&str, &str, &str)> = cases.iter().map(|(_, c)| *c).collect();
-    let Some(expected) = python_without_db(&home, &inputs) else {
-        return;
-    };
+    let expected = python_without_db(&home, &inputs);
     for ((target, _), (got, want)) in cases.iter().zip(got.iter().zip(expected.iter())) {
         assert_eq!(got, want, "{target}");
     }
@@ -141,7 +148,8 @@ async fn extension_usage_without_db_matches_python_and_never_creates_it() {
 #[tokio::test]
 async fn extension_usage_matches_python() {
     let home = TestHome::new("ext-db");
-    let now = wall_clock_ms();
+    home.write("cc-notify.conf", "DESKTOP_NOTIFY=0\n");
+    let now = support::NOW_MS;
     let old = now - 10 * 86_400_000;
     seed_usage(
         &home,
@@ -161,11 +169,18 @@ async fn extension_usage_matches_python() {
              ('c9','i3',9,'Skill','vieja',{old},{old},9,'ok','exact');"
         ),
     );
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
+    let py = FrozenHttp::new_rooted_with(
+        &home,
+        "server-http-extension-usage",
+        &[
+            ".claude/hooks/comandos-usage.sqlite",
+            ".claude/hooks/cc-notify.conf",
+        ],
+        "",
+    )
+    .await;
     let mut opts = home.options();
-    opts.clock = Arc::new(wall_clock_ms);
+    opts.clock = Arc::new(|| support::NOW_MS);
     let front = front(&home, dead_port(), opts).await;
     for target in [
         "/extension-usage",
@@ -181,7 +196,7 @@ async fn extension_usage_matches_python() {
         "/extension-usage?session=zz",
     ] {
         let a = get(front.port, target).await;
-        let b = get(py.port, target).await;
+        let b = py.get(target).await;
         assert_eq!(a.status, b.status, "{target}: {} / {}", a.text(), b.text());
         assert_eq!(
             a.header("content-type"),
