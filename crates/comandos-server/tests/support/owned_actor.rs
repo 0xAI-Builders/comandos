@@ -16,7 +16,12 @@ impl OwnedActor {
             .find(|port| std::net::TcpListener::bind(("127.0.0.1", *port)).is_ok())
             .expect("private fixture port");
         let child = Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "support::owned_actor::fixture", "--nocapture"])
+            .args([
+                "--exact",
+                "support::owned_actor::fixture",
+                "--nocapture",
+                "--ignored",
+            ])
             .env_clear()
             .envs(home.confined_env())
             .env_remove("PYTHONPATH")
@@ -52,6 +57,7 @@ impl Drop for OwnedActor {
     }
 }
 #[test]
+#[ignore = "owned actor subprocess only"]
 fn fixture() {
     let Ok(port) = std::env::var("COMANDOS_TEST_OWNED_ACTOR_PORT") else {
         return;

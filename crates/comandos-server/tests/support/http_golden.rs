@@ -208,7 +208,14 @@ pub(super) fn copy_domain(from: &Path, to: &Path, files: &[&str]) {
             Ok(metadata) => {
                 assert!(metadata.is_file() && !metadata.file_type().is_symlink());
                 fs::create_dir_all(target.parent().unwrap()).unwrap();
-                if fs::read(&source).unwrap().starts_with(b"SQLite format 3\0") {
+                // Never open/close a live SQLite file through std::fs: POSIX
+                // closes release this process's SQLite locks, letting another
+                // process checkpoint/unlink a WAL still held by Native.
+                // Domain DBs are explicitly named .sqlite/.sqlite3/.db.
+                if matches!(
+                    source.extension().and_then(|s| s.to_str()),
+                    Some("sqlite" | "sqlite3" | "db")
+                ) {
                     // SQLite backup observes WAL and applies the logical image in place;
                     // never copy open database pages or discard live native connections.
                     let connection = rusqlite::Connection::open_with_flags(
