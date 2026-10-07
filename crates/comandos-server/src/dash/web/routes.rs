@@ -73,7 +73,12 @@ async fn index(state: &DashState, request: &Request) -> Result<Reply, HandlerErr
         return Ok(Reply::bytes(
             StatusCode::OK,
             "text/html",
-            super::native_page::render(&plan, &manifest, &nonce),
+            super::native_page::render(
+                &plan,
+                &manifest,
+                &nonce,
+                query_value(&request.target, "app").as_deref() == Some("1"),
+            ),
         ));
     }
     if query_value(&request.target, "web").as_deref() == Some("off") {

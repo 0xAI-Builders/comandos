@@ -116,8 +116,14 @@ pub fn admit(
     }
     Ok(Plan { ids, bundle })
 }
-pub fn render(plan: &Plan, manifest: &Manifest, nonce: &str) -> Vec<u8> {
+pub fn render(plan: &Plan, manifest: &Manifest, nonce: &str, embedded: bool) -> Vec<u8> {
     let mut page = comandos_web_view::index_page::shell("es").into_string();
+    if embedded {
+        // GTK's WebKit rejects this mobile-browser viewport key. Its desktop
+        // app needs the supported viewport settings; browsers retain keyboard
+        // resizing without changing the canonical packaged template.
+        page = page.replacen(", interactive-widget=resizes-content", "", 1);
+    }
     for (root, logical) in &plan.bundle.assets {
         let target = format!("/web/{}", manifest.path(logical));
         let stem = root.trim_start_matches('/');

@@ -185,6 +185,23 @@ fn nonce(page: &str) -> &str {
 }
 
 #[tokio::test]
+async fn embedded_native_viewport_uses_supported_keys_and_browser_keeps_keyboard_resize() {
+    let front = Front::start().await;
+    std::fs::remove_file(front.root.join(".claude/hooks/dash/index.html")).unwrap();
+    let embedded = front.http("GET", "/?web=native&app=1", "", "").await;
+    let browser = front.http("GET", "/?web=native", "", "").await;
+    let flag_prefix = front.http("GET", "/?web=native&app=10", "", "").await;
+    for page in [&embedded, &browser, &flag_prefix] {
+        assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+        assert!(page.contains("viewport-fit=cover"));
+    }
+    assert!(!embedded.contains("interactive-widget=resizes-content"));
+    assert!(browser.contains("interactive-widget=resizes-content"));
+    assert!(flag_prefix.contains("interactive-widget=resizes-content"));
+    front.stop().await;
+}
+
+#[tokio::test]
 async fn compiled_native_page_serves_without_original_sources_and_ready_requires_every_mount() {
     let front = Front::start().await;
     std::fs::remove_file(front.root.join(".claude/hooks/dash/index.html")).unwrap();
