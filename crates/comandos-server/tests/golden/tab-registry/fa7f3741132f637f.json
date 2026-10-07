@@ -1,0 +1,21 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "code": "dash.time.time = lambda: 1791115200\ntry:\n    dash.read_tab_metadata()\n    print('ok')\nexcept TypeError:\n    print('TypeError')",
+      "effect_files": [
+        "app-tabs.json",
+        "app-tabs-meta.json",
+        "app-tabs-history.json",
+        "app-tab-open.json",
+        "app-tab-close.json"
+      ],
+      "fakebin": [],
+      "fixture_env": []
+    },
+    "before_sha256": "68138079920b8f9820da5699eb31afb3f314476cd0c254f3dac9fd9a6abf0eb3"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJUeXBlRXJyb3JcbiIsInRyZWUiOnsiYXBwLXRhYnMtaGlzdG9yeS5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6Ilczc2ljMlZ6YzJsdmJpSTZJQ0oyYVdWcVlTSXNJQ0pzWVdKbGJDSTZJQ0pXYVdWcVlTSXNJQ0pqZDJRaU9pQWlMM1lpTENBaVlXZGxiblFpT2lBaVkyOWtaWGdpTENBaWRITWlPaUF4TUN3Z0luSmxZWE52YmlJNklDSmpiRzl6WldRaWZTd2dleUp6WlhOemFXOXVJam9nSW5BeVppSXNJQ0pzWVdKbGJDSTZJQ0pRSUdGdWRHVnpJaXdnSW5Seklqb2dPWDBzSUhzaWMyVnpjMmx2YmlJNklDSnRZV3dnYzJWemFXOXVJaXdnSW5Seklqb2dPSDFkIn0sImFwcC10YWJzLW1ldGEuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJleUpoSWpvZ2V5SnJhVzVrSWpvZ1d5SnphR1ZzYkNKZGZYMD0ifSwiYXBwLXRhYnMuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJleUpzYjJOaGJDSTZJQ0pzYjJOaGJDSXNJQ0p2ZEhKaElqb2dJazkwY21FaWZRPT0ifX19"
+}

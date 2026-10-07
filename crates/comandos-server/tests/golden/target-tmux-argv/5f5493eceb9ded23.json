@@ -1,0 +1,15 @@
+{
+  "input": {
+    "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "python": "3.10.12",
+    "steps": [
+      "dash.resolve_project_session('Mi-Proyecto')",
+      "dash.resolve_project_session('agente-x')",
+      "dash.operator_pane('s1', '%0')",
+      "dash.operator_pane('Mi-Proyecto', '%0')",
+      "dash.operator_pane('s1', '%42')"
+    ],
+    "fixture": "private tmux s1 cat, s2 claude sleep, seeded project registry"
+  },
+  "output_b64": "W1tbImxpc3Qtc2Vzc2lvbnMiLCItRiIsIiN7c2Vzc2lvbl9uYW1lfSJdLFsiZGlzcGxheS1tZXNzYWdlIiwiLXAiLCItdCIsIiUwIiwiI3twYW5lX2lkfSJdXSxbWyJsaXN0LXNlc3Npb25zIiwiLUYiLCIje3Nlc3Npb25fbmFtZX0iXSxbImxpc3QtcGFuZXMiLCItYSIsIi1GIiwiI3tzZXNzaW9uX25hbWV9fCN7cGFuZV9pZH18I3twYW5lX3BpZH18I3twYW5lX2N1cnJlbnRfY29tbWFuZH18I3twYW5lX2N1cnJlbnRfcGF0aH18I3tzZXNzaW9uX2FjdGl2aXR5fXwje3BhbmVfYWN0aXZlfXwje3dpbmRvd19hY3RpdmV9Il0sWyJsaXN0LXNlc3Npb25zIiwiLUYiLCIje3Nlc3Npb25fbmFtZX0iXV0sW1sibGlzdC1zZXNzaW9ucyIsIi1GIiwiI3tzZXNzaW9uX25hbWV9Il0sWyJkaXNwbGF5LW1lc3NhZ2UiLCItcCIsIi10IiwiJTAiLCIje3BhbmVfaWR9Il1dLFtbImxpc3Qtc2Vzc2lvbnMiLCItRiIsIiN7c2Vzc2lvbl9uYW1lfSJdLFsiZGlzcGxheS1tZXNzYWdlIiwiLXAiLCItdCIsIiUwIiwiI3twYW5lX2lkfSJdLFsiZGlzcGxheS1tZXNzYWdlIiwiLXAiLCItdCIsIiUwIiwiI3twYW5lX2lkfSJdXSxbWyJsaXN0LXNlc3Npb25zIiwiLUYiLCIje3Nlc3Npb25fbmFtZX0iXSxbImRpc3BsYXktbWVzc2FnZSIsIi1wIiwiLXQiLCIlNDIiLCIje3BhbmVfaWR9Il1dXQ=="
+}

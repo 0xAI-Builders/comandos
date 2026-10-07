@@ -221,9 +221,41 @@ async fn target_helpers_match_python() {
         Value::from(s.agent_dir.to_str().unwrap()),
         "find_project_dir no canoniza"
     );
-    let Some(expected) = oracle::run_dash(&s.home, ORACLE) else {
-        return;
-    };
+    // Aliases come from an independent query to the real private tmux actor,
+    // not from the native value under test. No process state is restored.
+    let pids = run_tmux(
+        &s.home,
+        &["display-message", "-p", "-t", "=s1:", "#{pid}\t#{pane_pid}"],
+    );
+    let pids: Vec<PathBuf> = pids.trim_end().split('\t').map(PathBuf::from).collect();
+    assert_eq!(pids.len(), 2);
+    let server_start = comandos_runtime::session_configuration::server_start(
+        &s.native.options().proc_root,
+        pids[0].to_str().unwrap(),
+    )
+    .unwrap();
+    let server_start = PathBuf::from(server_start);
+    let repo = std::fs::canonicalize(support::repo()).unwrap();
+    let mut roots = vec![
+        ("<REPO>", repo.as_path()),
+        ("<HOME>", s.home.root.as_path()),
+        ("<TMUX-PID>", pids[0].as_path()),
+        ("<PANE-PID>", pids[1].as_path()),
+    ];
+    if !server_start.as_os_str().is_empty() {
+        roots.push(("<SERVER-START>", server_start.as_path()));
+    }
+    let expected = comandos_oracle::oracle_at(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "target-helpers",
+        &json!({"source":support::frozen::SOURCE_COMMIT, "python":"3.10.12", "code":ORACLE,
+            "fixture":"private tmux s1 cat, s2 claude sleep, seeded project registry"}),
+        || {
+            support::frozen::run_dash_original(&s.home, ORACLE, &Default::default())
+                .map(|text| comandos_oracle::normalize(text.as_bytes(), &roots))
+        },
+    );
+    let expected = String::from_utf8(comandos_oracle::restore(&expected, &roots)).unwrap();
     assert_eq!(response_dumps(&rust).unwrap(), expected.trim_end());
 }
 
@@ -449,7 +481,6 @@ async fn target_tmux_argv_matches_python() {
             .all(|args| args.first().is_some_and(|v| v != "kill-server")),
         "{rust:?}"
     );
-    let mut python = Vec::new();
     let steps = [
         "dash.resolve_project_session('Mi-Proyecto')",
         "dash.resolve_project_session('agente-x')",
@@ -457,12 +488,26 @@ async fn target_tmux_argv_matches_python() {
         "dash.operator_pane('Mi-Proyecto', '%0')",
         "dash.operator_pane('s1', '%42')",
     ];
-    for step in steps {
-        if oracle::run_dash(&s.home, step).is_none() {
-            return;
-        }
-        python.push(take());
-    }
+    let roots = [("<HOME>", s.home.root.as_path())];
+    let expected = comandos_oracle::oracle_at(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "target-tmux-argv",
+        &json!({"source":support::frozen::SOURCE_COMMIT, "python":"3.10.12", "steps":steps,
+            "fixture":"private tmux s1 cat, s2 claude sleep, seeded project registry"}),
+        || {
+            let mut python = Vec::new();
+            for step in steps {
+                support::frozen::run_dash_original(&s.home, step, &Default::default())?;
+                python.push(take());
+            }
+            Ok(comandos_oracle::normalize(
+                &serde_json::to_vec(&python).map_err(|e| e.to_string())?,
+                &roots,
+            ))
+        },
+    );
+    let python: Vec<Vec<Vec<String>>> =
+        serde_json::from_slice(&comandos_oracle::restore(&expected, &roots)).unwrap();
     for ((step, front), oracle) in steps.iter().zip(&rust).zip(&python) {
         assert_eq!(front, oracle, "{step}");
     }

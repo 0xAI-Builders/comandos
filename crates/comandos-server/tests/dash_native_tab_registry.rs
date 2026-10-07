@@ -22,12 +22,26 @@ use comandos_store::workspace::WorkspaceStore;
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 use support::{
-    TestHome,
-    oracle::run_dash,
-    run_tmux,
+    TestHome, run_tmux,
     tabs::{REGISTRY_FILES, TmuxLog, native_for, normalize_home, read_normalized, seed_registry},
     tmux_available,
 };
+
+// Only hook documents are restored on replay. Expected tmux argv is carried
+// in stdout and compared against calls made by the real native private actor.
+fn frozen_dash(home: &TestHome, code: &str) -> String {
+    let code = format!(
+        "dash.time.time = lambda: {}\n{code}",
+        support::NOW_MS / 1000
+    );
+    support::http_golden::dash_files(
+        home,
+        "tab-registry",
+        &REGISTRY_FILES,
+        &code,
+        &Default::default(),
+    )
+}
 
 /// Dos HOME sembrados igual (A para el frente, B para el Python).
 fn pair(tag: &str, sessions: bool) -> Option<(TestHome, TestHome)> {
@@ -148,15 +162,31 @@ dash.workspace_sync()
 open(dash.os.path.join(dash.os.environ["HOME"], "tmux.log"), "w").close()
 _out.append(dash.close_app_tab("p2f"))
 "#;
-    let Some(text) = run_dash(&b, &format!("{code}{PY_WORKSPACE}")) else {
-        return;
-    };
-    let python: Value = serde_json::from_str(text.trim()).unwrap();
+    let workspace_and_calls = PY_WORKSPACE.replace(
+        "print(json.dumps(_out))",
+        r#"
+import os
+_calls = []
+for _r in open(os.path.join(os.environ['HOME'], 'tmux.log')).read().split('\0\x1e\0'):
+    if not _r:
+        continue
+    _args = _r.split('\0')[1:]
+    while len(_args) >= 2 and _args[0] in ('-f', '-S', '-L'):
+        _args = _args[2:]
+    _calls.append(_args)
+print(json.dumps({'result': _out, 'calls': _calls}))
+"#,
+    );
+    let text = frozen_dash(&b, &format!("{code}{workspace_and_calls}"));
+    let artifact: Value = serde_json::from_str(text.trim()).unwrap();
+    let python = &artifact["result"];
     assert_eq!(
         normalize_home(&a, &response_dumps(&json!(rust)).unwrap()),
-        normalize_home(&b, &response_dumps(&python).unwrap())
+        normalize_home(&b, &response_dumps(python).unwrap())
     );
-    assert_eq!(rust_tmux, TmuxLog(&b).take(), "órdenes de tmux");
+    let expected_calls: Vec<Vec<String>> =
+        serde_json::from_value(artifact["calls"].clone()).unwrap();
+    assert_eq!(rust_tmux, expected_calls, "órdenes de tmux");
     assert_files_equal(&a, &b);
 }
 
@@ -205,9 +235,7 @@ async fn tab_metadata_rules_match_python() {
          [dash.tab_metadata_for_session(s) for s in json.loads({:?})]))",
         serde_json::to_string(&sessions).unwrap()
     );
-    let Some(text) = run_dash(&home, &code) else {
-        return;
-    };
+    let text = frozen_dash(&home, &code);
     let python: Value = serde_json::from_str(text.trim()).unwrap();
     assert_eq!(
         response_dumps(&json!(rust)).unwrap(),
@@ -263,9 +291,7 @@ dash.remove_tab_metadata("uno")
 dash.remove_tab_metadata("nada")
 print(json.dumps(_out))
 "#;
-    let Some(text) = run_dash(&b, code) else {
-        return;
-    };
+    let text = frozen_dash(&b, code);
     let python: Value = serde_json::from_str(text.trim()).unwrap();
     assert_eq!(json!(rust), python);
     assert_files_equal(&a, &b);
@@ -310,9 +336,7 @@ async fn app_tab_writers_match_python() {
          dash.register_app_tab('n3', {long:?}, kind='ssh', host='x', cwd='/a')\n\
          dash.register_app_tab('p2f', '')\n"
     );
-    if run_dash(&b, &code).is_none() {
-        return;
-    }
+    frozen_dash(&b, &code);
     assert_files_equal(&a, &b);
 }
 
@@ -361,9 +385,7 @@ async fn remember_tab_rules_match_python() {
          dash.remember_tab('s3', None, 'rel', {agent:?}, reason={reason:?})\n\
          dash.remember_tab('nueva', '', '/n', '', reason='recovered')\n"
     );
-    if run_dash(&b, &code).is_none() {
-        return;
-    }
+    frozen_dash(&b, &code);
     assert_files_equal(&a, &b);
 }
 
@@ -409,9 +431,7 @@ async fn ephemeral_and_local_close_nothing() {
                 dash.close_app_tab('p2f', ephemeral=True)]))\n\
                 dash.write_app_tab('comandos-e2e-1', 'E2E')\n\
                 dash.close_app_tab('comandos-e2e-1', ephemeral=True)\n";
-    let Some(text) = run_dash(&b, code) else {
-        return;
-    };
+    let text = frozen_dash(&b, code);
     let python: Value = serde_json::from_str(text.trim()).unwrap();
     assert_eq!(
         python,
@@ -471,12 +491,10 @@ async fn unhashable_kind_is_a_python_error() {
         reg::read_tab_metadata(&meta),
         Err(RegistryError::Fault(Fault::Error(HandlerError::Failure)))
     ));
-    let Some(text) = run_dash(
+    let text = frozen_dash(
         &home,
         "try:\n    dash.read_tab_metadata()\n    print('ok')\nexcept TypeError:\n    print('TypeError')",
-    ) else {
-        return;
-    };
+    );
     assert_eq!(text.trim(), "TypeError");
 }
 
