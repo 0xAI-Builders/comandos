@@ -90,6 +90,13 @@ async fn page_transport_parent_ack_and_disposal() {
             .unwrap()
             .contains("keep=1&arg=private-token&arg=private-session")
     );
+    assert_eq!(
+        web_sys::Url::new(info(0)["url"].as_str().unwrap())
+            .unwrap()
+            .search_params()
+            .get("token"),
+        Some("private-token".into())
+    );
     parent_theme(false, true, "noche");
     assert_eq!(page.borrow().theme, "dia");
     parent_theme(true, false, "noche");

@@ -377,6 +377,11 @@ fn connect(page: &Rc<RefCell<Page>>) {
         if !p.session.is_empty() {
             url.search_params().append("arg", &p.session);
         }
+        // V1 authenticates during the HTTP upgrade, before its session init.
+        // Browsers cannot attach an Authorization header to WebSocket.
+        if !p.auth.is_empty() {
+            url.search_params().append("token", &p.auth);
+        }
         url.href()
     };
     let protocols = Array::new();
