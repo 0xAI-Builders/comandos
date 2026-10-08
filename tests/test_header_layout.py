@@ -202,7 +202,7 @@ def test_phone_strip_has_the_desktop_keys_and_the_desktop_model_and_star():
     index = (ROOT / "dash" / "index.html").read_text()
     assert "body.app:not(.inapp) :is(#tab-term,#tab-new,#tab-sort,#tab-rows){display:grid" in css
     assert "body.app.split:not(.inapp) :is(#tab-term" not in css
-    assert "body.app:not(.split):not(.inapp) #tab-open{display:grid" in css, "≋ = el Ctrl+K táctil, con forma de tecla"
+    assert "body.app:not(.inapp) #tab-open{display:grid" in css, "≋ = todas las sesiones en cualquier ancho remoto"
     assert "body.app.tabs-rows #tabbar{flex-wrap:wrap" in index and "body.app.split.tabs-rows" not in index
     short = index.split("function tabModelShort(model){", 1)[1].split("\n}", 1)[0]
     assert 'replace("claude-", "").replace(/-(?:202[0-9]{5}|5)$/, "")' in short
@@ -211,6 +211,17 @@ def test_phone_strip_has_the_desktop_keys_and_the_desktop_model_and_star():
     assert "tabModelShort(withModel[0].model)" in index
     fav = index.split("function updateFavoriteButton(", 1)[1].split("\n}\n", 1)[0]
     assert 'wm.iconSvg("favorite", 14)' in fav and '"★"' not in fav
+
+
+def test_all_sessions_button_stays_visible_in_wide_remote_without_native_override():
+    css = (ROOT / "dash" / "workspace.css").read_text()
+    rule = re.search(r"body\.app:not\(\.inapp\) #tab-open\{([^}]+)\}", css)
+    assert rule, "all-session control must cover both split and narrow remote layouts"
+    assert "display:grid" in rule.group(1) and "flex:0 0 32px" in rule.group(1)
+    assert "body.app.split:not(.inapp) #tab-open{display:none}" not in css
+    assert "body.app:not(.inapp) #tab-open svg{width:17px;height:17px}" in css
+    page = (ROOT / "crates" / "comandos-web-view" / "src" / "index_page_body.html").read_text()
+    assert page.count('id="tab-open"') == 1, "compiled native page retains the same control"
 
 
 def test_split_remote_opens_modals_and_pomodoro_in_the_middle():

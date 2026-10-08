@@ -1073,8 +1073,8 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 }
 @media(pointer:coarse){.chain-only .cmd button[data-flat].add{min-height:32px}.chain-only .slots .step .ctl{display:flex}.chain-only .slots .step .ctl button[data-flat]{min-height:22px}}
 
-/* Remoto ancho = escritorio (30-sep): Terminal · Nueva sesión · Ordenar a la derecha de las
-   pestañas, como teclas de 32 px con el mismo canto que la cabecera; sin «ver todas». */
+/* Remoto: Terminal · Nueva sesión · Ordenar a la derecha de las pestañas,
+   como teclas de 32 px con el mismo canto que la cabecera. */
 #tab-term,#tab-new,#tab-rows{display:none}
 body.app:not(.inapp) :is(#tab-term,#tab-new,#tab-sort,#tab-rows){display:grid;place-items:center;flex:0 0 32px;width:32px;min-width:32px;height:32px;
   margin:6px 3px;padding:0;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:var(--dim);box-shadow:0 2px 0 var(--line2);align-self:center}
@@ -1082,12 +1082,11 @@ body.app:not(.inapp) :is(#tab-term,#tab-new,#tab-sort,#tab-rows):hover{color:var
 body.app:not(.inapp) #tab-rows[aria-pressed="true"]{color:var(--brand);border-color:color-mix(in srgb,var(--brand) 45%,var(--line))}
 body.app:not(.inapp) :is(#tab-term,#tab-new,#tab-sort,#tab-rows):active{transform:translateY(2px);box-shadow:none}
 body.app:not(.inapp) #tab-term{margin-left:8px}
-body.app.split:not(.inapp) #tab-open{display:none}
-/* Celular / tablet vertical = escritorio (1-oct): las mismas teclas a la derecha de las pestañas.
-   ≋ (todas las sesiones) se queda solo aquí: es el Ctrl+K del escritorio para el dedo. */
-body.app:not(.split):not(.inapp) #tab-open{display:grid;place-items:center;flex:0 0 32px;width:32px;min-width:32px;height:32px;
+/* Todas las sesiones permanece accesible en cualquier ancho remoto.
+   La app nativa conserva sus propios controles de pestañas. */
+body.app:not(.inapp) #tab-open{display:grid;place-items:center;flex:0 0 32px;width:32px;min-width:32px;height:32px;
   margin:6px 6px 6px 3px;padding:0;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:var(--dim);box-shadow:0 2px 0 var(--line2);align-self:center}
-body.app:not(.split):not(.inapp) #tab-open svg{width:17px;height:17px}
+body.app:not(.inapp) #tab-open svg{width:17px;height:17px}
 body.app:not(.split):not(.inapp) #tab-panel{flex:0 0 36px;min-width:36px;background:none;border:0;color:var(--dim)}
 body.app:not(.split):not(.inapp) #tab-panel svg{width:18px;height:18px}
 #tab-left{display:none}

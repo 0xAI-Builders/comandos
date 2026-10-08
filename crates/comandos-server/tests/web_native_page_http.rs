@@ -32,6 +32,13 @@ impl Front {
         Self::start_config(readonly, false).await
     }
     async fn start_config(readonly: bool, native_default: bool) -> Self {
+        Self::start_with_term(readonly, native_default, dash::term::TermMode::Off).await
+    }
+    async fn start_with_term(
+        readonly: bool,
+        native_default: bool,
+        term: dash::term::TermMode,
+    ) -> Self {
         let mut nonce = [0u8; 8];
         getrandom::fill(&mut nonce).unwrap();
         let root = std::env::temp_dir().join(format!(
@@ -60,6 +67,10 @@ impl Front {
         let mut cfg = dash::parse_args(&args, &root, None).unwrap();
         cfg.native = false;
         cfg.shadow_readonly = readonly;
+        cfg.term = term;
+        if term != dash::term::TermMode::Off {
+            std::fs::write(root.join(".claude/hooks/webterm-enabled"), b"").unwrap();
+        }
         cfg.token = b"fixture-token".to_vec();
         cfg.repo_root = Some(root.clone());
         cfg.web_dir = root.join("web");
@@ -590,7 +601,7 @@ async fn native_worker_requires_own_artifact_and_preserves_legacy_route() {
 
 #[tokio::test]
 async fn dedicated_compiled_terminal_needs_no_main_wasm_or_source_and_validates_its_own_ready() {
-    let front = Front::start().await;
+    let front = Front::start_with_term(false, false, dash::term::TermMode::Native).await;
     let ids = vec!["term-main".to_string(), "term-tail".to_string()];
     let assets = [
         "/buttons.css",
@@ -651,12 +662,13 @@ async fn dedicated_compiled_terminal_needs_no_main_wasm_or_source_and_validates_
     let response = front
         .http(
             "GET",
-            "/term/?web=native&arg=demo&auth=fixture-token",
+            "/term/?arg=demo&auth=fixture-token&theme=termius",
             "",
             "",
         )
         .await;
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    assert!(response.contains("x-comandos-term: native"));
     assert!(response.contains("content=\"native-term\""));
     assert_eq!(response.matches("<!DOCTYPE html>").count(), 1);
     assert!(!response.contains("<script src=\"../assets/xterm"));
@@ -685,6 +697,9 @@ async fn dedicated_compiled_terminal_needs_no_main_wasm_or_source_and_validates_
         )
         .await;
     assert!(ready.starts_with("HTTP/1.1 200"), "{ready}");
+    let explicit = front.http("GET", "/term/?web=native", "", "").await;
+    assert!(explicit.starts_with("HTTP/1.1 200"));
+    assert!(explicit.contains("comandos_term_web_boot.js"));
     let font = front
         .http(
             "GET",
@@ -706,6 +721,9 @@ async fn dedicated_compiled_terminal_needs_no_main_wasm_or_source_and_validates_
     let missing = front.http("GET", "/term/?web=native", "", "").await;
     assert!(missing.starts_with("HTTP/1.1 503"));
     assert!(!missing.contains("legacy-exact"));
+    let default_missing = front.http("GET", "/term/?arg=demo", "", "").await;
+    assert!(default_missing.starts_with("HTTP/1.1 503"));
+    assert!(!default_missing.contains("<html"));
     front.stop().await;
 }
 

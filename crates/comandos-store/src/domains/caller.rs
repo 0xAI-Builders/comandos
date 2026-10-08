@@ -33,12 +33,11 @@ impl CallerAccess {
         let path = unified::unified_path(home);
         let mut reader = None;
         let db = match fs::symlink_metadata(&path) {
-            Ok(_) if reading => {
+            Ok(_) => {
                 let (db, token) = super::live_reader::open(&path)?;
                 reader = Some(token);
                 Some(db)
             }
-            Ok(_) => Some(unified::open_caller(&path)?),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => return Err(e.into()),
         };

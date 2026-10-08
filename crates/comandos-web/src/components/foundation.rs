@@ -212,8 +212,37 @@ mod web {
         }
         Ok(())
     }
+    fn remote_auth_notice(required: bool) -> Result<(), JsValue> {
+        let existing = query(&doc(), "#remote-auth-required");
+        if !required {
+            if truthy(&existing) {
+                call(&existing, "remove", &[])?;
+            }
+            return Ok(());
+        }
+        let container = query(&doc(), "#toasts");
+        if truthy(&existing) || !truthy(&container) {
+            return Ok(());
+        }
+        let notice = call(&doc(), "createElement", &["div".into()])?;
+        set(&notice, "id", &"remote-auth-required".into())?;
+        set(&notice, "className", &"toast err".into())?;
+        call(&notice, "setAttribute", &["role".into(), "alert".into()])?;
+        set(
+            &notice,
+            "textContent",
+            &translated_pair(
+                "Acceso remoto no autorizado. En ComandOS de tu equipo, abre Remoto y usa su enlace o QR para autorizar este navegador.",
+                "Remote access is not authorized. Open Remote in ComandOS on your computer and use its link or QR code to authorize this browser.",
+                english_now(),
+            ).into(),
+        )?;
+        call(&container, "appendChild", &[notice])?;
+        Ok(())
+    }
     // Starts fetch synchronously, matching async JS's execution before its first await.
     fn api(path: JsValue, body: JsValue) -> Result<JsValue, JsValue> {
+        let state_poll = path.as_string().as_deref() == Some("/state");
         let token = auth_token();
         let headers = object();
         if truthy(&token) {
@@ -236,6 +265,11 @@ mod web {
         let fetched = call(&js_sys::global(), "fetch", &args);
         Ok(promise(async move {
             let response = wait(fetched).await?;
+            if get(&response, "status").as_f64() == Some(401.0) {
+                let _ = remote_auth_notice(true);
+            } else if state_poll && truthy(&get(&response, "ok")) {
+                let _ = remote_auth_notice(false);
+            }
             let parsed = wait(call(&response, "json", &[]))
                 .await
                 .unwrap_or_else(|_| object());
@@ -321,17 +355,74 @@ export function fixture() {
  globalThis.labelNode={textContent:' Guardar '};
  globalThis.document={querySelector:s=>globalThis.nodes[s]??null,querySelectorAll:()=>[globalThis.labelNode]};
  globalThis.calls=[]; globalThis.reply={body:{ok:true},ok:true,statusText:''};
- globalThis.fetch=(...args)=>{globalThis.calls.push(args);const r=globalThis.reply; return Promise.resolve({ok:r.ok,statusText:r.statusText,json:()=>r.rejectJson?Promise.reject(new Error('bad json')):Promise.resolve(r.body)});};
+ globalThis.fetch=(...args)=>{globalThis.calls.push(args);const r=globalThis.reply; return Promise.resolve({ok:r.ok,status:r.status??(r.ok?200:500),statusText:r.statusText,json:()=>r.rejectJson?Promise.reject(new Error('bad json')):Promise.resolve(r.body)});};
+}
+export function auth_fixture() {
+ fixture();
+ const notices=[];
+ globalThis.authNotices=notices;
+ globalThis.document.querySelector=s=>s==='#toasts'?{appendChild:n=>notices.push(n)}:s==='#remote-auth-required'?notices.find(n=>n.id==='remote-auth-required')??null:globalThis.nodes[s]??null;
+ globalThis.document.createElement=()=>({setAttribute(k,v){this[k]=v},remove(){const i=notices.indexOf(this);if(i!==-1)notices.splice(i,1)}});
 }
 "#)]
     extern "C" {
         fn fixture();
+        fn auth_fixture();
     }
     fn global(name: &str) -> JsValue {
         get(&js_sys::global(), name)
     }
     async fn invoke_async(name: &str, args: &[JsValue]) -> Result<JsValue, JsValue> {
         wait(invoke(&global(name), args)).await
+    }
+    #[wasm_bindgen_test(async)]
+    async fn unauthorized_remote_access_remains_visible_without_clearing_sessions() {
+        auth_fixture();
+        mount_state().unwrap();
+        mount_i18n().unwrap();
+        mount_network().unwrap();
+        let sessions = from_json(&json!([{"session":"preserved"}])).unwrap();
+        set(&global("S"), "list", &sessions).unwrap();
+        set(
+            &js_sys::global(),
+            "reply",
+            &from_json(&json!({"ok":false,"status":401,"body":{"error":"Unauthorized"}})).unwrap(),
+        )
+        .unwrap();
+        for path in ["/state", "/tabs", "/state"] {
+            assert!(invoke_async("api", &[path.into()]).await.is_err());
+        }
+        let notices = global("authNotices");
+        assert_eq!(
+            get(&notices, "length").as_f64(),
+            Some(1.0),
+            "401 must show one persistent notice"
+        );
+        let notice = get(&notices, "0");
+        let text = get(&notice, "textContent").as_string().unwrap();
+        assert!(text.contains("Remoto") && text.contains("QR"));
+        assert!(!text.contains("secret"));
+        assert_eq!(get(&notice, "role").as_string().as_deref(), Some("alert"));
+        assert!(js_sys::Object::is(&get(&global("S"), "list"), &sessions));
+        assert_eq!(
+            invoke(&global("authToken"), &[])
+                .unwrap()
+                .as_string()
+                .as_deref(),
+            Some("secret")
+        );
+        set(
+            &js_sys::global(),
+            "reply",
+            &from_json(&json!({"ok":true,"status":200,"body":[]})).unwrap(),
+        )
+        .unwrap();
+        invoke_async("api", &["/state".into()]).await.unwrap();
+        assert_eq!(
+            get(&notices, "length").as_f64(),
+            Some(0.0),
+            "successful session refresh clears the warning"
+        );
     }
     #[wasm_bindgen_test(async)]
     async fn exported_foundation_contracts() {

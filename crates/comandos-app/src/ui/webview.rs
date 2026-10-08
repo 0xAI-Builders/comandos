@@ -135,6 +135,33 @@ fn create_for_page(
     if !content.register_script_message_handler(handler) {
         return Err(WebError::Gtk("page bridge unavailable".into()));
     }
+    // The native news renderer authenticates /web/markdown even on loopback.
+    // Seed only the configured dashboard origin, before its scripts start.
+    if !matches!(cfg.mode(), RunMode::Shadow)
+        && let Some(base) = cfg.dash_url()
+        && let Ok(token) = std::fs::read_to_string(cfg.hooks_dir().join("dash-token"))
+        && !token.trim().is_empty()
+    {
+        let origin = base.trim_end_matches('/');
+        if let (Ok(origin_json), Ok(token_json)) = (
+            serde_json::to_string(origin),
+            serde_json::to_string(token.trim()),
+        ) {
+            let source = format!(
+                "try{{if(location.origin==={origin_json})localStorage.setItem('cc_token',{token_json});}}catch(e){{}}"
+            );
+            // AppConfig admits only HTTP 127.0.0.1. WebKit's URL patterns do
+            // not accept ports; the script above checks the complete origin.
+            let allowed = "http://127.0.0.1/*";
+            content.add_script(&webkit2gtk::UserScript::new(
+                &source,
+                webkit2gtk::UserContentInjectedFrames::TopFrame,
+                webkit2gtk::UserScriptInjectionTime::Start,
+                &[allowed],
+                &[],
+            ));
+        }
+    }
     let webview = WebView::builder()
         .web_context(&context)
         .user_content_manager(&content)

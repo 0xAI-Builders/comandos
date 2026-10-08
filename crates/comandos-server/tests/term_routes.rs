@@ -251,7 +251,9 @@ async fn native_v1_retains_dashboard_gate_and_off_forwards_legacy() {
         Error::Http(r) => assert_eq!(r.status(), 401),
         x => panic!("{x:?}"),
     };
-    assert!(f.http("GET", "/term/").await.contains("<html"));
+    let missing = f.http("GET", "/term/").await;
+    assert!(missing.starts_with("HTTP/1.1 503"));
+    assert!(missing.contains("native terminal bundle missing"));
     f.stop().await;
     let own = home.root.join("home");
     let legacy = TcpListener::bind("127.0.0.1:0").await.unwrap();

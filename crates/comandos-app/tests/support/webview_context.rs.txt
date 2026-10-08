@@ -1,5 +1,9 @@
 #![allow(dead_code, unused_variables)]
 use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc};
+fn fixture_dir() -> &'static Path {
+    static DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| std::env::temp_dir().join(format!("comandos-webview-auth-{}", std::process::id()))).as_path()
+}
 #[derive(Clone, Copy)]
 enum RunMode { Live, Sandbox, Shadow }
 struct AppConfig(RunMode);
@@ -7,6 +11,8 @@ impl AppConfig {
     fn mode(&self) -> RunMode { self.0 }
     fn web_data_dir(&self) -> &Path { Path::new("/isolated/data") }
     fn web_cache_dir(&self) -> &Path { Path::new("/isolated/cache") }
+    fn hooks_dir(&self) -> &Path { fixture_dir() }
+    fn dash_url(&self) -> Option<&str> { Some("http://127.0.0.1:7337") }
 }
 #[derive(Debug)]
 enum WebError { Gtk(String) }
@@ -16,6 +22,10 @@ impl WebContext {
     fn with_website_data_manager(_: &webkit2gtk::WebsiteDataManager) -> Self { Self::default() }
 }
 mod webkit2gtk {
+    #[derive(Clone,Debug)] pub enum UserContentInjectedFrames { TopFrame }
+    #[derive(Clone,Debug)] pub enum UserScriptInjectionTime { Start }
+    #[derive(Clone)] pub struct UserScript(pub serde_json::Value);
+    impl UserScript { pub fn new(source:&str, frames:UserContentInjectedFrames, time:UserScriptInjectionTime, allow:&[&str], _: &[&str])->Self { Self(serde_json::json!({"source":source,"frames":format!("{frames:?}"),"time":format!("{time:?}"),"allow":allow})) } }
     pub struct WebsiteDataManager;
     impl WebsiteDataManager {
         pub fn new_ephemeral() -> Self { Self }
@@ -25,12 +35,13 @@ mod webkit2gtk {
         pub fn build(self) -> Self { self }
     }
     #[derive(Clone, Default)]
-    pub struct UserContentManager(pub std::rc::Rc<std::cell::RefCell<Vec<String>>>);
+    pub struct UserContentManager(pub std::rc::Rc<std::cell::RefCell<Vec<String>>>, pub std::rc::Rc<std::cell::RefCell<Vec<UserScript>>>);
     impl UserContentManager {
         pub fn new() -> Self { Self::default() }
         pub fn register_script_message_handler(&self, name: &str) -> bool {
             self.0.borrow_mut().push(name.into()); true
         }
+        pub fn add_script(&self, script:&UserScript) { self.1.borrow_mut().push(script.clone()); }
     }
 }
 #[derive(Clone)]
@@ -52,13 +63,23 @@ fn create(cfg: &AppConfig, handler: &str, parent: Option<&WebView>) -> Result<We
     Ok(webview)
 }
 fn main() {
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new().mode(0o700).create(fixture_dir()).unwrap();
+    std::fs::write(fixture_dir().join("dash-token"), "private-\"fixture\\token\n").unwrap();
     let main = create(&AppConfig(RunMode::Live), "centro", None).unwrap();
     main.context.0.borrow_mut().insert("cc-center-panel".into(), "settings".into());
     let modal = create(&AppConfig(RunMode::Live), "centro", Some(&main)).unwrap();
     let other = create(&AppConfig(RunMode::Sandbox), "centro", None).unwrap();
-    println!("{{\"shared_context\":{},\"request_visible\":{},\"separate_handlers\":{},\"profiles_isolated\":{}}}",
+    let shadow = create(&AppConfig(RunMode::Shadow), "centro", None).unwrap();
+    std::fs::remove_file(fixture_dir().join("dash-token")).unwrap();
+    let missing = create(&AppConfig(RunMode::Live), "centro", None).unwrap();
+    std::fs::remove_dir(fixture_dir()).unwrap();
+    println!("{{\"shared_context\":{},\"request_visible\":{},\"separate_handlers\":{},\"profiles_isolated\":{},\"authenticated_views\":{},\"shadow_scripts\":{},\"missing_token_scripts\":{},\"script\":{}}}",
         Rc::ptr_eq(&main.context.0, &modal.context.0),
         modal.context.0.borrow().get("cc-center-panel").is_some_and(|v| v == "settings"),
         !Rc::ptr_eq(&main.manager.0, &modal.manager.0),
-        !Rc::ptr_eq(&main.context.0, &other.context.0));
+        !Rc::ptr_eq(&main.context.0, &other.context.0),
+        [&main,&modal,&other].iter().filter(|v|v.manager.1.borrow().len()==1).count(),
+        shadow.manager.1.borrow().len(),missing.manager.1.borrow().len(),
+        main.manager.1.borrow().first().map(|s|s.0.clone()).unwrap_or(serde_json::Value::Null));
 }

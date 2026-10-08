@@ -64,18 +64,19 @@ pub async fn http_route(
     target: &str,
 ) -> Result<Reply, HandlerError> {
     let mut reply = match route {
-        TermRoute::Page => {
-            let page = match state.config.term {
-                TermMode::Ttyd => tokio::fs::read(state.config.dash_dir.join("term.html"))
+        TermRoute::Page => match state.config.term {
+            TermMode::Ttyd => Reply::bytes(
+                StatusCode::OK,
+                "text/html; charset=utf-8",
+                tokio::fs::read(state.config.dash_dir.join("term.html"))
                     .await
                     .map_err(|_| HandlerError::Failure)?,
-                TermMode::Native => comandos_web_view::term_page::shell(&Default::default())
-                    .into_string()
-                    .into_bytes(),
-                TermMode::Off => return crate::dash::not_found(),
-            };
-            Reply::bytes(StatusCode::OK, "text/html; charset=utf-8", page)
-        }
+            ),
+            // Dashboard frames use the default /term/ URL. They need the
+            // admitted WASM bundle and readiness nonce, just like ?web=native.
+            TermMode::Native => crate::dash::web::native_term_page::serve(state)?,
+            TermMode::Off => return crate::dash::not_found(),
+        },
         TermRoute::Token => Reply::bytes(StatusCode::OK, "application/json", r#"{"token":""}"#),
         TermRoute::Redirect => {
             let mut reply = Reply::bytes(StatusCode::MOVED_PERMANENTLY, "text/plain", "");
