@@ -1,0 +1,493 @@
+{
+  "date": "2026-10-07",
+  "runtime_source_commit": "31b206cba1cb7f1f57279766609464e467b544dc",
+  "merged_to": "main",
+  "installed": {
+    "comandos": {
+      "path": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/artifacts-31b206cb/comandos",
+      "sha256": "c092e9efa0eda8f8bd9df1e46f80311965c275ba6e0b832af394738bc10b149c",
+      "installed_path": "/home/someguy/.local/share/comandos/releases/307f32b17500/comandos"
+    },
+    "comandos-app": {
+      "path": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/artifacts-31b206cb/comandos-app",
+      "sha256": "fbd41a8ef23681a013fada05c49681292fb57a0e329bc7741b739320648a59cb",
+      "installed_path": "/home/someguy/.local/share/comandos/releases/09f65cf5960c/comandos-app"
+    }
+  },
+  "native_web_default": true,
+  "web_components": 48,
+  "app_readiness": {
+    "status": "ready",
+    "issues": []
+  },
+  "attached_tabs": 21,
+  "all_tabs_attached": true,
+  "continuity": {
+    "original_panes": 23,
+    "preserved_original_panes": 23,
+    "current_panes": 24,
+    "original_codex_processes": 24,
+    "changed_codex_pids": []
+  },
+  "http_checks": [
+    {
+      "path": "/state",
+      "status": 200,
+      "ms": 5,
+      "bytes": 413946
+    },
+    {
+      "path": "/prefs",
+      "status": 200,
+      "ms": 40,
+      "bytes": 1659
+    },
+    {
+      "path": "/tabs",
+      "status": 200,
+      "ms": 81,
+      "bytes": 1069
+    },
+    {
+      "path": "/workspace",
+      "status": 200,
+      "ms": 123,
+      "bytes": 9215
+    },
+    {
+      "path": "/active-tab",
+      "status": 200,
+      "ms": 45,
+      "bytes": 67
+    },
+    {
+      "path": "/pomodoro",
+      "status": 200,
+      "ms": 39,
+      "bytes": 1383
+    },
+    {
+      "path": "/accounts?harness=codex&usage=0",
+      "status": 200,
+      "ms": 1,
+      "bytes": 173
+    },
+    {
+      "path": "/web/status",
+      "status": 200,
+      "ms": 43,
+      "bytes": 973
+    }
+  ],
+  "legacy_dashboard_service": "inactive and masked",
+  "legacy_agent_children": "left running; no group signal sent",
+  "python_gui": "exited gracefully; launcher points to Rust ELF",
+  "existing_storage_authority": "preserved",
+  "backups": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008",
+  "account_ui": "GTK accessibility exposes Cuenta: main for the active Codex split; account popover supports adding Codex login separately",
+  "new_session_defaults": {
+    "harness": "codex",
+    "motor": "codex",
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "account": "main"
+  },
+  "browser_validation": {
+    "runtime": "remote chrome-bg on Mac mini",
+    "root_native_boot": "ready",
+    "mounted_components": 48,
+    "failed_components": [],
+    "wizard": "Codex CLI -> Codex, gpt-6.1-sol, high, main",
+    "terminal_frame": "loaded via separate 4779 SSH forward"
+  },
+  "tests": [
+    {
+      "receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/live-reads-green-result.json",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "-p",
+        "comandos-store",
+        "--offline",
+        "--locked",
+        "-j2"
+      ],
+      "results": [
+        {
+          "passed": 22,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 6,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 4,
+          "failed": 0,
+          "ignored": 2
+        },
+        {
+          "passed": 17,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 6,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 2,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 6,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 8,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 23,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 31,
+          "failed": 0,
+          "ignored": 1
+        },
+        {
+          "passed": 12,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 6,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 28,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 7,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 11,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 2,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 6,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 27,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    },
+    {
+      "receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/live-store-leases-result.json",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "-p",
+        "comandos-store",
+        "--test",
+        "live_reads",
+        "--test",
+        "domain_callers",
+        "--test",
+        "modes_readonly",
+        "--offline",
+        "--locked",
+        "-j2"
+      ],
+      "results": [
+        {
+          "passed": 4,
+          "failed": 0,
+          "ignored": 2
+        },
+        {
+          "passed": 2,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    },
+    {
+      "receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/live-server-completed-result.json",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "comandos-server",
+        "--test",
+        "runtime_reads",
+        "--test",
+        "domain_callers",
+        "--test",
+        "term_routes",
+        "--test",
+        "web_native_page_http",
+        "--offline",
+        "--locked",
+        "-j2",
+        "--no-fail-fast"
+      ],
+      "results": [
+        {
+          "passed": 4,
+          "failed": 0,
+          "ignored": 1
+        },
+        {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 1
+        },
+        {
+          "passed": 9,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 7,
+          "failed": 0,
+          "ignored": 1
+        }
+      ]
+    },
+    {
+      "receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/live-state-deadline-result.json",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "comandos-server",
+        "--test",
+        "dash_native_state",
+        "state_hung_tmux_answers_504_runtime_free",
+        "--offline",
+        "--locked",
+        "-j2",
+        "--",
+        "--exact"
+      ],
+      "results": [
+        {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    },
+    {
+      "receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/preserved-broker-short-sockets-result.json",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "comandos-extensions",
+        "--test",
+        "broker_daemon",
+        "--offline",
+        "--locked",
+        "-j2"
+      ],
+      "results": [
+        {
+          "passed": 39,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    },
+    {
+      "receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/live-desktop-complete-result.json",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "comandos-desktop",
+        "--test",
+        "live_restore",
+        "--test",
+        "domain_documents",
+        "--offline",
+        "--locked",
+        "-j2"
+      ],
+      "results": [
+        {
+          "passed": 7,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    },
+    {
+      "receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/native-default-passing-result.json",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "comandos-app",
+        "--test",
+        "app_shell_model",
+        "-p",
+        "comandos-server",
+        "--test",
+        "web_native_page_http",
+        "-p",
+        "comandos-web",
+        "--test",
+        "foundation_helpers_contract",
+        "--no-fail-fast",
+        "--offline",
+        "--locked",
+        "-j2"
+      ],
+      "results": [
+        {
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 8,
+          "failed": 0,
+          "ignored": 1
+        },
+        {
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    }
+  ],
+  "wasm_boot_scenarios": 21,
+  "wasm_helpers": "38 original outputs and live state/account/profile/race/notification/operation fixtures passed",
+  "build_receipts": [
+    "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/complete-web-build-result.json",
+    "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/complete-native-build-result.json"
+  ],
+  "limits": [
+    "Existing Python ACP/MCP child processes were preserved to avoid interrupting work; future ComandOS entrypoints use Rust.",
+    "Historical source oracles and rollback backups remain for regression checks and recovery.",
+    "One 500 ms timing assertion failed in a parallel test batch; it passed unchanged in isolation and in earlier batches."
+  ]
+}
