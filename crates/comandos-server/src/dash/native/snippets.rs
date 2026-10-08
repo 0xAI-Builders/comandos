@@ -44,7 +44,12 @@ pub async fn answer(native: &Native, route: SnippetsRoute, request: &Request) ->
     .map_err(|_| failure())?;
     let now = (native.options().clock)().div_euclid(1000);
     match route {
-        SnippetsRoute::List => read_reply(&Value::Array(read_snippets(&path)?)),
+        SnippetsRoute::List => {
+            let rows = tokio::task::spawn_blocking(move || read_snippets(&path))
+                .await
+                .map_err(|_| failure())??;
+            read_reply(&Value::Array(rows))
+        }
         SnippetsRoute::Create => create(path, data(request)?, now).await,
         SnippetsRoute::Update => update(path, data(request)?, now).await,
         SnippetsRoute::Delete => delete(path, data(request)?).await,
@@ -201,22 +206,32 @@ fn item(id: String, name: &str, body: String, tags: &Value, now: i64) -> Value {
 }
 
 /// `with file_lock(SNIPPETS_FILE): items = read_snippets(); …; write_snippets(items)`.
-/// `mutate` dice si hay que escribir. Candado tomado → declinar sin leer nada.
+/// Mirror/Unified wait for the existing file writer before reading; Legacy
+/// retains its compatibility fallback when that lock is already owned.
 async fn locked<T: Send + 'static>(
     path: DomainDocument,
     mutate: impl FnOnce(&mut Vec<Value>) -> (bool, T) + Send + 'static,
 ) -> Result<T, Fault> {
+    let source = path.clone();
+    let access = tokio::task::spawn_blocking(move || source.access())
+        .await
+        .map_err(|_| failure())?
+        .map_err(|_| failure())?;
+    let lock = match access.mode() {
+        comandos_store::unified::Mode::Sealed => None,
+        comandos_store::unified::Mode::Legacy => Some(
+            FileLock::try_acquire(&path.file)
+                .map_err(|_| failure())?
+                .ok_or(Fault::Decline)?,
+        ),
+        _ => Some(
+            FileLock::acquire_timeout(&path.file, std::time::Duration::from_secs(3))
+                .await
+                .map_err(|_| Fault::Decline)?,
+        ),
+    };
     tokio::task::spawn_blocking(move || {
-        let access = path.access().map_err(|_| failure())?;
-        let _lock = if access.mode() == comandos_store::unified::Mode::Sealed {
-            None
-        } else {
-            Some(
-                FileLock::try_acquire(&path.file)
-                    .map_err(|_| failure())?
-                    .ok_or(Fault::Decline)?,
-            )
-        };
+        let _lock = lock;
         access
             .with_write_transaction(|| {
                 let mut items = snippets_from(path.strict_under(&access))?;

@@ -18,7 +18,7 @@ use http::Method;
 use registry::Resolved;
 use std::{
     path::PathBuf,
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -70,13 +70,15 @@ impl WebRoute {
 pub struct WebState {
     pub selection_path: PathBuf,
     home: PathBuf,
+    readonly: bool,
     pub repo_root: Option<PathBuf>,
     pub web_dir: PathBuf,
     pub dash_dir: PathBuf,
     pub registry: Resolved,
     pub gate: gate::Gate,
     manifest: Mutex<(Option<FileStamp>, Manifest)>,
-    selection: Mutex<(Instant, Option<FileStamp>, Selection)>,
+    selection: Arc<Mutex<(Instant, Option<FileStamp>, Selection)>>,
+    refresh_gate: tokio::sync::Mutex<()>,
 }
 
 impl WebState {
@@ -85,13 +87,19 @@ impl WebState {
         let manifest = Manifest::load(&cfg.web_dir).unwrap_or_else(|_| Manifest::default());
         let selection_path = cfg.home.join(".claude/hooks/comandos-web.json");
         Self {
-            selection: Mutex::new((
+            selection: Arc::new(Mutex::new((
                 Instant::now(),
                 FileStamp::read(&selection_path),
-                Selection::load_domain(&cfg.home, &selection_path),
-            )),
+                if cfg.shadow_readonly {
+                    Selection::load_domain(&cfg.home, &selection_path)
+                } else {
+                    Selection::load_domain_live(&cfg.home, &selection_path)
+                },
+            ))),
+            refresh_gate: tokio::sync::Mutex::new(()),
             selection_path,
             home: cfg.home.clone(),
+            readonly: cfg.shadow_readonly,
             repo_root: cfg.repo_root.clone(),
             web_dir: cfg.web_dir.clone(),
             dash_dir: cfg.dash_dir.clone(),
@@ -117,11 +125,55 @@ impl WebState {
         }
     }
 
+    /// Await fresh admission off the HTTP executor. Concurrent web requests
+    /// share this refresh; payload I/O never owns the in-memory cache mutex.
+    pub async fn refresh_selection(&self) {
+        let _refresh = self.refresh_gate.lock().await;
+        if self
+            .selection
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .0
+            .elapsed()
+            < Duration::from_secs(1)
+        {
+            return;
+        }
+        let home = self.home.clone();
+        let path = self.selection_path.clone();
+        let readonly = self.readonly;
+        let result = tokio::task::spawn_blocking(move || {
+            let value = if readonly {
+                Ok(Selection::load_domain(&home, &path))
+            } else {
+                Selection::try_load_domain_live(&home, &path)
+            };
+            (value, FileStamp::read(&path))
+        })
+        .await;
+        let mut sel = self.selection.lock().unwrap_or_else(|e| e.into_inner());
+        if let Ok((value, stamp)) = result {
+            match value {
+                Ok(value) => sel.2 = value,
+                Err(error) => eprintln!("comandos web: retaining selection: {error}"),
+            }
+            sel.1 = stamp;
+        }
+        sel.0 = Instant::now();
+    }
+
     pub fn selection(&self) -> Selection {
         let mut sel = self.selection.lock().unwrap_or_else(|e| e.into_inner());
-        if sel.0.elapsed() >= Duration::from_secs(1) {
-            // SQL authority can change without any legacy file mtime event.
-            sel.2 = Selection::load_domain(&self.home, &self.selection_path);
+        // HTTP handlers await refresh_selection before checking admission.
+        // Standalone inspection callers retain the synchronous API.
+        if tokio::runtime::Handle::try_current().is_err()
+            && sel.0.elapsed() >= Duration::from_secs(1)
+        {
+            sel.2 = if self.readonly {
+                Selection::load_domain(&self.home, &self.selection_path)
+            } else {
+                Selection::load_domain_live(&self.home, &self.selection_path)
+            };
             sel.1 = FileStamp::read(&self.selection_path);
             sel.0 = Instant::now();
         }

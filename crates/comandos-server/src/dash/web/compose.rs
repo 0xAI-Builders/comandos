@@ -37,13 +37,27 @@ impl Selection {
         )
     }
     pub fn load_domain(home: &Path, path: &Path) -> Self {
-        comandos_store::domains::DomainStore { home }
-            .document("hooks/comandos-web.json", "ui-docs", path.to_owned())
-            .read_readonly()
-            .ok()
-            .flatten()
-            .and_then(|body| String::from_utf8(body).ok())
-            .map_or_else(Self::empty, |text| Self::from_text(&text))
+        Self::load_domain_with(home, path, false).unwrap_or_else(|_| Self::empty())
+    }
+    pub fn load_domain_live(home: &Path, path: &Path) -> Self {
+        Self::try_load_domain_live(home, path).unwrap_or_else(|_| Self::empty())
+    }
+    pub fn try_load_domain_live(home: &Path, path: &Path) -> comandos_store::Result<Self> {
+        Self::load_domain_with(home, path, true)
+    }
+    fn load_domain_with(home: &Path, path: &Path, live: bool) -> comandos_store::Result<Self> {
+        let doc = comandos_store::domains::DomainStore { home }.document(
+            "hooks/comandos-web.json",
+            "ui-docs",
+            path.to_owned(),
+        );
+        Ok((if live {
+            doc.read_live()
+        } else {
+            doc.read_readonly()
+        })?
+        .and_then(|body| String::from_utf8(body).ok())
+        .map_or_else(Self::empty, |text| Self::from_text(&text)))
     }
 
     pub fn refresh(&mut self, path: &Path) {

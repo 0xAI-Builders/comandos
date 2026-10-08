@@ -153,7 +153,7 @@ pub fn ws_route(state: Arc<DashState>) -> WsRoute {
             }
             let mut shutdown = request.shutdown;
             let mut enabled = state.term_control.subscribe();
-            if !state.term_control.enabled() {
+            if !state.term_control.refresh().await {
                 return;
             }
             if *shutdown.borrow() {

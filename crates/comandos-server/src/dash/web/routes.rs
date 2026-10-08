@@ -12,6 +12,12 @@ pub async fn handle(
     route: WebRoute,
     request: &Request,
 ) -> Result<Reply, HandlerError> {
+    if matches!(
+        &route,
+        WebRoute::Index | WebRoute::Ready | WebRoute::Status
+    ) {
+        state.web.refresh_selection().await;
+    }
     match route {
         WebRoute::Index => index(state, request).await,
         WebRoute::NativeWorker => super::native_worker::serve(&state.web),

@@ -165,6 +165,9 @@ impl DocHandle<'_> {
         }
         Ok(true)
     }
+    pub fn read_live(&self) -> Result<Option<Vec<u8>>> {
+        caller::CallerAccess::open_read(self.home, self.domain)?.read_document(self.name, &self.file)
+    }
     pub fn read_readonly(&self) -> Result<Option<Vec<u8>>> {
         unified::with_readonly_mode(self.home, self.domain, |mode| {
             if matches!(mode, Mode::Unified | Mode::Sealed) {

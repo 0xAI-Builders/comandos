@@ -29,19 +29,25 @@ fn generation(db: &Connection, kind: &str) -> Result<Option<Vec<u8>>> {
 impl LayoutSnapshot<'_> {
     pub fn read_readonly(&self) -> Result<Value> {
         unified::modes::with_readonly_access(self.home, "layout", |mode, db| {
-            if matches!(mode, Mode::Unified | Mode::Sealed) {
-                let db = db.ok_or_else(|| Error::Validation("estado único sin base".into()))?;
-                for kind in ["current", "previous"] {
-                    if let Some(bytes) = generation(db, kind)?
-                        && let Some(value) = snapshot_files::valid(&bytes)
-                    {
-                        return Ok(value);
-                    }
-                }
-                return Ok(serde_json::json!({"version":2,"sessions":{}}));
-            }
-            Ok(snapshot_files::read_with(&Files, &self.file))
+            self.read_under(mode, db)
         })
+    }
+    pub fn read_live(&self) -> Result<Value> {
+        super::caller::read(self.home, "layout", |mode, db| self.read_under(mode, db))
+    }
+    fn read_under(&self, mode: Mode, db: Option<&Connection>) -> Result<Value> {
+        if matches!(mode, Mode::Unified | Mode::Sealed) {
+            let db = db.ok_or_else(|| Error::Validation("estado único sin base".into()))?;
+            for kind in ["current", "previous"] {
+                if let Some(bytes) = generation(db, kind)?
+                    && let Some(value) = snapshot_files::valid(&bytes)
+                {
+                    return Ok(value);
+                }
+            }
+            return Ok(serde_json::json!({"version":2,"sessions":{}}));
+        }
+        Ok(snapshot_files::read_with(&Files, &self.file))
     }
     /// Check identity before creating controls, after locks, and at each publish
     /// boundary (including after acquiring the SQLite transaction).
@@ -74,8 +80,7 @@ impl LayoutSnapshot<'_> {
             return Ok(false);
         }
         let path = unified::unified_path(self.home);
-        let existing =
-            unified::modes::with_readonly_access(self.home, "layout", |_, db| Ok(db.is_some()))?;
+        let existing = super::caller::read(self.home, "layout", |_, db| Ok(db.is_some()))?;
         let db = if existing {
             Some(unified::open_existing(&path)?)
         } else {

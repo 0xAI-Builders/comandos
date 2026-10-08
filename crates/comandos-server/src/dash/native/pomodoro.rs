@@ -111,7 +111,7 @@ pub(crate) fn settings(rows: Vec<(String, Option<String>)>) -> Result<Map<String
 }
 
 fn focus_queue_domain(home: &Path, path: &Path) -> Result<Vec<Value>, Fault> {
-    comandos_store::unified::with_readonly_access(home, "logs", |mode, db| {
+    comandos_store::domains::caller::read(home, "logs", |mode, db| {
         if !matches!(
             mode,
             comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed

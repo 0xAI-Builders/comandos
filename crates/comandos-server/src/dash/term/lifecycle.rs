@@ -15,8 +15,8 @@ use tokio::{sync::watch, task::JoinHandle};
 pub fn mode_file(home: &Path) -> PathBuf {
     home.join(".claude/hooks/webterm-mode.json")
 }
-fn enabled_domain(home: &Path, path: &Path) -> bool {
-    comandos_store::unified::with_readonly_access(home, "ui-docs", |mode, db| {
+fn enabled_domain(home: &Path, path: &Path, live: bool) -> comandos_store::Result<bool> {
+    let read = |mode, db: Option<&rusqlite::Connection>| {
         if matches!(
             mode,
             comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed
@@ -26,8 +26,12 @@ fn enabled_domain(home: &Path, path: &Path) -> bool {
         } else {
             Ok(path.is_file())
         }
-    })
-    .unwrap_or(false)
+    };
+    if live {
+        comandos_store::domains::caller::read(home, "ui-docs", read)
+    } else {
+        comandos_store::unified::with_readonly_access(home, "ui-docs", read)
+    }
 }
 /// Toggle the existing native terminal lease. No retired executable is invoked.
 pub fn set_enabled(home: &Path, hooks: &Path, enabled: bool) -> io::Result<()> {
@@ -82,24 +86,62 @@ pub fn set_enabled(home: &Path, hooks: &Path, enabled: bool) -> io::Result<()> {
 pub struct Control {
     enabled_file: PathBuf,
     home: PathBuf,
+    live: bool,
     enabled: watch::Sender<bool>,
+    refresh_gate: tokio::sync::Mutex<()>,
     ports: Mutex<BTreeSet<u16>>,
     errors: Mutex<BTreeMap<u16, String>>,
 }
 impl Control {
     pub fn new(home: &Path) -> Self {
+        Self::with_mode(home, false)
+    }
+    pub fn new_live(home: &Path) -> Self {
+        Self::with_mode(home, true)
+    }
+    fn with_mode(home: &Path, live: bool) -> Self {
         let enabled_file = home.join(".claude/hooks/webterm-enabled");
-        let (tx, _) = watch::channel(enabled_domain(home, &enabled_file));
+        let (tx, _) = watch::channel(enabled_domain(home, &enabled_file, live).unwrap_or(false));
         Self {
             enabled_file,
             home: home.to_path_buf(),
+            live,
             enabled: tx,
+            refresh_gate: tokio::sync::Mutex::new(()),
             ports: Mutex::new(BTreeSet::new()),
             errors: Mutex::new(BTreeMap::new()),
         }
     }
     pub fn enabled(&self) -> bool {
-        enabled_domain(&self.home, &self.enabled_file)
+        if self.live {
+            *self.enabled.borrow()
+        } else {
+            enabled_domain(&self.home, &self.enabled_file, false).unwrap_or(false)
+        }
+    }
+    pub async fn refresh(&self) -> bool {
+        let _refresh = self.refresh_gate.lock().await;
+        let home = self.home.clone();
+        let path = self.enabled_file.clone();
+        let live = self.live;
+        match tokio::task::spawn_blocking(move || enabled_domain(&home, &path, live)).await {
+            Ok(Ok(value)) => {
+                self.enabled.send_if_modified(|old| {
+                    if *old == value {
+                        false
+                    } else {
+                        *old = value;
+                        true
+                    }
+                });
+                value
+            }
+            Ok(Err(error)) => {
+                eprintln!("comandos terminal: retaining last enablement: {error}");
+                *self.enabled.borrow()
+            }
+            Err(_) => *self.enabled.borrow(),
+        }
     }
     pub fn subscribe(&self) -> watch::Receiver<bool> {
         self.enabled.subscribe()
@@ -162,7 +204,14 @@ pub async fn run(state: Arc<DashState>, mut shutdown: watch::Receiver<bool>) -> 
     let mut leases = Vec::new();
     let mut interval = tokio::time::interval(Duration::from_millis(100));
     loop {
-        let enabled = state.config.term != TermMode::Off && state.term_control.enabled();
+        let enabled = if state.config.term == TermMode::Off {
+            false
+        } else {
+            tokio::select! {
+                enabled = state.term_control.refresh() => enabled,
+                _ = shutdown.changed() => break,
+            }
+        };
         state.term_control.enabled.send_if_modified(|old| {
             if *old == enabled {
                 false
@@ -237,7 +286,7 @@ pub fn persist(config: &dash::DashConfig) -> io::Result<()> {
                     "ui-docs",
                     mode_file(&config.home),
                 )
-                .read_readonly()
+                .read_live()
                 .ok()
                 .flatten()
                 .is_none())

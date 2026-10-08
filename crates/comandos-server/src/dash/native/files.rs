@@ -51,7 +51,7 @@ impl DomainDocument {
     pub fn read_bytes(&self) -> comandos_store::Result<Option<Vec<u8>>> {
         comandos_store::domains::DomainStore { home: &self.home }
             .document(&self.name, self.domain, self.file.clone())
-            .read_readonly()
+            .read_live()
     }
     pub fn strict(&self) -> Strict {
         match self.read_bytes() {

@@ -292,7 +292,7 @@ pub(super) fn read_config(path: &Path) -> news::Result<Option<Map<String, Value>
 }
 
 pub(super) fn read_config_domain(opts: &NativeOptions) -> news::Result<Option<Map<String, Value>>> {
-    comandos_store::unified::with_readonly_access(&opts.home, "news-docs", |mode, db| {
+    comandos_store::domains::caller::read(&opts.home, "news-docs", |mode, db| {
         if matches!(
             mode,
             comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed

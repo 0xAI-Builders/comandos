@@ -125,7 +125,7 @@ pub fn first_state_record_domain(
     state: &Path,
     sess: &str,
 ) -> Result<Option<Map<String, Value>>, Fault> {
-    comandos_store::unified::with_readonly_access(home, "session-status", |mode, db| {
+    comandos_store::domains::caller::read(home, "session-status", |mode, db| {
         if !matches!(mode, comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed) { return Ok(first_state_record(state, sess)); }
         let Some(db) = db else { return Ok(Err(Fault::Decline)); };
         let rows = db.prepare("SELECT body FROM session_status WHERE file_key NOT LIKE '.%' AND substr(file_key,-5)='.json' ORDER BY file_key")?.query_map([], |r| r.get::<_,Vec<u8>>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;

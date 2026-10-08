@@ -55,6 +55,28 @@ pub fn with_peeked<T>(
         Ok(body(mode, rows))
     })
 }
+/// Poll the running app under a mode lease, tolerating payload writes.
+pub fn with_peeked_live<T>(
+    home: &Path,
+    names: &[&str],
+    body: impl FnOnce(Mode, Vec<Result<Option<PendingCommand>>>) -> T,
+) -> Result<T> {
+    super::caller::read(home, "app-commands", |mode, db| {
+        let rows = names
+            .iter()
+            .map(|name| {
+                let (name, _) = kind(name)?;
+                if matches!(mode, Mode::Unified | Mode::Sealed) {
+                    let db = db.ok_or_else(|| Error::Validation("command database absent".into()))?;
+                    Ok(db.query_row("SELECT seq,body FROM app_commands WHERE kind=?1 AND consumed_at_ms IS NULL ORDER BY seq LIMIT 1", [name], |r| Ok((r.get(0)?, r.get(1)?))).optional()?)
+                } else {
+                    Ok(None)
+                }
+            })
+            .collect();
+        Ok(body(mode, rows))
+    })
+}
 pub fn publish(
     home: &Path,
     name: &str,

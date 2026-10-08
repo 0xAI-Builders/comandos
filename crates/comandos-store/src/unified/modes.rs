@@ -104,20 +104,28 @@ pub(crate) fn access_mode(
     db: Option<&Connection>,
     name: &str,
 ) -> Result<(Mode, Option<FileLock>)> {
-    access_mode_with_lease(home, db, name, false)
+    access_mode_with_lease(home, db, name, false, false)
 }
 pub(crate) fn access_caller_mode(
     home: &Path,
     db: Option<&Connection>,
     name: &str,
 ) -> Result<(Mode, Option<FileLock>)> {
-    access_mode_with_lease(home, db, name, true)
+    access_mode_with_lease(home, db, name, true, false)
+}
+pub(crate) fn access_runtime_read_mode(
+    home: &Path,
+    db: Option<&Connection>,
+    name: &str,
+) -> Result<(Mode, Option<FileLock>)> {
+    access_mode_with_lease(home, db, name, true, true)
 }
 fn access_mode_with_lease(
     home: &Path,
     db: Option<&Connection>,
     name: &str,
     shared: bool,
+    nonblocking: bool,
 ) -> Result<(Mode, Option<FileLock>)> {
     check_domain(name)?;
     if let Some(db) = db {
@@ -137,7 +145,11 @@ fn access_mode_with_lease(
                     .mode(0o700)
                     .create(parent)?;
             }
-            FileLock::shared(&mode_lock_path(&path))?
+            if nonblocking {
+                FileLock::try_shared(&mode_lock_path(&path))?.ok_or(Error::ModeBusy)?
+            } else {
+                FileLock::shared(&mode_lock_path(&path))?
+            }
         } else {
             mode_lock(&path)?
         })

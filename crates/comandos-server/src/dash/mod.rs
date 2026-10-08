@@ -500,9 +500,9 @@ async fn handle(state: &DashState, request: Request) -> Result<Reply, HandlerErr
         );
     }
     if state.config.term != term::TermMode::Off
-        && !state.term_control.enabled()
         && (router::path_of(&request.target) == "/term"
             || router::path_of(&request.target).starts_with("/term/"))
+        && !state.term_control.refresh().await
     {
         return not_found();
     }
@@ -625,7 +625,11 @@ fn assemble(
         }
         Arc::new(native::Native::new(o))
     });
-    let term_control = Arc::new(term::lifecycle::Control::new(&cfg.home));
+    let term_control = Arc::new(if cfg.shadow_readonly {
+        term::lifecycle::Control::new(&cfg.home)
+    } else {
+        term::lifecycle::Control::new_live(&cfg.home)
+    });
     let state = Arc::new(DashState {
         web: web::WebState::new(&cfg),
         config: cfg,

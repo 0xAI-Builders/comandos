@@ -138,6 +138,20 @@ pub fn read_request_domain(home: &Path, path: &Path) -> Result<IpcRequest, IpcEr
 /// Best-effort polling, preserving path order and one authority lease per batch.
 /// Missing or invalid individual requests are skipped just as in the app poller.
 pub fn read_requests_domain(home: &Path, paths: &[PathBuf]) -> Result<Vec<IpcRequest>, IpcError> {
+    read_requests_domain_with(home, paths, false)
+}
+/// Runtime polling permits payload commits while retaining the domain lease.
+pub fn read_requests_domain_live(
+    home: &Path,
+    paths: &[PathBuf],
+) -> Result<Vec<IpcRequest>, IpcError> {
+    read_requests_domain_with(home, paths, true)
+}
+fn read_requests_domain_with(
+    home: &Path,
+    paths: &[PathBuf],
+    live: bool,
+) -> Result<Vec<IpcRequest>, IpcError> {
     let queued: Vec<_> = paths
         .iter()
         .filter_map(|path| {
@@ -154,7 +168,10 @@ pub fn read_requests_domain(home: &Path, paths: &[PathBuf]) -> Result<Vec<IpcReq
             .collect());
     }
     let names: Vec<_> = queued.iter().map(|(_, name)| *name).collect();
-    comandos_store::domains::commands::with_peeked(home, &names, |mode, rows| {
+    let consume = |mode,
+                   rows: Vec<
+        comandos_store::Result<Option<comandos_store::domains::commands::PendingCommand>>,
+    >| {
         let mut queued = queued.into_iter().zip(rows).peekable();
         paths
             .iter()
@@ -202,6 +219,11 @@ pub fn read_requests_domain(home: &Path, paths: &[PathBuf]) -> Result<Vec<IpcReq
                 request
             })
             .collect()
+    };
+    (if live {
+        comandos_store::domains::commands::with_peeked_live(home, &names, consume)
+    } else {
+        comandos_store::domains::commands::with_peeked(home, &names, consume)
     })
     .map_err(|e| IpcError::Io(home.into(), e.to_string()))
 }

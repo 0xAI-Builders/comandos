@@ -77,9 +77,12 @@ impl<C: StateConfig, G: StateGuard> StateFiles<C, G> {
             home: self.config.home(),
         }
         .document(key, domain, path.clone());
-        match doc
-            .read_readonly()
-            .map_err(|e| StateError::Io(path.clone(), e.to_string()))?
+        match (if self.config.mode() == RunMode::Live {
+            doc.read_live()
+        } else {
+            doc.read_readonly()
+        })
+        .map_err(|e| StateError::Io(path.clone(), e.to_string()))?
         {
             None => Ok(Value::Null),
             Some(bytes) if bytes.len() <= MAX_BYTES => {
@@ -132,9 +135,12 @@ impl<C: StateConfig, G: StateGuard> StateFiles<C, G> {
             home: self.config.home(),
         }
         .document("hooks/snippets.json", "ui-docs", path.clone());
-        match doc
-            .read_readonly()
-            .map_err(|e| StateError::Io(path.clone(), e.to_string()))?
+        match (if self.config.mode() == RunMode::Live {
+            doc.read_live()
+        } else {
+            doc.read_readonly()
+        })
+        .map_err(|e| StateError::Io(path.clone(), e.to_string()))?
         {
             None => Ok(Vec::new()),
             Some(bytes) if bytes.len() <= MAX_BYTES => {
@@ -283,11 +289,15 @@ impl<C: StateConfig, G: StateGuard> StateFiles<C, G> {
     pub fn read(&self, name: &str) -> Result<Value, StateError<G::Error>> {
         let path = self.path(name)?;
         if name == "app-sessions-v2.json" {
-            return comandos_store::domains::LayoutSnapshot {
+            let snapshot = comandos_store::domains::LayoutSnapshot {
                 home: self.config.home(),
                 file: path.clone(),
-            }
-            .read_readonly()
+            };
+            return (if self.config.mode() == RunMode::Live {
+                snapshot.read_live()
+            } else {
+                snapshot.read_readonly()
+            })
             .map_err(|e| StateError::Io(path, e.to_string()));
         }
         let domain = document_domain::<G::Error>(name)?;
@@ -296,9 +306,12 @@ impl<C: StateConfig, G: StateGuard> StateFiles<C, G> {
             home: self.config.home(),
         }
         .document(&key, domain, path.clone());
-        match doc
-            .read_readonly()
-            .map_err(|e| StateError::Io(path.clone(), e.to_string()))?
+        match (if self.config.mode() == RunMode::Live {
+            doc.read_live()
+        } else {
+            doc.read_readonly()
+        })
+        .map_err(|e| StateError::Io(path.clone(), e.to_string()))?
         {
             None => Ok(Value::Null),
             Some(bytes) => comandos_core::json::workspace_loads_bytes(&bytes)
@@ -370,11 +383,15 @@ impl<C: StateConfig, G: StateGuard> StateFiles<C, G> {
     }
 
     pub fn read_session_snapshot(&self) -> Value {
-        comandos_store::domains::LayoutSnapshot {
+        let snapshot = comandos_store::domains::LayoutSnapshot {
             home: self.config.home(),
             file: self.config.hooks_dir().join("app-sessions-v2.json"),
-        }
-        .read_readonly()
+        };
+        (if self.config.mode() == RunMode::Live {
+            snapshot.read_live()
+        } else {
+            snapshot.read_readonly()
+        })
         .unwrap_or_else(|_| serde_json::json!({"version":2,"sessions":{}}))
     }
 

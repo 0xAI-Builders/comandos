@@ -73,6 +73,14 @@ impl FileLock {
         file.lock_shared()?;
         Ok(Self { _file: file })
     }
+    pub fn try_shared(path: &Path) -> io::Result<Option<Self>> {
+        let file = Self::open(path)?;
+        match file.try_lock_shared() {
+            Ok(()) => Ok(Some(Self { _file: file })),
+            Err(fs::TryLockError::WouldBlock) => Ok(None),
+            Err(fs::TryLockError::Error(error)) => Err(error),
+        }
+    }
     pub fn exclusive(path: &Path) -> io::Result<Self> {
         let file = Self::open(path)?;
         file.lock()?;

@@ -11,15 +11,35 @@ pub struct CallerAccess {
     db: Option<Connection>,
     _guard: Option<FileLock>,
 }
+/// Runtime readers hold the domain lease while ordinary payload commits continue.
+/// Inspection tools keep using the strict, immutable snapshot reader instead.
+pub fn read<T>(
+    home: &Path,
+    domain: &str,
+    body: impl FnOnce(Mode, Option<&Connection>) -> Result<T>,
+) -> Result<T> {
+    let access = CallerAccess::open_read(home, domain)?;
+    body(access.mode(), access.db())
+}
 impl CallerAccess {
     pub fn open(home: &Path, domain: &str) -> Result<Self> {
+        Self::open_with(home, domain, false)
+    }
+    pub fn open_read(home: &Path, domain: &str) -> Result<Self> {
+        Self::open_with(home, domain, true)
+    }
+    fn open_with(home: &Path, domain: &str, reading: bool) -> Result<Self> {
         let path = unified::unified_path(home);
         let db = match fs::symlink_metadata(&path) {
             Ok(_) => Some(unified::open_caller(&path)?),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => return Err(e.into()),
         };
-        let (mode, guard) = unified::modes::access_caller_mode(home, db.as_ref(), domain)?;
+        let (mode, guard) = if reading {
+            unified::modes::access_runtime_read_mode(home, db.as_ref(), domain)?
+        } else {
+            unified::modes::access_caller_mode(home, db.as_ref(), domain)?
+        };
         if db.is_none() && path.exists() {
             return Err(Error::Validation("base apareció durante admisión".into()));
         }

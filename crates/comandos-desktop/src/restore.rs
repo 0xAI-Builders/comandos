@@ -50,6 +50,14 @@ impl RestorePlan {
     ) -> Result<Self, RestoreError> {
         let object = tabs.as_object().ok_or(RestoreError::Malformed)?;
         let mut actions = Vec::new();
+        // The legacy app kept Local outside app-tabs.json. Reattach its live
+        // tmux session before restoring registered tabs, without recreating it.
+        if mode == RunMode::Live && present.contains("local") && !object.contains_key("local") {
+            actions.push(RestoreAction::AttachExisting {
+                key: "local".into(),
+                label: "Local".into(),
+            });
+        }
         for (key, label) in object {
             let label = label.as_str().ok_or(RestoreError::Malformed)?.to_string();
             if key.starts_with("xterm-") || key.starts_with("web:") {

@@ -72,7 +72,7 @@ impl RecordCache {
     }
 
     pub fn scan_domain(&mut self, home: &Path, dir: &Path) -> Result<Vec<Record>, StateFault> {
-        comandos_store::unified::with_readonly_access(home, "session-status", |mode, db| {
+        comandos_store::domains::caller::read(home, "session-status", |mode, db| {
             if !matches!(mode, comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed) { return Ok(self.scan(dir)); }
             let Some(db) = db else { return Ok(Err(StateFault::Decline)); };
             let rows = db.prepare("SELECT file_key,body FROM session_status WHERE file_key NOT LIKE '.%' AND substr(file_key,-5)='.json' ORDER BY file_key")?.query_map([], |r| Ok((r.get::<_,String>(0)?,r.get::<_,Vec<u8>>(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;

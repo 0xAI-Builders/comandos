@@ -278,7 +278,7 @@ impl<F: Facts> EventRoutes<F> {
         if !self.import_done {
             if let Some(home) = &self.legacy_home {
                 let bytes =
-                    comandos_store::unified::with_readonly_access(home, "logs", |mode, db| {
+                    comandos_store::domains::caller::read(home, "logs", |mode, db| {
                         if matches!(
                             mode,
                             comandos_store::unified::Mode::Unified

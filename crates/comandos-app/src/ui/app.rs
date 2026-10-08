@@ -1687,11 +1687,17 @@ impl App {
             paths.insert(self.cfg.hooks_dir().join(name));
         }
         let home = self.cfg.home().to_path_buf();
+        let live = self.cfg.mode() == RunMode::Live;
         let weak = Rc::downgrade(self);
         self.jobs.spawn(
             move || {
-                ipc::read_requests_domain(&home, &paths.into_iter().collect::<Vec<_>>())
-                    .unwrap_or_default()
+                let paths = paths.into_iter().collect::<Vec<_>>();
+                (if live {
+                    ipc::read_requests_domain_live(&home, &paths)
+                } else {
+                    ipc::read_requests_domain(&home, &paths)
+                })
+                .unwrap_or_default()
             },
             move |requests| {
                 let Some(app) = weak.upgrade() else {
