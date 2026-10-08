@@ -11,6 +11,7 @@ pub mod claude_trust;
 pub mod cli_catalog;
 pub mod cli_help;
 pub mod closed_panes;
+pub mod codex_policy;
 pub mod command_chains;
 pub mod dialogs;
 pub mod events_cli;

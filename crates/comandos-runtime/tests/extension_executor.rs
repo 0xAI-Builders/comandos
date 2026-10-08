@@ -10,7 +10,16 @@ fn resolution_keeps_home_and_applies_environment_prefix_without_execution() {
     ]);
     let argv = ["env", "-u", "DROP", "ASSIGN=a b", "codex", "--yolo"].map(str::to_owned);
     let got = executor::resolve_command(&data, &argv, &env).unwrap();
-    assert_eq!(got.argv, ["codex", "--yolo", "--resume", "two words"]);
+    assert_eq!(
+        got.argv,
+        [
+            "codex",
+            "--no-daemon",
+            "--dangerously-bypass-approvals-and-sandbox",
+            "--resume",
+            "two words"
+        ]
+    );
     assert_eq!(
         got.environment.get(&OsString::from("HOME")),
         Some(&OsString::from("/private/home"))
@@ -27,6 +36,92 @@ fn resolution_keeps_home_and_applies_environment_prefix_without_execution() {
     assert!(
         executor::resolve_command(&data, &["HOME=/elsewhere".into(), "codex".into()], &env)
             .is_err()
+    );
+}
+
+#[test]
+fn codex_receipt_arguments_match_idempotent_launcher_policy_with_many_mcp_overrides() {
+    let env = HashMap::from([("HOME".into(), "/private/home".into())]);
+    let mut overrides = Vec::new();
+    for n in 0..80 {
+        overrides.extend([
+            "-c".to_owned(),
+            format!("mcp_servers.fixture_{n}.args=[\"proxy\",\"--yolo\",\"two words\"]"),
+        ]);
+    }
+    let data =
+        json!({"home":"/private/home","bundle":{"harness":"codex"},"args":overrides,"env":{}});
+    let original: Vec<String> = [
+        "codex",
+        "resume",
+        "fixture-sid",
+        "-m",
+        "fixture-model",
+        "-c",
+        "model_reasoning_effort=\"high\"",
+        "--no-daemon",
+        "--yolo",
+        "--sandbox",
+        "read-only",
+        "--ask-for-approval",
+        "untrusted",
+        "--config=permissions.fixture=true",
+    ]
+    .map(str::to_owned)
+    .into();
+    let got = executor::resolve_command(&data, &original, &env).unwrap();
+    let mut expected: Vec<String> = [
+        "codex",
+        "resume",
+        "--no-daemon",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "fixture-sid",
+        "-m",
+        "fixture-model",
+        "-c",
+        "model_reasoning_effort=\"high\"",
+    ]
+    .map(str::to_owned)
+    .into();
+    expected.extend(overrides);
+    assert_eq!(
+        got.argv, expected,
+        "receipt must contain the actual launcher's canonical argv"
+    );
+    let no_extra = json!({"home":"/private/home","bundle":{"harness":"codex"},"args":[],"env":{}});
+    assert_eq!(
+        executor::resolve_command(&no_extra, &got.argv, &env)
+            .unwrap()
+            .argv,
+        got.argv
+    );
+}
+
+#[test]
+fn codex_without_explicit_yolo_keeps_permissions_and_literal_flag_values() {
+    let env = HashMap::from([("HOME".into(), "/private/home".into())]);
+    let data = json!({"home":"/private/home","bundle":{"harness":"codex"},"args":["-c","mcp_servers.fixture.args=[\"--yolo\"]"],"env":{}});
+    let argv: Vec<String> = [
+        "codex",
+        "resume",
+        "fixture-sid",
+        "--sandbox",
+        "read-only",
+        "--ask-for-approval",
+        "untrusted",
+        "--model",
+        "--yolo",
+    ]
+    .map(str::to_owned)
+    .into();
+    let mut expected = argv.clone();
+    expected.extend([
+        "-c".to_owned(),
+        "mcp_servers.fixture.args=[\"--yolo\"]".to_owned(),
+    ]);
+    assert_eq!(
+        executor::resolve_command(&data, &argv, &env).unwrap().argv,
+        expected
     );
 }
 

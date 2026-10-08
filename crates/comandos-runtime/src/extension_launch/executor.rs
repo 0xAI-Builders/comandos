@@ -198,6 +198,14 @@ pub fn resolve_command(
         None
     };
     command.extend(extra);
+    if harness == "codex" {
+        // The Codex launcher applies this same idempotent policy. Record its
+        // final argv before exec so strict receipt verification stays exact.
+        let normalized =
+            crate::codex_policy::normalize(&command[1..]).map_err(LaunchError::Value)?;
+        command.truncate(1);
+        command.extend(normalized);
+    }
     Ok(ResolvedCommand {
         argv: command,
         environment: env,
