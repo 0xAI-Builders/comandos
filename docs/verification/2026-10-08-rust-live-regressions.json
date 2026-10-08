@@ -1,0 +1,176 @@
+{
+  "checked_utc": "2026-10-08T06:22:37.097983+00:00",
+  "source_head": "dbf3a7d967159ae4fb35ca64617192be9712146e",
+  "verification": {
+    "preserved_panes": 24,
+    "original_panes": 24,
+    "original_codex": 24,
+    "changed_codex_pids": [],
+    "http": [
+      {
+        "route": "/state",
+        "status": 200,
+        "ms": 2
+      },
+      {
+        "route": "/prefs",
+        "status": 200,
+        "ms": 1
+      },
+      {
+        "route": "/tabs",
+        "status": 200,
+        "ms": 3
+      },
+      {
+        "route": "/workspace",
+        "status": 200,
+        "ms": 2
+      },
+      {
+        "route": "/active-tab",
+        "status": 200,
+        "ms": 4
+      },
+      {
+        "route": "/pomodoro",
+        "status": 200,
+        "ms": 1
+      },
+      {
+        "route": "/accounts?harness=codex&usage=0",
+        "status": 200,
+        "ms": 1
+      },
+      {
+        "route": "/web/status",
+        "status": 200,
+        "ms": 2
+      },
+      {
+        "route": "/remote-state",
+        "status": 200,
+        "ms": 0
+      }
+    ],
+    "soak_200": 40,
+    "native": {
+      "readiness": {
+        "status": "ready",
+        "issues": []
+      },
+      "capture": {
+        "captured_at_unix_ms": 1791439903047,
+        "process_pid": 1635984
+      },
+      "tabs": 21
+    },
+    "comandos": {
+      "path": "/home/someguy/.local/share/comandos/releases/791f5dd4b0fe/comandos",
+      "sha256": "3f595d0cacc29443216dfa6f25593ab7fd5162fc9fe545be8485947268175dc7"
+    },
+    "comandos-app": {
+      "path": "/home/someguy/.local/share/comandos/releases/23e01951d36a/comandos-app",
+      "sha256": "5ee3214a0b09f970f82633b243479a2c9fa9c6b4a7f9b02b4fb459d39cf9e0dc"
+    }
+  },
+  "native_modals": {
+    "usage_stayed_open_seconds": 5.2,
+    "native_close_button_worked": true,
+    "app_pid": 1635984
+  },
+  "native_tab_rows": [
+    {
+      "rows": 6,
+      "tabs_per_row": [
+        4,
+        4,
+        4,
+        3,
+        3,
+        3
+      ],
+      "visible_tabs": 21,
+      "geometry": [
+        629,
+        150,
+        998,
+        200
+      ]
+    }
+  ],
+  "performance_sample": {
+    "seconds": 5.005,
+    "app": {
+      "pid": 1635984,
+      "cpu_percent": 24.6,
+      "read_bytes": 76203536,
+      "write_bytes": 32658001
+    },
+    "server": {
+      "pid": 1610201,
+      "cpu_percent": 15.2,
+      "read_bytes": 159459265,
+      "write_bytes": 64144526
+    }
+  },
+  "baseline_cpu_percent": {
+    "app_approximate": 100.6,
+    "server_approximate": 124.0
+  },
+  "tests": {
+    "app_targets_passed": 58,
+    "web_actual_wasm_scenarios_passed": 23,
+    "store_server_tests_passed": 20
+  },
+  "remote_browser": {
+    "runner": "Mac mini chrome-bg",
+    "transport": "owned SSH forward to the installed native server",
+    "viewport": [
+      1400,
+      900
+    ],
+    "mounted_components": 48,
+    "failed_components": 0,
+    "all_session_rows": 61,
+    "all_sessions_list_client_height": 585,
+    "all_sessions_list_scroll_height": 1891,
+    "usage_accounts": 6,
+    "usage_scroll_client_height": 403,
+    "usage_scroll_height": 867,
+    "same_origin_terminal_iframes_loaded": 2,
+    "usage_escape_closed": true,
+    "settings_close_button_worked": true,
+    "pomodoro_opened_and_closed": true,
+    "tailnet_routes_healthy_locally": true,
+    "tailnet_hostname_browser_validation": "Mac mini did not resolve the configured MagicDNS hostname; direct tailnet browser access not verified",
+    "owned_browser_pages_closed": true,
+    "owned_tunnel_stopped": true
+  },
+  "build_receipts": {
+    "controls-app-build-result.json": {
+      "head": "dbf3a7d967159ae4fb35ca64617192be9712146e",
+      "worktree_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exit": 0,
+      "elapsed_seconds": 59.419780157040805
+    },
+    "final-cli-build-result.json": {
+      "head": "b209346b91101f1198aed2d3336d028f4a7417f4",
+      "worktree_diff_sha256": "dd1e7ba756009753f12955f315718a47d59abdcd79531c2f6b2b4079cfe14dd3",
+      "exit": 0,
+      "elapsed_seconds": 161.79484533704817
+    },
+    "sidebar-web-build-result.json": {
+      "head": "b209346b91101f1198aed2d3336d028f4a7417f4",
+      "worktree_diff_sha256": "b6b7395e240b3e7792fbb2db0c73c3cef4362c39839ebd28f97de7b52651ae12",
+      "exit": 0,
+      "elapsed_seconds": 24.303608620073646
+    },
+    "urgent-controls-green-result.json": {
+      "head": "b209346b91101f1198aed2d3336d028f4a7417f4",
+      "worktree_diff_sha256": "7f4d2337aa940b21d3ac3e94f0cae10ea2061e4d9a7ff450872f3a2eccf8e413",
+      "exit": 0,
+      "elapsed_seconds": 29.808613392990083
+    }
+  }
+}
