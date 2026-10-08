@@ -1,0 +1,244 @@
+{
+  "source_commit": "2eb661045df0e9b1d519fce24553485b8fc14a6f",
+  "installed_artifacts": {
+    "comandos": {
+      "path": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-followup-20261008/artifacts-2eb66104/comandos",
+      "sha256": "d23a6e862267d1ac17bd2da07db2ec0320093a7d69730f781611a5b968380951"
+    },
+    "comandos-app": {
+      "path": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-followup-20261008/artifacts-2eb66104/comandos-app",
+      "sha256": "47da4acb0d2a734072515895cafd6c5dd6de599215c775b6ca9ff8ed9c1fbb4e"
+    }
+  },
+  "verification": {
+    "checked_utc": "2026-10-08T07:12:20.112024+00:00",
+    "source_commit": "2eb661045df0e9b1d519fce24553485b8fc14a6f",
+    "codex_original": 24,
+    "changed_codex_pids": [],
+    "panes_original": 24,
+    "panes_preserved": 24,
+    "http": [
+      {
+        "path": "/",
+        "status": 200,
+        "ms": 11
+      },
+      {
+        "path": "/state",
+        "status": 200,
+        "ms": 1
+      },
+      {
+        "path": "/tabs",
+        "status": 200,
+        "ms": 3
+      },
+      {
+        "path": "/workspace",
+        "status": 200,
+        "ms": 2
+      },
+      {
+        "path": "/prefs",
+        "status": 200,
+        "ms": 1
+      },
+      {
+        "path": "/web/status",
+        "status": 200,
+        "ms": 2
+      },
+      {
+        "path": "/news/latest",
+        "status": 200,
+        "ms": 1
+      },
+      {
+        "path": "/news/editions",
+        "status": 200,
+        "ms": 2
+      },
+      {
+        "path": "/term/?arg=local",
+        "status": 200,
+        "ms": 1
+      }
+    ],
+    "state_records": 272,
+    "live_records": 24,
+    "open_tabs": 21,
+    "default_terminal_boot_present": true,
+    "native_app_pid": 2116876,
+    "layout_diagnostic_disabled": true,
+    "native_executable_matches_installed": true
+  },
+  "native_app": {
+    "app_pid": 2116876,
+    "native_status_issues": [],
+    "roles": {
+      "application": 1,
+      "frame": 1,
+      "panel": 92,
+      "filler": 48,
+      "split pane": 4,
+      "drawing area": 22,
+      "label": 72,
+      "page tab list": 2,
+      "page tab": 21,
+      "push button": 92,
+      "separator": 1,
+      "icon": 43,
+      "scroll pane": 4,
+      "scroll bar": 6,
+      "viewport": 3,
+      "document text": 1,
+      "page": 7,
+      "tool bar": 1,
+      "toggle button": 3,
+      "article": 1,
+      "rating": 1
+    },
+    "providers_visible": [],
+    "nodes": 426
+  },
+  "news_native": {
+    "app_pid": 1999428,
+    "stories_rendered": 6,
+    "render_error": false,
+    "article_text_present": true,
+    "close_button_activated": true
+  },
+  "web_verified_source_commit": "c4fd2ec96e3e8dc8206704ccbac716023e7838f9",
+  "web_unchanged_in_final_store_fix": true,
+  "remote_browser": "Mac mini chrome-bg",
+  "remote": {
+    "dashboard_ready": "ready",
+    "open_tabs": 21,
+    "live_records": 24,
+    "all_sessions": {
+      "count": 61,
+      "open": 21,
+      "recoverable": 40,
+      "visible": true
+    },
+    "terminals": [
+      {
+        "socket_open": true,
+        "output_characters": 149,
+        "boot": "ready"
+      },
+      {
+        "socket_open": true,
+        "output_characters": 8939,
+        "boot": "ready"
+      }
+    ],
+    "news_stories": 6,
+    "news_loading": false,
+    "initial_tabs_502_resolved": true
+  },
+  "disk_cleanup": {
+    "removed": "/home/someguy/codebase/0xJesus/ComandOS/.build/target",
+    "preserved": "/home/someguy/codebase/0xJesus/ComandOS/.build/target-integration-acp",
+    "net_bytes_freed": 122999926784
+  },
+  "performance": {
+    "sample_seconds": 10.214365612948313,
+    "start_utc": "2026-10-08T07:09:09.447358+00:00",
+    "end_utc": "2026-10-08T07:09:19.661735+00:00",
+    "processes": [
+      {
+        "role": "server",
+        "pid": 2116730,
+        "cpu_percent_one_core": 85.37,
+        "pss_kib": 75809,
+        "io_delta": {
+          "rchar": 3369775380,
+          "wchar": 61482345,
+          "syscr": 277309,
+          "syscw": 24986,
+          "read_bytes": 3186745344,
+          "write_bytes": 58871808,
+          "cancelled_write_bytes": 0
+        }
+      },
+      {
+        "role": "app",
+        "pid": 2116876,
+        "cpu_percent_one_core": 16.45,
+        "pss_kib": 114818,
+        "io_delta": {
+          "rchar": 6244160,
+          "wchar": 7479341,
+          "syscr": 54426,
+          "syscw": 3532,
+          "read_bytes": 4096,
+          "write_bytes": 237568,
+          "cancelled_write_bytes": 0
+        }
+      },
+      {
+        "role": "WebKitNetworkPr",
+        "pid": 2116956,
+        "cpu_percent_one_core": 0.59,
+        "pss_kib": 21781,
+        "io_delta": {
+          "rchar": 3896,
+          "wchar": 6240,
+          "syscr": 487,
+          "syscw": 780,
+          "read_bytes": 0,
+          "write_bytes": 0,
+          "cancelled_write_bytes": 0
+        }
+      },
+      {
+        "role": "WebKitWebProces",
+        "pid": 2116957,
+        "cpu_percent_one_core": 9.01,
+        "pss_kib": 233418,
+        "io_delta": {
+          "rchar": 24864,
+          "wchar": 23128,
+          "syscr": 2471,
+          "syscw": 2891,
+          "read_bytes": 0,
+          "write_bytes": 0,
+          "cancelled_write_bytes": 0
+        }
+      }
+    ],
+    "total_pss_mib": 435.4,
+    "startup_import_spike_observed_then_ended": true,
+    "diagnostic_capture_disabled": true
+  },
+  "regressions": {
+    "six_small_runtime_writes_after": {
+      "read_bytes": 86137,
+      "written_bytes": 32960
+    },
+    "six_layout_saves_before": {
+      "read_bytes": 87697467,
+      "written_bytes": 17304144
+    },
+    "six_layout_saves_after": {
+      "read_bytes": 517,
+      "written_bytes": 49440
+    }
+  },
+  "checks": {
+    "app_auth_reader": 10,
+    "server_routes": 17,
+    "store_layout_read_write_and_authority": 22,
+    "app_snapshot_and_state": 11,
+    "wasm_native_boot_scenarios": 24,
+    "wasm_unauthorized_behavior_probe": 1,
+    "wasm_unauthorized_unit": 1,
+    "header_layout": 16
+  },
+  "session_mutations": {
+    "codex_processes_killed": 0,
+    "tmux_panes_closed": 0,
+    "terminal_input_sent": false
+  }
+}
