@@ -143,50 +143,50 @@
     "net_bytes_freed": 122999926784
   },
   "performance": {
-    "sample_seconds": 10.214365612948313,
-    "start_utc": "2026-10-08T07:09:09.447358+00:00",
-    "end_utc": "2026-10-08T07:09:19.661735+00:00",
+    "sample_seconds": 5.0239961261395365,
+    "start_utc": "2026-10-08T07:10:43.843433+00:00",
+    "end_utc": "2026-10-08T07:10:48.867444+00:00",
     "processes": [
       {
         "role": "server",
         "pid": 2116730,
-        "cpu_percent_one_core": 85.37,
-        "pss_kib": 75809,
+        "cpu_percent_one_core": 19.71,
+        "pss_kib": 87077,
         "io_delta": {
-          "rchar": 3369775380,
-          "wchar": 61482345,
-          "syscr": 277309,
-          "syscw": 24986,
-          "read_bytes": 3186745344,
-          "write_bytes": 58871808,
+          "rchar": 13609978,
+          "wchar": 1665280,
+          "syscr": 102140,
+          "syscw": 412,
+          "read_bytes": 0,
+          "write_bytes": 36864,
           "cancelled_write_bytes": 0
         }
       },
       {
         "role": "app",
         "pid": 2116876,
-        "cpu_percent_one_core": 16.45,
-        "pss_kib": 114818,
+        "cpu_percent_one_core": 22.69,
+        "pss_kib": 114860,
         "io_delta": {
-          "rchar": 6244160,
-          "wchar": 7479341,
-          "syscr": 54426,
-          "syscw": 3532,
-          "read_bytes": 4096,
-          "write_bytes": 237568,
+          "rchar": 3121414,
+          "wchar": 3778949,
+          "syscr": 28365,
+          "syscw": 2613,
+          "read_bytes": 0,
+          "write_bytes": 106496,
           "cancelled_write_bytes": 0
         }
       },
       {
         "role": "WebKitNetworkPr",
         "pid": 2116956,
-        "cpu_percent_one_core": 0.59,
-        "pss_kib": 21781,
+        "cpu_percent_one_core": 0.6,
+        "pss_kib": 22929,
         "io_delta": {
-          "rchar": 3896,
-          "wchar": 6240,
-          "syscr": 487,
-          "syscw": 780,
+          "rchar": 2136,
+          "wchar": 3480,
+          "syscr": 267,
+          "syscw": 435,
           "read_bytes": 0,
           "write_bytes": 0,
           "cancelled_write_bytes": 0
@@ -195,20 +195,20 @@
       {
         "role": "WebKitWebProces",
         "pid": 2116957,
-        "cpu_percent_one_core": 9.01,
-        "pss_kib": 233418,
+        "cpu_percent_one_core": 17.52,
+        "pss_kib": 241526,
         "io_delta": {
-          "rchar": 24864,
-          "wchar": 23128,
-          "syscr": 2471,
-          "syscw": 2891,
+          "rchar": 27336,
+          "wchar": 26320,
+          "syscr": 2773,
+          "syscw": 3290,
           "read_bytes": 0,
           "write_bytes": 0,
           "cancelled_write_bytes": 0
         }
       }
     ],
-    "total_pss_mib": 435.4,
+    "total_pss_mib": 455.5,
     "startup_import_spike_observed_then_ended": true,
     "diagnostic_capture_disabled": true
   },
