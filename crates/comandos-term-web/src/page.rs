@@ -33,6 +33,7 @@ pub struct Page {
     auth: String,
     base: String,
     theme: String,
+    cursor_preference_changed: bool,
     queue: InputQueue,
     reconnect: Reconnect,
     acks: AckTracker,
@@ -627,6 +628,12 @@ fn set_ctrl(page: &Rc<RefCell<Page>>, armed: bool) {
 fn handle(page: &Rc<RefCell<Page>>, command: Command) {
     match command {
         Command::Theme(name) => apply_theme(page, &name),
+        Command::CursorStyle(style) => {
+            page.borrow_mut().cursor_preference_changed = true;
+            if let Some(t) = term(page) {
+                t.borrow_mut().set_cursor_style(&style);
+            }
+        }
         Command::ButtonStyle(style) => apply_buttons(&style),
         Command::Session(session) => switch_session(page, &session),
         Command::SelectPane(pane) => select_pane(page, pane),
@@ -776,33 +783,30 @@ async fn pane_request(
     if action == "select" {
         body["scope"] = "client".into();
     }
-    let init = web_sys::RequestInit::new();
-    init.set_method("POST");
-    init.set_cache(web_sys::RequestCache::NoStore);
-    init.set_body(&JsValue::from_str(&body.to_string()));
-    let headers = web_sys::Headers::new()?;
-    headers.set("Content-Type", "application/json")?;
-    headers.set("X-Comandos-Token", auth)?;
-    init.set_headers(&headers);
-    let abort = web_sys::AbortController::new()?;
-    init.set_signal(Some(&abort.signal()));
-    let timeout = timers::timeout(10000, move || abort.abort());
-    let response = JsFuture::from(window()?.fetch_with_str_and_init("/terminal-panes", &init))
-        .await?
-        .dyn_into::<web_sys::Response>()?;
-    let data = JsFuture::from(response.json()?).await?;
-    drop(timeout);
-    let result = js_sys::JSON::stringify(&data)?
-        .as_string()
-        .and_then(|s| comandos_web_dom::api::serialized_value(&s, false))
-        .ok_or_else(|| JsValue::from_str("No se pudo consultar el estado de los paneles"))?;
-    if !response.ok() || result["ok"] != true || !result["panes"].is_array() {
+    let result = page_request(auth, "/terminal-panes", Some(body)).await?;
+    if result["ok"] != true || !result["panes"].is_array() {
         return Err(result["error"]
             .as_str()
             .unwrap_or("No se pudo consultar el estado de los paneles")
             .into());
     }
     Ok(result)
+}
+async fn page_request(auth: &str, path: &str, body: Option<Value>) -> Result<Value, JsValue> {
+    let abort = web_sys::AbortController::new()?;
+    let signal = abort.signal();
+    let timeout = timers::timeout(10000, move || abort.abort());
+    let result = crate::pane_chrome::fetch_api(
+        auth.to_owned(),
+        path,
+        body,
+        Some("No se pudo consultar el estado de los paneles"),
+        Some(signal),
+    )
+    .await
+    .map_err(JsValue::from);
+    drop(timeout);
+    result
 }
 fn select_pane(page: &Rc<RefCell<Page>>, pane: String) {
     let weak = Rc::downgrade(page);
@@ -990,6 +994,21 @@ fn ready(k: &str) -> Result<(), JsValue> {
     });
     Ok(())
 }
+fn load_cursor_preference(page: &Rc<RefCell<Page>>) {
+    let weak = Rc::downgrade(page);
+    let auth = page.borrow().auth.clone();
+    spawn_local(async move {
+        if let Ok(prefs) = page_request(&auth, "/prefs", None).await
+            && let Some(page) = weak.upgrade()
+            && !page.borrow().disposed
+            && !page.borrow().cursor_preference_changed
+            && let Some(style) = prefs["cursor_shape"].as_str()
+            && let Some(t) = term(&page)
+        {
+            t.borrow_mut().set_cursor_style(style);
+        }
+    });
+}
 fn attach() -> Result<(), JsValue> {
     attach_main()?;
     crate::pane_chrome::attach()
@@ -1046,7 +1065,7 @@ fn attach_main() -> Result<(), JsValue> {
             .unwrap_or_else(|| "sutil".into()),
     );
     let host = element("term").ok_or_else(|| JsValue::from_str("sin #term"))?;
-    let mut options = json!({"fontFamily":FONT,"fontSize":14,"lineHeight":1.2,"letterSpacing":0,"cursorBlink":true,"scrollback":10000});
+    let mut options = json!({"fontFamily":FONT,"fontSize":14,"lineHeight":1.2,"letterSpacing":0,"cursorBlink":true,"cursorStyle":"bar","scrollback":10000});
     options["theme"] = comandos_web_dom::port::to_json(&value(
         crate::page_theme::theme(&theme)
             .unwrap_or(crate::page_theme::THEMES.first().map_or("{}", |(_, v)| v)),
@@ -1066,6 +1085,7 @@ fn attach_main() -> Result<(), JsValue> {
         auth,
         base,
         theme: theme.clone(),
+        cursor_preference_changed: false,
         queue: InputQueue::new(4096, 15000.0),
         reconnect: Reconnect::default(),
         acks: AckTracker::default(),
@@ -1263,6 +1283,7 @@ fn attach_main() -> Result<(), JsValue> {
         page.borrow_mut().ui = Some(ui);
     }
     connect(&page);
+    load_cursor_preference(&page);
     post("ready", None);
     Ok(())
 }

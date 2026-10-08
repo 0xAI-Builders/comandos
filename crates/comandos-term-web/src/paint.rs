@@ -14,7 +14,10 @@
 use crate::metrics::CellMetrics;
 use comandos_term::{
     engine::{Engine, Palette},
-    render::{CursorShape, CursorView, RenderOpts, RowRender, Run, cursor, render_row_into},
+    render::{
+        CursorShape, CursorView, RenderOpts, RowRender, Run, cursor, preferred_cursor_shape,
+        render_row_into,
+    },
 };
 
 /// Intervalo de parpadeo del cursor de xterm.js (`BLINK_INTERVAL`).
@@ -64,11 +67,12 @@ pub fn blink_enabled(engine: &Engine, focused: bool) -> bool {
 /// Estado del cursor que no viene del motor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CursorInput {
-    /// La terminal tiene el foco: sin foco xterm.js dibuja el contorno
-    /// (`cursorInactiveStyle: 'outline'`) y no parpadea.
+    /// Sin foco no parpadea; conserva la barra o el subrayado preferidos.
     pub focused: bool,
     /// Fase visible del parpadeo (siempre `true` si no parpadea).
     pub blink_on: bool,
+    /// Preferencia explícita del usuario, por encima de DECSCUSR.
+    pub preferred_shape: Option<CursorShape>,
 }
 
 /// El cursor tal como se dibuja: `None` si no se ve.
@@ -76,13 +80,11 @@ pub fn cursor_to_paint(view: CursorView, input: CursorInput) -> Option<CursorVie
     if !view.visible || view.shape == CursorShape::Hidden {
         return None;
     }
-    if !input.focused {
-        return Some(CursorView {
-            shape: CursorShape::HollowBlock,
-            ..view
-        });
-    }
-    input.blink_on.then_some(view)
+    let view = CursorView {
+        shape: preferred_cursor_shape(view.shape, input.preferred_shape, input.focused),
+        ..view
+    };
+    (!input.focused || input.blink_on).then_some(view)
 }
 
 /// Parpadeo del cursor. El tiempo es el de `performance.now()` (ms).
@@ -458,6 +460,7 @@ mod tests {
     const FOCUSED: CursorInput = CursorInput {
         focused: true,
         blink_on: true,
+        preferred_shape: None,
     };
 
     fn setup(rows: u16) -> (Engine, Palette, Scheduler, CellMetrics) {
@@ -557,6 +560,7 @@ mod tests {
         let hidden = CursorInput {
             focused: true,
             blink_on: false,
+            preferred_shape: None,
         };
         s.absorb_cursor(&e, hidden);
         let (stats, _) = run(&mut e, &p, &mut s, &m, hidden);
@@ -625,6 +629,7 @@ mod tests {
         let blurred = CursorInput {
             focused: false,
             blink_on: true,
+            preferred_shape: None,
         };
         s.absorb_cursor(&e, blurred);
         let (_, calls) = run(&mut e, &p, &mut s, &m, blurred);
@@ -676,6 +681,7 @@ mod tests {
         let hidden = CursorInput {
             focused: true,
             blink_on: false,
+            preferred_shape: None,
         };
         s.absorb_cursor(&e, hidden);
         assert!(s.wants_frame());
@@ -684,6 +690,7 @@ mod tests {
         let blurred = CursorInput {
             focused: false,
             blink_on: false,
+            preferred_shape: None,
         };
         s.absorb_cursor(&e, blurred);
         let (_, calls) = run(&mut e, &p, &mut s, &m, blurred);
@@ -691,6 +698,30 @@ mod tests {
             calls.last(),
             Some(&Call::Cursor(0, 0, CursorShape::HollowBlock, None))
         );
+    }
+
+    #[test]
+    fn preferred_bar_is_thin_after_application_changes_and_blur() {
+        let (mut e, p, mut s, m) = setup(2);
+        let preferred = CursorInput {
+            preferred_shape: Some(CursorShape::Beam),
+            ..FOCUSED
+        };
+        e.advance(b"\x1b[4 q", 0.0);
+        s.absorb(&mut e, preferred);
+        let (_, calls) = run(&mut e, &p, &mut s, &m, preferred);
+        assert!(calls.contains(&Call::Cursor(0, 0, CursorShape::Beam, None)));
+        let blurred = CursorInput {
+            focused: false,
+            ..preferred
+        };
+        s.absorb_cursor(&e, blurred);
+        assert_eq!(
+            cursor_to_paint(cursor(&e), blurred).unwrap().shape,
+            CursorShape::Beam
+        );
+        e.advance(b"\x1b[?25l", 0.0);
+        assert_eq!(cursor_to_paint(cursor(&e), blurred), None);
     }
 
     #[test]
@@ -772,6 +803,7 @@ mod tests {
             let input = CursorInput {
                 focused: true,
                 blink_on: phase,
+                preferred_shape: None,
             };
             s.absorb_cursor(&e, input);
             assert!(!s.wants_frame());

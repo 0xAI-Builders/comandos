@@ -176,6 +176,8 @@ pub fn terminal_state(s: &Value) -> bool {
 #[cfg(target_arch = "wasm32")]
 mod browser;
 #[cfg(target_arch = "wasm32")]
+pub(crate) use browser::fetch as fetch_api;
+#[cfg(target_arch = "wasm32")]
 pub use browser::{attach, dispose};
 #[cfg(test)]
 mod tests {

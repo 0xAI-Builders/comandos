@@ -198,6 +198,29 @@ mod web {
             Ok(())
         })
     }
+    fn broadcast_cursor(prefs: &JsValue) -> Result<(), JsValue> {
+        let shape = get(prefs, "cursor_shape");
+        if !matches!(
+            shape.as_string().as_deref(),
+            Some("block" | "ibeam" | "underline")
+        ) {
+            return Ok(());
+        }
+        frames(|frame| {
+            let window = get(&frame, "contentWindow");
+            if !window.is_null() && !window.is_undefined() {
+                call(
+                    &window,
+                    "postMessage",
+                    &[
+                        message("cursor-style", "style", shape.clone())?,
+                        get(&global("location"), "origin"),
+                    ],
+                )?;
+            }
+            Ok(())
+        })
+    }
     fn apply_theme(name: JsValue, tell: bool) -> Result<(), JsValue> {
         let input = name.as_string().unwrap_or_default();
         let name = model::theme(&input);
@@ -399,10 +422,11 @@ mod web {
         Ok(())
     }
     fn set_pref(patch: JsValue, ok: JsValue) -> JsValue {
-        let fetched = invoke(&global("api"), &["/prefs-set".into(), patch]);
+        let fetched = invoke(&global("api"), &["/prefs-set".into(), patch.clone()]);
         promise(async move {
             match wait(fetched).await {
                 Ok(_) => {
+                    broadcast_cursor(&patch)?;
                     if truthy(&ok) {
                         invoke_void("toast", &[ok])?;
                     }
@@ -598,6 +622,7 @@ mod web {
                 apply_theme(or(get(&p, "theme"), "noche".into()), true)?;
                 apply_buttons(or(get(&p, "button_style"), "sutil".into()), true)?;
                 apply_tabs(or(get(&p, "tabs_layout"), "row".into()))?;
+                broadcast_cursor(&p)?;
                 hydrate(p)
             }
             .await;

@@ -408,11 +408,11 @@ impl TermView {
     pub fn diagnostic_snapshot(&self) -> Result<Value, String> {
         let model = self.inner.model.borrow();
         let cursor = model.engine.cursor();
-        let shape = if cursor.shape == CursorShape::Block {
-            model.cursor_shape
-        } else {
-            cursor.shape
-        };
+        let shape = comandos_term::render::preferred_cursor_shape(
+            cursor.shape,
+            Some(model.cursor_shape),
+            model.focused,
+        );
         let blink = model
             .preferences
             .get("cursor_blink")
@@ -1553,18 +1553,14 @@ impl Inner {
             let y = m.geom.origin_y + cursor.line as f64 * m.geom.cell_h;
             let width = m.geom.cell_w * if cursor.wide { 2. } else { 1. };
             color(context, m.engine.palette().cursor);
-            let shape = if cursor.shape == CursorShape::Block {
-                m.cursor_shape
-            } else {
-                cursor.shape
-            };
-            if !m.focused {
-                context.rectangle(x + 0.5, y + 0.5, width - 1., m.geom.cell_h - 1.);
-                context.set_line_width(1.);
-                let _ = context.stroke();
-            } else {
+            let shape = comandos_term::render::preferred_cursor_shape(
+                cursor.shape,
+                Some(m.cursor_shape),
+                m.focused,
+            );
+            {
                 match shape {
-                    CursorShape::Beam => context.rectangle(x, y, 2., m.geom.cell_h),
+                    CursorShape::Beam => context.rectangle(x, y, 1., m.geom.cell_h),
                     CursorShape::Underline => {
                         context.rectangle(x, y + m.geom.cell_h - 2., width, 2.)
                     }

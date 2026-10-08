@@ -351,14 +351,27 @@ fn draw_grip(rc: &Shared) {
         }
     }
 }
-async fn fetch(
-    rc: &Shared,
+fn token(rc: &Shared) -> String {
+    rc.borrow().token.clone()
+}
+pub(crate) async fn fetch(
+    token: String,
     path: &str,
     body: Option<Value>,
     check: Option<&str>,
+    signal: Option<web_sys::AbortSignal>,
 ) -> Result<Value, String> {
-    let token = rc.borrow().token.clone();
-    let opt = js(&json!({"cache":"no-store","headers":{"X-Comandos-Token":token}}));
+    let opt = js(&json!({"cache":"no-store","headers":{}}));
+    if !token.is_empty() {
+        let _ = Reflect::set(
+            &get(&opt, "headers"),
+            &"X-Comandos-Token".into(),
+            &token.into(),
+        );
+    }
+    if let Some(signal) = signal {
+        let _ = Reflect::set(&opt, &"signal".into(), signal.as_ref());
+    }
     if path.starts_with("/tab-models?") {
         let _ = Reflect::set(
             &get(&opt, "headers"),
@@ -397,16 +410,17 @@ fn refresh(rc: &Shared) {
         let t0 = now();
         let session = rc.borrow().session.clone();
         let list = fetch(
-            &rc,
+            token(&rc),
             "/terminal-panes",
             Some(json!({"session":session,"action":"list"})),
+            None,
             None,
         );
         let model_path = format!(
             "/tab-models?session={}",
             js_sys::encode_uri_component(&session)
         );
-        let models = fetch(&rc, &model_path, None, None);
+        let models = fetch(token(&rc), &model_path, None, None, None);
         let (list, models) = futures_pair(list, models).await;
         {
             let mut s = rc.borrow_mut();
@@ -478,7 +492,7 @@ fn resize(rc: &Shared) {
     spawn_local(async move {
         let session = rc.borrow().session.clone();
         let body = want.body(&session);
-        let result = fetch(&rc, "/terminal-panes", Some(body), None).await;
+        let result = fetch(token(&rc), "/terminal-panes", Some(body), None, None).await;
         {
             let mut s = rc.borrow_mut();
             if let Ok(data) = result
@@ -575,13 +589,14 @@ fn open_accounts(rc: &Shared, btn: &Element) {
     let rc = rc.clone();
     spawn_local(async move {
         let response = fetch(
-            &rc,
+            token(&rc),
             &format!(
                 "/accounts?harness={}",
                 js_sys::encode_uri_component(&harness)
             ),
             None,
             Some("No se pudieron leer las cuentas"),
+            None,
         )
         .await;
         match response {
@@ -688,10 +703,11 @@ fn add_account(rc: &Shared, box_: &Element, harness: &str, alias: &str) {
     );
     spawn_local(async move {
         let result = fetch(
-            &rc,
+            token(&rc),
             "/account/add",
             Some(json!({"provider":harness,"alias":alias,"deviceAuth":true})),
             Some("No se pudo abrir el login"),
+            None,
         )
         .await;
         match result {
@@ -739,7 +755,7 @@ async fn wait_switch(
         if rc.borrow().disposed {
             return json!({"ok":false,"detail":"Terminal cerrada"});
         }
-        if let Ok(s) = fetch(rc, &path, None, None).await {
+        if let Ok(s) = fetch(token(&rc), &path, None, None, None).await {
             if terminal_state(&s) {
                 return s;
             }
@@ -768,10 +784,11 @@ fn switch_account(rc: &Shared, box_: &Element, pane: &str, alias: &str) {
     spawn_local(async move {
         let session = rc.borrow().session.clone();
         let result = fetch(
-            &rc,
+            token(&rc),
             "/account/switch",
             Some(json!({"session":session,"pane":pane,"alias":alias})),
             Some("No se pudo cambiar de cuenta"),
+            None,
         )
         .await;
         let result = match result {

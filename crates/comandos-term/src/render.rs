@@ -789,6 +789,21 @@ fn shift_until(bg: [u8; 3], fg: [u8; 3], ratio: f64, step: Step) -> [u8; 3] {
     c
 }
 
+/// Forma visible del cursor compartida por GTK y canvas.
+pub fn preferred_cursor_shape(
+    application: CursorShape,
+    preferred: Option<CursorShape>,
+    focused: bool,
+) -> CursorShape {
+    if application == CursorShape::Hidden {
+        return CursorShape::Hidden;
+    }
+    if !focused && !matches!(preferred, Some(CursorShape::Beam | CursorShape::Underline)) {
+        return CursorShape::HollowBlock;
+    }
+    preferred.unwrap_or(application)
+}
+
 /// Cursor de la terminal, en coordenadas de la vista.
 pub fn cursor(engine: &Engine) -> CursorView {
     let term = engine.term();
@@ -818,6 +833,34 @@ pub fn cursor(engine: &Engine) -> CursorView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preferred_bar_survives_application_style_and_focus() {
+        for focused in [true, false] {
+            for application in [
+                CursorShape::Block,
+                CursorShape::Underline,
+                CursorShape::Beam,
+            ] {
+                assert_eq!(
+                    preferred_cursor_shape(application, Some(CursorShape::Beam), focused),
+                    CursorShape::Beam
+                );
+            }
+            assert_eq!(
+                preferred_cursor_shape(CursorShape::Hidden, Some(CursorShape::Beam), focused),
+                CursorShape::Hidden
+            );
+        }
+        assert_eq!(
+            preferred_cursor_shape(CursorShape::Underline, None, true),
+            CursorShape::Underline
+        );
+        assert_eq!(
+            preferred_cursor_shape(CursorShape::Block, None, false),
+            CursorShape::HollowBlock
+        );
+    }
 
     #[test]
     fn contrast_steps_match_xterm_js() {

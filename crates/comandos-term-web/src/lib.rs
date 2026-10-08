@@ -52,7 +52,7 @@ use canvas::{Canvas2d, CanvasTheme};
 use comandos_term::select::{Selection, UrlSpan, selected_text};
 use comandos_term::{
     engine::{ClipboardTarget, Engine, GridSize, MouseMode, Palette},
-    render::RenderOpts,
+    render::{CursorShape, RenderOpts},
 };
 use metrics::CellMetrics;
 use paint::{Blink, CursorInput, Painter, Scheduler};
@@ -89,6 +89,7 @@ pub struct Options {
     pub line_height: f64,
     pub letter_spacing: f64,
     pub cursor_blink: bool,
+    pub cursor_style: Option<CursorShape>,
     pub scrollback: usize,
     pub draw_bold_text_in_bright_colors: bool,
     pub minimum_contrast_ratio: f32,
@@ -107,6 +108,7 @@ impl Default for Options {
             line_height: 1.0,
             letter_spacing: 0.0,
             cursor_blink: false,
+            cursor_style: None,
             scrollback: 1000,
             draw_bold_text_in_bright_colors: true,
             minimum_contrast_ratio: 1.0,
@@ -159,6 +161,16 @@ pub fn font_size_in_range(size: f64) -> Option<f64> {
     (size.is_finite() && size > 0.0).then(|| size.clamp(1.0, 512.0))
 }
 
+/// Acepta el nombre de preferencias y el de xterm.
+fn cursor_style(style: &str) -> Option<CursorShape> {
+    match style {
+        "bar" | "ibeam" => Some(CursorShape::Beam),
+        "block" => Some(CursorShape::Block),
+        "underline" => Some(CursorShape::Underline),
+        _ => None,
+    }
+}
+
 /// Lee las opciones de `new Terminal({...})`.
 pub fn read_options(obj: &JsValue) -> Options {
     let d = Options::default();
@@ -177,6 +189,9 @@ pub fn read_options(obj: &JsValue) -> Options {
         letter_spacing: get_f64(obj, "letterSpacing")
             .map(|v| v.clamp(-100.0, 100.0))
             .unwrap_or(d.letter_spacing),
+        cursor_style: get(obj, "cursorStyle")
+            .and_then(|v| v.as_string())
+            .and_then(|s| cursor_style(&s)),
         cursor_blink: get(obj, "cursorBlink")
             .and_then(|v| v.as_bool())
             .unwrap_or(d.cursor_blink),
@@ -693,6 +708,7 @@ impl Inner {
         CursorInput {
             focused: self.focused,
             blink_on: !self.blink.enabled || self.blink_on,
+            preferred_shape: self.opts.cursor_style,
         }
     }
 
@@ -1824,6 +1840,19 @@ impl WebTerm {
                 .set_property("background-color", &canvas::hex(i.palette.bg));
             let size = i.size;
             i.relayout(size);
+        });
+    }
+
+    /// Preferencia de cursor; repinta solo la fila afectada.
+    pub fn set_cursor_style(&mut self, style: &str) {
+        let Some(shape) = cursor_style(style) else {
+            return;
+        };
+        self.with(|i| {
+            if i.opts.cursor_style != Some(shape) {
+                i.opts.cursor_style = Some(shape);
+                i.touch_cursor();
+            }
         });
     }
 

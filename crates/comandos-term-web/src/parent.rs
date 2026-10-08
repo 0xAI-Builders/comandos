@@ -3,6 +3,7 @@ use serde_json::Value;
 #[derive(Debug, PartialEq)]
 pub enum Command {
     Theme(String),
+    CursorStyle(String),
     ButtonStyle(String),
     Session(String),
     SelectPane(String),
@@ -34,6 +35,11 @@ pub fn command(data: &Value) -> Option<Command> {
             let s = text("theme")?;
             crate::page_theme::theme(&s)?;
             Command::Theme(s)
+        }
+        "cursor-style" => {
+            let style = text("style")?;
+            crate::cursor_style(&style)?;
+            Command::CursorStyle(style)
         }
         "button-style" => {
             let s = text("style")?;
@@ -110,6 +116,21 @@ mod tests {
         }
         assert_eq!(control_byte(b"1"), None);
         assert_eq!(control_byte(b"abc"), None);
+    }
+    #[test]
+    fn cursor_style_messages_validate_before_applying() {
+        assert_eq!(
+            command(
+                &serde_json::json!({"source":"comandos","type":"cursor-style","style":"ibeam"})
+            ),
+            Some(Command::CursorStyle("ibeam".into()))
+        );
+        assert!(
+            command(
+                &serde_json::json!({"source":"comandos","type":"cursor-style","style":"invalid"})
+            )
+            .is_none()
+        );
     }
     #[test]
     fn invalid_messages_cannot_mutate_page() {
