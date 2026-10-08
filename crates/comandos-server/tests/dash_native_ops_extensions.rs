@@ -107,6 +107,111 @@ async fn standalone_mcp_selection_gates_calls_without_restarting_the_private_age
 }
 
 #[tokio::test]
+async fn standalone_explicit_reconnect_relaunches_unchanged_selection_and_replays_once() {
+    let Some(t) = Twin::start_with(
+        "ext-reconnect",
+        |home| {
+            support::ops::install_extension_launcher(home);
+            support::ops::seed_fake_codex(home);
+        },
+        support::twin::TwinOpts {
+            fakebin_extra: vec![(
+                "codex".into(),
+                "#!/bin/sh\nexec \"$HOME/bin/codex\" \"$@\"\n".into(),
+            )],
+            front: Some(Box::new(|opts| opts.standalone = true)),
+            ..Default::default()
+        },
+    )
+    .await
+    else {
+        return;
+    };
+    let path = "/pane-extensions?session=audit&pane=%250";
+    let before = t.get(path).await.front;
+    assert_eq!(before.status, 200, "{}", before.text());
+    let mut state: Value = serde_json::from_slice(&before.body).unwrap();
+    let conversation = state["conversationId"].clone();
+    let identity = state["identity"].clone();
+    assert_eq!(state["skillsRestartRequired"], false);
+    let mut request = json!({"session":"audit", "pane":"%0", "harness":"codex", "expectedIdentity":identity, "expectedConversationId":conversation, "revision":state["revision"], "requestId":"reconnect-invalid", "interrupt":false, "reconnect":"yes"});
+    let rejected = t
+        .post_front("/pane-extensions/apply", &request.to_string())
+        .await;
+    assert_eq!(rejected.status, 409, "{}", rejected.text());
+    assert!(t.tmux_mutations_a().is_empty());
+    for id in ["reconnect-first", "reconnect-loaded"] {
+        request["requestId"] = json!(id);
+        request["reconnect"] = json!(true);
+        request["revision"] = state["revision"].clone();
+        let started = t
+            .post_front("/pane-extensions/apply", &request.to_string())
+            .await;
+        assert_eq!(started.status, 202, "{}", started.text());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(45);
+        loop {
+            // The shelf may temporarily have no identifiable CLI between
+            // exit and resume. Observe the durable operation during that gap.
+            let current = t
+                .get(&format!(
+                    "/model/status?operationKey=audit%7C%250&operationId={id}"
+                ))
+                .await
+                .front;
+            assert_eq!(current.status, 200, "{}", current.text());
+            let operation: Value = serde_json::from_slice(&current.body).unwrap();
+            if operation["state"] == "confirmed" {
+                break;
+            }
+            assert!(
+                ![
+                    "failed",
+                    "rolled_back",
+                    "recovery_required",
+                    "awaiting_confirmation"
+                ]
+                .contains(&operation["state"].as_str().unwrap_or("")),
+                "{operation}"
+            );
+            assert!(std::time::Instant::now() < deadline, "{operation}");
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let current = t.get(path).await.front;
+        assert_eq!(current.status, 200, "{}", current.text());
+        state = serde_json::from_slice(&current.body).unwrap();
+        assert_eq!(state["identity"], identity);
+        assert_eq!(state["conversationId"], conversation);
+        let conn = rusqlite::Connection::open(t.a.journal_db()).unwrap();
+        let (req, snapshot, result): (String, String, String) = conn
+            .query_row(
+                "SELECT request,snapshot,result FROM session_operations WHERE id=?",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        let req: Value = serde_json::from_str(&req).unwrap();
+        let snapshot: Value = serde_json::from_str(&snapshot).unwrap();
+        let result: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(req["reconnect"], true);
+        assert_eq!(req["interrupt"], false);
+        assert_ne!(result["unchanged"], true);
+        assert_ne!(snapshot["origin"]["agent_pid"], result["observed"]["pid"]);
+        for field in ["model", "effort", "harnessAccount", "conversationId"] {
+            assert_eq!(
+                result["observed"][field], snapshot["origin"]["observed"][field],
+                "{field}"
+            );
+        }
+        let mutations = t.tmux_mutations_a();
+        let retry = t
+            .post_front("/pane-extensions/apply", &request.to_string())
+            .await;
+        assert_eq!(retry.status, 200, "{}", retry.text());
+        assert_eq!(mutations, t.tmux_mutations_a());
+    }
+}
+
+#[tokio::test]
 async fn missing_target_and_extra_fields_match_python_without_fallback() {
     let Some(t) = Twin::start("ext-errors", |_| {}).await else {
         return;

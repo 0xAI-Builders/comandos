@@ -41,7 +41,7 @@ impl Action {
     fn fields(self) -> &'static [&'static str] {
         match self {
             Self::Save => &["desired"],
-            Self::Apply => &["requestId", "interrupt"],
+            Self::Apply => &["requestId", "interrupt", "reconnect"],
             Self::Template => &["name", "templateId"],
             Self::Cancel | Self::Recover => &["operationId"],
         }
@@ -491,7 +491,8 @@ fn request_fields(data: &Value) -> Value {
             .into_iter()
             .flatten()
             .filter(|(k, _)| {
-                COMMON.contains(&k.as_str()) || ["requestId", "interrupt"].contains(&k.as_str())
+                COMMON.contains(&k.as_str())
+                    || ["requestId", "interrupt", "reconnect"].contains(&k.as_str())
             })
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect(),
@@ -534,7 +535,14 @@ async fn write(
                 Ok(Next::State(None))
             }
             Action::Apply => {
-                if live_gate(&opts, &t.harness) && t.info.is_some() && !skills_changed(&t) {
+                if input.get("reconnect").is_some_and(|v| !v.is_boolean()) {
+                    return Err(err("reconnect inválido"));
+                }
+                if live_gate(&opts, &t.harness)
+                    && t.info.is_some()
+                    && !skills_changed(&t)
+                    && input["reconnect"] != true
+                {
                     // MCP-only changes never enter the CLI stop/resume path.
                     save_selection(
                         &store,

@@ -1527,6 +1527,10 @@ impl SessionConfiguration {
         paths
     }
     fn prepare_extensions(&mut self) -> Result<Map<String, Value>, Fail> {
+        if self.data.get("reconnect").is_some_and(|v| !v.is_boolean()) {
+            return Err(py("reconnect inválido"));
+        }
+        let reconnect = self.data.get("reconnect") == Some(&Value::Bool(true));
         let identity = pane_identity(&self.env, &self.sess, &self.pane)?;
         let info = agent_info_for_pane(&self.env, &self.pane)?;
         let observed = if let Some(info) = &info {
@@ -1738,7 +1742,9 @@ impl SessionConfiguration {
                 &extension_launch::require_helper(&self.env.home)?,
             )?;
         }
-        let unchanged = bundle.is_some() && loaded.as_ref().is_some_and(|v| python_eq(v, &chosen));
+        let unchanged = !reconnect
+            && bundle.is_some()
+            && loaded.as_ref().is_some_and(|v| python_eq(v, &chosen));
         let mut plan=json!({"opencodeEnvironment":environment,"to":harness,"motor":motor,"model":model,"effort":effort,"harnessAccount":account,"motorAccount":or_text(get(&observed,"motorAccount"),&account),"command":command,"previous":observed,"routeId":format!("{harness}:{motor}"),"expectedSid":sid,"sameConversation":self.frm!="shell","extensionsOnly":true,"extensionLaunch":launch,"unchanged":unchanged,"continuity":{"continuity":if sid.is_empty(){"new-conversation"}else{"resumed"},"handoffRequired":false}}).as_object().cloned().ok_or(Fail::Unsure)?;
         if unchanged {
             plan.insert("extensionLaunch".into(), bundle.unwrap_or(Value::Null));

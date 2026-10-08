@@ -782,6 +782,49 @@ fn extension_apply_relaunches_only_private_stub_and_preserves_selection_on_model
             .pid
     );
     assert_eq!(original_config, std::fs::read(&config).unwrap());
+    // An explicit reconnect rebuilds an otherwise identical launch, so old
+    // connectors can adopt the current broker without changing the selection.
+    let mut same = data.clone();
+    same["requestId"] = json!("extension-identical");
+    same["interrupt"] = json!(false);
+    let mut adapter =
+        SessionConfiguration::new(Kind::Extensions, same.clone(), lab.identity(), env.clone())
+            .unwrap();
+    let unchanged = adapter.prepare().unwrap();
+    assert_eq!(unchanged["unchanged"], true);
+    same["requestId"] = json!("extension-reconnect");
+    same["reconnect"] = json!(true);
+    let mut adapter =
+        SessionConfiguration::new(Kind::Extensions, same, lab.identity(), env.clone()).unwrap();
+    let reconnected = adapter.prepare().unwrap();
+    assert_eq!(reconnected["unchanged"], false);
+    for field in [
+        "to",
+        "motor",
+        "model",
+        "effort",
+        "harnessAccount",
+        "motorAccount",
+        "expectedSid",
+        "sameConversation",
+    ] {
+        assert_eq!(reconnected[field], unchanged[field], "{field}");
+    }
+    assert_eq!(
+        reconnected["extensionLaunch"]["selection"],
+        bundle["selection"]
+    );
+    assert_ne!(
+        reconnected["extensionLaunch"]["manifest"],
+        bundle["manifest"]
+    );
+    assert_eq!(
+        current,
+        sc::agent_info_for_pane(&env, &lab.pane)
+            .unwrap()
+            .unwrap()
+            .pid
+    );
     // A normal model change must map and retain the verified extension selection.
     let mut change = request("change");
     change["pane"] = json!(lab.pane);
