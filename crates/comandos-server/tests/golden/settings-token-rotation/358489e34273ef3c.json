@@ -1,0 +1,10 @@
+{
+  "input": {
+    "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "python": "3.10.12",
+    "target": "/conf",
+    "authorization": "otro-token-mas-largo",
+    "current_token": "otro-token-mas-largo"
+  },
+  "output_b64": "WzIwMCwie1wiQVVUT19XT1JLVFJFRVwiOiBcIjFcIiwgXCJDQ19MQU5HXCI6IFwiYXV0b1wiLCBcIkRFU0tUT1BfTk9USUZZXCI6IFwiMFwiLCBcIk5PVElGWV9NT0RFTF9USUVSXCI6IFwiMVwiLCBcIk5PVElGWV9PTl9BVFRFTlRJT05cIjogXCIxXCIsIFwiTk9USUZZX09OX0RPTkVcIjogXCIxXCIsIFwiU09VTkRfRU5BQkxFRFwiOiBcIjFcIiwgXCJTUEVBS19BVFRFTlRJT05cIjogXCIxXCIsIFwiU1BFQUtfRE9ORVwiOiBcIjFcIiwgXCJWT0xVTUVcIjogXCI3MFwiLCBcIl9sYW5nXCI6IFwiZW5cIn0iXQ=="
+}

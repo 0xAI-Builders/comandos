@@ -1,0 +1,16 @@
+{
+  "input": {
+    "case": {
+      "script": "import sys,json,datetime; sys.path.insert(0,sys.argv[1]+'/lib'); import news_editions as e, news_radar as r, app_state; data=json.loads(sys.argv[2]);\nprint(json.dumps([[e.normalize_url(u),r.canonical(u)] for u in data]))",
+      "args": [
+        {
+          "arg": "[\"https://www.ñ.test/a?q=~*&empty=&bad=%FF\",\"https://host.test:0/a\",\"https://host.test:bad/a\",\"https://host.test:99999/a\",\"https://[2001:4860:4860::8888]:443/a\",\"https://host.test/a/../b\",\"http://host.test/?q=x%20y&x=%2F&x=+\"]",
+          "file": null
+        }
+      ],
+      "bin_inputs": []
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbW1wiaHR0cHM6Ly9cXHUwMGYxLnRlc3QvYT9iYWQ9JUVGJUJGJUJEJmVtcHR5PSZxPX4lMkFcIiwgXCJodHRwczovL1xcdTAwZjEudGVzdC9hP2JhZD0lRUYlQkYlQkQmZW1wdHk9JnE9fiUyQVwiXSwgW1wiaHR0cHM6Ly9ob3N0LnRlc3QvYVwiLCBcImh0dHBzOi8vaG9zdC50ZXN0L2FcIl0sIFtudWxsLCBcImh0dHBzOi8vaG9zdC50ZXN0L2FcIl0sIFtudWxsLCBcImh0dHBzOi8vaG9zdC50ZXN0L2FcIl0sIFtcImh0dHBzOi8vMjAwMTo0ODYwOjQ4NjA6Ojg4ODgvYVwiLCBcImh0dHBzOi8vMjAwMTo0ODYwOjQ4NjA6Ojg4ODgvYVwiXSwgW1wiaHR0cHM6Ly9ob3N0LnRlc3QvYS8uLi9iXCIsIFwiaHR0cHM6Ly9ob3N0LnRlc3QvYS8uLi9iXCJdLCBbXCJodHRwOi8vaG9zdC50ZXN0Lz9xPXgreSZ4PSsmeD0lMkZcIiwgXCJodHRwOi8vaG9zdC50ZXN0Lz9xPXgreSZ4PSsmeD0lMkZcIl1dXG4iLCJ0cmVlIjp7fX0="
+}

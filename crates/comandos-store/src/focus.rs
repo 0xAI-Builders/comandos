@@ -9,11 +9,13 @@ fn version(policy: &Value) -> Result<&str> {
         .ok_or_else(|| Error::Validation("policyVersion inválido".into()))
 }
 pub fn ensure_policy(conn: &Connection, policy: &Value, now: i64) -> Result<i64> {
-    let version = version(policy)?;
-    let document =
-        codec::workspace_dumps_with_options(policy, true, false).map_err(Error::Validation)?;
-    conn.execute("INSERT INTO focus_policies (policy_version,document,activated_at_ms) VALUES (?,?,?) ON CONFLICT(policy_version) DO NOTHING",params![version,document,now])?;
-    activation(conn, policy)?.ok_or_else(|| rusqlite::Error::QueryReturnedNoRows.into())
+    crate::with_transaction(conn, || {
+        let version = version(policy)?;
+        let document =
+            codec::workspace_dumps_with_options(policy, true, false).map_err(Error::Validation)?;
+        conn.execute("INSERT INTO focus_policies (policy_version,document,activated_at_ms) VALUES (?,?,?) ON CONFLICT(policy_version) DO NOTHING",params![version,document,now])?;
+        activation(conn, policy)?.ok_or_else(|| rusqlite::Error::QueryReturnedNoRows.into())
+    })
 }
 fn activation(conn: &Connection, policy: &Value) -> Result<Option<i64>> {
     Ok(conn
@@ -25,39 +27,41 @@ fn activation(conn: &Connection, policy: &Value) -> Result<Option<i64>> {
         .optional()?)
 }
 pub fn award(conn: &Connection, record: &Value, policy: &Value, now: i64) -> Result<Option<Value>> {
-    let Some(at) = activation(conn, policy)? else {
-        return Ok(None);
-    };
-    if !focus::eligible(record, policy, Some(at)) {
-        return Ok(None);
-    }
-    let reward = focus::reward_for(record, policy).map_err(Error::Validation)?;
-    let version = version(policy)?;
-    let before: i64 = conn.query_row(
-        "SELECT COALESCE(SUM(xp),0) FROM focus_rewards WHERE policy_version=?",
-        [version],
-        |r| r.get(0),
-    )?;
-    let xp = focus::int(&reward["xp"]).map_err(Error::Validation)?;
-    let minutes = focus::int(&reward["minutes"]).map_err(Error::Validation)?;
-    let level_before = focus::level_for(before, policy).map_err(Error::Validation)?;
-    let level_after = focus::level_for(
-        before
-            .checked_add(xp)
-            .ok_or_else(|| Error::Validation("XP fuera de rango SQLite".into()))?,
-        policy,
-    )
-    .map_err(Error::Validation)?;
-    let reached = (level_after > level_before).then_some(level_after);
-    let start = if codec::truthy(&record["startedAtMs"]) {
-        &record["startedAtMs"]
-    } else {
-        &record["endedAtMs"]
-    };
-    let start = focus::int(start).map_err(Error::Validation)?;
-    let end = focus::int(&record["endedAtMs"]).map_err(Error::Validation)?;
-    let changed=conn.execute("INSERT INTO focus_rewards (block_id,policy_version,xp,minutes,status,started_at_ms,ended_at_ms,level_reached,awarded_at_ms) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(block_id,policy_version) DO NOTHING",params![record["blockId"].as_str(),version,xp,minutes,record["status"].as_str(),start,end,reached,now])?;
-    Ok((changed==1).then(||json!({"blockId":record["blockId"],"policyVersion":version,"xp":xp,"minutes":minutes,"levelReached":reached})))
+    crate::with_transaction(conn, || {
+        let Some(at) = activation(conn, policy)? else {
+            return Ok(None);
+        };
+        if !focus::eligible(record, policy, Some(at)) {
+            return Ok(None);
+        }
+        let reward = focus::reward_for(record, policy).map_err(Error::Validation)?;
+        let version = version(policy)?;
+        let before: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(xp),0) FROM focus_rewards WHERE policy_version=?",
+            [version],
+            |r| r.get(0),
+        )?;
+        let xp = focus::int(&reward["xp"]).map_err(Error::Validation)?;
+        let minutes = focus::int(&reward["minutes"]).map_err(Error::Validation)?;
+        let level_before = focus::level_for(before, policy).map_err(Error::Validation)?;
+        let level_after = focus::level_for(
+            before
+                .checked_add(xp)
+                .ok_or_else(|| Error::Validation("XP fuera de rango SQLite".into()))?,
+            policy,
+        )
+        .map_err(Error::Validation)?;
+        let reached = (level_after > level_before).then_some(level_after);
+        let start = if codec::truthy(&record["startedAtMs"]) {
+            &record["startedAtMs"]
+        } else {
+            &record["endedAtMs"]
+        };
+        let start = focus::int(start).map_err(Error::Validation)?;
+        let end = focus::int(&record["endedAtMs"]).map_err(Error::Validation)?;
+        let changed=conn.execute("INSERT INTO focus_rewards (block_id,policy_version,xp,minutes,status,started_at_ms,ended_at_ms,level_reached,awarded_at_ms) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(block_id,policy_version) DO NOTHING",params![record["blockId"].as_str(),version,xp,minutes,record["status"].as_str(),start,end,reached,now])?;
+        Ok((changed==1).then(||json!({"blockId":record["blockId"],"policyVersion":version,"xp":xp,"minutes":minutes,"levelReached":reached})))
+    })
 }
 pub fn ledger_progress(conn: &Connection, policy: &Value, now: i64) -> Result<Value> {
     let version = version(policy)?;

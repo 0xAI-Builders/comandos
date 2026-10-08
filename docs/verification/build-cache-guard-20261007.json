@@ -1,0 +1,30 @@
+{
+  "recorded_utc": "2026-10-08T00:18:48.020029+00:00",
+  "base_commit": "86b71ae2a34e9baac7b02116a28be17d0fb8e7bc",
+  "scope": "Linux development build/cache admission only; runtime Rust code unchanged",
+  "cache": "/home/someguy/codebase/0xJesus/ComandOS/.build/target-integration-acp",
+  "max_allocated_bytes": 34359738368,
+  "minimum_free_bytes": 17179869184,
+  "checks_before_and_after_command": true,
+  "one_target_across_worktrees": true,
+  "rejects_target_symlinks_alternative_environment_targets_and_cli_overrides": true,
+  "automatic_deletion": false,
+  "process_signaling": false,
+  "physical_filesystem_quota": false,
+  "an_inflight_build_can_exceed_budget": true,
+  "an_overbudget_cache_refuses_following_commands": true,
+  "isolated_fixture_tests_passed": 10,
+  "test_log": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/build-cache-guard-green.log",
+  "private_driver_receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/build-cache-guard-final-private-driver-result.json",
+  "real_sandbox_check_log": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/functional-close-20261007/build-cache-guard-real-sandbox.log",
+  "review": "Independent reviewer confirmed both initial findings fixed; no remaining blocking findings",
+  "source_sha256": {
+    "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-integration-acp/CLAUDE.md": "c014fdf63f30171091845599a1dbda0a22b20a90e1970730f361bd1a3561c4ce",
+    "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-integration-acp/scripts/rust-build-cache": "418919f5238f64c7b56d1260131467bb9610f9b74c4db6a0628eeef7fe8810c5",
+    "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-integration-acp/scripts/rust-sandbox": "a250dd384d037bef8dc9908ed0d3709676b8f9864ae1d76ed06cb887a393ea5c",
+    "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-integration-acp/scripts/rust-python-oracle": "b39e3f1efbfe0f350fa8920251b0dad65be8a9c883b88fa6b20c0719a8a69f2c",
+    "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-integration-acp/tests/test_rust_build_cache.py": "71f558bce297ed3ed52ce07e69f83bef1f434c4cb9cd224418a582ced7fe4bcf",
+    "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-integration-acp/tests/rust_python_json_parity.py": "fd87f1a75b54442487349bf9284ddbb078be63414cac795a86a8aa633bd6a2fb",
+    "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-integration-acp/tests/rust_credential_import_parity.py": "6509003141798740fa91c8f7528e171707f62169637df81ac337a2532b013872"
+  }
+}

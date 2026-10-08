@@ -1,0 +1,25 @@
+<meta charset="utf-8">
+<script src="../c.js"></script>
+<script>
+(function () {
+  parent.postMessage({source: 'comandos-term', type: 'ready'}, location.origin);
+  try { parent.openPane(1); } catch (_) {}
+  try { return parent.S.n; } catch (_) {}
+  esc("otro reino: no es el esc del tablero");
+  window.addEventListener('message', e => { if (e.data.type === 'theme') {} });
+  window.__owns = true;
+  parent.postMessage({source: 'comandos-term', type: 'ping'}, location.origin);
+  const root = document.documentElement.style;
+  root.background = 'negro';
+})();
+</script>
+<script>
+/* segundo script del terminal */
+const termTail = 1;
+window.addEventListener('message', ev => {
+  switch (ev.data.type) {
+    case 'zoom': break;
+    case 'resize': break;
+  }
+});
+</script>

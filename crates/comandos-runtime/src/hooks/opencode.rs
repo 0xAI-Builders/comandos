@@ -1,17 +1,11 @@
-//! `comandos hook opencode`: lo que hacía el plugin `adapters/opencode-comandos.js`,
-//! que ahora solo reenvía `{directory, event, session, current}` por stdin (la
-//! sesión la consulta con el SDK de OpenCode, que solo existe dentro del plugin;
-//! `current` es el registro del proceso que el plugin guarda en memoria). Registra
-//! el proceso de OpenCode (el padre de este proceso) en `native-processes/<pid>.json`,
-//! imprime el registro nuevo para que el plugin lo guarde y entrega
-//! `working|waiting|done` al pipeline de `hook claude`, lo que antes hacía el plugin
-//! con un POST a `/event` de cc-dash.
+//! Native OpenCode decisions and a persistent JSONL SDK transport actor.
+//! The actor retains current across events; JavaScript only performs requested SDK I/O.
 use super::adapter::{arg, notify};
 use super::input::{clock, env_bytes};
 use super::state_file::mktemp;
 use serde_json::{Map, Value, json};
 use std::ffi::OsStr;
-use std::io::{Read, Write};
+use std::io::{self, BufRead, Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
@@ -109,6 +103,8 @@ fn session_id_ok(id: Option<&Value>) -> bool {
 
 struct Hook {
     home: PathBuf,
+    pid: u32,
+    start: String,
     directory: Option<Value>,
     session: Option<Value>,
     /// El registro en memoria del plugin (`current`).
@@ -118,9 +114,14 @@ struct Hook {
 impl Hook {
     /// `persist`: registro del proceso, solo para la sesión raíz que existe. Como el
     /// plugin, el registro en memoria cambia aunque falle la escritura del archivo.
-    fn persist(&mut self, session_id: Option<&Value>, patch: Map<String, Value>) {
-        let pid = std::os::unix::process::parent_id();
-        let start = start_tick(pid).unwrap_or_default();
+    fn persist(
+        &mut self,
+        session_id: Option<&Value>,
+        patch: Map<String, Value>,
+        now: &mut impl FnMut() -> i64,
+    ) {
+        let pid = self.pid;
+        let start = self.start.clone();
         if start.is_empty() || !session_id_ok(session_id) {
             return;
         }
@@ -143,18 +144,18 @@ impl Hook {
             ("harness", json!("opencode")),
             ("sessionId", id.clone()),
             ("parentId", json!("")),
-            ("updatedAt", json!(clock().1)),
+            ("updatedAt", json!(now())),
         ] {
             current.insert(key.into(), value);
         }
         current.extend(patch);
         let root = self.home.join(".claude/hooks/native-processes");
-        let _ = write_record(&root, pid, &current);
+        let _ = write_record(&self.home, &root, pid, &current);
         self.current = Some(current);
     }
 
     /// El POST a `/event` de cc-dash, que validaba y lanzaba `cc-notify.sh --agent`.
-    fn post(&self, event: &str) {
+    fn post(&self, event: &str, deliver: &mut impl FnMut(&str, &str)) {
         let Some(Value::String(cwd)) = &self.directory else {
             return;
         };
@@ -162,33 +163,43 @@ impl Hook {
         if !cwd.starts_with('/') {
             return;
         }
-        notify(&[
-            arg("--agent"),
-            arg("opencode"),
-            arg("--event"),
-            arg(event),
-            arg("--cwd"),
-            cwd.into_bytes(),
-        ]);
+        deliver(event, &cwd);
     }
 }
 
 /// `mkdir` 0700 + temporal `wx` 0600 + `rename`, como el plugin.
-fn write_record(root: &Path, pid: u32, record: &Map<String, Value>) -> Option<()> {
+fn write_record(home: &Path, root: &Path, pid: u32, record: &Map<String, Value>) -> Option<()> {
+    let text = serde_json::to_string(record).ok()?;
+    super::state_file::write_process(
+        home,
+        root,
+        pid,
+        text.as_bytes(),
+        record.get("updatedAt").and_then(Value::as_i64).unwrap_or(0),
+        || legacy_record(root, pid, text.as_bytes()),
+    )
+}
+fn legacy_record(root: &Path, pid: u32, body: &[u8]) -> Option<()> {
     mkdir_all(root, 0o700)?;
     let name = format!("{pid}.json.");
     let (temp, mut file) = mktemp(root, name.as_bytes(), 10, ".tmp")?;
-    file.write_all(serde_json::to_string(record).ok()?.as_bytes())
-        .ok()?;
+    file.write_all(body).ok()?;
     drop(file);
     std::fs::rename(&temp, root.join(format!("{pid}.json"))).ok()
 }
 
 /// El tick de arranque como lo saca el plugin: tras el PRIMER `)` de `stat`.
 fn start_tick(pid: u32) -> Option<String> {
-    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-    let rest = stat.split_once(')')?.1;
-    rest.split_whitespace().nth(19).map(str::to_string)
+    #[cfg(target_os = "macos")]
+    {
+        crate::process_start_time(&pid.to_string()).map(|start| start.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let rest = stat.split_once(')')?.1;
+        rest.split_whitespace().nth(19).map(str::to_string)
+    }
 }
 
 /// `mkdir(..., { recursive: true, mode })`: el modo va en cada directorio creado.
@@ -200,25 +211,80 @@ fn mkdir_all(dir: &Path, mode: u32) -> Option<()> {
         .ok()
 }
 
-pub fn run(_args: &[String]) -> i32 {
-    if std::env::var_os("COMANDOS_SILENT_AGENT").is_some_and(|v| v == "1") {
-        return 0;
+/// Stateful domain object with injected process identity; no process inspection
+/// occurs in this API. SDK requests and transitions reuse the one-shot hook rules.
+pub struct Bridge {
+    hook: Hook,
+}
+impl Bridge {
+    pub fn new(home: PathBuf, pid: u32, start: String) -> Self {
+        Self {
+            hook: Hook {
+                home,
+                pid,
+                start,
+                directory: None,
+                session: None,
+                current: None,
+            },
+        }
     }
-    let mut raw = Vec::new();
-    let _ = std::io::stdin().read_to_end(&mut raw);
-    let Ok(Value::Object(mut input)) = serde_json::from_slice::<Value>(&raw) else {
-        return 0;
-    };
-    let event = input.remove("event").unwrap_or(Value::Null);
-    let mut hook = Hook {
-        home: PathBuf::from(OsStr::from_bytes(&env_bytes("HOME"))),
-        directory: input.remove("directory"),
-        session: input.remove("session"),
-        current: match input.remove("current") {
-            Some(Value::Object(map)) => Some(map),
-            _ => None,
-        },
-    };
+    pub fn request(&self, event: &Value) -> Option<Value> {
+        if self.hook.start.is_empty()
+            || !matches!(
+                event.get("type").and_then(Value::as_str),
+                Some(
+                    "session.idle"
+                        | "session.error"
+                        | "permission.asked"
+                        | "permission.updated"
+                        | "message.updated"
+                )
+            )
+        {
+            return None;
+        }
+        let p = event.get("properties");
+        let id = js_or(
+            p.and_then(|p| p.get("sessionID")),
+            p.and_then(|p| p.get("info"))
+                .and_then(|i| i.get("sessionID")),
+        );
+        if !session_id_ok(id) {
+            return None;
+        }
+        Some(json!({"path":{"id":id?}}))
+    }
+    pub fn handle(
+        &mut self,
+        directory: Option<Value>,
+        event: Value,
+        response: Value,
+        now: i64,
+        deliver: &mut impl FnMut(&str, &str),
+    ) {
+        self.handle_with_clock(directory, event, response, &mut || now, deliver);
+    }
+    pub fn handle_with_clock(
+        &mut self,
+        directory: Option<Value>,
+        event: Value,
+        response: Value,
+        now: &mut impl FnMut() -> i64,
+        deliver: &mut impl FnMut(&str, &str),
+    ) {
+        self.hook.directory = directory;
+        self.hook.session = js_or(response.get("data"), Some(&response)).cloned();
+        process(&mut self.hook, event, now, deliver);
+    }
+}
+
+fn process(
+    hook: &mut Hook,
+    event: Value,
+    now: &mut impl FnMut() -> i64,
+    deliver: &mut impl FnMut(&str, &str),
+) {
     let empty = Value::Object(Map::new());
     let properties = event.get("properties");
     let p = if js_truthy(properties) {
@@ -232,13 +298,13 @@ pub fn run(_args: &[String]) -> i32 {
     match event.get("type").and_then(Value::as_str) {
         Some("session.idle") => {
             patch.insert("busy".into(), json!(false));
-            hook.persist(session_id, patch);
-            hook.post("done");
+            hook.persist(session_id, patch, now);
+            hook.post("done", deliver);
         }
         Some("permission.asked" | "permission.updated" | "session.error") => {
             patch.insert("busy".into(), json!(true));
-            hook.persist(session_id, patch);
-            hook.post("waiting");
+            hook.persist(session_id, patch, now);
+            hook.post("waiting", deliver);
         }
         Some("message.updated") => {
             let info = info.filter(|i| js_truthy(Some(i))).unwrap_or(&empty);
@@ -249,17 +315,172 @@ pub fn run(_args: &[String]) -> i32 {
             }
             if info.get("role").and_then(Value::as_str) == Some("user") {
                 patch.insert("busy".into(), json!(true));
-                hook.post("working");
+                hook.post("working", deliver);
             }
-            hook.persist(session_id, patch);
+            hook.persist(session_id, patch, now);
         }
         _ => {}
     }
-    // El registro en memoria vuelve al plugin por stdout.
-    if let Some(current) = &hook.current
-        && let Ok(text) = serde_json::to_string(current)
-    {
-        let _ = std::io::stdout().write_all(text.as_bytes());
+}
+
+fn deliver(event: &str, cwd: &str) {
+    notify(&[
+        arg("--agent"),
+        arg("opencode"),
+        arg("--event"),
+        arg(event),
+        arg("--cwd"),
+        cwd.as_bytes().to_vec(),
+    ]);
+}
+
+/// Bounded JSONL frames: request (or null), optional SDK reply, then null ack.
+/// Invalid/incomplete frames stop this actor, rather than desynchronizing requests.
+pub fn run_bridge_with(
+    mut input: impl BufRead,
+    output: &mut impl Write,
+    mut bridge: Bridge,
+    mut now: impl FnMut() -> i64,
+    deliver: &mut impl FnMut(&str, &str),
+    silent: bool,
+) -> io::Result<()> {
+    while let Some(value) = frame(&mut input)? {
+        let request = if silent {
+            None
+        } else {
+            bridge.request(&value["event"])
+        };
+        serde_json::to_writer(&mut *output, &request)?;
+        output.write_all(b"\n")?;
+        output.flush()?;
+        let response = if request.is_some() {
+            frame(&mut input)?.ok_or_else(|| io::Error::other("SDK reply missing"))?
+        } else {
+            Value::Null
+        };
+        if !silent {
+            bridge.handle_with_clock(
+                value.get("directory").cloned(),
+                value["event"].clone(),
+                response,
+                &mut now,
+                deliver,
+            );
+        }
+        output.write_all(b"null\n")?;
+        output.flush()?;
+    }
+    Ok(())
+}
+fn frame(input: &mut impl BufRead) -> io::Result<Option<Value>> {
+    const MAX: usize = 16 * 1024 * 1024;
+    let mut bytes = Vec::new();
+    loop {
+        let buf = input.fill_buf()?;
+        if buf.is_empty() {
+            if bytes.is_empty() {
+                return Ok(None);
+            }
+            return Err(io::Error::other("incomplete JSONL frame"));
+        }
+        let n = buf
+            .iter()
+            .position(|&b| b == b'\n')
+            .map_or(buf.len(), |n| n + 1);
+        if bytes.len() + n > MAX {
+            return Err(io::Error::other("JSONL frame too large"));
+        }
+        bytes.extend_from_slice(&buf[..n]);
+        input.consume(n);
+        if bytes.last() == Some(&b'\n') {
+            return serde_json::from_slice(&bytes)
+                .map(Some)
+                .map_err(io::Error::other);
+        }
+    }
+}
+
+pub fn run(args: &[String]) -> i32 {
+    let silent = std::env::var_os("COMANDOS_SILENT_AGENT").is_some_and(|v| v == "1");
+    if silent && args.first().map(String::as_str) != Some("--bridge") {
+        return 0;
+    }
+    let pid = std::os::unix::process::parent_id();
+    let mut bridge = Bridge::new(
+        PathBuf::from(OsStr::from_bytes(&env_bytes("HOME"))),
+        pid,
+        start_tick(pid).unwrap_or_default(),
+    );
+    if args.first().map(String::as_str) == Some("--bridge") {
+        return if run_bridge_with(
+            std::io::stdin().lock(),
+            &mut std::io::stdout().lock(),
+            bridge,
+            || clock().1,
+            &mut deliver,
+            silent,
+        )
+        .is_ok()
+        {
+            0
+        } else {
+            1
+        };
+    }
+    let mut raw = Vec::new();
+    let _ = std::io::stdin().read_to_end(&mut raw);
+    let Ok(Value::Object(mut input)) = serde_json::from_slice::<Value>(&raw) else {
+        return 0;
+    };
+    bridge.hook.current = input.remove("current").and_then(|v| v.as_object().cloned());
+    bridge.handle_with_clock(
+        input.remove("directory"),
+        input.remove("event").unwrap_or(Value::Null),
+        input.remove("session").unwrap_or(Value::Null),
+        &mut || clock().1,
+        &mut deliver,
+    );
+    if let Some(current) = bridge.hook.current {
+        let _ = serde_json::to_writer(std::io::stdout().lock(), &current);
     }
     0
+}
+
+#[cfg(test)]
+mod domain_tests {
+    use super::*;
+    use comandos_store::unified::{self, Mode};
+    #[test]
+    fn process_record_survives_every_mode_with_injected_identity() {
+        let home = std::env::temp_dir().join(format!("process-domain-{}", std::process::id()));
+        mkdir_all(&home, 0o700).unwrap();
+        let db = unified::open_unified(&unified::unified_path(&home)).unwrap();
+        let path = home.join(".claude/hooks/native-processes/4321.json");
+        for mode in [Mode::Legacy, Mode::Mirror, Mode::Unified, Mode::Sealed] {
+            unified::set_mode(&db, "processes", mode, "test", 1).unwrap();
+            if mode == Mode::Sealed {
+                std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+            }
+            let mut bridge = Bridge::new(home.clone(), 4321, "private-start".into());
+            bridge.handle(Some(json!("/private")),json!({"type":"message.updated","properties":{"info":{"sessionID":"private","role":"user","modelID":"model","providerID":"provider"}}}),json!({"id":"private"}),1000,&mut |_,_|{});
+            if mode != Mode::Legacy {
+                let body = db
+                    .query_row(
+                        "SELECT body FROM native_processes WHERE pid=4321",
+                        [],
+                        |r| r.get::<_, Vec<u8>>(0),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    serde_json::from_slice::<Value>(&body).unwrap()["sessionId"],
+                    "private"
+                );
+                if mode != Mode::Sealed {
+                    assert_eq!(std::fs::read(&path).unwrap(), body);
+                }
+            }
+            assert_eq!(path.exists(), mode != Mode::Sealed);
+        }
+        std::fs::remove_dir_all(home).unwrap();
+    }
 }

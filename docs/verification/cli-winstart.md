@@ -1,0 +1,19 @@
+# Native Windows Start menu command
+
+C2 adds `comandos winstart` and the `cc-winstart` alias. The implementation is `/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-integration-acp/crates/comandos-cli/src/winstart.rs`; the Bash reference remains `/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-integration-acp/bin/cc-winstart` until retirement gates pass.
+
+The command requires a Microsoft WSL kernel and executable PowerShell. It obtains both Windows application-data locations, converts them with `wslpath`, copies the icon, and creates the shortcut using WScript.Shell. The shortcut retains the original launcher, description, icon location and minimized window style. `--uninstall` removes only the selected distro's shortcut and succeeds when it is absent. Ordinary additional arguments retain the original ignored-argument behavior.
+
+The exact 30,136-byte icon from `/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-integration-acp/dash/comandos.ico` is embedded at build time, so the installed command does not need a checkout or Python to obtain it. Unlike the reference, a missing source icon cannot become a runtime failure. Malformed distro names containing path separators, Windows-forbidden filename characters or control characters are rejected before commands or writes. PowerShell single-quoted literals escape apostrophes by doubling them. These are explicit native behavior changes, not claims of parity for malformed inputs.
+
+The maintained shortcut uses `/home/<USER>/.local/bin/cc-app`. Its target remains an alias whose own native cutover belongs to T20; this command does not perform that cutover or change an installed alias.
+
+## Private verification
+
+The original Bash runs unchanged in disposable fixture checkouts. Rust doubles replace only Microsoft-kernel detection, PowerShell and `wslpath`; ordinary file operations use actual system tools. The native public command uses the same private paths and subprocess doubles. Tests compare exit codes, stdout, stderr, exact PowerShell requests and shortcut properties; they delete the reference's icon and restore the shortcut before the native run so its filesystem effects are tested independently. They cover repeated install/removal, failed Windows-path conversion, missing PowerShell, empty Windows environment and failed shortcut creation. Separate tests cover malformed distro rejection and actual binary/alias rejection on this non-WSL host.
+
+The tests are in `/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-integration-acp/crates/comandos-cli/tests/winstart.rs` and `/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-integration-acp/crates/comandos-cli/tests/dispatch.rs`. The real Windows COM implementation, generated binary `.lnk`, Windows Start menu integration and WSLg app launch have not been exercised here. A fake PowerShell request is not acceptance of those gates. Independent implementation review is pending.
+
+Recorded checks and private HOME/XDG context: `/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/cli-winstart-verification-final.json`. No Windows service, personal shortcut, personal HOME, GUI, tmux session or installed command was changed.
+
+The first independent review at `/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/cli-winstart-review.md` approved the private port with two Minor findings: previous query warnings disappeared on some subsequent failures, and repeated CRLF query endings left an LF in Windows paths. Both received reproducing regressions before repair. Native errors now preserve earlier diagnostics, and Windows query values remove CR before the final LF cleanup. Twelve focused tests and scoped all-target clippy pass; fresh independent repair verification remains pending. Exact commands/logs are in `/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/cli-winstart-repair-verification.json`.

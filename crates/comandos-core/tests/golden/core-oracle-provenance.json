@@ -1,0 +1,14 @@
+{
+  "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+  "source_blob": "d0b6fe2fc6a42d038be8e6b6023f313ac6df8bac",
+  "sha256": "eef7368bf9172e29b3116168203e6236a3a2ee1be5348dbf2c78241dd4a2e5f8",
+  "python_version": "Python 3.10.12",
+  "assertions": "Original Rust assertions and deterministic corpus retained; missing golden replay must fail, no skips.",
+  "source_path": "bin/cc_usage.py at recorded source_commit",
+  "stdlib_only": "core-json-indent and core-json-loads are original CPython stdlib scripts; no Rust outputs recorded",
+  "golden_cases": {
+    "core-json-indent": 24,
+    "core-json-loads": 1,
+    "core-usage-state": 10
+  }
+}

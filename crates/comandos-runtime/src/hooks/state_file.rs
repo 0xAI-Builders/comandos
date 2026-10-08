@@ -109,13 +109,89 @@ pub fn write(dir: &Path, key: &[u8], target: &Path, state: &State) -> bool {
     true
 }
 
-fn read(path: &Path) -> Option<Value> {
-    serde_json::from_str(&jq_lossy(&fs::read(path).ok()?)).ok()
+/// Entrada por dominio; el escritor legado conserva su temporal, 0644 y bytes jq.
+pub fn write_domain(home: &Path, dir: &Path, key: &[u8], target: &Path, state: &State) -> bool {
+    let Some(name) = target.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    let body = render(state);
+    let mut lock = target.as_os_str().to_owned();
+    lock.push(".lock");
+    let result = comandos_store::domains::caller::write(
+        home,
+        "session-status",
+        Path::new(&lock),
+        || {
+            if write(dir, key, target, state) {
+                Ok(())
+            } else {
+                Err(comandos_store::Error::Validation(
+                    "no se pudo crear temporal de estado".into(),
+                ))
+            }
+        },
+        |db, origin| {
+            comandos_store::unified::status_put(
+                db,
+                name,
+                body.as_bytes(),
+                state.ts.saturating_mul(1_000_000_000),
+                origin,
+            )
+        },
+    );
+    if let Err(error) = &result {
+        eprintln!("comandos hook: {error}");
+    }
+    result.is_ok()
+}
+/// Registros del arnés ligados a PID e identidad; no inspecciona procesos.
+pub(crate) fn write_process(
+    home: &Path,
+    root: &Path,
+    pid: u32,
+    body: &[u8],
+    now_ms: i64,
+    legacy: impl FnOnce() -> Option<()>,
+) -> Option<()> {
+    let target = root.join(format!("{pid}.json"));
+    let mut lock = target.as_os_str().to_owned();
+    lock.push(".lock");
+    comandos_store::domains::caller::write(home,"processes",Path::new(&lock),
+        ||legacy().ok_or_else(||comandos_store::Error::Validation("escritura de proceso falló".into())),
+        |db,origin| {db.execute("INSERT INTO native_processes VALUES(?1,?2,?3,?4) ON CONFLICT(pid) DO UPDATE SET body=excluded.body,mtime_ns=excluded.mtime_ns,origin=excluded.origin",rusqlite::params![i64::from(pid),body,now_ms.saturating_mul(1_000_000),if origin==comandos_store::unified::Origin::Mirror {"mirror"}else{"unified"}])?;Ok(())}).ok()
+}
+
+pub(crate) fn read_state_bytes(home: &Path, path: &Path) -> Option<Vec<u8>> {
+    let name = path.file_name()?.to_str()?;
+    let access =
+        comandos_store::domains::caller::CallerAccess::open(home, "session-status").ok()?;
+    if matches!(
+        access.mode(),
+        comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed
+    ) {
+        access
+            .db()?
+            .query_row(
+                "SELECT body FROM session_status WHERE file_key=?1",
+                [name],
+                |r| r.get::<_, Vec<u8>>(0),
+            )
+            .ok()
+    } else {
+        fs::read(path).ok()
+    }
+}
+pub(crate) fn read_domain(home: &Path, path: &Path) -> Option<Value> {
+    serde_json::from_str(&jq_lossy(&read_state_bytes(home, path)?)).ok()
 }
 
 /// `jq -r 'if ((.status=="done" or .status=="waiting") and ((.detail//"")!=""))
 /// then .detail else (.last//"") end'`.
-pub fn previous_answer(path: &Path) -> Vec<u8> {
+pub fn previous_answer_domain(home: &Path, path: &Path) -> Vec<u8> {
+    answer(read_domain(home, path))
+}
+fn answer(data: Option<Value>) -> Vec<u8> {
     let run = |state: &Value| -> Result<Vec<u8>, ()> {
         let status = field(state, "status")?.as_str();
         let detail = field(state, "detail")?;
@@ -127,14 +203,15 @@ pub fn previous_answer(path: &Path) -> Vec<u8> {
             Ok(jq_r(alt(field(state, "last")?, &empty)))
         }
     };
-    read(path).and_then(|s| run(&s).ok()).unwrap_or_default()
+    data.and_then(|s| run(&s).ok()).unwrap_or_default()
 }
 
 /// `jq -r '.detail // .last // ""'` (lo que conserva un `GrokIdle`). `//` de jq
 /// se traga el error de un estado que no es objeto: entonces sale vacío.
-pub fn detail_or_last(path: &Path) -> Vec<u8> {
+pub fn detail_or_last_domain(home: &Path, path: &Path) -> Vec<u8> {
+    let data = read_domain(home, path);
     let empty = Value::String(String::new());
-    match read(path) {
+    match data {
         Some(state @ Value::Object(_)) => {
             let detail = field(&state, "detail").unwrap_or(&Value::Null);
             let last = field(&state, "last").unwrap_or(&Value::Null);
@@ -146,14 +223,104 @@ pub fn detail_or_last(path: &Path) -> Vec<u8> {
 
 /// `jq -r '[.status,(.ts|tostring)]|join(" ")'` partido como `${prev%% *}` y
 /// `${prev##* }`.
-pub fn previous_status(path: &Path) -> (String, String) {
+pub fn previous_status_domain(home: &Path, path: &Path) -> (String, String) {
+    let data = read_domain(home, path);
     let run = |state: &Value| -> Result<String, ()> {
         let ts = Value::String(jq_tostring(field(state, "ts")?));
         Ok(jq_join([field(state, "status")?, &ts], " "))
     };
-    let prev = read(path).and_then(|s| run(&s).ok()).unwrap_or_default();
+    let prev = data.and_then(|s| run(&s).ok()).unwrap_or_default();
     let prev = String::from_utf8_lossy(super::text::strip_nl(prev.as_bytes())).into_owned();
     let first = prev.split(' ').next().unwrap_or("").to_owned();
     let last = prev.rsplit(' ').next().unwrap_or("").to_owned();
     (first, last)
+}
+
+#[cfg(test)]
+mod domain_tests {
+    use super::*;
+    use comandos_store::unified::{self, Mode};
+    use std::os::unix::fs::DirBuilderExt;
+    #[test]
+    fn hook_state_round_trip_every_mode() {
+        let home = std::env::temp_dir().join(format!("hook-domain-{}", std::process::id()));
+        let dir = home.join(".claude/hooks/state");
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&dir)
+            .unwrap();
+        let db = unified::open_unified(&unified::unified_path(&home)).unwrap();
+        let target = dir.join("pane.json");
+        let state = State {
+            project: b"p",
+            status: "done",
+            detail: b"answer",
+            cwd: b"/private",
+            ts: 2,
+            options: b"",
+            last: b"",
+            agent: b"claude",
+            session: b"s",
+            pane: "%1",
+        };
+        for mode in [Mode::Legacy, Mode::Mirror, Mode::Unified, Mode::Sealed] {
+            unified::set_mode(&db, "session-status", mode, "test", 1).unwrap();
+            if mode == Mode::Sealed {
+                fs::remove_file(&target).unwrap();
+            }
+            assert!(write_domain(&home, &dir, b"pane", &target, &state));
+            if mode != Mode::Legacy {
+                assert_eq!(
+                    db.query_row(
+                        "SELECT body FROM session_status WHERE file_key='pane.json'",
+                        [],
+                        |r| r.get::<_, Vec<u8>>(0)
+                    )
+                    .unwrap(),
+                    render(&state).into_bytes()
+                );
+            }
+            assert_eq!(previous_answer_domain(&home, &target), b"answer");
+            assert_eq!(target.exists(), mode != Mode::Sealed);
+        }
+        fs::remove_dir_all(home).unwrap();
+    }
+    #[test]
+    #[ignore = "gate de rendimiento: ejecutar explícitamente; requiere mediana menor de 3 ms"]
+    fn hook_write_in_mirror_costs_under_3ms() {
+        let home = std::env::temp_dir().join(format!("hook-benchmark-{}", std::process::id()));
+        let dir = home.join(".claude/hooks/state");
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&dir)
+            .unwrap();
+        let db = unified::open_unified(&unified::unified_path(&home)).unwrap();
+        let target = dir.join("pane.json");
+        let state = State {
+            project: b"p",
+            status: "done",
+            detail: b"answer",
+            cwd: b"/private",
+            ts: 2,
+            options: b"",
+            last: b"",
+            agent: b"claude",
+            session: b"s",
+            pane: "%1",
+        };
+        unified::set_mode(&db, "session-status", Mode::Mirror, "test", 1).unwrap();
+        let mut samples = Vec::new();
+        for _ in 0..200 {
+            let start = std::time::Instant::now();
+            assert!(write_domain(&home, &dir, b"pane", &target, &state));
+            samples.push(start.elapsed());
+        }
+        samples.sort();
+        let median = samples[100];
+        eprintln!("hook200writes median_us={}", median.as_micros());
+        assert!(median < std::time::Duration::from_millis(3));
+        fs::remove_dir_all(home).unwrap();
+    }
 }

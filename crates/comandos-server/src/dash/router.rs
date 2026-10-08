@@ -6,13 +6,18 @@
 //! dinámica de `_do_GET`. Todo lo demás (directorios, ausentes, rutas raras,
 //! `/operator`, API) se reenvía y el Python contesta lo suyo: paridad por
 //! construcción. La puerta de seguridad ya la aplicó el transporte.
-use crate::dash::native::{self, NativeRoute};
+use crate::dash::{
+    native::{self, NativeRoute},
+    web::WebRoute,
+};
 use http::Method;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RouteClass {
     /// GET/HEAD de un archivo regular existente: lo sirve Rust desde `dash_dir`.
     Static,
+    /// Ruta web de la Fase 3: composición, compuerta y artefactos versionados.
+    Web(WebRoute),
     /// Ruta de un dominio nativo (Fase 2b): la responde Rust salvo `Decline`.
     Native(NativeRoute),
     /// Todo lo demás: se reenvía al Python heredado.
@@ -27,6 +32,22 @@ pub fn classify_with(
     asset_exists: &dyn Fn(&str) -> bool,
     native: bool,
 ) -> RouteClass {
+    if native && let Some(route) = native::route(method, target) {
+        return RouteClass::Native(route);
+    }
+    classify(method, target, asset_exists)
+}
+
+pub fn classify_with_web(
+    method: &Method,
+    target: &str,
+    asset_exists: &dyn Fn(&str) -> bool,
+    native: bool,
+    web_exists: &dyn Fn(&str) -> bool,
+) -> RouteClass {
+    if let Some(route) = WebRoute::route(method, target, web_exists) {
+        return RouteClass::Web(route);
+    }
     if native && let Some(route) = native::route(method, target) {
         return RouteClass::Native(route);
     }
@@ -180,7 +201,7 @@ const DYNAMIC_GET: &[Match] = &[
     RawExact("/chains"),
 ];
 
-fn is_dynamic_get(target: &str) -> bool {
+pub(crate) fn is_dynamic_get(target: &str) -> bool {
     // Con `//` al inicio `urlsplit` vería un host; esas rutas nunca son
     // estáticas (segmento vacío), así que basta con `path_of`.
     let path = path_of(target);

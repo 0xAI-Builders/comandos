@@ -1,0 +1,11 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "aa0256eb8e00d1a6e2be612a4e82bac55b1d6f76d5b3031cf4e6d8880dc205d6",
+      "script": "import sys, json; sys.path.insert(0, \"<ORACLE_SOURCE>\"); import claude_trust\ntry:\n    print(json.dumps(claude_trust.inherit_cwd_trust(\"<HOME>\", source_config_dir=None, dest_config_dir=\"<HOME>/.claude-accounts/rel\", home=\"<HOME>\")))\nexcept Exception as e:\n    print('error')"
+    },
+    "before_sha256": "080b9bc4ba0763469876895932e7743c6fbad2c3c5e96a46334d6c1c42448d0c"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJmYWxzZSIsInRyZWUiOnsiLmNsYXVkZS5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImUzMD0ifX19"
+}

@@ -813,10 +813,11 @@ impl<'p> Sink<'p> {
         if (self.cancelled)() || !(self.admit)(conn) {
             return Err(ImportError::Refused);
         }
-        Ok(Transaction::new_unchecked(
-            conn,
-            TransactionBehavior::Deferred,
-        )?)
+        let tx = begin_write(conn)?;
+        if (self.cancelled)() || !(self.admit)(conn) {
+            return Err(ImportError::Refused);
+        }
+        Ok(tx)
     }
 
     fn turn(&mut self, conn: &Connection, turn: Turn) -> Line<()> {
@@ -1871,6 +1872,12 @@ fn opencode_turn(
     }))
 }
 
+fn begin_write(conn: &Connection) -> Result<Transaction<'_>> {
+    let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    crate::migrate::move_db::admit_write(conn).map_err(|_| ImportError::Refused)?;
+    Ok(tx)
+}
+
 // ---------------------------------------------------------------- poda y configuraciones
 
 /// `prune_old_turns` (1521): turnos y tramos fuera de la ventana y las filas del
@@ -1880,7 +1887,7 @@ pub fn prune_old_turns(conn: &Connection, now: i64, max_age_days: i64) -> Result
         .checked_mul(86_400)
         .and_then(|s| now.checked_sub(s))
         .ok_or(ImportError::Raises)?;
-    let tx = Transaction::new_unchecked(conn, TransactionBehavior::Deferred)?;
+    let tx = begin_write(conn)?;
     let n = tx.execute(
         "delete from usage_turns where turn_finished_at < ?",
         params![cutoff],
@@ -1979,7 +1986,7 @@ pub fn record_session_config(conn: &Connection, data: &Object, now: i64) -> Resu
     let motor_account = or_text("motor_account", "unknown".into())?;
     let source = or_text("source", "runtime".into())?;
     let confidence = or_text("confidence", "exact".into())?;
-    let tx = Transaction::new_unchecked(conn, TransactionBehavior::Deferred)?;
+    let tx = begin_write(conn)?;
     tx.execute(
         "insert into usage_session_configs
           (id,tmux_session,tmux_pane,effective_at,harness,motor,model,effort,harness_account,motor_account,route_id,source,confidence)
@@ -2197,7 +2204,7 @@ pub fn reconcile_orphan_interactions(conn: &Connection, now: i64, max_age_days: 
         .and_then(|s| now.checked_sub(s))
         .and_then(|s| s.checked_mul(1000))
         .ok_or(ImportError::Raises)?;
-    let tx = Transaction::new_unchecked(conn, TransactionBehavior::Deferred)?;
+    let tx = begin_write(conn)?;
     tx.execute(
         "update usage_interactions set git_root=(
                          select coalesce(nullif(p.git_root,''), p.pane_pwd) from usage_panes p

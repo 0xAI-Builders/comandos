@@ -1,0 +1,55 @@
+use std::{cell::{Cell, RefCell}, rc::Rc};
+#[derive(Clone)]
+pub struct Widget(Rc<Data>);
+struct Data {id:u64, width:Cell<i32>, height:Cell<i32>, children:RefCell<Vec<Widget>>, rebuild:Cell<usize>}
+impl PartialEq for Widget { fn eq(&self, other:&Self)->bool {Rc::ptr_eq(&self.0,&other.0)} }
+impl Widget {
+ fn new(id:u64,width:i32)->Self { Self(Rc::new(Data{id,width:Cell::new(width),height:Cell::new(0),children:RefCell::new(vec![]),rebuild:Cell::new(0)})) }
+ fn set_size_request(&self,_w:i32,h:i32) {self.0.height.set(h);}
+ fn allocated_width(&self)->i32 {self.0.width.get()}
+ fn preferred_width(&self)->(i32,i32) {(self.0.width.get(),self.0.width.get())}
+ fn children(&self)->Vec<Self> {self.0.children.borrow().clone()}
+ fn downcast<T:From<Self>>(self)->Result<T,()> {Ok(T::from(self))}
+ fn remove(&self,w:&Widget) {self.0.children.borrow_mut().retain(|c|c!=w);}
+ fn pack_start(&self,w:&Widget,_a:bool,_b:bool,_c:u32) {self.0.children.borrow_mut().push(w.clone());self.0.rebuild.set(self.0.rebuild.get()+1);}
+ fn show(&self) {}
+ fn show_all(&self) {}
+}
+mod gtk {
+ pub type Widget=super::Widget;
+ pub struct Box(super::Widget);
+ impl Box {pub fn new(_o:Orientation,_s:i32)->Self {Self(super::Widget::new(999,0))}}
+ impl From<super::Widget> for Box { fn from(w:super::Widget)->Self {Self(w)} }
+ impl std::ops::Deref for Box {type Target=super::Widget;fn deref(&self)->&Self::Target {&self.0}}
+ pub enum Orientation {Horizontal}
+}
+// Actual GTK collaborators are inert; mutation counters identify attach/reflow work.
+fn detach_item(_w:&Widget) {}
+mod crate_bridge {pub use comandos_app::workspace_view;}
+// Reflow references the existing pure production row layout through this module.
+mod workspace_view {pub use crate::crate_bridge::workspace_view::wrap_rows;}
+struct StripLayout {items:RefCell<Vec<(String,Widget)>>,rows:Cell<bool>,height:Cell<i32>,rows_view:Widget,signature:RefCell<Option<(i32,Vec<i32>)>>,flow:Widget,attach:Cell<usize>}
+struct TabStripLayout(Rc<StripLayout>);
+impl TabStripLayout {
+ fn rows(&self)->bool {self.0.rows.get()}
+ fn attach(&self) {self.0.attach.set(self.0.attach.get()+1);if self.rows(){self.reflow();}}
+ // ACTUAL_METHODS
+}
+fn make(rows:bool)->TabStripLayout {TabStripLayout(Rc::new(StripLayout{items:RefCell::new(vec![]),rows:Cell::new(rows),height:Cell::new(42),rows_view:Widget::new(0,112),signature:RefCell::new(None),flow:Widget::new(1,0),attach:Cell::new(0)}))}
+fn items(a:&Widget,b:&Widget)->Vec<(String,Widget)> {vec![("a".into(),a.clone()),("b".into(),b.clone())]}
+fn main() {
+ let a=Widget::new(2,60);let b=Widget::new(3,60);let replacement=Widget::new(4,60);
+ let s=make(false);s.set_items(items(&a,&b));s.0.height.set(42);
+ for _ in 0..500 {s.set_items(items(&a,&b));}
+ let height=s.0.height.get();let stable=s.0.attach.get();
+ s.set_items(items(&replacement,&b));let replacement_attach=s.0.attach.get();
+ s.set_items(vec![("b".into(),b.clone()),("a".into(),replacement.clone())]);let reorder=s.0.attach.get();
+ s.set_items(vec![("c".into(),b.clone()),("a".into(),replacement.clone())]);let changed=s.0.attach.get();
+ s.set_items(vec![]);s.set_items(vec![]);let empty=s.0.attach.get();
+ let r=make(true);r.set_items(items(&a,&b));for _ in 0..500 {r.set_items(items(&a,&b));}
+ let rowstable=r.0.attach.get();let rowrebuild=r.0.flow.0.rebuild.get();
+ a.0.width.set(20);b.0.width.set(20);r.set_items(items(&a,&b));let widthrebuild=r.0.flow.0.rebuild.get();
+ r.0.rows_view.0.width.set(42);r.set_items(items(&a,&b));let allocationrebuild=r.0.flow.0.rebuild.get();
+ r.set_items(items(&replacement,&b));
+ println!("{}",serde_json::json!({"stable_attach":stable,"replacement_attach":replacement_attach,"reorder_attach":reorder,"changed_key_attach":changed,"empty_attach":empty,"rows_stable_attach":rowstable,"rows_stable_rebuild":rowrebuild,"rows_width_rebuild":widthrebuild,"rows_allocation_rebuild":allocationrebuild,"rows_replaced_attach":r.0.attach.get(),"height":height}));
+}

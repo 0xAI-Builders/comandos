@@ -1,0 +1,8 @@
+{
+  "reference_commit": "2674f36",
+  "source": "bin/cc-app",
+  "source_sha256": "1b535bc6f4463959cc3ab992fa5a4ab859fbdaec43fcf628123cfede68b4ca6b",
+  "recorder": "crates/comandos-app/tests/support/t17_original.py",
+  "case_identity": "JSON input before adding reference path",
+  "mode": "default replay; record/check explicit COMANDOS_ORACLE"
+}

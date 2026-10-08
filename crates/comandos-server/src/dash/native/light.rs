@@ -1,7 +1,7 @@
 //! D. Lecturas ligeras y preferencias, rama a rama de `bin/cc-dash`.
 use super::{
     Answer, Entry, Fault, Key, Native, NativeRoute, Verb,
-    files::{self, Strict},
+    files::{self, DomainDocument, FileLock, Strict},
     py,
     query::Query,
     reply,
@@ -61,15 +61,15 @@ pub async fn answer(native: &Native, route: LightRoute, request: &Request) -> An
     let tmux = &native.options().tmux;
     match route {
         LightRoute::Prefs => {
-            let mut prefs = read_prefs(hooks)?;
+            let mut prefs = read_prefs_domain(&native.options().home, hooks)?;
             prefs.insert("fonts".into(), fonts(native).await);
             read_reply(&Value::Object(prefs))
         }
         LightRoute::PrefsSet => prefs_set(native, data(request)?).await,
-        LightRoute::Tabs => tabs(hooks, tmux).await,
-        LightRoute::TabHistory => tab_history(hooks, tmux).await,
-        LightRoute::TabModels => tab_models(hooks, &request.target),
-        LightRoute::ActiveTab => active_tab(hooks, tmux).await,
+        LightRoute::Tabs => tabs(&native.options().home, hooks, tmux).await,
+        LightRoute::TabHistory => tab_history(&native.options().home, hooks, tmux).await,
+        LightRoute::TabModels => tab_models(&native.options().home, hooks, &request.target),
+        LightRoute::ActiveTab => active_tab(&native.options().home, hooks, tmux).await,
         LightRoute::TmuxMouseGet => {
             let query = Query::parse(&request.target)?;
             let sess = query.first("session").unwrap_or("");
@@ -164,7 +164,13 @@ pub(crate) fn load(path: &Path) -> Result<Option<Value>, Fault> {
 
 /// `read_prefs` (7630).
 pub fn read_prefs(hooks: &Path) -> Result<Map<String, Value>, Fault> {
-    let mut prefs = match load(&hooks.join("prefs.json"))? {
+    prefs_from(load(&hooks.join("prefs.json"))?)
+}
+pub fn read_prefs_domain(home: &Path, hooks: &Path) -> Result<Map<String, Value>, Fault> {
+    prefs_from(load_domain(home, hooks, "prefs.json")?)
+}
+fn prefs_from(value: Option<Value>) -> Result<Map<String, Value>, Fault> {
+    let mut prefs = match value {
         Some(Value::Object(map)) => map,
         _ => Map::new(),
     };
@@ -251,6 +257,8 @@ async fn fonts(native: &Native) -> Value {
 enum PrefsFault {
     /// `ValueError` → 400 con su texto.
     Bad(&'static str),
+    /// Persistencia fallida; distinta de un error al convertir el dato.
+    Storage,
     Fault(Fault),
 }
 
@@ -468,30 +476,59 @@ fn update_prefs(
 }
 
 async fn prefs_set(native: &Native, data: &Map<String, Value>) -> Answer {
-    // `_PREFS_LOCK`: un solo leer-modificar-escribir a la vez en este proceso. Igual que el
-    // candado del Python, no cruza procesos: un `/prefs-set` declinado y atendido por el
-    // heredado puede cruzarse con una escritura de aquí y perder una de las dos (raro: solo
-    // con cuerpos que declinan, y los clientes vuelven a enviar sus preferencias).
     let _guard = native.prefs_lock.lock().await;
-    let path = native.options().hooks.join("prefs.json");
-    let prefs = match update_prefs(read_prefs(&native.options().hooks)?, data) {
-        Ok(prefs) => Value::Object(prefs),
-        Err(PrefsFault::Bad(message)) => return error(StatusCode::BAD_REQUEST, message),
-        Err(PrefsFault::Fault(fault)) => return Err(fault),
-    };
-    // Si el codificador portado no lo puede escribir, el Python sí: se declina antes de tocar nada.
-    response_dumps(&prefs).map_err(|_| Fault::Decline)?;
-    let favorites = prefs.get("favorites").cloned().unwrap_or_else(|| json!([]));
-    let written = tokio::task::spawn_blocking(move || files::write_json_atomic(&path, &prefs))
-        .await
-        .map_err(|_| HandlerError::Failure)?;
+    let doc = DomainDocument::new(
+        &native.options().home,
+        &native.options().hooks,
+        "prefs.json",
+    )
+    .map_err(|_| Fault::Decline)?;
+    let data = data.clone();
+    let now = (native.options().clock)();
+    let written = tokio::task::spawn_blocking(move || -> Result<Value, PrefsFault> {
+        let access = doc.access().map_err(|_| Fault::Decline)?;
+        let _lock = if access.mode() == comandos_store::unified::Mode::Sealed {
+            None
+        } else {
+            Some(FileLock::acquire(&doc.file).map_err(|_| PrefsFault::Storage)?)
+        };
+        access
+            .with_write_transaction(|| {
+                let prefs = Value::Object(update_prefs(
+                    prefs_from(value_from(doc.strict_under(&access))?)?,
+                    &data,
+                )?);
+                let text = response_dumps(&prefs).map_err(|_| Fault::Decline)?;
+                let favorites = prefs.get("favorites").cloned().unwrap_or_else(|| json!([]));
+                doc.write_under(&access, text.as_bytes(), now)
+                    .map_err(|_| PrefsFault::Storage)?;
+                Ok(favorites)
+            })
+            .map_err(|_| PrefsFault::Storage)?
+    })
+    .await
+    .map_err(|_| HandlerError::Failure)?;
     match written {
-        Ok(()) => reply(StatusCode::OK, &json!({"ok": true, "favorites": favorites})),
-        Err(_) => error(
+        Ok(favorites) => reply(StatusCode::OK, &json!({"ok": true, "favorites": favorites})),
+        Err(PrefsFault::Bad(message)) => error(StatusCode::BAD_REQUEST, message),
+        Err(PrefsFault::Storage) => error(
             StatusCode::SERVICE_UNAVAILABLE,
             "No se pudieron guardar las preferencias",
         ),
+        Err(PrefsFault::Fault(fault)) => Err(fault),
     }
+}
+
+pub fn value_from(read: Strict) -> Result<Option<Value>, Fault> {
+    match read {
+        Strict::Value(value) => Ok(Some(value)),
+        Strict::Missing | Strict::Unreadable => Ok(None),
+        Strict::Unsure => Err(Fault::Decline),
+    }
+}
+pub fn load_domain(home: &Path, hooks: &Path, name: &str) -> Result<Option<Value>, Fault> {
+    let doc = DomainDocument::new(home, hooks, name).map_err(|_| Fault::Decline)?;
+    value_from(doc.strict())
 }
 
 // ---------------------------------------------------------------- pestañas
@@ -500,7 +537,13 @@ pub const HIDDEN_SESSIONS: [&str; 3] = ["hub", "local", "control"];
 
 /// `tab_labels` (6430): pares `(sesión, etiqueta)` en el orden del archivo.
 pub fn tab_labels(hooks: &Path) -> Result<Vec<(String, String)>, Fault> {
-    Ok(match load(&hooks.join("app-tabs.json"))? {
+    tab_labels_from(load(&hooks.join("app-tabs.json"))?)
+}
+pub fn tab_labels_domain(home: &Path, hooks: &Path) -> Result<Vec<(String, String)>, Fault> {
+    tab_labels_from(load_domain(home, hooks, "app-tabs.json")?)
+}
+fn tab_labels_from(value: Option<Value>) -> Result<Vec<(String, String)>, Fault> {
+    Ok(match value {
         Some(Value::Object(map)) => map
             .into_iter()
             .filter_map(|(k, v)| match v {
@@ -563,14 +606,14 @@ pub async fn tmux_sessions(tmux: &Tmux) -> Result<HashSet<String>, Fault> {
         .collect())
 }
 
-async fn tabs(hooks: &Path, tmux: &Tmux) -> Answer {
+async fn tabs(home: &Path, hooks: &Path, tmux: &Tmux) -> Answer {
     let live = tmux_sessions(tmux).await?;
     let mut out = Vec::new();
     if live.contains("local") {
         out.push(json!({"session": "local", "label": "⌂ local", "closable": false}));
     }
-    let labels = tab_labels(hooks)?;
-    let favorites = favorites_set(&read_prefs(hooks)?)?;
+    let labels = tab_labels_domain(home, hooks)?;
+    let favorites = favorites_set(&read_prefs_domain(home, hooks)?)?;
     for (sess, label) in ordered_tab_keys(&labels, &favorites) {
         if live.contains(sess) && !HIDDEN_SESSIONS.contains(&sess.as_str()) {
             out.push(json!({"session": sess, "label": label}));
@@ -589,8 +632,17 @@ fn text_or(item: &Map<String, Value>, key: &str, default: &str, n: usize) -> Res
 }
 
 /// `read_tab_history` (5318).
-pub(crate) fn read_tab_history(hooks: &Path) -> Result<Vec<Map<String, Value>>, Fault> {
-    let Some(Value::Array(items)) = load(&hooks.join("app-tabs-history.json"))? else {
+pub fn read_tab_history(hooks: &Path) -> Result<Vec<Map<String, Value>>, Fault> {
+    tab_history_from(load(&hooks.join("app-tabs-history.json"))?)
+}
+pub(crate) fn read_tab_history_domain(
+    home: &Path,
+    hooks: &Path,
+) -> Result<Vec<Map<String, Value>>, Fault> {
+    tab_history_from(load_domain(home, hooks, "app-tabs-history.json")?)
+}
+pub(crate) fn tab_history_from(value: Option<Value>) -> Result<Vec<Map<String, Value>>, Fault> {
+    let Some(Value::Array(items)) = value else {
         return Ok(Vec::new());
     };
     let mut out = Vec::new();
@@ -637,14 +689,17 @@ pub(crate) fn read_tab_history(hooks: &Path) -> Result<Vec<Map<String, Value>>, 
     Ok(out)
 }
 
-async fn tab_history(hooks: &Path, tmux: &Tmux) -> Answer {
+async fn tab_history(home: &Path, hooks: &Path, tmux: &Tmux) -> Answer {
     // Se lee antes que tmux solo para poder declinar pronto; un 500 del
     // historial se devuelve después de tmux, en el orden del Python.
-    let history = read_tab_history(hooks);
+    let history = read_tab_history_domain(home, hooks);
     if matches!(history, Err(Fault::Decline)) {
         return Err(Fault::Decline);
     }
-    let labels: HashSet<String> = tab_labels(hooks)?.into_iter().map(|(k, _)| k).collect();
+    let labels: HashSet<String> = tab_labels_domain(home, hooks)?
+        .into_iter()
+        .map(|(k, _)| k)
+        .collect();
     let live = tmux_sessions(tmux).await?;
     let mut out = Vec::new();
     for mut item in history? {
@@ -663,10 +718,10 @@ async fn tab_history(hooks: &Path, tmux: &Tmux) -> Answer {
     read_reply(&Value::Array(out))
 }
 
-fn tab_models(hooks: &Path, target: &str) -> Answer {
+fn tab_models(home: &Path, hooks: &Path, target: &str) -> Answer {
     let query = Query::parse(target)?;
     let sess = query.first("session").unwrap_or("");
-    let models = load(&hooks.join("app-tab-models.json"))?.unwrap_or_else(|| json!({}));
+    let models = load_domain(home, hooks, "app-tab-models.json")?.unwrap_or_else(|| json!({}));
     let entry = models.as_object().and_then(|m| m.get(sess));
     let panes = match entry {
         None => json!([]),
@@ -682,8 +737,8 @@ fn tab_models(hooks: &Path, target: &str) -> Answer {
     read_reply(&json!({"session": sess, "panes": panes}))
 }
 
-async fn active_tab(hooks: &Path, tmux: &Tmux) -> Answer {
-    let mut active = load(&hooks.join("app-tab-active.json"))?.unwrap_or_else(|| json!({}));
+async fn active_tab(home: &Path, hooks: &Path, tmux: &Tmux) -> Answer {
+    let mut active = load_domain(home, hooks, "app-tab-active.json")?.unwrap_or_else(|| json!({}));
     let Value::Object(map) = &mut active else {
         return Err(HandlerError::Failure.into());
     };

@@ -1,0 +1,56 @@
+{
+  "input": {
+    "case": {
+      "provenance": "{\n  \"source_commit\": \"2674f366bb01b9db42f6f64b728929b3acfe8b83\",\n  \"python\": \"CPython 3.10.12\",\n  \"files\": {\n    \"grok-hooks.py\": {\n      \"frozen_reference_path\": \"crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/grok-hooks.py\",\n      \"sha256\": \"e2a78b56da1dadf7cf606ab27f66bab6e116820e7677b01d12fb9d9a8e73fa28\"\n    },\n    \"agy-statusline.py\": {\n      \"frozen_reference_path\": \"crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/agy-statusline.py\",\n      \"sha256\": \"994eaee2b60cd065364bfd1beecde1cdf49100ddeb0426355224c54a457862cf\"\n    }\n  }\n}\n",
+      "script": "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/grok-hooks.py",
+      "args": [
+        "--accept",
+        "<HOME>/state.grok"
+      ],
+      "stdin": [
+        123,
+        34,
+        101,
+        118,
+        101,
+        110,
+        116,
+        34,
+        58,
+        34,
+        83,
+        101,
+        115,
+        115,
+        105,
+        111,
+        110,
+        69,
+        110,
+        100,
+        34,
+        44,
+        34,
+        115,
+        101,
+        115,
+        115,
+        105,
+        111,
+        110,
+        73,
+        100,
+        34,
+        58,
+        34,
+        115,
+        50,
+        34,
+        125
+      ],
+      "fixed_fixture_clock": false
+    },
+    "before_sha256": "e799422fffcbdab6c987594ee15fe1ae2f9fbb87712dc8f925d9952a6784193e"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbMCxcIlwiXSIsInRyZWUiOnsic3RhdGUuZ3JvayI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjM4NCwiYm9keV9iNjQiOiJleUpsZG1WdWRDSTZJbE5sYzNOcGIyNUZibVFpTENKelpYTnphVzl1U1dRaU9pSnpNaUo5In19fQ=="
+}

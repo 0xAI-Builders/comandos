@@ -112,10 +112,7 @@ pub fn valid_request_id(request_id: &Value) -> bool {
 /// Only timezone-aware timestamps can be supplied; naive dates do not type-check.
 pub fn reserve_directory(base: &Path, now: DateTime<FixedOffset>) -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(base)?;
-    let stem = now
-        .with_timezone(&chrono_tz::America::Mexico_City)
-        .format("T-%Y-%m-%d-%H-%M-%S")
-        .to_string();
+    let stem = directory_stem(now);
     let mut suffix = 1u64;
     loop {
         let path = base.join(if suffix == 1 {
@@ -133,6 +130,13 @@ pub fn reserve_directory(base: &Path, now: DateTime<FixedOffset>) -> std::io::Re
             Err(e) => return Err(e),
         }
     }
+}
+
+/// Nombre fechado compartido con la reserva por descriptores del escritorio.
+pub fn directory_stem(now: DateTime<FixedOffset>) -> String {
+    now.with_timezone(&chrono_tz::America::Mexico_City)
+        .format("T-%Y-%m-%d-%H-%M-%S")
+        .to_string()
 }
 
 /// La terminal reservada para un `requestId`: carpeta, sesión tmux y llave del pane.
@@ -201,6 +205,8 @@ pub fn claim(
     require_own_transaction(conn)?;
     let tx = rusqlite::Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
         .map_err(|e| sql(e, None))?;
+    comandos_store::migrate::move_db::admit_write(conn)
+        .map_err(|e| quick("database", e.to_string(), true, None))?;
     let row=conn.query_row("SELECT state,cwd,session,pane_key,lease_until FROM quick_terminal_requests WHERE request_id=?",[id],|r|{
         Ok((r.get::<_,String>(0)?,Terminal{cwd:r.get(1)?,session:r.get(2)?,pane:r.get(3)?},r.get::<_,f64>(4)?))
     }).optional().map_err(|e|sql(e,None))?;
@@ -253,6 +259,8 @@ pub fn finish(
     require_own_transaction(conn)?;
     let tx = rusqlite::Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
         .map_err(|e| sql(e, Some(cwd.into())))?;
+    comandos_store::migrate::move_db::admit_write(conn)
+        .map_err(|e| quick("database", e.to_string(), true, Some(cwd.into())))?;
     conn.execute(
         "UPDATE quick_terminal_requests SET state=?,error=?,updated_at=? WHERE request_id=?",
         params![state, error, clock(), id],

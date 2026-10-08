@@ -134,16 +134,24 @@ pub fn is_session(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
-/// `PANE_RE = ^%\d{1,7}\Z` (5591). `Some(sí/no)` para texto ASCII; `None` si hay
-/// no-ASCII: el `\d` de Python acepta dígitos Unicode (`%١٢`), así que se declina.
+/// `PANE_RE = ^%\d{1,7}\Z` (5591). `Some(sí/no)` con certeza; `None` solo
+/// cuando el `\d` Unicode de Python decidiría: `%` seguido de 1 a 7
+/// caracteres no ASCII o dígitos que sean todos numéricos para Unicode
+/// (`%١٢`). `char::is_numeric` (Nd, Nl y No) es más ancho que el `\d` de
+/// Python (solo Nd): todo lo que no cumple eso es «no casa» seguro (un
+/// carácter que no es numérico nunca es Nd), y lo que sí cumple se declina.
 pub fn is_pane(s: &str) -> Option<bool> {
-    if !s.is_ascii() {
+    let Some(digits) = s.strip_prefix('%') else {
+        return Some(false);
+    };
+    if digits.is_ascii() {
+        return Some((1..=7).contains(&digits.len()) && digits.bytes().all(|b| b.is_ascii_digit()));
+    }
+    let count = digits.chars().count();
+    if (1..=7).contains(&count) && digits.chars().all(char::is_numeric) {
         return None;
     }
-    Some(
-        s.strip_prefix('%')
-            .is_some_and(|d| (1..=7).contains(&d.len()) && d.bytes().all(|b| b.is_ascii_digit())),
-    )
+    Some(false)
 }
 
 /// `session_name(project)` (5919): `re.sub(r"[.:]", "-", project)[:80]`.

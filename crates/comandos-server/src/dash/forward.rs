@@ -31,10 +31,12 @@ const CHANNEL_FRAMES: usize = 8;
 /// Ritmo de conexiones nuevas hacia el heredado. El `socketserver` del Python escucha con
 /// backlog 5 y acepta cada conexión en un milisegundo largo; más de cinco SYN pendientes a
 /// la vez esperan la retransmisión (≈ 1 s). Cada conexión nueva ocupa una plaza durante
-/// `CONNECT_PACE` tras conectar: como mucho cuatro conexiones por cada 20 ms, que el Python
+/// `CONNECT_PACE` tras conectar: como mucho cuatro conexiones por cada 30 ms, que el Python
 /// acepta sin llenar la cola, y la ráfaga la encola este proceso en microsegundos.
 const CONNECT_SLOTS: usize = 4;
-const CONNECT_PACE: Duration = Duration::from_millis(20);
+// El fixture acepta cada 5 ms; el redondeo de los timers de Tokio lo lleva a
+// unos 6 ms. Cuatro conexiones cada 20 ms aún acumulan SYN y llenan backlog 5.
+const CONNECT_PACE: Duration = Duration::from_millis(30);
 static CONNECT_GATE: Semaphore = Semaphore::const_new(CONNECT_SLOTS);
 pub const UNAVAILABLE: &str = "Servidor heredado no disponible";
 
@@ -97,6 +99,7 @@ pub async fn relay(legacy: SocketAddr, request: Request) -> Result<Reply, Handle
         None => ReplyBody::Stream(receiver),
     };
     Ok(Reply {
+        cache: crate::ReplyCache::NoStore,
         status: parts.status,
         headers,
         body,

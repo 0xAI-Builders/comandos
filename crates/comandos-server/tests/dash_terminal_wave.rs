@@ -43,6 +43,7 @@ fn a_slow_tmux_wave_holds_one_pool_thread_and_statics_stay_fast() {
                 ],
                 env: vec![],
                 env_remove: vec![],
+                env_clear: false,
             },
             timeout: Duration::from_secs(5),
         };

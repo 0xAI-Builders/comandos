@@ -1,0 +1,15 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- preview de tipografía (Settings > Terminal) ----------",
+  "marker_end": "// ---------- remoto ----------",
+  "sha256": "309f9ceb83d5053349eed05fa907f2b974831489e7d7ba7f99dcfe6a4e8cbc1b",
+  "id": "preview-de-tipografia",
+  "exports": [
+    "updateFontPreview"
+  ],
+  "deps": [
+    "prefs-de-terminal"
+  ]
+}

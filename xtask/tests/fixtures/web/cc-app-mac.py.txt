@@ -1,0 +1,9 @@
+# Fixture del host macOS: evaluateJavaScript con el código en una variable.
+def applyTheme_(self, name):
+    js = ("window.postMessage({source:'comandos',type:'theme',theme:"
+          + json.dumps(name) + "},'*');")
+    for t in self.tabs:
+        t["webview"].evaluateJavaScript_completionHandler_(js, None)
+
+
+ucc.addScriptMessageHandler_name_(self.bridge, "centro")

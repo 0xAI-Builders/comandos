@@ -1,0 +1,19 @@
+{
+  "id": "workspace",
+  "kind": "script",
+  "source": "dash/workspace.js",
+  "sha256": "6daedb8efc3404a2c59c635872e26432648b98dfca2d2cc763541847b97d0611",
+  "exports": [
+    "scOption",
+    "scSelect",
+    "scDialog",
+    "openExtensionUsage",
+    "openSessionProfiles",
+    "useSessionProfile",
+    "renderSessionOverview",
+    "initSessionWorkspace"
+  ],
+  "deps": [
+    "session-config"
+  ]
+}

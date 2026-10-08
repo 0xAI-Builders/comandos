@@ -1,0 +1,11 @@
+fn main(){verify_local_quit();verify_t16_click_capture();verify_t16_consumers();verify_t16_replay();verify_reopen();verify_term();verify_app();pidfd_probe::verify();verify_click();
+ let rows=Rc::new(RefCell::new(vec![Candidate{label:"fake".into(),key:"fake".into(),state:"waiting".into(),open:true}]));let calls=Rc::new(RefCell::new(Vec::new()));
+ let a=rows.clone();let b=calls.clone();let activate=Rc::new(move|r:&Candidate|{b.borrow_mut().push(format!("open:{}",r.key));a.borrow_mut().clear();});
+ let a=rows.clone();let b=calls.clone();let close=Rc::new(move|r:&Candidate|{b.borrow_mut().push(format!("close:{}",r.key));a.borrow_mut().clear();});
+ let panel=Panel{kind:Kind::Switcher,list:List{selected:Cell::new(Some(0)),count:Cell::new(1)},rows:rows.clone(),entry:Some(Entry(RefCell::new(String::new()))),activate,close};
+ assert!(panel.key(*gdk::keys::constants::Return,false));assert_eq!(calls.borrow().as_slice(),["open:fake"]);
+ rows.borrow_mut().push(Candidate{label:"fake".into(),key:"fake".into(),state:"".into(),open:true});assert!(panel.key(*gdk::keys::constants::Delete,false));assert_eq!(calls.borrow().len(),2);
+ rows.borrow_mut().push(Candidate{label:"fake".into(),key:"fake".into(),state:"".into(),open:true});panel.list.selected.set(None);assert!(panel.key(*gdk::keys::constants::Return,false));assert!(panel.key(*gdk::keys::constants::w,true));assert_eq!(calls.borrow().len(),2,"unselected rows must not activate/close");
+ panel.list.selected.set(Some(0));panel.entry.as_ref().unwrap().0.replace("query".into());assert!(!panel.key(*gdk::keys::constants::BackSpace,false));assert!(panel.key(*gdk::keys::constants::w,true));assert_eq!(calls.borrow().len(),3);
+ println!("{{\"panel\":true}}");
+}

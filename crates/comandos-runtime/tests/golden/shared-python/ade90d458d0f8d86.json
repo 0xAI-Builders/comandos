@@ -1,0 +1,11 @@
+{
+  "input": {
+    "case": {
+      "script": "\nimport importlib.machinery, importlib.util, json, os, sys\nrepo = sys.argv[1]\nsys.path.insert(0, os.path.join(repo, \"bin\"))\nloader = importlib.machinery.SourceFileLoader(\"cc_dash_oracle\", os.path.join(repo, \"bin/cc-dash\"))\nspec = importlib.util.spec_from_loader(loader.name, loader)\ndash = importlib.util.module_from_spec(spec)\nloader.exec_module(dash)\n\ndef run(f):\n    try:\n        return f()\n    except Exception as e:\n        return {\"error\": type(e).__name__}\nprint(json.dumps([run(dash.parse_ssh_config), run(lambda: dash.ssh_host_entry(\"b\")),\n                  run(lambda: dash.ssh_host_entry(\"nada\"))]))\n",
+      "args": [],
+      "bin_inputs": []
+    },
+    "before_sha256": "dca0e82a5297a1c2c73456e4718ed0a3fb980016aa25f49c6b49d48ed139a512"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbW3tcImhvc3RcIjogXCJhXCIsIFwidXNlclwiOiBcInVcIn0sIHtcImhvc3RcIjogXCJiXCJ9LCB7XCJob3N0XCI6IFwiY1wiLCBcInBvcnRcIjogXCIyXCIsIFwiaG9zdG5hbWVcIjogXCJiLnhcIn1dLCB7XCJob3N0XCI6IFwiYlwifSwgbnVsbF1cbiIsInRyZWUiOnsiLnNzaCI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLnNzaC9jb25maWciOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiU0c5emRDQmhEUW9nSUZWelpYSWdkUTFJYjNOMElHSWdZdzBLSUNCUWIzSjBJRElOQ2lBZ1NHOXpkRTVoYldVZ1lpNTRDZz09In19fQ=="
+}

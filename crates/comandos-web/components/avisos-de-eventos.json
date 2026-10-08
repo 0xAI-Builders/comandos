@@ -1,0 +1,23 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- avisos de eventos: franja por proyecto + flotante (dash/notifications.js, N2).",
+  "marker_end": "// ---------- loop ----------",
+  "sha256": "9e2be0e00d66a4f20cf424be1887a853a0e276b10c937ff95b278372ab1ea9c3",
+  "id": "avisos-de-eventos",
+  "exports": [
+    "ALERTS",
+    "alertPush",
+    "alertLayout",
+    "alertClear",
+    "alertResolve",
+    "ATTENDED",
+    "toast"
+  ],
+  "deps": [
+    "prelude",
+    "i18n",
+    "red"
+  ]
+}

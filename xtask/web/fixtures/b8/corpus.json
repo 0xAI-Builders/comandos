@@ -1,0 +1,1205 @@
+{
+  "provenance": "200 synthetic controls created from live-reader syntax and existing CJS cases; separate from the 200 real-derived anonymized Markdown cases whose own manifest records source and limits.",
+  "cases": [
+    {
+      "id": "control-001",
+      "kind": "paragraph",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "El modelo publicado permite revisar contexto y herramientas. Consulte [documentación](https://example.org/docs)."
+    },
+    {
+      "id": "control-002",
+      "kind": "headings",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "# Actualización del modelo\n\n## Compatibilidad\n\nLa API conserva **herramientas** y *sesiones*.\n\n### Límites\n\nNo se ha publicado un cambio de precio."
+    },
+    {
+      "id": "control-003",
+      "kind": "bullets",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Una interfaz de herramientas\n- Un cliente de pruebas\n- Una guía de migración"
+    },
+    {
+      "id": "control-004",
+      "kind": "ordered",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "1. Leer la especificación\n2. Instalar la versión\n3. Verificar el proyecto"
+    },
+    {
+      "id": "control-005",
+      "kind": "quotes",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "> La publicación describe soporte para clientes existentes.\n> La fecha pertenece a la fuente.\n\nEs un anuncio de compatibilidad."
+    },
+    {
+      "id": "control-006",
+      "kind": "table",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "| Cliente | Estado |\n|---|---|\n| CLI | Compatible |\n| SDK | Pendiente |"
+    },
+    {
+      "id": "control-007",
+      "kind": "code",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "```rust\nlet version = \"next\";\nprintln!(\"<modelo>\");\n```\n\nEjecute `comandos status`."
+    },
+    {
+      "id": "control-008",
+      "kind": "raw-html",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "<script>alert(1)</script>\n\n<img src=\"https://tracker.example/pixel\" onerror=\"x()\">"
+    },
+    {
+      "id": "control-009",
+      "kind": "safe-links",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[oficial](https://example.com/article?q=tools&lang=es) y https://example.org/docs"
+    },
+    {
+      "id": "control-010",
+      "kind": "misleading",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[google.com](https://evil.example/login) y [example.org](https://example.org/docs)"
+    },
+    {
+      "id": "control-011",
+      "kind": "images",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "![diagrama](https://tracker.example/diagrama.png)\n\nEl lector carga solamente capturas locales."
+    },
+    {
+      "id": "control-012",
+      "kind": "unsafe",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[x](javascript:alert(1)) [y](data:text/html,x) [z](/local/path)"
+    },
+    {
+      "id": "control-013",
+      "kind": "unicode",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "¿Qué cambia para México? Contexto, ejecución y revisión: café, código, 🍅 y 中文."
+    },
+    {
+      "id": "control-014",
+      "kind": "breaks",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Primera línea\nsegunda línea\n\nDos espacios al final  \nrompen la línea."
+    },
+    {
+      "id": "control-015",
+      "kind": "strike",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "La función ~~experimental~~ ya aparece en la documentación.\n\n---\n\nSe mantiene el cliente."
+    },
+    {
+      "id": "control-016",
+      "kind": "email",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Escribe a user@example.org. No se convierte en enlace un correo.\n\nVisita https://example.org."
+    },
+    {
+      "id": "control-017",
+      "kind": "inline",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "`<b>texto</b>` y **negrita**, con _énfasis_ y [API](https://example.org/api)."
+    },
+    {
+      "id": "control-018",
+      "kind": "entities",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "A & B, &amp; y &lt;texto&gt;.\n\nNo se interpreta <iframe src=x></iframe>."
+    },
+    {
+      "id": "control-019",
+      "kind": "nesting",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Cliente\n  - Herramientas\n  - Fuentes\n- Servidor\n\n> **Estado:** listo."
+    },
+    {
+      "id": "control-020",
+      "kind": "plain",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Sin fecha de publicación conocida. No atribuir descubrimiento a publicación."
+    },
+    {
+      "id": "control-021",
+      "kind": "paragraph",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "El modelo publicado permite revisar contexto y herramientas. Consulte [documentación](https://example.org/docs).\n"
+    },
+    {
+      "id": "control-022",
+      "kind": "headings",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "# Actualización del modelo\n\n## Compatibilidad\n\nLa API conserva **herramientas** y *sesiones*.\n\n### Límites\n\nNo se ha publicado un cambio de precio.\n"
+    },
+    {
+      "id": "control-023",
+      "kind": "bullets",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Una interfaz de herramientas\n- Un cliente de pruebas\n- Una guía de migración\n"
+    },
+    {
+      "id": "control-024",
+      "kind": "ordered",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "1. Leer la especificación\n2. Instalar la versión\n3. Verificar el proyecto\n"
+    },
+    {
+      "id": "control-025",
+      "kind": "quotes",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "> La publicación describe soporte para clientes existentes.\n> La fecha pertenece a la fuente.\n\nEs un anuncio de compatibilidad.\n"
+    },
+    {
+      "id": "control-026",
+      "kind": "table",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "| Cliente | Estado |\n|---|---|\n| CLI | Compatible |\n| SDK | Pendiente |\n"
+    },
+    {
+      "id": "control-027",
+      "kind": "code",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "```rust\nlet version = \"next\";\nprintln!(\"<modelo>\");\n```\n\nEjecute `comandos status`.\n"
+    },
+    {
+      "id": "control-028",
+      "kind": "raw-html",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "<script>alert(1)</script>\n\n<img src=\"https://tracker.example/pixel\" onerror=\"x()\">\n"
+    },
+    {
+      "id": "control-029",
+      "kind": "safe-links",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[oficial](https://example.com/article?q=tools&lang=es) y https://example.org/docs\n"
+    },
+    {
+      "id": "control-030",
+      "kind": "misleading",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[google.com](https://evil.example/login) y [example.org](https://example.org/docs)\n"
+    },
+    {
+      "id": "control-031",
+      "kind": "images",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "![diagrama](https://tracker.example/diagrama.png)\n\nEl lector carga solamente capturas locales.\n"
+    },
+    {
+      "id": "control-032",
+      "kind": "unsafe",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[x](javascript:alert(1)) [y](data:text/html,x) [z](/local/path)\n"
+    },
+    {
+      "id": "control-033",
+      "kind": "unicode",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "¿Qué cambia para México? Contexto, ejecución y revisión: café, código, 🍅 y 中文.\n"
+    },
+    {
+      "id": "control-034",
+      "kind": "breaks",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Primera línea\nsegunda línea\n\nDos espacios al final  \nrompen la línea.\n"
+    },
+    {
+      "id": "control-035",
+      "kind": "strike",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "La función ~~experimental~~ ya aparece en la documentación.\n\n---\n\nSe mantiene el cliente.\n"
+    },
+    {
+      "id": "control-036",
+      "kind": "email",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Escribe a user@example.org. No se convierte en enlace un correo.\n\nVisita https://example.org.\n"
+    },
+    {
+      "id": "control-037",
+      "kind": "inline",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "`<b>texto</b>` y **negrita**, con _énfasis_ y [API](https://example.org/api).\n"
+    },
+    {
+      "id": "control-038",
+      "kind": "entities",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "A & B, &amp; y &lt;texto&gt;.\n\nNo se interpreta <iframe src=x></iframe>.\n"
+    },
+    {
+      "id": "control-039",
+      "kind": "nesting",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Cliente\n  - Herramientas\n  - Fuentes\n- Servidor\n\n> **Estado:** listo.\n"
+    },
+    {
+      "id": "control-040",
+      "kind": "plain",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Sin fecha de publicación conocida. No atribuir descubrimiento a publicación.\n"
+    },
+    {
+      "id": "control-041",
+      "kind": "paragraph",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "El modelo publicado permite revisar contexto y herramientas. Consulte [documentación](https://example.org/docs).\n\n"
+    },
+    {
+      "id": "control-042",
+      "kind": "headings",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "# Actualización del modelo\n\n## Compatibilidad\n\nLa API conserva **herramientas** y *sesiones*.\n\n### Límites\n\nNo se ha publicado un cambio de precio.\n\n"
+    },
+    {
+      "id": "control-043",
+      "kind": "bullets",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Una interfaz de herramientas\n- Un cliente de pruebas\n- Una guía de migración\n\n"
+    },
+    {
+      "id": "control-044",
+      "kind": "ordered",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "1. Leer la especificación\n2. Instalar la versión\n3. Verificar el proyecto\n\n"
+    },
+    {
+      "id": "control-045",
+      "kind": "quotes",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "> La publicación describe soporte para clientes existentes.\n> La fecha pertenece a la fuente.\n\nEs un anuncio de compatibilidad.\n\n"
+    },
+    {
+      "id": "control-046",
+      "kind": "table",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "| Cliente | Estado |\n|---|---|\n| CLI | Compatible |\n| SDK | Pendiente |\n\n"
+    },
+    {
+      "id": "control-047",
+      "kind": "code",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "```rust\nlet version = \"next\";\nprintln!(\"<modelo>\");\n```\n\nEjecute `comandos status`.\n\n"
+    },
+    {
+      "id": "control-048",
+      "kind": "raw-html",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "<script>alert(1)</script>\n\n<img src=\"https://tracker.example/pixel\" onerror=\"x()\">\n\n"
+    },
+    {
+      "id": "control-049",
+      "kind": "safe-links",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[oficial](https://example.com/article?q=tools&lang=es) y https://example.org/docs\n\n"
+    },
+    {
+      "id": "control-050",
+      "kind": "misleading",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[google.com](https://evil.example/login) y [example.org](https://example.org/docs)\n\n"
+    },
+    {
+      "id": "control-051",
+      "kind": "images",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "![diagrama](https://tracker.example/diagrama.png)\n\nEl lector carga solamente capturas locales.\n\n"
+    },
+    {
+      "id": "control-052",
+      "kind": "unsafe",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[x](javascript:alert(1)) [y](data:text/html,x) [z](/local/path)\n\n"
+    },
+    {
+      "id": "control-053",
+      "kind": "unicode",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "¿Qué cambia para México? Contexto, ejecución y revisión: café, código, 🍅 y 中文.\n\n"
+    },
+    {
+      "id": "control-054",
+      "kind": "breaks",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Primera línea\nsegunda línea\n\nDos espacios al final  \nrompen la línea.\n\n"
+    },
+    {
+      "id": "control-055",
+      "kind": "strike",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "La función ~~experimental~~ ya aparece en la documentación.\n\n---\n\nSe mantiene el cliente.\n\n"
+    },
+    {
+      "id": "control-056",
+      "kind": "email",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Escribe a user@example.org. No se convierte en enlace un correo.\n\nVisita https://example.org.\n\n"
+    },
+    {
+      "id": "control-057",
+      "kind": "inline",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "`<b>texto</b>` y **negrita**, con _énfasis_ y [API](https://example.org/api).\n\n"
+    },
+    {
+      "id": "control-058",
+      "kind": "entities",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "A & B, &amp; y &lt;texto&gt;.\n\nNo se interpreta <iframe src=x></iframe>.\n\n"
+    },
+    {
+      "id": "control-059",
+      "kind": "nesting",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Cliente\n  - Herramientas\n  - Fuentes\n- Servidor\n\n> **Estado:** listo.\n\n"
+    },
+    {
+      "id": "control-060",
+      "kind": "plain",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Sin fecha de publicación conocida. No atribuir descubrimiento a publicación.\n\n"
+    },
+    {
+      "id": "control-061",
+      "kind": "paragraph",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "El modelo publicado permite revisar contexto y herramientas. Consulte [documentación](https://example.org/docs).\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-062",
+      "kind": "headings",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "# Actualización del modelo\n\n## Compatibilidad\n\nLa API conserva **herramientas** y *sesiones*.\n\n### Límites\n\nNo se ha publicado un cambio de precio.\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-063",
+      "kind": "bullets",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Una interfaz de herramientas\n- Un cliente de pruebas\n- Una guía de migración\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-064",
+      "kind": "ordered",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "1. Leer la especificación\n2. Instalar la versión\n3. Verificar el proyecto\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-065",
+      "kind": "quotes",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "> La publicación describe soporte para clientes existentes.\n> La fecha pertenece a la fuente.\n\nEs un anuncio de compatibilidad.\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-066",
+      "kind": "table",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "| Cliente | Estado |\n|---|---|\n| CLI | Compatible |\n| SDK | Pendiente |\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-067",
+      "kind": "code",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "```rust\nlet version = \"next\";\nprintln!(\"<modelo>\");\n```\n\nEjecute `comandos status`.\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-068",
+      "kind": "raw-html",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "<script>alert(1)</script>\n\n<img src=\"https://tracker.example/pixel\" onerror=\"x()\">\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-069",
+      "kind": "safe-links",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[oficial](https://example.com/article?q=tools&lang=es) y https://example.org/docs\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-070",
+      "kind": "misleading",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[google.com](https://evil.example/login) y [example.org](https://example.org/docs)\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-071",
+      "kind": "images",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "![diagrama](https://tracker.example/diagrama.png)\n\nEl lector carga solamente capturas locales.\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-072",
+      "kind": "unsafe",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[x](javascript:alert(1)) [y](data:text/html,x) [z](/local/path)\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-073",
+      "kind": "unicode",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "¿Qué cambia para México? Contexto, ejecución y revisión: café, código, 🍅 y 中文.\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-074",
+      "kind": "breaks",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Primera línea\nsegunda línea\n\nDos espacios al final  \nrompen la línea.\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-075",
+      "kind": "strike",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "La función ~~experimental~~ ya aparece en la documentación.\n\n---\n\nSe mantiene el cliente.\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-076",
+      "kind": "email",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Escribe a user@example.org. No se convierte en enlace un correo.\n\nVisita https://example.org.\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-077",
+      "kind": "inline",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "`<b>texto</b>` y **negrita**, con _énfasis_ y [API](https://example.org/api).\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-078",
+      "kind": "entities",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "A & B, &amp; y &lt;texto&gt;.\n\nNo se interpreta <iframe src=x></iframe>.\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-079",
+      "kind": "nesting",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Cliente\n  - Herramientas\n  - Fuentes\n- Servidor\n\n> **Estado:** listo.\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-080",
+      "kind": "plain",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Sin fecha de publicación conocida. No atribuir descubrimiento a publicación.\n\nDetalle del anuncio."
+    },
+    {
+      "id": "control-081",
+      "kind": "paragraph",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "El modelo publicado permite revisar contexto y herramientas. Consulte [documentación](https://example.org/docs).\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-082",
+      "kind": "headings",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "# Actualización del modelo\n\n## Compatibilidad\n\nLa API conserva **herramientas** y *sesiones*.\n\n### Límites\n\nNo se ha publicado un cambio de precio.\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-083",
+      "kind": "bullets",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Una interfaz de herramientas\n- Un cliente de pruebas\n- Una guía de migración\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-084",
+      "kind": "ordered",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "1. Leer la especificación\n2. Instalar la versión\n3. Verificar el proyecto\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-085",
+      "kind": "quotes",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "> La publicación describe soporte para clientes existentes.\n> La fecha pertenece a la fuente.\n\nEs un anuncio de compatibilidad.\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-086",
+      "kind": "table",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "| Cliente | Estado |\n|---|---|\n| CLI | Compatible |\n| SDK | Pendiente |\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-087",
+      "kind": "code",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "```rust\nlet version = \"next\";\nprintln!(\"<modelo>\");\n```\n\nEjecute `comandos status`.\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-088",
+      "kind": "raw-html",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "<script>alert(1)</script>\n\n<img src=\"https://tracker.example/pixel\" onerror=\"x()\">\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-089",
+      "kind": "safe-links",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[oficial](https://example.com/article?q=tools&lang=es) y https://example.org/docs\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-090",
+      "kind": "misleading",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[google.com](https://evil.example/login) y [example.org](https://example.org/docs)\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-091",
+      "kind": "images",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "![diagrama](https://tracker.example/diagrama.png)\n\nEl lector carga solamente capturas locales.\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-092",
+      "kind": "unsafe",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[x](javascript:alert(1)) [y](data:text/html,x) [z](/local/path)\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-093",
+      "kind": "unicode",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "¿Qué cambia para México? Contexto, ejecución y revisión: café, código, 🍅 y 中文.\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-094",
+      "kind": "breaks",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Primera línea\nsegunda línea\n\nDos espacios al final  \nrompen la línea.\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-095",
+      "kind": "strike",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "La función ~~experimental~~ ya aparece en la documentación.\n\n---\n\nSe mantiene el cliente.\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-096",
+      "kind": "email",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Escribe a user@example.org. No se convierte en enlace un correo.\n\nVisita https://example.org.\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-097",
+      "kind": "inline",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "`<b>texto</b>` y **negrita**, con _énfasis_ y [API](https://example.org/api).\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-098",
+      "kind": "entities",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "A & B, &amp; y &lt;texto&gt;.\n\nNo se interpreta <iframe src=x></iframe>.\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-099",
+      "kind": "nesting",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Cliente\n  - Herramientas\n  - Fuentes\n- Servidor\n\n> **Estado:** listo.\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-100",
+      "kind": "plain",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Sin fecha de publicación conocida. No atribuir descubrimiento a publicación.\n\n[Fuente adicional](https://example.net/source)"
+    },
+    {
+      "id": "control-101",
+      "kind": "paragraph",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "El modelo publicado permite revisar contexto y herramientas. Consulte [documentación](https://example.org/docs).\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-102",
+      "kind": "headings",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "# Actualización del modelo\n\n## Compatibilidad\n\nLa API conserva **herramientas** y *sesiones*.\n\n### Límites\n\nNo se ha publicado un cambio de precio.\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-103",
+      "kind": "bullets",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Una interfaz de herramientas\n- Un cliente de pruebas\n- Una guía de migración\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-104",
+      "kind": "ordered",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "1. Leer la especificación\n2. Instalar la versión\n3. Verificar el proyecto\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-105",
+      "kind": "quotes",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "> La publicación describe soporte para clientes existentes.\n> La fecha pertenece a la fuente.\n\nEs un anuncio de compatibilidad.\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-106",
+      "kind": "table",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "| Cliente | Estado |\n|---|---|\n| CLI | Compatible |\n| SDK | Pendiente |\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-107",
+      "kind": "code",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "```rust\nlet version = \"next\";\nprintln!(\"<modelo>\");\n```\n\nEjecute `comandos status`.\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-108",
+      "kind": "raw-html",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "<script>alert(1)</script>\n\n<img src=\"https://tracker.example/pixel\" onerror=\"x()\">\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-109",
+      "kind": "safe-links",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[oficial](https://example.com/article?q=tools&lang=es) y https://example.org/docs\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-110",
+      "kind": "misleading",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[google.com](https://evil.example/login) y [example.org](https://example.org/docs)\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-111",
+      "kind": "images",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "![diagrama](https://tracker.example/diagrama.png)\n\nEl lector carga solamente capturas locales.\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-112",
+      "kind": "unsafe",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[x](javascript:alert(1)) [y](data:text/html,x) [z](/local/path)\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-113",
+      "kind": "unicode",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "¿Qué cambia para México? Contexto, ejecución y revisión: café, código, 🍅 y 中文.\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-114",
+      "kind": "breaks",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Primera línea\nsegunda línea\n\nDos espacios al final  \nrompen la línea.\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-115",
+      "kind": "strike",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "La función ~~experimental~~ ya aparece en la documentación.\n\n---\n\nSe mantiene el cliente.\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-116",
+      "kind": "email",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Escribe a user@example.org. No se convierte en enlace un correo.\n\nVisita https://example.org.\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-117",
+      "kind": "inline",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "`<b>texto</b>` y **negrita**, con _énfasis_ y [API](https://example.org/api).\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-118",
+      "kind": "entities",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "A & B, &amp; y &lt;texto&gt;.\n\nNo se interpreta <iframe src=x></iframe>.\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-119",
+      "kind": "nesting",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Cliente\n  - Herramientas\n  - Fuentes\n- Servidor\n\n> **Estado:** listo.\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-120",
+      "kind": "plain",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Sin fecha de publicación conocida. No atribuir descubrimiento a publicación.\n\n- Comprobar la versión"
+    },
+    {
+      "id": "control-121",
+      "kind": "paragraph",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "El modelo publicado permite revisar contexto y herramientas. Consulte [documentación](https://example.org/docs).\n\n`--no-native`"
+    },
+    {
+      "id": "control-122",
+      "kind": "headings",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "# Actualización del modelo\n\n## Compatibilidad\n\nLa API conserva **herramientas** y *sesiones*.\n\n### Límites\n\nNo se ha publicado un cambio de precio.\n\n`--no-native`"
+    },
+    {
+      "id": "control-123",
+      "kind": "bullets",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Una interfaz de herramientas\n- Un cliente de pruebas\n- Una guía de migración\n\n`--no-native`"
+    },
+    {
+      "id": "control-124",
+      "kind": "ordered",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "1. Leer la especificación\n2. Instalar la versión\n3. Verificar el proyecto\n\n`--no-native`"
+    },
+    {
+      "id": "control-125",
+      "kind": "quotes",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "> La publicación describe soporte para clientes existentes.\n> La fecha pertenece a la fuente.\n\nEs un anuncio de compatibilidad.\n\n`--no-native`"
+    },
+    {
+      "id": "control-126",
+      "kind": "table",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "| Cliente | Estado |\n|---|---|\n| CLI | Compatible |\n| SDK | Pendiente |\n\n`--no-native`"
+    },
+    {
+      "id": "control-127",
+      "kind": "code",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "```rust\nlet version = \"next\";\nprintln!(\"<modelo>\");\n```\n\nEjecute `comandos status`.\n\n`--no-native`"
+    },
+    {
+      "id": "control-128",
+      "kind": "raw-html",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "<script>alert(1)</script>\n\n<img src=\"https://tracker.example/pixel\" onerror=\"x()\">\n\n`--no-native`"
+    },
+    {
+      "id": "control-129",
+      "kind": "safe-links",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[oficial](https://example.com/article?q=tools&lang=es) y https://example.org/docs\n\n`--no-native`"
+    },
+    {
+      "id": "control-130",
+      "kind": "misleading",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[google.com](https://evil.example/login) y [example.org](https://example.org/docs)\n\n`--no-native`"
+    },
+    {
+      "id": "control-131",
+      "kind": "images",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "![diagrama](https://tracker.example/diagrama.png)\n\nEl lector carga solamente capturas locales.\n\n`--no-native`"
+    },
+    {
+      "id": "control-132",
+      "kind": "unsafe",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[x](javascript:alert(1)) [y](data:text/html,x) [z](/local/path)\n\n`--no-native`"
+    },
+    {
+      "id": "control-133",
+      "kind": "unicode",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "¿Qué cambia para México? Contexto, ejecución y revisión: café, código, 🍅 y 中文.\n\n`--no-native`"
+    },
+    {
+      "id": "control-134",
+      "kind": "breaks",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Primera línea\nsegunda línea\n\nDos espacios al final  \nrompen la línea.\n\n`--no-native`"
+    },
+    {
+      "id": "control-135",
+      "kind": "strike",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "La función ~~experimental~~ ya aparece en la documentación.\n\n---\n\nSe mantiene el cliente.\n\n`--no-native`"
+    },
+    {
+      "id": "control-136",
+      "kind": "email",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Escribe a user@example.org. No se convierte en enlace un correo.\n\nVisita https://example.org.\n\n`--no-native`"
+    },
+    {
+      "id": "control-137",
+      "kind": "inline",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "`<b>texto</b>` y **negrita**, con _énfasis_ y [API](https://example.org/api).\n\n`--no-native`"
+    },
+    {
+      "id": "control-138",
+      "kind": "entities",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "A & B, &amp; y &lt;texto&gt;.\n\nNo se interpreta <iframe src=x></iframe>.\n\n`--no-native`"
+    },
+    {
+      "id": "control-139",
+      "kind": "nesting",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Cliente\n  - Herramientas\n  - Fuentes\n- Servidor\n\n> **Estado:** listo.\n\n`--no-native`"
+    },
+    {
+      "id": "control-140",
+      "kind": "plain",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Sin fecha de publicación conocida. No atribuir descubrimiento a publicación.\n\n`--no-native`"
+    },
+    {
+      "id": "control-141",
+      "kind": "paragraph",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "El modelo publicado permite revisar contexto y herramientas. Consulte [documentación](https://example.org/docs).\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-142",
+      "kind": "headings",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "# Actualización del modelo\n\n## Compatibilidad\n\nLa API conserva **herramientas** y *sesiones*.\n\n### Límites\n\nNo se ha publicado un cambio de precio.\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-143",
+      "kind": "bullets",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Una interfaz de herramientas\n- Un cliente de pruebas\n- Una guía de migración\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-144",
+      "kind": "ordered",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "1. Leer la especificación\n2. Instalar la versión\n3. Verificar el proyecto\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-145",
+      "kind": "quotes",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "> La publicación describe soporte para clientes existentes.\n> La fecha pertenece a la fuente.\n\nEs un anuncio de compatibilidad.\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-146",
+      "kind": "table",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "| Cliente | Estado |\n|---|---|\n| CLI | Compatible |\n| SDK | Pendiente |\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-147",
+      "kind": "code",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "```rust\nlet version = \"next\";\nprintln!(\"<modelo>\");\n```\n\nEjecute `comandos status`.\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-148",
+      "kind": "raw-html",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "<script>alert(1)</script>\n\n<img src=\"https://tracker.example/pixel\" onerror=\"x()\">\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-149",
+      "kind": "safe-links",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[oficial](https://example.com/article?q=tools&lang=es) y https://example.org/docs\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-150",
+      "kind": "misleading",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[google.com](https://evil.example/login) y [example.org](https://example.org/docs)\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-151",
+      "kind": "images",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "![diagrama](https://tracker.example/diagrama.png)\n\nEl lector carga solamente capturas locales.\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-152",
+      "kind": "unsafe",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[x](javascript:alert(1)) [y](data:text/html,x) [z](/local/path)\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-153",
+      "kind": "unicode",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "¿Qué cambia para México? Contexto, ejecución y revisión: café, código, 🍅 y 中文.\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-154",
+      "kind": "breaks",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Primera línea\nsegunda línea\n\nDos espacios al final  \nrompen la línea.\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-155",
+      "kind": "strike",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "La función ~~experimental~~ ya aparece en la documentación.\n\n---\n\nSe mantiene el cliente.\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-156",
+      "kind": "email",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Escribe a user@example.org. No se convierte en enlace un correo.\n\nVisita https://example.org.\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-157",
+      "kind": "inline",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "`<b>texto</b>` y **negrita**, con _énfasis_ y [API](https://example.org/api).\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-158",
+      "kind": "entities",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "A & B, &amp; y &lt;texto&gt;.\n\nNo se interpreta <iframe src=x></iframe>.\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-159",
+      "kind": "nesting",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Cliente\n  - Herramientas\n  - Fuentes\n- Servidor\n\n> **Estado:** listo.\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-160",
+      "kind": "plain",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Sin fecha de publicación conocida. No atribuir descubrimiento a publicación.\n\n> La captura queda guardada."
+    },
+    {
+      "id": "control-161",
+      "kind": "paragraph",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "El modelo publicado permite revisar contexto y herramientas. Consulte [documentación](https://example.org/docs).\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-162",
+      "kind": "headings",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "# Actualización del modelo\n\n## Compatibilidad\n\nLa API conserva **herramientas** y *sesiones*.\n\n### Límites\n\nNo se ha publicado un cambio de precio.\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-163",
+      "kind": "bullets",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Una interfaz de herramientas\n- Un cliente de pruebas\n- Una guía de migración\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-164",
+      "kind": "ordered",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "1. Leer la especificación\n2. Instalar la versión\n3. Verificar el proyecto\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-165",
+      "kind": "quotes",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "> La publicación describe soporte para clientes existentes.\n> La fecha pertenece a la fuente.\n\nEs un anuncio de compatibilidad.\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-166",
+      "kind": "table",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "| Cliente | Estado |\n|---|---|\n| CLI | Compatible |\n| SDK | Pendiente |\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-167",
+      "kind": "code",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "```rust\nlet version = \"next\";\nprintln!(\"<modelo>\");\n```\n\nEjecute `comandos status`.\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-168",
+      "kind": "raw-html",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "<script>alert(1)</script>\n\n<img src=\"https://tracker.example/pixel\" onerror=\"x()\">\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-169",
+      "kind": "safe-links",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[oficial](https://example.com/article?q=tools&lang=es) y https://example.org/docs\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-170",
+      "kind": "misleading",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[google.com](https://evil.example/login) y [example.org](https://example.org/docs)\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-171",
+      "kind": "images",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "![diagrama](https://tracker.example/diagrama.png)\n\nEl lector carga solamente capturas locales.\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-172",
+      "kind": "unsafe",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[x](javascript:alert(1)) [y](data:text/html,x) [z](/local/path)\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-173",
+      "kind": "unicode",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "¿Qué cambia para México? Contexto, ejecución y revisión: café, código, 🍅 y 中文.\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-174",
+      "kind": "breaks",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Primera línea\nsegunda línea\n\nDos espacios al final  \nrompen la línea.\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-175",
+      "kind": "strike",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "La función ~~experimental~~ ya aparece en la documentación.\n\n---\n\nSe mantiene el cliente.\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-176",
+      "kind": "email",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Escribe a user@example.org. No se convierte en enlace un correo.\n\nVisita https://example.org.\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-177",
+      "kind": "inline",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "`<b>texto</b>` y **negrita**, con _énfasis_ y [API](https://example.org/api).\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-178",
+      "kind": "entities",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "A & B, &amp; y &lt;texto&gt;.\n\nNo se interpreta <iframe src=x></iframe>.\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-179",
+      "kind": "nesting",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Cliente\n  - Herramientas\n  - Fuentes\n- Servidor\n\n> **Estado:** listo.\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-180",
+      "kind": "plain",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Sin fecha de publicación conocida. No atribuir descubrimiento a publicación.\n\nNotas para el cliente existente."
+    },
+    {
+      "id": "control-181",
+      "kind": "paragraph",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "El modelo publicado permite revisar contexto y herramientas. Consulte [documentación](https://example.org/docs).\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-182",
+      "kind": "headings",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "# Actualización del modelo\n\n## Compatibilidad\n\nLa API conserva **herramientas** y *sesiones*.\n\n### Límites\n\nNo se ha publicado un cambio de precio.\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-183",
+      "kind": "bullets",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Una interfaz de herramientas\n- Un cliente de pruebas\n- Una guía de migración\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-184",
+      "kind": "ordered",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "1. Leer la especificación\n2. Instalar la versión\n3. Verificar el proyecto\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-185",
+      "kind": "quotes",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "> La publicación describe soporte para clientes existentes.\n> La fecha pertenece a la fuente.\n\nEs un anuncio de compatibilidad.\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-186",
+      "kind": "table",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "| Cliente | Estado |\n|---|---|\n| CLI | Compatible |\n| SDK | Pendiente |\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-187",
+      "kind": "code",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "```rust\nlet version = \"next\";\nprintln!(\"<modelo>\");\n```\n\nEjecute `comandos status`.\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-188",
+      "kind": "raw-html",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "<script>alert(1)</script>\n\n<img src=\"https://tracker.example/pixel\" onerror=\"x()\">\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-189",
+      "kind": "safe-links",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[oficial](https://example.com/article?q=tools&lang=es) y https://example.org/docs\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-190",
+      "kind": "misleading",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[google.com](https://evil.example/login) y [example.org](https://example.org/docs)\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-191",
+      "kind": "images",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "![diagrama](https://tracker.example/diagrama.png)\n\nEl lector carga solamente capturas locales.\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-192",
+      "kind": "unsafe",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "[x](javascript:alert(1)) [y](data:text/html,x) [z](/local/path)\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-193",
+      "kind": "unicode",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "¿Qué cambia para México? Contexto, ejecución y revisión: café, código, 🍅 y 中文.\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-194",
+      "kind": "breaks",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Primera línea\nsegunda línea\n\nDos espacios al final  \nrompen la línea.\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-195",
+      "kind": "strike",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "La función ~~experimental~~ ya aparece en la documentación.\n\n---\n\nSe mantiene el cliente.\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-196",
+      "kind": "email",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Escribe a user@example.org. No se convierte en enlace un correo.\n\nVisita https://example.org.\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-197",
+      "kind": "inline",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "`<b>texto</b>` y **negrita**, con _énfasis_ y [API](https://example.org/api).\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-198",
+      "kind": "entities",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "A & B, &amp; y &lt;texto&gt;.\n\nNo se interpreta <iframe src=x></iframe>.\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-199",
+      "kind": "nesting",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "- Cliente\n  - Herramientas\n  - Fuentes\n- Servidor\n\n> **Estado:** listo.\n\nLa configuración es manual."
+    },
+    {
+      "id": "control-200",
+      "kind": "plain",
+      "provenance": "synthetic original-renderer contract control; no claim of real news",
+      "text": "Sin fecha de publicación conocida. No atribuir descubrimiento a publicación.\n\nLa configuración es manual."
+    }
+  ]
+}

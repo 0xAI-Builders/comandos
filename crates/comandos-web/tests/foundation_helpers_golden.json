@@ -1,0 +1,268 @@
+[
+  {
+    "name": "mdHtml",
+    "args": [
+      "**bold** <script>x</script> [safe](javascript:bad)"
+    ],
+    "expected": "<b>bold</b> &lt;script&gt;x&lt;/script&gt; <u>safe</u><br>"
+  },
+  {
+    "name": "mdHtml",
+    "args": [
+      "# h\n- bullet\n---\n```rs\nlet a=1;\n```"
+    ],
+    "expected": "<b class=\"mdh\">h</b>• bullet<br><hr><pre>let a=1;\n</pre>"
+  },
+  {
+    "name": "mdHtml",
+    "args": [
+      "|A|B|\n|--|--|\n|x|y|"
+    ],
+    "expected": "<table><tr><th>A</th><th>B</th></tr><tr><td>x</td><td>y</td></tr></table>"
+  },
+  {
+    "name": "mdHtml",
+    "args": [
+      "/tmp/a.rs:12 ~/codebase/X/file.md"
+    ],
+    "expected": "<a href=\"#\" class=\"pathlink\" data-path=\"/tmp/a.rs\" title=\"Abrir con la app default\">/tmp/a.rs:12</a> <a href=\"#\" class=\"pathlink\" data-path=\"~/codebase/X/file.md\" title=\"Abrir con la app default\">~/codebase/X/file.md</a><br>"
+  },
+  {
+    "name": "mdHtml",
+    "args": [
+      "*italic* ( *yes* ) x*no*"
+    ],
+    "expected": "<i>italic</i> ( <i>yes</i> ) x*no*<br>"
+  },
+  {
+    "name": "mdHtml",
+    "args": [
+      "[label](https://a) **multi\nline**"
+    ],
+    "expected": "<u>label</u> **multi<br>line**<br>"
+  },
+  {
+    "name": "mdHtml",
+    "args": [
+      "/tmp/a/ /one <a href=\"/tmp/a\">/tmp/b</a>"
+    ],
+    "expected": "<a href=\"#\" class=\"pathlink\" data-path=\"/tmp/a\" title=\"Abrir con la app default\">/tmp/a</a>/ /one &lt;a href=\"<a href=\"#\" class=\"pathlink\" data-path=\"/tmp/a\" title=\"Abrir con la app default\">/tmp/a</a>\"&gt;<a href=\"#\" class=\"pathlink\" data-path=\"/tmp/b\" title=\"Abrir con la app default\">/tmp/b</a>&lt;/a&gt;<br>"
+  },
+  {
+    "name": "mdInline",
+    "args": [
+      "**b** *i* `c` [a](url)"
+    ],
+    "expected": "<b>b</b> <i>i</i> <code>c</code> <u>a</u>"
+  },
+  {
+    "name": "mdInline",
+    "args": [
+      "***nested***"
+    ],
+    "expected": "<b>*nested</b>*"
+  },
+  {
+    "name": "mdInline",
+    "args": [
+      "*one* *two*"
+    ],
+    "expected": "<i>one</i> <i>two</i>"
+  },
+  {
+    "name": "mdInline",
+    "args": [
+      "[ ]()"
+    ],
+    "expected": "<u> </u>"
+  },
+  {
+    "name": "mdStrip",
+    "args": [
+      "## Head\n**text** `code`"
+    ],
+    "expected": "Head\ntext code"
+  },
+  {
+    "name": "mdStrip",
+    "args": [
+      "# **Title**"
+    ],
+    "expected": "Title"
+  },
+  {
+    "name": "mdStrip",
+    "args": [
+      "####### stays"
+    ],
+    "expected": "####### stays"
+  },
+  {
+    "name": "shortPath",
+    "args": [
+      "/home/a/codebase/X"
+    ],
+    "expected": "X"
+  },
+  {
+    "name": "shortPath",
+    "args": [
+      "/home/a"
+    ],
+    "expected": "~"
+  },
+  {
+    "name": "shortPath",
+    "args": [
+      "/tmp/a"
+    ],
+    "expected": "/tmp/a"
+  },
+  {
+    "name": "shortPath",
+    "args": [
+      "/home/a/codebase/"
+    ],
+    "expected": ""
+  },
+  {
+    "name": "agoTxt",
+    "args": [
+      0
+    ],
+    "expected": ""
+  },
+  {
+    "name": "agoTxt",
+    "args": [
+      100
+    ],
+    "expected": "hace 1 h 1 min"
+  },
+  {
+    "name": "agoTxt",
+    "args": [
+      3700
+    ],
+    "expected": "hace 1 min"
+  },
+  {
+    "name": "agoTxt",
+    "args": [
+      3760
+    ],
+    "expected": "hace 1 s"
+  },
+  {
+    "name": "agoTxt",
+    "args": [
+      4000
+    ],
+    "expected": "hace 0 s"
+  },
+  {
+    "name": "fmtMoney",
+    "args": [
+      0
+    ],
+    "expected": "$0.00"
+  },
+  {
+    "name": "fmtMoney",
+    "args": [
+      0.0001
+    ],
+    "expected": "$0.0001"
+  },
+  {
+    "name": "fmtMoney",
+    "args": [
+      12.45
+    ],
+    "expected": "$12.45"
+  },
+  {
+    "name": "fmtMoney",
+    "args": [
+      -1
+    ],
+    "expected": "$-1.0000"
+  },
+  {
+    "name": "fmtTokens",
+    "args": [
+      0
+    ],
+    "expected": "0 tok"
+  },
+  {
+    "name": "fmtTokens",
+    "args": [
+      1499
+    ],
+    "expected": "1k tok"
+  },
+  {
+    "name": "fmtTokens",
+    "args": [
+      1500
+    ],
+    "expected": "2k tok"
+  },
+  {
+    "name": "fmtTokens",
+    "args": [
+      1234000
+    ],
+    "expected": "1.2M tok"
+  },
+  {
+    "name": "fmtTokens",
+    "args": [
+      1000000000
+    ],
+    "expected": "1.00B tok"
+  },
+  {
+    "name": "confidenceLabel",
+    "args": [
+      "detected"
+    ],
+    "expected": "detectado"
+  },
+  {
+    "name": "confidenceLabel",
+    "args": [
+      "unknown"
+    ],
+    "expected": "unknown"
+  },
+  {
+    "name": "confidenceLabel",
+    "args": [
+      ""
+    ],
+    "expected": ""
+  },
+  {
+    "name": "shortModel",
+    "args": [
+      "claude-opus"
+    ],
+    "expected": "opus"
+  },
+  {
+    "name": "shortModel",
+    "args": [
+      "codex"
+    ],
+    "expected": "codex"
+  },
+  {
+    "name": "shortModel",
+    "args": [
+      ""
+    ],
+    "expected": ""
+  }
+]

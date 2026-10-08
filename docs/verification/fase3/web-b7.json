@@ -1,0 +1,70 @@
+{
+  "status": "implementation_native_and_actual_wasm_pass_browser_pending",
+  "artifact": "cd7e5eea705c",
+  "budget": {
+    "raw_bytes": 1422295,
+    "gzip_bytes": 374161,
+    "limit_bytes": 614400
+  },
+  "actual_wasm": {
+    "original_cjs_suites": [
+      "analytics_parity_checks.cjs",
+      "analytics_ui_checks.cjs",
+      "analytics_agy_checks.cjs",
+      "notification_ui_checks.cjs"
+    ],
+    "exact_analytics_markup_cases": 21,
+    "notification_cases": 26,
+    "extra_complete_notification_markup_cases": 12,
+    "full_text_code_units": [
+      5000,
+      6516
+    ],
+    "owned_one_long_poll_and_dispose_settlement": true,
+    "negative_blank_analytics_exit": 1,
+    "prior_behavior_groups": 44,
+    "prior_utf16_and_audio_dispose": true,
+    "prior_b6_core_ui": true,
+    "binary_toFixed_differential_cases": 2,
+    "binary_toFixed_old_artifact_red_exit": 1
+  },
+  "native_and_wasm_clippy": "pass (comandos-web, comandos-web-view, comandos-web-dom)",
+  "legacy_policy_change": "Always Ver TODO with escaped complete provided excerpt/title; backend excerpt limit unchanged",
+  "source_sha256": {
+    "notifications": "5d0413b2f96eb6e794d5c3c87d64c4ffbb584bc45a50535a99804d39c23e2db7",
+    "analytics": "d76f554af3e4abeffd3560d935c8d605f3460807b0bac34740bb912350604851",
+    "analytics-render": "f3025e42ef03795c768f2cebd55aed6b0230fbee2fe2eb0d6aeca04dc95a83fa"
+  },
+  "browser_acceptance": "pending Root coordinated refresh/review and chrome-bg capacity; no new browser run during remote outage; explicit web=off baseline versus verified actual WASM web=shadow candidate required",
+  "external_acceptance": [
+    "native host runtime",
+    "human listening",
+    "24h readonly shadow",
+    "cutover/release"
+  ],
+  "review_repairs": {
+    "numeric_object_key_order": "canonical JS array indices first; stable insertion ordering for other keys and ties",
+    "utf16_boundary": "explicit lossless B6/B7 adapter; high/low lone surrogates, paired text and private-use collisions preserved; existing B4/B5 adapter unchanged",
+    "supplied_actual_wasm_cases": 9,
+    "supplied_cases_all_equal": true,
+    "all_four_boundary_consumers_tested": [
+      "analytics",
+      "notifications",
+      "pomodoro",
+      "work-marks"
+    ],
+    "old_907d_red_exit": 1,
+    "final_7c658_green_exit": 0,
+    "consumer_v2": {
+      "supplied_cases": 22,
+      "all_equal": true,
+      "extended_cases": 57,
+      "workmarks_identity_request_and_real_suggestion_click": true,
+      "analytics_real_popover_and_tooltip_handlers": true,
+      "notices_group_read_and_watch_revision": true,
+      "pomodoro_send_error_identity": true,
+      "old_7c658_red_exit": 1,
+      "final_cd7e5_green_exit": 0
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "input": {
+    "case": {
+      "script": "\nimport json, os, shutil, sys\nrepo, path, names = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])\nsys.path.insert(0, os.path.join(repo, \"lib\"))\nimport providers\nif path == \"<none>\":\n    os.environ.pop(\"PATH\", None)\nelse:\n    os.environ[\"PATH\"] = path\nprint(json.dumps([[providers.which(n), shutil.which(n)] for n in names]))\n",
+      "args": [
+        {
+          "arg": "<none>",
+          "file": null
+        },
+        {
+          "arg": "[\"alpha\",\"beta\",\"gamma\",\"delta\",\"plain\",\"dir\",\"broken\",\"nope\",\"\",\"{{HOME}}/second/beta\",\"second/beta\"]",
+          "file": null
+        }
+      ],
+      "bin_inputs": []
+    },
+    "before_sha256": "9a8d81df4c8a18dd8f3752db9dfd2508b35a43219a270dad33b84ba46b54491f"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbW251bGwsIG51bGxdLCBbbnVsbCwgbnVsbF0sIFtcInt7SE9NRX19Ly5sb2NhbC9iaW4vZ2FtbWFcIiwgbnVsbF0sIFtcInt7SE9NRX19Ly5idW4vYmluL2RlbHRhXCIsIG51bGxdLCBbXCJ7e0hPTUV9fS8ubG9jYWwvYmluL3BsYWluXCIsIG51bGxdLCBbXCIvYmluL2RpclwiLCBcIi9iaW4vZGlyXCJdLCBbbnVsbCwgbnVsbF0sIFtudWxsLCBudWxsXSwgW251bGwsIG51bGxdLCBbXCJ7e0hPTUV9fS9zZWNvbmQvYmV0YVwiLCBcInt7SE9NRX19L3NlY29uZC9iZXRhXCJdLCBbbnVsbCwgbnVsbF1dXG4iLCJ0cmVlIjp7Ii5idW4iOnsia2luZCI6ImRpcmVjdG9yeSIsIm1vZGUiOjUwOX0sIi5idW4vYmluIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCIuYnVuL2Jpbi9kZWx0YSI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQ5MywiYm9keV9iNjQiOiJJeUV2WW1sdUwzTm9DZz09In0sIi5idW4vYmluL2dhbW1hIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDkzLCJib2R5X2I2NCI6Ikl5RXZZbWx1TDNOb0NnPT0ifSwiLmxvY2FsIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCIubG9jYWwvYmluIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCIubG9jYWwvYmluL2RpciI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmxvY2FsL2Jpbi9nYW1tYSI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQ5MywiYm9keV9iNjQiOiJJeUV2WW1sdUwzTm9DZz09In0sIi5sb2NhbC9iaW4vcGxhaW4iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0OTMsImJvZHlfYjY0IjoiSXlFdlltbHVMM05vQ2c9PSJ9LCJmaXJzdCI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiZmlyc3QvYWxwaGEiOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0OTMsImJvZHlfYjY0IjoiSXlFdlltbHVMM05vQ2c9PSJ9LCJmaXJzdC9icm9rZW4iOnsia2luZCI6InN5bWxpbmsiLCJ0YXJnZXQiOiJ7e0hPTUV9fS9maXJzdC9taXNzaW5nIn0sImZpcnN0L2RpciI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiZmlyc3QvcGxhaW4iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZUE9PSJ9LCJzZWNvbmQiOnsia2luZCI6ImRpcmVjdG9yeSIsIm1vZGUiOjUwOX0sInNlY29uZC9hbHBoYSI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQ5MywiYm9keV9iNjQiOiJJeUV2WW1sdUwzTm9DZz09In0sInNlY29uZC9iZXRhIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDkzLCJib2R5X2I2NCI6Ikl5RXZZbWx1TDNOb0NnPT0ifX19"
+}

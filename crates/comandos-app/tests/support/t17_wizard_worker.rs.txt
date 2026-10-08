@@ -1,0 +1,55 @@
+use comandos_app::{config::RunMode,tmux::{TmuxOut,TmuxError},ui::clipboard::TmuxIo};
+use serde_json::json;
+use std::{cell::Cell,rc::Rc,path::{Path,PathBuf},sync::{Arc,atomic::{AtomicBool,Ordering}}};
+mod commands { pub use comandos_app::ui::app_commands::valid_pane; }
+mod ui { pub use comandos_app::ui::{accounts,extensions}; }
+struct Tmux { socket:PathBuf,replacement:PathBuf,reads:Rc<Cell<u32>>,swapped:Cell<bool>,recycled:Cell<bool>,active:Cell<&'static str>,scenario:&'static str,instance:Arc<AtomicBool>,scope:comandos_app::ui::snippets::Scope }
+impl TmuxIo for Tmux {
+    fn mode(&self)->RunMode{RunMode::Sandbox}
+    fn socket(&self)->&Path{if self.swapped.get(){&self.replacement}else{&self.socket}}
+    fn read(&self,args:&[&str])->Result<TmuxOut,TmuxError>{
+        assert_eq!(&args[..3],["display-message","-p","-t"]);
+        self.reads.set(self.reads.get()+1);
+        let target=args[3];let fmt=args[4];
+        let pane=if target=="=fixture:"{self.active.get()}else{target};
+        assert!(["%2","%9","%3"].contains(&pane));
+        let stdout=if fmt.contains("#{pid}") {
+            format!("{}|$1|100|fixture|{pane}",if self.recycled.get(){99}else{21})
+        } else if fmt=="#{session_name}|#{pane_id}" {
+            if self.scenario=="active_changed"{self.active.set("%3");}
+            format!("fixture|{pane}")
+        } else {
+            assert_eq!(fmt,"#{session_name}|#{pane_id}|#{pane_current_path}");
+            match self.scenario {
+                "recycled"=>self.recycled.set(true),
+                "socket_changed"=>self.swapped.set(true),
+                "cancelled"=>self.instance.store(true,Ordering::Release),
+                "generation_changed"=>self.scope.advance(),
+                "active_changed"=>self.active.set("%3"),
+                _=>{}
+            }
+            format!("fixture|{pane}|cwd{}",&pane[1..])
+        };
+        Ok(TmuxOut{code:0,stdout,stderr:String::new()})
+    }
+    fn mutate(&self,_:&[&str],_:Option<&[u8]>)->Result<TmuxOut,TmuxError>{panic!("wizard must not mutate tmux")}
+}
+fn one(scenario:&'static str)->(serde_json::Value,u32){
+    let session=String::from("fixture");let pane=if ["omitted","active_changed"].contains(&scenario){""}else{"%2"}.to_string();
+    let target=if pane.is_empty(){format!("={session}:")}else{pane.clone()};
+    let worker_instance=Arc::new(AtomicBool::new(false));
+    let tmux=Tmux{socket:PathBuf::from("/tmp/gtk-t17-repair-private-20261006/fake-tmux/first-S"),replacement:PathBuf::from("/tmp/gtk-t17-repair-private-20261006/fake-tmux/replacement-S"),reads:Rc::new(Cell::new(0)),swapped:Cell::new(false),recycled:Cell::new(false),active:Cell::new("%9"),scenario,instance:worker_instance.clone(),scope:Default::default()};
+    let worker_ticket=tmux.scope.ticket();let closed=Arc::new(AtomicBool::new(scenario=="closed"));
+    let observed=tmux.reads.clone();
+    // Use the production Jobs worker body unchanged; only tmux and owner events are injected.
+    let job= // ACTUAL_WORKER ;
+    let outcome=job();let reads=observed.get();
+    (outcome.map_or(serde_json::Value::Null,|value|json!(value)),reads)
+}
+fn main(){
+    let mut out=serde_json::Map::new();
+    for name in ["explicit","omitted","active_changed","recycled","socket_changed","cancelled","closed","generation_changed"] {
+        let (value,reads)=one(name);out.insert(name.into(),value);if name=="closed"{out.insert("closed_reads".into(),json!(reads));}
+    }
+    println!("{}",serde_json::Value::Object(out));
+}

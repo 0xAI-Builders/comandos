@@ -1,0 +1,26 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- snippets (v0) ----------",
+  "marker_end": "// ---------- funciones de UI globales ----------",
+  "sha256": "1e94a74be0c226d14e60952fa5eb2eaa9fc4fd0a8f0501445a9f2e9c7b986da1",
+  "id": "snippets",
+  "exports": [
+    "snipDlg",
+    "snipState",
+    "snipSessions",
+    "pickDefaultSession",
+    "filterSnippets",
+    "renderSnipList",
+    "renderSnipPane",
+    "openSnipEditor",
+    "openSnippets",
+    "closeSnippets"
+  ],
+  "deps": [
+    "prelude",
+    "i18n",
+    "red"
+  ]
+}

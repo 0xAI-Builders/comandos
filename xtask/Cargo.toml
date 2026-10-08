@@ -1,11 +1,41 @@
 [package]
 name = "xtask"
+default-run = "xtask"
 version = "0.0.0"
 edition.workspace = true
 publish = false
 
+[lib]
+path = "src/lib.rs"
+
 [dependencies]
+comandos-runtime = { path = "../crates/comandos-runtime" }
+serde = { version = "=1.0.229", features = ["derive"] }
 serde_json.workspace = true
 rusqlite.workspace = true
+sha2.workspace = true
 comandos-core = { path = "../crates/comandos-core" }
-nix = { version = "0.31", features = ["signal", "process", "user"] }
+comandos-web-view = { path = "../crates/comandos-web-view" }
+nix = { version = "0.31", features = ["signal", "process", "user", "fs"] }
+# Normalización del reloj en `files` (la misma que el gemelo de las pruebas; ya en Cargo.lock).
+regex = "=1.13.1"
+# Arnés de paridad visual y de DOM (shots, png-diff, dom-diff, fixtures).
+comandos-domdiff = { path = "../crates/comandos-domdiff" }
+png = "=0.18.1"
+base64 = "=0.22.1"
+# Servidor de fixtures: mismas versiones que comandos-server.
+bytes = "=1.12.1"
+http-body-util = "=0.1.5"
+hyper = { version = "=1.11.1", default-features = false, features = ["server", "http1"] }
+hyper-util = { version = "=0.1.21", default-features = false, features = ["tokio"] }
+tokio = { version = "=1.53.1", default-features = false, features = ["rt", "net", "macros", "sync", "time"] }
+# `web-build` (T4): hash de contenido y medida gzip del presupuesto.
+flate2 = "=1.1.10"
+
+[dev-dependencies]
+comandos-browser = { path = "../crates/comandos-browser" }
+
+[[bin]]
+name = "browser-e2e-worker-fixture"
+path = "tests/support/browser_worker.rs"
+test = false

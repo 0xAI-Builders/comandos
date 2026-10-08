@@ -1,0 +1,28 @@
+{
+  "input": {
+    "case": {
+      "script": "\nimport sys,pathlib,json\nsys.path.insert(0,str(pathlib.Path(sys.argv[1])/'lib'))\nfrom extension_observations import conversation_usage\nprint(json.dumps(conversation_usage(sys.argv[2],'conv',sys.argv[3],json.loads(pathlib.Path(sys.argv[4]).read_text()),max_bytes=int(sys.argv[5]))))\n",
+      "args": [
+        {
+          "arg": "agy",
+          "file": null
+        },
+        {
+          "arg": "{{HOME}}/history.jsonl",
+          "file": "e7626389d1f49025fcfe608fa22da4339766e2fc0eb893bc7d75d54c90bfc836"
+        },
+        {
+          "arg": "{{HOME}}/inventory.json",
+          "file": "5796a115df0b173363937b8fa3f4dad11939932c11990cf9b7a2b77044060f32"
+        },
+        {
+          "arg": "2000000",
+          "file": null
+        }
+      ],
+      "bin_inputs": []
+    },
+    "before_sha256": "a8959cfcdd06f4fd8758a82648cc04cc8068bb66c2e568956486395d0a90e255"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJjb3VudHNcIjoge1wibWNwc1wiOiB7XCJtMVwiOiAxLCBcIm0yXCI6IDF9LCBcInNraWxsc1wiOiB7XCJzMVwiOiBudWxsfX0sIFwiY29tcGxldGVcIjogZmFsc2UsIFwidHVybnNcIjogMSwgXCJzb3VyY2VcIjogXCJjb252ZXJzYXRpb25cIiwgXCJ0b2tlbnNcIjogbnVsbCwgXCJub3RlXCI6IFwiU2luIGhpc3RvcmlhbCBjb21wbGV0bzsgbGEgYXVzZW5jaWEgZGUgbGxhbWFkYXMgbm8gZGVtdWVzdHJhIGZhbHRhIGRlIHVzby5cIn1cbiIsInRyZWUiOnsiaGlzdG9yeS5qc29ubCI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJleUp6YjNWeVkyVWlPaUpWVTBWU0lpd2lkRzl2YkY5allXeHNjeUk2VzNzaWJtRnRaU0k2SW0xamNGOWZjMlZ5ZG1WeVgxOTRJbjBzZXlKdVlXMWxJam9pWTJGc2JGOXRZM0JmZEc5dmJDSXNJbUZ5WjNNaU9pSjdYQ0pUWlhKMlpYSk9ZVzFsWENJNlhDSjFiblZ6WldSY0luMGlmVjE5Q2c9PSJ9LCJpbnZlbnRvcnkuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJleUp0WTNCeklqcGJleUpwWkNJNkltMHhJaXdpYm1GdFpTSTZJbk5sY25abGNpSjlMSHNpYVdRaU9pSnRNaUlzSW01aGJXVWlPaUoxYm5WelpXUWlmVjBzSW5OcmFXeHNjeUk2VzNzaWFXUWlPaUp6TVNJc0ltNWhiV1VpT2lKeVpYTmxZWEpqYUNJc0luQmhkR2dpT2lJdmMydHBiR3h6TDNKbGMyVmhjbU5vTDFOTFNVeE1MbTFrSW4xZGZRPT0ifX19"
+}

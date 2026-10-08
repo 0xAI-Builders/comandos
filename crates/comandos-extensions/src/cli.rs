@@ -154,7 +154,7 @@ fn broker_session(name: &str, spec: &Value, catalog: &std::path::Path) -> Option
         }
     }
 }
-fn catalog_command(
+pub fn catalog_command(
     home: &std::path::Path,
     path: Option<&std::path::Path>,
     action: &str,

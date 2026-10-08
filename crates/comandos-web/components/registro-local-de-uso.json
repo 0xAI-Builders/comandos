@@ -1,0 +1,22 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- registro LOCAL de uso: cada click, cada pantalla, cuánto tiempo. Nada sale de la máquina. ----------",
+  "marker_end": "// ---------- avisos de eventos: franja por proyecto + flotante (dash/notifications.js, N2).",
+  "sha256": "763c21e14cce1b36225df8cb308a5cc5a6482466a11fd938924c815f10e818d0",
+  "id": "registro-local-de-uso",
+  "exports": [
+    "ULOG",
+    "ulog",
+    "ulogFlush",
+    "ulogNameOf",
+    "ulogScreenStart",
+    "ulogScreenEnd"
+  ],
+  "deps": [
+    "prelude",
+    "i18n",
+    "red"
+  ]
+}

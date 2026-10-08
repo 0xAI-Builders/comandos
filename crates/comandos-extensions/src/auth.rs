@@ -199,13 +199,20 @@ fn read_config(path: &Path) -> Result<Value, String> {
     read_bytes(path)?.map_or_else(|| Ok(json!({})), |b| parse_config_bytes(&b))
 }
 fn private_dir(path: &Path) -> Result<(), String> {
+    crate::mutations::before(crate::mutations::Mutation::Directory { path, mode: 0o700 })?;
     fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
         .create(path)
-        .map_err(|_| failure())
+        .map_err(|_| failure())?;
+    crate::mutations::after(path)
 }
 fn private_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    crate::mutations::before(crate::mutations::Mutation::File {
+        path,
+        bytes,
+        mode: 0o600,
+    })?;
     let parent = path.parent().ok_or_else(failure)?;
     private_dir(parent)?;
     let (tmp, mut file) = loop {
@@ -214,6 +221,13 @@ fn private_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
             std::process::id(),
             NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
         ));
+        if tmp.symlink_metadata().is_err() {
+            crate::mutations::before(crate::mutations::Mutation::File {
+                path: &tmp,
+                bytes,
+                mode: 0o600,
+            })?;
+        }
         match OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -228,13 +242,19 @@ fn private_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let result = (|| {
         file.write_all(bytes).map_err(|_| failure())?;
         file.sync_all().map_err(|_| failure())?;
+        crate::mutations::after(&tmp)?;
+        crate::mutations::before(crate::mutations::Mutation::Move {
+            source: &tmp,
+            target: path,
+        })?;
         fs::rename(&tmp, path).map_err(|_| failure())?;
         File::open(parent)
             .and_then(|f| f.sync_all())
             .map_err(|_| failure())
     })();
     let _ = fs::remove_file(tmp);
-    result
+    result?;
+    crate::mutations::after(path)
 }
 fn json_bytes(value: &Value) -> Result<Vec<u8>, String> {
     let mut b = serde_json::to_vec_pretty(value).map_err(|_| invalid())?;
@@ -242,18 +262,21 @@ fn json_bytes(value: &Value) -> Result<Vec<u8>, String> {
     Ok(b)
 }
 
-fn credential_lock(home: &Path) -> Result<File, String> {
+pub fn credential_lock(home: &Path) -> Result<File, String> {
     credential_lock_until(home, None)
 }
 fn credential_lock_until(home: &Path, deadline: Option<Instant>) -> Result<File, String> {
     let state = home.join(".local/state/comandos/extensions");
     private_dir(&state)?;
+    let lock_path = state.join("credentials.lock");
+    crate::mutations::before(crate::mutations::Mutation::Control { path: &lock_path })?;
     let lock = OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
         .mode(0o600)
+        .custom_flags(nix::libc::O_NOFOLLOW)
         .open(state.join("credentials.lock"))
         .map_err(|_| failure())?;
     // The same open-description lock guards both imports and live token rotation.

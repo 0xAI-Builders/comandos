@@ -1,0 +1,15 @@
+{
+  "input": {
+    "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+    "python": "CPython 3.10.12",
+    "script": "\nimport importlib.machinery, importlib.util, json, os, sys, types\nrepo, sess, cwd, key, pane = sys.argv[1:6]\nsys.path.insert(0, os.path.join(repo, \"bin\"))\nloader = importlib.machinery.SourceFileLoader(\"cc_dash_oracle\", os.path.join(repo, \"bin/cc-dash\"))\nspec = importlib.util.spec_from_loader(loader.name, loader)\ndash = importlib.util.module_from_spec(spec)\nloader.exec_module(dash)\ncalls = []\ndef run(argv, **kw):\n    calls.append(list(argv))\n    return types.SimpleNamespace(returncode=0, stdout=pane + \"\\n\", stderr=\"\")\ndash.subprocess.run = run\ndash.tmux = lambda *a, **k: (calls.append([\"tmux\", *a]), types.SimpleNamespace(returncode=0, stdout=\"\", stderr=\"\"))[1]\ndash.quick_terminal_launch(sess, cwd, key)\nprint(json.dumps(calls))\n",
+    "args": [
+      "<SESSION>",
+      "<HOME>/Terminal/T-2026-10-04-06-00-00",
+      "<PANE_KEY>",
+      "<PANE>"
+    ]
+  },
+  "output_b64": "W1sic3lzdGVtZC1ydW4iLCAiLS11c2VyIiwgIi0tc2NvcGUiLCAiLS1jb2xsZWN0IiwgIi0tcXVpZXQiLCAidG11eCIsICJuZXctc2Vzc2lvbiIsICItZCIsICItcyIsICI8U0VTU0lPTj4iLCAiLWMiLCAiPEhPTUU+L1Rlcm1pbmFsL1QtMjAyNi0xMC0wNC0wNi0wMC0wMCIsICItUCIsICItRiIsICIje3BhbmVfaWR9Il0sIFsidG11eCIsICJzZXQtb3B0aW9uIiwgIi1wIiwgIi10IiwgIjxQQU5FPiIsICJAY29tYW5kb3MtcGFuZS1rZXkiLCAiPFBBTkVfS0VZPiJdXQo="
+}

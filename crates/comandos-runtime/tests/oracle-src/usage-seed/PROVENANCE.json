@@ -1,0 +1,7 @@
+{
+  "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+  "source_path": "bin/cc_usage.py",
+  "sha256": "eef7368bf9172e29b3116168203e6236a3a2ee1be5348dbf2c78241dd4a2e5f8",
+  "python": "CPython 3.10.12",
+  "clock_normalization": "Only usage_interactions.started_at_ms (column7) and created_at (column15) are anchored to the fixture clock; identity and all other schema/values remain exact."
+}

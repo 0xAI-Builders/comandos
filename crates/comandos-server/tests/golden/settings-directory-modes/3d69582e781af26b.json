@@ -1,0 +1,8 @@
+{
+  "input": {
+    "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "fixture": "settings-routes",
+    "directory": "codebase/nueva"
+  },
+  "output_b64": "Nzc1"
+}

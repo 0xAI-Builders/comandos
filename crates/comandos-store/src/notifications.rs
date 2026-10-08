@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 // A nested call fails before it can commit or roll back the caller's transaction.
 fn transaction<T>(conn: &Connection, run: impl FnOnce() -> Result<T>) -> Result<T> {
     let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    crate::migrate::move_db::admit_write(conn)?;
     let result = run()?;
     tx.commit()?;
     Ok(result)

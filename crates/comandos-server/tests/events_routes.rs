@@ -181,6 +181,40 @@ fn query_helpers_and_pagination_keep_blanks_duplicates_and_decoding() {
 }
 
 #[test]
+fn legacy_import_uses_route_facts_for_receptions_ids_and_marker() {
+    let mut fixture = Fixture::new();
+    let line = r#"{"project":"old","status":"done","detail":"historical","ts":10}"#;
+    std::fs::write(&fixture.path, format!("{line}\n{line}\n")).unwrap();
+    let (status, first) = fixture.call("GET", "/events/v2", None, false);
+    assert_eq!(status, 200);
+    let events = first["events"].as_array().unwrap();
+    assert_eq!(events.len(), 2);
+    for (index, event) in events.iter().enumerate() {
+        assert_eq!(event["receivedAtMs"], NOW);
+        assert_eq!(event["occurredAtMs"], 10_000);
+        assert_eq!(event["eventId"], format!("event-fixture-{}", index * 2 + 1));
+        assert_eq!(event["evidence"], "historical");
+        assert_eq!(event["destination"], "none");
+    }
+    assert_ne!(events[0]["sourceEventId"], events[1]["sourceEventId"]);
+    let marker: String = fixture
+        .conn
+        .query_row(
+            "SELECT value FROM workspace_meta WHERE key=?",
+            [comandos_runtime::legacy::LEGACY_MARKER],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&marker).unwrap(),
+        json!({"at": NOW as f64 / 1000.0, "count": 2})
+    );
+    let (status, repeated) = fixture.call("GET", "/events/v2", None, false);
+    assert_eq!(status, 200);
+    assert_eq!(repeated, first, "history remains imported exactly once");
+}
+
+#[test]
 fn legacy_import_retries_after_failure_and_is_once_across_adapter_restart() {
     let mut overflow = Fixture::new();
     std::fs::write(

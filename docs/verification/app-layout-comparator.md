@@ -1,0 +1,11 @@
+# Comparador de layout de GTK
+
+El comando `cargo xtask app-layout --reference /ruta/absoluta/reference.json --candidate /ruta/absoluta/candidate.json` usa la misma función pública `xtask::app_layout::compare_layout` que las pruebas. Devuelve 0 si coinciden, 1 por una diferencia y 2 por entrada inválida. Emite las diferencias con sus rutas JSON Pointer y ambos valores.
+
+Se conserva el orden de arrays y se compara todo el contenido, incluidos pestañas, selección, labels, IDs persistentes, splits, ratios, tema, fuente, DPR y tamaño de viewport. Solo la geometría directamente asignada a un widget permite una diferencia máxima de un píxel CSS en `x`, `y`, `width` y `height`: los arrays raíz `widgets` o `children` contienen esos widgets y sus arrays `children` pueden contener widgets anidados. Campos como `model.geometry` o `workspace.children` siguen siendo contenido exacto. La tolerancia no se aplica a dimensiones del viewport, fuente ni ratios. Los números semánticos y las coordenadas enteras se comparan sin pérdida de precisión.
+
+La lista de metadatos efímeros es fija y explícita: `capture.captured_at_unix_ms`, `capture.process_pid` y `capture.window_handle`. No se omiten timestamps ni IDs en otras rutas. Los números no finitos invalidan el documento incluso dentro de esos metadatos.
+
+Esta entrega implementa el comparador puro de T12. **La puerta GTK sigue pendiente:** falta un dump semántico equivalente de ambas aplicaciones, el adaptador de captura remota y las seis comparaciones reales de píxeles. Una prueba con documentos sintéticos no acredita paridad de interfaz ni autoriza cutover.
+
+La prueba inicial falló por ausencia de `xtask::app_layout`. Las regresiones verifican pestaña ausente, orden, labels, selección, split equivocado, fuente/tema/DPR/tamaño distintos, tolerancia de un píxel, contenido adicional, enteros grandes, números no finitos y las tres salidas del CLI. Los comandos y logs locales están en `/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/app-layout-red.log`, `/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/app-layout-green.log` y `/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/app-layout-clippy.log`.

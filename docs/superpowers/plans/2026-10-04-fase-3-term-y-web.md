@@ -831,10 +831,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Interfaces:**
 - Produces:
   - `web_build::BOOT_TEMPLATE: &str` y `web_build::render_boot(module_js: &str, wasm: &str) -> String` (cargador generado, ≤ 30 líneas, sin lógica: importa la cola de `wasm-bindgen`, instancia, llama `boot(data-k)` exportada por el WASM).
-  - `web_build::Manifest { files: BTreeMap<String, String> }` (nombre lógico → ruta con hash, p. ej. `"comandos_web_bg.wasm" → "a1b2c3d4e5f6/comandos_web_bg.wasm"`), escrito en `target/web/manifest.json`.
+  - `web_build::Manifest { files: BTreeMap<String, String> }` (nombre lógico → ruta con hash, p. ej. `"comandos_web_bg.wasm" → "a1b2c3d4e5f6/comandos_web_bg.wasm"`), escrito en `target/web/manifest.json`. *(Implementado en T4: el tipo vive en `comandos_core::web_assets::Manifest` y `xtask` lo reexporta. Las claves por crate son `<lib>.js`, `<lib>_bg.wasm` y, en módulos ES, `<lib>_boot.js` → `<hash>/boot.js`; el cargador del tablero es `"comandos_web_boot.js"`, no `"boot.js"`. `target/web` es `<CARGO_TARGET_DIR o <workspace>/target>/web`, `xtask::web_build::out_dir()`.)*
   - CLI `cargo run -p xtask -- web-build [--crate comandos-web|comandos-term-web|comandos-web-sw|all] [--check-budget]`: compila con `--profile release-wasm --target wasm32-unknown-unknown`, `wasm-bindgen --target web` (sw: `--target no-modules`), `wasm-opt -Oz`, hash `sha256:12` del contenido, copia a `target/web/<hash>/`, escribe `manifest.json`; con `--check-budget` falla si un `.wasm` supera su presupuesto gzip (600/250/64 KiB).
   - `DashConfig.web_dir: Option<PathBuf>`: `COMANDOS_WEB_DIR` o `<directorio del ejecutable real>/web` si existe.
-  - `comandos install --stage` copia `target/web/` (si existe junto al binario que se instala, en `../web` relativo al ejecutable compilado, o `COMANDOS_WEB_SOURCE`) a `releases/<sha>/web/`.
+  - `comandos install --stage --web <dir>` (o `COMANDOS_WEB_SOURCE=<dir>`; vacío = sin web) copia ese `web/` a `releases/<id>/web/`. **Origen siempre explícito** (fallo del controlador a I2 de la revisión T4): nunca se deduce `../web` ni otro vecino del binario. Única excepción: re-instalar desde `releases/<id>/comandos` usa el `web/` de esa release y exige el mismo id. `web/` necesita un `manifest.json` válido (rutas llanas que existen). El id es `sha12(binario ‖ "web\0" ‖ árbol de web/)`; sin web, `sha12(binario)` como antes. `--stage` imprime `release <id> (web: <ruta canónica>, N archivos)` o `release <id> (sin web)`.
 
 - [ ] **Step 1: Prueba que falla**
 
@@ -915,7 +915,7 @@ strip = "symbols"
 ```
 
 - [ ] **Step 4:** `$C test -p xtask --test web_build` → PASS.
-- [ ] **Step 5: Prueba que falla — release con `web/`.** `crates/comandos-cli/tests/install_web.rs`: con un HOME temporal y un directorio de origen con `comandos` y `web/abc/boot.js`, `install --stage` deja `releases/<sha>/web/abc/boot.js`; sin `web/` junto al binario, la release se instala igual y sin `web/`.
+- [ ] **Step 5: Prueba que falla — release con `web/`.** `crates/comandos-cli/tests/install_web.rs`: con un HOME temporal y un directorio de origen con `comandos` y `web/{manifest.json,abc/boot.js}`, `install --stage --web <origen>/web` deja `releases/<id>/web/abc/boot.js`; sin `--web` (aunque exista `web/` junto al binario o en `../web`) la release se instala sin `web/` y con id `sha12(binario)`.
 - [ ] **Step 6:** Implementar la copia en `stage_release` (copia recursiva sin seguir symlinks, permisos 0644/0755) → PASS. `DashConfig.web_dir` se resuelve en `from_env`.
 - [ ] **Step 7: Commit**
 

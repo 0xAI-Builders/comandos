@@ -2,7 +2,16 @@
 //! petición tal cual y lee la respuesta entera (`Connection: close`), así las
 //! cabeceras que se comprueban son las que viajan, también en HEAD y 304.
 #![allow(dead_code)]
+pub mod frozen;
+pub mod frozen_twin;
+pub mod http_golden;
+pub mod news;
+pub mod ops;
 pub mod oracle;
+pub mod owned_actor;
+pub mod services;
+pub mod tabs;
+pub mod twin;
 use comandos_server::dash::{
     DashConfig,
     native::{
@@ -141,7 +150,24 @@ pub struct TestHome {
 
 impl TestHome {
     pub fn new(tag: &str) -> Self {
-        let root = std::env::temp_dir().join(format!("cmd-native-{tag}-{}", std::process::id()));
+        Self::new_in(&std::env::temp_dir(), tag)
+    }
+
+    /// Como `new`, bajo un directorio temporal corto: el socket
+    /// `<root>/tmux/tmux-<uid>/default` debe caber en los 107 bytes de
+    /// `sun_path` aunque el `TMPDIR` del desarrollador sea largo.
+    pub fn new_short(tag: &str) -> Self {
+        let tmp = std::env::temp_dir();
+        let base = if tmp.as_os_str().len() <= 24 {
+            tmp
+        } else {
+            PathBuf::from("/tmp")
+        };
+        Self::new_in(&base, tag)
+    }
+
+    fn new_in(base: &Path, tag: &str) -> Self {
+        let root = base.join(format!("cmd-native-{tag}-{}", std::process::id()));
         // Un resto de una corrida anterior: primero se para SU servidor (por
         // `-S`, nunca el del usuario) y solo después se borra el directorio.
         let stale = private_socket(&root.join("tmux"));
@@ -158,6 +184,17 @@ impl TestHome {
         std::fs::create_dir_all(root.join("bin")).unwrap();
         std::fs::write(root.join(".claude/hooks/dash-token"), TOKEN).unwrap();
         std::fs::write(root.join(".claude/hooks/app-tabs.json"), "{}").unwrap();
+        // El directorio del socket privado (0700) existe desde el principio:
+        // `-S` nunca apunta a un directorio ausente.
+        drop(Tmux::private(&root.join("tmux")));
+        for dir in ["tmp", "xdg-runtime"] {
+            use std::os::unix::fs::DirBuilderExt;
+            std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(root.join(dir))
+                .unwrap();
+        }
         Self { root }
     }
     pub fn hooks(&self) -> PathBuf {
@@ -170,8 +207,61 @@ impl TestHome {
     /// privado de esta prueba. Es la ÚNICA forma de llamar a tmux a mano en las
     /// pruebas: con `-S` explícito un directorio ausente da «no server running»
     /// y nunca alcanza el `/tmp/tmux-<uid>/default` del usuario.
+    ///
+    /// El cliente corre con `env_clear` + `confined_env`: si esta llamada
+    /// arranca el servidor, el servidor y sus paneles nacen con el HOME
+    /// temporal, sin `DISPLAY`/DBus y sin el `PATH` del desarrollador.
     pub fn tmux_command(&self) -> Command {
-        private_tmux_command(&self.tmux_dir())
+        let socket = private_socket(&self.tmux_dir());
+        assert!(
+            socket.parent().is_some_and(Path::is_dir),
+            "socket tmux privado sin directorio: se negaría a caer en el servidor real"
+        );
+        let real = oracle::real_program("tmux").unwrap_or_else(|| PathBuf::from("tmux"));
+        let mut cmd = Command::new(real);
+        cmd.args(["-f", "/dev/null", "-S"])
+            .arg(socket)
+            .env_clear()
+            .envs(self.confined_env());
+        cmd
+    }
+
+    /// Entorno de todo lo que este HOME lanza (tmux, paneles, oráculo
+    /// confinado): HOME temporal, `SHELL=/bin/bash`, `TMPDIR` corto, XDG bajo el
+    /// HOME, `LANG=C.UTF-8`, sin escritorio ni DBus. `PATH` = solo el `fakebin`
+    /// si está confinado (`oracle::confined_fakebin`); si no, `/usr/bin:/bin`.
+    pub fn confined_env(&self) -> Vec<(String, String)> {
+        let at = |rel: &str| self.root.join(rel).display().to_string();
+        let home = self.root.display().to_string();
+        let fakebin = self.root.join("fakebin");
+        let path = if fakebin.join(".confined").exists() {
+            fakebin.display().to_string()
+        } else {
+            "/usr/bin:/bin".to_owned()
+        };
+        let mut env = vec![
+            ("HOME".to_owned(), home),
+            ("PATH".to_owned(), path),
+            ("SHELL".to_owned(), "/bin/bash".to_owned()),
+            ("TMPDIR".to_owned(), at("tmp")),
+            ("LANG".to_owned(), "C.UTF-8".to_owned()),
+            ("XDG_RUNTIME_DIR".to_owned(), at("xdg-runtime")),
+            ("XDG_STATE_HOME".to_owned(), at(".local/state")),
+            ("XDG_CONFIG_HOME".to_owned(), at(".config")),
+            ("XDG_DATA_HOME".to_owned(), at(".local/share")),
+            ("XDG_CACHE_HOME".to_owned(), at(".cache")),
+            ("TMUX_TMPDIR".to_owned(), at("tmux")),
+        ];
+        // El `sitecustomize.py` del confinamiento (`oracle::SITECUSTOMIZE`).
+        let site = self.root.join(oracle::SITE_DIR);
+        if site.join("sitecustomize.py").is_file() {
+            env.push(("PYTHONPATH".to_owned(), site.display().to_string()));
+        }
+        if let Ok(user) = std::env::var("USER") {
+            env.push(("USER".to_owned(), user.clone()));
+            env.push(("LOGNAME".to_owned(), user));
+        }
+        env
     }
     pub fn state_db(&self) -> PathBuf {
         self.root.join(".local/state/comandos/app-state.sqlite3")
@@ -195,8 +285,15 @@ impl TestHome {
         opts.oauth = Arc::new(FakeOauth::default());
         // Nunca el cc-notifyd real (127.0.0.1:4778): ningún popup de verdad.
         opts.notifyd = Arc::new(FakeNotify::default());
+        // Nunca los feeds reales de noticias: el puerto 1 no escucha.
+        opts.news_feeds = Arc::new(
+            comandos_server::dash::native::background::models::Feeds::new(
+                comandos_runtime::news_watch::Endpoints::local("http://127.0.0.1:1"),
+            ),
+        );
         opts.zone = Arc::new(chrono_tz::America::Mexico_City);
         opts.usage_env = Arc::default();
+        opts.extension_env = Arc::default();
         opts.tmux = Tmux::private(&self.tmux_dir());
         // Sin fc-list en las pruebas salvo que una prueba lo fije.
         opts.fc_list = Program::named("/no-existe/fc-list");
@@ -215,8 +312,55 @@ impl TestHome {
         // de la terminal rápida fijan un `systemd-run` falso (`fake_scope`).
         opts.scope = None;
         opts.quick_base = self.root.join("Terminal");
+        // Nunca el `~/.local/state` real ni la terminal web real (4779/4780):
+        // el puerto 1 no escucha. El censo no se escribe salvo que la prueba
+        // fije su archivo dentro del HOME temporal.
+        opts.xdg_state_home = Some(self.root.join(".local/state"));
+        opts.webterm_health_ports = [1, 1];
+        opts.census_path = None;
+        // Lo que el frente lance fuera de tmux (`NativeOptions::program`) ve el
+        // entorno confinado de este HOME, nunca el del proceso de pruebas.
+        opts.child_env = Some(
+            self.confined_env()
+                .into_iter()
+                .map(|(k, v)| (k.into(), v.into()))
+                .collect(),
+        );
+        opts.display = Some(None);
         opts
     }
+}
+
+/// `tmux <args>` en el servidor privado de `home` (`tmux_command`); la prueba
+/// falla si tmux falla. Devuelve la salida estándar.
+pub fn run_tmux(home: &TestHome, args: &[&str]) -> String {
+    let out = home.tmux_command().args(args).output().unwrap();
+    assert!(
+        out.status.success(),
+        "tmux {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8(out.stdout).unwrap()
+}
+
+/// Opciones del frente que solo pueden tocar un tmux privado: si su programa
+/// es un tmux que existe (el real, el guardián o un envoltorio llamado
+/// `tmux`), el prefijo lleva `-S <socket>`. Los dobles que no son tmux
+/// (`sh -c …`, `tail`, `/no-existe/tmux`) no alcanzan ningún servidor.
+pub fn assert_private_tmux(opts: &NativeOptions) {
+    let program = &opts.tmux.program;
+    let socket = program
+        .prefix
+        .windows(2)
+        .any(|w| w.first().is_some_and(|a| a == "-S") && w.get(1).is_some_and(|s| !s.is_empty()));
+    let named_tmux = program.path.file_name().is_some_and(|n| n == "tmux");
+    let reaches_tmux =
+        named_tmux && (program.path.is_file() || program.path.components().count() == 1);
+    assert!(
+        socket || !reaches_tmux,
+        "opts.tmux ({}) sin -S: alcanzaría el servidor tmux del usuario",
+        program.path.display()
+    );
 }
 
 /// `systemd-run` falso en `<home>/fakescope/systemd-run`: anota su argv (una
@@ -233,8 +377,7 @@ pub fn fake_scope(home: &TestHome) -> Program {
         &path,
         format!(
             "#!/bin/sh\n\
-             for a in \"$@\"; do printf '%s\\n' \"$a\" >> '{log}'; done\n\
-             printf -- '--\\n' >> '{log}'\n\
+             printf '%s\\0' systemd-run \"$@\" \"$(printf '\\036')\" >> '{log}'\n\
              [ \"$1\" = --user ] && [ \"$2\" = --scope ] && [ \"$3\" = --collect ] \
              && [ \"$4\" = --quiet ] || exit 97\n\
              shift 4\n\
@@ -247,19 +390,14 @@ pub fn fake_scope(home: &TestHome) -> Program {
     comandos_server::dash::native::quick::scope_program(path)
 }
 
-/// Llamadas al `systemd-run` falso, cada una como su lista de argumentos.
+/// Llamadas al `systemd-run` falso, cada una como su lista de argumentos. El
+/// registro separa con NUL (`oracle::calls_in`): un argumento con saltos de
+/// línea no parte la llamada.
 pub fn fake_scope_calls(home: &TestHome) -> Vec<Vec<String>> {
-    let text = std::fs::read_to_string(home.root.join("fakescope/argv")).unwrap_or_default();
-    let mut calls = Vec::new();
-    let mut current = Vec::new();
-    for line in text.lines() {
-        if line == "--" {
-            calls.push(std::mem::take(&mut current));
-        } else {
-            current.push(line.to_owned());
-        }
-    }
-    calls
+    oracle::calls_in(&home.root.join("fakescope/argv"))
+        .into_iter()
+        .map(|call| call.args)
+        .collect()
 }
 
 /// Copia `/bin/sleep` como `<home>/bin/<name>`: un proceso con ese argv[0]
@@ -312,34 +450,73 @@ pub fn private_tmux_command(socket_dir: &Path) -> Command {
     cmd
 }
 
+/// `kill-server` del servidor privado de `tmux_dir`, solo por su `-S`.
+fn kill_private_server(tmux_dir: &Path) {
+    let tmux = oracle::real_program("tmux").unwrap_or_else(|| PathBuf::from("tmux"));
+    let _ = Command::new(tmux)
+        .arg("-S")
+        .arg(private_socket(tmux_dir))
+        .arg("kill-server")
+        .env_remove("TMUX")
+        .env("TMUX_TMPDIR", tmux_dir)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
 impl Drop for TestHome {
     fn drop(&mut self) {
         // Nunca el servidor tmux del usuario: socket explícito con `-S`. Solo
         // `TMUX_TMPDIR` no basta: si el directorio ya no existe, tmux cae en
         // silencio al `/tmp/tmux-<uid>/default` real y el kill-server es suyo.
-        let _ = Command::new("tmux")
-            .arg("-S")
-            .arg(private_socket(&self.tmux_dir()))
-            .arg("kill-server")
-            .env_remove("TMUX")
-            .env("TMUX_TMPDIR", self.tmux_dir())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        let _ = std::fs::remove_dir_all(&self.root);
+        kill_private_server(&self.tmux_dir());
+        // Algo que siguiera vivo (una tarea del frente, un hijo suelto) podría
+        // volver a arrancar el servidor entre el `kill-server` y el borrado.
+        // Tras renombrar, el socket viejo ya no tiene directorio (tmux con `-S`
+        // daría «no server running»), y un servidor que se colara se mata en
+        // la ruta nueva antes de borrar.
+        let mut dying = self.root.clone().into_os_string();
+        dying.push(".dying");
+        let dying = PathBuf::from(dying);
+        // Un `.dying` viejo (corrida anterior abortada) puede tener aún su
+        // servidor vivo: se mata por su `-S` antes de borrar el directorio.
+        if dying.exists() {
+            kill_private_server(&dying.join("tmux"));
+        }
+        let _ = std::fs::remove_dir_all(&dying);
+        let root = if std::fs::rename(&self.root, &dying).is_ok() {
+            kill_private_server(&dying.join("tmux"));
+            dying
+        } else {
+            self.root.clone()
+        };
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
 
 pub struct Front {
     pub port: u16,
     stop: watch::Sender<bool>,
-    task: JoinHandle<std::io::Result<()>>,
+    task: Option<JoinHandle<std::io::Result<()>>>,
 }
 
 impl Front {
-    pub async fn stop(self) {
+    pub async fn stop(mut self) {
         let _ = self.stop.send(true);
-        let _ = self.task.await;
+        if let Some(task) = self.task.take() {
+            let _ = task.await;
+        }
+    }
+}
+
+/// Un `Front` que no se paró (la prueba falló antes del `stop`) no deja el
+/// servidor vivo: se pide la parada y se aborta su tarea.
+impl Drop for Front {
+    fn drop(&mut self) {
+        let _ = self.stop.send(true);
+        if let Some(task) = self.task.take() {
+            task.abort();
+        }
     }
 }
 
@@ -354,10 +531,15 @@ pub fn config(home: &TestHome, legacy_port: u16) -> DashConfig {
 pub async fn front(home: &TestHome, legacy_port: u16, opts: NativeOptions) -> Front {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
+    assert_private_tmux(&opts);
     let (stop, shutdown) = watch::channel(false);
     let cfg = config(home, legacy_port);
     let task = tokio::spawn(serve_with(listener, cfg, Some(opts), shutdown));
-    Front { port, stop, task }
+    Front {
+        port,
+        stop,
+        task: Some(task),
+    }
 }
 
 /// Heredado falso: responde `{"legacy": true}` y anota la línea de petición.

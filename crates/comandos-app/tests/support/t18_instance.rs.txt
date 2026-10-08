@@ -1,0 +1,16 @@
+#![allow(dead_code)]
+use std::{cell::{Cell,RefCell},rc::Rc,collections::BTreeMap,sync::{Arc,atomic::{AtomicBool,Ordering}}};
+use comandos_app::ui::mosaic::{OwnedViews,ManagedView};
+use comandos_app::ui::app_commands::CommandError;
+#[derive(Clone)]struct TermView(Arc<AtomicBool>);impl TermView{fn cleanup_cancellation(&self)->Arc<AtomicBool>{self.0.clone()}}
+#[derive(Clone)]struct Widget(Rc<Cell<bool>>);impl Widget{fn is_mapped(&self)->bool{self.0.get()}}
+struct Overlay{widget:Widget}struct Client{session:String,term:TermView,overlay:Overlay}impl ManagedView for Client{fn shutdown(&self){self.term.0.store(true,Ordering::Release);self.overlay.widget.0.set(false);}}
+struct Owned{focused:RefCell<Option<String>>,clients:RefCell<OwnedViews<Client>>}struct App{t18:Owned,closed:Arc<AtomicBool>,terms:RefCell<BTreeMap<String,TermView>>,root:String}
+impl App{fn current_session(&self)->Option<String>{Some(self.root.clone())}fn writable(&self)->bool{!self.closed.load(Ordering::Acquire)}// ACTUAL_METHODS
+}
+fn main(){let main=TermView(Arc::new(AtomicBool::new(false)));let aux=TermView(Arc::new(AtomicBool::new(false)));let mapped=Widget(Rc::new(Cell::new(true)));let app=App{root:"root".into(),closed:Arc::new(AtomicBool::new(false)),terms:RefCell::new(BTreeMap::from([("root".into(),main.clone())])),t18:Owned{focused:RefCell::new(Some("zoom:private".into())),clients:RefCell::new(OwnedViews::new(53))}};
+app.t18.clients.borrow_mut().insert("zoom:private".into(),Client{session:"private".into(),term:aux.clone(),overlay:Overlay{widget:mapped.clone()}}).unwrap();
+assert_eq!(app.action_session().as_deref(),Some("private"));assert_eq!(app.current_session().as_deref(),Some("root"));assert!(app.instance("private",&aux.0));assert!(!app.instance("private",&main.0));
+assert!(app.owns_term_instance("private",&aux.0));mapped.0.set(false);assert_eq!(app.action_session().as_deref(),Some("root"));assert!(!app.instance("private",&aux.0));mapped.0.set(true);
+aux.0.store(true,Ordering::Release);assert_eq!(app.action_session().as_deref(),Some("root"));assert!(!app.owns_term_instance("private",&aux.0));
+let new=TermView(Arc::new(AtomicBool::new(false)));app.t18.clients.borrow_mut().insert("zoom:private".into(),Client{session:"root".into(),term:new.clone(),overlay:Overlay{widget:Widget(Rc::new(Cell::new(true)))}}).unwrap();assert!(app.instance("root",&new.0));app.with_current_term(|term|{assert!(Arc::ptr_eq(&term.0,&new.0));Ok(())}).unwrap();assert!(!app.instance("root",&main.0));app.t18.clients.borrow_mut().remove("zoom:private");assert!(app.instance("root",&main.0));assert!(!app.owns_term_instance("root",&new.0));app.closed.store(true,Ordering::Release);assert!(!app.instance("root",&main.0));assert!(!app.owns_term_instance("root",&main.0));println!("{}",serde_json::json!({"cases":8}));}

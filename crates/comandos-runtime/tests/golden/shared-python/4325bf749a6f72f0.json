@@ -1,0 +1,16 @@
+{
+  "input": {
+    "case": {
+      "script": "\nimport importlib.machinery, importlib.util, json, os, sys, types\nrepo = sys.argv[1]\nsys.path.insert(0, os.path.join(repo, \"bin\"))\nloader = importlib.machinery.SourceFileLoader(\"cc_dash_oracle\", os.path.join(repo, \"bin/cc-dash\"))\nspec = importlib.util.spec_from_loader(loader.name, loader)\ndash = importlib.util.module_from_spec(spec)\nloader.exec_module(dash)\n\ntext = open(sys.argv[2]).read()\ndash.tmux = lambda *a, **k: types.SimpleNamespace(returncode=0, stdout=text)\n# `activity` es 0 (int) tras un `ValueError` y 0.0 con texto vacío; las dos son\n# falsas para `read_states` y la fila de Rust es `f64`.\nprint(json.dumps([dict(r, activity=float(r[\"activity\"])) for r in dash.tmux_pane_inventory()]))\n",
+      "args": [
+        {
+          "arg": "{{HOME}}/inventory.txt",
+          "file": "e66f12fb20873041fbb1d30156e7b73dda0bbcd8bfb330258ce2dacaa05bc9dd"
+        }
+      ],
+      "bin_inputs": []
+    },
+    "before_sha256": "55b20cbae8af69287103fb0b38adcafd7df004b4a46f735a153a623602c7bd90"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbe1wic2Vzc2lvblwiOiBcInNcIiwgXCJwYW5lXCI6IFwiJTFcIiwgXCJwYW5lX3BpZFwiOiAxMiwgXCJjb21tYW5kXCI6IFwienNoXCIsIFwiY3dkXCI6IFwiL2FcIiwgXCJhY3Rpdml0eVwiOiAwLjAsIFwicGFuZUFjdGl2ZVwiOiBmYWxzZX0sIHtcInNlc3Npb25cIjogXCJzLnhcIiwgXCJwYW5lXCI6IFwiJTJcIiwgXCJwYW5lX3BpZFwiOiA3LCBcImNvbW1hbmRcIjogXCJjbGF1ZGVcIiwgXCJjd2RcIjogXCIvYVwiLCBcImFjdGl2aXR5XCI6IDAuMCwgXCJwYW5lQWN0aXZlXCI6IGZhbHNlfSwge1wic2Vzc2lvblwiOiBcInNcIiwgXCJwYW5lXCI6IFwiJTNcIiwgXCJwYW5lX3BpZFwiOiA4LCBcImNvbW1hbmRcIjogXCJcIiwgXCJjd2RcIjogXCJcIiwgXCJhY3Rpdml0eVwiOiAwLjAsIFwicGFuZUFjdGl2ZVwiOiBmYWxzZX0sIHtcInNlc3Npb25cIjogXCJ0XCIsIFwicGFuZVwiOiBcIiU0NFwiLCBcInBhbmVfcGlkXCI6IDksIFwiY29tbWFuZFwiOiBcIm5vZGVcIiwgXCJjd2RcIjogXCIvYlwiLCBcImFjdGl2aXR5XCI6IDE1LjAsIFwicGFuZUFjdGl2ZVwiOiBmYWxzZX0sIHtcInNlc3Npb25cIjogXCJ2XCIsIFwicGFuZVwiOiBcIiU3XCIsIFwicGFuZV9waWRcIjogMTIsIFwiY29tbWFuZFwiOiBcImFcIiwgXCJjd2RcIjogXCJcIiwgXCJhY3Rpdml0eVwiOiAxMi41LCBcInBhbmVBY3RpdmVcIjogdHJ1ZX1dXG4iLCJ0cmVlIjp7ImludmVudG9yeS50eHQiOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiYzN3bE1Yd3hNbng2YzJoOEwyRjhZbnhqZkRFM09URXhNVFV5TURCOE1Yd3hDbUpoWkh3bGVId3hmR0Y4WW54amZHUjhaUXB6TG5oOEpUSjhOM3hqYkdGMVpHVjhMMkY4Ym1GdVAzd3dmREVOQ25OOEpUTjhPQXAwZkNVME5IdzVmRzV2WkdWOEwySjhNVjgxZkRGOE1BcDFmQ1UxZkhoOGJtOWtaUXA4SlRaOE13cDJmQ1UzZkRBd01USjhZWHg4SUNBeE1pNDFJSHd4ZkRFS2Qzd2xNVEl6TkRVMk56aDhOQW89In19fQ=="
+}

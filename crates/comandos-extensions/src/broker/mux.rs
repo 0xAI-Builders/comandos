@@ -4,6 +4,9 @@ use crate::serve::normalize::SUPPORTED_PROTOCOL_VERSIONS;
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, HashMap};
 
+mod logging;
+mod resources;
+
 /// Identificador de un cliente conectado al broker; lo asigna [`Mux::add_client`].
 pub type ClientId = u32;
 
@@ -24,10 +27,44 @@ struct Client {
 
 /// Request de cliente en vuelo hacia el upstream.
 struct Pending {
-    client: ClientId,
+    client: Option<ClientId>,
     orig: Value,
     /// Token de progreso upstream asignado a esta petición, si traía uno.
     token: Option<u64>,
+    kind: PendingKind,
+}
+
+enum PendingKind {
+    Ordinary,
+    Resource(String),
+    Logging,
+}
+
+/// Original request retained until its shared upstream change is confirmed.
+struct StateCall {
+    client: ClientId,
+    orig: Value,
+    message: Map<String, Value>,
+}
+
+impl StateCall {
+    fn new(client: ClientId, message: Map<String, Value>) -> Self {
+        Self {
+            client,
+            orig: message["id"].clone(),
+            message,
+        }
+    }
+
+    fn reply(&self, result: &Result<Value, Value>) -> Outbound {
+        Outbound::ToClient(
+            self.client,
+            match result {
+                Ok(value) => response(self.orig.clone(), value.clone()),
+                Err(value) => error_response(self.orig.clone(), value.clone()),
+            },
+        )
+    }
 }
 
 /// Estado del multiplexor: un upstream, N clientes. No hace E/S ni conoce sockets.
@@ -49,6 +86,8 @@ pub struct Mux {
     upstream_notified: bool,
     /// id original del upstream (serializado) -> (cliente, id entregado al cliente).
     upstream_requests: HashMap<String, (ClientId, Value)>,
+    resources: BTreeMap<String, resources::Resource>,
+    logging: logging::Logging,
 }
 
 impl Mux {
@@ -76,9 +115,11 @@ impl Mux {
             return Vec::new();
         }
         self.waiting_init.retain(|(c, ..)| *c != id);
-        let mut out = Vec::new();
+        let mut out = self.resource_departure(id);
+        out.extend(self.logging_departure(id));
+        self.progress.retain(|_, (owner, _)| *owner != id);
         let mut ups: Vec<u64> = (self.pending.iter())
-            .filter(|(_, p)| p.client == id)
+            .filter(|(_, p)| p.client == Some(id) && matches!(p.kind, PendingKind::Ordinary))
             .map(|(k, _)| *k)
             .collect();
         ups.sort_unstable();
@@ -125,6 +166,13 @@ impl Mux {
                 vec![Outbound::ToUpstream(bytes(msg))]
             }
             Some("notifications/cancelled") => self.client_cancel(id, msg),
+            Some("resources/subscribe") if msg.contains_key("id") => {
+                self.resource_request(id, true, msg)
+            }
+            Some("resources/unsubscribe") if msg.contains_key("id") => {
+                self.resource_request(id, false, msg)
+            }
+            Some("logging/setLevel") if msg.contains_key("id") => self.logging_request(id, msg),
             Some(_) if msg.contains_key("id") => self.client_request(id, msg),
             Some(_) => vec![Outbound::ToUpstream(bytes(msg))],
             None => self.client_response(id, msg),
@@ -145,6 +193,8 @@ impl Mux {
             return match method.as_str() {
                 "notifications/progress" => self.upstream_progress(msg),
                 "notifications/cancelled" => self.upstream_cancel(msg),
+                "notifications/resources/updated" => self.resource_notification(msg),
+                "notifications/message" => self.logging_notification(msg),
                 _ => {
                     let b = bytes(msg);
                     (self.clients.iter())
@@ -163,8 +213,16 @@ impl Mux {
         let Some(p) = self.drop_pending(up) else {
             return Vec::new(); // huérfana o desconocida
         };
+        match p.kind {
+            PendingKind::Resource(uri) => return self.resource_response(up, &uri, msg),
+            PendingKind::Logging => return self.logging_response(up, msg),
+            PendingKind::Ordinary => {}
+        }
+        let Some(client) = p.client else {
+            return Vec::new();
+        };
         msg.insert("id".into(), p.orig);
-        vec![Outbound::ToClient(p.client, bytes(msg))]
+        vec![Outbound::ToClient(client, bytes(msg))]
     }
 
     fn client_initialize(&mut self, id: ClientId, mut msg: Map<String, Value>) -> Vec<Outbound> {
@@ -226,11 +284,25 @@ impl Mux {
         out
     }
 
-    fn client_request(&mut self, client: ClientId, mut msg: Map<String, Value>) -> Vec<Outbound> {
+    fn client_request(&mut self, client: ClientId, msg: Map<String, Value>) -> Vec<Outbound> {
+        vec![
+            self.begin_request(Some(client), msg, PendingKind::Ordinary)
+                .1,
+        ]
+    }
+
+    fn begin_request(
+        &mut self,
+        client: Option<ClientId>,
+        mut msg: Map<String, Value>,
+        kind: PendingKind,
+    ) -> (u64, Outbound) {
         let orig = msg["id"].clone();
         let up = self.fresh_id();
         let mut token = None;
-        if let Some(s) = slot(&mut msg, &["params", "_meta", "progressToken"]) {
+        if let Some(client) = client
+            && let Some(s) = slot(&mut msg, &["params", "_meta", "progressToken"])
+        {
             let t = self.fresh_id();
             let o = std::mem::replace(s, Value::from(t));
             self.progress.insert(t, (client, o));
@@ -242,19 +314,31 @@ impl Mux {
                 client,
                 orig,
                 token,
+                kind,
             },
         );
         msg.insert("id".into(), Value::from(up));
-        vec![Outbound::ToUpstream(bytes(msg))]
+        (up, Outbound::ToUpstream(bytes(msg)))
     }
 
     /// Traduce `requestId` al id upstream y olvida la petición (su respuesta tardía se descarta).
     fn client_cancel(&mut self, id: ClientId, mut msg: Map<String, Value>) -> Vec<Outbound> {
+        let Some(original) = msg.get("params").and_then(|p| p.get("requestId")).cloned() else {
+            return Vec::new();
+        };
+        if let Some(out) = self.resource_cancel(id, &original) {
+            return out;
+        }
+        if let Some(out) = self.logging_cancel(id, &original) {
+            return out;
+        }
         let Some(rid) = slot(&mut msg, &["params", "requestId"]) else {
             return Vec::new();
         };
         let Some(up) = (self.pending.iter())
-            .find(|(_, p)| p.client == id && p.orig == *rid)
+            .find(|(_, p)| {
+                p.client == Some(id) && p.orig == *rid && matches!(p.kind, PendingKind::Ordinary)
+            })
             .map(|(k, _)| *k)
         else {
             return Vec::new();
@@ -350,6 +434,28 @@ impl Mux {
         }
         Some(p)
     }
+
+    fn forget_progress(&mut self, up: u64) {
+        if let Some(token) = self.pending.get_mut(&up).and_then(|p| p.token.take()) {
+            self.progress.remove(&token);
+        }
+    }
+}
+
+/// State changes require an object result, not merely receipt of a response id.
+/// Error/malformed replies never establish a subscription or logging preference.
+fn state_result(msg: &Map<String, Value>) -> Result<Value, Value> {
+    if let Some(e) = msg.get("error") {
+        return Err(if e.is_object() {
+            e.clone()
+        } else {
+            error(-32603, "Invalid upstream state response")
+        });
+    }
+    msg.get("result")
+        .filter(|v| v.is_object())
+        .cloned()
+        .ok_or_else(|| error(-32603, "Invalid upstream state response"))
 }
 
 /// Versión que el upstream (que contestó `upstream`) negociaría con un cliente que pide

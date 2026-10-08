@@ -58,7 +58,16 @@ fn run(
     stdin: &[u8],
 ) -> (Option<i32>, Vec<u8>) {
     let mut command = if side == "bash" {
-        let mut c = Command::new("bash");
+        assert!(
+            matches!(
+                std::env::var("COMANDOS_ORACLE").as_deref(),
+                Ok("record" | "check")
+            ),
+            "reference shell must only execute in explicit record/check mode"
+        );
+        let mut c = Command::new(
+            std::env::var("COMANDOS_RUNTIME_ORACLE_BASH").unwrap_or_else(|_| "bash".into()),
+        );
         c.arg("-c")
             .arg("trap wait EXIT; . \"$0\" \"$@\"")
             .arg(root().join(script));
@@ -86,6 +95,51 @@ fn run(
     (out.status.code(), out.stdout)
 }
 
+type UsageObservation = ((Option<i32>, Vec<u8>), Vec<String>, String);
+
+fn usage_reference(
+    home: &Path,
+    fake: &Path,
+    env: &[(&str, &str)],
+    events: &[Vec<u8>],
+    seed: &[String],
+    start_ms: i64,
+) -> UsageObservation {
+    let source =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/oracle-src/hooks/cc-usage-tool.sh");
+    let bytes = comandos_oracle::oracle_at(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "runtime-shell-claude-usage",
+        &serde_json::json!({"provenance":include_str!("oracle-src/hooks/USAGE_PROVENANCE.json"),
+            "python_provenance":include_str!("oracle-src/usage-seed/PROVENANCE.json"),
+            "seed":seed,"env":env,"event_history":events}),
+        || {
+            let output = run(
+                source.to_str().unwrap(),
+                "claude-usage",
+                "bash",
+                home,
+                fake,
+                env,
+                events.last().unwrap(),
+            );
+            let rows: Vec<String> = dump_db(
+                &home.join(".claude/hooks/comandos-usage.sqlite"),
+                Window {
+                    start_ms,
+                    end_ms: now_ms(),
+                },
+            )
+            .into_iter()
+            .map(without_duration)
+            .collect();
+            let transcript = parity::read_lossy(&home.join("fake.log"));
+            serde_json::to_vec(&(output, rows, transcript)).map_err(|e| e.to_string())
+        },
+    );
+    serde_json::from_slice(&bytes).unwrap()
+}
+
 /// Base de uso con una interacción abierta en `fake-sess`/`%7` (la que el hook claude
 /// deja con `working`), hecha con el `cc_usage.py` real y copiada a cada `HOME`.
 fn seed_usage(dir: &Path) -> PathBuf {
@@ -94,19 +148,73 @@ fn seed_usage(dir: &Path) -> PathBuf {
     let payload = serde_json::json!({"status":"working","harness":"claude","tmux_session":"fake-sess",
         "tmux_pane":"%7","prompt_id":"p1","agent_session_id":"s1","source":"hook:claude",
         "confidence":"exact","at_ms":now_ms()});
-    let mut child = Command::new("python3")
-        .arg(root().join("bin/cc_usage.py"))
-        .arg("lifecycle")
-        .env_clear()
-        .env("HOME", &seed)
-        .env("PATH", "/usr/bin:/bin")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .spawn()
-        .unwrap();
-    feed_stdin(&mut child, payload.to_string().as_bytes());
-    assert!(child.wait().unwrap().success());
+    let source =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/oracle-src/usage-seed/cc_usage.py");
+    let roots = [("<HOME>", seed.as_path()), ("<SOURCE>", source.as_path())];
+    let at_ms = payload["at_ms"].as_i64().unwrap();
+    let mut input = payload.clone();
+    input["at_ms"] = serde_json::json!("<SEED_MS>");
+    let before = comandos_oracle::snapshot_tree(&seed, &roots).unwrap();
+    let bytes = comandos_oracle::oracle_at(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "runtime-hook-usage-seed",
+        &serde_json::json!({"provenance":include_str!("oracle-src/usage-seed/PROVENANCE.json"),"payload":input,"before":before}),
+        || {
+            let mut child = Command::new(
+                std::env::var("COMANDOS_RUNTIME_ORACLE_PYTHON")
+                    .unwrap_or_else(|_| "python3".into()),
+            )
+            .arg(&source)
+            .arg("lifecycle")
+            .env_clear()
+            .env("HOME", &seed)
+            .env("PATH", "/usr/bin:/bin")
+            .env("PYTHONDONTWRITEBYTECODE", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+            feed_stdin(&mut child, payload.to_string().as_bytes());
+            if !child.wait().map_err(|e| e.to_string())?.success() {
+                return Err("original usage lifecycle failed".into());
+            }
+            let mut tree = comandos_oracle::snapshot_tree(&seed, &roots)?;
+            seed_clock(&mut tree, at_ms, false);
+            serde_json::to_vec(&tree).map_err(|e| e.to_string())
+        },
+    );
+    if !matches!(
+        std::env::var("COMANDOS_ORACLE").as_deref(),
+        Ok("record" | "check")
+    ) {
+        let mut tree = serde_json::from_slice(&bytes).unwrap();
+        seed_clock(&mut tree, at_ms, true);
+        comandos_oracle::restore_tree(&seed, &tree, &roots).unwrap();
+    }
     seed.join(".claude/hooks/comandos-usage.sqlite")
+}
+
+/// The original seed has one interaction. Normalize only its two fixture-clock
+/// columns; replay restores their live anchor, retaining the original age contract.
+fn seed_clock(tree: &mut serde_json::Value, at_ms: i64, restore: bool) {
+    let rows = tree[".claude/hooks/comandos-usage.sqlite"]["db"]["tables"]["usage_interactions"]
+        .as_array_mut()
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    for (index, token, value) in [
+        (7, "<SEED_MS>", at_ms),
+        (15, "<SEED_SECONDS>", at_ms / 1000),
+    ] {
+        let cell = &mut rows[0][index];
+        assert_eq!(cell[0], "integer");
+        if restore {
+            assert_eq!(cell[1], token);
+            cell[1] = serde_json::json!(value);
+        } else {
+            assert_eq!(cell[1], value);
+            cell[1] = serde_json::json!(token);
+        }
+    }
 }
 
 /// La duración de una herramienta (fin − inicio) depende de cuándo corrió cada
@@ -130,6 +238,19 @@ fn claude_usage_matches_cc_usage_tool() {
     let _ = fs::remove_dir_all(&dir);
     let fake = fakebin(&dir);
     let seed = seed_usage(&dir);
+    let seed_at: i64 = rusqlite::Connection::open(&seed)
+        .unwrap()
+        .query_row("select started_at_ms from usage_interactions", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    let seed_dump = dump_db(
+        &seed,
+        Window {
+            start_ms: seed_at,
+            end_ms: now_ms(),
+        },
+    );
     let fx: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -174,7 +295,7 @@ fn claude_usage_matches_cc_usage_tool() {
         ),
     ];
     for (name, env) in scenarios {
-        let start_ms = now_ms();
+        let start_ms = seed_at;
         let homes: Vec<PathBuf> = ["bash", "rust"]
             .iter()
             .map(|s| dir.join(format!("{name}-{s}")))
@@ -185,60 +306,52 @@ fn claude_usage_matches_cc_usage_tool() {
         }
         fs::create_dir_all(homes[0].join(".local/bin")).unwrap();
         std::os::unix::fs::symlink(
-            root().join("bin/cc_usage.py"),
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/oracle-src/usage-seed/cc_usage.py"),
             homes[0].join(".local/bin/cc_usage.py"),
         )
         .unwrap();
-        for event in &events {
-            let outs: Vec<_> = ["bash", "rust"]
-                .iter()
-                .zip(&homes)
-                .map(|(side, home)| {
-                    let out = run(
-                        "hooks/cc-usage-tool.sh",
-                        "claude-usage",
-                        side,
-                        home,
-                        &fake,
-                        &env,
-                        event,
-                    );
-                    // El Rust escribe en el proceso de entrega desacoplado.
-                    wait_for_delivery(home);
-                    out
-                })
-                .collect();
+        let mut expected_trace = String::new();
+        for (index, event) in events.iter().enumerate() {
+            let (expected, expected_rows, transcript) = usage_reference(
+                &homes[0],
+                &fake,
+                &env,
+                &events[..=index],
+                &seed_dump,
+                start_ms,
+            );
+            expected_trace = transcript;
+            let actual = run("", "claude-usage", "rust", &homes[1], &fake, &env, event);
+            // The actual native detached delivery and SQLite queries still run.
+            wait_for_delivery(&homes[1]);
             assert_eq!(
-                outs[0],
-                outs[1],
+                expected,
+                actual,
                 "{name}: {}",
                 String::from_utf8_lossy(event)
             );
-            let window = Window {
-                start_ms,
-                end_ms: now_ms(),
-            };
-            let dumps: Vec<Vec<String>> = homes
-                .iter()
-                .map(|h| {
-                    dump_db(&h.join(".claude/hooks/comandos-usage.sqlite"), window)
-                        .into_iter()
-                        .map(without_duration)
-                        .collect()
-                })
-                .collect();
+            let actual_rows: Vec<String> = dump_db(
+                &homes[1].join(".claude/hooks/comandos-usage.sqlite"),
+                Window {
+                    start_ms,
+                    end_ms: now_ms(),
+                },
+            )
+            .into_iter()
+            .map(without_duration)
+            .collect();
             assert_eq!(
-                dumps[0],
-                dumps[1],
+                expected_rows,
+                actual_rows,
                 "{name}: {}",
                 String::from_utf8_lossy(event)
             );
         }
-        let logs: Vec<String> = homes
-            .iter()
-            .map(|h| parity::read_lossy(&h.join("fake.log")))
-            .collect();
-        assert_eq!(logs[0], logs[1], "{name}: llamadas a tmux");
+        assert_eq!(
+            expected_trace,
+            parity::read_lossy(&homes[1].join("fake.log")),
+            "{name}: llamadas a tmux"
+        );
     }
     let _ = fs::remove_dir_all(&dir);
 }
@@ -301,6 +414,51 @@ type StatusScenario<'a> = (
 /// (stdout, código, archivos del directorio de la caché con modo y contenido).
 type StatusRun = (Vec<u8>, Option<i32>, Vec<(String, u32, Vec<u8>)>);
 
+fn status_reference(
+    home: &Path,
+    fake: &Path,
+    env: &[(&str, &str)],
+    cache: Option<(&str, u64)>,
+    clock: i64,
+) -> (Option<i32>, Vec<u8>) {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/oracle-src/hooks/cc-status.sh");
+    let times: Vec<PathBuf> = [0, 1, 5, 10, 20, 30, 30000, 28801]
+        .into_iter()
+        .map(|age| PathBuf::from((clock - age).to_string()))
+        .collect();
+    let mut roots = vec![("<HOME>", home), ("<SOURCE>", source.as_path())];
+    for (token, time) in [
+        "<CLOCK>",
+        "<AGE_1>",
+        "<AGE_5>",
+        "<AGE_10>",
+        "<AGE_20>",
+        "<AGE_30>",
+        "<AGE_30000>",
+        "<AGE_28801>",
+    ]
+    .into_iter()
+    .zip(&times)
+    {
+        roots.push((token, time));
+    }
+    let normalized_env: Vec<(&str, String)> = env
+        .iter()
+        .map(|(key, value)| {
+            (
+                *key,
+                String::from_utf8(comandos_oracle::normalize(value.as_bytes(), &roots)).unwrap(),
+            )
+        })
+        .collect();
+    let output = comandos_oracle::text_with_tree_at(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"), "runtime-shell-claude-status",
+        &serde_json::json!({"provenance":include_str!("oracle-src/hooks/STATUS_PROVENANCE.json"),"env":normalized_env,"cache":cache}),
+        home, &roots, || serde_json::to_string(&run(source.to_str().unwrap(), "claude-status", "bash", home, fake, env, b""))
+            .map_err(|e| e.to_string())).unwrap();
+    serde_json::from_str(&output).unwrap()
+}
+
 fn status_side(
     dir: &Path,
     name: &str,
@@ -308,6 +466,7 @@ fn status_side(
     states: &[(&str, String)],
     cache: Option<(&str, u64)>,
     locale: &[(&str, &str)],
+    clock: i64,
 ) -> StatusRun {
     let home = dir.join(format!("{name}-{side}"));
     let runtime = home.join("run");
@@ -335,15 +494,11 @@ fn status_side(
     let runtime_env = runtime.to_string_lossy().into_owned();
     let mut env = vec![("XDG_RUNTIME_DIR", runtime_env.as_str())];
     env.extend_from_slice(locale);
-    let (code, stdout) = run(
-        "hooks/cc-status.sh",
-        "claude-status",
-        side,
-        &home,
-        &fake,
-        &env,
-        b"",
-    );
+    let (code, stdout) = if side == "bash" {
+        status_reference(&home, &fake, &env, cache, clock)
+    } else {
+        run("", "claude-status", side, &home, &fake, &env, b"")
+    };
     let mut files: Vec<(String, u32, Vec<u8>)> = fs::read_dir(&runtime)
         .unwrap()
         .map(|e| {
@@ -470,8 +625,8 @@ fn claude_status_matches_cc_status() {
         ("colacion_lc_collate", &collation, None, lc_collate),
     ];
     for (name, states, cache, locale) in scenarios {
-        let bash = status_side(&dir, name, "bash", states, cache, locale);
-        let rust = status_side(&dir, name, "rust", states, cache, locale);
+        let bash = status_side(&dir, name, "bash", states, cache, locale, now);
+        let rust = status_side(&dir, name, "rust", states, cache, locale, now);
         assert_eq!(
             String::from_utf8_lossy(&bash.0),
             String::from_utf8_lossy(&rust.0),

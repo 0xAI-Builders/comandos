@@ -1,0 +1,9 @@
+{
+  "input": {
+    "source_commit": "2674f36",
+    "source": "bin/cc_usage.py",
+    "script": "\nimport json, os, sys, datetime\nrepo = sys.argv[1]\nsys.path[:0] = [os.path.join(repo, \"bin\"), os.path.join(repo, \"lib\")]\nimport cc_usage\ncases = json.loads(sys.argv[2])\ndef guard(fn):\n    try:\n        return fn()\n    except OverflowError:\n        return \"ERR:Overflow\"\n    except (ValueError, TypeError):\n        return \"ERR:Raises\"\nprint(json.dumps([list(cc_usage.wilson_interval(c[0], c[1])) for c in cases]))",
+    "input": "[[0, 0], [3, 10], [10, 10], [0, 5], [7, 13], [1, 1], [12, 20], [999, 1000]]"
+  },
+  "output_b64": "W1swLjAsIDEuMF0sIFswLjEwNzc4OTI4NzQ4NjIxMTgzLCAwLjYwMzIyNjc4MDAyMDQzNDddLCBbMC43MjI0NTk4MzEyMzMzODM0LCAxLjBdLCBbMC4wLCAwLjQzNDQ5MTQ5NDc1MjA4MTA0XSwgWzAuMjkxNDM0MzI0MzE4MzIwNSwgMC43Njc5NDI0NTY5ODUxMTg2XSwgWzAuMjA2NTQzMjkxNDczODkyOTQsIDEuMF0sIFswLjM4NjU3Nzk0MjMxNTIwNjEsIDAuNzgxMTk2MDMyNTg1ODA3NF0sIFswLjk5NDM1NzI5NzAzOTgzOTgsIDAuOTk5ODIzNDU4MTcwOTQyOV1dCg=="
+}

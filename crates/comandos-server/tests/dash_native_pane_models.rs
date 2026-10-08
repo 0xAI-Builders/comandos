@@ -52,96 +52,126 @@ fn tmux_binary() -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
-fn python_available() -> bool {
-    let ok = Command::new("python3")
-        .args(["-c", "import sys"])
-        .output()
-        .is_ok_and(|o| o.status.success());
-    if !ok {
-        eprintln!("python3 no está instalado: se salta la comparación con el oráculo");
-    }
-    ok
-}
-
 /// `python3 -c <guion> <repo> <args…>` con el HOME del `TestHome`: los
 /// ejecutables con efectos fuera del HOME (incluido `tmux`) son enlaces a
 /// `true`, sin las claves de D7 y con `LANG=C.UTF-8`.
 fn run_python(script: &str, args: &[&OsStr], home: &TestHome) -> String {
-    let fakebin = home.root.join("fakebin");
-    let runtime = home.root.join("xdg-runtime");
-    std::fs::create_dir_all(&fakebin).unwrap();
-    std::fs::create_dir_all(&runtime).unwrap();
-    for name in [
-        "systemctl",
-        "wmctrl",
-        "cc-webterm",
-        "cc-webterm-attach",
-        "systemd-run",
-        "tailscale",
-        "notify-send",
-        "pw-play",
-        "paplay",
-        "spd-say",
-        "piper",
-        "xdg-open",
-        "tmux",
-        "curl",
-    ] {
-        let link = fakebin.join(name);
-        if !link.exists() {
-            std::os::unix::fs::symlink("/bin/true", &link).unwrap();
-        }
-    }
-    let path = format!(
-        "{}:{}",
-        fakebin.display(),
-        std::env::var("PATH").unwrap_or_default()
+    run_python_with_roots(script, args, home, &[])
+}
+
+fn run_python_with_roots(
+    script: &str,
+    args: &[&OsStr],
+    home: &TestHome,
+    volatile: &[(String, PathBuf)],
+) -> String {
+    let reference = home.root.join(".oracle/reference");
+    let mut roots = vec![
+        ("<HOME>", home.root.as_path()),
+        ("<REFERENCE>", reference.as_path()),
+    ];
+    roots.extend(
+        volatile
+            .iter()
+            .map(|(token, path)| (token.as_str(), path.as_path())),
     );
-    let mut command = Command::new("python3");
-    for key in D7_KEYS {
-        command.env_remove(key);
-    }
-    let out = command
-        .arg("-c")
-        .arg(script)
-        .arg(repo())
-        .args(args)
-        .current_dir(repo())
-        .env("HOME", &home.root)
-        .env("PATH", &path)
-        .env("XDG_RUNTIME_DIR", &runtime)
-        .env("XDG_STATE_HOME", home.root.join(".local/state"))
-        .env("TMUX_TMPDIR", home.tmux_dir())
-        .env("PYTHONDONTWRITEBYTECODE", "1")
-        .env("LANG", "C.UTF-8")
-        .env_remove("LC_ALL")
-        .env_remove("LC_CTYPE")
-        .env_remove("TMUX")
-        .env_remove("CLAUDE_CONFIG_DIR")
-        .env_remove("CODEX_HOME")
-        .env_remove("GROK_HOME")
-        .env_remove("COMANDOS_STATE_DB")
-        .env_remove("COMANDOS_USAGE_DB")
-        .env_remove("DBUS_SESSION_BUS_ADDRESS")
-        .env_remove("DISPLAY")
-        .env_remove("WAYLAND_DISPLAY")
-        .env_remove("http_proxy")
-        .env_remove("https_proxy")
-        .output()
-        .unwrap();
-    assert!(
-        out.status.success(),
-        "oráculo: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    String::from_utf8(out.stdout).unwrap()
+    let args_key: Vec<String> = args
+        .iter()
+        .map(|arg| {
+            String::from_utf8(comandos_oracle::normalize(arg.as_encoded_bytes(), &roots)).unwrap()
+        })
+        .collect();
+    comandos_oracle::text_with_tree_at(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "server-pane-models",
+        &json!({"source_commit":support::frozen::SOURCE_COMMIT,"script":script,"args":args_key}),
+        &home.root,
+        &roots,
+        || {
+            let fakebin = home.root.join("fakebin");
+            let runtime = home.root.join("xdg-runtime");
+            std::fs::create_dir_all(&fakebin).unwrap();
+            std::fs::create_dir_all(&runtime).unwrap();
+            for name in [
+                "systemctl",
+                "wmctrl",
+                "cc-webterm",
+                "cc-webterm-attach",
+                "systemd-run",
+                "tailscale",
+                "notify-send",
+                "pw-play",
+                "paplay",
+                "spd-say",
+                "piper",
+                "xdg-open",
+                "tmux",
+                "curl",
+            ] {
+                let link = fakebin.join(name);
+                if !link.exists() {
+                    std::os::unix::fs::symlink("/bin/true", &link).unwrap();
+                }
+            }
+            let path = format!(
+                "{}:{}",
+                fakebin.display(),
+                std::env::var("PATH").unwrap_or_default()
+            );
+            let mut command = Command::new(
+                std::env::var("COMANDOS_SERVER_ORACLE_PYTHON").unwrap_or_else(|_| "python3".into()),
+            );
+            for key in D7_KEYS {
+                command.env_remove(key);
+            }
+            let out = command
+                .arg("-c")
+                .arg(script)
+                .arg(support::frozen::reference(&home.root)?)
+                .args(args)
+                .current_dir(&home.root)
+                .env("HOME", &home.root)
+                .env("PATH", &path)
+                .env("XDG_RUNTIME_DIR", &runtime)
+                .env("XDG_STATE_HOME", home.root.join(".local/state"))
+                .env("TMUX_TMPDIR", home.tmux_dir())
+                .env("PYTHONDONTWRITEBYTECODE", "1")
+                .env("LANG", "C.UTF-8")
+                .env_remove("LC_ALL")
+                .env_remove("LC_CTYPE")
+                .env_remove("TMUX")
+                .env_remove("CLAUDE_CONFIG_DIR")
+                .env_remove("CODEX_HOME")
+                .env_remove("GROK_HOME")
+                .env_remove("COMANDOS_STATE_DB")
+                .env_remove("COMANDOS_USAGE_DB")
+                .env_remove("DBUS_SESSION_BUS_ADDRESS")
+                .env_remove("DISPLAY")
+                .env_remove("WAYLAND_DISPLAY")
+                .env_remove("http_proxy")
+                .env_remove("https_proxy")
+                .output()
+                .map_err(|e| e.to_string())?;
+            if !out.status.success() {
+                return Err(String::from_utf8_lossy(&out.stderr).into_owned());
+            }
+            String::from_utf8(out.stdout).map_err(|e| e.to_string())
+        },
+    )
+    .unwrap()
 }
 
 /// Carga `bin/cc-dash` como módulo. `time.time` fijo y `urlopen` sustituido
 /// ANTES de cualquier llamada: el oráculo nunca habla con el cc-notifyd real.
 const PRELUDE: &str = r#"
 import importlib.machinery, importlib.util, json, os, subprocess, sys, threading, time
-import urllib.request
+import urllib.request, itertools, secrets, uuid
+# Fixed oracle-only clock/entropy boundaries; native PID/event assertions stay live.
+time.time = lambda: 1791115200.0
+_secrets = itertools.count(1)
+_uuids = itertools.count(1)
+secrets.token_hex = lambda n=32: format(next(_secrets), "0%dx" % (n * 2))
+uuid.uuid4 = lambda: uuid.UUID(int=next(_uuids), version=4)
 SENT = []
 def _fake_urlopen(req, timeout=None):
     SENT.append({"url": req.full_url, "data": req.data.decode(),
@@ -333,8 +363,8 @@ async fn writer_sets_and_clears_pane_options_and_file() {
 
 #[tokio::test]
 async fn writer_matches_python_reconciliation() {
-    if !tmux_available() || !python_available() {
-        eprintln!("sin tmux o python3: se salta");
+    if !tmux_available() {
+        eprintln!("sin tmux: se salta");
         return;
     }
     let Some(tmux_bin) = tmux_binary() else {
@@ -577,9 +607,6 @@ fn rust_tier_calls(es: bool) -> Value {
 
 #[test]
 fn tier_alerts_match_python_oracle() {
-    if !python_available() {
-        return;
-    }
     for (lang, es) in [(Some("es"), true), (Some("en"), false), (None, false)] {
         let py = TestHome::new("tier-oracle");
         if let Some(lang) = lang {
@@ -724,9 +751,6 @@ fn rust_events(home: &TestHome) -> (Vec<Value>, i64) {
 
 #[tokio::test]
 async fn send_alerts_match_python_notice_and_popup() {
-    if !python_available() {
-        return;
-    }
     // Agente largo con acentos: el excerpt se corta a 500 puntos de código y
     // el popup lleva el texto entero (`body` y `full`).
     let long = format!("agente-{}", "é".repeat(600));
@@ -1161,9 +1185,6 @@ print(json.dumps(out))
 
 #[tokio::test]
 async fn usage_state_borders_match_python_twin() {
-    if !python_available() {
-        return;
-    }
     let py = TestHome::new("borders-py");
     let rs = TestHome::new("borders-rs");
     // Cuentas: una de Claude con su carpeta, Codex en la principal (sin
@@ -1181,6 +1202,24 @@ async fn usage_state_borders_match_python_twin() {
     let gk_dir = PathBuf::from(format!("{}/", shared.join("gk").display()));
     let gk = Sleeper::spawn(&[("GROK_HOME", &gk_dir)]);
     let steps = e2e_steps(work.pid(), main.pid(), gk.pid());
+    let mut pid_roots = Vec::new();
+    for (label, pid) in [
+        ("WORK", work.pid()),
+        ("MAIN", main.pid()),
+        ("GROK", gk.pid()),
+    ] {
+        for field in ["pid", "agent_pid"] {
+            for (spacing_name, spacing) in [("compact", ""), ("spaced", " ")] {
+                for (ending_name, ending) in [("comma", ","), ("end", "}")] {
+                    pid_roots.push((
+                        format!("<PID_{label}_{field}_{spacing_name}_{ending_name}>"),
+                        PathBuf::from(format!("\"{field}\":{spacing}{pid}{ending}")),
+                    ));
+                }
+            }
+        }
+    }
+
     for home in [&py, &rs] {
         home.write("cc-notify.conf", "CC_LANG=es\n");
     }
@@ -1189,7 +1228,7 @@ async fn usage_state_borders_match_python_twin() {
     let py_tiers = write_tiers(&py.root, &custom_tiers());
     let steps_file = py.root.join("steps.json");
     std::fs::write(&steps_file, steps.to_string()).unwrap();
-    let expected: Value = serde_json::from_str(&run_python(
+    let expected: Value = serde_json::from_str(&run_python_with_roots(
         &format!("{PRELUDE}{E2E_ORACLE}"),
         &[
             steps_file.as_os_str(),
@@ -1197,6 +1236,7 @@ async fn usage_state_borders_match_python_twin() {
             py_tiers.as_os_str(),
         ],
         &py,
+        &pid_roots,
     ))
     .unwrap();
 
@@ -1307,9 +1347,6 @@ print(json.dumps(out))
 
 #[test]
 fn live_rows_match_python() {
-    if !python_available() {
-        return;
-    }
     let live = json!([
         live_row("s", "%1", "codex"),
         live_row("s", "%2", "claude"),
@@ -1396,9 +1433,6 @@ print(json.dumps(out))
 
 #[tokio::test]
 async fn pane_values_raise_like_python() {
-    if !python_available() {
-        return;
-    }
     let p = |extra: Value| {
         let mut row = json!({"tmux_pane": "%1", "tmux_session": "s", "agent": "codex",
                              "model": "gpt-5.5"});

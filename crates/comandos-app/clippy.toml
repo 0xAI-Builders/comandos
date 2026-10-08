@@ -1,0 +1,13 @@
+# E/S de archivos solo por guard::WriteGuard; procesos solo por proc.rs (F11).
+disallowed-methods = [
+  { path = "std::fs::write", reason = "escribir solo con guard::WriteGuard" },
+  { path = "std::fs::rename", reason = "escribir solo con guard::WriteGuard" },
+  { path = "std::fs::remove_file", reason = "borrar solo con guard::WriteGuard" },
+  { path = "std::fs::remove_dir", reason = "borrar solo con guard::WriteGuard" },
+  { path = "std::fs::remove_dir_all", reason = "borrar solo con guard::WriteGuard" },
+  { path = "std::fs::create_dir", reason = "crear solo con guard::WriteGuard" },
+  { path = "std::fs::create_dir_all", reason = "crear solo con guard::WriteGuard" },
+  { path = "std::fs::File::create", reason = "escribir solo con guard::WriteGuard" },
+  { path = "std::fs::OpenOptions::open", reason = "abrir para escribir solo con guard::WriteGuard" },
+  { path = "std::process::Command::new", reason = "procesos solo desde proc.rs" },
+]

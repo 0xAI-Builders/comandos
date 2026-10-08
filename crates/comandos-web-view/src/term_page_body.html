@@ -1,0 +1,67 @@
+
+<div id="term-shell">
+  <div id="term"></div>
+  <div id="pane-chrome"></div>
+  <div id="term-toolbar" role="toolbar" aria-label="Controles de terminal" hidden>
+    <button type="button" data-key="escape" class="key-hot">Esc</button>
+    <button type="button" data-key="ctrlc" class="key-hot" title="Interrumpir (Ctrl+C)" aria-label="Enviar Ctrl+C">Ctrl+C</button>
+    <button type="button" data-key="yes" class="key-yes" title="Sí: confirma la opción resaltada del agente (Enter)" aria-label="Responder sí (Enter)">Sí</button>
+    <button type="button" data-key="no" class="key-no" title="No: rechaza la pregunta del agente (Esc)" aria-label="Responder no (Esc)">No</button>
+    <button type="button" data-action="mode" aria-pressed="false">Seleccionar</button>
+    <button type="button" data-action="panes">Paneles</button>
+    <button type="button" data-key="backspace" title="Borrar un carácter en la terminal (Backspace)" aria-label="Borrar un carácter en la terminal">⌫</button>
+    <button type="button" data-action="history" aria-pressed="false">Historial</button>
+    <button type="button" data-action="copy">Copiar</button>
+    <button type="button" data-action="paste">Pegar</button>
+    <button type="button" data-action="keyboard" aria-pressed="false" title="Alternar borrador móvil y teclado directo">Teclado directo</button>
+    <button type="button" data-action="ctrl" aria-pressed="false">Ctrl</button>
+    <button type="button" data-key="tab">Tab</button>
+    <button type="button" data-key="left" aria-label="Izquierda" title="Izquierda"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+    <button type="button" data-key="up" aria-label="Arriba" title="Arriba"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></svg></button>
+    <button type="button" data-key="down" aria-label="Abajo" title="Abajo"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+    <button type="button" data-key="right" aria-label="Derecha" title="Derecha"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+
+  </div>
+  <form id="mobile-compose" hidden aria-label="Escribir en la terminal">
+    <textarea id="mobile-draft" rows="2" aria-label="Borrador para la terminal" placeholder="Escribe aquí…" autocapitalize="off" spellcheck="false"></textarea>
+    <button type="button" id="draft-insert" title="Insertar texto sin Enter">Insertar</button>
+    <button type="submit" id="draft-send" title="Enviar texto y Enter">Enviar ↵</button>
+  </form>
+  <div id="selection-toolbar" role="toolbar" aria-label="Seleccionar y copiar texto" hidden>
+    <div class="selection-row">
+      <button type="button" id="selection-close">← Volver a la terminal</button>
+      <button type="button" id="selection-copy" class="primary">Copiar selección</button>
+      <button type="button" id="selection-all">Copiar todo</button>
+      <button type="button" data-selection-line="up" aria-label="Agregar la línea de arriba a la selección">+ Línea arriba</button>
+      <button type="button" data-selection-line="down" aria-label="Agregar la línea de abajo a la selección">+ Línea abajo</button>
+    </div>
+  </div>
+  <section id="terminal-history" hidden aria-label="Historial seleccionable">
+    <div id="history-controls">
+      <select id="history-pane" aria-label="Panel del historial"></select>
+      <button type="button" id="history-refresh">Actualizar</button>
+      <button type="button" id="history-bottom">Final</button>
+    </div>
+    <p id="history-status" role="status"></p>
+    <textarea id="history-text" readonly wrap="soft" inputmode="none" spellcheck="false" aria-label="Texto del panel. Toca una línea para seleccionarla y otra para extender, o ajusta Inicio y Fin con las flechas de abajo."></textarea>
+  </section>
+</div>
+<div id="err"></div>
+<div id="dbg">iniciando…</div>
+<dialog id="paste-dialog">
+  <form method="dialog">
+    <textarea id="paste-text" aria-label="Texto para pegar"></textarea>
+    <div><button value="cancel">Cancelar</button><button id="paste-submit" value="default">Pegar</button></div>
+  </form>
+</dialog>
+<dialog id="pane-dialog" aria-labelledby="pane-dialog-title">
+  <h2 id="pane-dialog-title">Paneles de esta sesión</h2>
+  <p id="pane-status" role="status"></p>
+  <div id="pane-list"></div>
+  <div id="pane-confirm" hidden>
+    <p id="pane-confirm-label"></p>
+    <p>Se cerrará el proceso de este panel.</p>
+    <footer><button type="button" id="pane-cancel">Cancelar</button><button type="button" id="pane-close-confirm" class="danger">Cerrar split</button></footer>
+  </div>
+  <footer><button type="button" id="pane-dismiss">Volver</button></footer>
+</dialog>

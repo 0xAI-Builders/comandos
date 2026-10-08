@@ -42,6 +42,12 @@ pub fn response_dumps(value: &Value) -> Result<String, String> {
     encode(value, true, false, false, Policy::Workspace)
 }
 
+/// Python JSONL transport: insertion order, ASCII escapes, compact separators.
+pub fn response_dumps_compact(value: &Value) -> Result<String, String> {
+    validate_workspace_depth(value, 0)?;
+    encode(value, true, true, false, Policy::Workspace)
+}
+
 /// Una entrada `"clave": valor` de un objeto de respuesta, como la escribe
 /// `response_dumps` dentro de un objeto (el valor está un nivel por dentro).
 pub fn response_dumps_entry(key: &str, value: &Value) -> Result<String, String> {
@@ -92,6 +98,60 @@ pub fn response_dumps_entries<'a>(
 pub fn response_dumps_unicode(value: &Value) -> Result<String, String> {
     validate_workspace_depth(value, 0)?;
     encode(value, false, false, false, Policy::Workspace)
+}
+
+/// `json.dumps(value, indent=indent, ensure_ascii=…)` del Python: orden de
+/// inserción, `","` al final de cada línea, `": "` entre clave y valor y los
+/// contenedores vacíos como `[]`/`{}`. Mismos números que `response_dumps`.
+pub fn indent_dumps(value: &Value, indent: usize, ensure_ascii: bool) -> Result<String, String> {
+    validate_workspace_depth(value, 0)?;
+    let mut out = String::new();
+    indent_into(value, indent, ensure_ascii, 0, &mut out)?;
+    Ok(out)
+}
+
+/// Un nivel de `indent_dumps` (la profundidad ya está acotada a 1000).
+fn indent_into(
+    value: &Value,
+    indent: usize,
+    ascii: bool,
+    level: usize,
+    out: &mut String,
+) -> Result<(), String> {
+    let pad = |out: &mut String, level: usize| {
+        out.push('\n');
+        out.extend(std::iter::repeat_n(' ', indent * level));
+    };
+    match value {
+        Value::Array(values) if !values.is_empty() => {
+            out.push('[');
+            for (index, item) in values.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                pad(out, level + 1);
+                indent_into(item, indent, ascii, level + 1, out)?;
+            }
+            pad(out, level);
+            out.push(']');
+        }
+        Value::Object(values) if !values.is_empty() => {
+            out.push('{');
+            for (index, (key, item)) in values.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                pad(out, level + 1);
+                quoted(key, ascii, out);
+                out.push_str(": ");
+                indent_into(item, indent, ascii, level + 1, out)?;
+            }
+            pad(out, level);
+            out.push('}');
+        }
+        scalar => encode_into(scalar, ascii, false, false, Policy::Workspace, out)?,
+    }
+    Ok(())
 }
 
 /// `str(float)`/`repr(float)` de Python, con `inf`, `-inf` y `nan` para los no finitos.

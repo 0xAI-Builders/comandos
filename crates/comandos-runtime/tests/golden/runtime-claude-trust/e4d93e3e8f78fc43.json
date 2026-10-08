@@ -1,0 +1,11 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "aa0256eb8e00d1a6e2be612a4e82bac55b1d6f76d5b3031cf4e6d8880dc205d6",
+      "script": "import sys, json; sys.path.insert(0, \"<ORACLE_SOURCE>\"); import claude_trust\ntry:\n    print(json.dumps(claude_trust.inherit_cwd_trust(\"<HOME>/codebase/s\", source_config_dir=\"<HOME>/.claude-accounts/otra\", dest_config_dir=\"<HOME>/.claude-accounts/rel\", home=\"<HOME>\")))\nexcept Exception as e:\n    print('error')"
+    },
+    "before_sha256": "947ead8a3a1f5ab766f45f9e323b4544d9e48e90a475d04c1ba8edbdcbfd7898"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ0cnVlIiwidHJlZSI6eyIuY2xhdWRlLWFjY291bnRzIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCIuY2xhdWRlLWFjY291bnRzL290cmEiOnsia2luZCI6ImRpcmVjdG9yeSIsIm1vZGUiOjUwOX0sIi5jbGF1ZGUtYWNjb3VudHMvb3RyYS8uY2xhdWRlLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXlKd2NtOXFaV04wY3lJNklIc2lQRWhQVFVVK0wyTnZaR1ZpWVhObEwzTWlPaUI3SW1oaGMxUnlkWE4wUkdsaGJHOW5RV05qWlhCMFpXUWlPaUIwY25WbGZYMTkifSwiLmNsYXVkZS1hY2NvdW50cy9yZWwiOnsia2luZCI6ImRpcmVjdG9yeSIsIm1vZGUiOjUwOX0sIi5jbGF1ZGUtYWNjb3VudHMvcmVsLy5jbGF1ZGUuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJld29nSUNKd2NtOXFaV04wY3lJNklIc0tJQ0FnSUNJOFNFOU5SVDR2WTI5a1pXSmhjMlV2Y3lJNklIc0tJQ0FnSUNBZ0ltaGhjMVJ5ZFhOMFJHbGhiRzluUVdOalpYQjBaV1FpT2lCMGNuVmxDaUFnSUNCOUNpQWdmUXA5Q2c9PSJ9LCIuY2xhdWRlLWFjY291bnRzL3JlbC8uY2xhdWRlLmpzb24ubG9jayI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiIifSwiLmNsYXVkZS5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6IlcxMD0ifSwiLmNsYXVkZS5qc29uLmxvY2siOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiIn0sImNvZGViYXNlIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCJjb2RlYmFzZS9zIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9fX0="
+}

@@ -1,0 +1,13 @@
+{
+  "input": {
+    "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+    "python": "CPython 3.10.12",
+    "request": "GET /notices HTTP/1.1\r\nHost: test.ts.net\r\nX-Forwarded-For: 100.64.0.9\r\nX-Comandos-Token: dash-harness-test-token\r\nConnection: close\r\n\r\n",
+    "fixture": {
+      "app_tabs": {},
+      "token": "dash-harness-test-token"
+    }
+  },
+  "output_b64": "eyJzdGF0dXMiOjIwMCwiY29udGVudF90eXBlIjoiYXBwbGljYXRpb24vanNvbiIsImNvbnRlbnRfbGVuZ3RoIjoiMjk5IiwiYm9keSI6IntcIm5vdGljZXNcIjogW10sIFwibmV4dEFmdGVyXCI6IDAsIFwicGVuZGluZ1wiOiBbXSwgXCJwcmVmc1wiOiB7XCJtb2Rlc1wiOiB7XCJhdHRlbnRpb25cIjogXCJzb3VuZFwiLCBcImVycm9yXCI6IFwic291bmRcIiwgXCJmb2N1c1wiOiBcInNvdW5kXCIsIFwiZG9uZVwiOiBcInZpc3VhbFwiLCBcIm5ld3NcIjogXCJ2aXN1YWxcIiwgXCJ1c2FnZVwiOiBcInZpc3VhbFwiLCBcImluZm9cIjogXCJ2aXN1YWxcIn0sIFwidm9sdW1lXCI6IDAuNiwgXCJtdXRlZFwiOiBmYWxzZSwgXCJmbG9hdE1zXCI6IDYwMDAsIFwiYnVyc3RNc1wiOiAxMDAwMH0sIFwiZm9jdXNBY3RpdmVcIjogZmFsc2UsIFwiYmFkZ2VcIjogMH0ifQ=="
+}

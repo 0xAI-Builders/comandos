@@ -1,0 +1,10 @@
+{
+  "input": {
+    "args": [
+      "serve",
+      "pathenv"
+    ],
+    "catalog": "{\"version\":1,\"servers\":{\n \"eco\":{\"enabled\":true,\"command\":\"~/bin/env_dump\",\"args\":[\"a\",\"$HOME\",\"~/x\"],\n  \"env\":{\"COMANDOS_A\":\"${HOME}/m\",\"COMANDOS_B\":\"$HOME/x/$COMANDOS_UNSET_ZZ/${COMANDOS_UNSET_ZZ}\",\n   \"COMANDOS_N\":42,\"COMANDOS_T\":true,\"COMANDOS_FALSE\":false,\"COMANDOS_NULL\":null,\n   \"COMANDOS_F\":1.5,\"COMANDOS_E\":1e10,\"COMANDOS_E2\":1e-5,\"COMANDOS_E3\":1e16,\"COMANDOS_E4\":0.1,\n   \"COMANDOS_L\":[\"a\",1,null,true,\"it's\",1.5],\"COMANDOS_D\":{\"k\":[1.5,{\"z\":false}],\"q\":\"x\\ny\"},\n   \"COMANDOS_INHERITED\":\"pisado-por-el-catalogo-no\"},\n  \"cwd\":\"~/work\"},\n \"plain\":{\"enabled\":true,\"command\":\"env_dump_in_path\"},\n \"pathenv\":{\"enabled\":true,\"command\":\"dump_hidden\",\"env\":{\"PATH\":\"${HOME}/hidden:/usr/bin:/bin\"}},\n \"emptycwd\":{\"enabled\":true,\"command\":\"env_dump_in_path\",\"cwd\":\"\"},\n \"badcwd\":{\"enabled\":true,\"command\":\"env_dump_in_path\",\"cwd\":\"/nonexistent-dir-zz\"},\n \"missing\":{\"enabled\":true,\"command\":\"/nonexistent/xyz\",\"args\":[\"q\"]},\n \"filtered\":{\"enabled\":true,\"command\":\"env_dump_in_path\",\"enabled_tools\":[\"a\"]},\n \"dstring\":{\"enabled\":true,\"command\":\"env_dump_in_path\",\"disabled_tools\":\"x\"},\n \"dempty\":{\"enabled\":true,\"command\":\"env_dump_in_path\",\"disabled_tools\":[]},\n \"emptycmd\":{\"enabled\":true,\"command\":\"\"},\n \"off\":{\"enabled\":false,\"command\":\"env_dump_in_path\"},\n \"off0\":{\"enabled\":0,\"command\":\"env_dump_in_path\"},\n \"offnull\":{\"enabled\":null,\"command\":\"env_dump_in_path\"},\n \"offstr\":{\"enabled\":\"\",\"command\":\"env_dump_in_path\"},\n \"empty\":{}}}"
+  },
+  "output_b64": "eyJzdGF0dXMiOjAsInN0ZG91dCI6IntcImN3ZFwiOlwiL1wiLFwiYXJndlwiOltcImR1bXBfaGlkZGVuXCJdLFwiZW52XCI6e1wiQ09NQU5ET1NfSU5IRVJJVEVEXCI6XCJwYWRyZVwiLFwiSE9NRVwiOlwiPEhPTUU+XCJ9fVxucGlkPTBcbiIsInN0ZGVyciI6IiJ9"
+}

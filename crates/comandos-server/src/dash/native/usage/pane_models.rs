@@ -51,6 +51,18 @@ pub type NotifyFuture = BoxFuture<'static, ()>;
 /// un doble que solo guarda los cuerpos.
 pub trait NotifyPost: Send + Sync + 'static {
     fn post(&self, body: String) -> NotifyFuture;
+
+    /// R4: el POST con su propio plazo (`urlopen(..., timeout=n)`); `true` si
+    /// cc-notifyd respondió 2xx. Por omisión, `post` (los dobles de prueba
+    /// solo guardan el cuerpo) y `true`.
+    fn post_checked(&self, body: String, timeout: Duration) -> BoxFuture<'static, bool> {
+        let _ = timeout;
+        let sent = self.post(body);
+        Box::pin(async move {
+            sent.await;
+            true
+        })
+    }
 }
 
 /// Cliente HTTP/1 de hyper hacia cc-notifyd: `POST /notify` con
@@ -76,9 +88,20 @@ impl NotifyPost for HyperNotify {
             let _ = tokio::time::timeout(NOTIFY_PLAZO, send_notify(addr, body)).await;
         })
     }
+
+    fn post_checked(&self, body: String, timeout: Duration) -> BoxFuture<'static, bool> {
+        let addr = self.addr;
+        Box::pin(async move {
+            tokio::time::timeout(timeout, send_notify(addr, body))
+                .await
+                .ok()
+                .flatten()
+                .is_some_and(|status| status.is_success())
+        })
+    }
 }
 
-async fn send_notify(addr: SocketAddr, body: String) -> Option<()> {
+async fn send_notify(addr: SocketAddr, body: String) -> Option<hyper::StatusCode> {
     use bytes::Bytes;
     use http_body_util::Full;
     use hyper_util::rt::TokioIo;
@@ -93,13 +116,13 @@ async fn send_notify(addr: SocketAddr, body: String) -> Option<()> {
         .ok()?;
     // La conexión se mueve aquí mismo y muere con este futuro: nada queda
     // vivo después del plazo.
-    tokio::pin!(conn);
+    let response = sender.send_request(request);
+    tokio::pin!(conn, response);
     tokio::select! {
-        response = sender.send_request(request) => {
-            drop(response);
-            Some(())
-        }
-        _ = &mut conn => None,
+        result = &mut response => result.ok().map(|r| r.status()),
+        // Connection: close puede terminar el driver en la misma vuelta que
+        // entrega la respuesta. Recogerla; el timeout exterior sigue vigente.
+        _ = &mut conn => response.await.ok().map(|r| r.status()),
     }
 }
 
@@ -320,7 +343,15 @@ pub async fn send_alerts(native: &Native, alerts: Vec<TierAlert>) {
     let desktop = get("DESKTOP_NOTIFY").unwrap_or("1") == "1";
     for alert in alerts {
         let (title, message) = alert.texts(es);
-        notice_emit(native, &title, &message, &alert.session).await;
+        notice_emit(
+            native,
+            "usage_alert",
+            &title,
+            &message,
+            Some(&alert.session),
+            None,
+        )
+        .await;
         if !desktop {
             continue;
         }
@@ -344,29 +375,36 @@ fn take_chars(text: &str, n: usize) -> String {
     text.chars().take(n).collect()
 }
 
-/// `notice_emit("usage_alert", title, excerpt, project)`: un evento en el
-/// registro N1 de app-state por el worker de la base, en `BEGIN IMMEDIATE`.
-/// Un error se escribe en stderr y no se propaga.
-async fn notice_emit(native: &Native, title: &str, excerpt: &str, project: &str) {
+/// `notice_emit(kind, title, excerpt, project, source_event_id)` (cc-dash:422):
+/// un evento en el registro N1 de app-state por el worker de la base, en
+/// `BEGIN IMMEDIATE`. Un error se escribe en stderr y no se propaga.
+pub async fn notice_emit(
+    native: &Native,
+    kind: &str,
+    title: &str,
+    excerpt: &str,
+    project: Option<&str>,
+    source_event_id: Option<&str>,
+) {
     let now = (native.options().clock)();
     let mut random = [0u8; 4];
     if let Err(error) = getrandom::fill(&mut random) {
-        eprintln!("notice_emit usage_alert: {error}");
+        eprintln!("notice_emit {kind}: {error}");
         return;
     }
     let hex: String = random.iter().map(|b| format!("{b:02x}")).collect();
-    let event_id = format!("usage_alert:{now}:{hex}");
+    let event_id = format!("{kind}:{now}:{hex}");
     let receipt_id = match comandos_runtime::fresh_id("receipt") {
         Ok(id) => id,
         Err(error) => {
-            eprintln!("notice_emit usage_alert: {error}");
+            eprintln!("notice_emit {kind}: {error}");
             return;
         }
     };
     let event = json!({
         "eventId": event_id,
         "source": "comandos",
-        "kind": "usage_alert",
+        "kind": kind,
         "evidence": "confirmed",
         "correlation": "unknown",
         "occurredAtMs": now,
@@ -374,7 +412,7 @@ async fn notice_emit(native: &Native, title: &str, excerpt: &str, project: &str)
         "projectKey": project,
         "title": take_chars(title, 200),
         "excerpt": take_chars(excerpt, 500),
-        "sourceEventId": Value::Null,
+        "sourceEventId": source_event_id,
     });
     let now_ms = u64::try_from(now).unwrap_or(0);
     let done = native
@@ -391,9 +429,9 @@ async fn notice_emit(native: &Native, title: &str, excerpt: &str, project: &str)
         .await;
     match done {
         Ok(Ok(())) => {}
-        Ok(Err(error)) => eprintln!("notice_emit usage_alert: {error}"),
-        Err(Fault::Decline) => eprintln!("notice_emit usage_alert: base de estado no disponible"),
-        Err(Fault::Error(_)) => eprintln!("notice_emit usage_alert: fallo del worker de la base"),
+        Ok(Err(error)) => eprintln!("notice_emit {kind}: {error}"),
+        Err(Fault::Decline) => eprintln!("notice_emit {kind}: base de estado no disponible"),
+        Err(Fault::Error(_)) => eprintln!("notice_emit {kind}: fallo del worker de la base"),
     }
 }
 
@@ -801,7 +839,7 @@ pub async fn pane_values(
     let rows = rows.to_vec();
     let accounts = native.pane_accounts.clone();
     let computed = tokio::task::spawn_blocking(move || {
-        let motor = gather::motor_results(&opts.hooks).ok()?;
+        let motor = gather::motor_results(&opts.home, &opts.hooks).ok()?;
         let tiers = catalogs::read_model_tiers(&opts).ok()?;
         let mut cache = accounts.lock().unwrap_or_else(|p| p.into_inner());
         let mut account = |pid: i64, agent: &str| -> Result<String, Unsure> {
@@ -937,13 +975,39 @@ impl PaneModelWriter {
         tmux: Tmux,
         hooks: PathBuf,
     ) {
+        self.apply_context(values, file_text, tmux, hooks, None)
+            .await;
+    }
+    pub async fn apply_domain(
+        self: &Arc<Self>,
+        values: BTreeMap<String, Option<String>>,
+        file_text: String,
+        tmux: Tmux,
+        hooks: PathBuf,
+        home: PathBuf,
+    ) {
+        self.apply_context(values, file_text, tmux, hooks, Some(home))
+            .await;
+    }
+    async fn apply_context(
+        self: &Arc<Self>,
+        values: BTreeMap<String, Option<String>>,
+        file_text: String,
+        tmux: Tmux,
+        hooks: PathBuf,
+        home: Option<PathBuf>,
+    ) {
         let file_guard = self.file.lock().await;
         let changed = self.lock().file_text.as_deref() != Some(file_text.as_str());
         if changed {
+            let doc = home.map(|home| files::DomainDocument::new(&home, &hooks, "pane-models.txt"));
             let path = hooks.join("pane-models.txt");
             let text = file_text.clone();
-            let written =
-                tokio::task::spawn_blocking(move || files::write_text_atomic(&path, &text)).await;
+            let written = tokio::task::spawn_blocking(move || match doc {
+                Some(doc) => doc.and_then(|doc| doc.write_bytes(text.as_bytes(), 0)),
+                None => files::write_text_atomic(&path, &text),
+            })
+            .await;
             if matches!(written, Ok(Ok(()))) {
                 self.lock().file_text = Some(file_text);
             }

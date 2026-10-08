@@ -1,0 +1,6 @@
+prefix=/usr
+Name: zlib
+Description: pkg-config metadata shim for GTK SDK private dependency
+Version: 1.2.0
+Libs:
+Cflags:

@@ -1,0 +1,18 @@
+{
+  "input": {
+    "script": "import sys,json,pathlib\nsys.path.insert(0,str(pathlib.Path(sys.argv[1])/'lib'));sys.path.insert(0,str(pathlib.Path(sys.argv[1])/'bin'))\nimport session_profiles as p,capabilities as c\nr=json.loads(sys.argv[2]);cwd=sys.argv[3]\nprint(json.dumps([c.session_capabilities(r,'shell','main',cwd),p.inventory(r,'shell','main',cwd),p.launch_draft({'id':'p','harness':'codex'}),p.launch_args({'id':'p','harness':'codex'},r,cwd,cwd,dry_run=True)],ensure_ascii=False))",
+    "args": [
+      {
+        "arg": "{\"harnesses\":{\"shell\":{},\"codex\":{\"defaultHome\":\"{{HOME}}/.codex\",\"accountsRoot\":\"{{HOME}}/accounts\",\"authFile\":\"auth.json\",\"accountEnv\":\"CODEX_HOME\",\"capabilities\":{\"accounts\":true}}}}",
+        "file": null
+      },
+      {
+        "arg": "{{HOME}}",
+        "file": null
+      }
+    ],
+    "bin_inputs": [],
+    "fixtures": {}
+  },
+  "output_b64": "W3siaGFybmVzcyI6ICJzaGVsbCIsICJhY2NvdW50IjogIm1haW4iLCAibWNwcyI6IFtdLCAic3RhdHVzIjogInVuc3VwcG9ydGVkIiwgImNvbmZpZGVuY2UiOiAidW5rbm93biIsICJlZmZlY3RpdmVOb3ciOiBudWxsLCAicnVudGltZUVuYWJsZWQiOiBudWxsLCAibGltaXRhdGlvbnMiOiBbXSwgImVycm9ycyI6IFtdfSwgeyJoYXJuZXNzIjogInNoZWxsIiwgImFjY291bnQiOiAibWFpbiIsICJza2lsbHMiOiBbXSwgIm1jcHMiOiBbXSwgInN0YXR1cyI6ICJ1bnN1cHBvcnRlZCIsICJjb25maWRlbmNlIjogInVua25vd24iLCAibGltaXRhdGlvbnMiOiBbXSwgImVycm9ycyI6IFtdLCAiY2FwYWJpbGl0aWVzIjogeyJza2lsbHMiOiB7InN0YXR1cyI6ICJ1bnN1cHBvcnRlZCIsICJzdXBwb3J0ZWQiOiBmYWxzZSwgInJlYXNvbiI6ICJFc3RlIENMSSBubyBvZnJlY2Ugc2VsZWNjacOzbiBpbmRpdmlkdWFsIHZlcmlmaWNhZGEgZGUgc2tpbGxzIHBvciBsYW56YW1pZW50by4ifSwgIm1jcHMiOiB7InN0YXR1cyI6ICJ1bnN1cHBvcnRlZCIsICJzdXBwb3J0ZWQiOiBmYWxzZSwgInJlYXNvbiI6ICJTZWxlY2Npw7NuIHBvciBsYW56YW1pZW50byBubyB2ZXJpZmljYWRhIHBhcmEgZXN0ZSBDTEkuIn0sICJob3RSZWxvYWQiOiBmYWxzZX0sICJwcm92ZW5hbmNlIjogImNvbmZpZ3VyYXRpb25fZmlsZXMiLCAiZWZmZWN0aXZlTm93IjogbnVsbCwgInJ1bnRpbWVFbmFibGVkIjogbnVsbCwgIm5vdGUiOiAiSW52ZW50YXJpbyBkZSBhcmNoaXZvczsgbm8gY29uZmlybWEgbGFzIGV4dGVuc2lvbmVzIGNhcmdhZGFzIHBvciB1biBwcm9jZXNvIHZpdm8uIn0sIHsiaGFybmVzcyI6ICJjb2RleCIsICJtb3RvciI6ICIiLCAibW9kZWwiOiAiIiwgImVmZm9ydCI6ICIiLCAiaGFybmVzc0FjY291bnQiOiAiIiwgIm1vdG9yQWNjb3VudCI6ICIiLCAiYWdlbnQiOiAiY29kZXgiLCAicHJvZmlsZUlkIjogInAifSwgW11dCg=="
+}

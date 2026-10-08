@@ -33,7 +33,14 @@ const RELEVANT_HEADERS: [&str; 4] = [
 /// Marca de que ya estamos dentro del namespace de red aislado.
 const NETNS_ENV: &str = "COMANDOS_XTASK_NETNS";
 /// Ejecutables que el oráculo podría lanzar y que aquí no deben hacer nada.
-const FAKE_BINS: [&str; 12] = [
+/// Los CLIs del catálogo (`/commands/catalog` ejecuta `--version` y `--help`,
+/// `/opencode/models` ejecuta `opencode models`) también: nunca los reales.
+const FAKE_BINS: [&str; 17] = [
+    "claude",
+    "codex",
+    "grok",
+    "opencode",
+    "agy",
     "systemctl",
     "wmctrl",
     "cc-webterm",
@@ -727,9 +734,9 @@ fn tmux_available() -> bool {
 
 /// Servidor tmux privado en `socket_dir`. `-f /dev/null`: el servidor nace sin
 /// la configuración del usuario (sus `run-shell` y plugins nunca corren aquí).
-fn start_tmux(socket_dir: &Path, sessions: &[String]) -> Result<(), String> {
+fn start_tmux(socket_dir: &Path, home: &Path, sessions: &[String]) -> Result<(), String> {
     for name in sessions {
-        let status = private_tmux(socket_dir)
+        let status = confined(private_tmux(socket_dir), socket_dir, home)
             .args(["-f", "/dev/null", "new-session", "-d", "-s", name, "cat"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -768,13 +775,17 @@ fn wait_next_second() {
 /// `session_activity` en todas. `read_states` del Python ordena por ella (en
 /// segundos enteros): si la creación cruza un cambio de segundo, los empates
 /// se rompen distinto a cada lado y `/state` difiere sin que nada haya cambiado.
-fn start_tmux_pair(a: &Path, b: &Path, sessions: &[String]) -> Result<(), String> {
+fn start_tmux_pair(
+    (a, home_a): (&Path, &Path),
+    (b, home_b): (&Path, &Path),
+    sessions: &[String],
+) -> Result<(), String> {
     const TRIES: usize = 5;
     for _ in 0..TRIES {
         // Empezar justo tras un cambio de segundo deja casi un segundo entero.
         wait_next_second();
-        start_tmux(a, sessions)?;
-        start_tmux(b, sessions)?;
+        start_tmux(a, home_a, sessions)?;
+        start_tmux(b, home_b, sessions)?;
         let mut stamps = tmux_activity(a)?;
         stamps.extend(tmux_activity(b)?);
         stamps.sort();
@@ -790,6 +801,20 @@ fn start_tmux_pair(a: &Path, b: &Path, sessions: &[String]) -> Result<(), String
          no comparten una única session_activity ({} sesiones por lado)",
         sessions.len()
     ))
+}
+
+/// El entorno del cliente tmux que puede arrancar el servidor privado: si lo
+/// arranca, el servidor y todo panel nacen con el HOME de la copia, `PATH`
+/// mínimo y `SHELL=/bin/sh`, sin escritorio, DBus ni el HOME real (un
+/// `new-session` sin orden abriría si no un shell de login del desarrollador).
+fn confined(mut cmd: Command, socket_dir: &Path, home: &Path) -> Command {
+    cmd.env_clear()
+        .env("HOME", home)
+        .env("PATH", "/usr/bin:/bin")
+        .env("SHELL", "/bin/sh")
+        .env("LANG", "C.UTF-8")
+        .env("TMUX_TMPDIR", socket_dir);
+    cmd
 }
 
 /// `tmux` contra el servidor privado de `socket_dir` y solo contra ese: el
@@ -854,6 +879,9 @@ fn spawn(name: &'static str, mut cmd: Command, e: &SpawnEnv, log: &Path) -> Resu
         .env_remove("COMANDOS_STATE_DB")
         .env_remove("COMANDOS_USAGE_DB")
         .env_remove(NATIVE_ENV_OF_FRONT)
+        // Cortes y dueño de fondo (2f) los fija el arnés, nunca el entorno.
+        .env_remove("COMANDOS_DASH_CUTS_OFF")
+        .env_remove("COMANDOS_DASH_BACKGROUND")
         // La carpeta de las terminales rápidas tampoco: sin esto,
         // `d-quick-barra` crearía carpetas en la del desarrollador.
         .env_remove("COMANDOS_QUICK_TERMINAL_BASE")
@@ -975,7 +1003,7 @@ impl Stack {
         let mut tmux_guard = TmuxGuard(vec![tmux1.clone(), tmux2.clone()]);
         let sessions = tmux_sessions_for(&hooks1);
         if tmux_available() {
-            start_tmux_pair(&tmux1, &tmux2, &sessions)?;
+            start_tmux_pair((&tmux1, &home1), (&tmux2, &home2), &sessions)?;
         }
 
         let (p_py, p_front, p_legacy) = (free_port()?, free_port()?, free_port()?);
@@ -1098,6 +1126,51 @@ impl Stack {
         Ok(home)
     }
 
+    /// `tmux -f /dev/null <args>` en los dos servidores privados (oráculo y
+    /// frente), cada uno con su `-S` y su HOME y sin escritorio ni DBus: el
+    /// `setup` de una línea del fixture.
+    pub fn tmux_both(&self, args: &[String]) -> Result<(), String> {
+        if args.first().is_some_and(|verb| verb == "kill-server") {
+            return Err("setup: kill-server está prohibido".into());
+        }
+        for (dir, home) in self.tmux_dirs.iter().zip(["home1", "home2"]) {
+            guard_home(dir)?;
+            let home = self._root.path.join(home);
+            guard_home(&home)?;
+            let out = confined(private_tmux(dir), dir, &home)
+                .arg("-f")
+                .arg("/dev/null")
+                .args(args)
+                .stdout(Stdio::null())
+                .output()
+                .map_err(|e| format!("tmux: {e}"))?;
+            if !out.status.success() {
+                return Err(format!(
+                    "setup tmux {}: {}",
+                    args.join(" "),
+                    String::from_utf8_lossy(&out.stderr).trim()
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Un archivo de la línea (`files`) en los dos HOME, normalizado como el
+    /// gemelo (`normalize_clock`): `None` si falta. Relativo a
+    /// `~/.claude/hooks`, o al HOME si empieza por `~/`.
+    pub fn file_pair(&self, name: &str) -> Result<(Option<String>, Option<String>), String> {
+        let read = |home: &str| -> Result<Option<String>, String> {
+            let home = self._root.path.join(home);
+            guard_home(&home)?;
+            let path = match name.strip_prefix("~/") {
+                Some(rest) => home.join(rest),
+                None => home.join(".claude/hooks").join(name),
+            };
+            Ok(fs::read_to_string(path).ok().map(|t| normalize_clock(&t)))
+        };
+        Ok((read("home1")?, read("home2")?))
+    }
+
     /// Raíz temporal de la pila (para ejecutables falsos de `poll --shadow`).
     pub fn root(&self) -> &Path {
         &self._root.path
@@ -1159,10 +1232,29 @@ struct Case {
     reason: String,
     /// Ruta que se pide al oráculo si difiere (p. ej. `/operator` por una ruta retirada).
     oracle_path: Option<String>,
+    /// Órdenes de tmux (sin `tmux`) que corren en los dos servidores privados
+    /// antes de la petición.
+    setup: Vec<Vec<String>>,
+    /// Archivos que se comparan tras la respuesta (`~/.claude/hooks` o `~/…`).
+    files: Vec<String>,
 }
 
 fn load_fixture(path: &Path) -> Result<Vec<Case>, String> {
     let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    parse_fixture(&text).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+fn strings(v: Option<&Value>) -> Vec<String> {
+    v.and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn parse_fixture(text: &str) -> Result<Vec<Case>, String> {
     let mut cases = Vec::new();
     for (i, line) in text.lines().enumerate() {
         if line.trim().is_empty() || line.trim_start().starts_with('#') {
@@ -1188,28 +1280,80 @@ fn load_fixture(path: &Path) -> Result<Vec<Case>, String> {
             Some(Value::String(t)) => Some(t.clone().into_bytes()),
             Some(other) => Some(other.to_string().into_bytes()),
         };
+        let setup: Vec<Vec<String>> = v
+            .get("setup")
+            .and_then(Value::as_array)
+            .map(|lists| lists.iter().map(|l| strings(Some(l))).collect())
+            .unwrap_or_default();
+        // El arnés nunca mata servidores por fixture (regla tmux del repositorio).
+        if setup
+            .iter()
+            .any(|args| args.is_empty() || args.first().is_some_and(|a| a.starts_with("kill-")))
+        {
+            return Err(format!(
+                "línea {}: setup vacío o con kill-* (prohibido en un fixture)",
+                i + 1
+            ));
+        }
         cases.push(Case {
             name: s("name").ok_or_else(|| format!("línea {}: falta name", i + 1))?,
             method: s("method").unwrap_or_else(|| "GET".into()),
             path: s("path").ok_or_else(|| format!("línea {}: falta path", i + 1))?,
             headers,
             body,
-            volatile: v
-                .get("volatile")
-                .and_then(Value::as_array)
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|x| x.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default(),
+            volatile: strings(v.get("volatile")),
             expect,
             forwarded: v.get("forwarded").and_then(Value::as_bool).unwrap_or(false),
             reason: s("reason").unwrap_or_default(),
             oracle_path: s("oracle_path"),
+            setup,
+            files: strings(v.get("files")),
         });
     }
     Ok(cases)
+}
+
+/// Lo que depende del reloj en cuerpos y archivos, igual que
+/// `support::twin::normalize` de las pruebas (copiada: el arnés no depende de
+/// ellas): `term-r<n>`, marcas `ts`/`closedAt`/`updated`/`at`/`heartbeatAt` y
+/// nombres `<19 dígitos>-<hex>.json`.
+pub fn normalize_clock(text: &str) -> String {
+    static RULES: std::sync::OnceLock<Vec<(regex::Regex, &'static str)>> =
+        std::sync::OnceLock::new();
+    let rules = RULES.get_or_init(|| {
+        [
+            (r"term-r[0-9]+", "term-rN"),
+            (
+                r#""(ts|closedAt|updated|at|heartbeatAt)": [0-9.eE+-]+"#,
+                r#""$1": T"#,
+            ),
+            (r"[0-9]{19}-[0-9a-f]+\.json", "NS-ID.json"),
+        ]
+        .into_iter()
+        .filter_map(|(re, to)| regex::Regex::new(re).ok().map(|re| (re, to)))
+        .collect()
+    });
+    rules.iter().fold(text.to_string(), |acc, (re, to)| {
+        re.replace_all(&acc, *to).into_owned()
+    })
+}
+
+/// Los `files` de una línea: el primero que difiera entre los dos HOME es `DIFF`.
+fn files_outcome(stack: &Stack, files: &[String]) -> Outcome {
+    for name in files {
+        match stack.file_pair(name) {
+            Ok((py, rs)) if py == rs => {}
+            Ok((py, rs)) => {
+                return Outcome::Diff(format!(
+                    "archivo {name}: py={} rs={}",
+                    py.as_deref().unwrap_or("(no existe)"),
+                    rs.as_deref().unwrap_or("(no existe)")
+                ));
+            }
+            Err(error) => return Outcome::Diff(format!("archivo {name}: {error}")),
+        }
+    }
+    Outcome::Ok
 }
 
 /// ¿El frente dice que el heredado no está disponible? Solo entonces una ruta reenviada
@@ -1219,7 +1363,8 @@ fn is_legacy_down(r: &Resp) -> bool {
 }
 
 struct Args {
-    fixture: PathBuf,
+    /// `--fixture` repetible: las líneas se leen en el orden de los archivos.
+    fixture: Vec<PathBuf>,
     hooks: PathBuf,
     keep: bool,
     comandos: Option<PathBuf>,
@@ -1232,12 +1377,12 @@ struct Args {
 }
 
 fn parse_args(args: &[String]) -> Result<Args, String> {
-    let (mut fixture, mut hooks, mut keep, mut comandos) = (None, None, false, None);
+    let (mut fixture, mut hooks, mut keep, mut comandos) = (Vec::new(), None, false, None);
     let (mut state_db, mut usage_db, mut no_native) = (None, None, false);
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
-            "--fixture" => fixture = it.next().map(PathBuf::from),
+            "--fixture" => fixture.push(PathBuf::from(it.next().ok_or("--fixture sin ruta")?)),
             "--hooks" => hooks = it.next().map(PathBuf::from),
             "--comandos" => comandos = it.next().map(PathBuf::from),
             "--state-db" => {
@@ -1251,8 +1396,11 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
             other => return Err(format!("argumento desconocido: {other}")),
         }
     }
+    if fixture.is_empty() {
+        return Err("falta --fixture".into());
+    }
     Ok(Args {
-        fixture: fixture.ok_or("falta --fixture")?,
+        fixture,
         hooks: hooks.ok_or("falta --hooks")?,
         keep,
         comandos,
@@ -1271,7 +1419,10 @@ pub fn default_comandos() -> Result<PathBuf, String> {
 /// Devuelve el código de salida (1 si hay `DIFF`).
 pub fn run(args: &[String]) -> Result<i32, String> {
     let a = parse_args(args)?;
-    let cases = load_fixture(&a.fixture)?;
+    let mut cases = Vec::new();
+    for path in &a.fixture {
+        cases.extend(load_fixture(path)?);
+    }
     let comandos = match a.comandos {
         Some(p) => p,
         None => default_comandos()?,
@@ -1295,6 +1446,11 @@ pub fn run(args: &[String]) -> Result<i32, String> {
             .iter()
             .map(|(k, v)| (k.clone(), v.replace("{{token}}", &stack.token)))
             .collect();
+        if let Some(error) = c.setup.iter().find_map(|args| stack.tmux_both(args).err()) {
+            println!("{:<28} DIFF    {error}", c.name);
+            diff += 1;
+            continue;
+        }
         let go = |port, path: &str| request(port, &c.method, path, &headers, c.body.as_deref());
         let oracle = c.oracle_path.as_deref().unwrap_or(&c.path);
         let (r_py, r_rs) = match (go(stack.p_py, oracle), go(stack.p_front, &c.path)) {
@@ -1319,7 +1475,10 @@ pub fn run(args: &[String]) -> Result<i32, String> {
         } else if c.forwarded && is_legacy_down(&r_rs) {
             Outcome::Skip("reenviada, heredado caído".into())
         } else {
-            compare(&r_py, &r_rs, c.expect, &c.volatile)
+            match compare(&r_py, &r_rs, c.expect, &c.volatile) {
+                Outcome::Ok => files_outcome(&stack, &c.files),
+                other => other,
+            }
         };
         match &outcome {
             Outcome::Ok => {
@@ -1377,7 +1536,67 @@ pub fn run(args: &[String]) -> Result<i32, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{slow_tmux_wrapper, tmux_wrapper};
+    use super::{normalize_clock, parse_args, parse_fixture, slow_tmux_wrapper, tmux_wrapper};
+
+    const TAB_REGISTER: &str = r#"{"name":"t-tab-register","method":"POST","path":"/tab-register","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"p2f","label":"Proyecto"},"setup":[["new-session","-d","-s","p2f"]],"files":["app-tabs.json","app-tabs-meta.json"],"volatile":[],"expect":"same"}"#;
+
+    #[test]
+    fn setup_and_files_fields_parse() {
+        let cases = parse_fixture(TAB_REGISTER).unwrap();
+        let case = cases.first().unwrap();
+        assert_eq!(case.setup, vec![vec!["new-session", "-d", "-s", "p2f"]]);
+        assert_eq!(case.files, vec!["app-tabs.json", "app-tabs-meta.json"]);
+        // Sin los campos, vacíos.
+        let plain = parse_fixture(r#"{"name":"a","path":"/x","expect":"same"}"#).unwrap();
+        assert!(
+            plain
+                .first()
+                .is_some_and(|c| c.setup.is_empty() && c.files.is_empty())
+        );
+    }
+
+    #[test]
+    fn setup_refuses_kill_commands() {
+        for verb in ["kill-server", "kill-session"] {
+            let line =
+                format!(r#"{{"name":"k","path":"/x","expect":"same","setup":[["{verb}"]]}}"#);
+            assert!(parse_fixture(&line).is_err(), "{verb} aceptado");
+        }
+    }
+
+    #[test]
+    fn fixture_flag_repeats() {
+        let args: Vec<String> = [
+            "--fixture",
+            "a.jsonl",
+            "--fixture",
+            "b.jsonl",
+            "--hooks",
+            "h",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        let parsed = parse_args(&args).unwrap();
+        assert_eq!(parsed.fixture.len(), 2);
+        assert!(parse_args(&["--hooks".into(), "h".into()]).is_err());
+    }
+
+    #[test]
+    fn files_normalize_like_the_twin() {
+        assert_eq!(
+            normalize_clock(
+                r#"{"session": "term-r1", "ts": 1.5, "f": "1791115200123456789-0f.json"}"#
+            ),
+            normalize_clock(
+                r#"{"session": "term-r22", "ts": 9, "f": "1791115299123456789-ab.json"}"#
+            )
+        );
+        assert_ne!(
+            normalize_clock(r#"{"label": "x"}"#),
+            normalize_clock(r#"{"label": "y"}"#)
+        );
+    }
 
     #[test]
     fn slow_wrapper_delays_only_list_panes_and_keeps_the_socket() {

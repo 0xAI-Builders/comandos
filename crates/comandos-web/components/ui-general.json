@@ -1,0 +1,19 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- UI general ----------",
+  "marker_end": "// ---------- snippets (v0) ----------",
+  "sha256": "b9185786dad05840215fd9fa188cff0c3169d702b031c25b1382101538b85d85",
+  "id": "ui-general",
+  "exports": [
+    "vol",
+    "bindSwitch",
+    "poll"
+  ],
+  "deps": [
+    "prelude",
+    "i18n",
+    "red"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "input": {
+    "op": "extension-message",
+    "raw": " close",
+    "uri": "http://127.0.0.1:7337/extensions.html?session=fixture&pane=%257",
+    "statuses": [
+      null
+    ]
+  },
+  "output_b64": "eyJjbG9zZXMiOiAwfQo="
+}

@@ -1,0 +1,28 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- tema ----------",
+  "marker_end": "// ---------- favoritos ----------",
+  "sha256": "cfcaa46089301fbf1579796c9024e3f0383bc1d47a0bc1848cf75b418c925e13",
+  "id": "tema",
+  "exports": [
+    "THEME_SEQ",
+    "THEME_META",
+    "curTheme",
+    "broadcastTermTheme",
+    "applyTheme",
+    "BUTTON_STYLES",
+    "curButtonStyle",
+    "applyButtonStyle",
+    "renderButtonStyleGallery",
+    "selectButtonStyle",
+    "renderThemeGallery",
+    "selectTheme"
+  ],
+  "deps": [
+    "tabs-internos-de-modales",
+    "i18n",
+    "red"
+  ]
+}

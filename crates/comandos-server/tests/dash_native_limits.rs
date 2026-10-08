@@ -324,63 +324,67 @@ fn copy_tree(from: &Path, to: &Path) {
 }
 
 /// `python3 -c` sobre un HOME temporal sin el entorno real (D7, tmux, DBus).
-fn run_python(script: &str, home: &Path, now: i64) -> Option<String> {
-    let available = Command::new("python3")
-        .args(["-c", "import sys"])
-        .output()
-        .is_ok_and(|o| o.status.success());
-    if !available {
-        eprintln!("python3 no está instalado: se salta la comparación con el oráculo");
-        return None;
-    }
-    let fakebin = home.join("fakebin");
-    std::fs::create_dir_all(&fakebin).unwrap();
-    for name in ["tmux", "systemctl", "notify-send", "xdg-open", "tailscale"] {
-        let link = fakebin.join(name);
-        if !link.exists() {
-            std::os::unix::fs::symlink("/bin/true", &link).unwrap();
-        }
-    }
-    let path = format!(
-        "{}:{}",
-        fakebin.display(),
-        std::env::var("PATH").unwrap_or_default()
-    );
-    let mut command = Command::new("python3");
-    for key in support::oracle::D7_KEYS {
-        command.env_remove(key);
-    }
-    let out = command
-        .arg("-c")
-        .arg(script)
-        .arg(support::repo())
-        .arg(home)
-        .arg(now.to_string())
-        .current_dir(home)
-        .env("HOME", home)
-        .env("PATH", path)
-        .env("LANG", "C.UTF-8")
-        .env_remove("LC_ALL")
-        .env_remove("LC_CTYPE")
-        .env("XDG_RUNTIME_DIR", home.join("xdg-runtime"))
-        .env("XDG_STATE_HOME", home.join(".local/state"))
-        .env("TMUX_TMPDIR", home.join("tmux"))
-        .env("PYTHONDONTWRITEBYTECODE", "1")
-        .env_remove("TMUX")
-        .env_remove("CLAUDE_CONFIG_DIR")
-        .env_remove("CODEX_HOME")
-        .env_remove("GROK_HOME")
-        .env_remove("COMANDOS_STATE_DB")
-        .env_remove("COMANDOS_USAGE_DB")
-        .env_remove("DBUS_SESSION_BUS_ADDRESS")
-        .output()
-        .unwrap();
-    assert!(
-        out.status.success(),
-        "oráculo: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    Some(String::from_utf8(out.stdout).unwrap())
+fn run_python(script: &str, home: &Path, now: i64) -> String {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let reference = home.join(".oracle/reference");
+    comandos_oracle::text_with_tree_at(
+        &root.join("tests/golden"),
+        "server-provider-limits",
+        &json!({"source_commit":support::frozen::SOURCE_COMMIT,"script":script,"now":now}),
+        home,
+        &[("<HOME>", home), ("<REFERENCE>", &reference)],
+        || {
+            let fakebin = home.join("fakebin");
+            std::fs::create_dir_all(&fakebin).unwrap();
+            for name in ["tmux", "systemctl", "notify-send", "xdg-open", "tailscale"] {
+                let link = fakebin.join(name);
+                if !link.exists() {
+                    std::os::unix::fs::symlink("/bin/true", &link).unwrap();
+                }
+            }
+            let path = format!(
+                "{}:{}",
+                fakebin.display(),
+                std::env::var("PATH").unwrap_or_default()
+            );
+            let mut command = Command::new(
+                std::env::var("COMANDOS_SERVER_ORACLE_PYTHON").unwrap_or_else(|_| "python3".into()),
+            );
+            for key in support::oracle::D7_KEYS {
+                command.env_remove(key);
+            }
+            let out = command
+                .arg("-c")
+                .arg(script)
+                .arg(support::frozen::reference(home)?)
+                .arg(home)
+                .arg(now.to_string())
+                .current_dir(home)
+                .env("HOME", home)
+                .env("PATH", path)
+                .env("LANG", "C.UTF-8")
+                .env_remove("LC_ALL")
+                .env_remove("LC_CTYPE")
+                .env("XDG_RUNTIME_DIR", home.join("xdg-runtime"))
+                .env("XDG_STATE_HOME", home.join(".local/state"))
+                .env("TMUX_TMPDIR", home.join("tmux"))
+                .env("PYTHONDONTWRITEBYTECODE", "1")
+                .env_remove("TMUX")
+                .env_remove("CLAUDE_CONFIG_DIR")
+                .env_remove("CODEX_HOME")
+                .env_remove("GROK_HOME")
+                .env_remove("COMANDOS_STATE_DB")
+                .env_remove("COMANDOS_USAGE_DB")
+                .env_remove("DBUS_SESSION_BUS_ADDRESS")
+                .output()
+                .map_err(|e| e.to_string())?;
+            if !out.status.success() {
+                return Err(String::from_utf8_lossy(&out.stderr).into_owned());
+            }
+            String::from_utf8(out.stdout).map_err(|e| e.to_string())
+        },
+    )
+    .unwrap()
 }
 
 fn turn(id: &str, provider: &str, finished: i64, tokens: i64) -> String {
@@ -503,11 +507,8 @@ async fn refresh_matches_python() {
     copy_tree(&home.root, &python_home);
     let out = run_python(REFRESH, &python_home, NOW_MS / 1000);
     let python_db = python_home.join(".claude/hooks/comandos-usage.sqlite");
-    let python_snaps = out.as_ref().map(|_| snapshots(&python_db));
+    let python_snaps = snapshots(&python_db);
     let _ = std::fs::remove_dir_all(&python_home);
-    let Some(out) = out else {
-        return;
-    };
 
     let oauth = Arc::new(FakeOauth::default());
     oauth.set(
@@ -538,11 +539,7 @@ async fn refresh_matches_python() {
         "snaps": snapshots(&home.usage_db()),
     });
     let expected = workspace_loads(out.trim()).unwrap();
-    assert_eq!(
-        expected["snaps"],
-        python_snaps.unwrap(),
-        "lectura de la base"
-    );
+    assert_eq!(expected["snaps"], python_snaps, "lectura de la base");
     for key in ["limits", "health", "snaps"] {
         assert_eq!(
             response_dumps(&rust[key]).unwrap(),

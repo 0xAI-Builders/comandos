@@ -1,0 +1,6 @@
+{
+  "name": "comandos-b8-dom-parity-fixture",
+  "private": true,
+  "type": "module",
+  "devDependencies": { "jsdom": "26.1.0" }
+}

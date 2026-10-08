@@ -1,10 +1,8 @@
 //! E. Rutas sin llamador vivo (inventario §1.12): 410 con el cuerpo exacto de
 //! `GET /operator` (`OPERATOR_RETIRED`, `bin/cc-dash:5751`).
 //!
-//! Siguen reenviadas: la UI commiteada aún las llama (barra de comandos
-//! pendiente de fusionar): GET y POST `/proxy`, POST `/harness/switch`,
-//! POST `/model/switch-cancel`, GET `/session-config-history` y POST
-//! `/session/recover`.
+//! D8, rama A: la instantánea de la interfaz en main ya retiró la barra
+//! antigua. Sus seis rutas tampoco tienen llamadores en las apps ni notifyd.
 use super::{Answer, Entry, Key, NativeRoute, Verb, reply};
 use http::{Method, StatusCode};
 use serde_json::json;
@@ -16,7 +14,7 @@ use std::{
 pub const OPERATOR_RETIRED_ERROR: &str = "El chat de CommandOS se retiró; usa la barra de comandos";
 
 /// GET por ruta (consulta opcional).
-pub const GET_PATHS: [&str; 12] = [
+pub const GET_PATHS: [&str; 14] = [
     "/pomodoro/report",
     "/project-profiles",
     "/events",
@@ -29,9 +27,11 @@ pub const GET_PATHS: [&str; 12] = [
     "/usage/experiments",
     "/usage/analytics",
     "/usage/interactions",
+    "/proxy",
+    "/session-config-history",
 ];
 
-pub const POST_PATHS: [&str; 19] = [
+pub const POST_PATHS: [&str; 23] = [
     "/project-profile",
     "/pause",
     "/usage/capture",
@@ -51,6 +51,10 @@ pub const POST_PATHS: [&str; 19] = [
     "/models/refresh",
     "/open-with-account",
     "/tab-new",
+    "/proxy",
+    "/harness/switch",
+    "/model/switch-cancel",
+    "/session/recover",
 ];
 
 const fn get(path: &'static str) -> Entry {
@@ -82,6 +86,8 @@ pub const ROUTES: &[Entry] = &[
     get(GET_PATHS[9]),
     get(GET_PATHS[10]),
     get(GET_PATHS[11]),
+    get(GET_PATHS[12]),
+    get(GET_PATHS[13]),
     post(POST_PATHS[0]),
     post(POST_PATHS[1]),
     post(POST_PATHS[2]),
@@ -101,6 +107,10 @@ pub const ROUTES: &[Entry] = &[
     post(POST_PATHS[16]),
     post(POST_PATHS[17]),
     post(POST_PATHS[18]),
+    post(POST_PATHS[19]),
+    post(POST_PATHS[20]),
+    post(POST_PATHS[21]),
+    post(POST_PATHS[22]),
 ];
 
 pub fn answer(method: &Method, path: &str) -> Answer {
@@ -116,12 +126,50 @@ pub fn answer(method: &Method, path: &str) -> Answer {
 /// primera vez que se pisa, basta para notarlo en el journal.
 fn note_first_hit(method: &Method, path: &str) {
     static SEEN: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
-    let key = format!("{method} {path}");
+    let key = log_key(method, path);
     let seen = SEEN.get_or_init(|| Mutex::new(BTreeSet::new()));
     let Ok(mut seen) = seen.lock() else {
         return;
     };
     if seen.insert(key.clone()) {
         eprintln!("comandos dash: ruta retirada pisada por primera vez: {key} → 410");
+    }
+}
+
+fn log_key(method: &Method, path: &str) -> String {
+    let (verb, canonical) = if *method == Method::GET {
+        (
+            "GET",
+            super::residue::canonical_get_target(path).unwrap_or("unknown"),
+        )
+    } else if *method == Method::POST {
+        let canonical = if path.starts_with("/operator") {
+            "/operator"
+        } else {
+            POST_PATHS
+                .iter()
+                .copied()
+                .find(|p| *p == path)
+                .unwrap_or("unknown")
+        };
+        ("POST", canonical)
+    } else {
+        ("OTHER", "unknown")
+    };
+    // Finite labels only: queries and arbitrary suffixes never grow SEEN.
+    format!("{verb} {canonical}")
+}
+#[cfg(test)]
+mod log_tests {
+    use super::*;
+    #[test]
+    fn logging_keeps_only_canonical_retired_branches() {
+        let mut seen = BTreeSet::new();
+        for n in 0..10_000 {
+            seen.insert(log_key(&Method::GET, &format!("/operator/{n}?q={n}")));
+            seen.insert(log_key(&Method::GET, &format!("/proxy?q={n}")));
+            seen.insert(log_key(&Method::GET, &format!("/eventsX/{n}")));
+        }
+        assert_eq!(seen.len(), 3);
     }
 }

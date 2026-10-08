@@ -221,6 +221,12 @@ impl LaneBackend for UsageBackend {
     const ROUTES: &'static str = "GET /pomodoro, GET /sovereignty, GET /state, GET /analytics/week, GET /accounts, GET /extension-usage y GET /usage/state";
 
     fn open(path: &Path) -> Result<Self, Refusal> {
+        let location = comandos_store::migrate::resolve_configured(path)
+            .map_err(|e| super::state::resolution_refusal(path, e.to_string()))?;
+        let path = match &location {
+            comandos_store::migrate::DbLocation::Legacy(path)
+            | comandos_store::migrate::DbLocation::Unified(path) => path.as_path(),
+        };
         // Sondeo sin PRAGMAs: `open_usage_db_at` pide `journal_mode=wal`, y una
         // base más nueva no se toca ni para eso.
         if path.exists() {
@@ -286,6 +292,32 @@ fn gate(conn: &Connection) -> Result<(), Refusal> {
             known: usage::SCHEMA_VERSION,
         });
     }
+    let has_schema: bool=conn.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations')",[],|r|r.get(0)).map_err(|e|Refusal::Unopened(e.to_string()))?;
+    if has_schema {
+        let unified: bool=conn.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='domain_modes')",[],|r|r.get(0)).map_err(|e|Refusal::Unopened(e.to_string()))?;
+        let known = if unified {
+            comandos_store::state::UNIFIED_MIGRATIONS
+        } else {
+            comandos_store::state::MIGRATIONS
+        };
+        let versions = conn
+            .prepare("SELECT version FROM schema_migrations")
+            .and_then(|mut s| {
+                s.query_map([], |r| r.get::<_, i64>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .map_err(|e| Refusal::Unopened(e.to_string()))?;
+        if let Some(found) = versions
+            .into_iter()
+            .filter(|v| !known.iter().any(|m| m.version == *v))
+            .max()
+        {
+            return Err(Refusal::Newer {
+                found,
+                known: known.iter().map(|m| m.version).max().unwrap_or(0),
+            });
+        }
+    }
     Ok(())
 }
 
@@ -312,6 +344,12 @@ impl LaneBackend for JournalBackend {
     const ROUTES: &'static str = "GET /model/status";
 
     fn open(path: &Path) -> Result<Self, Refusal> {
+        let location = comandos_store::migrate::resolve_configured(path)
+            .map_err(|e| super::state::resolution_refusal(path, e.to_string()))?;
+        let path = match &location {
+            comandos_store::migrate::DbLocation::Legacy(path)
+            | comandos_store::migrate::DbLocation::Unified(path) => path.as_path(),
+        };
         // Sondeo de solo lectura: `open_journal` crea tablas e índices con
         // `IF NOT EXISTS`, y una tabla desconocida no se toca ni para eso.
         if path.exists() {
@@ -340,6 +378,7 @@ impl LaneBackend for JournalBackend {
     }
 
     fn admit(&self) -> Result<(), Refusal> {
+        gate(&self.conn)?;
         known_journal(&journal_columns(&self.conn)?)
     }
 }
@@ -544,5 +583,93 @@ mod tests {
         assert_eq!(lane.refusals(), 1);
         assert_eq!(lane.transients(), 0);
         assert_eq!(AHEAD_OPENS.load(Ordering::Acquire), 1, "nunca se reabre");
+    }
+    #[tokio::test]
+    async fn old_release_lane_shuts_down_on_moved_db_and_fresh_open_routes_unified() {
+        use comandos_store::migrate::{move_db, spec_for};
+        let home = std::env::temp_dir().join(format!(
+            "comandos-s4-lane-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&home).unwrap();
+        let spec = spec_for(&home, "db-usage").unwrap();
+        let target = home.join(".local/share/comandos/comandos.sqlite3");
+        let lane = Lane::<UsageBackend>::new(spec.legacy.clone());
+        assert!(matches!(
+            lane.with(|b| b
+                .conn
+                .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+                .unwrap())
+                .await,
+            Ok(11)
+        ));
+        move_db(
+            &spec,
+            &target,
+            &home.join(".local/share/comandos/backups/test"),
+            4000,
+        )
+        .unwrap();
+        assert!(matches!(lane.with(|_| ()).await, Err(Fault::Decline)));
+        assert!(!lane.enabled());
+        assert_eq!(lane.refusals(), 1);
+        lane.shutdown().await;
+        let fresh = UsageBackend::open(&spec.legacy).unwrap();
+        assert_eq!(fresh.conn.path(), target.to_str());
+        fresh.admit().unwrap();
+        drop(fresh);
+        let app = comandos_store::migrate::spec_for(&home, "db-app-state").unwrap();
+        let source = comandos_store::state::connect(&app.legacy).unwrap();
+        comandos_store::state::migrate(&source, comandos_store::state::MIGRATIONS, 1.0).unwrap();
+        drop(source);
+        move_db(
+            &app,
+            &target,
+            &home.join(".local/share/comandos/backups/app"),
+            4000,
+        )
+        .unwrap();
+        let state = super::super::state::StateBackend::open(&app.legacy, 1.0).unwrap();
+        state.admit().unwrap();
+        assert_eq!(state.conn.path(), target.to_str());
+        drop(state);
+        let ops = spec_for(&home, "db-operations").unwrap();
+        let source = comandos_runtime::session_operations::open_journal(&ops.legacy).unwrap();
+        drop(source);
+        let cached = JournalBackend::open(&ops.legacy).unwrap();
+        move_db(
+            &ops,
+            &target,
+            &home.join(".local/share/comandos/backups/ops"),
+            4000,
+        )
+        .unwrap();
+        assert!(matches!(
+            cached.admit(),
+            Err(Refusal::Newer { found: 1000, .. })
+        ));
+        drop(cached);
+        let journal = JournalBackend::open(&ops.legacy).unwrap();
+        journal.admit().unwrap();
+        assert_eq!(journal.conn.path(), target.to_str());
+        drop(journal);
+        let active = Lane::<UsageBackend>::new(spec.legacy.clone());
+        assert!(matches!(active.with(|_| ()).await, Ok(())));
+        let new = comandos_store::unified::open_unified(&target).unwrap();
+        new.execute_batch("INSERT INTO schema_migrations VALUES(105,'future',1)")
+            .unwrap();
+        drop(new);
+        assert!(matches!(
+            active.with(|_| panic!("future-schema job ran")).await,
+            Err(Fault::Decline)
+        ));
+        assert!(!active.enabled());
+        assert_eq!(active.refusals(), 1);
+        active.shutdown().await;
+        std::fs::remove_dir_all(home).unwrap();
     }
 }

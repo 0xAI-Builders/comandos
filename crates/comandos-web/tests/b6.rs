@@ -1,0 +1,90 @@
+use comandos_web::components::{pomodoro as p, work_marks as m};
+use comandos_web_view::{pomodoro as art, work_marks as view};
+use serde_json::json;
+#[test]
+fn human_mark_wins_and_finished_turns_stay_neutral() {
+    assert_eq!(
+        m::display("frozen", "working", false),
+        json!({"icon":"frozen","label":"Congelado","animated":true,"mark":"frozen"})
+    );
+    for state in ["completed", "cancelled", "failed", ""] {
+        assert_eq!(
+            m::display("none", state, false).get("icon"),
+            Some(&json!("none"))
+        );
+    }
+    assert_eq!(
+        m::channels("frozen", "working"),
+        json!({"ai":"work","sticker":"Aparcado","mark":"frozen","suggest":false})
+    );
+    assert_eq!(
+        m::channels("none", "completed").get("suggest"),
+        Some(&json!(true))
+    );
+}
+#[test]
+fn ambiguous_pane_bindings_never_guess() {
+    let panes = json!([{"session":"s","paneId":"%1","paneKey":"a"},{"session":"s","paneId":"%1","paneKey":"b"}]);
+    assert_eq!(
+        m::target_for_row("s|%1", &panes).get("scope"),
+        Some(&json!("session"))
+    );
+    assert!(m::target_for_row("", &panes).is_null());
+}
+#[test]
+fn session_activity_uses_most_urgent_pane() {
+    assert_eq!(
+        m::activity_for(
+            &json!({"scope":"session","key":"s"}),
+            &json!({"a":{"session":"s","state":"completed"},"b":{"session":"s","state":"awaiting_input"}})
+        ),
+        json!("awaiting_input")
+    );
+}
+#[test]
+fn menu_scope_favorite_is_independent_and_keyboard_wraps() {
+    let items = view::menu_items(
+        "session",
+        &json!({"mark":"frozen","favorite":true}),
+        false,
+        false,
+    );
+    assert_eq!(
+        items.get(4).and_then(|v| v.get("value")),
+        Some(&json!(true))
+    );
+    assert_eq!(m::next_index("ArrowDown", 4, 5), 0);
+    assert_eq!(m::next_index("ArrowUp", 0, 5), 4);
+    let dom = view::menu(&items);
+    assert_eq!(dom.matches("menuitemradio").count(), 4);
+    assert!(dom.contains("menuitemcheckbox"));
+    assert!(dom.contains("Congelado"));
+}
+#[test]
+fn server_clock_math_excludes_pauses_and_clamps_due() {
+    let b = json!({"status":"running","targetMs":1500000,"activeMs":0,"resumedAtMs":0});
+    assert_eq!(p::remaining(&b, 300000.), 1200000.);
+    assert_eq!(p::delta(&b, 300000., 30.), 600000.);
+    assert_eq!(p::remaining(&b, 9999999.), 0.);
+    let paused = json!({"status":"paused","targetMs":1500000,"activeMs":300000,"resumedAtMs":0});
+    assert_eq!(p::remaining(&paused, 9999999.), 1200000.);
+    assert_eq!(p::fmt(1200000.), "20:00");
+}
+#[test]
+fn hourglass_uses_original_fill_flip_and_loop() {
+    assert_eq!(p::hourglass(3500., None), 10.);
+    assert_eq!(p::hourglass(7350., None), 21.);
+    assert_eq!(p::hourglass(8010., None), 0.);
+    assert_eq!(p::hourglass(1550., Some(1000.)), 26.);
+}
+#[test]
+fn six_styles_share_original_hourglass_and_vendored_catalog() {
+    assert_eq!(art::STYLE_ORDER.len(), 6);
+    assert_eq!(art::style("nope"), "alchemy");
+    for style in art::STYLE_ORDER {
+        let clock = art::asset("clock", style, "");
+        assert!(clock.contains("comandos/hourglass.png"));
+        assert!(clock.contains("--frames:27"));
+    }
+    assert!(art::asset("hundred", "arcade", "").contains("--strip-duration:3.000s"));
+}

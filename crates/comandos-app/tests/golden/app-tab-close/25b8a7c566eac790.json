@@ -1,0 +1,58 @@
+{
+  "input": {
+    "case": {
+      "reference": {
+        "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+        "files": {
+          "bin/cc-app": "1b535bc6f4463959cc3ab992fa5a4ab859fbdaec43fcf628123cfede68b4ca6b",
+          "lib/work_marks.py": "6176da98aa2d7ac383293a12d44503718a15ccf448eb10f8eb4c12e82b518572",
+          "lib/gtk_workspace.py": "c687b1d25a4eb8ed07816a7f5046fda338f82c963d79cec466a4671ddeaa78f9",
+          "lib/gtk_tabstrip.py": "b9e777cc0bb557555755566b6843c97cd822d3d136796ba230db0168dc622065",
+          "lib/agent_stop.py": "4b17957868dbd0b0b4023cff6cca5354a66d881b3875ecd899843e5aa7bcf666"
+        }
+      },
+      "source": "bin/cc-app",
+      "script_sha256": "46aeb1e89f83bee6010d9a1ccae6efd1fe032aa49ee2ceed2c61a98fe9020ae7",
+      "cases": [
+        [
+          "term-busy",
+          "zsh\ncodex",
+          true
+        ],
+        [
+          "term-busy",
+          "node\nbash",
+          true
+        ],
+        [
+          "term-busy",
+          "sleep",
+          true
+        ],
+        [
+          "term-idle",
+          "zsh\nbash",
+          true
+        ],
+        [
+          "fixture",
+          "bash",
+          true
+        ],
+        [
+          "term-empty",
+          "",
+          true
+        ],
+        [
+          "term-bad",
+          "bash",
+          false
+        ]
+      ],
+      "mode": null
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbZmFsc2UsIGZhbHNlLCBmYWxzZSwgdHJ1ZSwgZmFsc2UsIGZhbHNlLCBmYWxzZV1cbiIsInRyZWUiOnt9fQ=="
+}

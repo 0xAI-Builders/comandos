@@ -1,7 +1,10 @@
 //! POST `/terminal/quick` (`quick_terminal_request` 5513 del `bin/cc-dash`
-//! confirmado, `lib/quick_terminal.py`) solo con `place == "sidebar"` (D7):
-//! la terminal de la barra no se registra como pestaña, así que no toca
-//! `app-tabs-meta.json` ni el candado de proceso del Python.
+//! confirmado, `lib/quick_terminal.py`). Con `place == "sidebar"` (D7 de la
+//! 2d) la terminal vive en la barra y no se registra como pestaña. Sin él
+//! (2f-1, Tarea 5) el `register` del Python es `quick_terminal_register`
+//! (`sessions::quick_register`): la pestaña `scratch` y el workspace; esa
+//! rama declina con el corte `tabs` apagado y lee el registro antes del
+//! reclamo (`sessions::quick_register_ready`).
 //!
 //! El worker de la base solo ve trabajos cortos: el reclamo (`_claim`, con la
 //! reserva de la carpeta dentro de la misma transacción) y el cierre
@@ -10,25 +13,23 @@
 //! declina (excepción 3b de los rulings): la fila `launching` y la carpeta ya
 //! existen, como en el Python.
 //!
-//! Seguridad: la sesión nueva nace SIEMPRE dentro de un scope del gestor de
+//! Linux: la sesión nueva nace dentro de un scope del gestor de
 //! usuario (`systemd-run --user --scope --collect --quiet tmux …`, como
 //! `scope_cmd`), nunca del sistema. Sin `systemd-run` (opción `scope` vacía)
 //! se declina: un servidor tmux que naciera en el cgroup del frente moriría con
-//! él al reiniciar el servicio (riesgo R2 del preflight).
+//! él al reiniciar el servicio (riesgo R2 del preflight). Darwin lanza tmux
+//! directamente, como cc-app-mac; no tiene systemd-run.
 use super::{
-    Answer, Entry, Fault, Key, Native, NativeRoute, Verb,
+    Answer, Cut, Entry, Fault, Key, Native, NativeRoute, Verb, cut_is_off,
     light::data,
     py::{self, repr_ascii},
-    reply,
+    reply, sessions,
     tmux::{Program, RunError, TmuxError, run_program},
 };
 use crate::{HandlerError, Request};
-use comandos_runtime::{
-    providers::which_path,
-    quick_terminal::{
-        Claim, Error as QuickError, Options, POLL_SECONDS, Terminal, WAIT_SECONDS, claim, finish,
-        valid_request_id,
-    },
+use comandos_runtime::quick_terminal::{
+    Claim, Error as QuickError, Options, POLL_SECONDS, Terminal, WAIT_SECONDS, claim, finish,
+    valid_request_id,
 };
 use http::StatusCode;
 use serde_json::{Value, json};
@@ -63,18 +64,55 @@ pub fn scope_program(path: impl Into<PathBuf>) -> Program {
     program
 }
 
+/// `scope_cmd(["tmux", …])`: `systemd-run --user --scope --collect --quiet
+/// <tmux> <prefijo de tmux> …`. El entorno de tmux (el socket privado en las
+/// pruebas) pasa al programa del scope. Lo usan `/terminal/quick` y
+/// `/ssh-key-setup`.
+pub fn scoped_tmux(scope: &Program, tmux: &Program) -> Program {
+    let mut program = scope.clone();
+    program.prefix.push(tmux.path.clone().into_os_string());
+    program.prefix.extend(tmux.prefix.iter().cloned());
+    program.env.extend(tmux.env.iter().cloned());
+    program.env_remove.extend(tmux.env_remove.iter().cloned());
+    program
+}
+
 /// `shutil.which("systemd-run")` sobre el `PATH` del frente (A5): solo `PATH`,
 /// sin los bins de usuario de `provider_registry.which`.
 pub fn find_scope(search_path: Option<&OsStr>) -> Option<Program> {
-    which_path("systemd-run", search_path).map(scope_program)
+    #[cfg(target_os = "linux")]
+    {
+        comandos_runtime::providers::which_path("systemd-run", search_path).map(scope_program)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = search_path;
+        None
+    }
+}
+/// Linux retains the supplied scope; Darwin launches the exact tail directly.
+pub fn platform_tmux(
+    host: comandos_runtime::platform::Host,
+    scope: Option<&Program>,
+    tmux: &Program,
+) -> Option<Program> {
+    if host == comandos_runtime::platform::Host::Macos {
+        return Some(tmux.clone());
+    }
+    scope.map(|s| scoped_tmux(s, tmux))
 }
 
 pub async fn answer(native: &Arc<Native>, request: &Request) -> Answer {
     let data = data(request)?;
-    if !matches!(data.get("place"), Some(Value::String(place)) if place == "sidebar") {
+    let sidebar = matches!(data.get("place"), Some(Value::String(place)) if place == "sidebar");
+    if !sidebar && cut_is_off(&native.options().cuts_off, Cut::Tabs) {
         return Err(Fault::Decline);
     }
-    let Some(scope) = native.options().scope.clone() else {
+    let Some(scope) = platform_tmux(
+        comandos_runtime::platform::host(),
+        native.options().scope.as_ref(),
+        &native.options().tmux.program,
+    ) else {
         return Err(Fault::Decline);
     };
     let raw = data.get("requestId").unwrap_or(&Value::Null);
@@ -85,6 +123,9 @@ pub async fn answer(native: &Arc<Native>, request: &Request) -> Answer {
         );
     }
     let id = raw.as_str().ok_or_else(failure)?.to_owned();
+    if !sidebar {
+        sessions::quick_register_ready(native).await?;
+    }
     // Reclamo, lanzamiento y cierre en su propia tarea: si el cliente se va a
     // mitad, también con el reclamo en el worker, soltar la petición no deja la
     // fila en `launching` sin lanzador (el reintento esperaría 15 s y daría 409
@@ -92,14 +133,14 @@ pub async fn answer(native: &Arc<Native>, request: &Request) -> Answer {
     // hilo del Python también termina aunque el cliente se vaya.
     let job = tokio::spawn({
         let native = native.clone();
-        async move { claim_and_launch(&native, id, scope).await }
+        async move { claim_and_launch(&native, id, scope, sidebar).await }
     });
     job.await.map_err(|_| failure())?
 }
 
 /// El bucle de reclamos de `quick_terminal_request` y, con un reclamo
 /// propio, el lanzamiento y el cierre.
-async fn claim_and_launch(native: &Native, id: String, scope: Program) -> Answer {
+async fn claim_and_launch(native: &Native, id: String, scope: Program, sidebar: bool) -> Answer {
     let seconds = native.options().clock_seconds.clone();
     let deadline = seconds() + WAIT_SECONDS;
     let terminal = loop {
@@ -129,7 +170,7 @@ async fn claim_and_launch(native: &Native, id: String, scope: Program) -> Answer
             Err(_) => return Err(failure()),
         }
     };
-    launch_and_finish(native, id, terminal, scope).await
+    launch_and_finish(native, id, terminal, scope, sidebar).await
 }
 
 /// `launch` + `_finish` + la respuesta, tras un reclamo propio. Aquí ya no se
@@ -140,8 +181,17 @@ async fn launch_and_finish(
     id: String,
     terminal: Terminal,
     scope: Program,
+    sidebar: bool,
 ) -> Answer {
-    let outcome = launch(native, &terminal, &scope).await;
+    let outcome = match launch(native, &terminal, &scope).await {
+        // `register(session, os.path.basename(cwd), cwd)` dentro del mismo
+        // `try`, también si la sesión ya existía; en la barra, nada.
+        Ok(()) if !sidebar => {
+            let label = terminal.cwd.rsplit('/').next().unwrap_or("");
+            sessions::quick_register(native, &terminal.session, label, &terminal.cwd).await
+        }
+        other => other,
+    };
     let stored = outcome
         .as_ref()
         .err()
@@ -210,18 +260,7 @@ async fn launch(native: &Native, t: &Terminal, scope: &Program) -> Result<(), St
     if exists.ok {
         return Ok(());
     }
-    // `scope_cmd(["tmux", "new-session", …])`: `systemd-run --user --scope
-    // --collect --quiet <tmux> <prefijo de tmux> new-session …`. El entorno de
-    // tmux (el socket privado en las pruebas) pasa al programa del scope.
-    let mut program = scope.clone();
-    program
-        .prefix
-        .push(tmux.program.path.clone().into_os_string());
-    program.prefix.extend(tmux.program.prefix.iter().cloned());
-    program.env.extend(tmux.program.env.iter().cloned());
-    program
-        .env_remove
-        .extend(tmux.program.env_remove.iter().cloned());
+    let program = scope;
     let args = [
         "new-session",
         "-d",
@@ -233,17 +272,32 @@ async fn launch(native: &Native, t: &Terminal, scope: &Program) -> Result<(), St
         "-F",
         "#{pane_id}",
     ];
-    let out = match run_program(&program, &args, Duration::from_secs(LAUNCH_SECONDS)).await {
+    let out = match run_program(program, &args, Duration::from_secs(LAUNCH_SECONDS)).await {
         Ok(out) => out,
         Err(RunError::Timeout) => {
             // El argv del Python: los nombres sin resolver y sin prefijo de prueba.
-            let mut argv: Vec<&str> = vec!["systemd-run"];
-            argv.extend(SCOPE_FLAGS);
-            argv.push("tmux");
+            let mut argv: Vec<&str> =
+                if comandos_runtime::platform::host() == comandos_runtime::platform::Host::Macos {
+                    vec!["tmux"]
+                } else {
+                    let mut argv = vec!["systemd-run"];
+                    argv.extend(SCOPE_FLAGS);
+                    argv.push("tmux");
+                    argv
+                };
             argv.extend(args);
             return Err(timeout_text(&argv, LAUNCH_SECONDS));
         }
-        Err(RunError::Spawn(error)) => return Err(os_error_text(&error, "systemd-run")),
+        Err(RunError::Spawn(error)) => {
+            return Err(os_error_text(
+                &error,
+                if comandos_runtime::platform::host() == comandos_runtime::platform::Host::Macos {
+                    "tmux"
+                } else {
+                    "systemd-run"
+                },
+            ));
+        }
         // `text=True` con bytes no UTF-8: el texto del códec no se reproduce.
         Err(RunError::Decode) => return Err("UnicodeDecodeError".into()),
     };
@@ -275,7 +329,7 @@ async fn launch(native: &Native, t: &Terminal, scope: &Program) -> Result<(), St
         .await
         .map_err(|e| tmux_text(&e))?;
     }
-    // Registro: nada; la terminal vive en la barra (`place == "sidebar"`).
+    // El registro lo hace `launch_and_finish` (nada en la barra).
     Ok(())
 }
 
@@ -391,5 +445,73 @@ mod tests {
         let scope = scope_program("/usr/bin/systemd-run");
         let flags: Vec<&OsStr> = scope.prefix.iter().map(|p| p.as_os_str()).collect();
         assert_eq!(flags, ["--user", "--scope", "--collect", "--quiet"]);
+    }
+
+    #[test]
+    fn actual_platform_program_preserves_tmux_prefix_and_env_and_matches_scope_oracle() {
+        use comandos_runtime::platform::Host;
+        let mut tail = Program::named("/fixture/tmux");
+        tail.prefix = ["-S", "/fixture/socket with space"]
+            .map(Into::into)
+            .to_vec();
+        tail.env.push(("FIXTURE".into(), "space value".into()));
+        tail.env_remove.push("TMUX".into());
+        tail.env_clear = true;
+        let scope = scope_program("/fixture/systemd-run");
+        for runner in [None, Some(&scope)] {
+            let mac = platform_tmux(Host::Macos, runner, &tail).unwrap();
+            assert_eq!(mac.path, tail.path);
+            assert_eq!(mac.prefix, tail.prefix);
+            assert_eq!(mac.env, tail.env);
+            assert_eq!(mac.env_remove, tail.env_remove);
+            assert_eq!(mac.env_clear, tail.env_clear);
+        }
+        assert!(platform_tmux(Host::Linux, None, &tail).is_none());
+        let linux = platform_tmux(Host::Linux, Some(&scope), &tail).unwrap();
+        assert_eq!(linux.env, tail.env);
+        assert_eq!(linux.env_remove, tail.env_remove);
+        // Real Python function AST; inert which, no startup or subprocess.
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let code = r#"import ast,json,sys,types
+fn=next(n for n in ast.parse(open(sys.argv[1]).read()).body if isinstance(n,ast.FunctionDef) and n.name=='scope_cmd')
+ns={'shutil':types.SimpleNamespace(which=lambda _:True)}
+exec(compile(ast.Module(body=[fn],type_ignores=[]),sys.argv[1],'exec'),ns)
+print(json.dumps(ns['scope_cmd'](['/fixture/tmux','-S','/fixture/socket with space'])))
+ns['shutil']=types.SimpleNamespace(which=lambda _:None)
+print(json.dumps(ns['scope_cmd'](['/fixture/tmux','-S','/fixture/socket with space'])))
+"#;
+        let out = comandos_oracle::oracle_at(
+            &root.join("tests/golden"),
+            "server-quick-scope",
+            &serde_json::json!({"source_ref":"2674f36", "source":include_str!("../../../tests/oracle-src/scope_cmd.py"), "script":code}),
+            || {
+                let out = std::process::Command::new(
+                    std::env::var("COMANDOS_SERVER_ORACLE_PYTHON")
+                        .unwrap_or_else(|_| "python3".into()),
+                )
+                .args(["-c", code])
+                .arg(root.join("tests/oracle-src/scope_cmd.py"))
+                .output()
+                .map_err(|e| e.to_string())?;
+                if out.status.success() {
+                    Ok(out.stdout)
+                } else {
+                    Err(String::from_utf8_lossy(&out.stderr).into_owned())
+                }
+            },
+        );
+        let text = String::from_utf8(out).unwrap();
+        let mut lines = text.lines();
+        let expected: Vec<String> = serde_json::from_str(lines.next().unwrap()).unwrap();
+        let linux_names: Vec<String> = std::iter::once("systemd-run".to_owned())
+            .chain(linux.prefix.iter().map(|s| s.to_str().unwrap().to_owned()))
+            .collect();
+        assert_eq!(linux_names, expected);
+        let expected_mac: Vec<String> = serde_json::from_str(lines.next().unwrap()).unwrap();
+        let mac = platform_tmux(Host::Macos, None, &tail).unwrap();
+        let mac_names: Vec<String> = std::iter::once(mac.path.to_str().unwrap().to_owned())
+            .chain(mac.prefix.iter().map(|s| s.to_str().unwrap().to_owned()))
+            .collect();
+        assert_eq!(mac_names, expected_mac);
     }
 }

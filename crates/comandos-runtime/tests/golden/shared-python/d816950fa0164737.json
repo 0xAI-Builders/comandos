@@ -1,0 +1,16 @@
+{
+  "input": {
+    "case": {
+      "script": "import sys,json; sys.path.insert(0,sys.argv[1]+'/lib'); import news_editions as e, news_radar as r; print(json.dumps([[e.normalize_url(u),r.canonical(u)] for u in json.loads(sys.argv[2])]))",
+      "args": [
+        {
+          "arg": "[\"https://www.Example.com/a//b/?utm_source=x&b=2&a=1#x\",\"http://x.test:80/\",\"https://x.test:443/\",\"https://x.test:8443/\",\"ftp://x.test\",\"https://u:p@x.test\",\"\",\"../a\",\"https://x.test/?q=a+b&q=c&empty=\",\"https://x.test/?REF=x&ref_src=y\",\"https://old.reddit.com/r/ai/\",\"HTTPS://WWW.X.TEST/a\",\"https://x.test////\",\"https://x.test/?s=2&t=3\",\"https://x.test/?UTM_FOO=a\",\"https://x.test/?q=%C3%B1\",\"https://x.test/a%20b\",\"https://x.test/?z=2&z=1\",\"https://x.test/#top\",\"https://x.test/?fbclid=1&ok=2\"]",
+          "file": null
+        }
+      ],
+      "bin_inputs": []
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbW1wiaHR0cHM6Ly9leGFtcGxlLmNvbS9hL2I/YT0xJmI9MlwiLCBcImh0dHBzOi8vZXhhbXBsZS5jb20vYS9iP2E9MSZiPTJcIl0sIFtcImh0dHA6Ly94LnRlc3QvXCIsIFwiaHR0cDovL3gudGVzdC9cIl0sIFtcImh0dHBzOi8veC50ZXN0L1wiLCBcImh0dHBzOi8veC50ZXN0L1wiXSwgW1wiaHR0cHM6Ly94LnRlc3Q6ODQ0My9cIiwgXCJodHRwczovL3gudGVzdC9cIl0sIFtudWxsLCBudWxsXSwgW251bGwsIG51bGxdLCBbbnVsbCwgbnVsbF0sIFtudWxsLCBudWxsXSwgW1wiaHR0cHM6Ly94LnRlc3QvP2VtcHR5PSZxPWErYiZxPWNcIiwgXCJodHRwczovL3gudGVzdC8/ZW1wdHk9JnE9YStiJnE9Y1wiXSwgW1wiaHR0cHM6Ly94LnRlc3QvP1JFRj14XCIsIFwiaHR0cHM6Ly94LnRlc3QvXCJdLCBbXCJodHRwczovL29sZC5yZWRkaXQuY29tL3IvYWlcIiwgXCJodHRwczovL3JlZGRpdC5jb20vci9haVwiXSwgW1wiaHR0cHM6Ly94LnRlc3QvYVwiLCBcImh0dHBzOi8veC50ZXN0L2FcIl0sIFtcImh0dHBzOi8veC50ZXN0L1wiLCBcImh0dHBzOi8veC50ZXN0L1wiXSwgW1wiaHR0cHM6Ly94LnRlc3QvP3M9MiZ0PTNcIiwgXCJodHRwczovL3gudGVzdC9cIl0sIFtcImh0dHBzOi8veC50ZXN0L1wiLCBcImh0dHBzOi8veC50ZXN0L1wiXSwgW1wiaHR0cHM6Ly94LnRlc3QvP3E9JUMzJUIxXCIsIFwiaHR0cHM6Ly94LnRlc3QvP3E9JUMzJUIxXCJdLCBbXCJodHRwczovL3gudGVzdC9hJTIwYlwiLCBcImh0dHBzOi8veC50ZXN0L2ElMjBiXCJdLCBbXCJodHRwczovL3gudGVzdC8/ej0xJno9MlwiLCBcImh0dHBzOi8veC50ZXN0Lz96PTEmej0yXCJdLCBbXCJodHRwczovL3gudGVzdC9cIiwgXCJodHRwczovL3gudGVzdC9cIl0sIFtcImh0dHBzOi8veC50ZXN0Lz9vaz0yXCIsIFwiaHR0cHM6Ly94LnRlc3QvP29rPTJcIl1dXG4iLCJ0cmVlIjp7fX0="
+}

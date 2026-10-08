@@ -30,15 +30,30 @@ fn permitted(spec: &Value, name: &str) -> bool {
             })
 }
 
-/// Respuesta hacia el cliente con el sobre que construye el servidor Python: un
-/// `JSONRPCResponse`/`JSONRPCError` nuevo (sin extras del upstream), resultado reescrito por
-/// su modelo y `-32603` si el upstream devuelve algo que el modelo no acepta.
+/// Conserva los campos raíz desconocidos sin permitir que sustituyan el ID del cliente
+/// o el resultado/error validado del proxy.
+fn envelope(mut response: Value, upstream: Value) -> Value {
+    if let (Some(target), Value::Object(fields)) = (response.as_object_mut(), upstream) {
+        target.extend(
+            fields
+                .into_iter()
+                .filter(|(key, _)| !matches!(key.as_str(), "jsonrpc" | "id" | "result" | "error")),
+        );
+    }
+    response
+}
+
+/// Normaliza el contenido MCP y conserva los extras del sobre del upstream.
+/// Un resultado inválido sigue generando `-32603`.
 fn downstream(name: &str, method: &str, id: Value, mut upstream: Value) -> Value {
     if let Some(error) = upstream.get_mut("error").map(Value::take) {
-        return json!({"jsonrpc":"2.0","id":id,"error":normalize::error(error)});
+        return envelope(
+            json!({"jsonrpc":"2.0","id":id,"error":normalize::error(error)}),
+            upstream,
+        );
     }
     match normalize::result(method, upstream["result"].take()) {
-        Ok(result) => json!({"jsonrpc":"2.0","id":id,"result":result}),
+        Ok(result) => envelope(json!({"jsonrpc":"2.0","id":id,"result":result}), upstream),
         Err(normalize::ValidationError) => error(
             id,
             -32603,
@@ -207,4 +222,62 @@ pub async fn serve(home: &Path, name: &str, spec: &Value) -> Result<()> {
         transport.shutdown().await;
     }
     outcome
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_envelope_preserves_extras_and_remaps_id() {
+        let response = downstream(
+            "demo",
+            "tools/list",
+            json!("client"),
+            json!({
+                "jsonrpc":"2.0", "id":991,
+                "error":{"code":-32099,"message":"Original list error","data":{"extra":[1,2]}},
+                "futureEnvelope":{"keep":true}
+            }),
+        );
+        assert_eq!(
+            response,
+            json!({"jsonrpc":"2.0","id":"client",
+            "error":{"code":-32099,"message":"Original list error","data":{"extra":[1,2]}},
+            "futureEnvelope":{"keep":true}})
+        );
+    }
+
+    #[test]
+    fn valid_result_preserves_envelope_but_invalid_resources_still_fail() {
+        let response = downstream(
+            "demo",
+            "resources/list",
+            json!(7),
+            json!({
+                "jsonrpc":"2.0","id":991,"result":{"resources":[],"params":{"cursor":"opaque"}},
+                "futureEnvelope":{"keep":true}
+            }),
+        );
+        assert_eq!(response["id"], 7);
+        assert_eq!(response["futureEnvelope"], json!({"keep":true}));
+        assert_eq!(response["result"]["params"], json!({"cursor":"opaque"}));
+        let rejected = downstream(
+            "demo",
+            "resources/list",
+            json!(7),
+            json!({
+                "jsonrpc":"2.0","id":991,"result":{"params":{"cursor":"opaque"}},
+                "futureEnvelope":{"keep":true}
+            }),
+        );
+        assert_eq!(
+            rejected,
+            error(
+                json!(7),
+                -32603,
+                "Upstream request failed for demo: ValidationError"
+            )
+        );
+    }
 }

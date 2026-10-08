@@ -30,6 +30,7 @@ const WAIT: Duration = Duration::from_secs(3);
 fn limits() -> Limits {
     Limits {
         connections: 8,
+        websockets: 64,
         header_bytes: 65536,
         buffered_wire_bytes: 20_000_000,
         header_timeout: Duration::from_secs(1),
@@ -65,7 +66,9 @@ impl Fixture {
         let address = listener.local_addr().unwrap();
         let (stop, shutdown) = watch::channel(false);
         let config = Config {
+            websocket: None,
             token: b"fixture-token".to_vec(),
+            token_file: None,
             asset_exists: Arc::new(|p| p == "/workspace.css"),
             handler,
             limits,
@@ -208,6 +211,7 @@ async fn review_stalled_reader_releases_stream_and_connection_capacity() {
             async move {
                 match receiver {
                     Some(receiver) => Ok(Reply {
+                        cache: comandos_server::ReplyCache::NoStore,
                         status: StatusCode::OK,
                         headers: http::HeaderMap::new(),
                         body: ReplyBody::Stream(receiver),
@@ -261,6 +265,7 @@ async fn review_quiet_event_stream_can_outlive_write_and_handler_timeouts() {
             let receiver = receiver.lock().unwrap().take().unwrap();
             async move {
                 Ok(Reply {
+                    cache: comandos_server::ReplyCache::NoStore,
                     status: StatusCode::OK,
                     headers: http::HeaderMap::new(),
                     body: ReplyBody::Stream(receiver),
@@ -721,7 +726,9 @@ async fn invalid_limits_and_empty_tokens_fail_before_accepting() {
         let error = server::serve(
             listener,
             Config {
+                websocket: None,
                 token,
+                token_file: None,
                 asset_exists: Arc::new(|_| false),
                 handler: echo(),
                 limits: l,

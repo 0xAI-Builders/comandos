@@ -1,0 +1,26 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- conmutador Ctrl+K (salta a cualquier sesion) ----------",
+  "marker_end": "// ---------- iconos ----------",
+  "sha256": "86c3da8f5d8ad5e58f349d3a452121bc2ca2ef0144e82b6f813251fed3ac7501",
+  "id": "conmutador-ctrl-k",
+  "exports": [
+    "swItems",
+    "swSel",
+    "swScore",
+    "SW_ORD",
+    "loadRecover",
+    "swOpen",
+    "swClose",
+    "quickVisible",
+    "swFill",
+    "swGo"
+  ],
+  "deps": [
+    "prelude",
+    "i18n",
+    "red"
+  ]
+}

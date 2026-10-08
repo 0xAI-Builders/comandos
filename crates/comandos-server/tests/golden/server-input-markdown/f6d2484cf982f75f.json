@@ -1,0 +1,15 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "code": "import json\ncases = json.loads(\"[\\\"\\\",\\\"hola\\\",\\\"# título\\\\n## dos\\\\n####### siete\\\\n#sin espacio\\\\n###### seis\\\",\\\"**a** **b** ***c*** ** d **\\\",\\\"*x* (*y*) a*b*c *z*, *w*! *v*? *u*: *t*; *s*. *r*)\\\",\\\" *x* *y*\\\\u001f*z*\\\\u001f\\\",\\\"*a\\\\u000bb* `c` ``d`` `e\\\",\\\"[a](b) [c](d e) [f]( g) [h]()\\\",\\\"| a | b |\\\\n|---|---|\\\\n| 1 | 2 |\\\\n|  :-: | - |\\\\n|x|\\\\n||\\\\n| a | b |   \\\\n  | c |\\\",\\\"|---|\\\\n| - |\\\\n| x |\\\",\\\"```\\\\n<a href=\\\\\\\"x\\\\\\\">'y'</a>\\\\n  ```\\\\n**fuera**\\\",\\\"```rust\\\\nsin cerrar\\\",\\\"- uno\\\\n* dos\\\\n  - tres\\\\n-cuatro\\\\n\\\\t* cinco\\\",\\\"---\\\\n  -----  \\\\n- - -\\\\n--\\\",\\\"a\\\\r\\\\nb\\\\rc d\\\\u001cef\\\",\\\"<b>&amp;</b> \\\\\\\"q\\\\\\\" 'p'\\\",\\\"**neg *cur* neg** `**no**`\\\",\\\"ñandú *ñ* **ü** [ç](x)\\\",\\\"* *\\\",\\\"|a|b|\\\\ntexto\\\\n|c|d|\\\"]\")\nprint(json.dumps([dash.md_to_html(c) for c in cases]))",
+      "effect_files": [],
+      "fakebin": [],
+      "fixture_env": []
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbXCJcIiwgXCJob2xhPGJyPlwiLCBcIjxoMz50XFx1MDBlZHR1bG88L2gzPjxoMz5kb3M8L2gzPiMjIyMjIyMgc2lldGU8YnI+I3NpbiBlc3BhY2lvPGJyPjxoMz5zZWlzPC9oMz5cIiwgXCI8Yj5hPC9iPiA8Yj5iPC9iPiA8Yj4qYzwvYj4qIDxiPiBkIDwvYj48YnI+XCIsIFwiPGk+eDwvaT4gKDxpPnk8L2k+KSBhKmIqYyA8aT56PC9pPiwgPGk+dzwvaT4hIDxpPnY8L2k+PyA8aT51PC9pPjogPGk+dDwvaT47IDxpPnM8L2k+LiA8aT5yPC9pPik8YnI+XCIsIFwiIDxpPng8L2k+XFx1MDBhMDxpPnk8L2k+XFx1MDAxZjxpPno8L2k+XFx1MDAxZjxicj5cIiwgXCIqYTxicj5iKiA8Y29kZT5jPC9jb2RlPiBgPGNvZGU+ZDwvY29kZT48Y29kZT4gPC9jb2RlPmU8YnI+XCIsIFwiYSBbY10oZCBlKSBbZl0oIGcpIGg8YnI+XCIsIFwiPHRhYmxlPjx0cj48dGg+YTwvdGg+PHRoPmI8L3RoPjwvdHI+PHRyPjx0ZD4xPC90ZD48dGQ+MjwvdGQ+PC90cj48dHI+PHRkPng8L3RkPjwvdHI+PHRyPjx0ZD48L3RkPjwvdHI+PHRyPjx0ZD5hPC90ZD48dGQ+YjwvdGQ+PC90cj48dHI+PHRkPmM8L3RkPjwvdHI+PC90YWJsZT5cIiwgXCI8dGFibGU+PHRyPjx0aD54PC90aD48L3RyPjwvdGFibGU+XCIsIFwiPHByZT4mbHQ7YSBocmVmPSZxdW90O3gmcXVvdDsmZ3Q7JiN4Mjc7eSYjeDI3OyZsdDsvYSZndDtcXG48L3ByZT48Yj5mdWVyYTwvYj48YnI+XCIsIFwiPHByZT5zaW4gY2VycmFyXFxuXCIsIFwiXFx1MjAyMiB1bm88YnI+XFx1MjAyMiBkb3M8YnI+ICBcXHUyMDIyIHRyZXM8YnI+LWN1YXRybzxicj5cXHRcXHUyMDIyIGNpbmNvPGJyPlwiLCBcIjxocj48aHI+XFx1MjAyMiAtIC08YnI+LS08YnI+XCIsIFwiYTxicj5iPGJyPmM8YnI+ZDxicj5lPGJyPmY8YnI+XCIsIFwiJmx0O2ImZ3Q7JmFtcDthbXA7Jmx0Oy9iJmd0OyAmcXVvdDtxJnF1b3Q7ICYjeDI3O3AmI3gyNzs8YnI+XCIsIFwiPGI+bmVnIDxpPmN1cjwvaT4gbmVnPC9iPiA8Y29kZT48Yj5ubzwvYj48L2NvZGU+PGJyPlwiLCBcIlxcdTAwZjFhbmRcXHUwMGZhIDxpPlxcdTAwZjE8L2k+IDxiPlxcdTAwZmM8L2I+IFxcdTAwZTc8YnI+XCIsIFwiXFx1MjAyMiAqPGJyPlwiLCBcIjx0YWJsZT48dHI+PHRoPmE8L3RoPjx0aD5iPC90aD48L3RyPjwvdGFibGU+dGV4dG88YnI+PHRhYmxlPjx0cj48dGg+YzwvdGg+PHRoPmQ8L3RoPjwvdHI+PC90YWJsZT5cIl1cbiIsInRyZWUiOnt9fQ=="
+}

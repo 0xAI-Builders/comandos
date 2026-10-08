@@ -1,0 +1,22 @@
+{
+  "input": {
+    "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+    "python": "CPython 3.10.12",
+    "fixture": {
+      "fakebin": [],
+      "prelude": "",
+      "keep_loops": [],
+      "environment": []
+    },
+    "after_request": 32,
+    "observation": 6,
+    "operation": "tmux-read",
+    "args": [
+      "list-sessions",
+      "-F",
+      "#{session_name}"
+    ]
+  },
+  "output_b64": "Imh1YlxuIg=="
+}

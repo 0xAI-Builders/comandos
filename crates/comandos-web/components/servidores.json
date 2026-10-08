@@ -1,0 +1,25 @@
+{
+  "id": "servidores",
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- servidores ----------",
+  "marker_end": "// ---------- notificaciones del sistema ----------",
+  "sha256": "392a79ec49f3d1692bda3267440c97b4c742c369b24b7ccfe53ecd9c7d89c493",
+  "exports": [
+    "connectHost",
+    "openSshTab",
+    "setupSshKey",
+    "fillSrvForm",
+    "loadSsh",
+    "toggleSshManager",
+    "initHeaderActions",
+    "initHeaderPopovers"
+  ],
+  "deps": [
+    "helpers",
+    "app-combinada",
+    "red",
+    "quick-terminal"
+  ]
+}

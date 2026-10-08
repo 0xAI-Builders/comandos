@@ -59,3 +59,132 @@ fn dispatch_dash_and_cc_dash_alias() {
         matches!(resolve("/home/x/.local/bin/cc-dash", &v(&["--no-open"])), Command::Dash(a) if a == v(&["--no-open"]))
     );
 }
+
+#[test]
+fn dispatch_browser_aliases_and_explicit() {
+    assert!(
+        matches!(resolve("comandos", &v(&["browser", "remote"])), Command::Browser(a) if a == v(&["remote"]))
+    );
+    assert!(
+        matches!(resolve("/home/x/.local/bin/cc-browser-remote", &v(&[])), Command::Browser(a) if a == v(&["remote"]))
+    );
+    assert!(
+        matches!(resolve("cc-browser-expose", &v(&["status"])), Command::Browser(a) if a == v(&["expose", "status"]))
+    );
+    assert!(
+        matches!(resolve("cc-browser-npx-guard", &v(&["chrome-devtools-mcp"])), Command::Browser(a) if a == v(&["npx-guard", "chrome-devtools-mcp"]))
+    );
+}
+
+#[test]
+fn dispatch_winstart_alias_and_explicit() {
+    for argv0 in ["comandos", "/private/bin/cc-winstart"] {
+        let args = if argv0 == "comandos" {
+            v(&["winstart", "--uninstall"])
+        } else {
+            v(&["--uninstall"])
+        };
+        assert_eq!(
+            format!("{:?}", resolve(argv0, &args)),
+            "Winstart([\"--uninstall\"])"
+        );
+    }
+}
+#[test]
+fn dispatch_agents_alias_and_explicit_preserve_arguments() {
+    for argv0 in ["comandos", "/private/bin/cc-agents"] {
+        let args = if argv0 == "comandos" {
+            v(&["agents", "setup", "ignored"])
+        } else {
+            v(&["setup", "ignored"])
+        };
+        assert_eq!(
+            resolve(argv0, &args),
+            Command::Agents(v(&["setup", "ignored"]))
+        );
+    }
+}
+
+#[test]
+fn dispatch_acp_alias_and_explicit_preserve_values() {
+    for (name, args) in [
+        (
+            "comandos",
+            v(&["acp", "--model", "two words", "--resume", "id"]),
+        ),
+        (
+            "/private/bin/cc-acp",
+            v(&["--model", "two words", "--resume", "id"]),
+        ),
+    ] {
+        assert_eq!(
+            resolve(name, &args),
+            Command::Acp(v(&["--model", "two words", "--resume", "id"]))
+        );
+    }
+}
+
+#[test]
+fn dispatch_mobile_alias_and_explicit_preserve_arguments() {
+    for argv0 in ["comandos", "/private/bin/cc-mobile"] {
+        let args = if argv0 == "comandos" {
+            v(&["mobile", "off", "--dry-run"])
+        } else {
+            v(&["off", "--dry-run"])
+        };
+        assert_eq!(
+            resolve(argv0, &args),
+            Command::Mobile(v(&["off", "--dry-run"]))
+        );
+    }
+}
+
+#[test]
+fn dispatch_codex_alias_and_explicit_preserve_literal_arguments() {
+    let tail = v(&[
+        "full-access",
+        "--retry-report",
+        "/private/report literal ' 雪.json",
+    ]);
+    assert_eq!(
+        resolve(
+            "comandos",
+            &v(&[
+                "codex",
+                "full-access",
+                "--retry-report",
+                "/private/report literal ' 雪.json"
+            ])
+        ),
+        Command::Codex(tail.clone())
+    );
+    assert_eq!(
+        resolve(
+            "/private/bin/cc-codex-full-access",
+            &v(&["--retry-report", "/private/report literal ' 雪.json"])
+        ),
+        Command::Codex(tail)
+    );
+}
+
+#[test]
+fn dispatch_extension_session_preserves_manifest_and_literal_args() {
+    let args = v(&[
+        "--manifest",
+        "/private/manifest 雪.json",
+        "--",
+        "env",
+        "A=two words",
+        "codex",
+    ]);
+    assert_eq!(
+        resolve("/private/bin/cc-extension-session", &args),
+        Command::ExtensionSession(args.clone())
+    );
+    let mut explicit = v(&["extension-session"]);
+    explicit.extend(args.clone());
+    assert_eq!(
+        resolve("comandos", &explicit),
+        Command::ExtensionSession(args)
+    );
+}

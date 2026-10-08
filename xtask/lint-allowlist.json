@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "allow": [
+    {"path": "adapters/opencode-comandos.js", "max_lines": 3, "reason": "spec §3.2: opencode solo carga plugins JavaScript; shim de 3 líneas sin lógica"},
+    {"prefix": "vendor/claude-codex/", "reason": "spec §3.1: scripts de CI y hooks del upstream"}
+  ]
+}

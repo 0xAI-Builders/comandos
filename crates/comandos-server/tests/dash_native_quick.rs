@@ -226,7 +226,12 @@ async fn quick_terminal_concurrent_same_request_one_shell_worker_free() {
 async fn quick_terminal_outside_sidebar_unscoped_and_invalid() {
     let home = TestHome::new("quick-dec");
     let legacy = FakeLegacy::start().await;
-    let front = front(&home, legacy.port, opts(&home)).await;
+    // Fuera de la barra la terminal es una pestaña del registro (2f-1, T5):
+    // con el corte `tabs` apagado declina antes de cualquier efecto.
+    let mut cut = opts(&home);
+    cut.cuts_off
+        .insert(comandos_server::dash::native::Cut::Tabs);
+    let front = front(&home, legacy.port, cut).await;
     for body in [
         r#"{"requestId":"r"}"#,
         r#"{"requestId":"r","place":"tab"}"#,
@@ -454,18 +459,47 @@ async fn quick_terminal_launch_argv_matches_python() {
     let rust_set = set_option
         .strip_prefix(&format!("-f /dev/null -S {} ", socket.display()))
         .expect("set-option con -S privado");
-    let Some(out) = support::oracle::run_python(
-        LAUNCH_ORACLE,
-        &[
-            OsStr::new(sess),
-            OsStr::new(cwd),
-            OsStr::new(key),
-            OsStr::new(&pane),
-        ],
-        &home.root.join("py-home"),
-    ) else {
-        return;
-    };
+    // Only fixture-generated identifiers are aliased. The scope, actual tmux
+    // pane, set-option and private socket assertions above run in every mode.
+    let session_alias = std::path::Path::new(sess);
+    let key_alias = std::path::Path::new(key);
+    let pane_alias = std::path::Path::new(&pane);
+    let aliases = [
+        ("<HOME>", home.root.as_path()),
+        ("<SESSION>", session_alias),
+        ("<PANE_KEY>", key_alias),
+        ("<PANE>", pane_alias),
+    ];
+    let input = json!({
+        "source_commit": support::frozen::SOURCE_COMMIT,
+        "source_sha256":"4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+        "python":"CPython 3.10.12", "script":LAUNCH_ORACLE,
+        "args":[sess,cwd,key,pane],
+    });
+    let input: Value = serde_json::from_slice(&comandos_oracle::normalize(
+        &serde_json::to_vec(&input).unwrap(),
+        &aliases,
+    ))
+    .unwrap();
+    let expected = comandos_oracle::oracle_at(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "server-quick-launch-argv",
+        &input,
+        || {
+            let output = support::frozen::run_python_original(
+                LAUNCH_ORACLE,
+                &[
+                    OsStr::new(sess),
+                    OsStr::new(cwd),
+                    OsStr::new(key),
+                    OsStr::new(&pane),
+                ],
+                &home.root.join("py-home"),
+            )?;
+            Ok(comandos_oracle::normalize(output.as_bytes(), &aliases))
+        },
+    );
+    let out = String::from_utf8(comandos_oracle::restore(&expected, &aliases)).unwrap();
     let python: Vec<Vec<String>> = serde_json::from_str(out.trim()).unwrap();
     assert_eq!(python.len(), 2, "{python:?}");
     let mut expected_launch = python[0].clone();

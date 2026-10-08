@@ -1,0 +1,74 @@
+use std::{cell::{Cell,RefCell},rc::Rc};
+use comandos_app::term::{engine::{TermEngine,Palette},schedule::PaintSchedule,settle::Settle,lifecycle::RespawnPolicy,pty::{DrainOutcome,PtyError}};
+use glib::{IOCondition,SourceId};
+use serde_json::{json,Value};
+use comandos_app::config::RunMode;
+use comandos_app::term::shadow::ShadowFrame;
+thread_local! {static EPOCH:std::time::Instant=std::time::Instant::now();static NOW:Cell<u64>=const{Cell::new(0)};static EFFECTS:Cell<usize>=const{Cell::new(0)};}
+fn effect(){EFFECTS.with(|n|n.set(n.get()+1));}
+mod shadow {
+ use super::*;
+ pub const REFRESH_MS:u64=comandos_app::term::shadow::REFRESH_MS;
+ #[derive(Default)]pub struct ShadowReader {pub visible:bool,pub frames:std::collections::VecDeque<Result<ShadowFrame,()>>,pub requests:usize}
+ impl ShadowReader {
+  pub fn set_visible(&mut self,visible:bool){self.visible=visible;}
+  pub fn take(&mut self)->Option<Result<ShadowFrame,()>>{if self.visible {self.frames.pop_front()}else{None}}
+  pub fn request(&mut self)->bool{if self.visible {self.requests+=1;true}else{false}}
+ }
+}
+struct Instant;
+impl Instant {fn now()->std::time::Instant {EPOCH.with(|epoch|*epoch)+std::time::Duration::from_millis(NOW.with(Cell::get))}}
+fn clock(ms:u64) {NOW.with(|now|now.set(ms));}
+struct Area {mapped:Cell<bool>,draws:Cell<usize>}
+impl Area {fn is_mapped(&self)->bool {self.mapped.get()}fn queue_draw(&self){self.draws.set(self.draws.get()+1)}fn set_tooltip_text(&self,_:Option<&str>){}}
+struct Pty {bytes:Option<Vec<u8>>}
+#[derive(Default)]
+struct Drain;
+impl Drain {
+ fn observe_exit(&mut self,_pty:&mut Pty){}fn has_exited(&self)->bool {false}fn finished(&self)->Option<i32>{None}fn close(&mut self){}
+ fn read_into(&mut self,pty:&mut Pty,mut feed:impl FnMut(&[u8]))->DrainOutcome {if let Some(bytes)=pty.bytes.take(){feed(&bytes);}DrainOutcome::WouldBlock}
+}
+type PtyDrain=Drain;
+struct Clipboard;
+impl Clipboard {fn osc52(&self,_target:crate::ui::clipboard::Target,_text:&str) {effect();}}
+mod ui {pub mod clipboard {pub enum Target {Primary,Clipboard}}}
+use comandos_app::term::engine::ClipboardTarget;
+struct Options {mode:RunMode,on_title:Option<fn(&str)>,on_bell:Option<fn()>,on_exit:Option<fn(i32)>,on_ssh_scroll:Option<fn(&str,i32,u16,u16)>,session:Option<String>}
+struct Geom {cell_w:f64,cell_h:f64}
+struct Model {engine:TermEngine,pty:Option<Pty>,shadow:Option<shadow::ShadowReader>,shadow_frame:Option<ShadowFrame>,shadow_at:u64,selection:Option<()>,geom:Geom,drain:Drain,respawn:RespawnPolicy,respawn_at:Option<u64>,settle:Settle,schedule:PaintSchedule,preferences:Value,blink_visible:bool,ssh_at:Option<u64>,ssh_delta:f64,ssh_point:(u16,u16)}
+struct Inner {model:RefCell<Model>,area:Area,read_source:RefCell<Option<SourceId>>,write_source:RefCell<Option<SourceId>>,options:Options,clipboard:Clipboard}
+impl Inner {
+ fn ms(&self)->u64 {NOW.with(Cell::get)}fn arm(&self){}fn send_event(&self,_bytes:&[u8]){effect();}fn spawn(&self)->Result<(),PtyError>{panic!("fixture must never spawn")}
+}
+mod actual {use super::*;impl Inner {
+ // ACTUAL_METHODS
+}
+const RESPAWN_MS:u64=1000;
+fn make(blink:bool,focused:bool,clear:bool)->Rc<Inner> {
+ make_mode(blink,focused,clear,RunMode::Sandbox)
+}
+fn make_mode(blink:bool,focused:bool,clear:bool,mode:RunMode)->Rc<Inner> {
+ clock(0);let epoch=Instant::now();let palette=Palette::xterm_default([240;3],[0;3],[200;3],[0;3],[240;3]);let mut engine=TermEngine::new(40,12,10,palette,false,epoch);
+ if clear {let mut lines=Vec::new();engine.take_dirty(&mut lines);}
+ let mut schedule=PaintSchedule::default();schedule.set_focused(focused,0);schedule.painted(0);
+ Rc::new(Inner{model:RefCell::new(Model{engine,pty:if mode==RunMode::Shadow{None}else{Some(Pty{bytes:None})},shadow:if mode==RunMode::Shadow{Some(shadow::ShadowReader::default())}else{None},shadow_frame:None,shadow_at:0,selection:None,geom:Geom{cell_w:8.,cell_h:16.},drain:Drain,respawn:RespawnPolicy::default(),respawn_at:None,settle:Settle::new(100,1000,0),schedule,preferences:json!({"cursor_blink":blink}),blink_visible:true,ssh_at:None,ssh_delta:0.,ssh_point:(0,0)}),area:Area{mapped:Cell::new(true),draws:Cell::new(0)},read_source:RefCell::new(None),write_source:RefCell::new(None),options:Options{mode,on_title:Some(|_|effect()),on_bell:Some(effect),on_exit:Some(|_|effect()),on_ssh_scroll:Some(|_,_,_,_|effect()),session:None},clipboard:Clipboard})
+}
+fn captured()->ShadowFrame {ShadowFrame{cols:40,rows:12,bytes:b"\x1b[2J\x1b[Hsnapshot\x1b[6n\x1b]2;ignored title\x07\x07\x1b]52;c;c2VjcmV0\x07".to_vec()}}
+fn deliver(inner:&Rc<Inner>,frame:ShadowFrame){inner.model.borrow_mut().shadow.as_mut().unwrap().frames.push_back(Ok(frame));}
+fn tick_at(inner:&Rc<Inner>,ms:u64) {clock(ms);inner.tick();inner.model.borrow_mut().schedule.painted(ms);}
+fn input(inner:&Rc<Inner>,bytes:&[u8]) {inner.model.borrow_mut().pty.as_mut().unwrap().bytes=Some(bytes.to_vec());assert!(inner.read(IOCondition::empty()));}
+pub fn main() {
+ let idle=make(false,true,true);for ms in (100..=10000).step_by(100){tick_at(&idle,ms);}let idle_paints=idle.area.draws.get();
+ let bytes=make(false,true,true);input(&bytes,b"prompt");tick_at(&bytes,100);let bytes_paints=bytes.area.draws.get();
+ let full=make(false,true,false);input(&full,b"first frame");let full_pending=!full.model.borrow().schedule.pending_lines().is_empty();tick_at(&full,100);let full_paints=full.area.draws.get();
+ let sync=make(false,true,true);input(&sync,b"\x1b[?2026hSYNC");tick_at(&sync,100);let early=sync.area.draws.get();let deadline=sync.model.borrow().engine.next_deadline().unwrap();let deadline_ms=EPOCH.with(|epoch|deadline.duration_since(*epoch).as_millis() as u64);tick_at(&sync,deadline_ms+1);let flushed=sync.area.draws.get();for ms in ((deadline_ms+101)..(deadline_ms+2000)).step_by(100){tick_at(&sync,ms);}let after=sync.area.draws.get();
+ let explicit=make(false,true,true);input(&explicit,b"\x1b[?2026hUPDATE");tick_at(&explicit,100);input(&explicit,b"\x1b[?2026l");tick_at(&explicit,200);let explicit_paints=explicit.area.draws.get();
+ let blink=make(true,true,true);tick_at(&blink,600);let blink_paints=blink.area.draws.get();
+ let unfocused=make(true,false,true);tick_at(&unfocused,600);let unfocused_paints=unfocused.area.draws.get();
+ let unmapped=make(false,true,true);unmapped.area.mapped.set(false);input(&unmapped,b"retained");clock(100);unmapped.tick();let hidden=unmapped.area.draws.get();let retained=!unmapped.model.borrow().schedule.pending_lines().is_empty();unmapped.area.mapped.set(true);clock(200);unmapped.tick();
+ EFFECTS.with(|n|n.set(0));let shadow=make_mode(false,true,false,RunMode::Shadow);deliver(&shadow,captured());clock(0);shadow.tick();let full_rows=shadow.model.borrow().schedule.pending_lines()==(0..12).collect::<Vec<_>>();tick_at(&shadow,100);let shadow_new=shadow.area.draws.get();deliver(&shadow,captured());tick_at(&shadow,600);for ms in (700..=10000).step_by(100){tick_at(&shadow,ms);}let shadow_same=shadow.area.draws.get();let no_pty=shadow.model.borrow().pty.is_some();
+ let hidden_shadow=make_mode(false,true,false,RunMode::Shadow);deliver(&hidden_shadow,captured());clock(0);hidden_shadow.tick();hidden_shadow.area.mapped.set(false);let requests=hidden_shadow.model.borrow().shadow.as_ref().unwrap().requests;for ms in (100..=2000).step_by(100){clock(ms);hidden_shadow.tick();}let hidden_shadow_paints=hidden_shadow.area.draws.get();let hidden_pending=!hidden_shadow.model.borrow().schedule.pending_lines().is_empty();let hidden_requests=hidden_shadow.model.borrow().shadow.as_ref().unwrap().requests-requests;hidden_shadow.area.mapped.set(true);clock(2100);hidden_shadow.tick();let remapped_shadow=hidden_shadow.area.draws.get();let effects=EFFECTS.with(Cell::get);
+ println!("{}",json!({"idle_paints":idle_paints,"bytes_paints":bytes_paints,"full_read_pending":full_pending,"full_read_paints":full_paints,"sync_early_paints":early,"sync_deadline_paints":flushed,"sync_after_idle_paints":after,"explicit_sync_paints":explicit_paints,"blink_paints":blink_paints,"unfocused_paints":unfocused_paints,"unmapped_paints":hidden,"queued_before_map":retained,"remapped_paints":unmapped.area.draws.get(),"shadow_full_rows":full_rows,"shadow_new_paints":shadow_new,"shadow_same_paints":shadow_same,"shadow_hidden_paints":hidden_shadow_paints,"shadow_hidden_pending":hidden_pending,"shadow_hidden_requests":hidden_requests,"shadow_remapped_paints":remapped_shadow,"shadow_pty":no_pty,"shadow_io_or_callbacks":effects}));
+}
+}
+fn main(){actual::main();}

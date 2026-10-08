@@ -217,6 +217,10 @@ fn loads(text: &str) -> Result<Option<Value>, Unsure> {
 
 /// `_claude_account_creds` (cc-dash:492): `main` y cada `~/.claude-accounts/<n>`
 /// con `.credentials.json`, en el orden de `sorted(os.listdir)` y sin `*.lock`.
+///
+/// Desviación: como `claude_accounts()` (cc-dash:508), un nombre que empieza
+/// por `-` o `.` no es una cuenta (existió un `--dangerously-skip-permissions`
+/// creado por un argumento mal pasado); el Python de 492 sí lo leería.
 pub fn claude_account_creds(home: &Path) -> Vec<(String, PathBuf)> {
     let mut out = vec![("main".to_owned(), expand(home, ".claude/.credentials.json"))];
     let base = expand(home, ".claude-accounts");
@@ -227,7 +231,11 @@ pub fn claude_account_creds(home: &Path) -> Vec<(String, PathBuf)> {
     names.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
     for name in names {
         let path = base.join(&name).join(".credentials.json");
-        if !name.as_bytes().ends_with(b".lock") && path.is_file() {
+        let bytes = name.as_bytes();
+        if bytes.starts_with(b"-") || bytes.starts_with(b".") {
+            continue;
+        }
+        if !bytes.ends_with(b".lock") && path.is_file() {
             out.push((name.to_string_lossy().into_owned(), path));
         }
     }
@@ -938,12 +946,20 @@ const AGY_BUCKETS: [(&str, &str, &str); 3] = [
 /// `read_agy_quota` (cc_usage.py:1893). Cualquier excepción la atrapa el
 /// llamador (`except Exception: agy_rows = []`): lista vacía.
 pub fn read_agy_quota(path: &Path, now: f64, zone: &dyn LocalZone) -> Vec<Value> {
-    agy_rows(path, now, zone).unwrap_or_default()
+    read_text(path).map_or_else(Vec::new, |text| {
+        agy_rows_text(&text, now, zone).unwrap_or_default()
+    })
 }
 
-fn agy_rows(path: &Path, now: f64, zone: &dyn LocalZone) -> Option<Vec<Value>> {
+pub fn read_agy_quota_bytes(bytes: &[u8], now: f64, zone: &dyn LocalZone) -> Vec<Value> {
+    std::str::from_utf8(bytes)
+        .ok()
+        .and_then(|text| agy_rows_text(text, now, zone))
+        .unwrap_or_default()
+}
+fn agy_rows_text(text: &str, now: f64, zone: &dyn LocalZone) -> Option<Vec<Value>> {
     let ts = trunc(now).ok()?;
-    let data = loads(&read_text(path)?).ok()??;
+    let data = loads(text).ok()??;
     let data = data.as_object()?;
     let quota = data.get("quota")?;
     let at = get(data, "captured_at");
@@ -1128,8 +1144,13 @@ pub fn parse_groq_ratelimit_headers(headers: &Row, now: i64) -> Result<Vec<Value
 /// `read_groq_rate_limits` (cc-dash:1261): `H/groq-ratelimit.json`; `now` es el
 /// `time.time()` que se usa si el archivo no trae `at`. Todo error → `[]`.
 pub fn read_groq_headers(path: &Path, now: i64) -> Vec<Value> {
+    read_text(path).map_or_else(Vec::new, |text| {
+        read_groq_headers_bytes(text.as_bytes(), now)
+    })
+}
+pub fn read_groq_headers_bytes(bytes: &[u8], now: i64) -> Vec<Value> {
     let rows = || -> Option<Vec<Value>> {
-        let data = loads(&read_text(path)?).ok()??;
+        let data = loads(std::str::from_utf8(bytes).ok()?).ok()??;
         let (headers, captured) = match data.as_object() {
             Some(d) => {
                 let at = get(d, "at");
@@ -1193,8 +1214,12 @@ pub fn groq_rows(
 
 /// `user_quotas` (cc-dash:540): `H/provider-quotas.json` si es un objeto; si no, `{}`.
 pub fn user_quotas(path: &Path) -> Row {
-    read_text(path)
-        .and_then(|t| loads(&t).ok().flatten())
+    read_text(path).map_or_else(Row::new, |text| user_quotas_bytes(text.as_bytes()))
+}
+pub fn user_quotas_bytes(bytes: &[u8]) -> Row {
+    std::str::from_utf8(bytes)
+        .ok()
+        .and_then(|t| loads(t).ok().flatten())
         .and_then(|v| match v {
             Value::Object(m) => Some(m),
             _ => None,

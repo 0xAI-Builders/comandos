@@ -95,7 +95,8 @@ async fn sovereignty(native: &Native) -> Answer {
         Err(_) => None,
     };
     let now = (native.options().clock)().div_euclid(1000);
-    let report = tokio::task::spawn_blocking(move || report(&hooks, inputs, tables, now))
+    let home = native.options().home.clone();
+    let report = tokio::task::spawn_blocking(move || report(&home, &hooks, inputs, tables, now))
         .await
         .map_err(|_| failure())?;
     read_reply(&report)
@@ -273,7 +274,13 @@ impl Inputs {
 
 /// `sovereignty_report`: el inventario, en el orden del Python. Bloquea
 /// (recorre directorios y cuenta líneas): corre en `spawn_blocking`.
-fn report(hooks: &Path, inputs: Inputs, tables: Option<Vec<(String, i64)>>, now: i64) -> Value {
+fn report(
+    context_home: &Path,
+    hooks: &Path,
+    inputs: Inputs,
+    tables: Option<Vec<(String, i64)>>,
+    now: i64,
+) -> Value {
     let Inputs {
         home,
         home_text,
@@ -370,7 +377,7 @@ fn report(hooks: &Path, inputs: Inputs, tables: Option<Vec<(String, i64)>>, now:
         "outbound": [
             {
                 "label": "Acceso remoto (tailnet)",
-                "on": hooks.join("webterm-enabled").exists(),
+                "on": super::files::DomainDocument::new(context_home, hooks, "webterm-enabled").ok().and_then(|d| d.read_bytes().ok().flatten()).is_some(),
                 "how": "tailscale serve — solo tu tailnet, nunca Funnel",
             },
             {

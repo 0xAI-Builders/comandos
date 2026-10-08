@@ -1,0 +1,8 @@
+# Allow Chromium to create its own sandbox at this exact pinned executable path.
+abi <abi/5.0>,
+include <tunables/global>
+
+profile comandos-browser-chrome /home/john/.local/share/comandos-browser/runtime/chrome-153.0.8010.36/chrome-linux64/chrome flags=(unconfined) {
+  userns,
+  @{exec_path} mr,
+}

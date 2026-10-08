@@ -1,0 +1,10 @@
+{
+  "id": "device-drafts",
+  "kind": "script",
+  "source": "dash/device-drafts.js",
+  "sha256": "7684f56c8d3a4d2538b4a0935d00df7282f85fad8042fa6c7a0bbdc4e7a9e617",
+  "exports": [
+    "ComandosDeviceDrafts"
+  ],
+  "deps": []
+}

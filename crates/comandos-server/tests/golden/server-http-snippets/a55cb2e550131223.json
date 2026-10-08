@@ -1,0 +1,24 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "clock_ms": 1791115200000,
+      "request": {
+        "method": "POST",
+        "target": "/snippets",
+        "extra": "",
+        "body": "{\"name\": \"a\", \"body\": \"   \"}"
+      },
+      "effect_files": [
+        "snippets.json",
+        "snippets.json.lock",
+        "ui-events.jsonl",
+        "ui-events.jsonl.lock"
+      ]
+    },
+    "before_sha256": "649fdbb8ae12c7ee13896a7365001558893adb23117a718d8d3289ea778b5b28"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjo0MDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCIyM1wiXV0sXCJib2R5XCI6WzEyMywzNCwxMDEsMTE0LDExNCwxMTEsMTE0LDM0LDU4LDMyLDM0LDk4LDExMSwxMDAsMTIxLDMyLDExOCw5Nyw5OSwxMDUsMTExLDM0LDEyNV19IiwidHJlZSI6eyJzbmlwcGV0cy5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6Ild3b2dJSHNpYVdRaU9pQWlNREV5TXpRMU5qYzRPV0ZpWTJSbFppSXNJQ0p1WVcxbElqb2dJaUJUWVd4MVpHOGdJaXdnSW1KdlpIa2lPaUFpWldOb2J5Qm9iMnhoSWl3Z0luUmhaM01pT2lCYkltRWlMQ0FpSUdJZ0lsMHNJQ0oxY0dSaGRHVmtYMkYwSWpvZ055NDVmU3dLSUNCN0ltbGtJam9nSWpBeE1qTTBOVFkzT0RsQlFrTkVSVVlpTENBaWJtRnRaU0k2SUNKdFlYbkR1bk5qZFd4aGN5SXNJQ0ppYjJSNUlqb2dJbmdpZlN3S0lDQjdJbWxrSWpvZ0ltWmxaR05pWVRrNE56WTFORE15TVRBaUxDQWlibUZ0WlNJNklHNTFiR3dzSUNKaWIyUjVJam9nZEhKMVpTd2dJblJoWjNNaU9pQnVkV3hzZlN3S0lDQjdJbWxrSWpvZ0lqRXhNVEV4TVRFeE1URXhNVEV4TVRFaUxDQWlibUZ0WlNJNklDSWlMQ0FpWW05a2VTSTZJQ0o0SW4wc0NpQWdleUpwWkNJNklDSXlNakl5TWpJeU1qSXlNakl5TWpJeUlpd2dJbTVoYldVaU9pQWliMnNpTENBaVltOWtlU0k2SUNKNElpd2dJblJoWjNNaU9pQmJJaUlzSUNKNUlsMTlMQW9nSUNKdWJ5MXZZbXBsZEc4aUxBb2dJSHNpYVdRaU9pQWlNek16TXpNek16TXpNek16TXpNek15SXNJQ0p1WVcxbElqb2dJc094WVc1a3c3b2lMQ0FpWW05a2VTSTZJQ0o1SWl3Z0luUmhaM01pT2lCYlhYMEtYUT09In19fQ=="
+}

@@ -15,7 +15,7 @@ if len(sys.argv) > 1:
 sys.path.insert(0, '/work/lib')
 import extension_auth as oracle
 
-BIN = '/work/.migration-build/target/debug/examples/credential_import_contract'
+BIN = str(Path(os.environ['CARGO_TARGET_DIR']) / 'debug/examples/credential_import_contract')
 ENDPOINT = 'https://example.test/v1/mcp'
 CATALOG = {'version': 1, 'servers': {'demo': {'url': ENDPOINT}, 'linear': {'url': 'https://linear.test/mcp'}, 'stdio': {'command': '/bin/true'}}}
 TIMESTAMPS = {

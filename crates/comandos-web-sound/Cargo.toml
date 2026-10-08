@@ -1,0 +1,18 @@
+[package]
+name = "comandos-web-sound"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Native synchronous sound component preserving trusted gesture activation."
+[lib]
+crate-type = ["cdylib", "rlib"]
+[dependencies]
+comandos-web-dom = { path = "../comandos-web-dom" }
+comandos-web-view = { path = "../comandos-web-view" }
+wasm-bindgen = "=0.2.129"
+js-sys = "=0.3.106"
+serde_json.workspace = true
+wasm-bindgen-futures = "=0.4.79"
+[lints]
+workspace = true

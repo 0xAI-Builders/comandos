@@ -1,0 +1,15 @@
+import fs from 'node:fs';import path from 'node:path';import os from 'node:os';import vm from 'node:vm';import {createRequire} from 'node:module';import {fileURLToPath,pathToFileURL} from 'node:url';
+const repo=fileURLToPath(new URL('../../../../',import.meta.url));const artifact=process.argv[2];if(!artifact)throw new Error('Pass actual built artifact directory');
+const temp=fs.mkdtempSync(path.join(os.tmpdir(),'comandos-pomo-ui-'));for(const name of fs.readdirSync(artifact))if(name.endsWith('.js')||name.endsWith('.wasm'))fs.copyFileSync(path.join(artifact,name),path.join(temp,name));fs.writeFileSync(path.join(temp,'package.json'),'{"type":"module"}');
+// Each original fake-view case receives a new actual WASM instance. Only the
+// original test loader changes; rendering, clock and commands execute Rust.
+let serial=0;async function bridgeBoot(context){
+ for(const key of ['document','fetch','Date','crypto','uiSounds','localStorage','setTimeout','clearTimeout','setInterval'])Object.defineProperty(globalThis,key,{value:context[key],writable:true,configurable:true});
+ globalThis.window=globalThis;globalThis.Window=class{static [Symbol.hasInstance](v){return v===globalThis}};globalThis.__comandosReady=false;globalThis.__comandosAttached=false;globalThis.addEventListener=()=>{};globalThis.removeEventListener=()=>{};
+ context.document.querySelector=()=>({getAttribute:()=> 'pomodoro'});context.document.querySelectorAll=()=>[];
+ const mod=await import(pathToFileURL(path.join(temp,'comandos_web.js')).href+'?instance='+serial++);await mod.default({module_or_path:fs.readFileSync(path.join(temp,'comandos_web_bg.wasm'))});mod.boot('private-pomo-ui');await new Promise(r=>setImmediate(r));context.ComandosPomodoro=globalThis.ComandosPomodoro;
+ const progress=globalThis.ComandosPomodoro?.ui?.client.snapshot()?.progress; if(progress&&progress.xp>=1000){globalThis.ComandosPomodoro.ui.render();if(!context.document.getElementById('pomo-panel').innerHTML.includes(progress.xp.toLocaleString('es-MX')+' XP'))throw new Error('Actual WASM must preserve original grouped XP text');}
+ if(globalThis.ComandosPomodoro?.ui?.client===undefined)throw new Error('Actual WASM UI did not mount');
+}
+const filename=path.join(repo,'tests/pomodoro_ui_checks.cjs');let source=fs.readFileSync(filename,'utf8').replace(/^#!.*\n/,'');source=source.replace('function loadView(snapshot, played, extra = {}) {','async function loadView(snapshot, played, extra = {}) {').replaceAll('= loadView(', '= await loadView(').replace("vm.runInContext(fs.readFileSync(path.join(ROOT, 'dash', 'pomodoro.js'), 'utf8'), context);",'await bridgeBoot(context);');
+const logs=[];try{await new Promise((resolve,reject)=>{const output={log:(...args)=>{const line=args.join(' ');logs.push(line);console.log(line);},error:reject};const proc={set exitCode(value){if(value)reject(new Error('Original UI contract failed'));else resolve();}};new Function('require','__dirname','console','process','bridgeBoot',source)(createRequire(filename),path.dirname(filename),output,proc,bridgeBoot);});}finally{fs.rmSync(temp,{recursive:true,force:true});}

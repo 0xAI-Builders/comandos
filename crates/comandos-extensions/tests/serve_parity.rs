@@ -162,6 +162,48 @@ fn run_until_exit(cmd: Command, home: &Path, label: &str) -> (Option<i32>, Strin
     (status.code(), out, err)
 }
 
+/// El dorado conserva respuestas y peticiones del oráculo. Replay no simula peticiones:
+/// las comprobaciones de abajo observan siempre el upstream nativo usado por Rust.
+fn expected_proxy(
+    home: &Path,
+    case: &str,
+    sequence: &[&str],
+    log: &Arc<Mutex<Vec<String>>>,
+) -> (Vec<String>, Vec<String>) {
+    let input = serde_json::json!({"case":case,"sequence":sequence});
+    let bytes = comandos_oracle::oracle_at(
+        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "extensions-stream",
+        &input,
+        || {
+            let lines = run_proxy(python_cmd(), home, "python", sequence);
+            let requests = std::mem::take(&mut *log.lock().unwrap());
+            Ok(
+                serde_json::to_vec(&serde_json::json!({"lines":lines,"requests":requests}))
+                    .unwrap(),
+            )
+        },
+    );
+    let artifact: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    (
+        serde_json::from_value(artifact["lines"].clone()).unwrap(),
+        serde_json::from_value(artifact["requests"].clone()).unwrap(),
+    )
+}
+
+fn expected_exit(home: &Path, case: &str) -> (Option<i32>, String, String) {
+    let bytes = comandos_oracle::oracle_at(
+        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "extensions-stream-exit",
+        &serde_json::json!({"case":case}),
+        || {
+            serde_json::to_vec(&run_until_exit(python_cmd(), home, "python"))
+                .map_err(|e| e.to_string())
+        },
+    );
+    serde_json::from_slice(&bytes).unwrap()
+}
+
 fn assert_same(rust: &[String], python: &[String], expected: usize) {
     for (r, p) in rust.iter().zip(python) {
         if r != p {
@@ -180,8 +222,7 @@ fn rust_proxy_matches_python_proxy() {
 
     let rust = run_proxy(rust_cmd(), &home.0, "rust", SEQUENCE);
     let rust_log = std::mem::take(&mut *log.lock().unwrap());
-    let python = run_proxy(python_cmd(), &home.0, "python", SEQUENCE);
-    let python_log = std::mem::take(&mut *log.lock().unwrap());
+    let (python, python_log) = expected_proxy(&home.0, "main", SEQUENCE, &log);
 
     assert_same(&rust, &python, 8);
     assert!(
@@ -206,10 +247,21 @@ fn rust_proxy_matches_python_proxy() {
 
 #[test]
 fn old_client_version_is_negotiated_like_python() {
-    let (port, _fake) = support::fake_mcp_http::spawn(Arc::new(Mutex::new(Vec::new())));
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let (port, _fake) = support::fake_mcp_http::spawn(log.clone());
     let home = temp_home("old", port, "/mcp");
     let rust = run_proxy(rust_cmd(), &home.0, "rust", OLD_CLIENT);
-    let python = run_proxy(python_cmd(), &home.0, "python", OLD_CLIENT);
+    let rust_log = std::mem::take(&mut *log.lock().unwrap());
+    let (python, python_log) = expected_proxy(&home.0, "old", OLD_CLIENT, &log);
+    // Python abre además un GET SSE; Rust recibe las mismas respuestas por POST.
+    // Comparar los POST/DELETE conserva la negociación y el cierre reales.
+    let session_requests = |requests: Vec<String>| {
+        requests
+            .into_iter()
+            .filter(|line| !line.starts_with("GET "))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(session_requests(rust_log), session_requests(python_log));
     assert_same(&rust, &python, 2);
     assert!(
         rust[0].contains(r#""protocolVersion":"2024-11-05""#),
@@ -223,7 +275,7 @@ fn unsupported_upstream_version_fails_like_python() {
     let (port, _fake) = support::fake_mcp_http::spawn(Arc::new(Mutex::new(Vec::new())));
     let home = temp_home("badversion", port, "/mcp-badversion");
     let rust = run_until_exit(rust_cmd(), &home.0, "rust");
-    let python = run_until_exit(python_cmd(), &home.0, "python");
+    let python = expected_exit(&home.0, "badversion");
     assert_eq!(rust, python);
     assert_eq!(rust.0, Some(1));
     assert!(rust.1.is_empty());

@@ -1,0 +1,206 @@
+{
+  "provenance": "Eight immutable independent v3 original CJS cases plus bounded decimal/hex/casing/middle/end/semicolon controls generated with unchanged original CJS + authentic DOMPurify3.4.16/jsdom26.1.0. No oracle/source/config mutation.",
+  "cases": [
+    {
+      "text": "<b>pre &#x2045; post</b>",
+      "baseline": "<p>&lt;b&gt;pre ⁅ post&lt;/b&gt;</p>\n",
+      "origin": "independent-v3"
+    },
+    {
+      "text": "<b>&#x2045;before</b> mid <i>after&#x2045;</i>",
+      "baseline": "<p>&lt;b&gt;⁅before&lt;/b&gt; mid &lt;i&gt;after⁅&lt;/i&gt;</p>\n",
+      "origin": "independent-v3"
+    },
+    {
+      "text": "<b>https://example.org/a_\\(x\\) &#x2045; https://example.org/b_\\(y\\)</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_%5C(x%5C)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_\\(x\\)</a> ⁅ <a href=\"https://example.org/b_%5C(y%5C)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/b_\\(y\\)</a>&lt;/b&gt;</p>\n",
+      "origin": "independent-v3"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>; end&lt;/b&gt;</p>\n",
+      "origin": "independent-v3"
+    },
+    {
+      "text": "<b>`&#x2045;`</b> and &#x2045;",
+      "baseline": "<p>&lt;b&gt;<code>&amp;#x2045;</code>&lt;/b&gt; and ⁅</p>\n",
+      "origin": "independent-v3"
+    },
+    {
+      "text": "<div>\n```\n&#x2045; 󰀀\n```\n</div>",
+      "baseline": "<p>&lt;div&gt;</p>\n<pre><code>&amp;#x2045; 󰀀\n</code></pre>\n<p>&lt;/div&gt;</p>\n",
+      "origin": "independent-v3"
+    },
+    {
+      "text": "⁅ literal <b>&#x2045; `⁅⁆⁆⁆⁆`</b>",
+      "baseline": "<p>⁅ literal &lt;b&gt;⁅ <code>⁅⁆⁆⁆⁆</code>&lt;/b&gt;</p>\n",
+      "origin": "independent-v3"
+    },
+    {
+      "text": "<b>*&#x2045;*</b> &#x2045; <i>**&#x2045;**</i>",
+      "baseline": "<p>&lt;b&gt;<em>⁅</em>&lt;/b&gt; ⁅ &lt;i&gt;<strong>⁅</strong>&lt;/i&gt;</p>\n",
+      "origin": "independent-v3"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261;</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261;</a>&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "8261",
+      "position": "raw-tag-after-semicolon"
+    },
+    {
+      "text": "https://example.org/a_(x)&#8261;",
+      "baseline": "<p><a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a>;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "8261",
+      "position": "eof-after-semicolon"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261;/next</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261;/next\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261;/next</a>&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "8261",
+      "position": "entity-middle"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261 end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261</a> end&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "8261",
+      "position": "without-semicolon-end"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#8261/next</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#8261/next\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#8261/next</a>&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "8261",
+      "position": "without-semicolon-middle"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x204a; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x204a\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x204a</a>; end&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "x204a",
+      "position": "space-after-semicolon"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x204a;</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x204a;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x204a;</a>&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "x204a",
+      "position": "raw-tag-after-semicolon"
+    },
+    {
+      "text": "https://example.org/a_(x)&#x204a;",
+      "baseline": "<p><a href=\"https://example.org/a_(x)&amp;#x204a\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x204a</a>;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "x204a",
+      "position": "eof-after-semicolon"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x204a;/next</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x204a;/next\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x204a;/next</a>&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "x204a",
+      "position": "entity-middle"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x204a end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x204a\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x204a</a> end&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "x204a",
+      "position": "without-semicolon-end"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x204a/next</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x204a/next\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x204a/next</a>&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "x204a",
+      "position": "without-semicolon-middle"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x204A; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x204A\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x204A</a>; end&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "x204A",
+      "position": "space-after-semicolon"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x204A;</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x204A;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x204A;</a>&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "x204A",
+      "position": "raw-tag-after-semicolon"
+    },
+    {
+      "text": "https://example.org/a_(x)&#x204A;",
+      "baseline": "<p><a href=\"https://example.org/a_(x)&amp;#x204A\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x204A</a>;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "x204A",
+      "position": "eof-after-semicolon"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x204A;/next</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x204A;/next\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x204A;/next</a>&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "x204A",
+      "position": "entity-middle"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x204A end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x204A\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x204A</a> end&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "x204A",
+      "position": "without-semicolon-end"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#x204A/next</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#x204A/next\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#x204A/next</a>&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "x204A",
+      "position": "without-semicolon-middle"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#X204A; end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#X204A\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#X204A</a>; end&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "X204A",
+      "position": "space-after-semicolon"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#X204A;</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#X204A;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#X204A;</a>&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "X204A",
+      "position": "raw-tag-after-semicolon"
+    },
+    {
+      "text": "https://example.org/a_(x)&#X204A;",
+      "baseline": "<p><a href=\"https://example.org/a_(x)&amp;#X204A\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#X204A</a>;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "X204A",
+      "position": "eof-after-semicolon"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#X204A;/next</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#X204A;/next\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#X204A;/next</a>&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "X204A",
+      "position": "entity-middle"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#X204A end</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#X204A\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#X204A</a> end&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "X204A",
+      "position": "without-semicolon-end"
+    },
+    {
+      "text": "<b>https://example.org/a_(x)&#X204A/next</b>",
+      "baseline": "<p>&lt;b&gt;<a href=\"https://example.org/a_(x)&amp;#X204A/next\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)&amp;#X204A/next</a>&lt;/b&gt;</p>\n",
+      "origin": "required-entity-context-matrix",
+      "form": "X204A",
+      "position": "without-semicolon-middle"
+    }
+  ]
+}

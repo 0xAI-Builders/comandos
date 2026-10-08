@@ -12,8 +12,8 @@ use std::{
     time::Duration,
 };
 use support::{
-    FakeLegacy, FixedLegacy, NOW_MS, TestHome, dead_port, fake_agent, front, get, oracle::oracle,
-    start_session, tmux_available,
+    FakeLegacy, FixedLegacy, NOW_MS, TestHome, dead_port, fake_agent, front, get,
+    http_golden::FrozenHttp, start_session, tmux_available,
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -35,6 +35,86 @@ fn masked(body: &[u8]) -> String {
         }
     }
     comandos_core::json::response_dumps(&v).unwrap()
+}
+
+// Original observers run only in explicit record/check. Their volatile
+// observation timestamps are masked exactly as in the retained comparison;
+// the actual native actor and written model document are never replayed.
+async fn frozen_state<'a>(home: &'a TestHome, tag: &str) -> (Value, FrozenHttp<'a>) {
+    let py = FrozenHttp::new(home, "state-route-source", &[]).await;
+    let source = if let Some(port) = py.source_port() {
+        let wire = get(port, "/state").await;
+        Some(json!({"status":wire.status, "body":masked(&wire.body),
+            "models":fs::read_to_string(home.hooks().join("app-tab-models.json")).unwrap()}))
+    } else {
+        None
+    };
+    let actor = tmux(
+        home,
+        &[
+            "display-message",
+            "-p",
+            "-t",
+            "=proj:",
+            "#{pid}\t#{pane_pid}",
+        ],
+    );
+    let actor = String::from_utf8(actor.stdout).unwrap();
+    let actor: Vec<std::path::PathBuf> = actor
+        .trim_end()
+        .split('\t')
+        .map(std::path::PathBuf::from)
+        .collect();
+    assert_eq!(actor.len(), 2);
+    let start = comandos_runtime::session_configuration::server_start(
+        &home.options().proc_root,
+        actor[0].to_str().unwrap(),
+    )
+    .unwrap();
+    let start = std::path::PathBuf::from(start);
+    let created = tmux(
+        home,
+        &[
+            "display-message",
+            "-p",
+            "-t",
+            "=shells:",
+            "#{session_created}",
+        ],
+    );
+    let created = std::path::PathBuf::from(String::from_utf8(created.stdout).unwrap().trim());
+    let name = std::path::PathBuf::from(home.root.file_name().unwrap());
+    let repo = fs::canonicalize(support::repo()).unwrap();
+    let mut roots = vec![
+        ("<HOME>", home.root.as_path()),
+        ("<HOME-NAME>", name.as_path()),
+        ("<REPO>", repo.as_path()),
+        ("<TMUX-PID>", actor[0].as_path()),
+        ("<PANE-PID>", actor[1].as_path()),
+        ("<SHELL-CREATED>", created.as_path()),
+    ];
+    if !start.as_os_str().is_empty() {
+        roots.push(("<SERVER-START>", start.as_path()));
+    }
+    let input = json!({"source":support::frozen::SOURCE_COMMIT,"python":"3.10.12",
+        "clock_ms":NOW_MS,"target":"/state","fixture":tag,
+        "state":fs::read_to_string(home.hooks().join("state/a.json")).unwrap()});
+    let output = comandos_oracle::oracle_at(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "state-route",
+        &input,
+        || {
+            let source = source.ok_or("original HTTP required in record/check")?;
+            Ok(comandos_oracle::normalize(
+                &serde_json::to_vec(&source).map_err(|e| e.to_string())?,
+                &roots,
+            ))
+        },
+    );
+    (
+        serde_json::from_slice(&comandos_oracle::restore(&output, &roots)).unwrap(),
+        py,
+    )
 }
 
 /// Solo el servidor privado de la prueba (`-S`, nunca el del usuario).
@@ -145,22 +225,20 @@ async fn state_matches_python_oracle_and_writes_same_models() {
     if seed(&home).is_none() {
         return;
     }
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
-    let expected = get(py.port, "/state").await;
-    assert_eq!(expected.status, 200);
-    let models_py = fs::read(home.hooks().join("app-tab-models.json")).unwrap();
-    fs::remove_file(home.hooks().join("app-tab-models.json")).unwrap();
+    let (expected, _py) = frozen_state(&home, "waiting-models").await;
+    assert_eq!(expected["status"], 200);
+    let models_py = expected["models"].as_str().unwrap().as_bytes();
+    let _ = fs::remove_file(home.hooks().join("app-tab-models.json"));
+    assert!(!home.hooks().join("app-tab-models.json").exists());
     // El frente reenvía lo no nativo (y las subconsultas) a ese mismo Python.
-    let relay = Relay::start(py.port).await;
+    let legacy = FakeLegacy::start().await;
+    let relay = Relay::start(legacy.port).await;
     let mut opts = home.options();
-    // El oráculo usa la hora real (B9).
-    opts.clock = Arc::new(comandos_server::dash::native::wall_clock_ms);
+    opts.clock_seconds = Arc::new(|| NOW_MS as f64 / 1000.0);
     let front = front(&home, relay.port, opts).await;
     let got = get(front.port, "/state").await;
     assert_eq!(got.status, 200);
-    assert_eq!(masked(&got.body), masked(&expected.body));
+    assert_eq!(masked(&got.body), expected["body"].as_str().unwrap());
     // La comparación cubre de verdad la observación: tarjeta claude viva con
     // el modelo del transcript, etiqueta de pestaña, split e historial.
     let cards: Value = serde_json::from_slice(&got.body).unwrap();
@@ -209,7 +287,7 @@ async fn state_guard_suggestion_matches_python(tag: &str, recent_turn: bool) {
     if seed(&home).is_none() {
         return;
     }
-    let now = comandos_server::dash::native::wall_clock_ms();
+    let now = NOW_MS;
     let ts = now as f64 / 1000.0 - 17.25 * 60.0;
     home.write(
         "state/a.json",
@@ -222,18 +300,16 @@ async fn state_guard_suggestion_matches_python(tag: &str, recent_turn: bool) {
         String::new()
     };
     support::seed_usage(&home, &sql);
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
-    let expected = get(py.port, "/state").await;
-    assert_eq!(expected.status, 200);
-    let relay = Relay::start(py.port).await;
+    let (expected, _py) = frozen_state(&home, tag).await;
+    assert_eq!(expected["status"], 200);
+    let legacy = FakeLegacy::start().await;
+    let relay = Relay::start(legacy.port).await;
     let mut opts = home.options();
-    opts.clock = Arc::new(comandos_server::dash::native::wall_clock_ms);
+    opts.clock_seconds = Arc::new(|| NOW_MS as f64 / 1000.0);
     let front = front(&home, relay.port, opts).await;
     let got = get(front.port, "/state").await;
     assert_eq!(got.status, 200, "{}", got.text());
-    assert_eq!(masked(&got.body), masked(&expected.body));
+    assert_eq!(masked(&got.body), expected["body"].as_str().unwrap());
     let cards: Value = serde_json::from_slice(&got.body).unwrap();
     let claude = cards
         .as_array()

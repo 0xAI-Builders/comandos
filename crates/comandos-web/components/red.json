@@ -1,0 +1,16 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- red ----------",
+  "marker_end": "// ---------- helpers ----------",
+  "sha256": "c2362d32b695f53a54b0b9cc86020281ddc7e59f29f39553ed5092a87204fe91",
+  "id": "red",
+  "exports": [
+    "authToken",
+    "webtermTokenPromise",
+    "webtermAccessToken",
+    "api"
+  ],
+  "deps": []
+}

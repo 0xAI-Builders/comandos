@@ -1,0 +1,27 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "fixture": {
+        "fakebin": [],
+        "prelude": "dash.POMODORO_CLOCK = lambda: 1791115200000",
+        "keep_loops": [],
+        "environment": [],
+        "response_normalizer": "pomodoro-uuid-ts"
+      },
+      "sequence": 2,
+      "request": {
+        "method": "DELETE",
+        "path": "/push/subscription",
+        "body": "{\"endpoint\": \"x\"}"
+      },
+      "effect_files": [
+        ".claude/hooks/focus-queue.jsonl"
+      ]
+    },
+    "before_sha256": "df4bb87a23693000635ea4ee9faa1edea9c51a53918d13c0994d1919b12f896d"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjo1MDMsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCIxMTBcIl1dLFwiYm9keVwiOlsxMjMsMzQsMTExLDEwNywzNCw1OCwzMiwxMDIsOTcsMTA4LDExNSwxMDEsNDQsMzIsMzQsMTAxLDExNCwxMTQsMTExLDExNCwzNCw1OCwzMiwzNCw4MCwxMTcsMTE1LDEwNCwzMiwxMTAsMTExLDMyLDEwMCwxMDUsMTE1LDExMiwxMTEsMTEwLDEwNSw5OCwxMDgsMTAxLDU4LDMyLDEwMiw5NywxMDgsMTE2LDk3LDMyLDExMiwxMjEsMTE5LDEwMSw5OCwxMTIsMTE3LDExNSwxMDQsMzIsNDAsNzcsMTExLDEwMCwxMTcsMTA4LDEwMSw3OCwxMTEsMTE2LDcwLDExMSwxMTcsMTEwLDEwMCw2OSwxMTQsMTE0LDExMSwxMTQsNDEsNTksMzIsMTE4LDEwMSwxMTQsMzIsMTE0LDEwMSwxMTMsMTE3LDEwNSwxMTQsMTAxLDEwOSwxMDEsMTEwLDExNiwxMTUsNDUsMTEyLDExNywxMTUsMTA0LDQ2LDExNiwxMjAsMTE2LDM0LDEyNV19IiwidHJlZSI6eyIuY2xhdWRlIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCIuY2xhdWRlL2hvb2tzIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCIuY2xhdWRlL2hvb2tzL2ZvY3VzLXF1ZXVlLmpzb25sIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImV5SjBhWFJzWlNJNklDSmhkbWx6YnlKOUNnPT0ifX19"
+}

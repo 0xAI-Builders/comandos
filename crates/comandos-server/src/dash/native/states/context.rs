@@ -141,10 +141,11 @@ async fn routes(
     )
     .await
     .is_ok_and(|connected| connected.is_ok());
-    let (home, cwd, search) = (
+    let (home, cwd, search, dirs) = (
         opts.home.clone(),
         opts.cwd.clone(),
         opts.search_path.clone(),
+        opts.user_bin_dirs.clone(),
     );
     serial
         .run(move || {
@@ -153,7 +154,9 @@ async fn routes(
             else {
                 return Ok(BTreeSet::new());
             };
-            let available = |name: &str| providers::which(name, search.as_deref(), &home).is_some();
+            let available = |name: &str| {
+                providers::which_in_dirs(name, search.as_deref(), &home, &dirs).is_some()
+            };
             let installed = providers::which_path("cc-model-proxy", search.as_deref()).is_some();
             let facts = providers::runtime_facts(
                 &registry,

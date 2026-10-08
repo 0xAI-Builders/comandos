@@ -1,0 +1,12 @@
+{
+  "id": "workspace-dock",
+  "kind": "script",
+  "source": "dash/workspace-dock.js",
+  "sha256": "9847d6383a2cacb88abc81a20e416993311a702a09c1079dcb91aeb98de91696",
+  "exports": [
+    "WorkspaceDock"
+  ],
+  "deps": [
+    "workspace-layout"
+  ]
+}

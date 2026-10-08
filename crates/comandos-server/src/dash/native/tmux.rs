@@ -19,6 +19,9 @@ pub struct Program {
     pub prefix: Vec<OsString>,
     pub env: Vec<(OsString, OsString)>,
     pub env_remove: Vec<OsString>,
+    /// `env_clear` antes de `env`: el hijo solo ve `env` (pruebas confinadas;
+    /// en producción siempre `false`, el entorno del proceso como el Python).
+    pub env_clear: bool,
 }
 
 /// Variables del frente que ningún hijo hereda: el ajuste de malloc del
@@ -35,6 +38,7 @@ impl Program {
             prefix: Vec::new(),
             env: Vec::new(),
             env_remove: Vec::new(),
+            env_clear: false,
         }
     }
 
@@ -43,6 +47,9 @@ impl Program {
     pub fn command(&self) -> tokio::process::Command {
         let mut cmd = tokio::process::Command::new(&self.path);
         cmd.args(&self.prefix);
+        if self.env_clear {
+            cmd.env_clear();
+        }
         for name in CHILD_ENV_REMOVE {
             cmd.env_remove(name);
         }
@@ -71,7 +78,8 @@ pub enum RunError {
     Decode,
 }
 
-fn universal(bytes: Vec<u8>) -> Result<String, RunError> {
+/// `text=True`: UTF-8 estricto con saltos universales.
+pub(crate) fn universal(bytes: Vec<u8>) -> Result<String, RunError> {
     let text = String::from_utf8(bytes).map_err(|_| RunError::Decode)?;
     Ok(text.replace("\r\n", "\n").replace('\r', "\n"))
 }

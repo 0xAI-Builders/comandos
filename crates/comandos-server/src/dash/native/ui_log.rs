@@ -42,7 +42,8 @@ pub async fn answer(native: &Native, request: &Request) -> Answer {
     }
     let n = keep.len();
     let path = native.options().hooks.join("ui-events.jsonl");
-    let done = tokio::task::spawn_blocking(move || append(&path, &text, now))
+    let home = native.options().home.clone();
+    let done = tokio::task::spawn_blocking(move || append_domain(&home, &path, &text, now))
         .await
         .map_err(|_| failure())?;
     match done {
@@ -142,41 +143,103 @@ enum Rotation {
     Unsure,
 }
 
+fn append_domain(home: &Path, path: &Path, text: &str, now: f64) -> Appended {
+    use comandos_store::{
+        domains::caller::CallerAccess,
+        unified::{self, LogName, Mode},
+    };
+    let Ok(access) = CallerAccess::open(home, "logs") else {
+        return Appended::Failed;
+    };
+    let _lock = if access.mode() == Mode::Sealed {
+        None
+    } else {
+        match FileLock::try_acquire(path) {
+            Ok(Some(lock)) => Some(lock),
+            Ok(None) => return Appended::Contended,
+            Err(_) => return Appended::Failed,
+        }
+    };
+    access
+        .with_write_transaction(|| {
+            let sql_rotation = if access.mode() == Mode::Legacy {
+                Rotation::Skip
+            } else {
+                let Some(db) = access.db() else {
+                    return Err(comandos_store::Error::Validation("log read failed".into()));
+                };
+                let Ok(lines) = unified::log_tail(db, LogName::UiEvents, i64::MAX as usize) else {
+                    return Err(comandos_store::Error::Validation("log read failed".into()));
+                };
+                let mut old = Vec::new();
+                for line in lines {
+                    old.extend(line);
+                    old.push(b'\n');
+                }
+                if old.len().saturating_add(text.len()) > ROTATE_BYTES as usize {
+                    rotated_bytes(old, text, now)
+                } else {
+                    Rotation::Skip
+                }
+            };
+            if matches!(sql_rotation, Rotation::Unsure) {
+                return Ok(Appended::Unsure);
+            }
+            // Validate the legacy rotation before either backend publishes.
+            let legacy_rotation = if access.mode() == Mode::Sealed {
+                Rotation::Skip
+            } else {
+                let before = fs::metadata(path).map_or(0, |m| m.len());
+                if before + text.len() as u64 > ROTATE_BYTES {
+                    rotated(path, text, now)
+                } else {
+                    Rotation::Skip
+                }
+            };
+            if matches!(legacy_rotation, Rotation::Unsure) {
+                return Ok(Appended::Unsure);
+            }
+            let result = access.write(
+                || {
+                    let mut file = fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(path)?;
+                    file.write_all(text.as_bytes())?;
+                    if let Rotation::Write(fresh) = &legacy_rotation {
+                        let _ = files::write_text_atomic(path, fresh);
+                    }
+                    Ok(())
+                },
+                |db, _| {
+                    let fresh = match &sql_rotation {
+                        Rotation::Write(fresh) => {
+                            db.execute("DELETE FROM log_lines WHERE log='ui-events'", [])?;
+                            fresh.as_str()
+                        }
+                        _ => text,
+                    };
+                    for line in fresh.split_inclusive('\n') {
+                        unified::log_append(
+                            db,
+                            LogName::UiEvents,
+                            line.strip_suffix('\n').unwrap_or(line).as_bytes(),
+                        )?;
+                    }
+                    Ok(())
+                },
+            );
+            result?;
+            Ok(Appended::Done)
+        })
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or(Appended::Failed)
+}
+
 /// Bajo el candado. La rotación se decide ANTES de anexar sobre lo viejo + lo
 /// nuevo (nadie más escribe con el candado tomado): así una línea incierta
 /// declina sin haber escrito nada.
-fn append(path: &Path, text: &str, now: f64) -> Appended {
-    let lock = match FileLock::try_acquire(path) {
-        Ok(Some(lock)) => lock,
-        Ok(None) => return Appended::Contended,
-        Err(_) => return Appended::Failed,
-    };
-    let before = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-    let rotation = if before + text.len() as u64 > ROTATE_BYTES {
-        rotated(path, text, now)
-    } else {
-        Rotation::Skip
-    };
-    if matches!(rotation, Rotation::Unsure) {
-        drop(lock);
-        return Appended::Unsure;
-    }
-    let appended = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .and_then(|mut f| f.write_all(text.as_bytes()));
-    if appended.is_err() {
-        return Appended::Failed;
-    }
-    if let Rotation::Write(fresh) = rotation {
-        // `except Exception: pass` del Python.
-        let _ = files::write_text_atomic(path, &fresh);
-    }
-    drop(lock);
-    Appended::Done
-}
-
 /// Lo que haría la rotación del Python con el archivo ya anexado.
 fn rotated(path: &Path, appended: &str, now: f64) -> Rotation {
     let old = match fs::read(path) {
@@ -184,6 +247,9 @@ fn rotated(path: &Path, appended: &str, now: f64) -> Rotation {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(_) => return Rotation::Skip,
     };
+    rotated_bytes(old, appended, now)
+}
+fn rotated_bytes(old: Vec<u8>, appended: &str, now: f64) -> Rotation {
     // UnicodeDecodeError dentro del `try` externo: no se rota.
     let Ok(old) = String::from_utf8(old) else {
         return Rotation::Skip;

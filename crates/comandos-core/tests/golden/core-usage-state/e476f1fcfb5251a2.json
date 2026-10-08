@@ -1,0 +1,9 @@
+{
+  "input": {
+    "source_commit": "2674f36",
+    "source": "bin/cc_usage.py",
+    "script": "\nimport json, os, sys, datetime\nrepo = sys.argv[1]\nsys.path[:0] = [os.path.join(repo, \"bin\"), os.path.join(repo, \"lib\")]\nimport cc_usage\ncases = json.loads(sys.argv[2])\ndef guard(fn):\n    try:\n        return fn()\n    except OverflowError:\n        return \"ERR:Overflow\"\n    except (ValueError, TypeError):\n        return \"ERR:Raises\"\nprint(json.dumps([cc_usage.percentile(c[0], c[1]) for c in cases]))",
+    "input": "[[[], 0.5], [[5], 0.9], [[3, 1, 2], 0.5], [[1, 2, 3, 4], 0.9], [[1, 2, 3, 4], -1], [[10, 7, 7, 1, 1000], 2], [[1500, 2200, 1800], 0.5], [[0, 3], 0.25]]"
+  },
+  "output_b64": "W251bGwsIDUuMCwgMi4wLCAzLjcsIDEuMCwgMTAwMC4wLCAxODAwLjAsIDAuNzVdCg=="
+}

@@ -1,0 +1,21 @@
+{
+  "input": {
+    "script": "import sys,json,pathlib\nsys.path.insert(0,str(pathlib.Path(sys.argv[1])/'lib'));sys.path.insert(0,str(pathlib.Path(sys.argv[1])/'bin'))\nimport extension_launch as e\nr=json.loads(sys.argv[2]);cwd=sys.argv[3]\ntry: result=e.inventory(r,'codex','main',cwd)\nexcept ValueError as err: result={'error':str(err)}\nprint(json.dumps(result,ensure_ascii=False))",
+    "args": [
+      {
+        "arg": "{\"harnesses\":{\"codex\":{\"defaultHome\":\"{{HOME}}/.codex\"}}}",
+        "file": null
+      },
+      {
+        "arg": "{{HOME}}",
+        "file": null
+      }
+    ],
+    "bin_inputs": [],
+    "fixtures": {
+      ".codex/config.toml": "4755c0f0e35136b27c958578d42e8b04baa1dbdd21668e73434c143d2164a237",
+      ".codex/skills/demo/SKILL.md": "cdf39f8b9bc4b22ff8e36d06bde35037a9deacf83d2e8df5d00cd8fcb53f4680"
+    }
+  },
+  "output_b64": "eyJoYXJuZXNzIjogImNvZGV4IiwgImFjY291bnQiOiAibWFpbiIsICJtY3BzIjogW10sICJza2lsbHMiOiBbeyJpZCI6ICJza2lsbDp7e1NLSUxMX0lEOjVkNjdhMDI4YTZhN2NlNmI5MGMzMjcxMjVlZDU4NGQ2ZDhlZGNlNWY2M2RkYWY1OGMyOGIzNjEzMDUxMTNiYzF9fSIsICJuYW1lIjogImRlbW8iLCAiZW5hYmxlZCI6IHRydWUsICJ0b2dnbGVhYmxlIjogZmFsc2UsICJyZWFzb24iOiAiSW52ZW50YXJpbyBpbmNvbXBsZXRvOyBjb3JyaWdlIGxhIGNvbmZpZ3VyYWNpw7NuIGFudGVzIGRlIGNhbWJpYXIgZXh0ZW5zaW9uZXMuIiwgInNjb3BlIjogInVzZXIiLCAic291cmNlIjogInNraWxscy1kaXJlY3RvcnkiLCAib3JpZ2luIjogeyJpZCI6ICJ1bmtub3duIiwgImxhYmVsIjogIk9yaWdlbiBubyByZWdpc3RyYWRvIiwgImtpbmQiOiAidW5rbm93biJ9LCAic2l6ZSI6IHsidG9rZW5zIjogbnVsbCwgInRva2VuaXplciI6ICJjbDEwMGtfYmFzZSIsICJiYXNpcyI6ICJza2lsbC1maWxlIn19XSwgImxpbWl0YXRpb25zIjogWyJMYSBjb25maWFuemEgZGVsIHByb3llY3RvLCBwb2zDrXRpY2FzIGFkbWluaXN0cmFkYXMgeSBvdmVycmlkZXMgZGVsIHByb2Nlc28gbm8gc2UgdmVyaWZpY2FuIGVuIGVzdGUgaW52ZW50YXJpby4iLCAiRWwgY2F0w6Fsb2dvIHByZXZpbyBwdWVkZSBwZXJtYW5lY2VyIGVuIGVsIGhpc3RvcmlhbCBhbCByZWFudWRhci4iLCAiTGEgdmVyaWZpY2FjacOzbiBjb21wcnVlYmEgY29uZmlndXJhY2nDs24gZGVsIHByb2Nlc28sIG5vIGNvbmV4aW9uZXMgTUNQIG5pIGRpc3BvbmliaWxpZGFkIGRlbCBwcm92ZWVkb3IuIl0sICJzdGF0dXMiOiAiaW5jb21wbGV0ZSJ9Cg=="
+}

@@ -455,3 +455,446 @@ fn waiting_clients_each_get_their_own_version_and_the_same_rest() {
     // La caché conserva la versión del upstream: un tercero que no pide nada recibe la suya.
     assert_eq!(version_for(&mut m, None), json!("2025-11-25"));
 }
+
+// Resources and logging are upstream connection state, not ordinary independent requests.
+// These tests exercise the real Mux at its JSON-RPC boundary with no process or socket.
+fn stateful_clients(version: &str) -> (Mux, u32, u32) {
+    let mut m = Mux::new();
+    let a = m.add_client();
+    let out = m.from_client(a, &init_asking(1, Some(json!(version))));
+    let up = up_line(&out[0])["id"].clone();
+    let out = m.from_upstream(&j(json!({
+        "jsonrpc":"2.0", "id":up,
+        "result":{"protocolVersion":version,
+            "capabilities":{"resources":{"subscribe":true,"listChanged":true},"logging":{},"tools":{}},
+            "serverInfo":{"name":"stateful-upstream","version":"1"}}
+    })));
+    assert_eq!(out.len(), 1);
+    let b = m.add_client();
+    assert_eq!(
+        m.from_client(b, &init_asking(1, Some(json!(version))))
+            .len(),
+        1
+    );
+    (m, a, b)
+}
+
+fn state_request(method: &str, id: &str, params: Value) -> Vec<u8> {
+    j(json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}))
+}
+
+fn assert_ok(out: &[Outbound], client: u32, id: &str) {
+    assert!(
+        matches!(out, [Outbound::ToClient(c, l)]
+            if *c == client && parse(l)["id"] == json!(id)
+                && parse(l)["result"].is_object() && parse(l).get("error").is_none()),
+        "expected success for client {client}, id {id}, got {out:?}"
+    );
+}
+
+fn assert_error(out: &[Outbound], client: u32, id: &str, code: i64) {
+    assert!(
+        matches!(out, [Outbound::ToClient(c, l)]
+            if *c == client && parse(l)["id"] == json!(id)
+                && parse(l)["error"]["code"] == json!(code)),
+        "expected error {code} for client {client}, id {id}, got {out:?}"
+    );
+}
+
+fn complete_ok(m: &mut Mux, out: &[Outbound]) -> Vec<Outbound> {
+    assert!(matches!(out, [Outbound::ToUpstream(_)]), "{out:?}");
+    m.from_upstream(&j(
+        json!({"jsonrpc":"2.0","id":up_line(&out[0])["id"],"result":{}}),
+    ))
+}
+
+fn subscribe_confirmed(m: &mut Mux, client: u32, id: &str, uri: &str) {
+    let out = m.from_client(
+        client,
+        &state_request("resources/subscribe", id, json!({"uri":uri})),
+    );
+    let out = if matches!(out.as_slice(), [Outbound::ToUpstream(_)]) {
+        complete_ok(m, &out)
+    } else {
+        out
+    };
+    assert_ok(&out, client, id);
+}
+
+fn update(uri: &str) -> Vec<u8> {
+    j(
+        json!({"jsonrpc":"2.0","method":"notifications/resources/updated","params":{"uri":uri,"_meta":{"version":3}}}),
+    )
+}
+
+fn assert_recipients(out: &[Outbound], clients: &[u32], original: &[u8]) {
+    let recipients: Vec<_> = out
+        .iter()
+        .map(|o| match o {
+            Outbound::ToClient(c, l) => {
+                assert_eq!(parse(l), parse(original), "notification payload changed");
+                *c
+            }
+            other => panic!("unexpected upstream output: {other:?}"),
+        })
+        .collect();
+    assert_eq!(recipients, clients);
+}
+
+#[test]
+fn subscription_waiters_share_one_upstream_request_in_all_supported_versions() {
+    for version in ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"] {
+        let (mut m, a, b) = stateful_clients(version);
+        let uri = "fixture:///same-resource";
+        let first = m.from_client(
+            a,
+            &state_request("resources/subscribe", "same-id", json!({"uri":uri})),
+        );
+        let second = m.from_client(
+            b,
+            &state_request("resources/subscribe", "same-id", json!({"uri":uri})),
+        );
+        assert!(
+            second.is_empty(),
+            "concurrent subscribe must wait, version {version}: {second:?}"
+        );
+        assert!(
+            m.from_upstream(&update(uri)).is_empty(),
+            "unconfirmed subscription must not receive updates"
+        );
+        let out = complete_ok(&mut m, &first);
+        assert_eq!(out.len(), 2);
+        assert_ok(&out[..1], a, "same-id");
+        assert_ok(&out[1..], b, "same-id");
+        let note = update(uri);
+        assert_recipients(&m.from_upstream(&note), &[a, b], &note);
+        let repeated = m.from_client(
+            a,
+            &state_request("resources/subscribe", "repeat", json!({"uri":uri})),
+        );
+        assert_ok(&repeated, a, "repeat");
+    }
+}
+
+#[test]
+fn unsubscribe_keeps_other_subscribers_and_only_the_last_changes_upstream() {
+    let (mut m, a, b) = stateful_clients("2025-11-25");
+    let uri = "fixture:///shared";
+    subscribe_confirmed(&mut m, a, "a", uri);
+    subscribe_confirmed(&mut m, b, "b", uri);
+    let out = m.from_client(
+        a,
+        &state_request("resources/unsubscribe", "a-off", json!({"uri":uri})),
+    );
+    assert_ok(&out, a, "a-off");
+    let note = update(uri);
+    assert_recipients(&m.from_upstream(&note), &[b], &note);
+    assert!(m.from_upstream(&update("fixture:///unrelated")).is_empty());
+    let out = m.from_client(
+        b,
+        &state_request("resources/unsubscribe", "b-off", json!({"uri":uri})),
+    );
+    assert_eq!(up_line(&out[0])["method"], "resources/unsubscribe");
+    assert_recipients(&m.from_upstream(&note), &[b], &note);
+    assert_ok(&complete_ok(&mut m, &out), b, "b-off");
+    assert!(m.from_upstream(&note).is_empty());
+}
+
+#[test]
+fn failed_subscribe_never_grants_membership_and_retry_reaches_upstream() {
+    let (mut m, a, _b) = stateful_clients("2025-11-25");
+    let uri = "fixture:///denied";
+    let out = m.from_client(
+        a,
+        &state_request("resources/subscribe", "denied", json!({"uri":uri})),
+    );
+    let up = up_line(&out[0])["id"].clone();
+    let err = m.from_upstream(&j(
+        json!({"jsonrpc":"2.0","id":up,"error":{"code":-32002,"message":"not found"}}),
+    ));
+    assert_error(&err, a, "denied", -32002);
+    assert!(m.from_upstream(&update(uri)).is_empty());
+    let retry = m.from_client(
+        a,
+        &state_request("resources/subscribe", "retry", json!({"uri":uri})),
+    );
+    assert_eq!(up_line(&retry[0])["method"], "resources/subscribe");
+    assert_ok(&complete_ok(&mut m, &retry), a, "retry");
+    let note = update(uri);
+    assert_recipients(&m.from_upstream(&note), &[a], &note);
+}
+
+#[test]
+fn failed_shared_subscribe_returns_the_error_to_each_waiter_without_membership() {
+    let (mut m, a, b) = stateful_clients("2025-11-25");
+    let uri = "fixture:///shared-denied";
+    let first = m.from_client(
+        a,
+        &state_request("resources/subscribe", "a-on", json!({"uri":uri})),
+    );
+    assert!(
+        m.from_client(
+            b,
+            &state_request("resources/subscribe", "b-on", json!({"uri":uri}))
+        )
+        .is_empty()
+    );
+    let out = m.from_upstream(&j(json!({"jsonrpc":"2.0","id":up_line(&first[0])["id"],"error":{"code":-32002,"message":"not found"}})));
+    assert_eq!(out.len(), 2);
+    assert_error(&out[..1], a, "a-on", -32002);
+    assert_error(&out[1..], b, "b-on", -32002);
+    assert!(m.from_upstream(&update(uri)).is_empty());
+}
+
+#[test]
+fn malformed_subscribe_response_never_grants_membership() {
+    for result in [None, Some(Value::Null), Some(json!("invalid"))] {
+        let (mut m, a, _b) = stateful_clients("2025-11-25");
+        let uri = "fixture:///malformed";
+        let out = m.from_client(
+            a,
+            &state_request("resources/subscribe", "s", json!({"uri":uri})),
+        );
+        let mut response = json!({"jsonrpc":"2.0","id":up_line(&out[0])["id"]});
+        if let Some(value) = result {
+            response["result"] = value;
+        }
+        assert_error(&m.from_upstream(&j(response)), a, "s", -32603);
+        assert!(m.from_upstream(&update(uri)).is_empty());
+    }
+}
+
+#[test]
+fn failed_last_unsubscribe_preserves_the_confirmed_subscription() {
+    let (mut m, a, _b) = stateful_clients("2025-11-25");
+    let uri = "fixture:///retained";
+    subscribe_confirmed(&mut m, a, "on", uri);
+    let out = m.from_client(
+        a,
+        &state_request("resources/unsubscribe", "off", json!({"uri":uri})),
+    );
+    let err = m.from_upstream(&j(json!({"jsonrpc":"2.0","id":up_line(&out[0])["id"],"error":{"code":-32603,"message":"busy"}})));
+    assert_error(&err, a, "off", -32603);
+    let note = update(uri);
+    assert_recipients(&m.from_upstream(&note), &[a], &note);
+}
+
+#[test]
+fn disconnect_cleans_up_only_the_last_resource_subscription() {
+    let (mut m, a, b) = stateful_clients("2025-11-25");
+    let uri = "fixture:///disconnect";
+    subscribe_confirmed(&mut m, a, "a", uri);
+    subscribe_confirmed(&mut m, b, "b", uri);
+    assert!(m.remove_client(a).is_empty());
+    let note = update(uri);
+    assert_recipients(&m.from_upstream(&note), &[b], &note);
+    let out = m.remove_client(b);
+    assert!(
+        matches!(out.as_slice(), [Outbound::ToUpstream(_)]),
+        "last unsubscribe missing: {out:?}"
+    );
+    let request = up_line(&out[0]);
+    assert_eq!(request["method"], "resources/unsubscribe");
+    assert_eq!(request["params"]["uri"], uri);
+    assert!(
+        complete_ok(&mut m, &out).is_empty(),
+        "cleanup response has no downstream owner"
+    );
+    assert!(m.from_upstream(&note).is_empty());
+    let c = m.add_client();
+    let _ = m.from_client(c, &init(1));
+    let retry = m.from_client(
+        c,
+        &state_request("resources/subscribe", "new-client", json!({"uri":uri})),
+    );
+    assert!(matches!(retry.as_slice(), [Outbound::ToUpstream(_)]));
+}
+
+#[test]
+fn failed_orphan_unsubscribe_cannot_grant_a_new_client_cached_membership() {
+    let (mut m, a, b) = stateful_clients("2025-11-25");
+    let uri = "fixture:///failed-cleanup";
+    subscribe_confirmed(&mut m, a, "on", uri);
+    let cleanup = m.remove_client(a);
+    assert!(matches!(cleanup.as_slice(), [Outbound::ToUpstream(_)]));
+    let out = m.from_upstream(&j(json!({"jsonrpc":"2.0","id":up_line(&cleanup[0])["id"],"error":{"code":-32603,"message":"busy"}})));
+    assert!(out.is_empty(), "orphan cleanup has no downstream client");
+    let retry = m.from_client(
+        b,
+        &state_request("resources/subscribe", "retry", json!({"uri":uri})),
+    );
+    assert!(
+        matches!(retry.as_slice(), [Outbound::ToUpstream(_)]),
+        "a new client must obtain a confirmed response: {retry:?}"
+    );
+    assert!(m.from_upstream(&update(uri)).is_empty());
+}
+
+#[test]
+fn cancelling_one_subscription_waiter_keeps_the_other_waiter_alive() {
+    let (mut m, a, b) = stateful_clients("2025-11-25");
+    let uri = "fixture:///cancel";
+    let first = m.from_client(
+        a,
+        &state_request("resources/subscribe", "a-on", json!({"uri":uri})),
+    );
+    assert!(
+        m.from_client(
+            b,
+            &state_request("resources/subscribe", "b-on", json!({"uri":uri}))
+        )
+        .is_empty()
+    );
+    let cancel = m.from_client(a, &j(json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":"a-on"}})));
+    assert!(
+        cancel.is_empty(),
+        "shared upstream subscribe still has a waiter"
+    );
+    assert_ok(&complete_ok(&mut m, &first), b, "b-on");
+    let note = update(uri);
+    assert_recipients(&m.from_upstream(&note), &[b], &note);
+}
+
+fn log_note(level: &str) -> Vec<u8> {
+    j(
+        json!({"jsonrpc":"2.0","method":"notifications/message","params":{"level":level,"logger":"fixture","data":{"literal":"preserve this","count":2}}}),
+    )
+}
+
+fn set_level_confirmed(m: &mut Mux, client: u32, id: &str, level: &str) {
+    let out = m.from_client(
+        client,
+        &state_request("logging/setLevel", id, json!({"level":level})),
+    );
+    let out = if matches!(out.as_slice(), [Outbound::ToUpstream(_)]) {
+        complete_ok(m, &out)
+    } else {
+        out
+    };
+    assert_ok(&out, client, id);
+}
+
+#[test]
+fn logging_levels_filter_every_severity_per_client_in_all_supported_versions() {
+    for version in ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"] {
+        let (mut m, a, b) = stateful_clients(version);
+        set_level_confirmed(&mut m, a, "a-warning", "warning");
+        set_level_confirmed(&mut m, b, "b-debug", "debug");
+        for (index, level) in [
+            "debug",
+            "info",
+            "notice",
+            "warning",
+            "error",
+            "critical",
+            "alert",
+            "emergency",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let note = log_note(level);
+            let recipients = if index < 3 { vec![b] } else { vec![a, b] };
+            assert_recipients(&m.from_upstream(&note), &recipients, &note);
+        }
+    }
+}
+
+#[test]
+fn higher_client_logging_level_cannot_raise_the_shared_upstream_minimum() {
+    let (mut m, a, b) = stateful_clients("2025-11-25");
+    set_level_confirmed(&mut m, a, "a-debug", "debug");
+    let out = m.from_client(
+        b,
+        &state_request("logging/setLevel", "b-error", json!({"level":"error"})),
+    );
+    assert_ok(&out, b, "b-error");
+    let note = log_note("debug");
+    assert_recipients(&m.from_upstream(&note), &[a], &note);
+}
+
+#[test]
+fn failed_logging_change_preserves_previous_client_level_and_upstream_minimum() {
+    let (mut m, a, b) = stateful_clients("2025-11-25");
+    set_level_confirmed(&mut m, a, "a-debug", "debug");
+    set_level_confirmed(&mut m, b, "b-error", "error");
+    let out = m.from_client(
+        a,
+        &state_request(
+            "logging/setLevel",
+            "a-critical",
+            json!({"level":"critical"}),
+        ),
+    );
+    assert_eq!(
+        up_line(&out[0])["params"]["level"],
+        "error",
+        "upstream receives the aggregate minimum"
+    );
+    let err = m.from_upstream(&j(json!({"jsonrpc":"2.0","id":up_line(&out[0])["id"],"error":{"code":-32603,"message":"cannot configure"}})));
+    assert_error(&err, a, "a-critical", -32603);
+    let note = log_note("debug");
+    assert_recipients(&m.from_upstream(&note), &[a], &note);
+}
+
+#[test]
+fn disconnect_recomputes_the_upstream_logging_minimum_without_a_downstream_reply() {
+    let (mut m, a, b) = stateful_clients("2025-11-25");
+    set_level_confirmed(&mut m, a, "a-debug", "debug");
+    set_level_confirmed(&mut m, b, "b-error", "error");
+    let out = m.remove_client(a);
+    assert!(
+        matches!(out.as_slice(), [Outbound::ToUpstream(_)]),
+        "{out:?}"
+    );
+    let request = up_line(&out[0]);
+    assert_eq!(request["method"], "logging/setLevel");
+    assert_eq!(request["params"]["level"], "error");
+    assert!(complete_ok(&mut m, &out).is_empty());
+    let note = log_note("warning");
+    assert!(m.from_upstream(&note).is_empty());
+    let note = log_note("error");
+    assert_recipients(&m.from_upstream(&note), &[b], &note);
+}
+
+#[test]
+fn concurrent_logging_changes_are_serialized_and_commit_only_after_success() {
+    let (mut m, a, b) = stateful_clients("2025-11-25");
+    let first = m.from_client(
+        a,
+        &state_request("logging/setLevel", "a-warning", json!({"level":"warning"})),
+    );
+    assert_eq!(up_line(&first[0])["params"]["level"], "warning");
+    assert!(
+        m.from_client(
+            b,
+            &state_request("logging/setLevel", "b-debug", json!({"level":"debug"}))
+        )
+        .is_empty()
+    );
+    let out = complete_ok(&mut m, &first);
+    assert_eq!(out.len(), 2, "first ack and next upstream request: {out:?}");
+    assert_ok(&out[..1], a, "a-warning");
+    assert_eq!(up_line(&out[1])["params"]["level"], "debug");
+    assert_ok(&complete_ok(&mut m, &out[1..]), b, "b-debug");
+    let note = log_note("info");
+    assert_recipients(&m.from_upstream(&note), &[b], &note);
+}
+
+#[test]
+fn logging_default_recipients_and_other_notification_broadcasts_are_preserved() {
+    let (mut m, a, b) = stateful_clients("2025-11-25");
+    set_level_confirmed(&mut m, a, "a-warning", "warning");
+    // A client that has never requested a level receives all logs actually emitted by upstream.
+    let note = log_note("debug");
+    assert_recipients(&m.from_upstream(&note), &[b], &note);
+    for method in [
+        "notifications/tools/list_changed",
+        "notifications/resources/list_changed",
+        "notifications/prompts/list_changed",
+        "custom/notification",
+    ] {
+        let note = j(json!({"jsonrpc":"2.0","method":method,"params":{"literal":"unchanged"}}));
+        assert_recipients(&m.from_upstream(&note), &[a, b], &note);
+    }
+}

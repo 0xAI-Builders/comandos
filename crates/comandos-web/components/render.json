@@ -1,0 +1,20 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- render ----------",
+  "marker_end": "// ---------- toasts ----------",
+  "sha256": "28372375403fb92f8711e81bd66c070241edda401f40f41eeba132f804a220da",
+  "id": "render",
+  "exports": [
+    "render",
+    "notify",
+    "favColor",
+    "favicon"
+  ],
+  "deps": [
+    "app-combinada",
+    "identidad-de-fila",
+    "barra-de-comandos"
+  ]
+}

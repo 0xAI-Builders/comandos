@@ -14,6 +14,7 @@ test -d "$task_tokens"
 task_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 test -f "$task_root/.git"
 task_cache="$task_root/.migration-build"
+task_shared_target=$("$task_root/scripts/rust-build-cache" --workspace "$task_root" --path)
 mkdir -p "$task_cache"
 printf 'fixture:x:%s:%s:isolated fixture:/home/fixture:/bin/sh\n' "$(id -u)" "$(id -g)" > "$task_cache/fixture-passwd"
 ulimit -v 3145728
@@ -26,7 +27,9 @@ exec systemd-run --user --scope --quiet --collect --unit="comandos-python-oracle
   --ro-bind /etc/ssl/certs /etc/ssl/certs \
   --ro-bind "$task_venv" /venv --ro-bind "$task_tokens" /tokens \
   --bind "$task_root" /work --chdir /work \
+  --ro-bind "$task_shared_target" /build-cache \
   --setenv PATH /venv/bin:/usr/bin:/bin \
+  --setenv CARGO_TARGET_DIR /build-cache \
   --setenv PYTHONPATH /work/.migration-build/python:/work/lib \
   --setenv TIKTOKEN_CACHE_DIR /tokens --setenv PYTHONDONTWRITEBYTECODE 1 \
   --setenv XDG_STATE_HOME /tmp/state --setenv COMANDOS_STATE_DB /tmp/unused.sqlite3 \

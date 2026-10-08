@@ -1,0 +1,16 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- favoritos ----------",
+  "marker_end": "// ---------- prefs de terminal (fuente/cursor/padding/opacity/ligas) ----------",
+  "sha256": "decb470e26ffeed2eb5f6201130e6dcefeaea557bf8ea81d92e492d6550d8158",
+  "id": "favoritos",
+  "exports": [
+    "loadPrefs"
+  ],
+  "deps": [
+    "tema",
+    "prefs-de-terminal"
+  ]
+}

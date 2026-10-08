@@ -1,0 +1,13 @@
+{
+  "input": {
+    "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "python": "3.10.12",
+    "stage": "after-startup-before-notices",
+    "seed_event": "e1",
+    "disabled_original_loops": [
+      "start_pomodoro_scheduler",
+      "motor_queue_resume"
+    ]
+  },
+  "output_b64": "MA=="
+}

@@ -1,4 +1,6 @@
-//! Tokenizer allocation is confined to the transient `count` child.
+//! CLI counting allocates tokenizer tables in a transient `count` child.
+//! Explicit `offline_counts_at` callers allocate in their own process; dropping
+//! its tables does not guarantee that the allocator returns resident pages.
 use crate::metadata::{MAX_BYTES, lock_file, private_dir};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use rustc_hash::FxHashMap;
@@ -6,6 +8,7 @@ use sha2::{Digest, Sha256};
 use std::{
     fs,
     io::Read,
+    os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
     process::Stdio,
     time::{Duration, Instant},
@@ -144,10 +147,26 @@ fn offline_counts(home: &Path, texts: &[String]) -> Option<Vec<Option<u64>>> {
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| home.join(".cache/comandos/tiktoken"));
+    offline_counts_at(&cache, texts)
+}
+/// Count using an explicit verified offline cache; no environment mutation or downloads.
+pub fn offline_counts_at(cache: &Path, texts: &[String]) -> Option<Vec<Option<u64>>> {
+    if !valid_texts(texts) {
+        return None;
+    }
+    // Check the opened descriptor, not only the path: a concurrent replacement
+    // with a FIFO must neither block open nor bypass the regular-file check.
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(nix::libc::O_NONBLOCK)
+        .open(cache.join(ENCODING_FILE))
+        .ok()?;
+    let metadata = file.metadata().ok()?;
+    if !metadata.is_file() || metadata.len() > MAX_BYTES as u64 {
+        return None;
+    }
     let mut bytes = Vec::new();
-    fs::File::open(cache.join(ENCODING_FILE))
-        .ok()?
-        .take(MAX_BYTES as u64 + 1)
+    file.take(MAX_BYTES as u64 + 1)
         .read_to_end(&mut bytes)
         .ok()?;
     if bytes.len() > MAX_BYTES || format!("{:x}", Sha256::digest(&bytes)) != ENCODING_HASH {

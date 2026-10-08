@@ -1,0 +1,21 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- iconos ----------",
+  "marker_end": "// ---------- tema ----------",
+  "sha256": "fc04388f16efbfb0c38cc142b0172e50b6535f80c86ca7c2845b32772974e0db",
+  "id": "iconos",
+  "exports": [
+    "ICON",
+    "svg",
+    "hydrateIcons",
+    "hydrateButtonTooltips",
+    "tooltipObserver"
+  ],
+  "deps": [
+    "prelude",
+    "i18n",
+    "red"
+  ]
+}

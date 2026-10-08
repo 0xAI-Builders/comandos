@@ -5,7 +5,7 @@
 //! `agent_pane_maps`, el bucle de agentes externos y `account_for_pid`).
 //!
 //! Todas las lecturas de `/proc` van contra una raíz inyectable para probarlas
-//! sobre un árbol falso. Solo Linux: el frente no tiene la rama `ps`/`lsof`.
+//! sobre un árbol falso. Darwin usa ps/lsof solo con la raíz de producción.
 use crate::Unsure;
 use crate::tui_state::{Obs, loads_bytes, loads_text};
 use comandos_core::json::truthy;
@@ -60,6 +60,22 @@ fn split_argv(raw: &[u8]) -> Vec<String> {
         .filter(|a| !a.is_empty())
         .map(|a| String::from_utf8_lossy(a).into_owned())
         .collect()
+}
+
+/// Platform consumer with the original canonical agent set, kept separate
+/// from aliases (an alias can overwrite another canonical name in Linux).
+/// Fake proc roots retain exactly the existing reader on either platform.
+pub fn agent_procs_for_agents(
+    proc_root: &Path,
+    aliases: &HashMap<String, String>,
+    agents: &std::collections::BTreeSet<String>,
+) -> Result<Vec<AgentProc>, Unsure> {
+    #[cfg(target_os = "macos")]
+    if proc_root == Path::new("/proc") {
+        return Ok(agents_from_source(&crate::procs::system(), agents));
+    }
+    let _ = agents;
+    agent_procs(proc_root, aliases)
 }
 
 /// `agent_procs` (cc-dash): `<proc>/[0-9]*/cmdline` en el orden de `read_dir`;
@@ -121,6 +137,16 @@ pub fn agent_procs(
 /// nombre que no es UTF-8 hace que el Python pregunte a `ps`, que da el mismo
 /// padre que el campo numérico; un pid que no existe da 0 por ambos caminos.
 pub fn parent_pid(proc_root: &Path, pid: i64) -> i64 {
+    #[cfg(target_os = "macos")]
+    if proc_root == Path::new("/proc") {
+        use crate::procs::ProcSource;
+        return i32::try_from(pid)
+            .ok()
+            .and_then(|p| crate::procs::system().process(p))
+            .map(|p| p.ppid as i64)
+            .unwrap_or(0);
+    }
+
     let Ok(raw) = fs::read(proc_dir(proc_root, &pid.to_string()).join("stat")) else {
         return 0;
     };
@@ -139,6 +165,16 @@ pub fn parent_pid(proc_root: &Path, pid: i64) -> i64 {
 
 /// `_proc_cmdline`: argumentos no vacíos de `cmdline`; fallo → `[]`.
 pub fn proc_cmdline(proc_root: &Path, pid: i64) -> Vec<String> {
+    #[cfg(target_os = "macos")]
+    if proc_root == Path::new("/proc") {
+        use crate::procs::ProcSource;
+        return i32::try_from(pid)
+            .ok()
+            .and_then(|p| crate::procs::system().process(p))
+            .map(|p| p.argv)
+            .unwrap_or_default();
+    }
+
     fs::read(proc_dir(proc_root, &pid.to_string()).join("cmdline"))
         .map(|raw| split_argv(&raw))
         .unwrap_or_default()
@@ -161,6 +197,16 @@ pub fn read_environ(proc_root: &Path, pid: i64) -> HashMap<Vec<u8>, Vec<u8>> {
 
 /// `_process_start`: campo 19 tras `)` o `""`.
 pub fn process_start(proc_root: &Path, pid: i64) -> String {
+    #[cfg(target_os = "macos")]
+    if proc_root == Path::new("/proc") {
+        use crate::procs::ProcSource;
+        return i32::try_from(pid)
+            .ok()
+            .and_then(|p| crate::procs::system().process(p))
+            .map(|p| p.start.to_string())
+            .unwrap_or_default();
+    }
+
     stat_fields(proc_root, &pid.to_string())
         .and_then(|f| f.into_iter().nth(19))
         .unwrap_or_default()
@@ -462,7 +508,7 @@ fn path_split(p: &[u8]) -> (Vec<u8>, Vec<u8>) {
 }
 
 /// `posixpath.dirname`.
-fn dirname(p: &[u8]) -> Vec<u8> {
+pub fn dirname(p: &[u8]) -> Vec<u8> {
     path_split(p).0
 }
 
@@ -473,7 +519,7 @@ fn rstrip_slash(p: &[u8]) -> &[u8] {
 }
 
 /// `posixpath.normpath`.
-fn normpath(p: &[u8]) -> Vec<u8> {
+pub fn normpath(p: &[u8]) -> Vec<u8> {
     if p.is_empty() {
         return b".".to_vec();
     }
@@ -835,6 +881,54 @@ fn read_email(cfg: &[u8], agent: &str) -> Result<Value, Unsure> {
         Ok(Some((data, touched))) => email_of(&data, agent, touched),
         _ => Ok(Value::from("")),
     }
+}
+
+fn canonical_agent<'a>(
+    p: &'a crate::procs::ProcInfo,
+    agents: &std::collections::BTreeSet<String>,
+) -> Option<&'a str> {
+    // Original Darwin branch: first two basenames intersect canonical agent
+    // names; sorted(hit)[0] wins, rather than Linux's alias order.
+    p.argv
+        .iter()
+        .take(2)
+        .map(|a| basename(a))
+        .filter(|a| agents.contains(*a))
+        .min()
+}
+
+/// Select canonical candidates before resolving cwd. A single ps inventory
+/// needs at most one lsof job, containing only those candidate PIDs.
+pub fn agents_from_source(
+    source: &impl crate::procs::ProcSource,
+    agents: &std::collections::BTreeSet<String>,
+) -> Vec<AgentProc> {
+    let candidates = source
+        .snapshot()
+        .into_iter()
+        .filter(|p| canonical_agent(p, agents).is_some())
+        .collect();
+    agents_from_snapshot(&source.with_cwds(candidates), agents)
+}
+
+/// Agent observations from a platform inventory. No filesystem or commands;
+/// missing cwd cannot be used to attribute an agent to a project.
+pub fn agents_from_snapshot(
+    procs: &[crate::procs::ProcInfo],
+    agents: &std::collections::BTreeSet<String>,
+) -> Vec<AgentProc> {
+    procs
+        .iter()
+        .filter_map(|p| {
+            let agent = canonical_agent(p, agents)?;
+            let cwd = p.cwd.as_ref()?.to_str()?.to_owned();
+            Some(AgentProc {
+                pid: i64::from(p.pid),
+                cwd,
+                agent: agent.to_owned(),
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

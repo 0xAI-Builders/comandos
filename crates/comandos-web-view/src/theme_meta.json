@@ -1,0 +1,110 @@
+{
+  "noche": {
+    "icon": "moon",
+    "label": "Noche Órbita",
+    "desc": "navy profundo · foco",
+    "treatment": "solid",
+    "scheme": "dark",
+    "sw": [
+      "#0A0D13",
+      "#121722",
+      "#8B7CFF"
+    ]
+  },
+  "dia": {
+    "icon": "sun",
+    "label": "Día Mineral",
+    "desc": "slate descansado · contraste",
+    "treatment": "solid",
+    "scheme": "light",
+    "sw": [
+      "#BCC7D4",
+      "#F1F4F7",
+      "#1D55C7"
+    ]
+  },
+  "calido": {
+    "icon": "flame",
+    "label": "Cálido Ámbar",
+    "desc": "baja luz azul · sesiones largas",
+    "treatment": "solid",
+    "scheme": "dark",
+    "sw": [
+      "#161009",
+      "#261D14",
+      "#E0A458"
+    ]
+  },
+  "termius": {
+    "icon": "terminal",
+    "label": "Termius",
+    "desc": "teal profundo · terminal",
+    "treatment": "solid",
+    "scheme": "dark",
+    "sw": [
+      "#0E1620",
+      "#182432",
+      "#4CE07A"
+    ]
+  },
+  "bruno": {
+    "icon": "zap",
+    "label": "Bruno Grafito",
+    "desc": "carbón · oro",
+    "treatment": "solid",
+    "scheme": "dark",
+    "sw": [
+      "#1A1A1A",
+      "#26292B",
+      "#E4AE49"
+    ]
+  },
+  "superglass": {
+    "icon": "sparkles",
+    "label": "Super Glass",
+    "desc": "aurora · chrome esmerilado",
+    "treatment": "glass",
+    "scheme": "dark",
+    "sw": [
+      "#080B19",
+      "#202749",
+      "#72E6FF"
+    ]
+  },
+  "neon": {
+    "icon": "zap",
+    "label": "Neón",
+    "desc": "carbono · cyan · magenta",
+    "treatment": "neon",
+    "scheme": "dark",
+    "sw": [
+      "#07080D",
+      "#181B27",
+      "#28E7F2"
+    ]
+  },
+  "contraste": {
+    "icon": "layers",
+    "label": "Contraste",
+    "desc": "límites fuertes · cero blur",
+    "treatment": "contrast",
+    "scheme": "dark",
+    "sw": [
+      "#000000",
+      "#171717",
+      "#59B0FF"
+    ]
+  },
+  "ubuntu": {
+    "icon": "layers",
+    "label": "Ubuntu Terminal",
+    "desc": "berenjena Ptyxis · Tango · naranja",
+    "treatment": "solid",
+    "scheme": "dark",
+    "sw": [
+      "#300A24",
+      "#48193C",
+      "#E95420"
+    ]
+  }
+}

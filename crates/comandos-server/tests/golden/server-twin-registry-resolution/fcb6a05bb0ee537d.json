@@ -1,0 +1,15 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "code": "import json, shutil\nimport providers, acp\nnames = json.loads(\"[\\\"node\\\",\\\"npx\\\",\\\"bun\\\",\\\"claude\\\",\\\"codex\\\",\\\"grok\\\",\\\"cc-acp\\\",\\\"opencode\\\",\\\"agy\\\",\\\"gemini\\\",\\\"claude-agent-acp\\\",\\\"codex-acp\\\"]\")\nprint(json.dumps([[n, shutil.which(n), providers.which(n), acp.which(n)] for n in names]))",
+      "effect_files": [],
+      "fakebin": [],
+      "fixture_env": []
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbW1wibm9kZVwiLCBcIjxIT01FPi9mYWtlYmluL25vZGVcIiwgXCI8SE9NRT4vZmFrZWJpbi9ub2RlXCIsIFwiPEhPTUU+L2Zha2ViaW4vbm9kZVwiXSwgW1wibnB4XCIsIFwiPEhPTUU+L2Zha2ViaW4vbnB4XCIsIFwiPEhPTUU+L2Zha2ViaW4vbnB4XCIsIFwiPEhPTUU+L2Zha2ViaW4vbnB4XCJdLCBbXCJidW5cIiwgXCI8SE9NRT4vZmFrZWJpbi9idW5cIiwgXCI8SE9NRT4vZmFrZWJpbi9idW5cIiwgXCI8SE9NRT4vZmFrZWJpbi9idW5cIl0sIFtcImNsYXVkZVwiLCBcIjxIT01FPi9mYWtlYmluL2NsYXVkZVwiLCBcIjxIT01FPi9mYWtlYmluL2NsYXVkZVwiLCBcIjxIT01FPi9mYWtlYmluL2NsYXVkZVwiXSwgW1wiY29kZXhcIiwgXCI8SE9NRT4vZmFrZWJpbi9jb2RleFwiLCBcIjxIT01FPi9mYWtlYmluL2NvZGV4XCIsIFwiPEhPTUU+L2Zha2ViaW4vY29kZXhcIl0sIFtcImdyb2tcIiwgXCI8SE9NRT4vZmFrZWJpbi9ncm9rXCIsIFwiPEhPTUU+L2Zha2ViaW4vZ3Jva1wiLCBcIjxIT01FPi9mYWtlYmluL2dyb2tcIl0sIFtcImNjLWFjcFwiLCBcIjxIT01FPi9mYWtlYmluL2NjLWFjcFwiLCBcIjxIT01FPi9mYWtlYmluL2NjLWFjcFwiLCBcIjxIT01FPi9mYWtlYmluL2NjLWFjcFwiXSwgW1wib3BlbmNvZGVcIiwgXCI8SE9NRT4vZmFrZWJpbi9vcGVuY29kZVwiLCBcIjxIT01FPi9mYWtlYmluL29wZW5jb2RlXCIsIFwiPEhPTUU+L2Zha2ViaW4vb3BlbmNvZGVcIl0sIFtcImFneVwiLCBcIjxIT01FPi9mYWtlYmluL2FneVwiLCBcIjxIT01FPi9mYWtlYmluL2FneVwiLCBcIjxIT01FPi9mYWtlYmluL2FneVwiXSwgW1wiZ2VtaW5pXCIsIFwiPEhPTUU+L2Zha2ViaW4vZ2VtaW5pXCIsIFwiPEhPTUU+L2Zha2ViaW4vZ2VtaW5pXCIsIFwiPEhPTUU+L2Zha2ViaW4vZ2VtaW5pXCJdLCBbXCJjbGF1ZGUtYWdlbnQtYWNwXCIsIFwiPEhPTUU+L2Zha2ViaW4vY2xhdWRlLWFnZW50LWFjcFwiLCBcIjxIT01FPi9mYWtlYmluL2NsYXVkZS1hZ2VudC1hY3BcIiwgXCI8SE9NRT4vZmFrZWJpbi9jbGF1ZGUtYWdlbnQtYWNwXCJdLCBbXCJjb2RleC1hY3BcIiwgXCI8SE9NRT4vZmFrZWJpbi9jb2RleC1hY3BcIiwgXCI8SE9NRT4vZmFrZWJpbi9jb2RleC1hY3BcIiwgXCI8SE9NRT4vZmFrZWJpbi9jb2RleC1hY3BcIl1dXG4iLCJ0cmVlIjp7fX0="
+}

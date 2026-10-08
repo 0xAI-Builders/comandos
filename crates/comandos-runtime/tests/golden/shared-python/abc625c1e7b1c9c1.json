@@ -1,0 +1,16 @@
+{
+  "input": {
+    "case": {
+      "script": "import sys,json,datetime; sys.path.insert(0,sys.argv[1]+'/lib'); import news_editions as e, news_radar as r, app_state; data=json.loads(sys.argv[2]);\n\ncalls=[];sleeps=[];errors=[]\ndef fetch(url,**kw):\n calls.append(url);return False,b'','',url,'HTTP 429'\nitems=r.collect_reddit(0,fetch,errors,sleep=sleeps.append,clock=lambda:0)\nprint(json.dumps([items,errors,len(calls),[float(s) for s in sleeps]]))\n",
+      "args": [
+        {
+          "arg": "null",
+          "file": null
+        }
+      ],
+      "bin_inputs": []
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbW10sIFt7XCJzb3VyY2VcIjogXCJyL0xvY2FsTExhTUFcIiwgXCJlcnJvclwiOiBcIkhUVFAgNDI5XCJ9LCB7XCJzb3VyY2VcIjogXCJyL0NsYXVkZUFJXCIsIFwiZXJyb3JcIjogXCJIVFRQIDQyOVwifSwge1wic291cmNlXCI6IFwici9zaW5ndWxhcml0eVwiLCBcImVycm9yXCI6IFwib21pdGlkbzogUmVkZGl0IGxpbWl0XFx1MDBmMyBsYXMgcGV0aWNpb25lc1wifSwge1wic291cmNlXCI6IFwici9PcGVuQUlcIiwgXCJlcnJvclwiOiBcIm9taXRpZG86IFJlZGRpdCBsaW1pdFxcdTAwZjMgbGFzIHBldGljaW9uZXNcIn0sIHtcInNvdXJjZVwiOiBcInIvQ2hhdEdQVENvZGluZ1wiLCBcImVycm9yXCI6IFwib21pdGlkbzogUmVkZGl0IGxpbWl0XFx1MDBmMyBsYXMgcGV0aWNpb25lc1wifSwge1wic291cmNlXCI6IFwici9hcnRpZmljaWFsXCIsIFwiZXJyb3JcIjogXCJvbWl0aWRvOiBSZWRkaXQgbGltaXRcXHUwMGYzIGxhcyBwZXRpY2lvbmVzXCJ9XSwgNCwgWzUuMCwgMi41LCA1LjBdXVxuIiwidHJlZSI6e319"
+}

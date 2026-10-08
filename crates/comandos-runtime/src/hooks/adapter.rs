@@ -155,7 +155,8 @@ fn tonumber(value: &Value) -> Jq<f64> {
 /// El `jq -e` de los scripts de codex: el estado es un `done` de codex de hace
 /// 15 s o menos. Cualquier error de jq cuenta como "no".
 pub fn recent_codex_done(state: &Path, now: i64) -> bool {
-    let Ok(raw) = std::fs::read(state) else {
+    let home = PathBuf::from(OsStr::from_bytes(&env_bytes("HOME")));
+    let Some(raw) = super::state_file::read_state_bytes(&home, state) else {
         return false;
     };
     let text = jq_lossy(&raw);
@@ -196,10 +197,19 @@ pub fn arg(text: &str) -> Vec<u8> {
 /// `/proc/PID/stat`: el padre (campo 4) y el tick de arranque (campo 22), tras el
 /// último `)` como hace `rsplit(")", 1)` en Python.
 pub fn proc_stat(pid: u32) -> Option<(u32, String)> {
-    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-    let rest = stat.rsplit_once(')')?.1;
-    let fields: Vec<&str> = rest.split_whitespace().collect();
-    Some((fields.get(1)?.parse().ok()?, (*fields.get(19)?).to_string()))
+    #[cfg(target_os = "macos")]
+    {
+        use crate::procs::ProcSource;
+        let p = crate::procs::system().process(i32::try_from(pid).ok()?)?;
+        Some((u32::try_from(p.ppid).ok()?, p.start.to_string()))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let rest = stat.rsplit_once(')')?.1;
+        let fields: Vec<&str> = rest.split_whitespace().collect();
+        Some((fields.get(1)?.parse().ok()?, (*fields.get(19)?).to_string()))
+    }
 }
 
 #[cfg(test)]

@@ -1873,3 +1873,134 @@ sistema lo que reservó; baja solo al reiniciar `cc-dash-legacy` (no hace falta 
 Muestra de las 4–6 h (16:17:12, 4 h 45 min después del cutover): 43 084 KiB, 7 hilos,
 `NRestarts=0`, mismo PID (583166); por debajo de 56 MiB y 12 hilos. No se revirtió.
 Pendiente: la muestra del día siguiente.
+
+
+## 2f: integración del resto del tablero (preparada, sin cutover ejecutado)
+
+### Qué cambia
+
+Las cinco familias de fixtures se ejecutan juntas en dos HOME temporales y sockets tmux
+privados. El frente usa un heredado falso: una declinación accidental no puede pasar por
+paridad con el Python. La clasificación respeta el orden GET original, incluida la prioridad
+de `/events/v2` sobre `/events`, y entrega al manejador el target original. Las ramas
+canónicas GET/POST tienen dueño de dominio; el residuo es la última tabla y atiende
+estáticos, HEAD y métodos desconocidos. Ya no conserva guardas provisionales por ramas
+sin fusionar. Desactivar un corte o todo el nativo conserva el fallback de reversión.
+
+El dueño de tareas retiene el Runner de noticias. Services controla Pomodoro, modelos y
+restauración webterm; News controla el planificador de ediciones; Usage controla límites;
+Ops controla la recuperación de la cola, solo en modo Front. Apagar el dueño señala Stop;
+no espera un join indefinido. Legacy mantiene el reparto previo de productores.
+
+### Diferencias aceptadas
+
+Se mantiene la retirada 410 de operator y de las rutas retiradas deliberadamente, también
+`/proxy?x=1` y sufijos cubiertos por los prefijos originales. `/events/v2` sigue activo.
+El log de retirada guarda etiquetas canónicas finitas, nunca sufijos arbitrarios ni consultas.
+Se conservan D9 (reset de tailscale serve), D10 (Web Push inerte) y las diferencias documentadas
+en cada subplan. El frente no comparte los candados internos de proceso del Python: un
+corte activo tiene un solo dueño. La reescritura externa de motor-results exige invalidación
+de caché; está cubierta por la regresión de timestamp anterior. El oráculo estático observado
+es Python 3.10.12. Las lecturas HEAD siguen acotadas a 16 MiB, aunque no devuelven cuerpo.
+
+### 0. Previos
+
+Antes de cualquier cambio de servicios, registrar commit y hash del release; comprobar la
+marca `COMANDOS_DASH_CUTS_OFF` en el binario, unidades active/active y NRestarts, release
+actual y ExecStart del heredado. Comparar PATH, WorkingDirectory, DISPLAY, XDG_RUNTIME_DIR,
+TZ y variables de 2e entre frente y heredado. Comprobar disponibilidad con el PATH del
+frente de systemd-run, tailscale, qrencode, ssh-copy-id, wmctrl, xdg-open y pw-play, y 4782
+libre. Revisar el diff del inventario Python/D8 y el checkout de
+/home/someguy/.claude/hooks/dash/index.html antes de instalar.
+
+Binario previsto: /home/someguy/codebase/0xJesus/ComandOS/.build/target/release/comandos.
+Ejecutor de paridad: /home/someguy/codebase/0xJesus/ComandOS/.build/target/debug/xtask.
+Son destinos previstos; verificar existencia y revisión, no inferirla de esta sección.
+
+### 1. Sombra
+
+Primero ejecutar el oráculo confinado completo: fixture base más las cinco de 2f, conservando
+headers, cuerpos especiales y ficheros declarados. La prueba integrada de 72 casos cubre
+las cinco familias, pero no sustituye el gate base de autenticación y límites HTTP.
+
+Para la sombra operativa, usar 4782 con heredado 4781 y COMANDOS_DASH_TRACE_FORWARD=1,
+con log /tmp/sombra-2f.log; observar diez minutos con el poll de 2c. No copiar a ciegas las
+mutaciones de fixtures al estado real: solo sesiones desechables `comandos-e2e-`, sin agentes,
+y sin cambios reales de cuenta. No ejercitar remote, ssh ni conf-set en la sombra. Guardar
+latencias, RSS/PSS, hilos y NRestarts con sus umbrales de 2c/2e.
+
+El censo real usa nombre **por puerto**, no el nombre único del boceto del plan. Obtener el
+XDG_RUNTIME_DIR de la unidad. Con el directorio estándar del UID 1000, las rutas son
+/run/user/1000/comandos-dash-declines-4782.json para sombra y
+/run/user/1000/comandos-dash-declines-4777.json para frente; confirmar el entorno de la unidad.
+No borrar el del frente. La ausencia del archivo antes del primer flush no prueba cero
+Decline: esperar un flush o apagado limpio de la sombra. La clave es método+ruta sin query,
+con 512 claves y bolsa de otras; el censo no identifica la razón, debe correlacionarse con
+los logs y las ubicaciones del inventario. Cero rutas clasificadas Forward no prueba cero
+Decline en ejecución.
+
+### 2. Cutover
+
+No realizado por esta integración. Antes de stage/restart, verificar journal sin operaciones
+en vuelo y ninguna session-new/account-add en los últimos dos minutos, contrastando
+/home/someguy/.claude/hooks/app-tab-open.json. Seguir la instalación por stage y humo del
+hook descritos en 2c/2e, reiniciar únicamente cc-dash.service cuando corresponda, comprobar
+HTTP 200 y NRestarts=0. Mantener el heredado durante 2f.
+
+### 3. Verificación por corte
+
+Durante diez minutos, registrar cada reenvío y explicar su razón con el inventario. El usuario
+verifica tabs (abrir, cerrar, recuperar y enfocar), ops (pane elegido explícitamente, journal
+waiting→snapshot→applying→verifying→confirmed y misma conversación), services (Remoto,
+QR, ajuste) y news (edición y notas). Comprobar cuenta/configuración y resultado duradero de
+ops. Las pruebas aisladas no sustituyen estas acciones ni la puerta de memoria en vivo.
+
+### 4. Reversión
+
+Conservar el release anterior. La reversión por corte usa COMANDOS_DASH_CUTS_OFF con el
+nombre del corte y reinicio del frente; la reversión completa usa COMANDOS_DASH_NATIVE=0.
+Aplicar también el drop-in persistente de 2c/2e si debe sobrevivir a la sesión del manager.
+Si se revierte Ops con una operación en vuelo, su dueño desaparece y el Python recupera
+abandonadas al consultar model/status. No prometer continuidad de una operación interrumpida.
+La reversión de release usa el mecanismo --rollback-release existente.
+
+### Declinaciones que hereda la 2g
+
+**Estado del censo en esta revisión: no observado en sombra.** No se ha parado el heredado.
+El anexo /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-fase2f-b/docs/verification/decline-2f-locations.jsonl
+registra 436 apariciones textuales con contexto y ubicación absoluta. Sirve para auditar
+exhaustividad, no convierte cada aparición
+(incluidas ramas imposibles o propagaciones) en una razón distinta. Hay que resolver la
+semántica de cada ruta antes de retirar el fallback. Sustituciones de 2g propuestas:
+
+| Razón | Rutas/familias afectadas | Sustituto que debe validar 2g |
+|---|---|---|
+| Nativo/corte/carril apagado, base sin abrir, cola cerrada o trabajador no disponible | Todas las rutas del corte/carril | Respuesta 503 definida; jamás reenviar a un proceso ausente |
+| Candado agotado, error de archivo o JSON incierto | Preferencias, SSH, config, noticias, registros, estados y perfiles | Espera acotada conforme al contrato; error HTTP equivalente sin repetir efectos |
+| Valor exótico Python, número no representable, texto/UTF-8 incierto | Query, settings, push, SSH, tabs, input y news | Validación o conversión equivalente demostrada por oráculo |
+| Snapshot tmux/proc, identidad o proveedor incierto; HOME/repo/config no disponible | State, targets, terminal, sesiones, configure y perfiles | Error explícito sin teclear ni matar un destino incierto |
+| Estado durable/replay/snapshot malformado o resultado pendiente no interpretable | Configure, recuperación y consulta model/status | Recuperación/error terminal definido; no iniciar otro trabajo por fallback |
+| Store/capabilities o borrador de perfil incierto | Session-profiles, profile-apply, pane-extensions | Error durable por operación con paridad; conservar idempotencia |
+| Configuración/asker ACP incierto antes de efectos | News chat/translate | 503 o validación equivalente; mantener el dueño del trabajo y límites |
+| Raíz estática ausente, nombre no UTF-8, tamaño/listado excedido, fallo IO | Residuo GET/HEAD | Respuesta HTTP acotada y compatible, sin Python |
+| Fallo de serialización/cabeceras o variante interna imposible | Helpers compartidos y despachadores | Error interno explícito o invariante probada; no contabilizar como hueco funcional |
+
+Antes de 2g: terminar el cotejo semántico de las ubicaciones del anexo con el censo, habilitar
+Background Front con sus productores únicos, definir el destino de cada Decline sin heredado,
+y solo entonces detener cc-dash-legacy.service. El censo no permite afirmar que un caso
+no existe solo porque no apareció durante diez minutos.
+
+### Medido antes del cutover
+
+Integración de T4 `35f65a9` y prefijos `7253496`, merge `ab05e41`; campaña `0068ef1`:
+72 fixtures de 2f pasan en una misma prueba confinada, con comparación de status/cuerpo y
+ficheros declarados. Residuo se ejecuta antes de las mutaciones de tabs: el caso `/stateX`
+usa estado vacío, y no oculta diferencias de orden de filas con sesiones ya mutadas. El runner
+normaliza HOME, timestamps comunes y pointers volatile declarados; las retiradas intencionales
+exigen 410. No ejerce headers arbitrarios de la fixture base. Parent ya validó 961 pruebas
+runtime/server, sin fallos y una ignorada, antes de esta integración. Esta ronda ejecuta solo
+los gates afectados; no repite la suite global ni afirma despliegue.
+
+Pendientes operativos: campaña base+2f con xtask, evidencia de sombra/censo/ligereza, acciones
+por corte con el usuario y revisión final de inventario Decline. La clasificación completa y
+el cierre del residuo no equivalen a esos gates.

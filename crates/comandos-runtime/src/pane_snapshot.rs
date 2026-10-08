@@ -65,6 +65,8 @@ pub struct PaneRef<'a> {
 pub struct PaneInspector {
     home: PathBuf,
     proc: PathBuf,
+    processes: Option<HashMap<i64, crate::procs::ProcInfo>>,
+    source: Option<Box<dyn crate::procs::ProcSource + Send + Sync>>,
     children: HashMap<i64, Vec<i64>>,
     claude: HashMap<i64, Obs>,
     grok: HashMap<i64, Obs>,
@@ -282,22 +284,83 @@ fn obs(pairs: impl IntoIterator<Item = (&'static str, Value)>) -> Obs {
 }
 
 impl PaneInspector {
+    fn process_argv(&self, pid: &str) -> Option<Vec<String>> {
+        if let Some(procs) = &self.processes {
+            return procs.get(&pid.parse::<i64>().ok()?).map(|p| p.argv.clone());
+        }
+        argv(&self.proc.join(pid).join("cmdline"))
+    }
+    fn open_targets(&self, pid: i64, dir: &Path) -> Box<dyn Iterator<Item = (PathBuf, PathBuf)>> {
+        if let Some(source) = &self.source {
+            return Box::new(
+                i32::try_from(pid)
+                    .ok()
+                    .map(|p| source.open_files(p))
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|p| (p.clone(), p)),
+            );
+        }
+        Box::new(
+            entries(&dir.join("fd"))
+                .into_iter()
+                .filter_map(|fd| fs::read_link(&fd).ok().map(|target| (fd, target))),
+        )
+    }
     /// `PaneInspector.__init__`: hijos por padre, sesiones de Claude y Grok por
     /// pid y `acp-panes.json`.
     pub fn new(home: &Path, proc_root: &Path) -> Result<Self, Unsure> {
+        #[cfg(target_os = "macos")]
+        if proc_root == Path::new("/proc") {
+            return Self::with_source(home, proc_root, Box::new(crate::procs::system()));
+        }
+        Self::build(home, proc_root, None)
+    }
+
+    /// Same inspector with an owned platform inventory. The default Linux
+    /// constructor retains its proc-root readers; this seam also permits
+    /// Darwin fixture tests without enumerating the host's processes.
+    pub fn with_source(
+        home: &Path,
+        proc_root: &Path,
+        source: Box<dyn crate::procs::ProcSource + Send + Sync>,
+    ) -> Result<Self, Unsure> {
+        Self::build(home, proc_root, Some(source))
+    }
+
+    fn build(
+        home: &Path,
+        proc_root: &Path,
+        source: Option<Box<dyn crate::procs::ProcSource + Send + Sync>>,
+    ) -> Result<Self, Unsure> {
         let mut children: HashMap<i64, Vec<i64>> = HashMap::new();
-        for entry in entries(proc_root) {
-            let Some(name) = entry.file_name().and_then(|n| n.to_str()) else {
-                continue;
-            };
-            if name.is_empty() || !name.bytes().all(|b| b.is_ascii_digit()) {
-                continue;
+        let processes = source.as_ref().map(|s| {
+            let rows = s.snapshot();
+            for p in &rows {
+                children
+                    .entry(i64::from(p.ppid))
+                    .or_default()
+                    .push(i64::from(p.pid));
             }
-            let parent = stat_fields(proc_root, name)
-                .and_then(|f| f.into_iter().nth(1))
-                .and_then(|p| p.parse::<i64>().ok());
-            if let (Some(parent), Ok(pid)) = (parent, name.parse::<i64>()) {
-                children.entry(parent).or_default().push(pid);
+            rows.into_iter().map(|p| (i64::from(p.pid), p)).collect()
+        });
+
+        // The supplied inventory is authoritative. Do not also enumerate
+        // proc_root when a Darwin/fake source is present.
+        if processes.is_none() {
+            for entry in entries(proc_root) {
+                let Some(name) = entry.file_name().and_then(|n| n.to_str()) else {
+                    continue;
+                };
+                if name.is_empty() || !name.bytes().all(|b| b.is_ascii_digit()) {
+                    continue;
+                }
+                let parent = stat_fields(proc_root, name)
+                    .and_then(|f| f.into_iter().nth(1))
+                    .and_then(|p| p.parse::<i64>().ok());
+                if let (Some(parent), Ok(pid)) = (parent, name.parse::<i64>()) {
+                    children.entry(parent).or_default().push(pid);
+                }
             }
         }
         let mut claude = HashMap::new();
@@ -373,6 +436,8 @@ impl PaneInspector {
         Ok(Self {
             home: home.to_path_buf(),
             proc: proc_root.to_path_buf(),
+            processes,
+            source,
             children,
             claude,
             grok,
@@ -388,7 +453,11 @@ impl PaneInspector {
 
     /// `_flags` con el `str(pid)` del Python (un `401.0` de JSON no existe).
     fn flags_for(&self, pid: &str) -> Vec<String> {
-        let Some(args) = argv(&self.proc.join(pid).join("cmdline")) else {
+        if self.processes.is_some() {
+            return Vec::new();
+        }
+
+        let Some(args) = self.process_argv(pid) else {
             return Vec::new();
         };
         let exe = args.first().map_or("", |a| pathlib_name(a));
@@ -433,20 +502,50 @@ impl PaneInspector {
     /// este proceso (pid, inicio y arnés) y de una conversación raíz.
     pub fn native_metadata(&self, pid: i64, harness: &str) -> Result<Obs, Unsure> {
         let empty = Ok(Map::new());
-        let Some(started) =
-            stat_fields(&self.proc, &pid.to_string()).and_then(|f| f.into_iter().nth(19))
-        else {
+        let started = match &self.processes {
+            Some(procs) => procs.get(&pid).map(|p| p.start.to_string()),
+            None => stat_fields(&self.proc, &pid.to_string()).and_then(|f| f.into_iter().nth(19)),
+        };
+        let Some(started) = started else {
             return empty;
         };
         let path = self
             .home
             .join(".claude/hooks/native-processes")
             .join(format!("{pid}.json"));
-        match fs::metadata(&path) {
-            Ok(m) if m.len() <= 16384 => {}
-            _ => return empty,
-        }
-        let Some((Value::Object(data), touched)) = load_json(&path)? else {
+        let access = comandos_store::domains::caller::CallerAccess::open(&self.home, "processes")
+            .map_err(|_| Unsure)?;
+        let parsed = if matches!(
+            access.mode(),
+            comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed
+        ) {
+            let Some(db) = access.db() else {
+                return Err(Unsure);
+            };
+            use rusqlite::OptionalExtension;
+            let raw = db
+                .query_row(
+                    "SELECT body FROM native_processes WHERE pid=?1",
+                    [pid],
+                    |r| r.get::<_, Vec<u8>>(0),
+                )
+                .optional()
+                .map_err(|_| Unsure)?;
+            let Some(raw) = raw.filter(|b| b.len() <= 16384) else {
+                return empty;
+            };
+            match String::from_utf8(raw) {
+                Ok(text) => loads_text(&text)?,
+                Err(_) => None,
+            }
+        } else {
+            match fs::metadata(&path) {
+                Ok(m) if m.len() <= 16384 => {}
+                _ => return empty,
+            }
+            load_json(&path)?
+        };
+        let Some((Value::Object(data), touched)) = parsed else {
             return empty;
         };
         let get = |k: &str| data.get(k).cloned().unwrap_or(Value::Null);
@@ -487,7 +586,7 @@ impl PaneInspector {
                 continue;
             }
             let dir = self.proc.join(pid.to_string());
-            let Some(args) = argv(&dir.join("cmdline")) else {
+            let Some(args) = self.process_argv(&pid.to_string()) else {
                 continue;
             };
             let Some(first) = args.first() else {
@@ -624,10 +723,7 @@ impl PaneInspector {
         }
         // agy: conversaciones o candados abiertos de `antigravity-cli`.
         let mut candidates: Vec<(String, Vec<u8>)> = Vec::new();
-        for fd in entries(&dir.join("fd")) {
-            let Ok(target) = fs::read_link(&fd) else {
-                continue;
-            };
+        for (_, target) in self.open_targets(pid, dir) {
             let target = target.as_os_str().as_bytes();
             let Some(sid) = antigravity_sid(target) else {
                 continue;
@@ -677,10 +773,7 @@ impl PaneInspector {
         // Un proceso Codex tiene rollouts raíz Y delegados abiertos; su primer
         // fd no es necesariamente la conversación visible.
         let mut roots: Vec<String> = Vec::new();
-        for fd in entries(&dir.join("fd")) {
-            let Ok(target) = fs::read_link(&fd) else {
-                continue;
-            };
+        for (fd, target) in self.open_targets(pid, dir) {
             let Some(ident) = rollout_id(target.as_os_str().as_bytes()) else {
                 continue;
             };

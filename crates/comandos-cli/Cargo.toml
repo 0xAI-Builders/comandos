@@ -14,12 +14,33 @@ name = "comandos"
 path = "src/main.rs"
 
 [dependencies]
+rusqlite.workspace = true
+# `install --stage` valida el `manifest.json` de `web/` (T4).
+comandos-core = { path = "../comandos-core" }
+comandos-desktop = { path = "../comandos-desktop" }
+toml = "=0.8.2"
+# Already locked by runtime: source spans for scoped notify migrations.
+toml_edit = "=0.25.15"
+getrandom.workspace = true
 comandos-extensions = { path = "../comandos-extensions" }
 comandos-runtime = { path = "../comandos-runtime" }
+comandos-acp = { path = "../comandos-acp" }
 comandos-server = { path = "../comandos-server" }
 sha2.workspace = true
+comandos-store = { path = "../comandos-store" }
+serde = { version = "1", features = ["derive"] }
+serde_json.workspace = true
+chrono.workspace = true
+regex = "=1.13.1"
+nix = { version = "=0.31.3", default-features = false, features = ["fs", "user"] }
+# Already pinned by comandos-runtime; resolve HTTP redirect references locally.
+url = "=2.5.8"
+# Existing pinned safe APIs: exact-process signals and maintenance cancellation.
+rustix = { version = "=1.1.5", features = ["process"] }
+signal-hook = "=0.4.5"
 
 [dev-dependencies]
+rusqlite.workspace = true
 comandos-core = { path = "../comandos-core" }
 
 [lints]

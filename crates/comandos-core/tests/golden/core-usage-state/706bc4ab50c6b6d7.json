@@ -1,0 +1,9 @@
+{
+  "input": {
+    "source_commit": "2674f36",
+    "source": "bin/cc_usage.py",
+    "script": "\nimport json, os, sys, datetime\nrepo = sys.argv[1]\nsys.path[:0] = [os.path.join(repo, \"bin\"), os.path.join(repo, \"lib\")]\nimport cc_usage\ncases = json.loads(sys.argv[2])\ndef guard(fn):\n    try:\n        return fn()\n    except OverflowError:\n        return \"ERR:Overflow\"\n    except (ValueError, TypeError):\n        return \"ERR:Raises\"\nprint(json.dumps([int(datetime.datetime.fromtimestamp(c).replace(hour=0, minute=0, second=0,\n            microsecond=0).timestamp()) for c in cases]))",
+    "input": "[1791115200, 1617525000, 1617530400, 1635660000, 1635663600, 1635667200, 1635670800, 0, -86400]"
+  },
+  "output_b64": "WzE3OTEwOTM2MDAsIDE2MTc1MTYwMDAsIDE2MTc1MTYwMDAsIDE2MzU2NTY0MDAsIDE2MzU2NTY0MDAsIDE2MzU2NTY0MDAsIDE2MzU2NTY0MDAsIC02NDgwMCwgLTE1MTIwMF0K"
+}

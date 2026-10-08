@@ -1,0 +1,97 @@
+{
+  "provenance": "Original live CJS + authentic DOMPurify3.4.16/jsdom26.1.0; new controls required by Text joining, html:false grouping, single-tilde recognition, IDNA and collision-safe grammar masks. No source/config modification.",
+  "cases": [
+    {
+      "text": "https://example.org/path_(x).",
+      "baseline": "<p><a href=\"https://example.org/path_(x)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/path_(x)</a>.</p>\n"
+    },
+    {
+      "text": "https://example.org/a_(x_(y)).",
+      "baseline": "<p><a href=\"https://example.org/a_(x_(y))\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x_(y))</a>.</p>\n"
+    },
+    {
+      "text": "**https://example.org/path_(x)**",
+      "baseline": "<p><strong><a href=\"https://example.org/path_(x)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/path_(x)</a></strong></p>\n"
+    },
+    {
+      "text": "https://example.org/path_\\(x\\).",
+      "baseline": "<p><a href=\"https://example.org/path_%5C(x%5C)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/path_\\(x\\)</a>.</p>\n"
+    },
+    {
+      "text": "https://example.org/path_(x) next\nhttps://example.org/next_(y)",
+      "baseline": "<p><a href=\"https://example.org/path_(x)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/path_(x)</a> next\n<a href=\"https://example.org/next_(y)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/next_(y)</a></p>\n"
+    },
+    {
+      "text": "~one~ ~~two~~ ~three **four**~",
+      "baseline": "<p>~one~ <s>two</s> ~three <strong>four</strong>~</p>\n"
+    },
+    {
+      "text": "~~~triple~~~ ~~two~~",
+      "baseline": "<pre><code class=\"language-triple~~~\"></code></pre>\n"
+    },
+    {
+      "text": "~https://example.org/a_(x)~",
+      "baseline": "<p>~<a href=\"https://example.org/a_(x)~\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a_(x)~</a></p>\n"
+    },
+    {
+      "text": "<script>\nalert(1)\n</script>",
+      "baseline": "<p>&lt;script&gt;\nalert(1)\n&lt;/script&gt;</p>\n"
+    },
+    {
+      "text": "<script>\n**safe**\n\nmore\n</script>",
+      "baseline": "<p>&lt;script&gt;\n<strong>safe</strong></p>\n<p>more\n&lt;/script&gt;</p>\n"
+    },
+    {
+      "text": "<script>\n<https://example.org/path_(x)>\n</script>",
+      "baseline": "<p>&lt;script&gt;\n<a href=\"https://example.org/path_(x)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/path_(x)</a>\n&lt;/script&gt;</p>\n"
+    },
+    {
+      "text": "<div>\n- item\n- **next**\n</div>",
+      "baseline": "<p>&lt;div&gt;</p>\n<ul>\n<li>item</li>\n<li><strong>next</strong>\n&lt;/div&gt;</li>\n</ul>\n"
+    },
+    {
+      "text": "<div>\n```\n<code>\n```\n</div>",
+      "baseline": "<p>&lt;div&gt;</p>\n<pre><code>&lt;code&gt;\n</code></pre>\n<p>&lt;/div&gt;</p>\n"
+    },
+    {
+      "text": "⁅⁆ literal\n\n<div>\n`<code>`\n</div>",
+      "baseline": "<p>⁅⁆ literal</p>\n<p>&lt;div&gt;\n<code>&lt;code&gt;</code>\n&lt;/div&gt;</p>\n"
+    },
+    {
+      "text": "<b>*word*</b>",
+      "baseline": "<p>&lt;b&gt;<em>word</em>&lt;/b&gt;</p>\n"
+    },
+    {
+      "text": "```html\n<script>\n</script>\n```",
+      "baseline": "<pre><code class=\"language-html\">&lt;script&gt;\n&lt;/script&gt;\n</code></pre>\n"
+    },
+    {
+      "text": "⁅⁆⁇⁈⁉⁊⁋⁌⁍⁎⁏⁐⁑⁒⁓⁔⁕⁖⁗⁘⁙⁚⁛⁜⁝⁞<b>safe</b>",
+      "baseline": "<p>⁅⁆⁇⁈⁉⁊⁋⁌⁍⁎⁏⁐⁑⁒⁓⁔⁕⁖⁗⁘⁙⁚⁛⁜⁝⁞&lt;b&gt;safe&lt;/b&gt;</p>\n"
+    },
+    {
+      "text": "[<b>label</b>](javascript:alert(1))",
+      "baseline": "<p>[&lt;b&gt;label&lt;/b&gt;](javascript:alert(1))</p>\n"
+    },
+    {
+      "text": "<style>\n<tag>\n</style>",
+      "baseline": "<p>&lt;style&gt;\n&lt;tag&gt;\n&lt;/style&gt;</p>\n"
+    },
+    {
+      "text": "<script>\nhigh\ud800 low\udc00 marker󰀀\n</script>",
+      "baseline": "<p>&lt;script&gt;\nhigh\ud800 low\udc00 marker󰀀\n&lt;/script&gt;</p>\n"
+    },
+    {
+      "text": "[Unicode](HTTPS://ユーザー.example:8080/Path_(x))",
+      "baseline": "<p><a href=\"HTTPS://%E3%83%A6%E3%83%BC%E3%82%B6%E3%83%BC.example:8080/Path_(x)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">Unicode</a></p>\n"
+    },
+    {
+      "text": "plain \\*stars\\* https://example.org/path_\\(x\\). and \\_literal\\_",
+      "baseline": "<p>plain *stars* <a href=\"https://example.org/path_%5C(x%5C)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/path_\\(x\\)</a>. and _literal_</p>\n"
+    },
+    {
+      "text": "[explicit](https://example.org/path_\\(x\\)) and `https://example.org/code_\\(x\\)`",
+      "baseline": "<p><a href=\"https://example.org/path_(x)\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">explicit</a> and <code>https://example.org/code_\\(x\\)</code></p>\n"
+    }
+  ]
+}

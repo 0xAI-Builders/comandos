@@ -38,20 +38,77 @@ fn base(home: &PathBuf) -> Command {
         .env_remove("GROK_HOME")
         .env_remove("TMUX")
         .env("COMANDOS_DASH_LEGACY_PORT", "1")
+        // El censo de declinaciones (D7) va a `$XDG_RUNTIME_DIR`: nunca el real.
+        .env("XDG_RUNTIME_DIR", home.join("run"))
+        .env_remove("COMANDOS_DASH_BACKGROUND")
+        .env_remove("COMANDOS_DASH_CUTS_OFF")
         .stdin(Stdio::null());
     command
 }
 
 #[test]
-fn dash_prints_the_python_banner_answers_502_without_legacy_and_stops_on_sigterm() {
+fn dash_help_needs_no_home_and_creates_no_runtime_files() {
+    let home = temp_home("help-no-home");
+    let output = base(&home)
+        .env_remove("HOME")
+        .args(["dash", "--help"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&output.stdout).starts_with("uso: comandos dash"));
+    assert!(output.stderr.is_empty());
+    assert!(!home.join("run").exists());
+    assert!(!home.join(".claude/hooks/dash-token").exists());
+}
+
+#[test]
+fn cc_dash_short_help_skips_invalid_configuration_without_writes() {
+    let home = temp_home("help-alias");
+    let link = home.join("cc-dash");
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_comandos"), &link).unwrap();
+    let mut command = base(&home);
+    // argv[0] must exercise the installed alias, including its dash dispatch.
+    use std::os::unix::process::CommandExt;
+    let output = command
+        .arg0(&link)
+        .env("COMANDOS_DASH_TERM", "invalid-help-fixture")
+        .arg("-h")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&output.stdout).starts_with("uso: comandos dash"));
+    assert!(output.stderr.is_empty());
+    assert!(!home.join("run").exists());
+    assert!(!home.join(".claude/hooks/dash-token").exists());
+}
+
+// Every owned frontend is reaped even when an assertion fails. Taking the
+// child transfers that responsibility to wait_with_output after SIGTERM.
+struct Front(Option<std::process::Child>);
+impl Drop for Front {
+    fn drop(&mut self) {
+        if let Some(child) = self.0.as_mut() {
+            if matches!(child.try_wait(), Ok(None)) {
+                let _ = child.kill();
+            }
+            let _ = child.wait();
+        }
+    }
+}
+
+#[test]
+fn dash_prints_the_python_banner_answers_native_404_and_stops_on_sigterm() {
     let home = temp_home("boot");
     let port = free_port();
-    let mut child = base(&home)
-        .args(["dash", &port.to_string(), "--no-open"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
+    let mut front = Front(Some(
+        base(&home)
+            .args(["dash", &port.to_string(), "--no-open"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    ));
+    let child = front.0.as_mut().unwrap();
     let stdout = child.stdout.take().unwrap();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
@@ -83,13 +140,15 @@ fn dash_prints_the_python_banner_answers_502_without_legacy_and_stops_on_sigterm
     let mut wire = String::new();
     stream.read_to_string(&mut wire).unwrap();
     let (head, body) = wire.split_once("\r\n\r\n").unwrap();
-    // Una ruta que no es archivo se reenvía al Python heredado; sin él, 502.
-    assert!(head.starts_with("HTTP/1.1 502"), "{head}");
+    // The migrated default serves the original missing-file response locally.
+    // The separate native-off test retains the legacy forwarding/502 check.
+    assert!(head.starts_with("HTTP/1.1 404"), "{head}");
     assert!(
         head.to_ascii_lowercase()
             .contains("cache-control: no-store")
     );
-    assert_eq!(body, r#"{"error": "Servidor heredado no disponible"}"#);
+    assert!(body.contains("Error response"), "{body}");
+    assert!(body.contains("File not found"), "{body}");
 
     let started = Instant::now();
     let killed = Command::new("kill")
@@ -108,6 +167,11 @@ fn dash_prints_the_python_banner_answers_502_without_legacy_and_stops_on_sigterm
         std::thread::sleep(Duration::from_millis(20));
     };
     assert_eq!(status.code(), Some(0));
+    // El apagado ordenado deja el censo (vacío: nada declinó) en el
+    // `XDG_RUNTIME_DIR` del proceso, con el puerto en el nombre.
+    let census = fs::read_to_string(home.join(format!("run/comandos-dash-declines-{port}.json")))
+        .expect("censo escrito al apagar");
+    assert!(census.contains(r#""counts":{}"#), "{census}");
 }
 
 #[test]
@@ -145,14 +209,17 @@ fn cc_dash_alias_reaches_the_same_parser() {
 fn dash_native_off_never_opens_the_state_db_and_traces_forwards() {
     let home = temp_home("native-off");
     let port = free_port();
-    let mut child = base(&home)
-        .env("COMANDOS_DASH_NATIVE", "0")
-        .env("COMANDOS_DASH_TRACE_FORWARD", "1")
-        .args(["dash", &port.to_string()])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
+    let mut front = Front(Some(
+        base(&home)
+            .env("COMANDOS_DASH_NATIVE", "0")
+            .env("COMANDOS_DASH_TRACE_FORWARD", "1")
+            .args(["dash", &port.to_string()])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    ));
+    let child = front.0.as_mut().unwrap();
     let stdout = child.stdout.take().unwrap();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
@@ -181,7 +248,7 @@ fn dash_native_off_never_opens_the_state_db_and_traces_forwards() {
         .status()
         .unwrap();
     assert!(killed.success());
-    let output = child.wait_with_output().unwrap();
+    let output = front.0.take().unwrap().wait_with_output().unwrap();
     assert_eq!(output.status.code(), Some(0));
     let stderr = String::from_utf8_lossy(&output.stderr);
     // La traza es la línea exacta, sin la consulta (`deviceId` no aparece en ella).
@@ -226,15 +293,7 @@ fn dash_children_do_not_inherit_the_front_malloc_tuning() {
     );
     let port = free_port();
     let tunables = comandos_core::malloc_tuning::PRODUCTION_GLIBC_TUNABLES;
-    // Un fallo a mitad no deja el frente vivo: se mata al soltarlo.
-    struct Front(std::process::Child);
-    impl Drop for Front {
-        fn drop(&mut self) {
-            let _ = self.0.kill();
-            let _ = self.0.wait();
-        }
-    }
-    let mut front = Front(
+    let mut front = Front(Some(
         base(&home)
             .env("GLIBC_TUNABLES", tunables)
             .env("PATH", path)
@@ -243,8 +302,8 @@ fn dash_children_do_not_inherit_the_front_malloc_tuning() {
             .stderr(Stdio::null())
             .spawn()
             .unwrap(),
-    );
-    let child = &mut front.0;
+    ));
+    let child = front.0.as_mut().unwrap();
     let stdout = child.stdout.take().unwrap();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {

@@ -1,0 +1,28 @@
+{
+  "input": {
+    "case": {
+      "script": "\nimport sys,pathlib,json\nsys.path.insert(0,str(pathlib.Path(sys.argv[1])/'lib'))\nfrom extension_observations import conversation_usage\nprint(json.dumps(conversation_usage(sys.argv[2],'conv',sys.argv[3],json.loads(pathlib.Path(sys.argv[4]).read_text()),max_bytes=int(sys.argv[5]))))\n",
+      "args": [
+        {
+          "arg": "claude",
+          "file": null
+        },
+        {
+          "arg": "{{HOME}}/history.jsonl",
+          "file": "790057108c94a0441dc124159bb55e7661714114a0b6c4f0a86ba9596b8834db"
+        },
+        {
+          "arg": "{{HOME}}/inventory.json",
+          "file": "5796a115df0b173363937b8fa3f4dad11939932c11990cf9b7a2b77044060f32"
+        },
+        {
+          "arg": "2000000",
+          "file": null
+        }
+      ],
+      "bin_inputs": []
+    },
+    "before_sha256": "4d5826250a27f5ca96e27099c65c05fadd47bf89bc95d51c9e44b05b1f052a61"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJjb3VudHNcIjoge1wibWNwc1wiOiB7XCJtMVwiOiAxLCBcIm0yXCI6IDB9LCBcInNraWxsc1wiOiB7XCJzMVwiOiAxfX0sIFwiY29tcGxldGVcIjogdHJ1ZSwgXCJ0dXJuc1wiOiAxLCBcInNvdXJjZVwiOiBcImNvbnZlcnNhdGlvblwiLCBcInRva2Vuc1wiOiBudWxsLCBcIm5vdGVcIjogXCJMbGFtYWRhcyByZWdpc3RyYWRhcyBlbiBlc3RhIGNvbnZlcnNhY2lcXHUwMGYzbi5cIn1cbiIsInRyZWUiOnsiaGlzdG9yeS5qc29ubCI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJleUowZVhCbElqb2lkWE5sY2lKOUNuc2lkSGx3WlNJNkltRnpjMmx6ZEdGdWRDSXNJbTFsYzNOaFoyVWlPbnNpWTI5dWRHVnVkQ0k2VzNzaWRIbHdaU0k2SW5SdmIyeGZkWE5sSWl3aWFXUWlPaUp6WVcxbElpd2libUZ0WlNJNkltMWpjRjlmYzJWeWRtVnlYMTl6WldGeVkyZ2lmU3g3SW5SNWNHVWlPaUowYjI5c1gzVnpaU0lzSW1sa0lqb2ljMkZ0WlNJc0ltNWhiV1VpT2lKdFkzQmZYM05sY25abGNsOWZjMlZoY21Ob0luMHNleUowZVhCbElqb2lkRzl2YkY5MWMyVWlMQ0pwWkNJNkluTnJhV3hzSWl3aWJtRnRaU0k2SWxOcmFXeHNJaXdpYVc1d2RYUWlPbnNpYzJ0cGJHd2lPaUp5WlhObFlYSmphQ0o5ZlYxOWZRcDdJbk5sYzNOcGIyNUpaQ0k2SW1admNtVnBaMjRpTENKMGVYQmxJam9pWVhOemFYTjBZVzUwSWl3aWJXVnpjMkZuWlNJNmV5SmpiMjUwWlc1MElqcGJleUowZVhCbElqb2lkRzl2YkY5MWMyVWlMQ0p1WVcxbElqb2liV053WDE5MWJuVnpaV1JmWDNnaWZWMTlmUW89In0sImludmVudG9yeS5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImV5SnRZM0J6SWpwYmV5SnBaQ0k2SW0weElpd2libUZ0WlNJNkluTmxjblpsY2lKOUxIc2lhV1FpT2lKdE1pSXNJbTVoYldVaU9pSjFiblZ6WldRaWZWMHNJbk5yYVd4c2N5STZXM3NpYVdRaU9pSnpNU0lzSW01aGJXVWlPaUp5WlhObFlYSmphQ0lzSW5CaGRHZ2lPaUl2YzJ0cGJHeHpMM0psYzJWaGNtTm9MMU5MU1V4TUxtMWtJbjFkZlE9PSJ9fX0="
+}

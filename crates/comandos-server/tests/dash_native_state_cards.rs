@@ -371,6 +371,48 @@ fn case_dir(tag: &str) -> std::path::PathBuf {
     dir
 }
 
+// Pure evidence fixtures remain inputs to the real Rust cards/observe functions.
+// The original's model document is expected data, never a restored native effect.
+fn frozen_python_case(
+    family: &str,
+    script: &str,
+    case: &Value,
+    home: &Path,
+    args: &[&std::ffi::OsStr],
+    models: Option<&Path>,
+) -> Value {
+    let roots = [("<HOME>", home)];
+    let input: Value = serde_json::from_slice(&comandos_oracle::normalize(
+        &serde_json::to_vec(&json!({
+            "source": support::frozen::SOURCE_COMMIT,
+            "python": "3.10.12",
+            "script": script,
+            "case": case,
+        }))
+        .unwrap(),
+        &roots,
+    ))
+    .unwrap();
+    let bytes = comandos_oracle::oracle_at(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        family,
+        &input,
+        || {
+            let stdout = support::frozen::run_python_original(script, args, home)?;
+            let models = models
+                .map(fs::read_to_string)
+                .transpose()
+                .map_err(|e| e.to_string())?;
+            Ok(comandos_oracle::normalize(
+                &serde_json::to_vec(&json!({"stdout":stdout, "models":models}))
+                    .map_err(|e| e.to_string())?,
+                &roots,
+            ))
+        },
+    );
+    serde_json::from_slice(&comandos_oracle::restore(&bytes, &roots)).unwrap()
+}
+
 async fn compare(tag: &str, case: Value, dir: &Path) {
     compare_with(tag, case, dir, false).await;
 }
@@ -379,16 +421,23 @@ async fn compare_with(tag: &str, case: Value, dir: &Path, default_context: bool)
     let file = dir.join("case.json");
     fs::write(&file, case.to_string()).unwrap();
     let models_py = dir.join("models-py.json");
-    let Some(expected) =
-        support::oracle::run_python(ORACLE, &[file.as_os_str(), models_py.as_os_str()], dir)
-    else {
-        return;
-    };
+    let expected = frozen_python_case(
+        "state-cards",
+        ORACLE,
+        &case,
+        dir,
+        &[file.as_os_str(), models_py.as_os_str()],
+        Some(&models_py),
+    );
     let (items, models) = rust_side_with(&case, default_context).await;
-    assert_eq!(items, expected.trim_end(), "{tag}: tarjetas");
+    assert_eq!(
+        items,
+        expected["stdout"].as_str().unwrap().trim_end(),
+        "{tag}: tarjetas"
+    );
     assert_eq!(
         models,
-        fs::read_to_string(&models_py).unwrap(),
+        expected["models"].as_str().unwrap(),
         "{tag}: app-tab-models.json"
     );
 }
@@ -692,10 +741,14 @@ fn observe_matches_python_oracle() {
     let case = json!({"registry": registry, "cases": cases});
     let file = dir.join("case.json");
     fs::write(&file, case.to_string()).unwrap();
-    let Some(expected) = support::oracle::run_python(OBSERVE_ORACLE, &[file.as_os_str()], &dir)
-    else {
-        return;
-    };
+    let expected = frozen_python_case(
+        "state-observe",
+        OBSERVE_ORACLE,
+        &case,
+        &dir,
+        &[file.as_os_str()],
+        None,
+    );
     let mut tracker = StateTracker::new(64);
     let mut out = Vec::new();
     for k in case["cases"].as_array().unwrap() {
@@ -706,7 +759,7 @@ fn observe_matches_python_oracle() {
     }
     assert_eq!(
         response_dumps(&Value::Array(out)).unwrap(),
-        expected.trim_end()
+        expected["stdout"].as_str().unwrap().trim_end()
     );
     let _ = fs::remove_dir_all(&dir);
 }

@@ -1,0 +1,91 @@
+{
+  "home": "/home/someguy",
+  "domains": {
+    "app-commands": {
+      "files": 3,
+      "bytes": 280
+    },
+    "app-ui": {
+      "files": 4,
+      "bytes": 110
+    },
+    "closed-panes": {
+      "files": 21,
+      "bytes": 463800
+    },
+    "codex-reports": {
+      "files": 2,
+      "bytes": 11174
+    },
+    "db-app-state": {
+      "files": 3,
+      "bytes": 12661032
+    },
+    "db-news": {
+      "files": 1,
+      "bytes": 114688
+    },
+    "db-operations": {
+      "files": 1,
+      "bytes": 589824
+    },
+    "db-operator": {
+      "files": 1,
+      "bytes": 12288
+    },
+    "db-usage": {
+      "files": 3,
+      "bytes": 201972040
+    },
+    "extensions": {
+      "files": 19,
+      "bytes": 56802
+    },
+    "layout": {
+      "files": 9989,
+      "bytes": 134872539
+    },
+    "logs": {
+      "files": 2,
+      "bytes": 536944
+    },
+    "news-docs": {
+      "files": 3,
+      "bytes": 61179
+    },
+    "processes": {
+      "files": 70,
+      "bytes": 13789
+    },
+    "quota-docs": {
+      "files": 4,
+      "bytes": 1025
+    },
+    "resto": {
+      "files": 9131,
+      "bytes": 644059988
+    },
+    "se-queda-como-archivo": {
+      "files": 13574,
+      "bytes": 233400756
+    },
+    "session-status": {
+      "files": 522,
+      "bytes": 690063
+    },
+    "tabs": {
+      "files": 6,
+      "bytes": 35066
+    },
+    "ui-docs": {
+      "files": 10,
+      "bytes": 32924
+    }
+  },
+  "sin-dominio": [],
+  "errors": [],
+  "files_total": 33369,
+  "full_report": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/state-inventory-final.json",
+  "full_report_sha256": "6ce63b9f6a21ed03cc5689469c3e15da8b3e0871b59d0356c3ab25950c2fab25",
+  "note": "Resumen de la lectura completa; ning\u00fan archivo de HOME modificado. Las clasificaciones resto no autorizan su retirada: requieren retire-check por artefacto y drenaje de lectores."
+}

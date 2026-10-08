@@ -1,0 +1,2793 @@
+{
+  "status": "pass",
+  "baseline": "original JavaScript",
+  "candidate": "actual built WASM",
+  "proof": {
+    "wasm_url": "/web/4d3c40ac1992/comandos_web_bg.wasm",
+    "ready": true,
+    "actions": [
+      "quick-terminal",
+      "device-drafts",
+      "session-config",
+      "workspace-layout",
+      "push-fixture",
+      "sound-settings"
+    ]
+  },
+  "node_original_oracle_matches": true,
+  "remote_original_matches": true,
+  "negative_calibration": {
+    "detected": true,
+    "error": "dock a tab to the right of a tab in another group: {\"groups\":[]} !== {\"groups\":[{\"id\":\"gb\",\"tree\":{\"tabId\":\"b\",\"type\":\"tab\"}},{\"id\":\"gw\",\"tree\":{\"axis\":\"x\",\"first\":{\"tabId\":\"c\",\"type\":\"tab\"},\"ratio\":0.6,\"second\":{\"axis\":\"x\",\"first\":{\"tabId\":\"d\",\"type\":\"tab\"},\"ratio\":0.5,\"second\":{\"tabId\":\"a\",\"type\":\"tab\"},\"type\":\"split\"},\"type\":\"split\"}}],\"schema\":1,\"tabs\":{\"a\":{\"paneKeys\":[\"pk-a\"],\"session\":\"a\"},\"b\":{\"paneKeys\":[\"pk-b\"],\"session\":\"b\"},\"c\":{\"paneKeys\":[\"pk-c\"],\"session\":\"c\"},\"d\":{\"paneKeys\":[\"pk-d\"],\"session\":\"d\"}}}"
+  },
+  "cases": {
+    "device_drafts": [
+      {
+        "name": "restore writes the saved text into the composer and sends nothing to the PTY",
+        "ok": true
+      },
+      {
+        "name": "text typed on this device before the answer is never overwritten",
+        "ok": true
+      },
+      {
+        "name": "changes save as debounced patches; the last one wins; empty removes",
+        "ok": true
+      },
+      {
+        "name": "a failed save retries on the next change",
+        "ok": true
+      },
+      {
+        "name": "reading anchor is found by its line text, or reported missing",
+        "ok": true
+      },
+      {
+        "name": "remembering the top line saves one debounced anchor patch",
+        "ok": true
+      },
+      {
+        "name": "anchor keeps a lone surrogate at the 300 UTF16 unit boundary",
+        "ok": true
+      }
+    ],
+    "push_settings": [
+      {
+        "name": "reading the state never prompts for permission",
+        "ok": true
+      },
+      {
+        "name": "enable prompts once, subscribes with the VAPID key and registers the device",
+        "ok": true
+      },
+      {
+        "name": "a denied permission explains how to fix it and never re-prompts",
+        "ok": true
+      },
+      {
+        "name": "a dismissed prompt stays disabled without subscribing",
+        "ok": true
+      },
+      {
+        "name": "insecure origins and missing support are explained, not prompted",
+        "ok": true
+      },
+      {
+        "name": "server without push reports an error and does not subscribe",
+        "ok": true
+      },
+      {
+        "name": "test and disable are explicit actions against the stored endpoint",
+        "ok": true
+      },
+      {
+        "name": "resync re-posts an existing subscription only after an explicit enable",
+        "ok": true
+      },
+      {
+        "name": "?event=<id> is routed once and removed from the address bar",
+        "ok": true
+      }
+    ],
+    "ui_sounds": [
+      {
+        "name": "sound is opt-in: muted by default and silent without a trusted gesture",
+        "ok": true
+      },
+      {
+        "name": "one playback per eventId, shared by tabs of the same browser",
+        "ok": true
+      },
+      {
+        "name": "no loops: loop cues are rejected and every play is one-shot",
+        "ok": true
+      },
+      {
+        "name": "hidden pages are silent and stop sound; volume is clamped",
+        "ok": true
+      },
+      {
+        "name": "preview works while muted only from a human gesture",
+        "ok": true
+      }
+    ],
+    "workspace_layout": [
+      {
+        "name": "dock a tab to the right of a tab in another group",
+        "ok": true
+      },
+      {
+        "name": "dock above a tab puts the moved tab first",
+        "ok": true
+      },
+      {
+        "name": "outer edge wraps the whole group",
+        "ok": true
+      },
+      {
+        "name": "move within a group collapses the old parent",
+        "ok": true
+      },
+      {
+        "name": "moving a whole group into another",
+        "ok": true
+      },
+      {
+        "name": "target inside the moved subtree is rejected",
+        "ok": true
+      },
+      {
+        "name": "target equal to source is rejected",
+        "ok": true
+      },
+      {
+        "name": "outer edge of the only group containing the source alone is rejected",
+        "ok": true
+      },
+      {
+        "name": "unknown edge is rejected",
+        "ok": true
+      },
+      {
+        "name": "detach the last leaf of a group into a new strip entry",
+        "ok": true
+      },
+      {
+        "name": "detach a group reorders the strip",
+        "ok": true
+      },
+      {
+        "name": "detach a single-tab group reorders it",
+        "ok": true
+      },
+      {
+        "name": "detach to the end with an out-of-range index",
+        "ok": true
+      },
+      {
+        "name": "resize a nested split",
+        "ok": true
+      },
+      {
+        "name": "resize clamps to usable bounds",
+        "ok": true
+      },
+      {
+        "name": "resize on a leaf path is rejected",
+        "ok": true
+      }
+    ],
+    "quick_terminal": [
+      {
+        "name": "same request until success, reload, double-click, next id and exact body",
+        "ok": true
+      }
+    ],
+    "session_config": [
+      {
+        "name": "test_combined_cli_account_effort_uses_one_consistent_draft",
+        "result": {
+          "before": {
+            "toHarness": "claude",
+            "motor": "claude",
+            "model": "opus",
+            "effort": "high",
+            "harnessAccount": "main",
+            "motorAccount": "main",
+            "interrupt": false
+          },
+          "after": {
+            "toHarness": "codex",
+            "motor": "codex",
+            "model": "gpt-6-astra",
+            "effort": "ultra",
+            "harnessAccount": "work",
+            "motorAccount": "work",
+            "interrupt": false
+          },
+          "invalid": "Selecciona una cuenta con sesión iniciada",
+          "valid": "",
+          "changed": true
+        }
+      },
+      {
+        "name": "test_invalid_effort_cannot_submit_and_unchanged_draft_is_not_change",
+        "result": {
+          "same": false,
+          "error": "Selecciona un esfuerzo compatible"
+        }
+      },
+      {
+        "name": "test_acp_keeps_named_motor_account_separate_from_local_harness",
+        "result": {
+          "d": {
+            "toHarness": "acp",
+            "motor": "codex",
+            "model": "gpt-6-astra",
+            "effort": "high",
+            "harnessAccount": "main",
+            "motorAccount": "work",
+            "interrupt": false
+          },
+          "error": ""
+        }
+      },
+      {
+        "name": "test_direct_options_skip_unavailable_models_and_accounts",
+        "result": {
+          "models": [
+            {
+              "value": "gpt-6-astra",
+              "label": "gpt-6-astra",
+              "disabled": false,
+              "reason": ""
+            },
+            {
+              "value": "future",
+              "label": "future",
+              "disabled": true,
+              "reason": "Próximamente"
+            }
+          ],
+          "next": null,
+          "accounts": [
+            {
+              "value": "work",
+              "label": "work",
+              "detail": "",
+              "disabled": false,
+              "reason": "Cuenta sin sesión compatible"
+            },
+            {
+              "value": "logged-out",
+              "label": "logged-out",
+              "detail": "",
+              "disabled": true,
+              "reason": "Cuenta sin sesión compatible"
+            }
+          ],
+          "invalid": "Selecciona un modelo disponible"
+        }
+      },
+      {
+        "name": "test_recommendations_keep_live_identity_and_filter_incompatible_configurations",
+        "result": [
+          {
+            "config": {
+              "toHarness": "codex",
+              "motor": "codex",
+              "model": "gpt-6-astra",
+              "effort": "ultra",
+              "harnessAccount": "work",
+              "motorAccount": "work",
+              "interrupt": false,
+              "expectedIdentity": {
+                "pid": 99
+              },
+              "expectedConversationId": "live-conversation"
+            },
+            "count": 3,
+            "lastUsed": 3
+          }
+        ]
+      },
+      {
+        "name": "test_direct_changes_require_confirmation_only_for_route_or_explicit_interruption",
+        "result": {
+          "effort": false,
+          "account": false,
+          "cli": true,
+          "motor": true,
+          "interrupt": true
+        }
+      }
+    ]
+  },
+  "push_dom_handlers": {
+    "matches_original": true,
+    "result": {
+      "before": {
+        "state": "disabled",
+        "prompts": 0
+      },
+      "after": {
+        "state": "disabled",
+        "prompts": 1
+      },
+      "requests": [
+        [
+          "GET",
+          "/push/key"
+        ],
+        [
+          "POST",
+          "/push/subscription"
+        ],
+        [
+          "POST",
+          "/push/test"
+        ],
+        [
+          "DELETE",
+          "/push/subscription"
+        ]
+      ],
+      "buttons": [
+        {
+          "id": "push-enable",
+          "hidden": false,
+          "disabled": false
+        },
+        {
+          "id": "push-disable",
+          "hidden": true,
+          "disabled": false
+        },
+        {
+          "id": "push-test",
+          "hidden": true,
+          "disabled": false
+        }
+      ],
+      "messages": {
+        "enabled": "Listo. Pulsa «Enviar aviso de prueba» con la app en segundo plano o la pantalla bloqueada.",
+        "tested": "Aviso de prueba enviado al servicio push. Si no llega, revisa el modo No molestar y los ajustes de Chrome.",
+        "disabled": "Avisos push desactivados en este dispositivo."
+      }
+    }
+  },
+  "prior_visual_evidence": {
+    "status": "invalid",
+    "reason": "Prior c8009c5/8d1f3ea fixtures were static HTML; they did not load or act through WASM. Prior capture artifacts retained but no longer count as B4/B5 acceptance."
+  },
+  "visual_pair": {
+    "suite": "b5-all",
+    "base": "http://127.0.0.1:7317",
+    "clock": "1791252646579",
+    "touch_omitted": false,
+    "failures": 0,
+    "error": null,
+    "results": [
+      {
+        "id": "b5-all",
+        "width": 1400,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#quick-terminal",
+        "element": 0,
+        "differing": 0,
+        "total": 96360,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/1400w-1x/0-quick-terminal-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 1400,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#device-drafts",
+        "element": 0,
+        "differing": 0,
+        "total": 63360,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/1400w-1x/1-device-drafts-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 1400,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#session-config",
+        "element": 0,
+        "differing": 0,
+        "total": 188760,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/1400w-1x/2-session-config-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 1400,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#workspace-layout",
+        "element": 0,
+        "differing": 0,
+        "total": 188760,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/1400w-1x/3-workspace-layout-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 1400,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#push-fixture",
+        "element": 0,
+        "differing": 0,
+        "total": 63360,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/1400w-1x/4-push-fixture-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 1400,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#sound-settings",
+        "element": 0,
+        "differing": 0,
+        "total": 196240,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/1400w-1x/5-sound-settings-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 1400,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#quick-terminal",
+        "element": 0,
+        "differing": 0,
+        "total": 385440,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/1400w-2x/0-quick-terminal-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 1400,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#device-drafts",
+        "element": 0,
+        "differing": 0,
+        "total": 252560,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/1400w-2x/1-device-drafts-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 1400,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#session-config",
+        "element": 0,
+        "differing": 0,
+        "total": 754160,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/1400w-2x/2-session-config-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 1400,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#workspace-layout",
+        "element": 0,
+        "differing": 0,
+        "total": 754160,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/1400w-2x/3-workspace-layout-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 1400,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#push-fixture",
+        "element": 0,
+        "differing": 0,
+        "total": 252560,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/1400w-2x/4-push-fixture-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 1400,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#sound-settings",
+        "element": 0,
+        "differing": 0,
+        "total": 784960,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/1400w-2x/5-sound-settings-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 844,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#quick-terminal",
+        "element": 0,
+        "differing": 0,
+        "total": 96360,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/844w-1x/0-quick-terminal-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 844,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#device-drafts",
+        "element": 0,
+        "differing": 0,
+        "total": 63360,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/844w-1x/1-device-drafts-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 844,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#session-config",
+        "element": 0,
+        "differing": 0,
+        "total": 188760,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/844w-1x/2-session-config-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 844,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#workspace-layout",
+        "element": 0,
+        "differing": 0,
+        "total": 188760,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/844w-1x/3-workspace-layout-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 844,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#push-fixture",
+        "element": 0,
+        "differing": 0,
+        "total": 63360,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/844w-1x/4-push-fixture-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 844,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#sound-settings",
+        "element": 0,
+        "differing": 0,
+        "total": 196240,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/844w-1x/5-sound-settings-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 844,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#quick-terminal",
+        "element": 0,
+        "differing": 0,
+        "total": 385440,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/844w-2x/0-quick-terminal-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 844,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#device-drafts",
+        "element": 0,
+        "differing": 0,
+        "total": 252560,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/844w-2x/1-device-drafts-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 844,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#session-config",
+        "element": 0,
+        "differing": 0,
+        "total": 754160,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/844w-2x/2-session-config-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 844,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#workspace-layout",
+        "element": 0,
+        "differing": 0,
+        "total": 754160,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/844w-2x/3-workspace-layout-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 844,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#push-fixture",
+        "element": 0,
+        "differing": 0,
+        "total": 252560,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/844w-2x/4-push-fixture-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 844,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#sound-settings",
+        "element": 0,
+        "differing": 0,
+        "total": 784960,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/844w-2x/5-sound-settings-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 390,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#quick-terminal",
+        "element": 0,
+        "differing": 0,
+        "total": 74898,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/390w-1x/0-quick-terminal-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 390,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#device-drafts",
+        "element": 0,
+        "differing": 0,
+        "total": 58824,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/390w-1x/1-device-drafts-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 390,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#session-config",
+        "element": 0,
+        "differing": 0,
+        "total": 146718,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/390w-1x/2-session-config-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 390,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#workspace-layout",
+        "element": 0,
+        "differing": 0,
+        "total": 156294,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/390w-1x/3-workspace-layout-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 390,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#push-fixture",
+        "element": 0,
+        "differing": 0,
+        "total": 55746,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/390w-1x/4-push-fixture-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 390,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#sound-settings",
+        "element": 0,
+        "differing": 0,
+        "total": 152532,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/390w-1x/5-sound-settings-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 390,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#quick-terminal",
+        "element": 0,
+        "differing": 0,
+        "total": 299592,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/390w-2x/0-quick-terminal-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 390,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#device-drafts",
+        "element": 0,
+        "differing": 0,
+        "total": 234612,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/390w-2x/1-device-drafts-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 390,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#session-config",
+        "element": 0,
+        "differing": 0,
+        "total": 586188,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/390w-2x/2-session-config-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 390,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#workspace-layout",
+        "element": 0,
+        "differing": 0,
+        "total": 624492,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/390w-2x/3-workspace-layout-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 390,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#push-fixture",
+        "element": 0,
+        "differing": 0,
+        "total": 222300,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/390w-2x/4-push-fixture-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 390,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#sound-settings",
+        "element": 0,
+        "differing": 0,
+        "total": 610128,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/390w-2x/5-sound-settings-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 320,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#quick-terminal",
+        "element": 0,
+        "differing": 0,
+        "total": 59568,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/320w-1x/0-quick-terminal-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 320,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#device-drafts",
+        "element": 0,
+        "differing": 0,
+        "total": 46784,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/320w-1x/1-device-drafts-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 320,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#session-config",
+        "element": 0,
+        "differing": 0,
+        "total": 124304,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/320w-1x/2-session-config-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 320,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#workspace-layout",
+        "element": 0,
+        "differing": 0,
+        "total": 124304,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/320w-1x/3-workspace-layout-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 320,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#push-fixture",
+        "element": 0,
+        "differing": 0,
+        "total": 44336,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/320w-1x/4-push-fixture-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 320,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#sound-settings",
+        "element": 0,
+        "differing": 0,
+        "total": 121312,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/320w-1x/5-sound-settings-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 320,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#quick-terminal",
+        "element": 0,
+        "differing": 0,
+        "total": 238272,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/320w-2x/0-quick-terminal-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 320,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#device-drafts",
+        "element": 0,
+        "differing": 0,
+        "total": 186592,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/320w-2x/1-device-drafts-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 320,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#session-config",
+        "element": 0,
+        "differing": 0,
+        "total": 496672,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/320w-2x/2-session-config-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 320,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#workspace-layout",
+        "element": 0,
+        "differing": 0,
+        "total": 496672,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/320w-2x/3-workspace-layout-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 320,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#push-fixture",
+        "element": 0,
+        "differing": 0,
+        "total": 176800,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/320w-2x/4-push-fixture-0"
+      },
+      {
+        "id": "b5-all",
+        "width": 320,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=off&__clock=1791252646579",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow&__clock=1791252646579",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/a8fb743cdb0c/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#sound-settings",
+        "element": 0,
+        "differing": 0,
+        "total": 485248,
+        "ratio": 0.0,
+        "limit": 0.001,
+        "pass": true,
+        "dir": "/home/someguy/codebase/0xJesus/ComandOS/.build/shots-web-actual-final/b5-all/320w-2x/5-sound-settings-0"
+      }
+    ],
+    "evidence_scope": "Generated headings/JSON API fixture only. Excluded from production DOM/pixel acceptance."
+  },
+  "negative_visual_calibration": {
+    "suite": "b5-negative",
+    "base": "http://127.0.0.1:7317",
+    "clock": "1791252077879",
+    "touch_omitted": false,
+    "failures": 2,
+    "error": null,
+    "results": [
+      {
+        "id": "workspace-negative",
+        "width": 390,
+        "dpr": 1,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?__negative=1&web=off&__clock=1791252077879",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?__negative=1&web=shadow&__clock=1791252077879",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/dc97ec8be07f/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#workspace-layout",
+        "element": 0,
+        "pass": false,
+        "error": "tamaños distintos: 342x457 vs 342x153",
+        "dom_difference": "nodo 6: \"      #text \\\"{ \\\\\\\"groups\\\\\\\": [ { \\\\\\\"id\\\\\\\": \\\\\\\"b\\\\\\\", \\\\\\\"tree\\\\\\\": { \\\\\\\"type\\\\\\\": \\\\\\\"split\\\\\\\", \\\\\\\"axis\\\\\\\": \\\\\\\"x\\\\\\\", \\\\\\\"ratio\\\\\\\": 0.5, \\\\\\\"first\\\\\\\": { \\\\\\\"type\\\\\\\": \\\\\\\"tab\\\\\\\", \\\\\\\"tabId\\\\\\\": \\\\\\\"one\\\\\\\" }, \\\\\\\"second\\\\\\\": { \\\\\\\"type\\\\\\\": \\\\\\\"tab\\\\\\\", \\\\\\\"tabId\\\\\\\": \\\\\\\"two\\\\\\\" } } } ] }\\\"\" ≠ \"      #text \\\"{ \\\\\\\"broken\\\\\\\": \\\\\\\"negative calibration: WASM action replaced\\\\\\\" }\\\"\""
+      },
+      {
+        "id": "workspace-negative",
+        "width": 390,
+        "dpr": 2,
+        "touch": false,
+        "emulation": "viewport",
+        "touch_mode": "emulado",
+        "legacy_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?__negative=1&web=off&__clock=1791252077879",
+        "web_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?__negative=1&web=shadow&__clock=1791252077879",
+        "legacy_proof": {
+          "wasm_url": null,
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "web_proof": {
+          "wasm_url": "/web/dc97ec8be07f/comandos_web_bg.wasm",
+          "actions": [
+            "quick-terminal",
+            "device-drafts",
+            "session-config",
+            "workspace-layout",
+            "push-fixture",
+            "sound-settings"
+          ]
+        },
+        "selector": "#workspace-layout",
+        "element": 0,
+        "pass": false,
+        "error": "tamaños distintos: 684x913 vs 684x305",
+        "dom_difference": "nodo 6: \"      #text \\\"{ \\\\\\\"groups\\\\\\\": [ { \\\\\\\"id\\\\\\\": \\\\\\\"b\\\\\\\", \\\\\\\"tree\\\\\\\": { \\\\\\\"type\\\\\\\": \\\\\\\"split\\\\\\\", \\\\\\\"axis\\\\\\\": \\\\\\\"x\\\\\\\", \\\\\\\"ratio\\\\\\\": 0.5, \\\\\\\"first\\\\\\\": { \\\\\\\"type\\\\\\\": \\\\\\\"tab\\\\\\\", \\\\\\\"tabId\\\\\\\": \\\\\\\"one\\\\\\\" }, \\\\\\\"second\\\\\\\": { \\\\\\\"type\\\\\\\": \\\\\\\"tab\\\\\\\", \\\\\\\"tabId\\\\\\\": \\\\\\\"two\\\\\\\" } } } ] }\\\"\" ≠ \"      #text \\\"{ \\\\\\\"broken\\\\\\\": \\\\\\\"negative calibration: WASM action replaced\\\\\\\" }\\\"\""
+      }
+    ],
+    "evidence_scope": "Generated headings/JSON API fixture only. Excluded from production DOM/pixel acceptance."
+  },
+  "remote_vs_desktop": {
+    "desktop_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html",
+    "remote_url": "http://127.0.0.1:7317/xtask/web/fixtures/sounds/parity.html?web=shadow",
+    "failures": 0,
+    "results": [
+      {
+        "width": 1400,
+        "selector": "#quick-terminal",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 1400,
+        "selector": "#device-drafts",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 1400,
+        "selector": "#session-config",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 1400,
+        "selector": "#workspace-layout",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 1400,
+        "selector": "#push-fixture",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 1400,
+        "selector": "#sound-settings",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 844,
+        "selector": "#quick-terminal",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 844,
+        "selector": "#device-drafts",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 844,
+        "selector": "#session-config",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 844,
+        "selector": "#workspace-layout",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 844,
+        "selector": "#push-fixture",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 844,
+        "selector": "#sound-settings",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 390,
+        "selector": "#quick-terminal",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 390,
+        "selector": "#device-drafts",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 390,
+        "selector": "#session-config",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 390,
+        "selector": "#workspace-layout",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 390,
+        "selector": "#push-fixture",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 390,
+        "selector": "#sound-settings",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 320,
+        "selector": "#quick-terminal",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 320,
+        "selector": "#device-drafts",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 320,
+        "selector": "#session-config",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 320,
+        "selector": "#workspace-layout",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 320,
+        "selector": "#push-fixture",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      },
+      {
+        "width": 320,
+        "selector": "#sound-settings",
+        "remote_only": false,
+        "pass": true,
+        "problems": []
+      }
+    ],
+    "evidence_scope": "Generated headings/JSON API fixture only. Excluded from production DOM/pixel acceptance."
+  },
+  "external_acceptance": [
+    "Actual front HEAD boot success and broken-loader browser fallback belong to controller integration.",
+    "24 h phone and desktop shadow, cutover and listening acceptance remain unperformed."
+  ],
+  "artifact_versions": {
+    "current_behavior_and_product_dom": "4d3c40ac1992",
+    "historical_api_only_visual": "a99d4b03ca31",
+    "synthesis_evidence": "unchanged from previously measured Rust synthesis code"
+  },
+  "production_dom_acceptance": {
+    "status": "pass",
+    "report": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-fase3/docs/verification/fase3/web-product-dom.json",
+    "crops": 80,
+    "pixel_differences": 0,
+    "baseline": "explicit web=off; no WASM resource on original pages",
+    "candidate": "web=shadow; actual 4d3c40ac1992 WASM",
+    "negative_calibration": {
+      "crops": 2,
+      "expected_failure": true
+    }
+  },
+  "parity_repairs": {
+    "report": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-fase3/docs/verification/fase3/web-parity-fixes.json",
+    "utf16_boundary": "preserves 300th UTF16 code unit 55357; find returns index0",
+    "audio_dispose": "settles active and stopping ended promises and removes owned ended listeners"
+  },
+  "production_computed_styles": {
+    "status": "pass",
+    "comparisons": 8,
+    "original": "explicit web=off, no WASM",
+    "candidate": "actual shadow4d3c40ac1992",
+    "checks": [
+      {
+        "report": "/home/someguy/codebase/0xJesus/ComandOS/.build/styles-product-session/remote-vs-desktop.json",
+        "evidence": {
+          "desktop_url": "http://127.0.0.1:7321/?__product=session&web=off",
+          "remote_url": "http://127.0.0.1:7321/?__product=session&web=shadow&__devwebterm=1",
+          "failures": 0,
+          "results": [
+            {
+              "width": 1400,
+              "selector": "#session-workspace-modal",
+              "remote_only": false,
+              "pass": true,
+              "problems": [],
+              "desktop_proof": {
+                "ready": false,
+                "wasm_url": null,
+                "actions": [
+                  "SessionConfig.choices",
+                  "SessionConfig.update",
+                  "SessionConfig.choices"
+                ]
+              },
+              "remote_proof": {
+                "ready": true,
+                "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+                "actions": [
+                  "SessionConfig.choices",
+                  "SessionConfig.update",
+                  "SessionConfig.choices"
+                ]
+              }
+            },
+            {
+              "width": 844,
+              "selector": "#session-workspace-modal",
+              "remote_only": false,
+              "pass": true,
+              "problems": [],
+              "desktop_proof": {
+                "ready": false,
+                "wasm_url": null,
+                "actions": [
+                  "SessionConfig.choices",
+                  "SessionConfig.update",
+                  "SessionConfig.choices"
+                ]
+              },
+              "remote_proof": {
+                "ready": true,
+                "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+                "actions": [
+                  "SessionConfig.choices",
+                  "SessionConfig.update",
+                  "SessionConfig.choices"
+                ]
+              }
+            },
+            {
+              "width": 390,
+              "selector": "#session-workspace-modal",
+              "remote_only": false,
+              "pass": true,
+              "problems": [],
+              "desktop_proof": {
+                "ready": false,
+                "wasm_url": null,
+                "actions": [
+                  "SessionConfig.choices",
+                  "SessionConfig.update",
+                  "SessionConfig.choices"
+                ]
+              },
+              "remote_proof": {
+                "ready": true,
+                "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+                "actions": [
+                  "SessionConfig.choices",
+                  "SessionConfig.update",
+                  "SessionConfig.choices"
+                ]
+              }
+            },
+            {
+              "width": 320,
+              "selector": "#session-workspace-modal",
+              "remote_only": false,
+              "pass": true,
+              "problems": [],
+              "desktop_proof": {
+                "ready": false,
+                "wasm_url": null,
+                "actions": [
+                  "SessionConfig.choices",
+                  "SessionConfig.update",
+                  "SessionConfig.choices"
+                ]
+              },
+              "remote_proof": {
+                "ready": true,
+                "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+                "actions": [
+                  "SessionConfig.choices",
+                  "SessionConfig.update",
+                  "SessionConfig.choices"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "report": "/home/someguy/codebase/0xJesus/ComandOS/.build/styles-product-push/remote-vs-desktop.json",
+        "evidence": {
+          "desktop_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=off",
+          "remote_url": "http://127.0.0.1:7321/?panel=settings&__product=push-enabled&web=shadow&__devwebterm=1",
+          "failures": 0,
+          "results": [
+            {
+              "width": 1400,
+              "selector": "#push-settings",
+              "remote_only": false,
+              "pass": true,
+              "problems": [],
+              "desktop_proof": {
+                "ready": false,
+                "wasm_url": null,
+                "actions": [
+                  "actual push enable/test"
+                ]
+              },
+              "remote_proof": {
+                "ready": true,
+                "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+                "actions": [
+                  "actual push enable/test"
+                ]
+              }
+            },
+            {
+              "width": 844,
+              "selector": "#push-settings",
+              "remote_only": false,
+              "pass": true,
+              "problems": [],
+              "desktop_proof": {
+                "ready": false,
+                "wasm_url": null,
+                "actions": [
+                  "actual push enable/test"
+                ]
+              },
+              "remote_proof": {
+                "ready": true,
+                "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+                "actions": [
+                  "actual push enable/test"
+                ]
+              }
+            },
+            {
+              "width": 390,
+              "selector": "#push-settings",
+              "remote_only": false,
+              "pass": true,
+              "problems": [],
+              "desktop_proof": {
+                "ready": false,
+                "wasm_url": null,
+                "actions": [
+                  "actual push enable/test"
+                ]
+              },
+              "remote_proof": {
+                "ready": true,
+                "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+                "actions": [
+                  "actual push enable/test"
+                ]
+              }
+            },
+            {
+              "width": 320,
+              "selector": "#push-settings",
+              "remote_only": false,
+              "pass": true,
+              "problems": [],
+              "desktop_proof": {
+                "ready": false,
+                "wasm_url": null,
+                "actions": [
+                  "actual push enable/test"
+                ]
+              },
+              "remote_proof": {
+                "ready": true,
+                "wasm_url": "http://127.0.0.1:7321/web/4d3c40ac1992/comandos_web_bg.wasm",
+                "actions": [
+                  "actual push enable/test"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

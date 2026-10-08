@@ -1,0 +1,13 @@
+{
+  "input": {
+    "script": "\nimport sys,pathlib,json\nsys.path.insert(0,str(pathlib.Path(sys.argv[1])/'lib'))\nimport pane_extensions as p\nout=[]\nfor v in json.loads(pathlib.Path(sys.argv[2]).read_text()):\n    try:out.append(p.selection_value(v))\n    except ValueError as e:out.append({'error':str(e)})\nprint(json.dumps(out))\n",
+    "args": [
+      {
+        "arg": "{{HOME}}/input.json",
+        "file": "0531276f95762641d24859afb8fcba1a530991ba4395605cb414d11a17d00527"
+      }
+    ],
+    "bin_inputs": []
+  },
+  "output_b64": "W3siZXJyb3IiOiAic2VsZWNjaVx1MDBmM24gZGUgZXh0ZW5zaW9uZXMgaW52XHUwMGUxbGlkYSJ9LCB7ImVycm9yIjogInNlbGVjY2lcdTAwZjNuIGRlIGV4dGVuc2lvbmVzIGludlx1MDBlMWxpZGEifSwgeyJlcnJvciI6ICJzZWxlY2NpXHUwMGYzbiBkZSBleHRlbnNpb25lcyBpbnZcdTAwZTFsaWRhIn0sIHsiZXJyb3IiOiAic2VsZWNjaVx1MDBmM24gZGUgZXh0ZW5zaW9uZXMgaW52XHUwMGUxbGlkYSJ9LCB7ImVycm9yIjogInNlbGVjY2lcdTAwZjNuIGRlIGV4dGVuc2lvbmVzIGludlx1MDBlMWxpZGEifSwgeyJlcnJvciI6ICJpZGVudGlmaWNhZG9yIG8gZXN0YWRvIGRlIGV4dGVuc2lcdTAwZjNuIGludlx1MDBlMWxpZG8ifSwgeyJlcnJvciI6ICJpZGVudGlmaWNhZG9yIG8gZXN0YWRvIGRlIGV4dGVuc2lcdTAwZjNuIGludlx1MDBlMWxpZG8ifSwgeyJtY3BzIjoge30sICJza2lsbHMiOiB7Ii0rL0AuXzoiOiB0cnVlfX0sIHsiZXJyb3IiOiAiaWRlbnRpZmljYWRvciBvIGVzdGFkbyBkZSBleHRlbnNpXHUwMGYzbiBpbnZcdTAwZTFsaWRvIn1dCg=="
+}

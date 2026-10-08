@@ -1,0 +1,9 @@
+{
+  "input": {
+    "source": "CPython stdlib json",
+    "raw": "{}",
+    "indent": 4,
+    "ascii": false
+  },
+  "output_b64": "e30="
+}

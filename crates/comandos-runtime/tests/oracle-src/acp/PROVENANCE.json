@@ -1,0 +1,16 @@
+{
+  "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+  "python": "CPython 3.10.12",
+  "files": {
+    "lib/acp.py": "af7588e092e49769df79c56ae06f874e495f93f59f45006a8e2f2651b283c4ba",
+    "lib/news_editions.py": "9b10c37af830130a7596473a7019c1831381b1ce596a39d565dbbd2070386a02"
+  },
+  "extracted_news_sha256": "4e96c3718c175751060c532c4c95b0ec10c7ab4f5db02ea343e6c682b50de4b6",
+  "extracted_nodes": [
+    "CHAT_INSTRUCTIONS",
+    "LEAD_INSTRUCTIONS",
+    "SUMMARY_INSTRUCTIONS",
+    "TRANSLATE_INSTRUCTIONS",
+    "deny_agent_tools"
+  ]
+}

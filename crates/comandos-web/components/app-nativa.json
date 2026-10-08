@@ -1,0 +1,22 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- app nativa ----------",
+  "marker_end": "// ---------- red ----------",
+  "sha256": "f47f0489b6100c2abfec1f4fd8b58d3b9eb058e585f9a6c90b419044e4ea3f60",
+  "id": "app-nativa",
+  "exports": [
+    "inApp",
+    "CENTER_PANELS",
+    "CENTER_REQ",
+    "ONLY_PANEL",
+    "openInApp",
+    "openSession"
+  ],
+  "deps": [
+    "prelude",
+    "i18n",
+    "red"
+  ]
+}

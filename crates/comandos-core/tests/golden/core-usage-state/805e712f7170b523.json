@@ -1,0 +1,9 @@
+{
+  "input": {
+    "source_commit": "2674f36",
+    "source": "bin/cc_usage.py",
+    "script": "\nimport json, os, sys, datetime\nrepo = sys.argv[1]\nsys.path[:0] = [os.path.join(repo, \"bin\"), os.path.join(repo, \"lib\")]\nimport cc_usage\ncases = json.loads(sys.argv[2])\ndef guard(fn):\n    try:\n        return fn()\n    except OverflowError:\n        return \"ERR:Overflow\"\n    except (ValueError, TypeError):\n        return \"ERR:Raises\"\nprint(json.dumps([cc_usage.attach_token_counts(c[0], c[1]) for c in cases]))",
+    "input": "[[[{\"provider\": \"codex\", \"tokens_7d\": 0}, {\"provider\": \"claude\", \"tokens_today\": 5}, {\"provider\": \"grok\"}, {\"id\": \"x\"}], {\"items\": [{\"metric\": \"tokens\", \"provider\": \"codex\", \"window\": \"weekly\", \"used\": 70}, {\"metric\": \"tokens\", \"provider\": \"codex\", \"window\": \"daily\", \"used\": 0}, {\"metric\": \"tokens\", \"provider\": \"claude\", \"window\": \"daily\", \"used\": 9}, {\"metric\": \"tokens\", \"provider\": \"claude\", \"window\": \"weekly\", \"used\": 90}, {\"metric\": \"usd\", \"provider\": \"grok\", \"window\": \"weekly\", \"used\": 3}, {\"metric\": \"tokens\", \"provider\": \"\", \"window\": \"weekly\", \"used\": 3}, {\"metric\": \"tokens\", \"provider\": \"grok\", \"window\": \"hourly\", \"used\": 3}]}], [[{\"provider\": \"codex\"}], {}], [[{\"provider\": \"codex\"}], {\"items\": null}]]"
+  },
+  "output_b64": "W1t7InByb3ZpZGVyIjogImNvZGV4IiwgInRva2Vuc183ZCI6IDcwfSwgeyJwcm92aWRlciI6ICJjbGF1ZGUiLCAidG9rZW5zX3RvZGF5IjogNSwgInRva2Vuc183ZCI6IDkwfSwgeyJwcm92aWRlciI6ICJncm9rIn0sIHsiaWQiOiAieCJ9XSwgW3sicHJvdmlkZXIiOiAiY29kZXgifV0sIFt7InByb3ZpZGVyIjogImNvZGV4In1dXQo="
+}

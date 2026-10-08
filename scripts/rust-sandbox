@@ -8,7 +8,8 @@ if [ ! -f "$task_root/.git" ]; then
 fi
 task_toolchain=$(dirname "$(dirname "$(rustup which cargo)")")
 task_cache="$task_root/.migration-build"
-mkdir -p "$task_cache/cargo" "$task_cache/target"
+task_shared_target=$("$task_root/scripts/rust-build-cache" --workspace "$task_root" --path)
+mkdir -p "$task_cache/cargo"
 printf 'fixture:x:%s:%s:isolated fixture:/home/fixture:/bin/sh\n' "$(id -u)" "$(id -g)" > "$task_cache/fixture-passwd"
 # This machine has the SQLite runtime but no development linker alias.
 # Use an alias inside the disposable build cache, never install into the host.
@@ -18,7 +19,8 @@ if [ ! -e /usr/lib/x86_64-linux-gnu/libsqlite3.so ] && [ -e /usr/lib/x86_64-linu
 fi
 test -d "$task_cache/cargo/registry"
 ulimit -v 3145728
-exec systemd-run --user --scope --quiet --collect --unit="comandos-rust-check-$$" \
+exec "$task_root/scripts/rust-build-cache" --workspace "$task_root" -- \
+  systemd-run --user --scope --quiet --collect --unit="comandos-rust-check-$$" \
   --property=MemoryHigh=2G --property=MemoryMax=3G --property=MemorySwapMax=512M \
   nice -n 10 bwrap --die-with-parent --new-session --unshare-all --clearenv \
   --ro-bind /usr /usr --ro-bind /bin /bin \
@@ -28,9 +30,10 @@ exec systemd-run --user --scope --quiet --collect --unit="comandos-rust-check-$$
   --ro-bind /etc/ssl/certs /etc/ssl/certs \
   --ro-bind "$task_toolchain" /opt/rust \
   --bind "$task_root" /work \
+  --bind "$task_shared_target" /build-cache \
   --setenv PATH /opt/rust/bin:/usr/bin:/bin \
   --setenv CARGO_HOME /work/.migration-build/cargo \
-  --setenv CARGO_TARGET_DIR /work/.migration-build/target \
+  --setenv CARGO_TARGET_DIR /build-cache \
   --setenv CARGO_BUILD_JOBS 1 --setenv CARGO_NET_OFFLINE true \
   --setenv CC /usr/bin/gcc --setenv CXX /usr/bin/g++ \
   --setenv CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER /usr/bin/gcc \

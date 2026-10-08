@@ -1,0 +1,11 @@
+{
+  "input": {
+    "case": "old",
+    "sequence": [
+      "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"t\",\"version\":\"1\"}}}",
+      "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}",
+      "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}"
+    ]
+  },
+  "output_b64": "eyJsaW5lcyI6WyJ7XCJqc29ucnBjXCI6XCIyLjBcIixcImlkXCI6MSxcInJlc3VsdFwiOntcInByb3RvY29sVmVyc2lvblwiOlwiMjAyNC0xMS0wNVwiLFwiY2FwYWJpbGl0aWVzXCI6e1widG9vbHNcIjp7fX0sXCJzZXJ2ZXJJbmZvXCI6e1wibmFtZVwiOlwiY29tYW5kb3MtZmFrZVwiLFwidmVyc2lvblwiOlwiMVwifX19Iiwie1wianNvbnJwY1wiOlwiMi4wXCIsXCJpZFwiOjIsXCJyZXN1bHRcIjp7XCJ0b29sc1wiOlt7XCJuYW1lXCI6XCJlY2hvXCIsXCJkZXNjcmlwdGlvblwiOlwiRGV2dWVsdmUgZWwgdGV4dG9cIixcImlucHV0U2NoZW1hXCI6e1widHlwZVwiOlwib2JqZWN0XCIsXCJwcm9wZXJ0aWVzXCI6e1widGV4dFwiOntcInR5cGVcIjpcInN0cmluZ1wiLFwiZGVmYXVsdFwiOm51bGwsXCJ4LXdlaWdodFwiOjEuNSxcIngtbWF4XCI6MWUrMTZ9fX19LHtcIm5hbWVcIjpcImZhaWxcIixcImlucHV0U2NoZW1hXCI6e1widHlwZVwiOlwib2JqZWN0XCJ9fSx7XCJuYW1lXCI6XCJiYXJlXCIsXCJpbnB1dFNjaGVtYVwiOntcInR5cGVcIjpcIm9iamVjdFwifX1dfX0iXSwicmVxdWVzdHMiOlsiUE9TVCBpbml0aWFsaXplIHNlc3Npb249LSB2ZXJzaW9uPVwiMjAyNS0xMS0yNVwiIiwiUE9TVCBub3RpZmljYXRpb25zL2luaXRpYWxpemVkIHNlc3Npb249ZmFrZS1zZXNzaW9uIiwiR0VUIHNlc3Npb249ZmFrZS1zZXNzaW9uIiwiUE9TVCB0b29scy9saXN0IHNlc3Npb249ZmFrZS1zZXNzaW9uIiwiREVMRVRFIHNlc3Npb249ZmFrZS1zZXNzaW9uIl19"
+}

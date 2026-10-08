@@ -1,0 +1,29 @@
+{
+  "input": {
+    "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+    "python": "CPython 3.10.12",
+    "fixture": {
+      "block": "vencido",
+      "age_ms": 600000,
+      "target_ms": 60000,
+      "policy_age_ms": 700000,
+      "legacy_focus_age_s": 60,
+      "history": [
+        [
+          "h1",
+          25,
+          1700000000000,
+          1700001500000
+        ],
+        [
+          "h2",
+          50,
+          1700003000000,
+          1700006000000
+        ]
+      ]
+    }
+  },
+  "output_b64": "eyJtZWFzdXJlZCI6MSwibGVnYWN5IjoyLCJyZXdhcmRzIjoxLCJmb2N1c19hYnNlbnQiOnRydWUsIm1pZ3JhdGVkIjoxLCJldmVudHMiOjEsInJlY2VpcHRzIjoxLCJzb3VuZCI6MX0="
+}

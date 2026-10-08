@@ -95,6 +95,12 @@ fn record_process(home: &Path, raw: &[u8], event: &str) -> Option<()> {
     let mut pid = std::process::id();
     let mut found = None;
     for _ in 0..10 {
+        #[cfg(target_os = "macos")]
+        let argv = {
+            let args = crate::agent_procs::proc_cmdline(Path::new("/proc"), i64::from(pid));
+            args.first()?.as_bytes().to_vec()
+        };
+        #[cfg(not(target_os = "macos"))]
         let argv = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
         let (parent, start) = proc_stat(pid)?;
         let argv0 = argv.split(|&b| b == 0).next().unwrap_or_default();
@@ -117,16 +123,18 @@ fn record_process(home: &Path, raw: &[u8], event: &str) -> Option<()> {
     }
     text.push('}');
     let root = home.join(".claude/hooks/native-processes");
-    if let Some(parent) = root.parent() {
-        std::fs::create_dir_all(parent).ok()?;
-    }
-    match std::fs::DirBuilder::new().mode(0o700).create(&root) {
-        Ok(()) => {}
-        Err(_) if root.is_dir() => {}
-        Err(_) => return None,
-    }
-    let (temp, mut file) = mktemp(&root, b".agy-", 8, "")?;
-    file.write_all(text.as_bytes()).ok()?;
-    drop(file);
-    std::fs::rename(&temp, root.join(format!("{pid}.json"))).ok()
+    super::state_file::write_process(home, &root, pid, text.as_bytes(), clock().1, || {
+        if let Some(parent) = root.parent() {
+            std::fs::create_dir_all(parent).ok()?;
+        }
+        match std::fs::DirBuilder::new().mode(0o700).create(&root) {
+            Ok(()) => {}
+            Err(_) if root.is_dir() => {}
+            Err(_) => return None,
+        }
+        let (temp, mut file) = mktemp(&root, b".agy-", 8, "")?;
+        file.write_all(text.as_bytes()).ok()?;
+        drop(file);
+        std::fs::rename(&temp, root.join(format!("{pid}.json"))).ok()
+    })
 }

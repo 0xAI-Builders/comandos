@@ -1,0 +1,4485 @@
+{
+  "version": 1,
+  "rows": [
+    {
+      "path": "adapters/agy-hooks.sh",
+      "rust": "comandos hook agy",
+      "phase": "codex-hooks",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "adapters/agy-statusline.py",
+      "rust": "comandos hook agy-status, grok",
+      "phase": "1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "adapters/grok-hooks.py",
+      "rust": "comandos hook agy-status, grok",
+      "phase": "1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "adapters/opencode-comandos.js",
+      "rust": "se queda como shim ≤ 3 líneas",
+      "phase": "§3.2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "assets/opentype/opentype.min.js",
+      "rust": "rustybuzz + swash",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "assets/uisfx/uisfx-0.4.0.js",
+      "rust": "sonidos UI por Web Audio desde WASM",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "assets/xterm/addon-attach.js",
+      "rust": "comandos-term (canvas)",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "assets/xterm/addon-canvas.js",
+      "rust": "comandos-term (canvas)",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "assets/xterm/addon-fit.js",
+      "rust": "comandos-term (canvas)",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "assets/xterm/addon-ligatures-web.js",
+      "rust": "comandos-term (canvas)",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "assets/xterm/addon-web-links.js",
+      "rust": "comandos-term (canvas)",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "assets/xterm/xterm.css",
+      "rust": "comandos-term (canvas)",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "assets/xterm/xterm.js",
+      "rust": "comandos-term (canvas)",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-acp",
+      "rust": "comandos acp",
+      "phase": "6 C3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-agents",
+      "rust": "comandos agents",
+      "phase": "6 C1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-app",
+      "rust": "comandos-app",
+      "phase": "4",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-app-mac",
+      "rust": "comandos-app-mac",
+      "phase": "5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-browser-expose",
+      "rust": "comandos browser expose",
+      "phase": "5 B5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-browser-npx-guard",
+      "rust": "comandos browser npx-guard",
+      "phase": "5 B5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-browser-remote",
+      "rust": "comandos browser remote",
+      "phase": "5 B5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-centro",
+      "rust": "comandos raise app",
+      "phase": "6 C2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-codex-full-access",
+      "rust": "comandos codex full-access",
+      "phase": "6 C5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-dash",
+      "rust": "comandos dash",
+      "phase": "2a–2g",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-doctor",
+      "rust": "comandos doctor",
+      "phase": "6 C1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-extension-session",
+      "rust": "comandos ext session",
+      "phase": "2f-2 (si no, 6 C5)",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-extensions",
+      "rust": "comandos ext",
+      "phase": "1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-keys",
+      "rust": "comandos keys",
+      "phase": "6 C2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-mobile",
+      "rust": "comandos mobile",
+      "phase": "6 C4",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-next",
+      "rust": "comandos next",
+      "phase": "6 C2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-notifyd",
+      "rust": "popups de comandos-app / comandos-notifyd",
+      "phase": "4 / 2f-5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-pane-model",
+      "rust": "ninguno (tmux usa @ccmodel desde 2026-07-12)",
+      "phase": "—",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-session-snapshot",
+      "rust": "comandos snapshot",
+      "phase": "6 C2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-term",
+      "rust": "comandos raise term",
+      "phase": "6 C2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-webterm",
+      "rust": "comandos dash /term/ws",
+      "phase": "2b / 3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-webterm-attach",
+      "rust": "idem",
+      "phase": "2b / 3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc-winstart",
+      "rust": "comandos winstart",
+      "phase": "6 C2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/cc_usage.py",
+      "rust": "comandos_store::{usage, usage_read, usage_import}, comandos_core::usage_state",
+      "phase": "2e",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "bin/ccx",
+      "rust": "comandos x",
+      "phase": "6 C2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-app-mac/tests/support/m4_original.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-app-mac/tests/support/original.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-app-mac/tests/support_menu_alert_oracle.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-app/tests/support/t13_adapter_probe.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-app/tests/support/t15_original.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-app/tests/support/t16_original.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-app/tests/support/t17_original.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-app/tests/support/t18_original.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-cli/src/opencode_bridge.mjs",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-core/tests/notification_oracle.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-desktop/tests/support/mac_original.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-extensions/tests/catalog_oracle.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-extensions/tests/check_oracle.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-extensions/tests/check_protocol_cases.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-extensions/tests/fixtures/unicode14/upstream/cpython/Lib/re/_casefix.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-extensions/tests/fixtures/unicode14/upstream/cpython/Lib/re/_compiler.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-extensions/tests/fixtures/unicode14/upstream/cpython/Lib/re/_parser.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-extensions/tests/fixtures/unicode14/upstream/cpython/Tools/scripts/generate_re_casefix.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-extensions/tests/fixtures/unicode14/upstream/cpython/Tools/unicode/makeunicodedata.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-extensions/tests/measure_metadata_rss.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-extensions/tests/measure_rss.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-extensions/tests/metadata_oracle.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-extensions/tests/test_check.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-extensions/tests/test_https_oauth.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-extensions/tests/test_json_values.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-extensions/tests/test_metadata.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-extensions/tests/test_serve.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/agy-hooks.sh",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/agy-statusline.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/codex-hooks.sh",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/codex-notify.sh",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/gemini-hooks.sh",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-runtime/tests/fixtures/hooks/oracle/adapters/grok-hooks.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-runtime/tests/fixtures/hooks/oracle/opencode-comandos.js",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-store/tests/notification_oracle.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-store/tests/pomodoro_focus_numeric_oracle.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-store/tests/pomodoro_focus_oracle.py",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-term-web/tests/fixtures/gen-xterm-fit.js",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "crates/comandos-term/tests/fixtures/gen-xterm-custom-glyphs.js",
+      "rust": "dorados",
+      "phase": "6 O2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/analytics-render.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/analytics.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/chain-builder.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/command-sidebar.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/device-drafts.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/extensions.html",
+      "rust": "plantillas maud de comandos-web, página de terminal de comandos-term",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/extensions.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/index.html",
+      "rust": "plantillas maud de comandos-web, página de terminal de comandos-term",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/news-reader.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/notifications.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/pomodoro.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/README-v1-grill.md",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/.gitignore",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/CREDITS.md",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos-clean.gif",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/00.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/01.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/02.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/03.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/04.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/05.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/06.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/07.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/08.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/09.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/10.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/11.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/12.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/13.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/14.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/15.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/16.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/17.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/18.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/19.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/20.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/21.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/22.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/23.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/24.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/25.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/26.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/README.md",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/hourglass.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/hourglass/comandos/preview.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/.gitattributes",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/7soul/Ac_Medal01.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/7soul/Ac_Medal04.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/7soul/I_Chest01.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/7soul/I_Clock.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/7soul/I_Crystal01.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/7soul/S_Fire03.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/CREDITS.md",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/arlantr/campfire.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/karsiori-chests/golden.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/karsiori-gems/clock.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/karsiori-gems/crystal.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/karsiori-gems/first.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/karsiori-gems/hundred.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/karsiori-gems/level.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/karsiori-gems/streak.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/karsiori/clock.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/karsiori/crystal.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/karsiori/first.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/karsiori/hundred.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/karsiori/level.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/karsiori/streak.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/lared/MonedaD.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/lared/MonedaP.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/lared/spr_coin_roj.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/lared/spr_coin_strip4.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/manifest.json",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/quintino/icon13.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/quintino/icon17.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/quintino/icon20.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/quintino/icon4.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/quintino/icon7.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/quintino/icon9.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/shikashi/AUTHOR-NOTES.txt",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/shikashi/icons.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/pixel-packs/zoedoz/hourglass.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/CREDITS.md",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/bumpy/LICENSE.txt",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/bumpy/done.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/bumpy/error.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/bumpy/idle.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/bumpy/need.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/bumpy/work.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/comandos/README.md",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/comandos/done.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/comandos/error.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/comandos/idle.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/comandos/need.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/comandos/preview.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/comandos/sheet-48.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/comandos/work.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/dibbel/ask.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/dibbel/done.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/dibbel/error.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/dibbel/idle.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/dibbel/need.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/dibbel/pop.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/dibbel/work.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/geralt/LICENSE.txt",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/geralt/done.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/geralt/error.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/geralt/idle.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/geralt/need.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/geralt/work.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/j5/LICENSE.txt",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/j5/done.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/j5/error.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/j5/idle.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/j5/need.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/j5/work.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/karsiori/done.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/karsiori/error.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/karsiori/idle-anim.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/karsiori/idle.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/karsiori/need.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/karsiori/work.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/kit/done.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/kit/error.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/kit/idle.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/kit/need.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/kit/work.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/kron/LICENSE.txt",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/kron/ask.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/kron/done.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/kron/error.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/kron/need.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/kron/work.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/pigeon/README.txt",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/pigeon/exclamation-7x8.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/pigeon/speech_bubble_animation-11x11.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/pigeon/tiny_chat_icon.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/assets/semaforos/pigeon/tiny_speech_indicators-11x11.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-acomodar-pestanas.html",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-avisos-resumenes.html",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-botones-arcade.html",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-desktop-unificado.html",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-deslizar-pestanas.html",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-iguales.html",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-orden-pestanas.html",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-pestanas-juego.html",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-pomodoro-audio.js",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-pomodoro-sync-repro.cjs",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-reloj-arena.html",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-reloj-comportamiento.html",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-semaforos.html",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-ui-sounds.js",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-v1-grill.html",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-v1-server.cjs",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-v2-barra.html",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-v2-fase2.html",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/prototype-v2-smoke.cjs",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/vendor/uisfx-0.4.0.js",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/prototypes/vendor/uisfx-LICENSE.txt",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/push-settings.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/quick-terminal.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/session-config.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/sw.js",
+      "rust": "shim generado por xtask web-build",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/term.html",
+      "rust": "plantillas maud de comandos-web, página de terminal de comandos-term",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/ui-sounds.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/vendor/markdown-it-15.0.2.umd.min.js",
+      "rust": "pulldown-cmark + ammonia en el servidor",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/vendor/purify-3.4.16.min.js",
+      "rust": "pulldown-cmark + ammonia en el servidor",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/work-marks.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/workspace-dock.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/workspace-layout.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "dash/workspace.js",
+      "rust": "componentes WASM de comandos-web",
+      "phase": "3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/proof.html",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/prototype-extensiones-pane.html",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/after-desktop-chat-hidden.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/after-desktop-insights.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/after-desktop.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/after-dom.json",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/after-phone320-chat-hidden.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/after-phone320-insights.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/after-phone320.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/after-phone390-chat-hidden.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/after-phone390-insights.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/after-phone390.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/after-remote-chat-hidden.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/after-remote-insights.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/after-remote.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/before-desktop.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/before-dom.json",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/before-phone320.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/before-phone390.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "design/sidebar-comparison/before-remote.png",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "docs/research/extensiones-por-sesion/grok-ns.py",
+      "rust": "archive/prototipos-2026-10",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "hooks/cc-notify.conf.example",
+      "rust": "plantilla embebida en comandos install",
+      "phase": "6 I1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "hooks/cc-notify.sh",
+      "rust": "comandos hook claude, claude-status, claude-usage",
+      "phase": "1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "hooks/cc-status.sh",
+      "rust": "comandos hook claude, claude-status, claude-usage",
+      "phase": "1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "hooks/cc-usage-tool.sh",
+      "rust": "comandos hook claude, claude-status, claude-usage",
+      "phase": "1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "install.sh",
+      "rust": "comandos install",
+      "phase": "6 I1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/accounts.py",
+      "rust": "comandos_runtime::accounts",
+      "phase": "2d/2e",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/acp.py",
+      "rust": "comandos acp",
+      "phase": "6 C3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/agent_stop.py",
+      "rust": "operaciones de sesión",
+      "phase": "2f-2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/allocation.py",
+      "rust": "comandos_core::allocation",
+      "phase": "2b",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/analytics_week.py",
+      "rust": "comandos_core::analytics_week",
+      "phase": "2e",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/app_state.py",
+      "rust": "comandos_store::state",
+      "phase": "2b",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/browser_config_migration.py",
+      "rust": "comandos browser migrate-config",
+      "phase": "5 B5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/capabilities.py",
+      "rust": "perfiles de sesión",
+      "phase": "2f-2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/claude_trust.py",
+      "rust": "lanzamiento de sesiones",
+      "phase": "2f-1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/cli_catalog.py",
+      "rust": "catálogos",
+      "phase": "2f-3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/cli_help.py",
+      "rust": "catálogos",
+      "phase": "2f-3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/codex_full_access.py",
+      "rust": "comandos codex …",
+      "phase": "6 C5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/codex_thread_release.py",
+      "rust": "comandos codex …",
+      "phase": "6 C5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/codex_yolo_install.py",
+      "rust": "comandos codex …",
+      "phase": "6 C5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/codex_yolo_policy.py",
+      "rust": "comandos codex …",
+      "phase": "6 C5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/command_chains.py",
+      "rust": "cadenas",
+      "phase": "2f-3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/event_intake.py",
+      "rust": "comandos_runtime::events_cli, comandos_store::intake",
+      "phase": "1/2b",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/event_store.py",
+      "rust": "comandos_runtime::events_cli, comandos_store::intake",
+      "phase": "1/2b",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/extension_auth.py",
+      "rust": "comandos_extensions::{auth, catalog, metadata, serve}",
+      "phase": "1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/extension_catalog.py",
+      "rust": "comandos_extensions::{auth, catalog, metadata, serve}",
+      "phase": "1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/extension_launch.py",
+      "rust": "extensiones por pane",
+      "phase": "2f-2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/extension_metadata.py",
+      "rust": "comandos_extensions::{auth, catalog, metadata, serve}",
+      "phase": "1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/extension_observations.py",
+      "rust": "extensiones por pane",
+      "phase": "2f-2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/extension_proxy.py",
+      "rust": "comandos_extensions::{auth, catalog, metadata, serve}",
+      "phase": "1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/focus_progress.py",
+      "rust": "comandos_core::focus, comandos_store::focus",
+      "phase": "2b",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/grok_state.py",
+      "rust": "lectores de límites (comandos_runtime::limits)",
+      "phase": "2e",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/gtk_tabstrip.py",
+      "rust": "comandos-app ui/tabs, ui/workspace",
+      "phase": "4",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/gtk_workspace.py",
+      "rust": "comandos-app ui/tabs, ui/workspace",
+      "phase": "4",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/mcp_descriptions.py",
+      "rust": "comandos_core::mcp_descriptions",
+      "phase": "1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/model_catalog.py",
+      "rust": "comandos_runtime::model_catalog",
+      "phase": "2c",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/model_watch.py",
+      "rust": "vigilante de modelos",
+      "phase": "2f-3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/news_editions.py",
+      "rust": "noticias",
+      "phase": "2f-4",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/news_radar.py",
+      "rust": "noticias",
+      "phase": "2f-4",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/news_reading.py",
+      "rust": "noticias",
+      "phase": "2f-4",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/news_watch.py",
+      "rust": "noticias",
+      "phase": "2f-4",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/notification_delivery.py",
+      "rust": "comandos_store::notifications, comandos_core::notifications",
+      "phase": "2b",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/operator_catalog.py",
+      "rust": "residuo del despachador",
+      "phase": "2f-3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/operator_dispatch.py",
+      "rust": "residuo del despachador",
+      "phase": "2f-3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/operator_receipts.py",
+      "rust": "residuo del despachador",
+      "phase": "2f-3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/pane_extensions.py",
+      "rust": "extensiones por pane",
+      "phase": "2f-2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/pane_snapshot.py",
+      "rust": "comandos_runtime::pane_snapshot",
+      "phase": "2d",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/pane_typing.py",
+      "rust": "comandos_runtime::pane_typing",
+      "phase": "2c",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/platform.sh",
+      "rust": "comandos install (platform.rs, hooks_register.rs)",
+      "phase": "6 I1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/pomodoro.py",
+      "rust": "comandos_core::pomodoro, comandos_store::pomodoro",
+      "phase": "2b/2f-3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/providers.py",
+      "rust": "comandos_runtime::providers",
+      "phase": "2d",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/quick_terminal.py",
+      "rust": "comandos_runtime::quick_terminal",
+      "phase": "2d",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/retire-telegram.sh",
+      "rust": "comandos install (COMANDOS_RETIRE_TELEGRAM)",
+      "phase": "6 I1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/session_operations.py",
+      "rust": "comandos_runtime::session_operations",
+      "phase": "2c/2f-2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/session_profiles.py",
+      "rust": "perfiles de sesión",
+      "phase": "2f-2",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/session_tabs.py",
+      "rust": "registro de pestañas",
+      "phase": "2f-1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/terminal_history.py",
+      "rust": "comandos_runtime::terminal_history",
+      "phase": "2c",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/terminal_panes.py",
+      "rust": "comandos_runtime::terminal_panes",
+      "phase": "2c/2f-1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/tmux_clipboard.py",
+      "rust": "comandos-app ui/clipboard",
+      "phase": "4",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/tmux_snapshot.py",
+      "rust": "comandos_runtime::tmux_snapshot",
+      "phase": "2f Task 3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/tui_state.py",
+      "rust": "comandos_runtime::tui_state",
+      "phase": "2d",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/turn_state.py",
+      "rust": "comandos_core::turn",
+      "phase": "1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/web_push.py",
+      "rust": "Web Push",
+      "phase": "2f-3",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/work_marks.py",
+      "rust": "comandos_core::work_marks, comandos_store::marks",
+      "phase": "2b",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/workspace_layout.py",
+      "rust": "comandos_core::workspace, comandos_store::workspace",
+      "phase": "2b",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "lib/workspace_state.py",
+      "rust": "comandos_core::workspace, comandos_store::workspace",
+      "phase": "2b",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "scripts/install-extensions.py",
+      "rust": "comandos install --extensions",
+      "phase": "6 I1",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "services/browser/apparmor/install-chrome-apparmor.sh",
+      "rust": "comandos-broker-mac apparmor install",
+      "phase": "5 B4",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "services/browser/broker.py",
+      "rust": "comandos-broker-mac",
+      "phase": "5 B",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "services/browser/comandos-browser.service",
+      "rust": "plantilla comandos-browser-rs.service",
+      "phase": "5 B4",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "systemd/cc-dash-legacy.service",
+      "rust": "se retira",
+      "phase": "`systemctl --user is-enabled` = `disabled`, sin proceso; el archivo del repo se borra y el del HOME se mueve al respaldo",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/analytics_agy_checks.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/analytics_parity_checks.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/analytics_ui_checks.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/chain_builder_checks.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/command_sidebar_checks.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/conftest.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/dash_harness.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/device_drafts_checks.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/dom_stub.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/e2e_mobile_remote.js",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/e2e_pane_extensions.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/e2e_remote_browser.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/e2e_remote_pane_controls.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/e2e_remote_tab_selection.mjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/e2e_remote_workspace.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/e2e_session_audit.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/e2e_session_workspace.js",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/e2e_sidebar_parity.js",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/e2e_terminal_native.js",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/fake_acp_agent.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/news_reader_checks.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/notification_ui_checks.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/pomodoro_sync_checks.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/pomodoro_ui_checks.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/push_settings_checks.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/rust_contract_parity.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/rust_core_benchmark.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/rust_credential_import_parity.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/rust_database_interop.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/rust_native_interop.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/rust_python_json_parity.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/rust_storage_oracle.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/session_controls_fixture.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/sw_push_checks.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_account_login.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_acp_client.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_acp_reconfiguration.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_agent_launch.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_agent_stop.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_agy_grok_quota.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_allocation.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_allocation_dash.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_allocation_endpoints.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_analytics_checks.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_analytics_css.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_analytics_dash.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_analytics_endpoint.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_analytics_week.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_app_local_tabs.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_app_pane_targets.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_app_quick_terminal.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_app_reader.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_app_side_terminal.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_app_split_snapshot.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_app_tabs_lock.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_app_ui_thread.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_app_work_marks.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_app_workspace.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_browser_broker.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_browser_config_migration.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_browser_expose.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_browser_npx_guard.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_button_styles.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_capability_matrix.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_ccx_agent.sh",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_chain_builder_ui.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_chains_endpoints.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_claude_trust.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_cli_catalog.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_codex_account_trust.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_codex_adapters.sh",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_codex_full_access.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_codex_thread_release.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_codex_yolo_policy.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_command_chains.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_command_sidebar_mount.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_command_sidebar_ui.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_commands_catalog_endpoint.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_dash_concurrency.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_dash_hardening.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_dashboard_assets.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_dashboard_cards.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_dashboard_grok.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_dashboard_layout.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_dashboard_markup.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_dashboard_security.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_desktop_launcher.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_desktop_links.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_desktop_performance.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_desktop_tabs.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_doctor.sh",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_e2e_harness.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_event_store.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_events_endpoints.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_extension_auth.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_extension_batches.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_extension_catalog.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_extension_coordinator.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_extension_desktop.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_extension_launch.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_extension_loading.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_extension_metadata.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_extension_observations.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_extension_proxy.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_extension_tmux.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_extension_viewport.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_focus_progress.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_grok_gateway.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_grok_hooks.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_grok_provider.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_gtk_tabstrip.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_gtk_workspace.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_header_layout.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_install_hooks.sh",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_js_parses.sh",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_live_pane_inventory.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_macos_app.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_mcp_descriptions.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_model_watch_discovery.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_native_extension_metadata.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_new_session_focus.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_news_editions.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_news_endpoints.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_news_radar.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_news_reading.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_notice_endpoints.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_notification_delivery.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_notify_hook.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_notifyd_robust.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_operator_analytics.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_operator_catalog.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_operator_dispatch.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_operator_recovery.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_operator_retired.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_operator_tabs_lock.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_pane_extensions.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_pane_extensions_api.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_pane_snapshot.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_pane_type_endpoint.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_pane_typing.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_platform.sh",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_pomodoro.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_pomodoro_analytics.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_pomodoro_endpoint.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_provider_accounts.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_provider_extensions.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_provider_registry.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_push_endpoints.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_quick_terminal.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_quick_terminal_client.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_readme_positioning.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_remote_controls.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_remote_ui.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_remote_workspace.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_selected_session_audit.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_session_brain_scope.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_session_config_history.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_session_config_ui.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_session_favorites.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_session_operations.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_session_profiles.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_session_route_matrix.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_session_tmux.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_session_verify_dialogs.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_sidebar_accounts.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_sidebar_parity.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_silent_agent_hooks.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_snippets_ccapp.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_snippets_endpoints.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_snippets_paste.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_snippets_store.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_snippets_ui.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_state_polling.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_status_hook.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_telegram_retirement.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_terminal_history.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_terminal_mobile_input.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_terminal_panes.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_terminal_prefs.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_terminal_protocol.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_terminal_selection.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_themes.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_tier_alert.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_tmux_clipboard.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_tmux_snapshot.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_tui_state.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_turn_state.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_usage_accounts.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_usage_core.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_usage_dash.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_usage_hooks.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_usage_performance.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_usage_telemetry.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_usage_tool_hook.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_usage_ui.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_v1_migrations.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_web_push.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_webterm_auth.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_webterm_links.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_webterm_service.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_work_marks.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_work_marks_ui.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_workspace_cache.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_workspace_clients.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_workspace_close.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_workspace_endpoints.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_workspace_layout.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_workspace_reopen.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/test_workspace_state.py",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/work_marks_checks.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/workspace_dock_checks.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tests/workspace_layout_checks.cjs",
+      "rust": "pruebas Rust + dorados",
+      "phase": "6 O",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tools/analytics_extract.cjs",
+      "rust": "xtask css-orphans, cli-catalog, png-diff",
+      "phase": "3 / 6 C5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tools/analytics_fixture.cjs",
+      "rust": "xtask css-orphans, cli-catalog, png-diff",
+      "phase": "3 / 6 C5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tools/analytics_scope_css.py",
+      "rust": "xtask css-orphans, cli-catalog, png-diff",
+      "phase": "3 / 6 C5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tools/cli-commands/build.py",
+      "rust": "xtask css-orphans, cli-catalog, png-diff",
+      "phase": "3 / 6 C5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tools/cli-commands/builtin_filter.py",
+      "rust": "xtask css-orphans, cli-catalog, png-diff",
+      "phase": "3 / 6 C5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tools/cli-commands/scrape_prefix.py",
+      "rust": "xtask css-orphans, cli-catalog, png-diff",
+      "phase": "3 / 6 C5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tools/cli-commands/verify_names.py",
+      "rust": "xtask css-orphans, cli-catalog, png-diff",
+      "phase": "3 / 6 C5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tools/css_orphans.py",
+      "rust": "xtask css-orphans, cli-catalog, png-diff",
+      "phase": "3 / 6 C5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "tools/png_diff.py",
+      "rust": "xtask css-orphans, cli-catalog, png-diff",
+      "phase": "3 / 6 C5",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    },
+    {
+      "path": "vendor/uisfx-0.4.0.js",
+      "rust": "etiqueta archive/prototipos-2026-10 (D11)",
+      "phase": "6 R6",
+      "verified_by": [],
+      "status": "pending",
+      "verification": null
+    }
+  ]
+}

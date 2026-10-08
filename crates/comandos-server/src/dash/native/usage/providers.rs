@@ -134,7 +134,7 @@ pub async fn public_state(native: &Native) -> Result<Value, Fault> {
 
 /// `capability_matrix()` con su registro: estado público recién calculado y
 /// hechos de ejecución.
-async fn registry_and_matrix(native: &Native) -> Result<(Value, Vec<Value>), Fault> {
+pub(crate) async fn registry_and_matrix(native: &Native) -> Result<(Value, Vec<Value>), Fault> {
     let (base, alive) = base(native, false).await?;
     let facts = providers::public_runtime_facts(
         &base.registry,
@@ -187,10 +187,14 @@ pub async fn answer_plans(native: &Native) -> Answer {
         plans.push(plan_item(&registry, &matrix, &plan)?);
     }
     // `optimization_state().get("profile") or ""`.
-    let state = read_json_or_none(native.options().hooks.join("optimization-default.json"))
-        .await?
-        .filter(Value::is_object)
-        .unwrap_or_else(|| json!({}));
+    let opts = native.options().clone();
+    let state = tokio::task::spawn_blocking(move || {
+        super::super::light::load_domain(&opts.home, &opts.hooks, "optimization-default.json")
+    })
+    .await
+    .map_err(|_| Fault::Decline)??
+    .filter(Value::is_object)
+    .unwrap_or_else(|| json!({}));
     let profile = state.get("profile").filter(|p| truthy(p));
     let active = profile.cloned().unwrap_or_else(|| json!(""));
     read_reply(&json!({"plans": plans, "active": active}))

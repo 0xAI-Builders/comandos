@@ -1,0 +1,16 @@
+{
+  "input": {
+    "case": {
+      "provenance": "{\n  \"source_commit\": \"2674f366bb01b9db42f6f64b728929b3acfe8b83\",\n  \"source_path\": \"hooks/cc-status.sh\",\n  \"sha256\": \"d5318e31eedee1b875e5a3341d29a74e588bccdb69380326c0f6722c93c54f6e\",\n  \"bash\": \"GNU bash, version 5.1.16(1)-release (x86_64-pc-linux-gnu)\",\n  \"jq\": \"jq-1.6\",\n  \"observations\": \"Exit/stdout and complete private cache/file effects. Input cache age and locale explicit; fixture wallclock aliases preserve exact existing state ages.\"\n}\n",
+      "env": [
+        [
+          "XDG_RUNTIME_DIR",
+          "<HOME>/run"
+        ]
+      ],
+      "cache": null
+    },
+    "before_sha256": "6b95cd5a3c8f5229789fe40026ad9ed8413949ae372e8bc46f8a4f95ffeba9a9"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbMCxbXV0iLCJ0cmVlIjp7InJ1biI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwicnVuL2NjLXN0YXR1cy5jYWNoZSI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiIifX19"
+}

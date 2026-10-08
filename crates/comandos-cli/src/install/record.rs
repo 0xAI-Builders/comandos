@@ -21,6 +21,40 @@ pub fn path(home: &Path, name: &str) -> PathBuf {
         .join(format!("{name}.target"))
 }
 
+/// Exact last-installed alias target, separate from the unchanged legacy receipt.
+pub fn installed_path(home: &Path, name: &str) -> PathBuf {
+    path(home, name).with_extension("installed")
+}
+pub fn write_installed(home: &Path, name: &str, target: &Path) -> Result<(), String> {
+    let path = installed_path(home, name);
+    super::release::check_app_parents(&path)?;
+    match path.symlink_metadata() {
+        Ok(meta) if !meta.is_file() => {
+            return Err(format!("{} no es un recibo regular", path.display()));
+        }
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.to_string()),
+        _ => {}
+    }
+    comandos_store::files::write_atomic(&path, target.as_os_str().as_bytes())
+        .map_err(|e| e.to_string())
+}
+pub fn installed(home: &Path, name: &str) -> Result<Option<PathBuf>, String> {
+    let path = installed_path(home, name);
+    super::release::check_app_parents(&path)?;
+    match path.symlink_metadata() {
+        Ok(meta) if meta.is_file() => {
+            let raw = fs::read(&path).map_err(|e| e.to_string())?;
+            if raw.is_empty() {
+                return Err("recibo instalado vacío".into());
+            }
+            Ok(Some(PathBuf::from(OsStr::from_bytes(&raw))))
+        }
+        Ok(_) => Err(format!("{} no es un recibo regular", path.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 fn encode(rec: &Record) -> Vec<u8> {
     let mut out = match rec {
         Record::File(p) => [b"FILE:".as_slice(), p.as_os_str().as_bytes()].concat(),

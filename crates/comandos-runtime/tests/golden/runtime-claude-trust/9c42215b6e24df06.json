@@ -1,0 +1,11 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "aa0256eb8e00d1a6e2be612a4e82bac55b1d6f76d5b3031cf4e6d8880dc205d6",
+      "script": "import sys, json; sys.path.insert(0, \"<ORACLE_SOURCE>\"); import claude_trust\ntry:\n    print(json.dumps(claude_trust.inherit_cwd_trust(\"<HOME>/codebase/q\", source_config_dir=None, dest_config_dir=\"<HOME>/.claude-accounts/rel\", home=\"<HOME>\")))\nexcept Exception as e:\n    print('error')"
+    },
+    "before_sha256": "ca0540d220c5942d9cb52930af9378402d313b893918fb1e861398da2aee2134"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJmYWxzZSIsInRyZWUiOnsiLmNsYXVkZS5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImV5SndjbTlxWldOMGN5STZJSHQ5ZlE9PSJ9LCJjb2RlYmFzZSI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiY29kZWJhc2UvcSI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fX19"
+}

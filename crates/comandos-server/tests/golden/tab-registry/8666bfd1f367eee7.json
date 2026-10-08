@@ -1,0 +1,21 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "code": "dash.time.time = lambda: 1791115200\nimport json\nprint(json.dumps([dash.close_app_tab('local'), dash.close_app_tab('p2f', ephemeral=True)]))\ndash.write_app_tab('comandos-e2e-1', 'E2E')\ndash.close_app_tab('comandos-e2e-1', ephemeral=True)\n",
+      "effect_files": [
+        "app-tabs.json",
+        "app-tabs-meta.json",
+        "app-tabs-history.json",
+        "app-tab-open.json",
+        "app-tab-close.json"
+      ],
+      "fakebin": [],
+      "fixture_env": []
+    },
+    "before_sha256": "cd29e768975b08231c16b8b92773fa5fb203c6df1add61dca5b766186fb5ddc3"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbXCJMYSBwZXN0YVxcdTAwZjFhIGxvY2FsIHBlcm1hbmVjZSBhYmllcnRhXCIsIFwiZXBoZW1lcmFsIHJlcXVpZXJlIGNvbWFuZG9zLWUyZS1cIl1cbiIsInRyZWUiOnsiYXBwLXRhYi1jbG9zZS5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6Mzg0LCJib2R5X2I2NCI6ImV5SnpaWE56YVc5dUlqb2dJbU52YldGdVpHOXpMV1V5WlMweElpd2dJblJ6SWpvZ01UYzVNVEV4TlRJd01IMD0ifSwiYXBwLXRhYnMtaGlzdG9yeS5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6Ilczc2ljMlZ6YzJsdmJpSTZJQ0oyYVdWcVlTSXNJQ0pzWVdKbGJDSTZJQ0pXYVdWcVlTSXNJQ0pqZDJRaU9pQWlMM1lpTENBaVlXZGxiblFpT2lBaVkyOWtaWGdpTENBaWRITWlPaUF4TUN3Z0luSmxZWE52YmlJNklDSmpiRzl6WldRaWZTd2dleUp6WlhOemFXOXVJam9nSW5BeVppSXNJQ0pzWVdKbGJDSTZJQ0pRSUdGdWRHVnpJaXdnSW5Seklqb2dPWDBzSUhzaWMyVnpjMmx2YmlJNklDSnRZV3dnYzJWemFXOXVJaXdnSW5Seklqb2dPSDFkIn0sImFwcC10YWJzLW1ldGEuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJleUp2ZEhKaElqb2dleUpyYVc1a0lqb2dJbk5vWld4c0lpd2dJbU4zWkNJNklDSXZjM0oySWl3Z0ltaHZjM1FpT2lBaUlpd2dJbmdpT2lBeGZTd2dJbkpoY21FaU9pQjdJbXRwYm1RaU9pQWlibUYyWlNKOUxDQWliV0ZzWVNJNklDSjBaWGgwYnlKOSJ9LCJhcHAtdGFicy5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImV5SnNiMk5oYkNJNklDSnNiMk5oYkNJc0lDSnZkSEpoSWpvZ0lrOTBjbUVpZlE9PSJ9fX0="
+}

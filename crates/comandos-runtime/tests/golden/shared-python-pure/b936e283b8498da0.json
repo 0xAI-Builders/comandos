@@ -1,0 +1,22 @@
+{
+  "input": {
+    "script": "import sys,json,pathlib\nsys.path.insert(0,str(pathlib.Path(sys.argv[1])/'lib'));sys.path.insert(0,str(pathlib.Path(sys.argv[1])/'bin'))\nimport extension_launch as e\nr=json.loads(sys.argv[2]);cwd=sys.argv[3]\ntry: result=e.inventory(r,'codex','main',cwd)\nexcept ValueError as err: result={'error':str(err)}\nprint(json.dumps(result,ensure_ascii=False))",
+    "args": [
+      {
+        "arg": "{\"harnesses\":{\"codex\":{\"defaultHome\":\"{{HOME}}/.codex\"}}}",
+        "file": null
+      },
+      {
+        "arg": "{{HOME}}",
+        "file": null
+      }
+    ],
+    "bin_inputs": [],
+    "fixtures": {
+      ".codex/config.toml": "4755c0f0e35136b27c958578d42e8b04baa1dbdd21668e73434c143d2164a237",
+      ".codex/skills/demo/SKILL.md": "cdf39f8b9bc4b22ff8e36d06bde35037a9deacf83d2e8df5d00cd8fcb53f4680",
+      ".config/comandos/extensions/catalog.json": "2f05d4b689d270cafb02285f35f44866f7dc8a2d368a3f9d1124373eeab31fb1"
+    }
+  },
+  "output_b64": "eyJlcnJvciI6ICJDb25maWd1cmFjacOzbiBpbGVnaWJsZTsgbm8gc2UgcHVlZGUgcHJlcGFyYXIgZWwgbGFuemFtaWVudG8gYWlzbGFkby4ifQo="
+}

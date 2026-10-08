@@ -1,0 +1,197 @@
+use std::{
+    cell::{Cell, RefCell},
+    collections::{BTreeMap, BTreeSet},
+    rc::Rc,
+};
+#[derive(Clone, Debug)]
+struct Widget(Rc<Cell<usize>>);
+impl PartialEq for Widget {
+    fn eq(&self, b: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &b.0)
+    }
+}
+impl Widget {
+    fn new() -> Self {
+        Self(Rc::new(Cell::new(0)))
+    }
+    fn queue_draw(&self) {
+        self.0.set(self.0.get() + 1)
+    }
+    fn hide(&self) {}
+    fn show(&self) {}
+    fn set_size_request(&self, _: i32, _: i32) {}
+    fn set_margin_start(&self, _: i32) {}
+    fn set_margin_top(&self, _: i32) {}
+}
+#[derive(Clone, Debug, PartialEq)]
+struct PaneGeometry {
+    id: String,
+    left: u16,
+    top: u16,
+    width: u16,
+    height: u16,
+}
+struct PaneRecord {
+    geometry: PaneGeometry,
+    active: bool,
+}
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct CellGeom {
+    origin_x: f64,
+    origin_y: f64,
+    cell_w: f64,
+    cell_h: f64,
+}
+struct Term(Cell<CellGeom>);
+impl Term {
+    fn cell_geometry(&self) -> CellGeom {
+        self.0.get()
+    }
+    fn grid_size(&self) -> (u16, u16) {
+        (80, 40)
+    }
+}
+#[derive(Clone, Debug, PartialEq)]
+struct FrameLayout {
+    rows: BTreeMap<String, (f64, f64, f64, f64)>,
+    panes: Vec<PaneGeometry>,
+    active: BTreeSet<String>,
+    focused: bool,
+    gutters: Vec<()>,
+}
+fn frame_layout(
+    panes: &[PaneGeometry],
+    g: &CellGeom,
+    _: (u16, u16),
+    active: &BTreeSet<String>,
+    focused: bool,
+) -> FrameLayout {
+    FrameLayout {
+        rows: panes
+            .iter()
+            .map(|p| {
+                (
+                    p.id.clone(),
+                    (g.origin_x, g.origin_y, g.cell_w * p.width as f64, g.cell_h),
+                )
+            })
+            .collect(),
+        panes: panes.to_vec(),
+        active: active.clone(),
+        focused,
+        gutters: vec![],
+    }
+}
+fn card_rect(r: (f64, f64, f64, f64), _: f64) -> (i32, i32, i32, i32) {
+    (r.0 as i32, r.1 as i32, r.2 as i32, r.3 as i32)
+}
+fn shell_pill_xy(
+    _: &BTreeMap<String, (f64, f64, f64, f64)>,
+    _: &str,
+    origin: (f64, f64),
+    _: (u16, u16),
+    _: (f64, f64),
+) -> (i32, i32) {
+    (origin.0 as i32, origin.1 as i32)
+}
+fn grip_rect(_: &()) -> (i32, i32, i32, i32) {
+    (0, 0, 1, 1)
+}
+struct PaneWidget {
+    pane: String,
+    kind: &'static str,
+    widget: Widget,
+    width: i32,
+}
+#[derive(PartialEq)]
+struct RepositionState {
+    layout: FrameLayout,
+    geom: CellGeom,
+    panes: Vec<PaneGeometry>,
+    pills: Vec<(Widget, String, &'static str, i32)>,
+    grips: Vec<Widget>,
+    colors: (String, String, String),
+}
+struct PaneOverlay {
+    widget: Widget,
+    term: Term,
+    panes: RefCell<Vec<PaneRecord>>,
+    layout: RefCell<FrameLayout>,
+    pills: RefCell<Vec<PaneWidget>>,
+    grips: RefCell<Vec<Widget>>,
+    colors: RefCell<(String, String, String)>,
+    repositioned: RefCell<Option<RepositionState>>,
+}
+impl PaneOverlay {
+    // ACTUAL_REPOSITION
+}
+fn main() {
+    let geom = CellGeom {
+        origin_x: 0.,
+        origin_y: 0.,
+        cell_w: 8.,
+        cell_h: 17.,
+    };
+    let panes = vec![PaneGeometry {
+        id: "%1".into(),
+        left: 0,
+        top: 0,
+        width: 80,
+        height: 40,
+    }];
+    let overlay = PaneOverlay {
+        widget: Widget::new(),
+        term: Term(Cell::new(geom)),
+        panes: RefCell::new(vec![PaneRecord {
+            geometry: panes[0].clone(),
+            active: true,
+        }]),
+        layout: RefCell::new(frame_layout(&[], &geom, (80, 40), &BTreeSet::new(), false)),
+        pills: RefCell::new(vec![]),
+        grips: RefCell::new(vec![]),
+        colors: RefCell::new(("line".into(), "brand".into(), "bg".into())),
+        repositioned: RefCell::new(None),
+    };
+    overlay.reposition(true);
+    assert_eq!(overlay.widget.0.get(), 1);
+    for _ in 0..120 {
+        overlay.reposition(true);
+    }
+    assert_eq!(
+        overlay.widget.0.get(),
+        1,
+        "stable two-second refresh must not redraw"
+    );
+    overlay.reposition(false);
+    assert_eq!(overlay.widget.0.get(), 2);
+    overlay.panes.borrow_mut()[0].geometry.width = 70;
+    overlay.reposition(false);
+    assert_eq!(overlay.widget.0.get(), 3);
+    let mut g = geom;
+    g.cell_h = 19.;
+    overlay.term.0.set(g);
+    overlay.reposition(false);
+    assert_eq!(overlay.widget.0.get(), 4);
+    overlay.colors.borrow_mut().0 = "new-line".into();
+    overlay.reposition(false);
+    assert_eq!(overlay.widget.0.get(), 5);
+    overlay.pills.borrow_mut().push(PaneWidget {
+        pane: "%1".into(),
+        kind: "keys",
+        widget: Widget::new(),
+        width: 30,
+    });
+    overlay.reposition(false);
+    assert_eq!(overlay.widget.0.get(), 6);
+    overlay.pills.borrow_mut()[0].widget = Widget::new();
+    overlay.reposition(false);
+    assert_eq!(overlay.widget.0.get(), 7);
+    overlay.pills.borrow_mut()[0].width = 40;
+    overlay.reposition(false);
+    assert_eq!(overlay.widget.0.get(), 8);
+    overlay.grips.borrow_mut().push(Widget::new());
+    overlay.reposition(false);
+    assert_eq!(overlay.widget.0.get(), 9);
+    overlay.reposition(false);
+    assert_eq!(overlay.widget.0.get(), 9);
+}

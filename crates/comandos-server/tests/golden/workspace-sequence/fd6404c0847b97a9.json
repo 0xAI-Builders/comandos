@@ -1,0 +1,23 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "clock_ms": 1791115200000,
+      "request": {
+        "method": "GET",
+        "target": "/workspace/client",
+        "extra": "",
+        "body": ""
+      },
+      "effect_files": [
+        ".claude/hooks/app-tabs.json",
+        ".claude/hooks/prefs.json"
+      ],
+      "oracle_sequence": 7
+    },
+    "before_sha256": "17bf94c81841f79012c8afe7bb3c3fe1b0c7ab5e883b34dbb1010e7c37cd9cd0"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjoyMDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCIyXCJdXSxcImJvZHlcIjpbMTIzLDEyNV19IiwidHJlZSI6eyIuY2xhdWRlIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCIuY2xhdWRlL2hvb2tzIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCIuY2xhdWRlL2hvb2tzL2FwcC10YWJzLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXlKek1TSTZJQ0pWYm04Z3c3RWlMQ0FpY3pJaU9pQWlSRzl6SWl3Z0ltaDFZaUk2SUNKUFkzVnNkR0VpTENBaWJXRnNJRzV2YldKeVpTSTZJQ0o0SWl3Z0luTXpJam9nSWlKOSJ9LCIuY2xhdWRlL2hvb2tzL3ByZWZzLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXlKbVlYWnZjbWwwWlhNaU9pQmJJbk15SWwxOSJ9fX0="
+}

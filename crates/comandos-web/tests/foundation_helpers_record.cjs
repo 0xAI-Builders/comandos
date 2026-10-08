@@ -1,0 +1,9 @@
+// Developer-only recorder. Default contracts consume the checked-in JSON and real WASM.
+const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+if(process.argv[2]!=='--record')throw Error('explicit --record required');
+const source=fs.readFileSync(path.resolve(__dirname,'../../../dash/index.html'),'utf8');
+const cut=(a,b)=>source.slice(source.indexOf(a),source.indexOf(b,source.indexOf(a)));
+const context={document:{addEventListener(){}},tf:(es)=>es,Date:{now:()=>3761000},S:{sel:'',selTs:0},rowKey:it=>it.session+(it.pane?'|'+it.pane:''),sidebarActiveTab:()=>({}),active:{}};
+vm.createContext(context);vm.runInContext(cut('function agoTxt(ts)','\tasync function copyText(t)')+cut('\tfunction fmtMoney(n)','\tfunction usagePaneKey')+cut('\tfunction confidenceLabel(c)','\tfunction usageChipText')+cut('\tfunction shortModel(m)','\t// Niveles de costo')+cut('\tfunction pickSel(list)','\tfunction modelMenuEl'),context);
+const cases=[];for(const [name,inputs] of Object.entries({mdHtml:['**bold** <script>x</script> [safe](javascript:bad)','# h\n- bullet\n---\n```rs\nlet a=1;\n```','|A|B|\n|--|--|\n|x|y|','/tmp/a.rs:12 ~/codebase/X/file.md','*italic* ( *yes* ) x*no*','[label](https://a) **multi\nline**','/tmp/a/ /one <a href="/tmp/a">/tmp/b</a>'],mdInline:['**b** *i* `c` [a](url)','***nested***','*one* *two*','[ ]()'],mdStrip:['## Head\n**text** `code`','# **Title**','####### stays'],shortPath:['/home/a/codebase/X','/home/a','/tmp/a','/home/a/codebase/'],agoTxt:[0,100,3700,3760,4000],fmtMoney:[0,0.0001,12.45,-1],fmtTokens:[0,1499,1500,1234000,1000000000],confidenceLabel:['detected','unknown',''],shortModel:['claude-opus','codex','']})){for(const arg of inputs){cases.push({name,args:[arg],expected:context[name](arg)});}}
+fs.writeFileSync(path.join(__dirname,'foundation_helpers_golden.json'),JSON.stringify(cases,null,2)+'\n');console.log('Recorded',cases.length,'original results');

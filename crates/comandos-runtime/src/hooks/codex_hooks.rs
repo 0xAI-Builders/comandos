@@ -94,7 +94,7 @@ pub fn run(_args: &[String]) -> i32 {
             notify(&args)
         }
         b"Stop" => {
-            if state.is_file() && recent_codex_done(&state, clock().0) {
+            if recent_codex_done(&state, clock().0) {
                 return 0;
             }
             let full = jq_get(&values, |v| {

@@ -1,0 +1,16 @@
+{
+  "input": {
+    "case": {
+      "script": "import sys,json,datetime; sys.path.insert(0,sys.argv[1]+'/lib'); import news_editions as e, news_radar as r, app_state; data=json.loads(sys.argv[2]);\nprint(json.dumps([r.parse_feed(data['xml']),[r.page_blocks(p,'https://feed.test/post') for p in data['pages']]]))",
+      "args": [
+        {
+          "arg": "{\"xml\":\"<rss><channel><item><title>New &amp; good</title><link>https://feed.test/post</link><pubDate>Mon, 05 Oct 2026 10:00:00 GMT</pubDate><description><![CDATA[<p>Hello &amp; hi</p>]]></description></item></channel></rss>\",\"pages\":[\"<main><h2>Hello</h2><p>A &amp; B.</p><pre>\\nlet x = 1;\\n</pre><nav><p>Hidden</p></nav><ul><li>Bullet</li></ul><img src='/hero.png' alt='Figure'></main>\",\"<article><p>Subscribe</p><p>Share</p><p>Text one</p><p>Text one</p><p>Text two</p></article>\",\"<meta property='og:title' content='Title'><p>Before</p><article><h1>Title</h1><p>Inside <code>x</code> now</p></article>\"]}",
+          "file": null
+        }
+      ],
+      "bin_inputs": []
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbW3tcInRpdGxlXCI6IFwiTmV3ICYgZ29vZFwiLCBcInVybFwiOiBcImh0dHBzOi8vZmVlZC50ZXN0L3Bvc3RcIiwgXCJwdWJsaXNoZWRBdFwiOiAxNzkxMTk0NDAwLCBcInN1bW1hcnlcIjogXCJIZWxsbyAmIGhpXCIsIFwiaHRtbFwiOiBcIjxwPkhlbGxvICZhbXA7IGhpPC9wPlwifV0sIFtbW3tcInR5cGVcIjogXCJoXCIsIFwidGV4dFwiOiBcIkhlbGxvXCJ9LCB7XCJ0eXBlXCI6IFwicFwiLCBcInRleHRcIjogXCJBICYgQi5cIn0sIHtcInR5cGVcIjogXCJjb2RlXCIsIFwidGV4dFwiOiBcImxldCB4ID0gMTtcIn0sIHtcInR5cGVcIjogXCJsaVwiLCBcInRleHRcIjogXCJCdWxsZXRcIn0sIHtcInR5cGVcIjogXCJpbWdcIiwgXCJzcmNcIjogXCJodHRwczovL2ZlZWQudGVzdC9oZXJvLnBuZ1wiLCBcImFsdFwiOiBcIkZpZ3VyZVwifV0sIHt9XSwgW1t7XCJ0eXBlXCI6IFwicFwiLCBcInRleHRcIjogXCJUZXh0IG9uZVwifSwge1widHlwZVwiOiBcInBcIiwgXCJ0ZXh0XCI6IFwiVGV4dCB0d29cIn1dLCB7fV0sIFtbe1widHlwZVwiOiBcInBcIiwgXCJ0ZXh0XCI6IFwiQmVmb3JlXCJ9LCB7XCJ0eXBlXCI6IFwiaFwiLCBcInRleHRcIjogXCJUaXRsZVwifSwge1widHlwZVwiOiBcInBcIiwgXCJ0ZXh0XCI6IFwiSW5zaWRlIGB4YCBub3dcIn1dLCB7XCJvZzp0aXRsZVwiOiBcIlRpdGxlXCJ9XV1dXG4iLCJ0cmVlIjp7fX0="
+}

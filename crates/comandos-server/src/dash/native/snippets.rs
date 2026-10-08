@@ -3,15 +3,14 @@
 //! de `<archivo>.lock` que comparte con el Python; si está tomado, se declina.
 use super::{
     Answer, Entry, Fault, Key, Native, NativeRoute, Verb,
-    files::{self, FileLock},
-    light::{data, error, load, read_reply},
+    files::{DomainDocument, FileLock, Strict},
+    light::{data, error, read_reply},
     py, reply,
 };
 use crate::{HandlerError, Request};
 use comandos_core::json::truthy;
 use http::StatusCode;
 use serde_json::{Map, Value, json};
-use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnippetsRoute {
@@ -37,7 +36,12 @@ pub const ROUTES: &[Entry] = &[
 ];
 
 pub async fn answer(native: &Native, route: SnippetsRoute, request: &Request) -> Answer {
-    let path = native.options().hooks.join("snippets.json");
+    let path = DomainDocument::new(
+        &native.options().home,
+        &native.options().hooks,
+        "snippets.json",
+    )
+    .map_err(|_| failure())?;
     let now = (native.options().clock)().div_euclid(1000);
     match route {
         SnippetsRoute::List => read_reply(&Value::Array(read_snippets(&path)?)),
@@ -116,9 +120,14 @@ fn tags_of(value: Option<&Value>) -> Value {
 }
 
 /// `read_snippets` (5264).
-fn read_snippets(path: &Path) -> Result<Vec<Value>, Fault> {
-    let Some(Value::Array(raw)) = load(path)? else {
-        return Ok(Vec::new());
+fn read_snippets(path: &DomainDocument) -> Result<Vec<Value>, Fault> {
+    snippets_from(path.strict())
+}
+fn snippets_from(read: Strict) -> Result<Vec<Value>, Fault> {
+    let raw = match read {
+        Strict::Value(Value::Array(raw)) => raw,
+        Strict::Unsure => return Err(Fault::Decline),
+        _ => return Ok(Vec::new()),
     };
     let mut out = Vec::new();
     for item in raw {
@@ -194,25 +203,39 @@ fn item(id: String, name: &str, body: String, tags: &Value, now: i64) -> Value {
 /// `with file_lock(SNIPPETS_FILE): items = read_snippets(); …; write_snippets(items)`.
 /// `mutate` dice si hay que escribir. Candado tomado → declinar sin leer nada.
 async fn locked<T: Send + 'static>(
-    path: PathBuf,
+    path: DomainDocument,
     mutate: impl FnOnce(&mut Vec<Value>) -> (bool, T) + Send + 'static,
 ) -> Result<T, Fault> {
     tokio::task::spawn_blocking(move || {
-        let Some(_lock) = FileLock::try_acquire(&path).map_err(|_| failure())? else {
-            return Err(Fault::Decline);
+        let access = path.access().map_err(|_| failure())?;
+        let _lock = if access.mode() == comandos_store::unified::Mode::Sealed {
+            None
+        } else {
+            Some(
+                FileLock::try_acquire(&path.file)
+                    .map_err(|_| failure())?
+                    .ok_or(Fault::Decline)?,
+            )
         };
-        let mut items = read_snippets(&path)?;
-        let (write, out) = mutate(&mut items);
-        if write {
-            files::write_json_atomic(&path, &Value::Array(items)).map_err(|_| failure())?;
-        }
-        Ok(out)
+        access
+            .with_write_transaction(|| {
+                let mut items = snippets_from(path.strict_under(&access))?;
+                let (write, out) = mutate(&mut items);
+                if write {
+                    let bytes = comandos_core::json::response_dumps(&Value::Array(items))
+                        .map_err(|_| failure())?;
+                    path.write_under(&access, bytes.as_bytes(), 0)
+                        .map_err(|_| failure())?;
+                }
+                Ok(out)
+            })
+            .map_err(|_| failure())?
     })
     .await
     .map_err(|_| failure())?
 }
 
-async fn create(path: PathBuf, data: &Map<String, Value>, now: i64) -> Answer {
+async fn create(path: DomainDocument, data: &Map<String, Value>, now: i64) -> Answer {
     let name = text_of(data.get("name"))?;
     let body = text_of(data.get("body"))?;
     let tags = tags_of(data.get("tags"));
@@ -229,7 +252,7 @@ async fn create(path: PathBuf, data: &Map<String, Value>, now: i64) -> Answer {
     reply(StatusCode::OK, &json!({"item": new}))
 }
 
-async fn update(path: PathBuf, data: &Map<String, Value>, now: i64) -> Answer {
+async fn update(path: DomainDocument, data: &Map<String, Value>, now: i64) -> Answer {
     let id = id_of(data.get("id"));
     if !snippet_id(&id) {
         return error(StatusCode::BAD_REQUEST, "id invalido");
@@ -258,7 +281,7 @@ async fn update(path: PathBuf, data: &Map<String, Value>, now: i64) -> Answer {
     }
 }
 
-async fn delete(path: PathBuf, data: &Map<String, Value>) -> Answer {
+async fn delete(path: DomainDocument, data: &Map<String, Value>) -> Answer {
     let id = id_of(data.get("id"));
     if !snippet_id(&id) {
         return error(StatusCode::BAD_REQUEST, "id invalido");

@@ -1,0 +1,16 @@
+[package]
+name = "comandos-oracle"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+serde_json.workspace = true
+sha2.workspace = true
+base64 = "=0.22.1"
+getrandom.workspace = true
+rusqlite.workspace = true
+
+[lints]
+workspace = true

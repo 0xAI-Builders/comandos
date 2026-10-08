@@ -69,6 +69,9 @@ fn transaction<T>(conn: &Connection, read: bool, run: impl FnOnce() -> Result<T>
         rusqlite::TransactionBehavior::Immediate
     };
     let tx = rusqlite::Transaction::new_unchecked(conn, behavior)?;
+    if !read {
+        crate::migrate::move_db::admit_write(conn)?;
+    }
     let out = run()?;
     tx.commit()?;
     Ok(out)
@@ -307,7 +310,8 @@ impl<'a> PomodoroStore<'a> {
                     rid,
                     digest,
                     revision,
-                    codec::dumps(&out, true, false).map_err(validation)?,
+                    // `json.dumps(out)`: orden de inserción (la repetición lo devuelve tal cual).
+                    codec::response_dumps(&out).map_err(validation)?,
                     now
                 ],
             )?;

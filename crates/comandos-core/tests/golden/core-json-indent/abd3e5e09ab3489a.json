@@ -1,0 +1,9 @@
+{
+  "input": {
+    "source": "CPython stdlib json",
+    "raw": "[1, 2.5, -0, 1e400, NaN, null, true, \"a\\u0001\\n\\\"b\", [], {}, [[]], {\"k\": {}}]",
+    "indent": 2,
+    "ascii": false
+  },
+  "output_b64": "WwogIDEsCiAgMi41LAogIDAsCiAgSW5maW5pdHksCiAgTmFOLAogIG51bGwsCiAgdHJ1ZSwKICAiYVx1MDAwMVxuXCJiIiwKICBbXSwKICB7fSwKICBbCiAgICBbXQogIF0sCiAgewogICAgImsiOiB7fQogIH0KXQ=="
+}

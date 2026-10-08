@@ -1,0 +1,16 @@
+{
+  "input": {
+    "case": {
+      "provenance": "{\n  \"source_commit\": \"2674f366bb01b9db42f6f64b728929b3acfe8b83\",\n  \"source_path\": \"hooks/cc-status.sh\",\n  \"sha256\": \"d5318e31eedee1b875e5a3341d29a74e588bccdb69380326c0f6722c93c54f6e\",\n  \"bash\": \"GNU bash, version 5.1.16(1)-release (x86_64-pc-linux-gnu)\",\n  \"jq\": \"jq-1.6\",\n  \"observations\": \"Exit/stdout and complete private cache/file effects. Input cache age and locale explicit; fixture wallclock aliases preserve exact existing state ages.\"\n}\n",
+      "env": [
+        [
+          "XDG_RUNTIME_DIR",
+          "<HOME>/run"
+        ]
+      ],
+      "cache": null
+    },
+    "before_sha256": "d939a832bf2371594c9358da68a72417b1ea30764200aad66d6cab374e45bc88"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbMCxbMzUsOTEsMTAyLDEwMyw2MSwzNSw2OCw0OCw1Niw1NSw1NSw0OCw5MywyMzksMTMxLDE3OSwzMiwxMTIsNDgsMzIsMTk0LDE4MywzMiwxMTIsNTAsMzIsNDMsNDksMzUsOTEsMTAwLDEwMSwxMDIsOTcsMTE3LDEwOCwxMTYsOTMsMzIsMzIsMzUsOTEsMTAyLDEwMyw2MSwzNSw2NSw1MSw2Niw2OSw1Niw2Nyw5MywyMzksMTI4LDE0MCwzMiwxMTIsNDksMzIsMTk0LDE4MywzMiwxMTIsNTEsMzIsNDMsNDksMzUsOTEsMTAwLDEwMSwxMDIsOTcsMTE3LDEwOCwxMTYsOTNdXSIsInRyZWUiOnsiLmNsYXVkZSI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmNsYXVkZS9ob29rcyI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmNsYXVkZS9ob29rcy9zdGF0ZSI6eyJraW5kIjoiZGlyZWN0b3J5IiwibW9kZSI6NTA5fSwiLmNsYXVkZS9ob29rcy9zdGF0ZS8xLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXdvZ0lDSndjbTlxWldOMElqb2dJbkF3SWl3S0lDQWljM1JoZEhWeklqb2dJbmRoYVhScGJtY2lMQW9nSUNKMGN5STZJRHhCUjBWZk1UNEtmUW89In0sIi5jbGF1ZGUvaG9va3Mvc3RhdGUvMi5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImV3b2dJQ0p3Y205cVpXTjBJam9nSW5BeElpd0tJQ0FpYzNSaGRIVnpJam9nSW1SdmJtVWlMQW9nSUNKMGN5STZJRHhCUjBWZk1UNEtmUW89In0sIi5jbGF1ZGUvaG9va3Mvc3RhdGUvMy5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImV3b2dJQ0p3Y205cVpXTjBJam9nSW5BeUlpd0tJQ0FpYzNSaGRIVnpJam9nSW5kaGFYUnBibWNpTEFvZ0lDSjBjeUk2SUR4QlIwVmZNVDRLZlFvPSJ9LCIuY2xhdWRlL2hvb2tzL3N0YXRlLzQuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJld29nSUNKd2NtOXFaV04wSWpvZ0luQXpJaXdLSUNBaWMzUmhkSFZ6SWpvZ0ltUnZibVVpTEFvZ0lDSjBjeUk2SUR4QlIwVmZNVDRLZlFvPSJ9LCIuY2xhdWRlL2hvb2tzL3N0YXRlLzUuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJld29nSUNKd2NtOXFaV04wSWpvZ0luQTBJaXdLSUNBaWMzUmhkSFZ6SWpvZ0luZGhhWFJwYm1jaUxBb2dJQ0owY3lJNklEeEJSMFZmTVQ0S2ZRbz0ifSwiLmNsYXVkZS9ob29rcy9zdGF0ZS82Lmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXdvZ0lDSndjbTlxWldOMElqb2dJbkExSWl3S0lDQWljM1JoZEhWeklqb2dJbVJ2Ym1VaUxBb2dJQ0owY3lJNklEeEJSMFZmTVQ0S2ZRbz0ifSwicnVuIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCJydW4vY2Mtc3RhdHVzLmNhY2hlIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6IkkxdG1aejBqUkRBNE56Y3dYZStEc3lCd01DREN0eUJ3TWlBck1TTmJaR1ZtWVhWc2RGMGdJQ05iWm1jOUkwRXpRa1U0UTEzdmdJd2djREVnd3JjZ2NETWdLekVqVzJSbFptRjFiSFJkIn19fQ=="
+}

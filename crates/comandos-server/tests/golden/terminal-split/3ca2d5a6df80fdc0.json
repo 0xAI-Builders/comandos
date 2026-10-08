@@ -1,0 +1,14 @@
+{
+  "input": {
+    "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "python": "3.10.12",
+    "path": "/terminal-panes",
+    "body": "{\"session\": \"s1\", \"action\": \"split\", \"pane\": \"%0\", \"identity\": \"<PANE0-VERSION>\", \"direction\": \"down\"}",
+    "before_panes": [
+      "%0",
+      "%1"
+    ],
+    "normalize": "panes_without_volatile"
+  },
+  "output_b64": "eyJzdGF0dXMiOjIwMCwidHlwZSI6ImFwcGxpY2F0aW9uL2pzb24iLCJib2R5Ijoie1wib2tcIjp0cnVlLFwicGFuZXNcIjpbe1wiaWRcIjpcIiUwXCIsXCJhY3RpdmVcIjpmYWxzZSxcInRpdGxlXCI6XCJjYXRcIixcInBhdGhcIjpcIjxSRVBPPi9jcmF0ZXMvY29tYW5kb3Mtc2VydmVyXCIsXCJsZWZ0XCI6MCxcInRvcFwiOjAsXCJ3aWR0aFwiOjg5LFwiaGVpZ2h0XCI6MjAsXCJpbmRleFwiOjAsXCJpZGVudGl0eVwiOlwiXCJ9LHtcImlkXCI6XCIlTlwiLFwiYWN0aXZlXCI6dHJ1ZSxcInRpdGxlXCI6XCJcIixcInBhdGhcIjpcIjxSRVBPPi9jcmF0ZXMvY29tYW5kb3Mtc2VydmVyXCIsXCJsZWZ0XCI6MCxcInRvcFwiOjIxLFwid2lkdGhcIjo4OSxcImhlaWdodFwiOjE5LFwiaW5kZXhcIjoxLFwiaWRlbnRpdHlcIjpcIlwifSx7XCJpZFwiOlwiJTFcIixcImFjdGl2ZVwiOmZhbHNlLFwidGl0bGVcIjpcImNhdFwiLFwicGF0aFwiOlwiPFJFUE8+L2NyYXRlcy9jb21hbmRvcy1zZXJ2ZXJcIixcImxlZnRcIjo5MCxcInRvcFwiOjAsXCJ3aWR0aFwiOjMwLFwiaGVpZ2h0XCI6NDAsXCJpbmRleFwiOjIsXCJpZGVudGl0eVwiOlwiXCJ9XSxcIm9wZW5lZFwiOlwiJU5cIn0ifQ=="
+}

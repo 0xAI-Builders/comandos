@@ -1,0 +1,38 @@
+use serde_json::{Value,json};
+use std::{cell::{Cell,RefCell},collections::BTreeMap,rc::Rc,sync::{Arc,atomic::{AtomicBool,Ordering}}};
+mod ui { pub use comandos_app::ui::bridge; }
+struct Term(Arc<AtomicBool>);
+impl Term{fn cleanup_cancellation(&self)->Arc<AtomicBool>{self.0.clone()}}
+struct Status;
+impl Status{fn set_text(&self,_:&str){}}
+struct App{closed:Cell<bool>,selection:RefCell<String>,terms:RefCell<BTreeMap<String,Term>>,calls:Rc<Cell<u32>>,status:Status}
+impl App {
+ fn writable(&self)->bool{!self.closed.get()}
+ fn action_session(&self)->Option<String>{self.current_session()}
+ fn term_for_action(&self,key:&str)->Option<Term>{self.terms.borrow().get(key).map(|t|Term(t.0.clone()))}
+ fn current_session(&self)->Option<String>{Some(self.selection.borrow().clone())}
+ fn call_dashboard(&self,function:ui::bridge::JsFunction,args:&[Value])->Result<(),String>{
+    assert!(matches!(function,ui::bridge::JsFunction::NewSessionForPane));
+    assert_eq!(args,[json!("fixture"),json!("%2"),json!("cwd2")]);
+    self.calls.set(self.calls.get()+1);Ok(())
+ }
+}
+fn complete(done:impl FnOnce(Result<(String,String,String),String>)){done(Ok((String::from("fixture"),String::from("%2"),String::from("cwd2"))));}
+fn one(name:&str)->u32 {
+ let instance=Arc::new(AtomicBool::new(false));let calls=Rc::new(Cell::new(0));
+ let app=Rc::new(App{closed:Cell::new(false),selection:RefCell::new("fixture".into()),terms:RefCell::new(BTreeMap::from([("fixture".into(),Term(instance.clone()))])),calls:calls.clone(),status:Status});
+ let scope=comandos_app::ui::snippets::Scope::default();let ticket=scope.ticket();let weak=Rc::downgrade(&app);
+ match name {
+  "closed"=>app.closed.set(true),"cancelled"=>instance.store(true,Ordering::Release),
+  "replaced"=>{app.terms.borrow_mut().insert("fixture".into(),Term(Arc::new(AtomicBool::new(false))));},
+  "navigated"=>*app.selection.borrow_mut()="other".into(),"superseded"=>scope.advance(),_=>{}
+ }
+ let keepalive=if name=="destroyed"{drop(app);None}else{Some(app)};
+ complete( // ACTUAL_COMPLETION );
+ drop(keepalive);calls.get()
+}
+fn main(){
+ let mut out=serde_json::Map::new();
+ for name in ["current","closed","destroyed","cancelled","replaced","navigated","superseded"]{out.insert(name.into(),json!(one(name)));}
+ println!("{}",Value::Object(out));
+}

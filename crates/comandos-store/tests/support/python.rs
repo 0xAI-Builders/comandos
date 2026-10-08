@@ -6,6 +6,8 @@
 //! `America/Mexico_City` y `LANG=C.UTF-8`, iguales en el lado Rust.
 #![allow(dead_code)]
 use std::{ffi::OsStr, path::Path, process::Command};
+#[path = "python_golden.rs"]
+mod golden;
 
 pub const TZ: &str = "America/Mexico_City";
 
@@ -35,6 +37,16 @@ pub fn repo() -> std::path::PathBuf {
 }
 
 pub fn run_python(script: &str, args: &[&OsStr], home: &Path) -> Option<String> {
+    if matches!(
+        env!("CARGO_CRATE_NAME"),
+        "news_oracle"
+            | "session_profiles_oracle"
+            | "usage_change_oracle"
+            | "usage_import_oracle"
+            | "usage_read_oracle"
+    ) {
+        return golden::run_python(script, args, home);
+    }
     let python = Command::new("python3")
         .args(["-c", "import sys"])
         .output()

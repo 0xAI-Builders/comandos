@@ -1,0 +1,13 @@
+{
+  "input": {
+    "case": {
+      "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83:bin/cc-app",
+      "source_sha256": "1b535bc6f4463959cc3ab992fa5a4ab859fbdaec43fcf628123cfede68b4ca6b",
+      "loader_sha256": "622fc2c525c2d2d5c7229b9b86a59164fae7394490f4274f371af4501d22a65b",
+      "mode": "keys",
+      "cases": []
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbXCJzcGxpdFwiLCBcInNwbGl0X3NzaFwiLCBcImtpbGxfcGFuZVwiLCBcInRvZ2dsZV93aW5kb3dcIiwgXCJzZWxlY3RfcGFuZVwiLCBcIm5leHRfdGFiXCIsIFwicHJldl90YWJcIiwgXCJtcnVfdG9nZ2xlXCIsIFwiZm9jdXNfcGFnZVwiLCBcInRhYl9yZW9yZGVyXCIsIFwibW9zYWljXCIsIFwibW9zYWljX3pvb21cIiwgXCJzaWRlX3BhbmVsXCIsIFwidGVybWluYWxzX3Zpc2libGVcIiwgXCJyZWxvYWRfZGFzaGJvYXJkXCIsIFwiZm9udF9zY2FsZVwiLCBcIm9wZW5fc3dpdGNoZXJcIiwgXCJ0YWJzX292ZXJ2aWV3XCIsIFwiaGVscFwiLCBcInNuaXBwZXRzXCIsIFwibmV3X2xvY2FsX3RhYlwiLCBcIm9wZW5feHRlcm1fdGFiXCIsIFwib3Blbl93aXphcmRcIiwgXCJzdGFydF9haV9oZXJlXCIsIFwiY29weV9zZWxlY3Rpb25cIiwgXCJwYXN0ZV9jbGlwYm9hcmRcIiwgXCJjb3B5X3JlcGx5XCIsIFwid2luZG93XCIsIFwicGFuZWRfcG9zaXRpb25cIiwgXCJxdWl0XCJdXG4iLCJ0cmVlIjp7fX0="
+}

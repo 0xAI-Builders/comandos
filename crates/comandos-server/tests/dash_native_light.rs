@@ -4,9 +4,8 @@ mod support;
 
 use comandos_server::dash::native::tmux::{Program, Tmux};
 use std::{ffi::OsString, fs, time::Duration};
-use support::{
-    FakeLegacy, TestHome, dead_port, front, get, oracle::oracle, request_body, tmux_available,
-};
+use support::http_golden::FrozenHttp;
+use support::{FakeLegacy, TestHome, dead_port, front, get, request_body, tmux_available};
 
 const MONO: &str = r#"{"family": "Monospace", "label": "Monospace del sistema", "a11y": false}"#;
 
@@ -55,6 +54,7 @@ async fn prefs_get_lists_installed_catalog_fonts() {
         )],
         env: vec![],
         env_remove: vec![],
+        env_clear: false,
     };
     let front = front(&home, dead_port(), opts).await;
     let body = get(front.port, "/prefs").await.text();
@@ -305,6 +305,7 @@ async fn tmux_hung_times_out() {
             prefix: vec!["-f".into(), "/dev/null".into(), "--".into()],
             env: vec![],
             env_remove: vec![],
+            env_clear: false,
         },
         timeout: Duration::from_millis(300),
     };
@@ -372,9 +373,19 @@ async fn light_routes_match_python_oracle() {
         "app-tabs-history.json",
         r#"[{"session": "vieja", "ts": 3}]"#,
     );
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
+    let py = FrozenHttp::new(
+        &home,
+        "server-http-light",
+        &[
+            "prefs.json",
+            "prefs.json.lock",
+            "app-tabs.json",
+            "app-tabs-history.json",
+            "app-tab-models.json",
+            "app-tab-active.json",
+        ],
+    )
+    .await;
     let front = front(&home, dead_port(), oracle_options(&home)).await;
     for target in [
         "/prefs",
@@ -385,7 +396,7 @@ async fn light_routes_match_python_oracle() {
         "/tmux-mouse?session=s1",
         "/tmux-mouse?session=nope",
     ] {
-        let (a, b) = (get(py.port, target).await, get(front.port, target).await);
+        let (a, b) = (py.get(target).await, get(front.port, target).await);
         assert_eq!(
             (a.status, a.header("content-type"), a.text()),
             (b.status, b.header("content-type"), b.text()),
@@ -422,15 +433,29 @@ async fn light_errors_and_writes_match_python_oracle() {
     if tmux {
         new_tmux_sessions(&home, &["s1"]);
     }
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
+    let py = FrozenHttp::new(
+        &home,
+        "server-http-light",
+        &[
+            "prefs.json",
+            "prefs.json.lock",
+            "app-tabs.json",
+            "app-tabs-history.json",
+            "app-tab-models.json",
+            "app-tab-active.json",
+        ],
+    )
+    .await;
     let front = front(&home, dead_port(), oracle_options(&home)).await;
-    let both = |target: &'static str| async move {
-        (
-            seen(&get(py.port, target).await),
-            seen(&get(front.port, target).await),
-        )
+    let both = |target: &'static str| {
+        let py = &py;
+        let front = &front;
+        async move {
+            (
+                seen(&py.get(target).await),
+                seen(&get(front.port, target).await),
+            )
+        }
     };
     // Lecturas: cada archivo en sus formas raras que el Rust sí reproduce.
     home.write(
@@ -548,14 +573,20 @@ async fn light_errors_and_writes_match_python_oracle() {
         "{}",
     ] {
         let mut sides = Vec::new();
-        for port in [py.port, front.port] {
+        for reference in [true, false] {
             home.write("prefs.json", initial);
-            let wire = request_body(port, "POST", "/prefs-set", "", body).await;
+            let wire = if reference {
+                py.request("POST", "/prefs-set", "", body).await
+            } else {
+                request_body(front.port, "POST", "/prefs-set", "", body).await
+            };
             sides.push((seen(&wire), fs::read_to_string(&prefs_path).unwrap()));
         }
         assert_eq!(sides[0], sides[1], "{body}");
     }
-    let fresh = request_body(py.port, "POST", "/prefs-set", "", r#"{"theme": "neon"}"#).await;
+    let fresh = py
+        .request("POST", "/prefs-set", "", r#"{"theme": "neon"}"#)
+        .await;
     assert_eq!(fresh.status, 200);
     for body in [
         r#"{"session": 5}"#,
@@ -568,7 +599,7 @@ async fn light_errors_and_writes_match_python_oracle() {
         r#"{"session": "s1"}"#,
         r#"{"session": "s1", "enabled": 0}"#,
     ] {
-        let a = seen(&request_body(py.port, "POST", "/tmux-mouse", "", body).await);
+        let a = seen(&py.request("POST", "/tmux-mouse", "", body).await);
         let b = seen(&request_body(front.port, "POST", "/tmux-mouse", "", body).await);
         assert_eq!(a, b, "{body}");
     }

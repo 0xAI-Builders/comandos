@@ -1,0 +1,8 @@
+{
+  "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+  "source_git_path": "bin/cc-app",
+  "source_sha256": "1b535bc6f4463959cc3ab992fa5a4ab859fbdaec43fcf628123cfede68b4ca6b",
+  "source_assignment": "_LOCK_NAME = f\"cc-app-{(os.environ.get('DISPLAY') or 'x').replace('/', '_').replace(':', '')}.lock\"",
+  "projection": "Existing test formula substitutes argv display for os.environ DISPLAY; eight original corpus entries preserved.",
+  "python": "Python 3.10.12"
+}

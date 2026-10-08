@@ -1,10 +1,7 @@
 //! Dominio A: avisos, campana, presencia, sonido y long-poll por el frente.
 mod support;
 
-use comandos_server::dash::native::{
-    tmux::{Program, Tmux},
-    wall_clock_ms,
-};
+use comandos_server::dash::native::tmux::{Program, Tmux};
 use serde_json::{Value, json};
 use std::{
     process::Stdio,
@@ -12,11 +9,45 @@ use std::{
     time::{Duration, Instant},
 };
 use support::{
-    FakeLegacy, TestHome, dead_port, front, get, oracle::oracle, request_body, tmux_available,
+    FakeLegacy, TestHome, dead_port, front, get, http_golden::FrozenHttp, request_body,
+    tmux_available,
 };
+
+// Expected output only: never replay a listener, waiter, PID or log.
+fn freeze_watch(target: &str, source: Option<support::Wire>) -> (u16, String) {
+    let bytes = comandos_oracle::oracle_at(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "notices-watch",
+        &json!({"source":support::frozen::SOURCE_COMMIT,
+            "python":"3.10.12", "clock_ms":support::NOW_MS, "fixture_timer":"_do_GET monotonic; document timestamps fixed", "target":target}),
+        || {
+            let wire = source.ok_or("original long-poll required in record/check")?;
+            serde_json::to_vec(&(wire.status, wire.text())).map_err(|e| e.to_string())
+        },
+    );
+    serde_json::from_slice(&bytes).unwrap()
+}
+
+fn seed_shared_native_startup(home: &TestHome) {
+    let conn = comandos_runtime::open_state(&home.state_db(), 5000).unwrap();
+    // Native background startup ensures policy_v1 in the shared HOME.
+    // Preseed that deterministic startup input before oracle capture.
+    comandos_store::focus::ensure_policy(
+        &conn,
+        &comandos_core::focus::policy_v1(),
+        support::NOW_MS,
+    )
+    .unwrap();
+}
 
 fn seed_event(home: &TestHome, id: &str, kind: &str, extra: Value) {
     let conn = comandos_runtime::open_state(&home.state_db(), 5000).unwrap();
+    // Schema creation belongs to this private fixture, not the notice event.
+    conn.execute(
+        "UPDATE schema_migrations SET applied_at=?",
+        [support::NOW_MS as f64 / 1000.0],
+    )
+    .unwrap();
     let mut event = json!({"eventId": id, "source": "test", "kind": kind,
             "evidence": "confirmed", "correlation": "local", "sessionKey": "s1",
             "occurredAtMs": 1_791_115_100_000_u64, "receivedAtMs": 1_791_115_100_000_u64});
@@ -246,6 +277,7 @@ async fn notices_survive_hung_tmux() {
             prefix: vec!["-f".into(), "/dev/null".into(), "--".into()],
             env: vec![],
             env_remove: vec![],
+            env_clear: false,
         },
         timeout: Duration::from_millis(300),
     };
@@ -330,12 +362,16 @@ async fn notices_match_python_oracle() {
     seed_permission(&home, "e1");
     seed_permission(&home, "e2");
     let mut opts = home.options();
-    opts.clock = Arc::new(wall_clock_ms);
+    opts.clock = Arc::new(|| support::NOW_MS);
     let front = front(&home, dead_port(), opts).await;
-    let Some(py) = oracle(&home).await else {
-        front.stop().await;
-        return;
-    };
+    seed_shared_native_startup(&home);
+    let py = FrozenHttp::new_rooted_with(
+        &home,
+        "notices-shared",
+        &[".local/state/comandos/app-state.sqlite3"],
+        "",
+    )
+    .await;
     for target in [
         "/notices/prefs",
         "/notifs/count",
@@ -343,7 +379,7 @@ async fn notices_match_python_oracle() {
         "/notices?after=0&limit=1",
         "/notices?after=z",
     ] {
-        let (a, b) = (get(py.port, target).await, get(front.port, target).await);
+        let (a, b) = (py.get(target).await, get(front.port, target).await);
         assert_eq!((a.status, a.text()), (b.status, b.text()), "{target}");
     }
     // Lo que escribe uno lo ve el otro.
@@ -355,17 +391,60 @@ async fn notices_match_python_oracle() {
         r#"{"eventIds": ["e1"]}"#,
     )
     .await;
-    assert_eq!(
-        get(py.port, "/notifs/count").await.text(),
-        r#"{"count": 1}"#
-    );
+    assert_eq!(py.get("/notifs/count").await.text(), r#"{"count": 1}"#);
     let (a, b) = (
-        request_body(py.port, "POST", "/notices/read", "", r#"{"all": true}"#).await,
+        py.request("POST", "/notices/read", "", r#"{"all": true}"#)
+            .await,
         request_body(front.port, "POST", "/notices/read", "", r#"{"all": true}"#).await,
     );
     assert_eq!(a.text(), r#"{"ok": true, "read": ["e2"]}"#);
     assert_eq!(b.text(), r#"{"ok": true, "read": []}"#);
     front.stop().await;
+}
+
+/// Native background remains real; the confined original deliberately disables
+/// its scheduler. Record that harness boundary instead of hiding it by seed.
+#[tokio::test]
+async fn cold_notices_retains_confined_original_scheduler_boundary() {
+    let native_home = TestHome::new("notices-cold-native");
+    seed_permission(&native_home, "e1");
+    let count = |home: &TestHome| -> i64 {
+        let conn = rusqlite::Connection::open(home.state_db()).unwrap();
+        conn.query_row("SELECT COUNT(*) FROM focus_policies", [], |r| r.get(0))
+            .unwrap()
+    };
+    assert_eq!(count(&native_home), 0);
+    let native = front(&native_home, dead_port(), native_home.options()).await;
+    assert_eq!(get(native.port, "/notices/prefs").await.status, 200);
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while count(&native_home) == 0 && Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let actual = count(&native_home);
+    assert_eq!(actual, 1, "native background startup ensures policy_v1");
+    let source_home = TestHome::new("notices-cold-source");
+    seed_permission(&source_home, "e1");
+    let source = FrozenHttp::new(&source_home, "notices-cold-source", &[]).await;
+    let observed = source.source_port().map(|_| count(&source_home));
+    let expected = comandos_oracle::oracle_at(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden"),
+        "notices-cold-startup",
+        &json!({"source":support::frozen::SOURCE_COMMIT,"python":"3.10.12","stage":"after-startup-before-notices","seed_event":"e1","disabled_original_loops":["start_pomodoro_scheduler","motor_queue_resume"]}),
+        || {
+            serde_json::to_vec(&observed.ok_or("original startup required in record/check")?)
+                .map_err(|e| e.to_string())
+        },
+    );
+    let original: i64 = serde_json::from_slice(&expected).unwrap();
+    assert_eq!(
+        original, 0,
+        "original scheduler disabled by the retained confinement fixture"
+    );
+    assert_ne!(
+        actual, original,
+        "explicit harness scheduling boundary; no product defect inferred"
+    );
+    native.stop().await;
 }
 
 /// Una terminal viva en el tmux privado compartido: el filtro `is_live`.
@@ -411,14 +490,25 @@ async fn long_poll_matches_python_oracle() {
     );
     seed_event(&home, "e3", "turn_completed", json!({"projectKey": "p"}));
     let mut opts = home.options();
-    opts.clock = Arc::new(wall_clock_ms);
+    opts.clock = Arc::new(|| support::NOW_MS);
     let front = front(&home, dead_port(), opts).await;
-    let Some(py) = oracle(&home).await else {
-        front.stop().await;
-        return;
-    };
+    // The original watch uses time.time for its deadline; keep that timer
+    // ticking, while document timestamps retain the deterministic wall clock.
+    let timer = format!(
+        "import sys\n_watch_origin = dash.time.monotonic()\ndef _watch_clock():\n    if sys._getframe(1).f_code.co_name == '_do_GET':\n        return {} + dash.time.monotonic() - _watch_origin\n    return {}\ndash.time.time = _watch_clock",
+        support::NOW_MS / 1000,
+        support::NOW_MS / 1000
+    );
+    seed_shared_native_startup(&home);
+    let py = FrozenHttp::new_rooted_with(
+        &home,
+        "notices-watch-documents",
+        &[".local/state/comandos/app-state.sqlite3"],
+        &timer,
+    )
+    .await;
     let first = get(front.port, "/notices/watch?wait=0").await.text();
-    assert_eq!(first, get(py.port, "/notices/watch?wait=0").await.text());
+    assert_eq!(first, py.get("/notices/watch?wait=0").await.text());
     let pending = &parse(&first)["pending"];
     if live {
         assert_eq!(pending, &json!(["e1"]), "la terminal muerta no cuenta");
@@ -427,7 +517,7 @@ async fn long_poll_matches_python_oracle() {
     }
     for target in ["/notices", "/notifs/count", "/notices?limit=2&after=1"] {
         assert_eq!(
-            get(py.port, target).await.text(),
+            py.get(target).await.text(),
             get(front.port, target).await.text(),
             "{target}"
         );
@@ -435,39 +525,50 @@ async fn long_poll_matches_python_oracle() {
     let rev = parse(&first)["rev"].as_str().unwrap().to_owned();
     // Vence a 1 s sin cambios: los dos esperan y responden lo mismo.
     let target = format!("/notices/watch?rev={rev}&wait=1");
-    let (py_port, front_port) = (py.port, front.port);
-    let (t_py, t_front) = (target.clone(), target.clone());
+    let front_port = front.port;
+    let source_wait = |target: String| {
+        py.source_port()
+            .map(|port| tokio::spawn(async move { get(port, &target).await }))
+    };
+    let py_wait = source_wait(target.clone());
+    let t_front = target.clone();
     let started = Instant::now();
-    let (a, b) = tokio::join!(
-        tokio::spawn(async move { get(py_port, &t_py).await }),
-        tokio::spawn(async move { get(front_port, &t_front).await }),
-    );
+    let front_wait = tokio::spawn(async move { get(front_port, &t_front).await });
+    let source = if let Some(task) = py_wait {
+        Some(task.await.unwrap())
+    } else {
+        None
+    };
+    let b = front_wait.await.unwrap();
     let elapsed = started.elapsed();
-    let (a, b) = (a.unwrap(), b.unwrap());
     assert!(elapsed >= Duration::from_secs(1), "{elapsed:?}");
     assert!(elapsed < Duration::from_secs(3), "{elapsed:?}");
-    assert_eq!((a.status, a.text()), (b.status, b.text()));
+    assert_eq!(freeze_watch(&target, source), (b.status, b.text()));
     assert_eq!(parse(&b.text())["rev"], rev.as_str());
-    // Despierta con el cambio: un leído escrito por el Python despierta a los dos.
+    // Source document mutation in record/check; replay applies only its
+    // recorded SQLite delta. The native long-poll actor always runs and wakes.
     let target = format!("/notices/watch?rev={rev}&wait=10");
-    let (t_py, t_front) = (target.clone(), target);
-    let py_wait = tokio::spawn(async move { get(py_port, &t_py).await });
+    let py_wait = source_wait(target.clone());
+    let t_front = target.clone();
     let front_wait = tokio::spawn(async move { get(front_port, &t_front).await });
     tokio::time::sleep(Duration::from_millis(1200)).await;
-    assert!(!py_wait.is_finished() && !front_wait.is_finished());
-    let read = request_body(
-        py.port,
-        "POST",
-        "/notices/read",
-        "",
-        r#"{"eventIds": ["e3"]}"#,
-    )
-    .await;
+    assert!(!front_wait.is_finished());
+    if let Some(task) = &py_wait {
+        assert!(!task.is_finished());
+    }
+    let read = py
+        .request("POST", "/notices/read", "", r#"{"eventIds": ["e3"]}"#)
+        .await;
     assert_eq!(read.text(), r#"{"ok": true, "read": ["e3"]}"#);
     let woke = Instant::now();
-    let (a, b) = (py_wait.await.unwrap(), front_wait.await.unwrap());
+    let source = if let Some(task) = py_wait {
+        Some(task.await.unwrap())
+    } else {
+        None
+    };
+    let b = front_wait.await.unwrap();
     assert!(woke.elapsed() < Duration::from_secs(2));
-    assert_eq!((a.status, a.text()), (b.status, b.text()));
+    assert_eq!(freeze_watch(&target, source), (b.status, b.text()));
     assert_ne!(parse(&b.text())["rev"], rev.as_str());
     assert!(started.elapsed() >= Duration::from_secs(2));
     front.stop().await;
@@ -489,12 +590,15 @@ async fn every_route_and_error_matches_python_oracle() {
         seed_event(home, "e5", "turn_started", json!({}));
     }
     let mut opts = rs_home.options();
-    opts.clock = Arc::new(wall_clock_ms);
+    opts.clock = Arc::new(|| support::NOW_MS);
     let front = front(&rs_home, dead_port(), opts).await;
-    let Some(py) = oracle(&py_home).await else {
-        front.stop().await;
-        return;
-    };
+    let py = FrozenHttp::new_rooted_with(
+        &py_home,
+        "notices-sequence",
+        &[".local/state/comandos/app-state.sqlite3"],
+        "",
+    )
+    .await;
     let long = format!(r#"{{"deviceId": "{}"}}"#, "x".repeat(201));
     let steps: &[(&str, &str, Option<&str>)] = &[
         ("GET", "/notices", None),
@@ -628,9 +732,9 @@ async fn every_route_and_error_matches_python_oracle() {
     ];
     for (index, (method, path, body)) in steps.iter().enumerate() {
         let (a, b) = match (method, body) {
-            (&"GET", None) => (get(py.port, path).await, get(front.port, path).await),
+            (&"GET", None) => (py.get(path).await, get(front.port, path).await),
             (method, Some(body)) => (
-                request_body(py.port, method, path, "", body).await,
+                py.request(method, path, "", body).await,
                 request_body(front.port, method, path, "", body).await,
             ),
             _ => unreachable!(),
@@ -660,12 +764,16 @@ async fn sound_device_matches_across_rust_and_python() {
     seed_permission(&home, "e1");
     seed_permission(&home, "e2");
     let mut opts = home.options();
-    opts.clock = Arc::new(wall_clock_ms);
+    opts.clock = Arc::new(|| support::NOW_MS);
     let front = front(&home, dead_port(), opts).await;
-    let Some(py) = oracle(&home).await else {
-        front.stop().await;
-        return;
-    };
+    seed_shared_native_startup(&home);
+    let py = FrozenHttp::new_rooted_with(
+        &home,
+        "notices-shared",
+        &[".local/state/comandos/app-state.sqlite3"],
+        "",
+    )
+    .await;
     let presence = |audio: bool, device: &str| {
         format!(
             r#"{{"deviceId": "{device}", "visible": true, "canPlayAudio": {audio}, "interaction": true}}"#
@@ -681,28 +789,38 @@ async fn sound_device_matches_across_rust_and_python() {
         let wire = request_body(front.port, "POST", "/presence", "", &body).await;
         assert_eq!(wire.text(), r#"{"ok": true}"#);
     }
-    for (port, device, expected) in [
-        (front.port, "d-mudo", elsewhere),
-        (py.port, "d-mudo", elsewhere),
-        (py.port, "d-audio", plays),
-        (front.port, "d-audio", already),
+    for (source, device, expected) in [
+        (false, "d-mudo", elsewhere),
+        (true, "d-mudo", elsewhere),
+        (true, "d-audio", plays),
+        (false, "d-audio", already),
     ] {
-        let wire = request_body(port, "POST", "/notices/sound", "", &sound("e1", device)).await;
-        assert_eq!(wire.text(), expected, "e1 {device} en {port}");
+        let body = sound("e1", device);
+        let wire = if source {
+            py.request("POST", "/notices/sound", "", &body).await
+        } else {
+            request_body(front.port, "POST", "/notices/sound", "", &body).await
+        };
+        assert_eq!(wire.text(), expected, "e1 {device} source={source}");
     }
     // Al revés: el Python registra la presencia; el frente reclama.
     for body in [presence(false, "d-audio"), presence(true, "d-mudo")] {
-        let wire = request_body(py.port, "POST", "/presence", "", &body).await;
+        let wire = py.request("POST", "/presence", "", &body).await;
         assert_eq!(wire.text(), r#"{"ok": true}"#);
     }
-    for (port, device, expected) in [
-        (py.port, "d-audio", elsewhere),
-        (front.port, "d-audio", elsewhere),
-        (front.port, "d-mudo", plays),
-        (py.port, "d-mudo", already),
+    for (source, device, expected) in [
+        (true, "d-audio", elsewhere),
+        (false, "d-audio", elsewhere),
+        (false, "d-mudo", plays),
+        (true, "d-mudo", already),
     ] {
-        let wire = request_body(port, "POST", "/notices/sound", "", &sound("e2", device)).await;
-        assert_eq!(wire.text(), expected, "e2 {device} en {port}");
+        let body = sound("e2", device);
+        let wire = if source {
+            py.request("POST", "/notices/sound", "", &body).await
+        } else {
+            request_body(front.port, "POST", "/notices/sound", "", &body).await
+        };
+        assert_eq!(wire.text(), expected, "e2 {device} source={source}");
     }
     front.stop().await;
 }

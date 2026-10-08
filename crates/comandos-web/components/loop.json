@@ -1,0 +1,21 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- loop ----------",
+  "marker_end": "// ---------- conmutador Ctrl+K (salta a cualquier sesion) ----------",
+  "sha256": "7dd2d33b556a04afed9d26d71e7351b88ec9c57d482f68ace4046053ab5f93f8",
+  "id": "loop",
+  "exports": [
+    "statePollInFlight",
+    "tick",
+    "timer",
+    "remotePollSeconds",
+    "arm"
+  ],
+  "deps": [
+    "prelude",
+    "i18n",
+    "red"
+  ]
+}

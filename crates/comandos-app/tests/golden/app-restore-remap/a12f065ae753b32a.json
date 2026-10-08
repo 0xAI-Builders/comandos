@@ -1,0 +1,11 @@
+{
+  "input": {
+    "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83:lib/tmux_snapshot.py",
+    "layout": "9a98,120x32,0,0{59x32,0,0,1,60x32,60,0,2}",
+    "mapping": {
+      "%1": "%110",
+      "%2": "%120"
+    }
+  },
+  "output_b64": "OTU2MCwxMjB4MzIsMCwwezU5eDMyLDAsMCwxMTAsNjB4MzIsNjAsMCwxMjB9Cg=="
+}

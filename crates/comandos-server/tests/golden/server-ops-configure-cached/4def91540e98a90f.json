@@ -1,0 +1,15 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "code": "import json,sqlite3,os\n# Fixture: two claims at clock 1000, one confirmed and one waiting; owner is the live test process.\nconn=sqlite3.connect(os.path.join(dash.HOOKS, 'session-operations.sqlite3'))\nbefore=list(conn.iterdump())\nout = [list(dash.session_configure(json.loads(s))) for s in [\"{\\\"session\\\":\\\"audit\\\",\\\"pane\\\":\\\"%7\\\",\\\"requestId\\\":\\\"repetida-0001\\\",\\\"accountOnly\\\":true,\\\"harnessAccount\\\":\\\"work\\\",\\\"interrupt\\\":true}\", \"{\\\"session\\\":\\\"audit\\\",\\\"pane\\\":\\\"%7\\\",\\\"requestId\\\":\\\"repetida-0001\\\",\\\"accountOnly\\\":true,\\\"harnessAccount\\\":\\\"main\\\",\\\"interrupt\\\":true}\", \"{\\\"session\\\":\\\"audit\\\",\\\"pane\\\":\\\"%8\\\",\\\"requestId\\\":\\\"en-curso-0001\\\"}\"]]\nassert list(conn.iterdump()) == before, 'cached requests must not mutate the journal'\nprint(json.dumps(out))",
+      "effect_files": [],
+      "fakebin": [],
+      "fixture_env": []
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbWzIwMCwge1wib2tcIjogdHJ1ZSwgXCJvYnNlcnZlZFwiOiB7XCJoYXJuZXNzXCI6IFwiY29kZXhcIiwgXCJoYXJuZXNzQWNjb3VudFwiOiBcIndvcmtcIn0sIFwiY29udGludWl0eVwiOiBcInJlc3VtZWRcIiwgXCJoYW5kb2ZmUmVxdWlyZWRcIjogZmFsc2UsIFwicGVuZGluZ1wiOiBmYWxzZSwgXCJvcGVyYXRpb25LZXlcIjogXCJhdWRpdHwlN1wiLCBcIm9wZXJhdGlvbklkXCI6IFwicmVwZXRpZGEtMDAwMVwiLCBcInN0YXRlXCI6IFwiY29uZmlybWVkXCJ9XSwgWzQwOSwge1wib2tcIjogZmFsc2UsIFwiZXJyb3JcIjogXCJyZXF1ZXN0SWQgeWEgc2UgdXNcXHUwMGYzIGNvbiBvdHJhIGNvbmZpZ3VyYWNpXFx1MDBmM25cIiwgXCJvcGVyYXRpb25LZXlcIjogXCJhdWRpdHwlN1wifV0sIFsyMDIsIHtcIm9rXCI6IHRydWUsIFwicGVuZGluZ1wiOiB0cnVlLCBcIm9wZXJhdGlvbktleVwiOiBcImF1ZGl0fCU4XCIsIFwib3BlcmF0aW9uSWRcIjogXCJlbi1jdXJzby0wMDAxXCIsIFwic3RhdGVcIjogXCJ3YWl0aW5nXCJ9XV1cbiIsInRyZWUiOnt9fQ=="
+}

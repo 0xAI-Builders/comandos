@@ -1,0 +1,11 @@
+{
+  "input": {
+    "case": {
+      "script": "\nimport json, os, sys\nsys.path.insert(0, os.path.join(sys.argv[1], \"lib\"))\nimport grok_state\ntry:\n    print(json.dumps({\"ok\": grok_state.models()}))\nexcept Exception as e:\n    print(json.dumps({\"raise\": type(e).__name__}))\n",
+      "args": [],
+      "bin_inputs": []
+    },
+    "before_sha256": "4eef7b3b5d62707e0c4493077dd950b989e7262d5686ec97f1894567ca475ef0"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJyYWlzZVwiOiBcIkF0dHJpYnV0ZUVycm9yXCJ9XG4iLCJ0cmVlIjp7Ii5ncm9rIjp7ImtpbmQiOiJkaXJlY3RvcnkiLCJtb2RlIjo1MDl9LCIuZ3Jvay9tb2RlbHNfY2FjaGUuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJleUp0YjJSbGJITWlPaUI3SW1FaU9pQjdJbWx1Wm04aU9pQmJNVjE5ZlgwPSJ9fX0="
+}

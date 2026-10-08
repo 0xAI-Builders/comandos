@@ -3,6 +3,8 @@
 use crate::json::{python_eq, truthy};
 use serde_json::Value;
 
+pub const MARKS: [&str; 4] = ["none", "resolved", "frozen", "awaiting_reply"];
+
 pub const FRAME_SECONDS: f64 = 0.08;
 pub const MAX_FRAMES: usize = 48;
 pub const AI_DOT_PIXELS: u32 = 12;

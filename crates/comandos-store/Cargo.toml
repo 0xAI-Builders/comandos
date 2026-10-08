@@ -11,8 +11,11 @@ serde_json.workspace = true
 rusqlite.workspace = true
 sha2.workspace = true
 chrono.workspace = true
+getrandom.workspace = true
+nix = { version = "=0.31.3", default-features = false, features = ["fs"] }
 
 [dev-dependencies]
+comandos-oracle = { path = "../comandos-oracle" }
 chrono-tz.workspace = true
 
 [lints]

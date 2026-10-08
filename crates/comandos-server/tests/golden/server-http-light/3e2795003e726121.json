@@ -1,0 +1,26 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "clock_ms": 1791115200000,
+      "request": {
+        "method": "GET",
+        "target": "/tmux-mouse?session=a%20b",
+        "extra": "",
+        "body": ""
+      },
+      "effect_files": [
+        "prefs.json",
+        "prefs.json.lock",
+        "app-tabs.json",
+        "app-tabs-history.json",
+        "app-tab-models.json",
+        "app-tab-active.json"
+      ]
+    },
+    "before_sha256": "b45f797f104c9f6ed7fedc3c1a19a3c552e41507f53a3643cb623e470967e12c"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJzdGF0dXNcIjo0MDAsXCJoZWFkZXJzXCI6W1tcInNlcnZlclwiLFwiU2ltcGxlSFRUUC8wLjYgUHl0aG9uLzMuMTAuMTJcIl0sW1wiZGF0ZVwiLFwiU3VuLCAwNCBPY3QgMjAyNiAxMjowMDowMCBHTVRcIl0sW1wiY29udGVudC10eXBlXCIsXCJhcHBsaWNhdGlvbi9qc29uXCJdLFtcImNhY2hlLWNvbnRyb2xcIixcIm5vLXN0b3JlXCJdLFtcImNvbnRlbnQtbGVuZ3RoXCIsXCIzOFwiXV0sXCJib2R5XCI6WzEyMywzNCwxMDEsMTE0LDExNCwxMTEsMTE0LDM0LDU4LDMyLDM0LDc4LDExMSwxMDksOTgsMTE0LDEwMSwzMiwxMDAsMTAxLDMyLDExNSwxMDEsMTE1LDEwNSwxMTEsMTEwLDMyLDEwNSwxMTAsMTE4LDk3LDEwOCwxMDUsMTAwLDExMSwzNCwxMjVdfSIsInRyZWUiOnsiYXBwLXRhYi1hY3RpdmUuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJleUp3WVc1bElqb2dJbmdpTENBaWMyVnpjMmx2YmlJNklDSnpNU0o5In0sImFwcC10YWItbW9kZWxzLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXlKdFlXeGhJam9nV3pGZExDQWlkbUZqYVdFaU9pQjdmU3dnSW5SbGVIUnZJam9nSW5naUxDQWlZMlZ5YnlJNklEQXNJQ0p1ZFd4dklqb2diblZzYkN3Z0luTnBiaUk2SUhzaWNHRnVaWE1pT2lBd2ZTd2dJbTlySWpvZ2V5SndZVzVsY3lJNklGc3hMQ0FpdzdFaVhYMTkifSwiYXBwLXRhYnMtaGlzdG9yeS5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6Ilczc2ljMlZ6YzJsdmJpSTZJQ0p6TVNKOUxDQjdJbk5sYzNOcGIyNGlPaUFpZUNKOUxDQjdJbk5sYzNOcGIyNGlPaUFpYUhWaUluMWQifSwiYXBwLXRhYnMuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJleUpvZFdJaU9pQWlTQ0lzSUNKek1TSTZJQ0pWYm04Z3c3RWlmUT09In0sInByZWZzLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXlKbVlYWnZjbWwwWlhNaU9pQmJJbk14SWwxOSJ9fX0="
+}

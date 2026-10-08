@@ -2,6 +2,8 @@
 pub mod blocking;
 pub mod dash;
 pub mod events_routes;
+pub mod ws;
+pub use ws::{WsAdmission, WsHandler, WsRequest, WsRoute};
 mod write_timeout;
 use bytes::Bytes;
 use comandos_core::dashboard_access as access;
@@ -66,10 +68,18 @@ pub enum ReplyBody {
         receiver: mpsc::Receiver<io::Result<Bytes>>,
     },
 }
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ReplyCache {
+    #[default]
+    NoStore,
+    /// Only versioned build artifacts opt into persistent caching.
+    Immutable,
+}
 pub struct Reply {
     pub status: StatusCode,
     pub headers: HeaderMap,
     pub body: ReplyBody,
+    pub cache: ReplyCache,
 }
 impl Reply {
     pub fn bytes(status: StatusCode, content_type: &'static str, body: impl Into<Bytes>) -> Self {
@@ -82,6 +92,7 @@ impl Reply {
             status,
             headers,
             body: ReplyBody::Bytes(body.into()),
+            cache: ReplyCache::NoStore,
         }
     }
     pub fn json(status: StatusCode, value: &Value) -> Result<Self, HandlerError> {
@@ -98,6 +109,7 @@ pub type AssetExists = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 #[derive(Clone)]
 pub struct Limits {
     pub connections: usize,
+    pub websockets: usize,
     /// Maximum HTTP/1 connection read buffer, including request headers.
     pub header_bytes: usize,
     /// Aggregate admitted wire bytes, held through handler completion.
@@ -112,15 +124,25 @@ pub struct Limits {
     pub shutdown_grace: Duration,
 }
 pub struct Config {
+    /// Token del arranque (validado por `serve`).
     pub token: Vec<u8>,
+    /// Archivo del token (`~/.claude/hooks/dash-token` del tablero): si está,
+    /// la puerta usa lo que dice el archivo en cada petición, como el Python
+    /// (rotarlo surte efecto sin reiniciar). `None`: siempre `token`.
+    pub token_file: Option<std::path::PathBuf>,
     pub asset_exists: AssetExists,
     pub handler: Handler,
+    pub websocket: Option<WsRoute>,
     pub limits: Limits,
 }
 
 struct State {
     config: Config,
+    token: dash::token::TokenCache,
     body_budget: Arc<Semaphore>,
+    websockets: Arc<Semaphore>,
+    ws_tasks: std::sync::Mutex<JoinSet<()>>,
+    shutdown: watch::Receiver<bool>,
 }
 
 struct OutputBody {
@@ -212,7 +234,8 @@ fn response(reply: Reply, close: bool) -> http::Response<OutputBody> {
     *response.status_mut() = reply.status;
     *response.headers_mut() = reply.headers;
     // The maintained transport derives framing from the actual body. An adapter
-    // cannot accidentally send conflicting framing or make another response cacheable.
+    // cannot accidentally send conflicting framing. Cache policy is explicit;
+    // relayed Cache-Control headers never make an API response cacheable.
     let headers = response.headers_mut();
     match declared {
         // `insert` keeps a relayed header in its original position.
@@ -229,7 +252,10 @@ fn response(reply: Reply, close: bool) -> http::Response<OutputBody> {
     headers.remove(http::header::TRANSFER_ENCODING);
     headers.insert(
         http::header::CACHE_CONTROL,
-        http::HeaderValue::from_static("no-store"),
+        http::HeaderValue::from_static(match reply.cache {
+            ReplyCache::NoStore => "no-store",
+            ReplyCache::Immutable => "public, max-age=31536000, immutable",
+        }),
     );
     if close {
         headers.insert(
@@ -335,22 +361,113 @@ async fn dispatch(
     } else {
         false
     };
-    let admission =
-        match access::request_admission(&policy_request, &state.config.token, file_exists) {
-            Ok(admission) => admission,
-            Err(error) => {
-                return reject(
-                    error.status,
-                    error.message,
-                    error.close || !body.is_end_stream(),
-                );
-            }
-        };
-    let internal_producer = access::internal_producer(&policy_request, &state.config.token);
+    // El token vigente (un `stat` del archivo; se relee solo si cambió).
+    let expected = state.token.current();
+    let admission = match access::request_admission(&policy_request, &expected, file_exists) {
+        Ok(admission) => admission,
+        Err(error) => {
+            return reject(
+                error.status,
+                error.message,
+                error.close || !body.is_end_stream(),
+            );
+        }
+    };
+    let internal_producer = access::internal_producer(&policy_request, &expected);
+    if parts.method == Method::POST && parts.uri.path() == "/web/markdown" {
+        if !access::token_matches(
+            access::presented_token(&borrowed, &target).as_bytes(),
+            &expected,
+        ) {
+            return reject(401, "No autorizado", true);
+        }
+        if admission
+            .body_length
+            .is_some_and(|n| n > dash::web::markdown::MAX_INPUT_BYTES)
+        {
+            return reject(413, "texto demasiado largo", true);
+        }
+    }
     if method == access::Method::Get && !body.is_end_stream() {
         // No GET endpoint consumes a body. Closing prevents it being mistaken for
         // a subsequent keep-alive request; this is explicit wire hardening.
         return reject(400, "JSON invalido", true);
+    }
+    if ws::is_upgrade(&parts.headers)
+        && let Some(route) = state.config.websocket.as_ref()
+    {
+        if parts.method != Method::GET {
+            return reject(400, "WebSocket invalido", true);
+        }
+        let allowed = match std::panic::catch_unwind(AssertUnwindSafe(|| {
+            (route.accepts)(parts.uri.path())
+        })) {
+            Ok(Some(allowed)) => allowed,
+            Ok(None) => return reject(404, "No encontrado", true),
+            Err(_) => return reject(500, "Error interno del tablero", true),
+        };
+        let protocol = match ws::pick_protocol(&parts.headers, allowed) {
+            Ok(protocol) => protocol,
+            Err(_) => return reject(400, "Subprotocolo no soportado", true),
+        };
+        let admission =
+            match std::panic::catch_unwind(AssertUnwindSafe(|| route.admission(protocol))) {
+                Ok(admission) => admission,
+                Err(_) => return reject(500, "Error interno del tablero", true),
+            };
+        let strict_origin = matches!(
+            admission,
+            WsAdmission::HandlerTokenOrigin | WsAdmission::DashboardTokenOrigin
+        );
+        if strict_origin || admission == WsAdmission::HandlerToken {
+            // GET admission already checked exactly one allowed Host.
+            let host = borrowed
+                .iter()
+                .find(|(key, _)| key.eq_ignore_ascii_case("host"))
+                .map(|(_, value)| *value)
+                .unwrap_or("");
+            let origins: Vec<_> = borrowed
+                .iter()
+                .filter(|(key, _)| key.eq_ignore_ascii_case("origin"))
+                .collect();
+            if origins.len() > 1
+                || (strict_origin && origins.is_empty())
+                || origins
+                    .iter()
+                    .any(|(_, origin)| !access::origin_matches_host(origin, host))
+            {
+                return reject(403, "Origen no permitido", true);
+            }
+        }
+        if matches!(
+            admission,
+            WsAdmission::Dashboard | WsAdmission::DashboardTokenOrigin
+        ) {
+            if let Some(error) = access::security_gate(&policy_request, &expected) {
+                return reject(error.status, error.message, true);
+            }
+            if admission == WsAdmission::DashboardTokenOrigin
+                && !access::token_matches(
+                    access::presented_token(&borrowed, &target).as_bytes(),
+                    &expected,
+                )
+            {
+                return reject(
+                    401,
+                    "No autorizado (token requerido para acceso remoto)",
+                    true,
+                );
+            }
+        }
+        return websocket(
+            state.clone(),
+            parts,
+            peer,
+            headers,
+            internal_producer,
+            protocol,
+            route.handler.clone(),
+        );
     }
     let mut budget = None;
     let mut raw_body = Bytes::new();
@@ -366,6 +483,8 @@ async fn dispatch(
         };
         let parsed = if raw.is_empty() {
             Some(serde_json::json!({}))
+        } else if parts.method == Method::POST && parts.uri.path() == "/web/markdown" {
+            dash::web::markdown::parse_request(&raw)
         } else {
             comandos_core::json::workspace_loads_bytes(&raw)
         };
@@ -407,6 +526,60 @@ async fn dispatch(
     }
 }
 
+fn websocket(
+    state: Arc<State>,
+    mut parts: http::request::Parts,
+    peer: SocketAddr,
+    headers: Vec<(String, String)>,
+    internal_producer: bool,
+    protocol: Option<&'static str>,
+    handler: WsHandler,
+) -> http::Response<OutputBody> {
+    let key = match ws::handshake_key(&parts.headers) {
+        Ok(key) => key,
+        Err(_) => return reject(400, "WebSocket invalido", true),
+    };
+    let Ok(permit) = state.websockets.clone().try_acquire_owned() else {
+        return reject(503, "Tablero ocupado", true);
+    };
+    let Some(upgrade) = parts.extensions.remove::<hyper::upgrade::OnUpgrade>() else {
+        return reject(400, "WebSocket invalido", true);
+    };
+    let request = WsRequest {
+        target: parts
+            .uri
+            .path_and_query()
+            .map(|p| p.as_str().to_owned())
+            .unwrap_or_default(),
+        peer,
+        headers,
+        protocol,
+        internal_producer,
+        shutdown: state.shutdown.clone(),
+    };
+    state
+        .ws_tasks
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .spawn(async move {
+            let _permit = permit;
+            if let Ok(stream) = ws::into_stream(upgrade).await {
+                let _ = AssertUnwindSafe(async move { handler(request, stream).await })
+                    .catch_unwind()
+                    .await;
+            }
+        });
+    let response = ws::switching_response(&key, protocol);
+    let (parts, _) = response.into_parts();
+    http::Response::from_parts(
+        parts,
+        OutputBody {
+            source: ReplyBody::Bytes(Bytes::new()),
+            done: false,
+        },
+    )
+}
+
 /// Run only on the supplied listener. The caller owns bind addresses, token
 /// loading, endpoint routing, and the shutdown signal. No implicit defaults.
 pub async fn serve(
@@ -419,6 +592,8 @@ pub async fn serve(
         || std::str::from_utf8(&config.token).is_err()
         || limits.connections == 0
         || limits.connections > Semaphore::MAX_PERMITS
+        || limits.websockets > Semaphore::MAX_PERMITS
+        || (config.websocket.is_some() && limits.websockets == 0)
         || limits.buffered_wire_bytes == 0
         || !(8192..=8 * 1024 * 1024).contains(&limits.header_bytes)
         || [
@@ -437,13 +612,26 @@ pub async fn serve(
         ));
     }
     let connections = Arc::new(Semaphore::new(limits.connections));
+    let token = dash::token::TokenCache::new(config.token.clone(), config.token_file.clone())?;
+    let (stop_connections, connection_shutdown) = watch::channel(false);
     let state = Arc::new(State {
         body_budget: Arc::new(Semaphore::new(limits.buffered_wire_bytes as usize)),
+        websockets: Arc::new(Semaphore::new(limits.websockets)),
+        ws_tasks: std::sync::Mutex::new(JoinSet::new()),
+        shutdown: connection_shutdown.clone(),
+        token,
         config,
     });
-    let (stop_connections, connection_shutdown) = watch::channel(false);
     let mut tasks = JoinSet::new();
+    let mut websocket_reap = tokio::time::interval(Duration::from_secs(1));
     let result = loop {
+        while state
+            .ws_tasks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .try_join_next()
+            .is_some()
+        {}
         if *shutdown.borrow() {
             break Ok(());
         }
@@ -452,6 +640,7 @@ pub async fn serve(
                 if changed.is_err() || *shutdown.borrow() { break Ok(()); }
             }
             _ = tasks.join_next(), if !tasks.is_empty() => {}
+            _ = websocket_reap.tick() => {}
             accepted = listener.accept() => {
                 let (stream,peer) = match accepted { Ok(pair)=>pair, Err(error)=>break Err(error) };
                 let Ok(permit) = connections.clone().try_acquire_owned() else { drop(stream); continue; };
@@ -470,7 +659,7 @@ pub async fn serve(
                         .max_headers(100).max_buf_size(state.config.limits.header_bytes)
                         .pipeline_flush(false);
                     let stream = write_timeout::WriteTimeout::new(stream, state.config.limits.write_timeout);
-                    let connection = builder.serve_connection(TokioIo::new(stream),service);
+                    let connection = builder.serve_connection(TokioIo::new(stream),service).with_upgrades();
                     tokio::pin!(connection);
                     tokio::select! {
                         _ = &mut connection => {}
@@ -493,6 +682,21 @@ pub async fn serve(
     {
         tasks.abort_all();
         while tasks.join_next().await.is_some() {}
+    }
+    let mut websocket_tasks = std::mem::take(
+        &mut *state
+            .ws_tasks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+    );
+    if timeout(state.config.limits.shutdown_grace, async {
+        while websocket_tasks.join_next().await.is_some() {}
+    })
+    .await
+    .is_err()
+    {
+        websocket_tasks.abort_all();
+        while websocket_tasks.join_next().await.is_some() {}
     }
     result
 }

@@ -1,0 +1,295 @@
+{
+  "pin": "854212b5398db869e724459bf8605a7b9394ee12",
+  "originalCJS_SHA256": "54024241c4f88930671a069b1b84f2aa39752702716b2ac906b1929bc2ccf25b",
+  "inputCases": 36,
+  "cases": [
+    {
+      "id": "0",
+      "text": "[gen](https://a\ud800.example/ok) <a data-news-href=\"https://xn--a-rc4g.example/ok\" href=\"javascript:alert(1)\" onclick=\"x\">forged</a>",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">gen</a> &lt;a data-news-href=\"<a href=\"https://xn--a-rc4g.example/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example/ok</a>\" href=\"javascript:alert(1)\" onclick=\"x\"&gt;forged&lt;/a&gt;</p>\n",
+      "candidate": "<p><a href=\"https://xn--a-rc4g.example/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">gen</a> &lt;a data-news-href=\"<a href=\"https://xn--a-rc4g.example/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://xn--a-rc4g.example/ok</a>\" href=\"javascript:alert(1)\" onclick=\"x\"&gt;forged&lt;/a&gt;</p>\n",
+      "difference": "nodo 7: \"      #text \\\"https://a\\\\u{e000}\\\\u{f0000}.example/ok\\\"\" \u2260 \"      #text \\\"https://xn--a-rc4g.example/ok\\\"\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "1",
+      "text": "<a data-news-href=\"https://xn--a-rc4g.example/ok\">forged only</a>",
+      "originalNode": "<p>&lt;a data-news-href=\"<a href=\"https://xn--a-rc4g.example/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example/ok</a>\"&gt;forged only&lt;/a&gt;</p>\n",
+      "candidate": "<p>&lt;a data-news-href=\"<a href=\"https://xn--a-rc4g.example/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://xn--a-rc4g.example/ok</a>\"&gt;forged only&lt;/a&gt;</p>\n",
+      "difference": "nodo 5: \"      #text \\\"https://a\\\\u{e000}\\\\u{f0000}.example/ok\\\"\" \u2260 \"      #text \\\"https://xn--a-rc4g.example/ok\\\"\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "2",
+      "text": "[gen](https://a\ud800.example/ok) &lt;a data-news-href=&quot;https://xn--a-rc4g.example/ok&quot; onload=&quot;x&quot;&gt;forged&lt;/a&gt;",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">gen</a> &lt;a data-news-href=\"<a href=\"https://xn--a-rc4g.example/ok&amp;quot\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example/ok&amp;quot</a>; onload=\"x\"&gt;forged&lt;/a&gt;</p>\n",
+      "candidate": "<p><a href=\"https://xn--a-rc4g.example/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">gen</a> &lt;a data-news-href=\"<a href=\"https://xn--a-rc4g.example/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://xn--a-rc4g.example/ok</a>\" onload=\"x\"&gt;forged&lt;/a&gt;</p>\n",
+      "difference": "nodo 6: \"    <a href=\\\"https://xn--a-rc4g.example/ok&quot\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\" \u2260 \"    <a href=\\\"https://xn--a-rc4g.example/ok\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "3",
+      "text": "[gen](https://a\ud800.example/ok)\n\n```html\n<a data-news-href=\"https://xn--a-rc4g.example/ok\">code</a>\n```",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">gen</a></p>\n<pre><code class=\"language-html\">&lt;a data-news-href=\"https://xn--a-rc4g.example/ok\"&gt;code&lt;/a&gt;\n</code></pre>\n",
+      "candidate": "<p><a href=\"https://xn--a-rc4g.example/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">gen</a></p>\n<pre><code class=\"language-html\">&lt;a data-news-href=\"https://xn--a-rc4g.example/ok\"&gt;code&lt;/a&gt;\n</code></pre>\n",
+      "difference": null,
+      "nodeDOMError": null
+    },
+    {
+      "id": "4",
+      "text": "[data-news-href=\"javascript:alert(1)\" onclick=\"x\"](https://a\ud800.example/ok)",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">data-news-href=\"javascript:alert(1)\" onclick=\"x\"</a></p>\n",
+      "candidate": "<p><a href=\"https://xn--a-rc4g.example/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">data-news-href=\"javascript:alert(1)\" onclick=\"x\"</a></p>\n",
+      "difference": null,
+      "nodeDOMError": null
+    },
+    {
+      "id": "5",
+      "text": "[x](https://a\ud800.example/ok \" data-news-href=\\\"javascript:alert(1)\\\" > <img src=x onerror=x>\")",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/ok\" title=\"data-news-href=&quot;javascript:alert(1)&quot; > <img src=x onerror=x>\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://xn--a-rc4g.example/ok\" title=\" data-news-href=&quot;javascript:alert(1)&quot; &gt; &lt;img src=x onerror=x&gt;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": null,
+      "nodeDOMError": null
+    },
+    {
+      "id": "6",
+      "text": "[x](https://a\ud800.example/ok \"&#34; data-news-href=&#34;https://evil.example/&#34;\")",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/ok\" title=\"&quot; data-news-href=&quot;https://evil.example/&quot;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://xn--a-rc4g.example/ok\" title=\"&quot; data-news-href=&quot;https://evil.example/&quot;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": null,
+      "nodeDOMError": null
+    },
+    {
+      "id": "7",
+      "text": "[x](javascript:alert(1) \"data-news-href=\"https://xn--a-rc4g.example\"\")",
+      "originalNode": "<p>[x](javascript:alert(1) \"data-news-href=\"<a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\"\")</p>\n",
+      "candidate": "<p>[x](javascript:alert(1) \"data-news-href=\"<a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://xn--a-rc4g.example</a>\"\")</p>\n",
+      "difference": "nodo 5: \"      #text \\\"https://a\\\\u{e000}\\\\u{f0000}.example\\\"\" \u2260 \"      #text \\\"https://xn--a-rc4g.example\\\"\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "8",
+      "text": "[x](data:text/html,%3Ca%20href=javascript:alert(1)%3Ex)",
+      "originalNode": "<p>[x](data:text/html,%3Ca%20href=javascript:alert(1)%3Ex)</p>\n",
+      "candidate": "<p>[x](data:text/html,%3Ca%20href=javascript:alert(1)%3Ex)</p>\n",
+      "difference": null,
+      "nodeDOMError": null
+    },
+    {
+      "id": "9",
+      "text": "[x](vbscript:alert(1))",
+      "originalNode": "<p>[x](vbscript:alert(1))</p>\n",
+      "candidate": "<p>[x](vbscript:alert(1))</p>\n",
+      "difference": null,
+      "nodeDOMError": null
+    },
+    {
+      "id": "10",
+      "text": "[x](https://a\ud800.example/p&#x1f;tail)",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/p&amp;#x1f;tail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a rel=\"noopener noreferrer nofollow\" target=\"_blank\">x</a></p>\n",
+      "difference": "nodo 3: \"    <a href=\\\"https://xn--a-rc4g.example/p&#x1f;tail\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\" \u2260 \"    <a rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "11",
+      "text": "[x](https://a\ud800.example/p&#9;tail)",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/p%09tail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a rel=\"noopener noreferrer nofollow\" target=\"_blank\">x</a></p>\n",
+      "difference": "nodo 3: \"    <a href=\\\"https://xn--a-rc4g.example/p%09tail\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\" \u2260 \"    <a rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "12",
+      "text": "[x](https://a\ud800.example/p&#10;tail)",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/p%0Atail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a rel=\"noopener noreferrer nofollow\" target=\"_blank\">x</a></p>\n",
+      "difference": "nodo 3: \"    <a href=\\\"https://xn--a-rc4g.example/p%0Atail\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\" \u2260 \"    <a rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "13",
+      "text": "[x](https://a\ud800.example/p&#13;tail)",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/p%0Dtail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a rel=\"noopener noreferrer nofollow\" target=\"_blank\">x</a></p>\n",
+      "difference": "nodo 3: \"    <a href=\\\"https://xn--a-rc4g.example/p%0Dtail\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\" \u2260 \"    <a rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "14",
+      "text": "[x](https://a\ud800.example/p&#34;tail)",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/p%22tail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://xn--a-rc4g.example/p&quot;tail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": "nodo 3: \"    <a href=\\\"https://xn--a-rc4g.example/p%22tail\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\" \u2260 \"    <a href=\\\"https://xn--a-rc4g.example/p\\\\\\\"tail\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "15",
+      "text": "[x](https://a\ud800.example/p&#39;tail)",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/p'tail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://xn--a-rc4g.example/p'tail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": null,
+      "nodeDOMError": null
+    },
+    {
+      "id": "16",
+      "text": "[x](https://a\ud800.example/p&#32;tail)",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/p%20tail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://xn--a-rc4g.example/p tail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": "nodo 3: \"    <a href=\\\"https://xn--a-rc4g.example/p%20tail\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\" \u2260 \"    <a href=\\\"https://xn--a-rc4g.example/p tail\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "17",
+      "text": "[x](https://a\ud800.example/p&#x7f;tail)",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/p&amp;#x7f;tail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a rel=\"noopener noreferrer nofollow\" target=\"_blank\">x</a></p>\n",
+      "difference": "nodo 3: \"    <a href=\\\"https://xn--a-rc4g.example/p&#x7f;tail\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\" \u2260 \"    <a rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "18",
+      "text": "[x](<https://a\ud800.example/path \" data-news-href=\"javascript:alert(1)\">)",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/path%20%22%20data-news-href=%22javascript:alert(1)%22\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://xn--a-rc4g.example/path &quot; data-news-href=&quot;javascript:alert(1)&quot;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": "nodo 3: \"    <a href=\\\"https://xn--a-rc4g.example/path%20%22%20data-news-href=%22javascript:alert(1)%22\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\" \u2260 \"    <a href=\\\"https://xn--a-rc4g.example/path \\\\\\\" data-news-href=\\\\\\\"javascript:alert(1)\\\\\\\"\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "19",
+      "text": "[x](<https://a\ud800.example/path spaces>)",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/path%20spaces\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://xn--a-rc4g.example/path spaces\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": "nodo 3: \"    <a href=\\\"https://xn--a-rc4g.example/path%20spaces\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\" \u2260 \"    <a href=\\\"https://xn--a-rc4g.example/path spaces\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "20",
+      "text": "[x](<https://a\ud800.example/path%20spaces%22quotes>)",
+      "originalNode": "<p><a href=\"https://xn--a-rc4g.example/path%20spaces%22quotes\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://xn--a-rc4g.example/path%20spaces%22quotes\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": null,
+      "nodeDOMError": null
+    },
+    {
+      "id": "21",
+      "text": "[`unmatched](https://example.org/a\ud800/\\`tail)",
+      "originalNode": "<p>[<code>unmatched](https://example.org/a\ud800/\\</code>tail)</p>\n",
+      "candidate": "<p>[<code>unmatched](https://example.org/a\ud800/\\</code>tail)</p>\n",
+      "difference": null,
+      "nodeDOMError": null
+    },
+    {
+      "id": "22",
+      "text": "[\\`escaped](https://example.org/a\ud800/\\`tail)",
+      "originalNode": "<p><a href=\"https://example.org/a%EF%BF%BD/%60tail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">`escaped</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/a%EF%BF%BD/`tail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">`escaped</a></p>\n",
+      "difference": "nodo 3: \"    <a href=\\\"https://example.org/a%EF%BF%BD/%60tail\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\" \u2260 \"    <a href=\\\"https://example.org/a%EF%BF%BD/`tail\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "23",
+      "text": "[`` x ] ``](https://example.org/a\ud800/\\`tail)",
+      "originalNode": "<p><a href=\"https://example.org/a%EF%BF%BD/%60tail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\"><code>x ]</code></a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/a%EF%BF%BD/`tail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\"><code>x ]</code></a></p>\n",
+      "difference": "nodo 3: \"    <a href=\\\"https://example.org/a%EF%BF%BD/%60tail\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\" \u2260 \"    <a href=\\\"https://example.org/a%EF%BF%BD/`tail\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "24",
+      "text": "[[nested [deep]]](https://example.org/a\ud800/\\`tail)",
+      "originalNode": "<p><a href=\"https://example.org/a%EF%BF%BD/%60tail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">[nested [deep]]</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/a%EF%BF%BD/`tail\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">[nested [deep]]</a></p>\n",
+      "difference": "nodo 3: \"    <a href=\\\"https://example.org/a%EF%BF%BD/%60tail\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\" \u2260 \"    <a href=\\\"https://example.org/a%EF%BF%BD/`tail\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "25",
+      "text": "[unmatched ` end](https://example.org/a\ud800/\\`tail)",
+      "originalNode": "<p>[unmatched <code> end](https://example.org/a\ud800/\\</code>tail)</p>\n",
+      "candidate": "<p>[unmatched <code> end](https://example.org/a\ud800/\\</code>tail)</p>\n",
+      "difference": null,
+      "nodeDOMError": null
+    },
+    {
+      "id": "26",
+      "text": "[x](https://example.org/&#4294967296;)",
+      "originalNode": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/&amp;#4294967296;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": "nodo 3: \"    <a href=\\\"https://example.org/%EF%BF%BD\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\" \u2260 \"    <a href=\\\"https://example.org/&#4294967296;\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "27",
+      "text": "[x](https://example.org/&#x100000000;)",
+      "originalNode": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/&amp;#x100000000;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": "nodo 3: \"    <a href=\\\"https://example.org/%EF%BF%BD\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\" \u2260 \"    <a href=\\\"https://example.org/&#x100000000;\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "28",
+      "text": "[x](https://example.org/&#999999999999999999;)",
+      "originalNode": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/&amp;#999999999999999999;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": "nodo 3: \"    <a href=\\\"https://example.org/%EF%BF%BD\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\" \u2260 \"    <a href=\\\"https://example.org/&#999999999999999999;\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "29",
+      "text": "[x](https://example.org/&#x110000;)",
+      "originalNode": "<p><a href=\"https://example.org/&amp;#x110000;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/&amp;#x110000;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": null,
+      "nodeDOMError": null
+    },
+    {
+      "id": "30",
+      "text": "[x](https://example.org/&#xDFFF;)",
+      "originalNode": "<p><a href=\"https://example.org/&amp;#xDFFF;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/&amp;#xDFFF;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": null,
+      "nodeDOMError": null
+    },
+    {
+      "id": "31",
+      "text": "[x][a]\n\n[a]: https://example.org/&#xe000;&#xf0000;\n  \"&#xe000;&#xe000;&#xf0000;\"",
+      "originalNode": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"\ue000\ue000\udb80\udc00\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"\ue000\ue000\udb80\udc00\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": null,
+      "nodeDOMError": null
+    },
+    {
+      "id": "32",
+      "text": "[x][A]\n\n[a]: <https://example.org/\ue000\udb80\udc00>\n \"title &#xe000;\"",
+      "originalNode": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title \ue000\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" title=\"title \ue000\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": "nodo 3: \"    <a href=\\\"https://example.org/%EE%80%80%F3%B0%80%80\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\" title=\\\"title \\\\u{e000}\\\\u{e000}\\\">\" \u2260 \"    <a href=\\\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\\\" rel=\\\"noopener noreferrer nofollow\\\" target=\\\"_blank\\\" title=\\\"title \\\\u{e000}\\\\u{e000}\\\">\"",
+      "nodeDOMError": null
+    },
+    {
+      "id": "33",
+      "text": "[x](https://example.org/\ue000&#xe000;\udb80\udc00 \"title \ue000&#xe000;&#xf0000;\")",
+      "originalNode": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" title=\"title \ue000\ue000\udb80\udc00\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" title=\"title \ue000\ue000\udb80\udc00\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": null,
+      "nodeDOMError": null
+    },
+    {
+      "id": "34",
+      "text": "[x](https://example.org/&#xe000;\ue000\udb80\udc00)",
+      "originalNode": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": null,
+      "nodeDOMError": null
+    },
+    {
+      "id": "35",
+      "text": "[x](https://example.org/\\&amp;&#xe000;)",
+      "originalNode": "<p><a href=\"https://example.org/&amp;amp;%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/&amp;amp;%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "difference": null,
+      "nodeDOMError": null
+    }
+  ]
+}

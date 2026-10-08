@@ -1,0 +1,21 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "code": "dash.time.time = lambda: 1791115200\n\nimport json\n_out = []\ndash.register_app_tab(\"p2f\", \"Proyecto ñ\", kind=\"project\", cwd=\"/tmp\")\n_out.append(dash.write_tab_metadata(\"ssh-x\", \"ssh\", host=\"x\"))\ndash.register_app_tab(\"term-r1\", None)\ndash.register_app_tab(\"otra\", \"Nueva\", kind=\"nave\")\ndash.workspace_sync()\nopen(dash.os.path.join(dash.os.environ[\"HOME\"], \"tmux.log\"), \"w\").close()\n_out.append(dash.close_app_tab(\"p2f\"))\n\n_c = dash.workspace_store().current()\n_out.append(_c and {\"revision\": _c[\"revision\"], \"document\": _c[\"document\"]})\n\nimport os\n_calls = []\nfor _r in open(os.path.join(os.environ['HOME'], 'tmux.log')).read().split('\\0\\x1e\\0'):\n    if not _r:\n        continue\n    _args = _r.split('\\0')[1:]\n    while len(_args) >= 2 and _args[0] in ('-f', '-S', '-L'):\n        _args = _args[2:]\n    _calls.append(_args)\nprint(json.dumps({'result': _out, 'calls': _calls}))\n\n",
+      "effect_files": [
+        "app-tabs.json",
+        "app-tabs-meta.json",
+        "app-tabs-history.json",
+        "app-tab-open.json",
+        "app-tab-close.json"
+      ],
+      "fakebin": [],
+      "fixture_env": []
+    },
+    "before_sha256": "cd29e768975b08231c16b8b92773fa5fb203c6df1add61dca5b766186fb5ddc3"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJyZXN1bHRcIjogW3tcImtpbmRcIjogXCJzc2hcIiwgXCJob3N0XCI6IFwieFwifSwgbnVsbCwge1wicmV2aXNpb25cIjogMiwgXCJkb2N1bWVudFwiOiB7XCJncm91cHNcIjogW3tcImlkXCI6IFwiZ3JvdXAtbG9jYWxcIiwgXCJ0cmVlXCI6IHtcInRhYklkXCI6IFwibG9jYWxcIiwgXCJ0eXBlXCI6IFwidGFiXCJ9fSwge1wiaWRcIjogXCJncm91cC1vdHJhXCIsIFwidHJlZVwiOiB7XCJ0YWJJZFwiOiBcIm90cmFcIiwgXCJ0eXBlXCI6IFwidGFiXCJ9fSwge1wiaWRcIjogXCJncm91cC10ZXJtLXIxXCIsIFwidHJlZVwiOiB7XCJ0YWJJZFwiOiBcInRlcm0tcjFcIiwgXCJ0eXBlXCI6IFwidGFiXCJ9fV0sIFwic2NoZW1hXCI6IDEsIFwidGFic1wiOiB7XCJsb2NhbFwiOiB7XCJsYWJlbFwiOiBcIlxcdTIzMDIgbG9jYWxcIiwgXCJwYW5lS2V5c1wiOiBbXSwgXCJzZXNzaW9uXCI6IFwibG9jYWxcIn0sIFwib3RyYVwiOiB7XCJsYWJlbFwiOiBcIk90cmFcIiwgXCJwYW5lS2V5c1wiOiBbXSwgXCJzZXNzaW9uXCI6IFwib3RyYVwifSwgXCJ0ZXJtLXIxXCI6IHtcImxhYmVsXCI6IFwidGVybS1yMVwiLCBcInBhbmVLZXlzXCI6IFtdLCBcInNlc3Npb25cIjogXCJ0ZXJtLXIxXCJ9fX19XSwgXCJjYWxsc1wiOiBbW1wibGlzdC1zZXNzaW9uc1wiLCBcIi1GXCIsIFwiI3tzZXNzaW9uX25hbWV9XCJdLCBbXCJkaXNwbGF5LW1lc3NhZ2VcIiwgXCItcFwiLCBcIi10XCIsIFwiPXAyZjpcIiwgXCIje3BhbmVfY3VycmVudF9wYXRofVwiXV19XG4iLCJ0cmVlIjp7ImFwcC10YWItY2xvc2UuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjM4NCwiYm9keV9iNjQiOiJleUp6WlhOemFXOXVJam9nSW5BeVppSXNJQ0owY3lJNklERTNPVEV4TVRVeU1EQjkifSwiYXBwLXRhYi1vcGVuLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjozODQsImJvZHlfYjY0IjoiZXlKelpYTnphVzl1SWpvZ0ltOTBjbUVpTENBaWJHRmlaV3dpT2lBaVRuVmxkbUVpTENBaWRITWlPaUF4TnpreE1URTFNakF3TENBaWJXVjBZU0k2SUhzaWEybHVaQ0k2SUNKemFHVnNiQ0lzSUNKamQyUWlPaUFpTDNOeWRpSjlmUT09In0sImFwcC10YWJzLWhpc3RvcnkuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJXM3NpYzJWemMybHZiaUk2SUNKd01tWWlMQ0FpYkdGaVpXd2lPaUFpVUhKdmVXVmpkRzhnWEhVd01HWXhJaXdnSW1OM1pDSTZJQ0k4U0U5TlJUNGlMQ0FpWVdkbGJuUWlPaUFpWTJ4aGRXUmxJaXdnSW5KbFlYTnZiaUk2SUNKamJHOXpaV1FpTENBaWRITWlPaUF4TnpreE1URTFNakF3ZlN3Z2V5SnpaWE56YVc5dUlqb2dJblpwWldwaElpd2dJbXhoWW1Wc0lqb2dJbFpwWldwaElpd2dJbU4zWkNJNklDSXZkaUlzSUNKaFoyVnVkQ0k2SUNKamIyUmxlQ0lzSUNKMGN5STZJREV3TENBaWNtVmhjMjl1SWpvZ0ltTnNiM05sWkNKOVhRPT0ifSwiYXBwLXRhYnMtbWV0YS5qc29uIjp7ImtpbmQiOiJmaWxlIiwibW9kZSI6NDM2LCJib2R5X2I2NCI6ImV5SnZkSEpoSWpvZ2V5SnJhVzVrSWpvZ0luTm9aV3hzSWl3Z0ltTjNaQ0k2SUNJdmMzSjJJbjBzSUNKemMyZ3RlQ0k2SUhzaWEybHVaQ0k2SUNKemMyZ2lMQ0FpYUc5emRDSTZJQ0o0SW4wc0lDSjBaWEp0TFhJeElqb2dleUpyYVc1a0lqb2dJbk5qY21GMFkyZ2lmWDA9In0sImFwcC10YWJzLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXlKc2IyTmhiQ0k2SUNKc2IyTmhiQ0lzSUNKdmRISmhJam9nSWs5MGNtRWlMQ0FpZEdWeWJTMXlNU0k2SUNKMFpYSnRMWEl4SW4wPSJ9fX0="
+}

@@ -1,6 +1,7 @@
 //! Una conexión a `app-state.sqlite3` para todas las rutas nativas, con la
 //! puerta de esquema: si el Python migró a una versión que este binario no
 //! conoce, se rechaza (y el frente reenvía todo al heredado).
+use super::EventFactsFactory;
 use crate::{
     Reply, Request,
     events_routes::{EventRoutes, NativeFacts, Unanswered},
@@ -74,11 +75,17 @@ pub fn known_versions() -> BTreeSet<i64> {
 
 pub struct StateBackend {
     pub conn: Connection,
+    unified: bool,
     /// Se crea al primer uso: su `import_done` es el `_EVENTS_V2_LEGACY` del Python.
-    events: Option<EventRoutes<NativeFacts>>,
+    events: Option<CachedEvents>,
     /// `focus_progress.ensure_policy` de `pomodoro_store()` ya se hizo en este
     /// proceso (el Python lo repite por hilo; es idempotente).
     pub(crate) pomodoro_policy: bool,
+}
+
+enum CachedEvents {
+    Native(EventRoutes<NativeFacts>),
+    Injected(EventRoutes<Box<dyn crate::events_routes::Facts + Send>>),
 }
 
 impl StateBackend {
@@ -87,9 +94,13 @@ impl StateBackend {
     pub fn open(path: &Path, now_seconds: f64) -> Result<Self, Refusal> {
         let mut last = String::new();
         for attempt in 0..3u64 {
+            let location = comandos_store::migrate::resolve_configured(path)
+                .map_err(|e| resolution_refusal(path, e.to_string()))?;
+            let unified = matches!(location, comandos_store::migrate::DbLocation::Unified(_));
             let conn = state::connect(path).map_err(|e| Refusal::Unopened(e.to_string()))?;
             let backend = Self {
                 conn,
+                unified,
                 events: None,
                 pomodoro_policy: false,
             };
@@ -111,7 +122,22 @@ impl StateBackend {
     /// una docena de filas (sin caché de sentencias: el rusqlite del
     /// workspace no activa la feature `cache`).
     pub fn admit(&self) -> Result<(), Refusal> {
-        let known = known_versions();
+        let uv = comandos_store::usage::schema_version(&self.conn)
+            .map_err(|e| Refusal::Unopened(e.to_string()))?;
+        if uv > comandos_store::usage::SCHEMA_VERSION {
+            return Err(Refusal::Newer {
+                found: uv,
+                known: comandos_store::usage::SCHEMA_VERSION,
+            });
+        }
+        let known = if self.unified {
+            state::UNIFIED_MIGRATIONS
+                .iter()
+                .map(|m| m.version)
+                .collect()
+        } else {
+            known_versions()
+        };
         let found = self
             .conn
             .prepare("SELECT version FROM schema_migrations")
@@ -137,12 +163,83 @@ impl StateBackend {
     /// Las cuatro rutas de eventos y marcas, en el hilo del worker.
     pub fn events(
         &mut self,
+        home: &Path,
         legacy: &Path,
         request: &Request,
     ) -> Result<Option<Reply>, Unanswered> {
-        let routes = self
-            .events
-            .get_or_insert_with(|| EventRoutes::new(legacy.to_path_buf(), NativeFacts));
-        routes.handle_native(&self.conn, request)
+        self.events_with_facts(home, legacy, request, None)
+    }
+
+    pub(super) fn events_with_facts(
+        &mut self,
+        home: &Path,
+        legacy: &Path,
+        request: &Request,
+        factory: Option<&EventFactsFactory>,
+    ) -> Result<Option<Reply>, Unanswered> {
+        let routes = self.events.get_or_insert_with(|| match factory {
+            None => CachedEvents::Native(EventRoutes::new_domain(
+                home.to_path_buf(),
+                legacy.to_path_buf(),
+                NativeFacts,
+            )),
+            Some(make) => CachedEvents::Injected(EventRoutes::new_domain(
+                home.to_path_buf(),
+                legacy.to_path_buf(),
+                make(),
+            )),
+        });
+        match routes {
+            CachedEvents::Native(routes) => routes.handle_native(&self.conn, request),
+            CachedEvents::Injected(routes) => routes.handle_native(&self.conn, request),
+        }
+    }
+}
+
+// Conserva la clase de rechazo de los carriles anteriores, con un probe que
+// no abre SQLite ni SHM en la fuente rechazada.
+pub(super) fn resolution_refusal(path: &Path, error: String) -> Refusal {
+    if !error.contains("versión más nueva") {
+        return Refusal::Unopened(error);
+    }
+    let path = if path.is_absolute() {
+        path.to_owned()
+    } else {
+        match std::env::current_dir() {
+            Ok(cwd) => cwd.join(path),
+            Err(_) => return Refusal::Unopened(error),
+        }
+    };
+    let Some(home) = path.parent() else {
+        return Refusal::Unopened(error);
+    };
+    let probe = comandos_store::unified::with_readonly_db(home, &path, |c| {
+        let uv: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if uv > 11 && uv != 1000 {
+            return Ok(Some((uv, 11)));
+        }
+        let has: bool = c.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='schema_migrations')",
+            [],
+            |r| r.get(0),
+        )?;
+        if !has {
+            return Ok(None);
+        }
+        let versions = c
+            .prepare("SELECT version FROM schema_migrations")?
+            .query_map([], |r| r.get::<_, i64>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let unified = versions.iter().any(|v| (100..=104).contains(v));
+        let known = if unified { 104 } else { 11 };
+        Ok(versions
+            .into_iter()
+            .filter(|v| *v > known && *v != 1000)
+            .max()
+            .map(|found| (found, known)))
+    });
+    match probe {
+        Ok(Some((found, known))) => Refusal::Newer { found, known },
+        _ => Refusal::Unopened(error),
     }
 }

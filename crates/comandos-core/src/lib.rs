@@ -27,3 +27,5 @@ pub mod malloc_tuning;
 pub mod repo;
 pub mod text;
 pub mod usage_state;
+
+pub mod web_assets;

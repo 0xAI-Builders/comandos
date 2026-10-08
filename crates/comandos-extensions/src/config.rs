@@ -22,11 +22,15 @@ pub fn err(path: &Path) -> String {
     format!("Invalid configuration: {}", path.display())
 }
 pub fn private_dir(path: &Path) -> Result<()> {
+    if path.symlink_metadata().is_err() {
+        crate::mutations::before(crate::mutations::Mutation::Directory { path, mode: 0o700 })?;
+    }
     fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
         .create(path)
-        .map_err(|_| err(path))
+        .map_err(|_| err(path))?;
+    crate::mutations::after(path)
 }
 pub fn temporary(parent: &Path, prefix: &str) -> PathBuf {
     parent.join(format!(
@@ -41,6 +45,7 @@ impl SyncLock {
         let root = state_dir(home);
         private_dir(&root)?;
         let p = root.join("sync.lock");
+        crate::mutations::before(crate::mutations::Mutation::Control { path: &p })?;
         let f = OpenOptions::new()
             .read(true)
             .write(true)
@@ -60,6 +65,19 @@ impl Drop for SyncLock {
     }
 }
 pub fn read_bytes(path: &Path) -> Result<Option<Vec<u8>>> {
+    if let Some((home, name)) = state_document(path) {
+        let bytes = comandos_store::domains::DomainStore { home: &home }
+            .document(&name, "extensions", path.to_owned())
+            .read_readonly()
+            .map_err(|e| e.to_string())?;
+        if bytes.as_ref().is_some_and(|b| b.len() > 16 * 1024 * 1024) {
+            return Err(err(path));
+        }
+        return Ok(bytes);
+    }
+    legacy_read_bytes(path)
+}
+fn legacy_read_bytes(path: &Path) -> Result<Option<Vec<u8>>> {
     let f = match File::open(path) {
         Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -80,10 +98,87 @@ pub fn json_bytes(value: &Value) -> Result<Vec<u8>> {
     Ok(b)
 }
 pub fn private_write(path: &Path, bytes: &[u8]) -> Result<()> {
+    if let Some((home, name)) = state_document(path) {
+        return write_state_with(&home, &name, path, bytes, || {
+            legacy_private_write(path, bytes)
+        });
+    }
+    legacy_private_write(path, bytes)
+}
+/// Sólo documentos de estado catalogados; secretos, respaldos y configuración quedan archivos.
+pub(crate) fn state_document(path: &Path) -> Option<(PathBuf, String)> {
+    let components = path.components().collect::<Vec<_>>();
+    let marker = [".local", "state", "comandos", "extensions"];
+    let at = components.windows(4).position(|parts| {
+        parts
+            .iter()
+            .zip(marker)
+            .all(|(part, text)| part.as_os_str() == text)
+    })?;
+    let home: PathBuf = components.iter().take(at).collect();
+    if !home.is_absolute() {
+        return None;
+    }
+    let rel = path.strip_prefix(state_dir(&home)).ok()?;
+    let normal = matches!(
+        rel.to_str(),
+        Some("snapshot.json" | "skills.json" | "client-policies.json" | "last-check.json")
+    );
+    let size =
+        rel.parent() == Some(Path::new("sizes")) && rel.file_name()?.to_str()?.ends_with(".json");
+    if !normal && !size {
+        return None;
+    }
+    Some((home, format!("state/extensions/{}", rel.to_str()?)))
+}
+pub(crate) fn write_state_with(
+    home: &Path,
+    name: &str,
+    path: &Path,
+    bytes: &[u8],
+    legacy: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    let mut lock = path.as_os_str().to_owned();
+    lock.push(".lock");
+    crate::mutations::before(crate::mutations::Mutation::Control {
+        path: Path::new(&lock),
+    })?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    comandos_store::domains::caller::write(
+        home,
+        "extensions",
+        Path::new(&lock),
+        || legacy().map_err(comandos_store::Error::Validation),
+        |db, origin| {
+            let now = i64::try_from(now).unwrap_or(i64::MAX);
+            crate::mutations::document(home, db, name, bytes, origin, now)
+                .map_err(comandos_store::Error::Validation)?;
+            comandos_store::unified::doc_put(db, name, "extensions", bytes, origin, now).map(|_| ())
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    crate::mutations::document_committed(name)
+}
+fn legacy_private_write(path: &Path, bytes: &[u8]) -> Result<()> {
+    crate::mutations::before(crate::mutations::Mutation::File {
+        path,
+        bytes,
+        mode: 0o600,
+    })?;
     let parent = path.parent().ok_or_else(|| err(path))?;
     private_dir(parent)?;
     let (tmp, mut file) = loop {
         let tmp = temporary(parent, "comandos");
+        if tmp.symlink_metadata().is_err() {
+            crate::mutations::before(crate::mutations::Mutation::File {
+                path: &tmp,
+                bytes,
+                mode: 0o600,
+            })?;
+        }
         match OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -99,13 +194,19 @@ pub fn private_write(path: &Path, bytes: &[u8]) -> Result<()> {
         file.write_all(bytes)
             .and_then(|_| file.sync_all())
             .map_err(|_| err(path))?;
+        crate::mutations::after(&tmp)?;
+        crate::mutations::before(crate::mutations::Mutation::Move {
+            source: &tmp,
+            target: path,
+        })?;
         fs::rename(&tmp, path).map_err(|_| err(path))?;
         File::open(parent)
             .and_then(|f| f.sync_all())
             .map_err(|_| err(path))
     })();
     let _ = fs::remove_file(tmp);
-    result
+    result?;
+    crate::mutations::after(path)
 }
 pub fn save_json(path: &Path, value: &Value) -> Result<()> {
     private_write(path, &json_bytes(value)?)
@@ -143,6 +244,13 @@ pub fn replace_config(
             "{name}.{}",
             &format!("{:x}", Sha256::digest(before))[..16]
         ));
+        if backup.symlink_metadata().is_err() {
+            crate::mutations::before(crate::mutations::Mutation::File {
+                path: &backup,
+                bytes: before,
+                mode: 0o600,
+            })?;
+        }
         match OpenOptions::new()
             .write(true)
             .create_new(true)

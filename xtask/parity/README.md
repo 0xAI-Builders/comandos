@@ -5,8 +5,10 @@ privadas de `~/.claude/hooks`.
 
 ```
 cargo build -p comandos-cli
-cargo run -p xtask -- parity --fixture xtask/parity/frente.jsonl --hooks ~/.claude/hooks [--keep] [--comandos RUTA] [--state-db RUTA] [--usage-db RUTA] [--no-native]
+cargo run -p xtask -- parity --fixture xtask/parity/frente.jsonl [--fixture xtask/parity/2f/tabs.jsonl …] --hooks ~/.claude/hooks [--keep] [--comandos RUTA] [--state-db RUTA] [--usage-db RUTA] [--no-native]
 ```
+
+- `--fixture <ruta>` es repetible: las líneas se ejecutan en el orden de los archivos.
 
 - `--state-db <ruta>`: copia de solo lectura (backup de SQLite) de la base de estado a los dos
   HOME; usar con `~/.local/state/comandos/app-state.sqlite3`.
@@ -49,6 +51,15 @@ archivo temporal (usar `--out` para añadir a `docs/verification/rss.jsonl`).
 | `expect` | `same` (estado + todos los valores de `content-type`/`content-length`/`cache-control`/`connection` + cuerpo), `static-accepted` (estado + cuerpo), `status-only` (solo estado), `skip` |
 | `forwarded` | `true` si el frente la reenvía: solo si responde 502 «Servidor heredado no disponible» → `SKIP` |
 | `reason` | texto para `skip` |
+| `setup` | lista de órdenes de tmux (sin `tmux`), p. ej. `[["new-session","-d","-s","p2f"]]`: antes de la línea, cada una corre en los **dos** servidores tmux privados (`-f /dev/null -S <socket de la copia>`, con entorno limpio: HOME de la copia, `PATH=/usr/bin:/bin`, `SHELL=/bin/sh`, sin `DISPLAY` ni DBus; los servidores del arranque nacen igual, así que un `new-session` sin orden no abre un shell de login con el entorno del desarrollador). Una orden `kill-*` (o vacía) es un error al cargar el fixture: el arnés nunca mata servidores ni sesiones por fixture. Si una orden falla, la línea cuenta como `DIFF`. |
+| `files` | archivos que se comparan entre las dos copias tras la respuesta (solo si la respuesta ya dio `OK`): relativos a `~/.claude/hooks`, o al HOME de la copia si empiezan por `~/`. Ambos se normalizan como el gemelo de las pruebas (`term-r<n>`, `ts`/`closedAt`/`updated`/`at`/`heartbeatAt` numéricos y nombres `<19 dígitos>-<hex>.json`); ausente en las dos cuenta como igual. Una diferencia es `DIFF` con el nombre del archivo. |
+
+Ejemplo de línea que muta (registrar una pestaña sobre una sesión que el `setup` crea en los dos
+servidores y comparar los archivos que escribe):
+
+```json
+{"name":"t-tab-register","method":"POST","path":"/tab-register","headers":{"Host":"127.0.0.1","Content-Type":"application/json"},"body":{"session":"p2f","label":"Proyecto"},"setup":[["new-session","-d","-s","p2f"]],"files":["app-tabs.json","app-tabs-meta.json"],"volatile":[],"expect":"same"}
+```
 
 Cuerpos: **sin `volatile` se comparan los bytes crudos** (el orden de claves, el espaciado y el
 formato de números cuentan). Con `volatile` se parsean ambos, se sustituyen los punteros y se
@@ -56,3 +67,10 @@ reserializan con `comandos_core::json::response_dumps` (orden de inserción) ant
 en ese modo `content-length` no se compara (los valores volátiles cambian la longitud), y el formato de floats y de
 escapes **no** queda cubierto (lo canoniza el volcado). Las peticiones van con keep-alive para
 que el `Connection: close` de los rechazos sea observable.
+
+**Crear sesiones (`/new`, `/ensure`, `/shell`, `/up`, `/recover-tab`).** El `systemd-run` del
+`fakebin` del arnés no ejecuta nada (sale con 0): ni el oráculo ni el frente crean la sesión del
+scope, así que estas líneas comparan respuesta y registro sin sesión nueva (y sin `files` cuando
+el registro llevaría la ruta del HOME de cada copia, que el arnés no normaliza). La creación real
+(órdenes de tmux, `systemd-run` y agentes falsos) la verifica el gemelo de
+`crates/comandos-server/tests/dash_native_sessions.rs`.

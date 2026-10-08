@@ -1,0 +1,931 @@
+[
+  {
+    "name": "base",
+    "target": {
+      "session": "<s>",
+      "pane": "%1",
+      "harness": "codex"
+    },
+    "state": {
+      "identity": "pane-1",
+      "conversationId": "c",
+      "harness": "codex",
+      "revision": 4,
+      "templates": [
+        {
+          "id": "t",
+          "name": "Set & tools"
+        }
+      ],
+      "busy": false,
+      "configurationStatus": "external",
+      "loaded": null,
+      "inventory": {
+        "status": "configured",
+        "mcps": [
+          {
+            "id": "m",
+            "name": "Mail",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ],
+        "skills": [
+          {
+            "id": "a",
+            "name": "Alpha",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          },
+          {
+            "id": "fixed",
+            "name": "Fixed",
+            "toggleable": false,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            },
+            "reason": "Se controla mediante el grupo del plugin completo."
+          },
+          {
+            "id": "ghost",
+            "name": "Ghost",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ]
+      },
+      "desired": {
+        "mcps": {
+          "m": false
+        },
+        "skills": {
+          "a": false,
+          "fixed": true
+        }
+      },
+      "usage": {
+        "counts": {
+          "skills": {
+            "a": 0
+          }
+        },
+        "complete": false
+      }
+    },
+    "opts": {},
+    "html": "<section class=\"shelf shelf-enter\"><header><span class=\"label\">Extensiones</span><strong>&lt;s&gt; · %1 · Codex</strong><span class=\"muted\">Solo este panel</span><span class=\"spacer\"></span><span class=\"muted\">Selección guardada</span><button class=\"go\" data-action=\"apply\" >Aplicar y reanudar</button><button class=\"close\" data-action=\"close\" aria-label=\"Cerrar estante\">×</button></header>\n      <div class=\"notice \" role=\"status\"></div>\n      \n      <div class=\"toolbar\"><input id=\"ext-search\" type=\"search\" placeholder=\"Buscar extensión…\" aria-label=\"Buscar extensión\" value=\"\"><button data-filter=\"all\" class=\"active\" aria-pressed=\"true\">Todo</button><button data-filter=\"mcps\" class=\"\" aria-pressed=\"false\">MCPs</button><button data-filter=\"skills\" class=\"\" aria-pressed=\"false\">Skills</button><span class=\"spacer\"></span><span class=\"muted gesture\">Toca o arrastra · azul MCP · ámbar skill</span></div>\n      <div class=\"selection-toolbar\" aria-label=\"Selección global\"><strong role=\"status\">Ninguna seleccionada · 0 de 2</strong><span class=\"muted\">2 fuera del lote · detalle al pie</span><button data-batch=\"on\" >Seleccionar todos</button><button data-batch=\"off\" disabled>Quitar todos</button><span class=\"muted\">Todos los MCPs y skills editables, incluidos los ocultos por filtros. El uso registrado no cambia la selección.</span></div>\n      <div class=\"body\"><aside class=\"templates\"><div class=\"label\">Plantillas</div><button data-template=\"t\" >Set &amp; tools</button><form><input id=\"template-name\" value=\"\" placeholder=\"Nombre del set\" aria-label=\"Nombre de la plantilla\" maxlength=\"80\" required ><button type=\"submit\" data-action=\"save-template\" >+ Guardar set</button></form><p class=\"muted\">Disponibles entre agentes. Se cargan solo cuando las eliges.</p></aside><div class=\"zone on\" data-zone=\"on\"><div class=\"label\">Seleccionadas · 1</div><span class=\"muted\">Selección guardada para este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"on:o\" open><summary>Origen <span>1</span> <button type=\"button\" data-batch=\"off\" data-batch-group=\"o\" disabled>Quitar categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills \" data-kind=\"skills\" data-id=\"fixed\" data-on=\"true\" disabled title=\"2250 tokens · archivo de instrucciones · cl100k_base · Fixed · Skill · sin dato · Se controla mediante el grupo del plugin completo.\" aria-label=\"Quitar 2250 tokens · archivo de instrucciones · cl100k_base · Fixed · Skill · sin dato · Se controla mediante el grupo del plugin completo.\" aria-pressed=\"true\"><span class=\"name\">Fixed</span><small>2250 tokens</small></button></div></details></div></div><div class=\"zone off\" data-zone=\"off\"><div class=\"label\">Sin seleccionar · 2</div><span class=\"muted\">Puedes añadirlas a este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"off:o\" open><summary>Origen <span>2</span> <button type=\"button\" data-batch=\"on\" data-batch-group=\"o\" >Añadir categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills off\" data-kind=\"skills\" data-id=\"a\" data-on=\"false\"  title=\"2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-label=\"Añadir 2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-pressed=\"false\"><span class=\"name\">Alpha</span><small>2250 tokens</small></button><button style=\"--bubble-size:132px\" class=\"bubble mcps off\" data-kind=\"mcps\" data-id=\"m\" data-on=\"false\"  title=\"2250 tokens · definiciones de herramientas · cl100k_base · Mail · MCP · sin dato\" aria-label=\"Añadir 2250 tokens · definiciones de herramientas · cl100k_base · Mail · MCP · sin dato\" aria-pressed=\"false\"><span class=\"name\">Mail</span><small>2250 tokens</small></button></div></details></div></div></div>\n      <footer><details class=\"process-state\"><summary>Estado del proceso</summary><p>Este proceso se inició fuera del selector de extensiones. La selección guardada se aplica desde los controles de este panel.</p></details><span>1 MCPs + 3 skills</span><span title=\"Tamaño del archivo principal de la skill o de las definiciones MCP medidas. No representa consumo por turno ni contexto cargado.\">Tamaño: tokens · cl100k_base · Sin medir: tamaño neutro</span><span>Uso parcial: ausencia de datos ≠ sin uso</span><details><summary>2 excluidas o gestionadas aparte</summary><p><b>Fixed</b> · Se controla mediante el grupo del plugin completo.</p><p><b>Ghost</b> · Estado desconocido en este panel; se conserva sin cambios.</p></details></footer></section>"
+  },
+  {
+    "name": "busy",
+    "target": {
+      "session": "<s>",
+      "pane": "%1",
+      "harness": "codex"
+    },
+    "state": {
+      "identity": "pane-1",
+      "conversationId": "c",
+      "harness": "codex",
+      "revision": 4,
+      "templates": [
+        {
+          "id": "t",
+          "name": "Set & tools"
+        }
+      ],
+      "busy": true,
+      "configurationStatus": "external",
+      "loaded": null,
+      "inventory": {
+        "status": "configured",
+        "mcps": [
+          {
+            "id": "m",
+            "name": "Mail",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ],
+        "skills": [
+          {
+            "id": "a",
+            "name": "Alpha",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          },
+          {
+            "id": "fixed",
+            "name": "Fixed",
+            "toggleable": false,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            },
+            "reason": "Se controla mediante el grupo del plugin completo."
+          },
+          {
+            "id": "ghost",
+            "name": "Ghost",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ]
+      },
+      "desired": {
+        "mcps": {
+          "m": false
+        },
+        "skills": {
+          "a": false,
+          "fixed": true
+        }
+      },
+      "usage": {
+        "counts": {
+          "skills": {
+            "a": 0
+          }
+        },
+        "complete": false
+      }
+    },
+    "opts": {},
+    "html": "<section class=\"shelf shelf-enter\"><header><span class=\"label\">Extensiones</span><strong>&lt;s&gt; · %1 · Codex</strong><span class=\"muted\">Solo este panel</span><span class=\"spacer\"></span><span class=\"muted\">Selección guardada</span><button class=\"go\" data-action=\"apply\" >Aplicar al terminar</button><button class=\"close\" data-action=\"close\" aria-label=\"Cerrar estante\">×</button></header>\n      <div class=\"notice \" role=\"status\"><button data-action=\"interrupt\">Interrumpir turno y aplicar</button></div>\n      \n      <div class=\"toolbar\"><input id=\"ext-search\" type=\"search\" placeholder=\"Buscar extensión…\" aria-label=\"Buscar extensión\" value=\"\"><button data-filter=\"all\" class=\"active\" aria-pressed=\"true\">Todo</button><button data-filter=\"mcps\" class=\"\" aria-pressed=\"false\">MCPs</button><button data-filter=\"skills\" class=\"\" aria-pressed=\"false\">Skills</button><span class=\"spacer\"></span><span class=\"muted gesture\">Toca o arrastra · azul MCP · ámbar skill</span></div>\n      <div class=\"selection-toolbar\" aria-label=\"Selección global\"><strong role=\"status\">Ninguna seleccionada · 0 de 2</strong><span class=\"muted\">2 fuera del lote · detalle al pie</span><button data-batch=\"on\" >Seleccionar todos</button><button data-batch=\"off\" disabled>Quitar todos</button><span class=\"muted\">Todos los MCPs y skills editables, incluidos los ocultos por filtros. El uso registrado no cambia la selección.</span></div>\n      <div class=\"body\"><aside class=\"templates\"><div class=\"label\">Plantillas</div><button data-template=\"t\" >Set &amp; tools</button><form><input id=\"template-name\" value=\"\" placeholder=\"Nombre del set\" aria-label=\"Nombre de la plantilla\" maxlength=\"80\" required ><button type=\"submit\" data-action=\"save-template\" >+ Guardar set</button></form><p class=\"muted\">Disponibles entre agentes. Se cargan solo cuando las eliges.</p></aside><div class=\"zone on\" data-zone=\"on\"><div class=\"label\">Seleccionadas · 1</div><span class=\"muted\">Selección guardada para este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"on:o\" open><summary>Origen <span>1</span> <button type=\"button\" data-batch=\"off\" data-batch-group=\"o\" disabled>Quitar categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills \" data-kind=\"skills\" data-id=\"fixed\" data-on=\"true\" disabled title=\"2250 tokens · archivo de instrucciones · cl100k_base · Fixed · Skill · sin dato · Se controla mediante el grupo del plugin completo.\" aria-label=\"Quitar 2250 tokens · archivo de instrucciones · cl100k_base · Fixed · Skill · sin dato · Se controla mediante el grupo del plugin completo.\" aria-pressed=\"true\"><span class=\"name\">Fixed</span><small>2250 tokens</small></button></div></details></div></div><div class=\"zone off\" data-zone=\"off\"><div class=\"label\">Sin seleccionar · 2</div><span class=\"muted\">Puedes añadirlas a este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"off:o\" open><summary>Origen <span>2</span> <button type=\"button\" data-batch=\"on\" data-batch-group=\"o\" >Añadir categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills off\" data-kind=\"skills\" data-id=\"a\" data-on=\"false\"  title=\"2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-label=\"Añadir 2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-pressed=\"false\"><span class=\"name\">Alpha</span><small>2250 tokens</small></button><button style=\"--bubble-size:132px\" class=\"bubble mcps off\" data-kind=\"mcps\" data-id=\"m\" data-on=\"false\"  title=\"2250 tokens · definiciones de herramientas · cl100k_base · Mail · MCP · sin dato\" aria-label=\"Añadir 2250 tokens · definiciones de herramientas · cl100k_base · Mail · MCP · sin dato\" aria-pressed=\"false\"><span class=\"name\">Mail</span><small>2250 tokens</small></button></div></details></div></div></div>\n      <footer><details class=\"process-state\"><summary>Estado del proceso</summary><p>Este proceso se inició fuera del selector de extensiones. La selección guardada se aplica desde los controles de este panel.</p></details><span>1 MCPs + 3 skills</span><span title=\"Tamaño del archivo principal de la skill o de las definiciones MCP medidas. No representa consumo por turno ni contexto cargado.\">Tamaño: tokens · cl100k_base · Sin medir: tamaño neutro</span><span>Uso parcial: ausencia de datos ≠ sin uso</span><details><summary>2 excluidas o gestionadas aparte</summary><p><b>Fixed</b> · Se controla mediante el grupo del plugin completo.</p><p><b>Ghost</b> · Estado desconocido en este panel; se conserva sin cambios.</p></details></footer></section>"
+  },
+  {
+    "name": "unverified",
+    "target": {
+      "session": "<s>",
+      "pane": "%1",
+      "harness": "codex"
+    },
+    "state": {
+      "identity": "pane-1",
+      "conversationId": "c",
+      "harness": "codex",
+      "revision": 4,
+      "templates": [
+        {
+          "id": "t",
+          "name": "Set & tools"
+        }
+      ],
+      "busy": false,
+      "configurationStatus": "unverified",
+      "loaded": null,
+      "inventory": {
+        "status": "configured",
+        "mcps": [
+          {
+            "id": "m",
+            "name": "Mail",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ],
+        "skills": [
+          {
+            "id": "a",
+            "name": "Alpha",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          },
+          {
+            "id": "fixed",
+            "name": "Fixed",
+            "toggleable": false,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            },
+            "reason": "Se controla mediante el grupo del plugin completo."
+          },
+          {
+            "id": "ghost",
+            "name": "Ghost",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ]
+      },
+      "desired": {
+        "mcps": {
+          "m": false
+        },
+        "skills": {
+          "a": false,
+          "fixed": true
+        }
+      },
+      "usage": {
+        "counts": {
+          "skills": {
+            "a": 0
+          }
+        },
+        "complete": false
+      }
+    },
+    "opts": {},
+    "html": "<section class=\"shelf shelf-enter\"><header><span class=\"label\">Extensiones</span><strong>&lt;s&gt; · %1 · Codex</strong><span class=\"muted\">Solo este panel</span><span class=\"spacer\"></span><span class=\"muted\">Selección guardada</span><button class=\"go\" data-action=\"apply\" >Aplicar y reanudar</button><button class=\"close\" data-action=\"close\" aria-label=\"Cerrar estante\">×</button></header>\n      <div class=\"notice \" role=\"status\">No se pudo verificar la configuración aplicada a este proceso.</div>\n      \n      <div class=\"toolbar\"><input id=\"ext-search\" type=\"search\" placeholder=\"Buscar extensión…\" aria-label=\"Buscar extensión\" value=\"\"><button data-filter=\"all\" class=\"active\" aria-pressed=\"true\">Todo</button><button data-filter=\"mcps\" class=\"\" aria-pressed=\"false\">MCPs</button><button data-filter=\"skills\" class=\"\" aria-pressed=\"false\">Skills</button><span class=\"spacer\"></span><span class=\"muted gesture\">Toca o arrastra · azul MCP · ámbar skill</span></div>\n      <div class=\"selection-toolbar\" aria-label=\"Selección global\"><strong role=\"status\">Ninguna seleccionada · 0 de 2</strong><span class=\"muted\">2 fuera del lote · detalle al pie</span><button data-batch=\"on\" >Seleccionar todos</button><button data-batch=\"off\" disabled>Quitar todos</button><span class=\"muted\">Todos los MCPs y skills editables, incluidos los ocultos por filtros. El uso registrado no cambia la selección.</span></div>\n      <div class=\"body\"><aside class=\"templates\"><div class=\"label\">Plantillas</div><button data-template=\"t\" >Set &amp; tools</button><form><input id=\"template-name\" value=\"\" placeholder=\"Nombre del set\" aria-label=\"Nombre de la plantilla\" maxlength=\"80\" required ><button type=\"submit\" data-action=\"save-template\" >+ Guardar set</button></form><p class=\"muted\">Disponibles entre agentes. Se cargan solo cuando las eliges.</p></aside><div class=\"zone on\" data-zone=\"on\"><div class=\"label\">Seleccionadas · 1</div><span class=\"muted\">Selección guardada para este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"on:o\" open><summary>Origen <span>1</span> <button type=\"button\" data-batch=\"off\" data-batch-group=\"o\" disabled>Quitar categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills \" data-kind=\"skills\" data-id=\"fixed\" data-on=\"true\" disabled title=\"2250 tokens · archivo de instrucciones · cl100k_base · Fixed · Skill · sin dato · Se controla mediante el grupo del plugin completo.\" aria-label=\"Quitar 2250 tokens · archivo de instrucciones · cl100k_base · Fixed · Skill · sin dato · Se controla mediante el grupo del plugin completo.\" aria-pressed=\"true\"><span class=\"name\">Fixed</span><small>2250 tokens</small></button></div></details></div></div><div class=\"zone off\" data-zone=\"off\"><div class=\"label\">Sin seleccionar · 2</div><span class=\"muted\">Puedes añadirlas a este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"off:o\" open><summary>Origen <span>2</span> <button type=\"button\" data-batch=\"on\" data-batch-group=\"o\" >Añadir categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills off\" data-kind=\"skills\" data-id=\"a\" data-on=\"false\"  title=\"2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-label=\"Añadir 2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-pressed=\"false\"><span class=\"name\">Alpha</span><small>2250 tokens</small></button><button style=\"--bubble-size:132px\" class=\"bubble mcps off\" data-kind=\"mcps\" data-id=\"m\" data-on=\"false\"  title=\"2250 tokens · definiciones de herramientas · cl100k_base · Mail · MCP · sin dato\" aria-label=\"Añadir 2250 tokens · definiciones de herramientas · cl100k_base · Mail · MCP · sin dato\" aria-pressed=\"false\"><span class=\"name\">Mail</span><small>2250 tokens</small></button></div></details></div></div></div>\n      <footer><details class=\"process-state\"><summary>Estado del proceso</summary><p>La selección está guardada; no hay una comprobación válida de la configuración de este proceso.</p></details><span>1 MCPs + 3 skills</span><span title=\"Tamaño del archivo principal de la skill o de las definiciones MCP medidas. No representa consumo por turno ni contexto cargado.\">Tamaño: tokens · cl100k_base · Sin medir: tamaño neutro</span><span>Uso parcial: ausencia de datos ≠ sin uso</span><details><summary>2 excluidas o gestionadas aparte</summary><p><b>Fixed</b> · Se controla mediante el grupo del plugin completo.</p><p><b>Ghost</b> · Estado desconocido en este panel; se conserva sin cambios.</p></details></footer></section>"
+  },
+  {
+    "name": "filter",
+    "target": {
+      "session": "<s>",
+      "pane": "%1",
+      "harness": "codex"
+    },
+    "state": {
+      "identity": "pane-1",
+      "conversationId": "c",
+      "harness": "codex",
+      "revision": 4,
+      "templates": [
+        {
+          "id": "t",
+          "name": "Set & tools"
+        }
+      ],
+      "busy": false,
+      "configurationStatus": "external",
+      "loaded": null,
+      "inventory": {
+        "status": "configured",
+        "mcps": [
+          {
+            "id": "m",
+            "name": "Mail",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ],
+        "skills": [
+          {
+            "id": "a",
+            "name": "Alpha",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          },
+          {
+            "id": "fixed",
+            "name": "Fixed",
+            "toggleable": false,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            },
+            "reason": "Se controla mediante el grupo del plugin completo."
+          },
+          {
+            "id": "ghost",
+            "name": "Ghost",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ]
+      },
+      "desired": {
+        "mcps": {
+          "m": false
+        },
+        "skills": {
+          "a": false,
+          "fixed": true
+        }
+      },
+      "usage": {
+        "counts": {
+          "skills": {
+            "a": 0
+          }
+        },
+        "complete": false
+      }
+    },
+    "opts": {
+      "filter": "skills",
+      "query": "alp",
+      "closed_groups": [
+        "off:o"
+      ]
+    },
+    "html": "<section class=\"shelf shelf-enter\"><header><span class=\"label\">Extensiones</span><strong>&lt;s&gt; · %1 · Codex</strong><span class=\"muted\">Solo este panel</span><span class=\"spacer\"></span><span class=\"muted\">Selección guardada</span><button class=\"go\" data-action=\"apply\" >Aplicar y reanudar</button><button class=\"close\" data-action=\"close\" aria-label=\"Cerrar estante\">×</button></header>\n      <div class=\"notice \" role=\"status\"></div>\n      \n      <div class=\"toolbar\"><input id=\"ext-search\" type=\"search\" placeholder=\"Buscar extensión…\" aria-label=\"Buscar extensión\" value=\"alp\"><button data-filter=\"all\" class=\"\" aria-pressed=\"false\">Todo</button><button data-filter=\"mcps\" class=\"\" aria-pressed=\"false\">MCPs</button><button data-filter=\"skills\" class=\"active\" aria-pressed=\"true\">Skills</button><button data-batch=\"on\" data-batch-scope=\"visible\" >Añadir resultados (1)</button><button data-batch=\"off\" data-batch-scope=\"visible\" disabled>Quitar resultados</button><span class=\"spacer\"></span><span class=\"muted gesture\">Toca o arrastra · azul MCP · ámbar skill</span></div>\n      <div class=\"selection-toolbar\" aria-label=\"Selección global\"><strong role=\"status\">Ninguna seleccionada · 0 de 2</strong><span class=\"muted\">2 fuera del lote · detalle al pie</span><button data-batch=\"on\" >Seleccionar todos</button><button data-batch=\"off\" disabled>Quitar todos</button><span class=\"muted\">Todos los MCPs y skills editables, incluidos los ocultos por filtros. El uso registrado no cambia la selección.</span></div>\n      <div class=\"body\"><aside class=\"templates\"><div class=\"label\">Plantillas</div><button data-template=\"t\" >Set &amp; tools</button><form><input id=\"template-name\" value=\"\" placeholder=\"Nombre del set\" aria-label=\"Nombre de la plantilla\" maxlength=\"80\" required ><button type=\"submit\" data-action=\"save-template\" >+ Guardar set</button></form><p class=\"muted\">Disponibles entre agentes. Se cargan solo cuando las eliges.</p></aside><div class=\"zone on\" data-zone=\"on\"><div class=\"label\">Seleccionadas · 0</div><span class=\"muted\">Selección guardada para este panel</span><div class=\"field\"><div class=\"empty\">Ninguna con este filtro.</div></div></div><div class=\"zone off\" data-zone=\"off\"><div class=\"label\">Sin seleccionar · 1</div><span class=\"muted\">Puedes añadirlas a este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"off:o\" ><summary>Origen <span>1</span> <button type=\"button\" data-batch=\"on\" data-batch-group=\"o\" >Añadir categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills off\" data-kind=\"skills\" data-id=\"a\" data-on=\"false\"  title=\"2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-label=\"Añadir 2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-pressed=\"false\"><span class=\"name\">Alpha</span><small>2250 tokens</small></button></div></details></div></div></div>\n      <footer><details class=\"process-state\"><summary>Estado del proceso</summary><p>Este proceso se inició fuera del selector de extensiones. La selección guardada se aplica desde los controles de este panel.</p></details><span>1 MCPs + 3 skills</span><span title=\"Tamaño del archivo principal de la skill o de las definiciones MCP medidas. No representa consumo por turno ni contexto cargado.\">Tamaño: tokens · cl100k_base · Sin medir: tamaño neutro</span><span>Uso parcial: ausencia de datos ≠ sin uso</span><details><summary>2 excluidas o gestionadas aparte</summary><p><b>Fixed</b> · Se controla mediante el grupo del plugin completo.</p><p><b>Ghost</b> · Estado desconocido en este panel; se conserva sin cambios.</p></details></footer></section>"
+  },
+  {
+    "name": "saving",
+    "target": {
+      "session": "<s>",
+      "pane": "%1",
+      "harness": "codex"
+    },
+    "state": {
+      "identity": "pane-1",
+      "conversationId": "c",
+      "harness": "codex",
+      "revision": 4,
+      "templates": [
+        {
+          "id": "t",
+          "name": "Set & tools"
+        }
+      ],
+      "busy": false,
+      "configurationStatus": "external",
+      "loaded": null,
+      "inventory": {
+        "status": "configured",
+        "mcps": [
+          {
+            "id": "m",
+            "name": "Mail",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ],
+        "skills": [
+          {
+            "id": "a",
+            "name": "Alpha",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          },
+          {
+            "id": "fixed",
+            "name": "Fixed",
+            "toggleable": false,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            },
+            "reason": "Se controla mediante el grupo del plugin completo."
+          },
+          {
+            "id": "ghost",
+            "name": "Ghost",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ]
+      },
+      "desired": {
+        "mcps": {
+          "m": false
+        },
+        "skills": {
+          "a": false,
+          "fixed": true
+        }
+      },
+      "usage": {
+        "counts": {
+          "skills": {
+            "a": 0
+          }
+        },
+        "complete": false
+      }
+    },
+    "opts": {
+      "sending": true
+    },
+    "html": "<section class=\"shelf shelf-enter\"><header><span class=\"label\">Extensiones</span><strong>&lt;s&gt; · %1 · Codex</strong><span class=\"muted\">Solo este panel</span><span class=\"spacer\"></span><span class=\"muted\">Selección guardada</span><button class=\"go\" data-action=\"apply\" disabled>Aplicar y reanudar</button><button class=\"close\" data-action=\"close\" aria-label=\"Cerrar estante\">×</button></header>\n      <div class=\"notice \" role=\"status\">Guardando selección…</div>\n      \n      <div class=\"toolbar\"><input id=\"ext-search\" type=\"search\" placeholder=\"Buscar extensión…\" aria-label=\"Buscar extensión\" value=\"\"><button data-filter=\"all\" class=\"active\" aria-pressed=\"true\">Todo</button><button data-filter=\"mcps\" class=\"\" aria-pressed=\"false\">MCPs</button><button data-filter=\"skills\" class=\"\" aria-pressed=\"false\">Skills</button><span class=\"spacer\"></span><span class=\"muted gesture\">Toca o arrastra · azul MCP · ámbar skill</span></div>\n      <div class=\"selection-toolbar\" aria-label=\"Selección global\"><strong role=\"status\">Ninguna seleccionada · 0 de 2</strong><span class=\"muted\">2 fuera del lote · detalle al pie</span><button data-batch=\"on\" disabled>Seleccionar todos</button><button data-batch=\"off\" disabled>Quitar todos</button><span class=\"muted\">Todos los MCPs y skills editables, incluidos los ocultos por filtros. El uso registrado no cambia la selección.</span></div>\n      <div class=\"body\"><aside class=\"templates\"><div class=\"label\">Plantillas</div><button data-template=\"t\" disabled>Set &amp; tools</button><form><input id=\"template-name\" value=\"\" placeholder=\"Nombre del set\" aria-label=\"Nombre de la plantilla\" maxlength=\"80\" required disabled><button type=\"submit\" data-action=\"save-template\" disabled>+ Guardar set</button></form><p class=\"muted\">Disponibles entre agentes. Se cargan solo cuando las eliges.</p></aside><div class=\"zone on\" data-zone=\"on\"><div class=\"label\">Seleccionadas · 1</div><span class=\"muted\">Selección guardada para este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"on:o\" open><summary>Origen <span>1</span> <button type=\"button\" data-batch=\"off\" data-batch-group=\"o\" disabled>Quitar categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills \" data-kind=\"skills\" data-id=\"fixed\" data-on=\"true\" disabled title=\"2250 tokens · archivo de instrucciones · cl100k_base · Fixed · Skill · sin dato · Se controla mediante el grupo del plugin completo.\" aria-label=\"Quitar 2250 tokens · archivo de instrucciones · cl100k_base · Fixed · Skill · sin dato · Se controla mediante el grupo del plugin completo.\" aria-pressed=\"true\"><span class=\"name\">Fixed</span><small>2250 tokens</small></button></div></details></div></div><div class=\"zone off\" data-zone=\"off\"><div class=\"label\">Sin seleccionar · 2</div><span class=\"muted\">Puedes añadirlas a este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"off:o\" open><summary>Origen <span>2</span> <button type=\"button\" data-batch=\"on\" data-batch-group=\"o\" disabled>Añadir categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills off\" data-kind=\"skills\" data-id=\"a\" data-on=\"false\" disabled title=\"2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-label=\"Añadir 2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-pressed=\"false\"><span class=\"name\">Alpha</span><small>2250 tokens</small></button><button style=\"--bubble-size:132px\" class=\"bubble mcps off\" data-kind=\"mcps\" data-id=\"m\" data-on=\"false\" disabled title=\"2250 tokens · definiciones de herramientas · cl100k_base · Mail · MCP · sin dato\" aria-label=\"Añadir 2250 tokens · definiciones de herramientas · cl100k_base · Mail · MCP · sin dato\" aria-pressed=\"false\"><span class=\"name\">Mail</span><small>2250 tokens</small></button></div></details></div></div></div>\n      <footer><details class=\"process-state\"><summary>Estado del proceso</summary><p>Este proceso se inició fuera del selector de extensiones. La selección guardada se aplica desde los controles de este panel.</p></details><span>1 MCPs + 3 skills</span><span title=\"Tamaño del archivo principal de la skill o de las definiciones MCP medidas. No representa consumo por turno ni contexto cargado.\">Tamaño: tokens · cl100k_base · Sin medir: tamaño neutro</span><span>Uso parcial: ausencia de datos ≠ sin uso</span><details><summary>2 excluidas o gestionadas aparte</summary><p><b>Fixed</b> · Se controla mediante el grupo del plugin completo.</p><p><b>Ghost</b> · Estado desconocido en este panel; se conserva sin cambios.</p></details></footer></section>"
+  },
+  {
+    "name": "stale",
+    "target": {
+      "session": "<s>",
+      "pane": "%1",
+      "harness": "codex"
+    },
+    "state": {
+      "identity": "pane-1",
+      "conversationId": "c",
+      "harness": "codex",
+      "revision": 4,
+      "templates": [
+        {
+          "id": "t",
+          "name": "Set & tools"
+        }
+      ],
+      "busy": false,
+      "configurationStatus": "external",
+      "loaded": null,
+      "inventory": {
+        "status": "configured",
+        "mcps": [
+          {
+            "id": "m",
+            "name": "Mail",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ],
+        "skills": [
+          {
+            "id": "a",
+            "name": "Alpha",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          },
+          {
+            "id": "fixed",
+            "name": "Fixed",
+            "toggleable": false,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            },
+            "reason": "Se controla mediante el grupo del plugin completo."
+          },
+          {
+            "id": "ghost",
+            "name": "Ghost",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ]
+      },
+      "desired": {
+        "mcps": {
+          "m": false
+        },
+        "skills": {
+          "a": false,
+          "fixed": true
+        }
+      },
+      "usage": {
+        "counts": {
+          "skills": {
+            "a": 0
+          }
+        },
+        "complete": false
+      }
+    },
+    "opts": {
+      "stale": true,
+      "error": "El panel cambió de conversación. Actualiza antes de editar."
+    },
+    "html": "<section class=\"shelf shelf-enter\"><header><span class=\"label\">Extensiones</span><strong>&lt;s&gt; · %1 · Codex</strong><span class=\"muted\">Solo este panel</span><span class=\"spacer\"></span><span class=\"muted\">Selección guardada</span><button class=\"go\" data-action=\"apply\" disabled>Aplicar y reanudar</button><button class=\"close\" data-action=\"close\" aria-label=\"Cerrar estante\">×</button></header>\n      <div class=\"notice error\" role=\"status\">El panel cambió de conversación. Actualiza antes de editar.<button data-action=\"refresh\">Actualizar panel</button></div>\n      \n      <div class=\"toolbar\"><input id=\"ext-search\" type=\"search\" placeholder=\"Buscar extensión…\" aria-label=\"Buscar extensión\" value=\"\"><button data-filter=\"all\" class=\"active\" aria-pressed=\"true\">Todo</button><button data-filter=\"mcps\" class=\"\" aria-pressed=\"false\">MCPs</button><button data-filter=\"skills\" class=\"\" aria-pressed=\"false\">Skills</button><span class=\"spacer\"></span><span class=\"muted gesture\">Toca o arrastra · azul MCP · ámbar skill</span></div>\n      <div class=\"selection-toolbar\" aria-label=\"Selección global\"><strong role=\"status\">Ninguna seleccionada · 0 de 2</strong><span class=\"muted\">2 fuera del lote · detalle al pie</span><button data-batch=\"on\" disabled>Seleccionar todos</button><button data-batch=\"off\" disabled>Quitar todos</button><span class=\"muted\">Todos los MCPs y skills editables, incluidos los ocultos por filtros. El uso registrado no cambia la selección.</span></div>\n      <div class=\"body\"><aside class=\"templates\"><div class=\"label\">Plantillas</div><button data-template=\"t\" disabled>Set &amp; tools</button><form><input id=\"template-name\" value=\"\" placeholder=\"Nombre del set\" aria-label=\"Nombre de la plantilla\" maxlength=\"80\" required disabled><button type=\"submit\" data-action=\"save-template\" disabled>+ Guardar set</button></form><p class=\"muted\">Disponibles entre agentes. Se cargan solo cuando las eliges.</p></aside><div class=\"zone on\" data-zone=\"on\"><div class=\"label\">Seleccionadas · 1</div><span class=\"muted\">Selección guardada para este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"on:o\" open><summary>Origen <span>1</span> <button type=\"button\" data-batch=\"off\" data-batch-group=\"o\" disabled>Quitar categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills \" data-kind=\"skills\" data-id=\"fixed\" data-on=\"true\" disabled title=\"2250 tokens · archivo de instrucciones · cl100k_base · Fixed · Skill · sin dato · Se controla mediante el grupo del plugin completo.\" aria-label=\"Quitar 2250 tokens · archivo de instrucciones · cl100k_base · Fixed · Skill · sin dato · Se controla mediante el grupo del plugin completo.\" aria-pressed=\"true\"><span class=\"name\">Fixed</span><small>2250 tokens</small></button></div></details></div></div><div class=\"zone off\" data-zone=\"off\"><div class=\"label\">Sin seleccionar · 2</div><span class=\"muted\">Puedes añadirlas a este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"off:o\" open><summary>Origen <span>2</span> <button type=\"button\" data-batch=\"on\" data-batch-group=\"o\" disabled>Añadir categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills off\" data-kind=\"skills\" data-id=\"a\" data-on=\"false\" disabled title=\"2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-label=\"Añadir 2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-pressed=\"false\"><span class=\"name\">Alpha</span><small>2250 tokens</small></button><button style=\"--bubble-size:132px\" class=\"bubble mcps off\" data-kind=\"mcps\" data-id=\"m\" data-on=\"false\" disabled title=\"2250 tokens · definiciones de herramientas · cl100k_base · Mail · MCP · sin dato\" aria-label=\"Añadir 2250 tokens · definiciones de herramientas · cl100k_base · Mail · MCP · sin dato\" aria-pressed=\"false\"><span class=\"name\">Mail</span><small>2250 tokens</small></button></div></details></div></div></div>\n      <footer><details class=\"process-state\"><summary>Estado del proceso</summary><p>Este proceso se inició fuera del selector de extensiones. La selección guardada se aplica desde los controles de este panel.</p></details><span>1 MCPs + 3 skills</span><span title=\"Tamaño del archivo principal de la skill o de las definiciones MCP medidas. No representa consumo por turno ni contexto cargado.\">Tamaño: tokens · cl100k_base · Sin medir: tamaño neutro</span><span>Uso parcial: ausencia de datos ≠ sin uso</span><details><summary>2 excluidas o gestionadas aparte</summary><p><b>Fixed</b> · Se controla mediante el grupo del plugin completo.</p><p><b>Ghost</b> · Estado desconocido en este panel; se conserva sin cambios.</p></details></footer></section>"
+  },
+  {
+    "name": "loaded",
+    "target": {
+      "session": "<s>",
+      "pane": "%1",
+      "harness": "codex"
+    },
+    "state": {
+      "identity": "pane-1",
+      "conversationId": "c",
+      "harness": "codex",
+      "revision": 4,
+      "templates": [
+        {
+          "id": "t",
+          "name": "Set & tools"
+        }
+      ],
+      "busy": false,
+      "configurationStatus": "external",
+      "loaded": {
+        "mcps": {
+          "m": true
+        },
+        "skills": {
+          "a": false,
+          "fixed": true
+        }
+      },
+      "inventory": {
+        "status": "configured",
+        "mcps": [
+          {
+            "id": "m",
+            "name": "Mail",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ],
+        "skills": [
+          {
+            "id": "a",
+            "name": "Alpha",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          },
+          {
+            "id": "fixed",
+            "name": "Fixed",
+            "toggleable": false,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            },
+            "reason": "Se controla mediante el grupo del plugin completo."
+          },
+          {
+            "id": "ghost",
+            "name": "Ghost",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ]
+      },
+      "desired": {
+        "mcps": {
+          "m": false
+        },
+        "skills": {
+          "a": false,
+          "fixed": true
+        }
+      },
+      "usage": {
+        "counts": {
+          "skills": {
+            "a": 0
+          }
+        },
+        "complete": false
+      }
+    },
+    "opts": {},
+    "html": "<section class=\"shelf shelf-enter\"><header><span class=\"label\">Extensiones</span><strong>&lt;s&gt; · %1 · Codex</strong><span class=\"muted\">Solo este panel</span><span class=\"spacer\"></span><span class=\"muted\">+0 / −1 pendientes</span><button data-action=\"discard\" >Deshacer</button><button class=\"go\" data-action=\"apply\" >Aplicar y reanudar</button><button class=\"close\" data-action=\"close\" aria-label=\"Cerrar estante\">×</button></header>\n      <div class=\"notice \" role=\"status\"></div>\n      \n      <div class=\"toolbar\"><input id=\"ext-search\" type=\"search\" placeholder=\"Buscar extensión…\" aria-label=\"Buscar extensión\" value=\"\"><button data-filter=\"all\" class=\"active\" aria-pressed=\"true\">Todo</button><button data-filter=\"mcps\" class=\"\" aria-pressed=\"false\">MCPs</button><button data-filter=\"skills\" class=\"\" aria-pressed=\"false\">Skills</button><span class=\"spacer\"></span><span class=\"muted gesture\">Toca o arrastra · azul MCP · ámbar skill</span></div>\n      <div class=\"selection-toolbar\" aria-label=\"Selección global\"><strong role=\"status\">Ninguna seleccionada · 0 de 2</strong><span class=\"muted\">2 fuera del lote · detalle al pie</span><button data-batch=\"on\" >Seleccionar todos</button><button data-batch=\"off\" disabled>Quitar todos</button><span class=\"muted\">Todos los MCPs y skills editables, incluidos los ocultos por filtros. El uso registrado no cambia la selección.</span></div>\n      <div class=\"body\"><aside class=\"templates\"><div class=\"label\">Plantillas</div><button data-template=\"t\" >Set &amp; tools</button><form><input id=\"template-name\" value=\"\" placeholder=\"Nombre del set\" aria-label=\"Nombre de la plantilla\" maxlength=\"80\" required ><button type=\"submit\" data-action=\"save-template\" >+ Guardar set</button></form><p class=\"muted\">Disponibles entre agentes. Se cargan solo cuando las eliges.</p></aside><div class=\"zone on\" data-zone=\"on\"><div class=\"label\">Seleccionadas · 1</div><span class=\"muted\">Selección guardada para este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"on:o\" open><summary>Origen <span>1</span> <button type=\"button\" data-batch=\"off\" data-batch-group=\"o\" disabled>Quitar categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills \" data-kind=\"skills\" data-id=\"fixed\" data-on=\"true\" disabled title=\"2250 tokens · archivo de instrucciones · cl100k_base · Fixed · Skill · sin dato · Se controla mediante el grupo del plugin completo.\" aria-label=\"Quitar 2250 tokens · archivo de instrucciones · cl100k_base · Fixed · Skill · sin dato · Se controla mediante el grupo del plugin completo.\" aria-pressed=\"true\"><span class=\"name\">Fixed</span><small>2250 tokens</small></button></div></details></div></div><div class=\"zone off\" data-zone=\"off\"><div class=\"label\">Sin seleccionar · 2</div><span class=\"muted\">Puedes añadirlas a este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"off:o\" open><summary>Origen <span>2</span> <button type=\"button\" data-batch=\"on\" data-batch-group=\"o\" >Añadir categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills off\" data-kind=\"skills\" data-id=\"a\" data-on=\"false\"  title=\"2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-label=\"Añadir 2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-pressed=\"false\"><span class=\"name\">Alpha</span><small>2250 tokens</small></button><button style=\"--bubble-size:132px\" class=\"bubble mcps off\" data-kind=\"mcps\" data-id=\"m\" data-on=\"false\"  title=\"2250 tokens · definiciones de herramientas · cl100k_base · Mail · MCP · sin dato\" aria-label=\"Añadir 2250 tokens · definiciones de herramientas · cl100k_base · Mail · MCP · sin dato\" aria-pressed=\"false\"><span class=\"name\">Mail</span><small>2250 tokens</small><span class=\"change\">−</span></button></div></details></div></div></div>\n      <footer><details class=\"process-state\"><summary>Estado del proceso</summary><p>Este proceso se inició fuera del selector de extensiones. La selección guardada se aplica desde los controles de este panel.</p></details><span>1 MCPs + 3 skills</span><span title=\"Tamaño del archivo principal de la skill o de las definiciones MCP medidas. No representa consumo por turno ni contexto cargado.\">Tamaño: tokens · cl100k_base · Sin medir: tamaño neutro</span><span>Uso parcial: ausencia de datos ≠ sin uso</span><details><summary>2 excluidas o gestionadas aparte</summary><p><b>Fixed</b> · Se controla mediante el grupo del plugin completo.</p><p><b>Ghost</b> · Estado desconocido en este panel; se conserva sin cambios.</p></details></footer></section>"
+  },
+  {
+    "name": "recovery",
+    "target": {
+      "session": "<s>",
+      "pane": "%1",
+      "harness": "codex"
+    },
+    "state": {
+      "identity": "pane-1",
+      "conversationId": "c",
+      "harness": "codex",
+      "revision": 4,
+      "templates": [
+        {
+          "id": "t",
+          "name": "Set & tools"
+        }
+      ],
+      "busy": false,
+      "configurationStatus": "external",
+      "loaded": null,
+      "inventory": {
+        "status": "configured",
+        "mcps": [
+          {
+            "id": "m",
+            "name": "Mail",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ],
+        "skills": [
+          {
+            "id": "a",
+            "name": "Alpha",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          },
+          {
+            "id": "fixed",
+            "name": "Fixed",
+            "toggleable": false,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            },
+            "reason": "Se controla mediante el grupo del plugin completo."
+          },
+          {
+            "id": "ghost",
+            "name": "Ghost",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ]
+      },
+      "desired": {
+        "mcps": {
+          "m": false
+        },
+        "skills": {
+          "a": false,
+          "fixed": true
+        }
+      },
+      "usage": {
+        "counts": {
+          "skills": {
+            "a": 0
+          }
+        },
+        "complete": false
+      },
+      "operation": {
+        "state": "recovery_required",
+        "error": "Oops"
+      }
+    },
+    "opts": {},
+    "html": "<section class=\"shelf shelf-enter\"><header><span class=\"label\">Extensiones</span><strong>&lt;s&gt; · %1 · Codex</strong><span class=\"muted\">Solo este panel</span><span class=\"spacer\"></span><span class=\"muted\">Selección guardada</span><button class=\"go\" data-action=\"apply\" disabled>Aplicando…</button><button class=\"close\" data-action=\"close\" aria-label=\"Cerrar estante\">×</button></header>\n      <div class=\"notice error\" role=\"status\">Hace falta recuperar la sesión anterior. Oops<button data-action=\"recover\">Recuperar sesión anterior</button></div>\n      \n      <div class=\"toolbar\"><input id=\"ext-search\" type=\"search\" placeholder=\"Buscar extensión…\" aria-label=\"Buscar extensión\" value=\"\"><button data-filter=\"all\" class=\"active\" aria-pressed=\"true\">Todo</button><button data-filter=\"mcps\" class=\"\" aria-pressed=\"false\">MCPs</button><button data-filter=\"skills\" class=\"\" aria-pressed=\"false\">Skills</button><span class=\"spacer\"></span><span class=\"muted gesture\">Toca o arrastra · azul MCP · ámbar skill</span></div>\n      <div class=\"selection-toolbar\" aria-label=\"Selección global\"><strong role=\"status\">Ninguna seleccionada · 0 de 2</strong><span class=\"muted\">2 fuera del lote · detalle al pie</span><button data-batch=\"on\" disabled>Seleccionar todos</button><button data-batch=\"off\" disabled>Quitar todos</button><span class=\"muted\">Todos los MCPs y skills editables, incluidos los ocultos por filtros. El uso registrado no cambia la selección.</span></div>\n      <div class=\"body\"><aside class=\"templates\"><div class=\"label\">Plantillas</div><button data-template=\"t\" disabled>Set &amp; tools</button><form><input id=\"template-name\" value=\"\" placeholder=\"Nombre del set\" aria-label=\"Nombre de la plantilla\" maxlength=\"80\" required disabled><button type=\"submit\" data-action=\"save-template\" disabled>+ Guardar set</button></form><p class=\"muted\">Disponibles entre agentes. Se cargan solo cuando las eliges.</p></aside><div class=\"zone on\" data-zone=\"on\"><div class=\"label\">Seleccionadas · 1</div><span class=\"muted\">Selección guardada para este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"on:o\" open><summary>Origen <span>1</span> <button type=\"button\" data-batch=\"off\" data-batch-group=\"o\" disabled>Quitar categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills \" data-kind=\"skills\" data-id=\"fixed\" data-on=\"true\" disabled title=\"2250 tokens · archivo de instrucciones · cl100k_base · Fixed · Skill · sin dato · Se controla mediante el grupo del plugin completo.\" aria-label=\"Quitar 2250 tokens · archivo de instrucciones · cl100k_base · Fixed · Skill · sin dato · Se controla mediante el grupo del plugin completo.\" aria-pressed=\"true\"><span class=\"name\">Fixed</span><small>2250 tokens</small></button></div></details></div></div><div class=\"zone off\" data-zone=\"off\"><div class=\"label\">Sin seleccionar · 2</div><span class=\"muted\">Puedes añadirlas a este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"off:o\" open><summary>Origen <span>2</span> <button type=\"button\" data-batch=\"on\" data-batch-group=\"o\" disabled>Añadir categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills off\" data-kind=\"skills\" data-id=\"a\" data-on=\"false\" disabled title=\"2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-label=\"Añadir 2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-pressed=\"false\"><span class=\"name\">Alpha</span><small>2250 tokens</small></button><button style=\"--bubble-size:132px\" class=\"bubble mcps off\" data-kind=\"mcps\" data-id=\"m\" data-on=\"false\" disabled title=\"2250 tokens · definiciones de herramientas · cl100k_base · Mail · MCP · sin dato\" aria-label=\"Añadir 2250 tokens · definiciones de herramientas · cl100k_base · Mail · MCP · sin dato\" aria-pressed=\"false\"><span class=\"name\">Mail</span><small>2250 tokens</small></button></div></details></div></div></div>\n      <footer><details class=\"process-state\"><summary>Estado del proceso</summary><p>Este proceso se inició fuera del selector de extensiones. La selección guardada se aplica desde los controles de este panel.</p></details><span>1 MCPs + 3 skills</span><span title=\"Tamaño del archivo principal de la skill o de las definiciones MCP medidas. No representa consumo por turno ni contexto cargado.\">Tamaño: tokens · cl100k_base · Sin medir: tamaño neutro</span><span>Uso parcial: ausencia de datos ≠ sin uso</span><details><summary>2 excluidas o gestionadas aparte</summary><p><b>Fixed</b> · Se controla mediante el grupo del plugin completo.</p><p><b>Ghost</b> · Estado desconocido en este panel; se conserva sin cambios.</p></details></footer></section>"
+  },
+  {
+    "name": "starting",
+    "target": {
+      "session": "<s>",
+      "pane": "%1",
+      "harness": "codex"
+    },
+    "state": {
+      "identity": "pane-1",
+      "conversationId": "",
+      "harness": "codex",
+      "revision": 4,
+      "templates": [
+        {
+          "id": "t",
+          "name": "Set & tools"
+        }
+      ],
+      "busy": false,
+      "configurationStatus": "not_started",
+      "loaded": null,
+      "inventory": {
+        "status": "configured",
+        "mcps": [
+          {
+            "id": "m",
+            "name": "Mail",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ],
+        "skills": [
+          {
+            "id": "a",
+            "name": "Alpha",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          },
+          {
+            "id": "fixed",
+            "name": "Fixed",
+            "toggleable": false,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            },
+            "reason": "Se controla mediante el grupo del plugin completo."
+          },
+          {
+            "id": "ghost",
+            "name": "Ghost",
+            "toggleable": true,
+            "origin": {
+              "id": "o",
+              "label": "Origen"
+            },
+            "size": {
+              "tokens": 2250
+            }
+          }
+        ]
+      },
+      "desired": {
+        "mcps": {
+          "m": false
+        },
+        "skills": {
+          "a": false,
+          "fixed": true
+        }
+      },
+      "usage": {
+        "counts": {
+          "skills": {
+            "a": 0
+          }
+        },
+        "complete": false
+      }
+    },
+    "opts": {},
+    "html": "<section class=\"shelf shelf-enter\"><header><span class=\"label\">Extensiones</span><strong>&lt;s&gt; · %1 · Codex</strong><span class=\"muted\">Solo este panel</span><span class=\"spacer\"></span><span class=\"muted\">Selección guardada</span><button class=\"go\" data-action=\"apply\" >Iniciar con este set</button><button class=\"close\" data-action=\"close\" aria-label=\"Cerrar estante\">×</button></header>\n      <div class=\"notice \" role=\"status\"></div>\n      <div class=\"toolbar\"><label for=\"ext-harness\">CLI para iniciar</label><select id=\"ext-harness\" ><option value=\"\">Elige un CLI…</option><option value=\"claude\" >Claude</option><option value=\"codex\" selected>Codex</option><option value=\"grok\" >Grok</option><option value=\"opencode\" >OpenCode</option><option value=\"agy\" >Antigravity</option></select></div>\n      <div class=\"toolbar\"><input id=\"ext-search\" type=\"search\" placeholder=\"Buscar extensión…\" aria-label=\"Buscar extensión\" value=\"\"><button data-filter=\"all\" class=\"active\" aria-pressed=\"true\">Todo</button><button data-filter=\"mcps\" class=\"\" aria-pressed=\"false\">MCPs</button><button data-filter=\"skills\" class=\"\" aria-pressed=\"false\">Skills</button><span class=\"spacer\"></span><span class=\"muted gesture\">Toca o arrastra · azul MCP · ámbar skill</span></div>\n      <div class=\"selection-toolbar\" aria-label=\"Selección global\"><strong role=\"status\">Ninguna seleccionada · 0 de 2</strong><span class=\"muted\">2 fuera del lote · detalle al pie</span><button data-batch=\"on\" >Seleccionar todos</button><button data-batch=\"off\" disabled>Quitar todos</button><span class=\"muted\">Todos los MCPs y skills editables, incluidos los ocultos por filtros. El uso registrado no cambia la selección.</span></div>\n      <div class=\"body\"><aside class=\"templates\"><div class=\"label\">Plantillas</div><button data-template=\"t\" >Set &amp; tools</button><form><input id=\"template-name\" value=\"\" placeholder=\"Nombre del set\" aria-label=\"Nombre de la plantilla\" maxlength=\"80\" required ><button type=\"submit\" data-action=\"save-template\" >+ Guardar set</button></form><p class=\"muted\">Disponibles entre agentes. Se cargan solo cuando las eliges.</p></aside><div class=\"zone on\" data-zone=\"on\"><div class=\"label\">Seleccionadas · 1</div><span class=\"muted\">Selección guardada para este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"on:o\" open><summary>Origen <span>1</span> <button type=\"button\" data-batch=\"off\" data-batch-group=\"o\" disabled>Quitar categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills \" data-kind=\"skills\" data-id=\"fixed\" data-on=\"true\" disabled title=\"2250 tokens · archivo de instrucciones · cl100k_base · Fixed · Skill · sin dato · Se controla mediante el grupo del plugin completo.\" aria-label=\"Quitar 2250 tokens · archivo de instrucciones · cl100k_base · Fixed · Skill · sin dato · Se controla mediante el grupo del plugin completo.\" aria-pressed=\"true\"><span class=\"name\">Fixed</span><small>2250 tokens</small></button></div></details></div></div><div class=\"zone off\" data-zone=\"off\"><div class=\"label\">Sin seleccionar · 2</div><span class=\"muted\">Puedes añadirlas a este panel</span><div class=\"field\"><details class=\"origin-group\" data-group=\"off:o\" open><summary>Origen <span>2</span> <button type=\"button\" data-batch=\"on\" data-batch-group=\"o\" >Añadir categoría</button></summary><div class=\"origin-items\"><button style=\"--bubble-size:132px\" class=\"bubble skills off\" data-kind=\"skills\" data-id=\"a\" data-on=\"false\"  title=\"2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-label=\"Añadir 2250 tokens · archivo de instrucciones · cl100k_base · Alpha · Skill · sin uso\" aria-pressed=\"false\"><span class=\"name\">Alpha</span><small>2250 tokens</small></button><button style=\"--bubble-size:132px\" class=\"bubble mcps off\" data-kind=\"mcps\" data-id=\"m\" data-on=\"false\"  title=\"2250 tokens · definiciones de herramientas · cl100k_base · Mail · MCP · sin dato\" aria-label=\"Añadir 2250 tokens · definiciones de herramientas · cl100k_base · Mail · MCP · sin dato\" aria-pressed=\"false\"><span class=\"name\">Mail</span><small>2250 tokens</small></button></div></details></div></div></div>\n      <footer><details class=\"process-state\"><summary>Estado del proceso</summary><p>La selección se usará si eliges Iniciar con este set.</p></details><span>1 MCPs + 3 skills</span><span title=\"Tamaño del archivo principal de la skill o de las definiciones MCP medidas. No representa consumo por turno ni contexto cargado.\">Tamaño: tokens · cl100k_base · Sin medir: tamaño neutro</span><span>Uso parcial: ausencia de datos ≠ sin uso</span><details><summary>2 excluidas o gestionadas aparte</summary><p><b>Fixed</b> · Se controla mediante el grupo del plugin completo.</p><p><b>Ghost</b> · Estado desconocido en este panel; se conserva sin cambios.</p></details></footer></section>"
+  },
+  {
+    "name": "loading",
+    "target": {
+      "session": "<s>",
+      "pane": "%1",
+      "harness": "codex"
+    },
+    "state": null,
+    "opts": {},
+    "html": "<section class=\"shelf\"><header><strong>Extensiones · &lt;s&gt; · %1</strong><span class=\"spacer\"></span><button data-action=\"close\" aria-label=\"Cerrar estante\">×</button></header><div class=\"loading\" role=\"status\"><span class=\"loading-spinner\" aria-hidden=\"true\"></span><span>Cargando MCPs y skills…</span></div></section>"
+  },
+  {
+    "name": "load_error",
+    "target": {
+      "session": "<s>",
+      "pane": "%1",
+      "harness": "codex"
+    },
+    "state": null,
+    "opts": {
+      "error": "Offline"
+    },
+    "html": "<section class=\"shelf\"><header><strong>Extensiones · &lt;s&gt; · %1</strong><span class=\"spacer\"></span><button data-action=\"close\" aria-label=\"Cerrar estante\">×</button></header><div class=\"loading\" role=\"status\"><span>Offline</span><button data-action=\"refresh\">Reintentar</button></div></section>"
+  }
+]

@@ -25,7 +25,7 @@ use std::{
     },
     time::Duration,
 };
-use support::{FakeLegacy, NOW_MS, TestHome, front, get, oracle::run_python, seed_usage};
+use support::{FakeLegacy, NOW_MS, TestHome, front, get, seed_usage};
 
 /// Una línea de transcript de Claude con uso, fechada 1 h antes del reloj fijo.
 fn claude_line(home: &TestHome, id: &str) {
@@ -107,7 +107,7 @@ fn no_tmux(opts: &mut NativeOptions) {
 }
 
 #[tokio::test]
-async fn usage_state_is_native_and_imports_after_grace() {
+async fn usage_state_and_source_prefix_stay_native_and_import_after_grace() {
     let home = TestHome::new("import-grace");
     seed_usage(&home, "");
     claude_line(&home, "m1");
@@ -127,9 +127,29 @@ async fn usage_state_is_native_and_imports_after_grace() {
         wait_turns(&home, 1).await,
         "la importación del frente escribió el turno"
     );
-    // `/usage/stateX` sigue siendo del Python.
-    let _ = get(front.port, "/usage/stateX").await;
-    assert_eq!(legacy.requests().len(), 1);
+    // Immutable source2674 admits this prefix too. Compare the complete
+    // response; native import and its real row above remain authoritative.
+    let mut original = support::http_golden::FrozenHttp::new(
+        &home,
+        "server-usage-state-prefix",
+        &["comandos-usage.sqlite"],
+    )
+    .await;
+    original.prime_unchanged("/usage/state").await;
+    let expected = original.get("/usage/stateX").await;
+    let prefix = get(front.port, "/usage/stateX").await;
+    assert_eq!(prefix.status, expected.status);
+    assert_eq!(prefix.body, expected.body);
+    let source_canonical = original.get("/usage/state").await;
+    assert_eq!(expected.status, source_canonical.status);
+    assert_eq!(expected.body, source_canonical.body);
+    let native_canonical = get(front.port, "/usage/state").await;
+    assert_eq!(prefix.status, native_canonical.status);
+    assert_eq!(prefix.body, native_canonical.body);
+    assert!(
+        legacy.requests().is_empty(),
+        "the admitted prefix stays native"
+    );
     front.stop().await;
 }
 
@@ -481,17 +501,18 @@ dash.read_states_cached = lambda: cards
 print(json.dumps([dash.ensure_observed_configs(), dash.ensure_observed_configs()]))
 "#;
     let now = NOW_MS / 1000;
-    let Some(out) = run_python(
+    let out = support::http_golden::python_files(
+        &home.root,
+        "server-usage-observed-configs",
+        &["comandos-usage.sqlite"],
         script,
         &[
             OsStr::new(&cards.to_string()),
             theirs.as_os_str(),
             OsStr::new(&now.to_string()),
         ],
-        &home.root,
-    ) else {
-        return;
-    };
+        &json!({"seed":seed}),
+    );
     let conn = comandos_store::usage::open_usage_db_at(&ours).unwrap();
     let cards = cards.as_array().unwrap();
     let first = comandos_store::usage_import::ensure_observed_configs(&conn, cards, now).unwrap();

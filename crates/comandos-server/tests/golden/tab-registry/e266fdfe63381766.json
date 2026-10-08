@@ -1,0 +1,21 @@
+{
+  "input": {
+    "case": {
+      "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+      "source_sha256": "4e4e26305485b4926bd2c77618a4a68eb8da9ea425825c57a9a0fea6847a6f24",
+      "python": "CPython 3.10.12",
+      "code": "dash.time.time = lambda: 1791115200\n\nimport json\n_out = []\nfor s, k, h, c in [(\"a b\", \"shell\", \"\", \"\"), (\"uno\", \"nave\", \"\", \"\"), (\"uno\", \"ssh\", \"h\", \"rel/x\"),\n                   (\"dos\", \"project\", \"\", \"/srv/dos\"), (\"tres\", \"scratch\", \"\", \"\"),\n                   (\"otra\", \"project\", \"\", \"/srv/otra\")]:\n    _out.append(dash.write_tab_metadata(s, k, host=h, cwd=c))\ndash.remove_tab_metadata(\"uno\")\ndash.remove_tab_metadata(\"nada\")\nprint(json.dumps(_out))\n",
+      "effect_files": [
+        "app-tabs.json",
+        "app-tabs-meta.json",
+        "app-tabs-history.json",
+        "app-tab-open.json",
+        "app-tab-close.json"
+      ],
+      "fakebin": [],
+      "fixture_env": []
+    },
+    "before_sha256": "cd29e768975b08231c16b8b92773fa5fb203c6df1add61dca5b766186fb5ddc3"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJbbnVsbCwgbnVsbCwge1wia2luZFwiOiBcInNzaFwiLCBcImhvc3RcIjogXCJoXCJ9LCB7XCJraW5kXCI6IFwicHJvamVjdFwiLCBcImN3ZFwiOiBcIi9zcnYvZG9zXCJ9LCB7XCJraW5kXCI6IFwic2NyYXRjaFwifSwge1wia2luZFwiOiBcInByb2plY3RcIiwgXCJjd2RcIjogXCIvc3J2L290cmFcIn1dXG4iLCJ0cmVlIjp7ImFwcC10YWJzLWhpc3RvcnkuanNvbiI6eyJraW5kIjoiZmlsZSIsIm1vZGUiOjQzNiwiYm9keV9iNjQiOiJXM3NpYzJWemMybHZiaUk2SUNKMmFXVnFZU0lzSUNKc1lXSmxiQ0k2SUNKV2FXVnFZU0lzSUNKamQyUWlPaUFpTDNZaUxDQWlZV2RsYm5RaU9pQWlZMjlrWlhnaUxDQWlkSE1pT2lBeE1Dd2dJbkpsWVhOdmJpSTZJQ0pqYkc5elpXUWlmU3dnZXlKelpYTnphVzl1SWpvZ0luQXlaaUlzSUNKc1lXSmxiQ0k2SUNKUUlHRnVkR1Z6SWl3Z0luUnpJam9nT1gwc0lIc2ljMlZ6YzJsdmJpSTZJQ0p0WVd3Z2MyVnphVzl1SWl3Z0luUnpJam9nT0gxZCJ9LCJhcHAtdGFicy1tZXRhLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXlKdmRISmhJam9nZXlKcmFXNWtJam9nSW5CeWIycGxZM1FpTENBaVkzZGtJam9nSWk5emNuWXZiM1J5WVNKOUxDQWlaRzl6SWpvZ2V5SnJhVzVrSWpvZ0luQnliMnBsWTNRaUxDQWlZM2RrSWpvZ0lpOXpjbll2Wkc5ekluMHNJQ0owY21Weklqb2dleUpyYVc1a0lqb2dJbk5qY21GMFkyZ2lmWDA9In0sImFwcC10YWJzLmpzb24iOnsia2luZCI6ImZpbGUiLCJtb2RlIjo0MzYsImJvZHlfYjY0IjoiZXlKc2IyTmhiQ0k2SUNKc2IyTmhiQ0lzSUNKdmRISmhJam9nSWs5MGNtRWlmUT09In19fQ=="
+}

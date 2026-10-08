@@ -1,0 +1,10 @@
+{
+  "input": {
+    "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "python": "3.10.12",
+    "before_token": "\n",
+    "before_mode": "640",
+    "target": "/webterm-token"
+  },
+  "output_b64": "eyJsZW5ndGgiOjQzLCJ1cmxzYWZlIjp0cnVlLCJmaWxlX21hdGNoZXMiOnRydWUsIm1vZGUiOiI2NDAiLCJyZXVzZWQiOnRydWV9"
+}

@@ -4,14 +4,12 @@
 mod support;
 use comandos_server::{
     Request,
-    dash::native::{
-        Native, NativeRoute, Outcome, state::StateBackend, usage::UsageRoute, wall_clock_ms,
-    },
+    dash::native::{Native, NativeRoute, Outcome, state::StateBackend, usage::UsageRoute},
 };
 use serde_json::Value;
 use std::{path::Path, sync::Arc, time::Duration};
 use support::{
-    FakeLegacy, NOW_MS, TestHome, Wire, dead_port, front, get, oracle::oracle, seed_usage,
+    FakeLegacy, NOW_MS, TestHome, Wire, dead_port, front, get, http_golden::FrozenHttp, seed_usage,
 };
 
 fn write(path: &Path, text: &str) {
@@ -153,11 +151,11 @@ fn seed_records(home: &TestHome, now: i64) {
 
 /// Los dos lados sobre la misma consulta; un desfase de minuto entre las dos
 /// peticiones (etiquetas de tiempo restante) se reintenta.
-async fn compare(front_port: u16, py_port: u16, target: &str) {
+async fn compare(front_port: u16, py: &FrozenHttp<'_>, target: &str) {
     let mut last = (String::new(), String::new());
     for _ in 0..3 {
         let a = get(front_port, target).await;
-        let b = get(py_port, target).await;
+        let b = py.get(target).await;
         assert_eq!(a.status, b.status, "{target}: {} / {}", a.text(), b.text());
         assert_eq!(
             a.header("content-type"),
@@ -185,9 +183,36 @@ async fn compare(front_port: u16, py_port: u16, target: &str) {
 
 /// La caché de límites de cada lado se llena con la primera petición
 /// (refresco a demanda en el frente; el Python además refresca al arrancar).
-async fn warm(front_port: u16, py_port: u16) {
+async fn warm(front_port: u16, py: &mut FrozenHttp<'_>, home: &TestHome) {
     let _ = get(front_port, "/analytics/week").await;
-    let _ = get(py_port, "/analytics/week").await;
+    if home.hooks().join("agy-quota.json").exists() {
+        // Limits publish before their queued SQLite write. Wait for the actual
+        // native snapshot, not a variable race between that write and the oracle key.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let conn = rusqlite::Connection::open_with_flags(
+                home.usage_db(),
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+            )
+            .unwrap();
+            let ready: i64 = conn
+                .query_row(
+                    "select count(*) from usage_quota_snapshots where captured_at >= ?1",
+                    [NOW_MS / 1000 - 300],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            if ready > 0 {
+                break;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "native quota snapshot did not finish"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+    py.prime_unchanged("/analytics/week").await;
     tokio::time::sleep(Duration::from_millis(500)).await;
 }
 
@@ -215,17 +240,29 @@ const TARGETS: &[&str] = &[
 #[tokio::test]
 async fn analytics_week_matches_python() {
     let home = TestHome::new("week");
-    let now = wall_clock_ms() / 1000;
+    let now = NOW_MS / 1000;
     seed_week(&home, now);
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
+    home.write("cc-notify.conf", "DESKTOP_NOTIFY=0\n");
+    let mut py = FrozenHttp::new_rooted_with(
+        &home,
+        "server-http-analytics-week",
+        &[
+            ".claude/hooks/comandos-usage.sqlite",
+            ".local/state/comandos/app-state.sqlite3",
+            ".claude/hooks/agy-quota.json",
+            ".claude/hooks/cc-notify.conf",
+            ".codex/sessions/2026/10/04/rollout-a.jsonl",
+            ".grok/logs/unified.jsonl",
+        ],
+        "",
+    )
+    .await;
     let mut opts = home.options();
-    opts.clock = Arc::new(wall_clock_ms);
+    opts.clock = Arc::new(|| NOW_MS);
     let front = front(&home, dead_port(), opts).await;
-    warm(front.port, py.port).await;
+    warm(front.port, &mut py, &home).await;
     for target in TARGETS {
-        compare(front.port, py.port, target).await;
+        compare(front.port, &py, target).await;
     }
     // Hubo límites de verdad en los dos lados (no una comparación de vacíos).
     let week: Value =
@@ -254,31 +291,45 @@ async fn analytics_week_matches_python() {
 #[tokio::test]
 async fn analytics_week_empty_home_matches_python() {
     let home = TestHome::new("week-empty");
-    let Some(py) = oracle(&home).await else {
-        return;
-    };
+    home.write("cc-notify.conf", "DESKTOP_NOTIFY=0\n");
+    let mut py = FrozenHttp::new_rooted_with(
+        &home,
+        "server-http-analytics-week",
+        &[
+            ".claude/hooks/comandos-usage.sqlite",
+            ".local/state/comandos/app-state.sqlite3",
+            ".claude/hooks/agy-quota.json",
+            ".claude/hooks/cc-notify.conf",
+            ".codex/sessions/2026/10/04/rollout-a.jsonl",
+            ".grok/logs/unified.jsonl",
+        ],
+        "",
+    )
+    .await;
     let mut opts = home.options();
-    opts.clock = Arc::new(wall_clock_ms);
+    opts.clock = Arc::new(|| NOW_MS);
     let front = front(&home, dead_port(), opts).await;
-    warm(front.port, py.port).await;
+    warm(front.port, &mut py, &home).await;
     for target in [
         "/analytics/week",
         "/analytics/week?sidebar=1",
         "/analytics/week?offset=-1",
         "/analytics/week?offset=-1&sidebar=1",
     ] {
-        compare(front.port, py.port, target).await;
+        compare(front.port, &py, target).await;
     }
     front.stop().await;
 }
 
 #[tokio::test]
-async fn analytics_week_prefix_is_still_forwarded() {
+async fn analytics_week_prefix_is_native() {
     let home = TestHome::new("week-prefix");
     let legacy = FakeLegacy::start().await;
     let front = front(&home, legacy.port, home.options()).await;
     let wire = get(front.port, "/analytics/weekly").await;
-    assert_eq!(wire.text(), r#"{"legacy": true}"#);
+    assert_eq!(wire.status, 200);
+    assert!(serde_json::from_slice::<serde_json::Value>(&wire.body).unwrap()["week"].is_object());
+    assert!(legacy.requests().is_empty());
     front.stop().await;
 }
 

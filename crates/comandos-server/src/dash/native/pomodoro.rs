@@ -1,7 +1,7 @@
 //! F. GET /pomodoro (8321, `pomodoro_payload` 6528): bloque y progreso de
 //! app-state, cola de `H/focus-queue.jsonl`, ajustes de la base de uso y la
-//! ruta de sonido de los avisos. POST /pomodoro sigue en el Python: despierta
-//! su scheduler en memoria (`_POMODORO_WAKE`).
+//! ruta de sonido de los avisos. POST /pomodoro vive en `push.rs` (corte
+//! `services`, P3) y despierta el planificador de `background::pomodoro`.
 use super::{
     Answer, Entry, Fault, Key, Native, NativeRoute, Verb,
     files::{self, Strict},
@@ -33,7 +33,10 @@ pub async fn answer(native: &Native) -> Answer {
         return Err(Fault::Decline);
     }
     // La cola no tiene efectos: se lee primero para declinar antes de escribir.
-    let queue = focus_queue(&native.options().hooks.join("focus-queue.jsonl"))?;
+    let queue = focus_queue_domain(
+        &native.options().home,
+        &native.options().hooks.join("focus-queue.jsonl"),
+    )?;
     let clock = native.options().clock.clone();
     let (state, progress, sound) = native
         .with_state(move |b| -> Result<StateParts, Fault> {
@@ -93,7 +96,7 @@ pub async fn answer(native: &Native) -> Answer {
 
 /// `output[key] = json.loads(value)` con `except Exception: pass`. Un valor no
 /// textual (BLOB: `json.loads(bytes)` sí decodifica) o incierto declina.
-fn settings(rows: Vec<(String, Option<String>)>) -> Result<Map<String, Value>, Fault> {
+pub(crate) fn settings(rows: Vec<(String, Option<String>)>) -> Result<Map<String, Value>, Fault> {
     let mut out = Map::new();
     for (key, value) in rows {
         match value.as_deref().map(files::loads_strict) {
@@ -107,6 +110,31 @@ fn settings(rows: Vec<(String, Option<String>)>) -> Result<Map<String, Value>, F
     Ok(out)
 }
 
+fn focus_queue_domain(home: &Path, path: &Path) -> Result<Vec<Value>, Fault> {
+    comandos_store::unified::with_readonly_access(home, "logs", |mode, db| {
+        if !matches!(
+            mode,
+            comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed
+        ) {
+            return Ok(focus_queue(path));
+        }
+        let Some(db) = db else {
+            return Ok(Err(Fault::Decline));
+        };
+        let lines = comandos_store::unified::log_tail(
+            db,
+            comandos_store::unified::LogName::FocusQueue,
+            i64::MAX as usize,
+        )?;
+        let mut body = Vec::new();
+        for line in lines {
+            body.extend(line);
+            body.push(b'\n');
+        }
+        Ok(focus_queue_bytes(body))
+    })
+    .map_err(|_| Fault::Decline)?
+}
 /// `focus_queue` (135): líneas JSON válidas, las últimas 50. Modo texto: bytes
 /// no UTF-8 lanzan fuera del `try` interno (500 en el Python) → se declina.
 fn focus_queue(path: &Path) -> Result<Vec<Value>, Fault> {
@@ -115,6 +143,9 @@ fn focus_queue(path: &Path) -> Result<Vec<Value>, Fault> {
         // `except OSError: pass`.
         Err(_) => return Ok(Vec::new()),
     };
+    focus_queue_bytes(bytes)
+}
+fn focus_queue_bytes(bytes: Vec<u8>) -> Result<Vec<Value>, Fault> {
     let text = String::from_utf8(bytes).map_err(|_| Fault::Decline)?;
     // Saltos universales del modo texto: `\r\n` y `\r` terminan línea.
     let text = text.replace("\r\n", "\n").replace('\r', "\n");

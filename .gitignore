@@ -9,6 +9,8 @@ config/ssh_config
 
 # Runtime / estado
 state/
+!crates/comandos-cli/src/state/
+!crates/comandos-cli/src/state/**
 *.jsonl
 !docs/verification/rss.jsonl
 prefs.json

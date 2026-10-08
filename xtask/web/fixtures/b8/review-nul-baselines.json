@@ -1,0 +1,85 @@
+{
+  "originalSha256": "54024241c4f88930671a069b1b84f2aa39752702716b2ac906b1929bc2ccf25b",
+  "cases": [
+    {
+      "id": "nul-0",
+      "text": "a\u0000b",
+      "baseline": "<p>a�b</p>\n"
+    },
+    {
+      "id": "nul-1",
+      "text": "\u0000",
+      "baseline": "<p>�</p>\n"
+    },
+    {
+      "id": "nul-2",
+      "text": "\u0000\u0000",
+      "baseline": "<p>��</p>\n"
+    },
+    {
+      "id": "nul-3",
+      "text": "<b>a\u0000b</b>",
+      "baseline": "<p>&lt;b&gt;a�b&lt;/b&gt;</p>\n"
+    },
+    {
+      "id": "nul-4",
+      "text": "`a\u0000b`",
+      "baseline": "<p><code>a�b</code></p>\n"
+    },
+    {
+      "id": "nul-5",
+      "text": "```txt\na\u0000b\n```",
+      "baseline": "<pre><code class=\"language-txt\">a�b\n</code></pre>\n"
+    },
+    {
+      "id": "nul-6",
+      "text": "*a\u0000b*",
+      "baseline": "<p><em>a�b</em></p>\n"
+    },
+    {
+      "id": "nul-7",
+      "text": "# a\u0000b",
+      "baseline": "<h1>a�b</h1>\n"
+    },
+    {
+      "id": "nul-8",
+      "text": "> a\u0000b",
+      "baseline": "<blockquote>\n<p>a�b</p>\n</blockquote>\n"
+    },
+    {
+      "id": "nul-9",
+      "text": "| a | b |\n|---|---|\n| a\u0000b | c |",
+      "baseline": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>a</th>\n<th>b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>a�b</td>\n<td>c</td>\n</tr>\n</tbody>\n</table></div>"
+    },
+    {
+      "id": "nul-10",
+      "text": "[a\u0000b](https://example.org)",
+      "baseline": "<p><a href=\"https://example.org\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">a�b</a></p>\n"
+    },
+    {
+      "id": "nul-11",
+      "text": "[x](https://example.org/a\u0000b)",
+      "baseline": "<p><a href=\"https://example.org/a%EF%BF%BDb\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "nul-12",
+      "text": "https://example.org/a\u0000b end",
+      "baseline": "<p><a href=\"https://example.org/a%EF%BF%BDb\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/a�b</a> end</p>\n"
+    },
+    {
+      "id": "nul-13",
+      "text": "a\u0000&#0;b",
+      "baseline": "<p>a��b</p>\n"
+    },
+    {
+      "id": "nul-14",
+      "text": "⁅\u0000<b>&#x2045;</b>",
+      "baseline": "<p>⁅�&lt;b&gt;⁅&lt;/b&gt;</p>\n"
+    },
+    {
+      "id": "nul-15",
+      "text": "A😀\u0000é",
+      "baseline": "<p>A😀�é</p>\n"
+    }
+  ]
+}

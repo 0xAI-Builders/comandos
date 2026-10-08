@@ -5,19 +5,42 @@ use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub mod accounts;
+pub mod acp_client;
 pub mod agent_procs;
+pub mod claude_trust;
+pub mod cli_catalog;
+pub mod cli_help;
+pub mod closed_panes;
+pub mod command_chains;
+pub mod dialogs;
 pub mod events_cli;
+pub mod extension_launch;
+pub mod extension_observations;
 pub mod hooks;
+pub mod launch_command;
 pub mod legacy;
 pub mod limits;
 pub mod model_catalog;
+pub mod model_watch;
+pub mod news_agents;
+pub mod news_editions;
+pub mod news_radar;
+pub mod news_watch;
+pub mod pane_exit;
+pub mod pane_extensions;
+pub mod pane_observe;
 pub mod pane_snapshot;
 pub mod pane_typing;
+pub mod platform;
+pub mod procs;
 pub mod providers;
 pub mod quick_terminal;
+pub mod session_configuration;
 pub mod session_operations;
+pub mod ssh_config;
 pub mod terminal_history;
 pub mod terminal_panes;
+pub mod tmux_snapshot;
 pub mod tui_state;
 
 /// El Python leería algo que este port no reproduce con certeza: quien lo
@@ -52,6 +75,14 @@ pub fn process_start_time(pid: &str) -> Option<u64> {
         return None;
     }
     let number = pid.parse::<u64>().ok()?;
+    #[cfg(target_os = "macos")]
+    {
+        use procs::ProcSource;
+        procs::system()
+            .process(i32::try_from(number).ok()?)
+            .map(|p| p.start)
+    }
+    #[cfg(not(target_os = "macos"))]
     parse_process_stat(&std::fs::read_to_string(format!("/proc/{number}/stat")).ok()?)
 }
 
@@ -104,3 +135,10 @@ pub fn open_state(path: &Path, busy_ms: u64) -> Result<Connection> {
     }
     unreachable!("last migration attempt returns its result")
 }
+pub mod capabilities;
+pub mod mcp_descriptions;
+pub mod session_profiles;
+
+mod profile_yaml;
+
+pub mod retirement;

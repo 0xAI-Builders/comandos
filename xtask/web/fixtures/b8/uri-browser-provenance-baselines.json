@@ -1,0 +1,1030 @@
+{
+  "machine": "mac-nueva",
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+  "purify": "3.4.16",
+  "source_inputs": "/home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-web-uri/xtask/web/fixtures/b8/uri-provenance-new-baselines.json",
+  "source_inputs_sha256": "5ec5f806dec058e4f3ba50ebd65a526c1dcb119ee9b312f7a724da6ccd2a3051",
+  "raw_evidence": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/takeover-20261005/mac-nueva-browser/b8-uri-real-calibration-113-v2/result.json",
+  "raw_evidence_sha256": "a9c1abeefd5ea6cf7ef9cc1f470cce261e3454122592892f791ef01c43cb0e03",
+  "original_source_sha256": "54024241c4f88930671a069b1b84f2aa39752702716b2ac906b1929bc2ccf25b",
+  "candidate_note": "Root2a4a37c prior repair, not worker current delta",
+  "cases": [
+    {
+      "id": "0",
+      "text": "[x](https://example.org/&#xe000;&#xf0000;)",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "1",
+      "text": "[nested [label]](https://example.org/&#xe000;&#xf0000; \"title\")",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "id": "2",
+      "text": "[code `]([`](https://example.org/&#xe000;&#xf0000;)",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "id": "3",
+      "text": "[x][ref]\n\n[ref]: https://example.org/&#xe000;&#xf0000;",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "4",
+      "text": "[ref]\n\n[ref]: <https://example.org/&#xe000;&#xf0000;> 'title'",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "id": "5",
+      "text": "| x |\n|---|\n|[x](https://example.org/&#xe000;&#xf0000;)|",
+      "original": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidate": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>",
+      "code": 200,
+      "originalDOM": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidateDOM": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>"
+    },
+    {
+      "id": "6",
+      "text": "[x](https://example.org/\ue000&#xf0000;)",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "7",
+      "text": "[nested [label]](https://example.org/\ue000&#xf0000; \"title\")",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "id": "8",
+      "text": "[code `]([`](https://example.org/\ue000&#xf0000;)",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "id": "9",
+      "text": "[x][ref]\n\n[ref]: https://example.org/\ue000&#xf0000;",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "10",
+      "text": "[ref]\n\n[ref]: <https://example.org/\ue000&#xf0000;> 'title'",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "id": "11",
+      "text": "| x |\n|---|\n|[x](https://example.org/\ue000&#xf0000;)|",
+      "original": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidate": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>",
+      "code": 200,
+      "originalDOM": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidateDOM": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>"
+    },
+    {
+      "id": "12",
+      "text": "[x](https://example.org/&#xe000;\ud800)",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "13",
+      "text": "[nested [label]](https://example.org/&#xe000;\ud800 \"title\")",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "id": "14",
+      "text": "[code `]([`](https://example.org/&#xe000;\ud800)",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "id": "15",
+      "text": "[x][ref]\n\n[ref]: https://example.org/&#xe000;\ud800",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "16",
+      "text": "[ref]\n\n[ref]: <https://example.org/&#xe000;\ud800> 'title'",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "id": "17",
+      "text": "| x |\n|---|\n|[x](https://example.org/&#xe000;\ud800)|",
+      "original": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidate": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>",
+      "code": 200,
+      "originalDOM": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EE%80%80%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidateDOM": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>"
+    },
+    {
+      "id": "18",
+      "text": "[x](https://example.org/\ud800&#xe000;&#xf0000;)",
+      "original": "<p><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "19",
+      "text": "[nested [label]](https://example.org/\ud800&#xe000;&#xf0000; \"title\")",
+      "original": "<p><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "id": "20",
+      "text": "[code `]([`](https://example.org/\ud800&#xe000;&#xf0000;)",
+      "original": "<p><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "id": "21",
+      "text": "[x][ref]\n\n[ref]: https://example.org/\ud800&#xe000;&#xf0000;",
+      "original": "<p><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "22",
+      "text": "[ref]\n\n[ref]: <https://example.org/\ud800&#xe000;&#xf0000;> 'title'",
+      "original": "<p><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "id": "23",
+      "text": "| x |\n|---|\n|[x](https://example.org/\ud800&#xe000;&#xf0000;)|",
+      "original": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidate": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>",
+      "code": 200,
+      "originalDOM": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EF%BF%BD%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidateDOM": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>"
+    },
+    {
+      "id": "24",
+      "text": "[x](https://example.org/&#xe000;\ue000)",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "25",
+      "text": "[nested [label]](https://example.org/&#xe000;\ue000 \"title\")",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "id": "26",
+      "text": "[code `]([`](https://example.org/&#xe000;\ue000)",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "id": "27",
+      "text": "[x][ref]\n\n[ref]: https://example.org/&#xe000;\ue000",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "28",
+      "text": "[ref]\n\n[ref]: <https://example.org/&#xe000;\ue000> 'title'",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "id": "29",
+      "text": "| x |\n|---|\n|[x](https://example.org/&#xe000;\ue000)|",
+      "original": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidate": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>",
+      "code": 200,
+      "originalDOM": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidateDOM": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EE%80%80%EE%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>"
+    },
+    {
+      "id": "30",
+      "text": "[x](https://example.org/&#xd800;)",
+      "original": "<p><a href=\"https://example.org/&amp;#xd800;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/&amp;#xd800;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "31",
+      "text": "[nested [label]](https://example.org/&#xd800; \"title\")",
+      "original": "<p><a href=\"https://example.org/&amp;#xd800;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/&amp;#xd800;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "id": "32",
+      "text": "[code `]([`](https://example.org/&#xd800;)",
+      "original": "<p><a href=\"https://example.org/&amp;#xd800;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/&amp;#xd800;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "id": "33",
+      "text": "[x][ref]\n\n[ref]: https://example.org/&#xd800;",
+      "original": "<p><a href=\"https://example.org/&amp;#xd800;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/&amp;#xd800;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "34",
+      "text": "[ref]\n\n[ref]: <https://example.org/&#xd800;> 'title'",
+      "original": "<p><a href=\"https://example.org/&amp;#xd800;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/&amp;#xd800;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "id": "35",
+      "text": "| x |\n|---|\n|[x](https://example.org/&#xd800;)|",
+      "original": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/&amp;#xd800;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidate": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>",
+      "code": 200,
+      "originalDOM": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/&amp;#xd800;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidateDOM": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>"
+    },
+    {
+      "id": "36",
+      "text": "[x](https://example.org/&#55296;)",
+      "original": "<p><a href=\"https://example.org/&amp;#55296;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/&amp;#55296;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "37",
+      "text": "[nested [label]](https://example.org/&#55296; \"title\")",
+      "original": "<p><a href=\"https://example.org/&amp;#55296;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/&amp;#55296;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "id": "38",
+      "text": "[code `]([`](https://example.org/&#55296;)",
+      "original": "<p><a href=\"https://example.org/&amp;#55296;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/&amp;#55296;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "id": "39",
+      "text": "[x][ref]\n\n[ref]: https://example.org/&#55296;",
+      "original": "<p><a href=\"https://example.org/&amp;#55296;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/&amp;#55296;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "40",
+      "text": "[ref]\n\n[ref]: <https://example.org/&#55296;> 'title'",
+      "original": "<p><a href=\"https://example.org/&amp;#55296;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/&amp;#55296;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "id": "41",
+      "text": "| x |\n|---|\n|[x](https://example.org/&#55296;)|",
+      "original": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/&amp;#55296;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidate": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>",
+      "code": 200,
+      "originalDOM": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/&amp;#55296;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidateDOM": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>"
+    },
+    {
+      "id": "42",
+      "text": "[x](https://example.org/&#x110000;)",
+      "original": "<p><a href=\"https://example.org/&amp;#x110000;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/&amp;#x110000;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "43",
+      "text": "[nested [label]](https://example.org/&#x110000; \"title\")",
+      "original": "<p><a href=\"https://example.org/&amp;#x110000;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/&amp;#x110000;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "id": "44",
+      "text": "[code `]([`](https://example.org/&#x110000;)",
+      "original": "<p><a href=\"https://example.org/&amp;#x110000;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/&amp;#x110000;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "id": "45",
+      "text": "[x][ref]\n\n[ref]: https://example.org/&#x110000;",
+      "original": "<p><a href=\"https://example.org/&amp;#x110000;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/&amp;#x110000;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "46",
+      "text": "[ref]\n\n[ref]: <https://example.org/&#x110000;> 'title'",
+      "original": "<p><a href=\"https://example.org/&amp;#x110000;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/&amp;#x110000;\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "id": "47",
+      "text": "| x |\n|---|\n|[x](https://example.org/&#x110000;)|",
+      "original": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/&amp;#x110000;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidate": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>",
+      "code": 200,
+      "originalDOM": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/&amp;#x110000;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidateDOM": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>"
+    },
+    {
+      "id": "48",
+      "text": "[x](https://example.org/&#xe000;&#xe000;&#xf0000;)",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "49",
+      "text": "[nested [label]](https://example.org/&#xe000;&#xe000;&#xf0000; \"title\")",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">nested [label]</a></p>\n"
+    },
+    {
+      "id": "50",
+      "text": "[code `]([`](https://example.org/&#xe000;&#xe000;&#xf0000;)",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">code <code>]([</code></a></p>\n"
+    },
+    {
+      "id": "51",
+      "text": "[x][ref]\n\n[ref]: https://example.org/&#xe000;&#xe000;&#xf0000;",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "52",
+      "text": "[ref]\n\n[ref]: <https://example.org/&#xe000;&#xe000;&#xf0000;> 'title'",
+      "original": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" title=\"title\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">ref</a></p>\n"
+    },
+    {
+      "id": "53",
+      "text": "| x |\n|---|\n|[x](https://example.org/&#xe000;&#xe000;&#xf0000;)|",
+      "original": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidate": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>",
+      "code": 200,
+      "originalDOM": "<div class=\"nr-table-wrap\"><table><thead>\n<tr>\n<th>x</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"https://example.org/%EE%80%80%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td>\n</tr>\n</tbody>\n</table></div>",
+      "candidateDOM": "<div class=\"nr-table-wrap\"><table><thead><tr><th>x</th></tr></thead><tbody>\n<tr><td><a href=\"https://example.org/%EE%80%80%F3%B0%80%80\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></td></tr>\n</tbody></table></div>"
+    },
+    {
+      "id": "54",
+      "text": "[x](https://a\ud800.example/path)",
+      "original": "<p><a href=\"https://xn--a-rc4g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-rc4g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "55",
+      "text": "[x][ref]\n\n[ref]: https://a\ud800.example/path",
+      "original": "<p><a href=\"https://xn--a-rc4g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-rc4g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "56",
+      "text": "<https://a\ud800.example/path>",
+      "original": "<p><a href=\"https://xn--a-rc4g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example/path</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example/path</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-rc4g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example/path</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example/path</a></p>\n"
+    },
+    {
+      "id": "57",
+      "text": "[x](HTTPS://a\ud800.example/path)",
+      "original": "<p><a href=\"HTTPS://a%EF%BF%BD.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"HTTPS://a%EF%BF%BD.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "58",
+      "text": "[x](https://user@a\ud800.example:8080/path)",
+      "original": "<p><a href=\"https://user@xn--a-rc4g.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://user@xn--a-rc4g.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "59",
+      "text": "[x](https://a\udc00.example/path)",
+      "original": "<p><a href=\"https://xn--a-9z5g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-9z5g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "60",
+      "text": "[x][ref]\n\n[ref]: https://a\udc00.example/path",
+      "original": "<p><a href=\"https://xn--a-9z5g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-9z5g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "61",
+      "text": "<https://a\udc00.example/path>",
+      "original": "<p><a href=\"https://xn--a-9z5g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\udc00.example/path</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\udc00.example/path</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-9z5g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\udc00.example/path</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\udc00.example/path</a></p>\n"
+    },
+    {
+      "id": "62",
+      "text": "[x](HTTPS://a\udc00.example/path)",
+      "original": "<p><a href=\"HTTPS://a%EF%BF%BD.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"HTTPS://a%EF%BF%BD.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "63",
+      "text": "[x](https://user@a\udc00.example:8080/path)",
+      "original": "<p><a href=\"https://user@xn--a-9z5g.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://user@xn--a-9z5g.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "64",
+      "text": "[x](https://a\ue000.example/path)",
+      "original": "<p><a href=\"https://xn--a-so7g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-so7g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "65",
+      "text": "[x][ref]\n\n[ref]: https://a\ue000.example/path",
+      "original": "<p><a href=\"https://xn--a-so7g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-so7g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "66",
+      "text": "<https://a\ue000.example/path>",
+      "original": "<p><a href=\"https://xn--a-so7g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ue000.example/path</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ue000.example/path</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-so7g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ue000.example/path</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ue000.example/path</a></p>\n"
+    },
+    {
+      "id": "67",
+      "text": "[x](HTTPS://a\ue000.example/path)",
+      "original": "<p><a href=\"HTTPS://a%EE%80%80.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"HTTPS://a%EE%80%80.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "68",
+      "text": "[x](https://user@a\ue000.example:8080/path)",
+      "original": "<p><a href=\"https://user@xn--a-so7g.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://user@xn--a-so7g.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "69",
+      "text": "[x](https://a\ue000\udb80\udc00.example/path)",
+      "original": "<p><a href=\"https://xn--a-so7gp7960g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-so7gp7960g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "70",
+      "text": "[x][ref]\n\n[ref]: https://a\ue000\udb80\udc00.example/path",
+      "original": "<p><a href=\"https://xn--a-so7gp7960g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-so7gp7960g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "71",
+      "text": "<https://a\ue000\udb80\udc00.example/path>",
+      "original": "<p><a href=\"https://xn--a-so7gp7960g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ue000\udb80\udc00.example/path</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ue000\udb80\udc00.example/path</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-so7gp7960g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ue000\udb80\udc00.example/path</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ue000\udb80\udc00.example/path</a></p>\n"
+    },
+    {
+      "id": "72",
+      "text": "[x](HTTPS://a\ue000\udb80\udc00.example/path)",
+      "original": "<p><a href=\"HTTPS://a%EE%80%80%F3%B0%80%80.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"HTTPS://a%EE%80%80%F3%B0%80%80.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "73",
+      "text": "[x](https://user@a\ue000\udb80\udc00.example:8080/path)",
+      "original": "<p><a href=\"https://user@xn--a-so7gp7960g.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://user@xn--a-so7gp7960g.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "74",
+      "text": "[x](https://a&#xe000;&#xf0000;.example/path)",
+      "original": "<p><a href=\"https://xn--a-so7gp7960g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-so7gp7960g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "75",
+      "text": "[x][ref]\n\n[ref]: https://a&#xe000;&#xf0000;.example/path",
+      "original": "<p><a href=\"https://xn--a-so7gp7960g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-so7gp7960g.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "76",
+      "text": "<https://a&#xe000;&#xf0000;.example/path>",
+      "original": "<p><a href=\"https://a&amp;#xe000;&amp;#xf0000;.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a&amp;#xe000;&amp;#xf0000;.example/path</a></p>\n",
+      "candidate": "<p><a href=\"https://a&amp;#xe000;&amp;#xf0000;.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a&amp;#xe000;&amp;#xf0000;.example/path</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://a&amp;#xe000;&amp;#xf0000;.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a&amp;#xe000;&amp;#xf0000;.example/path</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://a&amp;#xe000;&amp;#xf0000;.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a&amp;#xe000;&amp;#xf0000;.example/path</a></p>\n"
+    },
+    {
+      "id": "77",
+      "text": "[x](HTTPS://a&#xe000;&#xf0000;.example/path)",
+      "original": "<p><a href=\"HTTPS://a%EE%80%80%F3%B0%80%80.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"HTTPS://a%EE%80%80%F3%B0%80%80.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "78",
+      "text": "[x](https://user@a&#xe000;&#xf0000;.example:8080/path)",
+      "original": "<p><a href=\"https://user@xn--a-so7gp7960g.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://user@xn--a-so7gp7960g.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "79",
+      "text": "[x](https://a\ud800&#xe000;.example/path)",
+      "original": "<p><a href=\"https://xn--a-rc4gy8r.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-rc4gy8r.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "80",
+      "text": "[x][ref]\n\n[ref]: https://a\ud800&#xe000;.example/path",
+      "original": "<p><a href=\"https://xn--a-rc4gy8r.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-rc4gy8r.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "81",
+      "text": "<https://a\ud800&#xe000;.example/path>",
+      "original": "<p><a href=\"https://a%EF%BF%BD&amp;#xe000;.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800&amp;#xe000;.example/path</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800&amp;#xe000;.example/path</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://a%EF%BF%BD&amp;#xe000;.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800&amp;#xe000;.example/path</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800&amp;#xe000;.example/path</a></p>\n"
+    },
+    {
+      "id": "82",
+      "text": "[x](HTTPS://a\ud800&#xe000;.example/path)",
+      "original": "<p><a href=\"HTTPS://a%EF%BF%BD%EE%80%80.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"HTTPS://a%EF%BF%BD%EE%80%80.example/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "83",
+      "text": "[x](https://user@a\ud800&#xe000;.example:8080/path)",
+      "original": "<p><a href=\"https://user@xn--a-rc4gy8r.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://user@xn--a-rc4gy8r.example:8080/path\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "84",
+      "text": "<a data-news-href=\"javascript:alert(1)\" href=\"https://a\ud800.example\">x</a>",
+      "original": "<p>&lt;a data-news-href=\"javascript:alert(1)\" href=\"<a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\"&gt;x&lt;/a&gt;</p>\n",
+      "candidate": "<p>&lt;a data-news-href=\"javascript:alert(1)\" href=\"<a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\"&gt;x&lt;/a&gt;</p>\n",
+      "code": 200,
+      "originalDOM": "<p>&lt;a data-news-href=\"javascript:alert(1)\" href=\"<a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\"&gt;x&lt;/a&gt;</p>\n",
+      "candidateDOM": "<p>&lt;a data-news-href=\"javascript:alert(1)\" href=\"<a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\"&gt;x&lt;/a&gt;</p>\n"
+    },
+    {
+      "id": "85",
+      "text": "<a data-news-href=\"https://a\ud800.example\" onerror=\"x\">x</a>",
+      "original": "<p>&lt;a data-news-href=\"<a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\" onerror=\"x\"&gt;x&lt;/a&gt;</p>\n",
+      "candidate": "<p>&lt;a data-news-href=\"<a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\" onerror=\"x\"&gt;x&lt;/a&gt;</p>\n",
+      "code": 200,
+      "originalDOM": "<p>&lt;a data-news-href=\"<a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\" onerror=\"x\"&gt;x&lt;/a&gt;</p>\n",
+      "candidateDOM": "<p>&lt;a data-news-href=\"<a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\" onerror=\"x\"&gt;x&lt;/a&gt;</p>\n"
+    },
+    {
+      "id": "86",
+      "text": "`<a data-news-href=\"https://a\ud800.example\">x</a>`",
+      "original": "<p><code>&lt;a data-news-href=\"https://a\ud800.example\"&gt;x&lt;/a&gt;</code></p>\n",
+      "candidate": "<p><code>&lt;a data-news-href=\"https://a\ud800.example\"&gt;x&lt;/a&gt;</code></p>\n",
+      "code": 200,
+      "originalDOM": "<p><code>&lt;a data-news-href=\"https://a\ud800.example\"&gt;x&lt;/a&gt;</code></p>\n",
+      "candidateDOM": "<p><code>&lt;a data-news-href=\"https://a\ud800.example\"&gt;x&lt;/a&gt;</code></p>\n"
+    },
+    {
+      "id": "87",
+      "text": "```html\n<a data-news-href=\"https://a\ud800.example\" onload=\"x\">x</a>\n```",
+      "original": "<pre><code class=\"language-html\">&lt;a data-news-href=\"https://a\ud800.example\" onload=\"x\"&gt;x&lt;/a&gt;\n</code></pre>\n",
+      "candidate": "<pre><code class=\"language-html\">&lt;a data-news-href=\"https://a\ud800.example\" onload=\"x\"&gt;x&lt;/a&gt;\n</code></pre>\n",
+      "code": 200,
+      "originalDOM": "<pre><code class=\"language-html\">&lt;a data-news-href=\"https://a\ud800.example\" onload=\"x\"&gt;x&lt;/a&gt;\n</code></pre>\n",
+      "candidateDOM": "<pre><code class=\"language-html\">&lt;a data-news-href=\"https://a\ud800.example\" onload=\"x\"&gt;x&lt;/a&gt;\n</code></pre>\n"
+    },
+    {
+      "id": "88",
+      "text": "&lt;a data-news-href=&quot;https://a\ud800.example&quot; onload=&quot;x&quot;&gt;x&lt;/a&gt;",
+      "original": "<p>&lt;a data-news-href=\"<a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\" onload=\"x\"&gt;x&lt;/a&gt;</p>\n",
+      "candidate": "<p>&lt;a data-news-href=\"<a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\" onload=\"x\"&gt;x&lt;/a&gt;</p>\n",
+      "code": 200,
+      "originalDOM": "<p>&lt;a data-news-href=\"<a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\" onload=\"x\"&gt;x&lt;/a&gt;</p>\n",
+      "candidateDOM": "<p>&lt;a data-news-href=\"<a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\" onload=\"x\"&gt;x&lt;/a&gt;</p>\n"
+    },
+    {
+      "id": "89",
+      "text": "[x](https://a\ud800.example \"title data-news-href=\\\"javascript:alert(1)\\\" > <a href=x>\")",
+      "original": "<p><a href=\"https://xn--a-rc4g.example\" title=\"title data-news-href=&quot;javascript:alert(1)&quot; &gt; &lt;a href=x&gt;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a title=\"title data-news-href=&quot;javascript:alert(1)&quot; &gt; &lt;a href=x&gt;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-rc4g.example\" title=\"title data-news-href=&quot;javascript:alert(1)&quot; &gt; &lt;a href=x&gt;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a title=\"title data-news-href=&quot;javascript:alert(1)&quot; &gt; &lt;a href=x&gt;\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "90",
+      "text": "[data-news-href=\"https://a\ud800.example\"](https://a\ud800.example)",
+      "original": "<p><a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">data-news-href=\"https://a\ud800.example\"</a></p>\n",
+      "candidate": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">data-news-href=\"https://a\ud800.example\"</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">data-news-href=\"https://a\ud800.example\"</a></p>\n",
+      "candidateDOM": "<p><a target=\"_blank\" rel=\"noopener noreferrer nofollow\">data-news-href=\"https://a\ud800.example\"</a></p>\n"
+    },
+    {
+      "id": "91",
+      "text": "` data-news-href=\"https://a\ud800.example\"`",
+      "original": "<p><code> data-news-href=\"https://a\ud800.example\"</code></p>\n",
+      "candidate": "<p><code> data-news-href=\"https://a\ud800.example\"</code></p>\n",
+      "code": 200,
+      "originalDOM": "<p><code> data-news-href=\"https://a\ud800.example\"</code></p>\n",
+      "candidateDOM": "<p><code> data-news-href=\"https://a\ud800.example\"</code></p>\n"
+    },
+    {
+      "id": "92",
+      "text": "[x](javascript:alert(1) \"data-news-href=\"https://a\ud800.example\"\")",
+      "original": "<p>[x](javascript:alert(1) \"data-news-href=\"<a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\"\")</p>\n",
+      "candidate": "<p>[x](javascript:alert(1) \"data-news-href=\"<a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\"\")</p>\n",
+      "code": 200,
+      "originalDOM": "<p>[x](javascript:alert(1) \"data-news-href=\"<a href=\"https://xn--a-rc4g.example\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\"\")</p>\n",
+      "candidateDOM": "<p>[x](javascript:alert(1) \"data-news-href=\"<a target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://a\ud800.example</a>\"\")</p>\n"
+    },
+    {
+      "id": "93",
+      "text": "prefix https://example.org/\udc00\udc00 end",
+      "original": "<p>prefix <a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udc00</a> end</p>\n",
+      "candidate": "<p>prefix <a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udc00</a> end</p>\n",
+      "code": 200,
+      "originalDOM": "<p>prefix <a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udc00</a> end</p>\n",
+      "candidateDOM": "<p>prefix <a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udc00</a> end</p>\n"
+    },
+    {
+      "id": "94",
+      "text": "<b>https://example.org/\udc00\udc00 end</b>",
+      "original": "<p>&lt;b&gt;<a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udc00</a> end&lt;/b&gt;</p>\n",
+      "candidate": "<p>&lt;b&gt;<a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udc00</a> end&lt;/b&gt;</p>\n",
+      "code": 200,
+      "originalDOM": "<p>&lt;b&gt;<a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udc00</a> end&lt;/b&gt;</p>\n",
+      "candidateDOM": "<p>&lt;b&gt;<a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udc00</a> end&lt;/b&gt;</p>\n"
+    },
+    {
+      "id": "95",
+      "text": "[x](https://example.org/\udc00\udc00)",
+      "original": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "96",
+      "text": "`https://example.org/\udc00\udc00`",
+      "original": "<p><code>https://example.org/\udc00\udc00</code></p>\n",
+      "candidate": "<p><code>https://example.org/\udc00\udc00</code></p>\n",
+      "code": 200,
+      "originalDOM": "<p><code>https://example.org/\udc00\udc00</code></p>\n",
+      "candidateDOM": "<p><code>https://example.org/\udc00\udc00</code></p>\n"
+    },
+    {
+      "id": "97",
+      "text": "[https://example.org/\udc00\udc00](https://example.org/ok)",
+      "original": "<p><a href=\"https://example.org/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udc00</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udc00</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udc00</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udc00</a></p>\n"
+    },
+    {
+      "id": "98",
+      "text": "prefix https://example.org/\udc00\udfff end",
+      "original": "<p>prefix <a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udfff</a> end</p>\n",
+      "candidate": "<p>prefix <a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udfff</a> end</p>\n",
+      "code": 200,
+      "originalDOM": "<p>prefix <a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udfff</a> end</p>\n",
+      "candidateDOM": "<p>prefix <a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udfff</a> end</p>\n"
+    },
+    {
+      "id": "99",
+      "text": "<b>https://example.org/\udc00\udfff end</b>",
+      "original": "<p>&lt;b&gt;<a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udfff</a> end&lt;/b&gt;</p>\n",
+      "candidate": "<p>&lt;b&gt;<a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udfff</a> end&lt;/b&gt;</p>\n",
+      "code": 200,
+      "originalDOM": "<p>&lt;b&gt;<a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udfff</a> end&lt;/b&gt;</p>\n",
+      "candidateDOM": "<p>&lt;b&gt;<a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udfff</a> end&lt;/b&gt;</p>\n"
+    },
+    {
+      "id": "100",
+      "text": "[x](https://example.org/\udc00\udfff)",
+      "original": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "101",
+      "text": "`https://example.org/\udc00\udfff`",
+      "original": "<p><code>https://example.org/\udc00\udfff</code></p>\n",
+      "candidate": "<p><code>https://example.org/\udc00\udfff</code></p>\n",
+      "code": 200,
+      "originalDOM": "<p><code>https://example.org/\udc00\udfff</code></p>\n",
+      "candidateDOM": "<p><code>https://example.org/\udc00\udfff</code></p>\n"
+    },
+    {
+      "id": "102",
+      "text": "[https://example.org/\udc00\udfff](https://example.org/ok)",
+      "original": "<p><a href=\"https://example.org/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udfff</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udfff</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udfff</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udc00\udfff</a></p>\n"
+    },
+    {
+      "id": "103",
+      "text": "prefix https://example.org/\udfff\udc00 end",
+      "original": "<p>prefix <a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udc00</a> end</p>\n",
+      "candidate": "<p>prefix <a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udc00</a> end</p>\n",
+      "code": 200,
+      "originalDOM": "<p>prefix <a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udc00</a> end</p>\n",
+      "candidateDOM": "<p>prefix <a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udc00</a> end</p>\n"
+    },
+    {
+      "id": "104",
+      "text": "<b>https://example.org/\udfff\udc00 end</b>",
+      "original": "<p>&lt;b&gt;<a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udc00</a> end&lt;/b&gt;</p>\n",
+      "candidate": "<p>&lt;b&gt;<a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udc00</a> end&lt;/b&gt;</p>\n",
+      "code": 200,
+      "originalDOM": "<p>&lt;b&gt;<a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udc00</a> end&lt;/b&gt;</p>\n",
+      "candidateDOM": "<p>&lt;b&gt;<a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udc00</a> end&lt;/b&gt;</p>\n"
+    },
+    {
+      "id": "105",
+      "text": "[x](https://example.org/\udfff\udc00)",
+      "original": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "106",
+      "text": "`https://example.org/\udfff\udc00`",
+      "original": "<p><code>https://example.org/\udfff\udc00</code></p>\n",
+      "candidate": "<p><code>https://example.org/\udfff\udc00</code></p>\n",
+      "code": 200,
+      "originalDOM": "<p><code>https://example.org/\udfff\udc00</code></p>\n",
+      "candidateDOM": "<p><code>https://example.org/\udfff\udc00</code></p>\n"
+    },
+    {
+      "id": "107",
+      "text": "[https://example.org/\udfff\udc00](https://example.org/ok)",
+      "original": "<p><a href=\"https://example.org/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udc00</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udc00</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udc00</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udc00</a></p>\n"
+    },
+    {
+      "id": "108",
+      "text": "prefix https://example.org/\udfff\udfff end",
+      "original": "<p>prefix <a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udfff</a> end</p>\n",
+      "candidate": "<p>prefix <a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udfff</a> end</p>\n",
+      "code": 200,
+      "originalDOM": "<p>prefix <a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udfff</a> end</p>\n",
+      "candidateDOM": "<p>prefix <a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udfff</a> end</p>\n"
+    },
+    {
+      "id": "109",
+      "text": "<b>https://example.org/\udfff\udfff end</b>",
+      "original": "<p>&lt;b&gt;<a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udfff</a> end&lt;/b&gt;</p>\n",
+      "candidate": "<p>&lt;b&gt;<a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udfff</a> end&lt;/b&gt;</p>\n",
+      "code": 200,
+      "originalDOM": "<p>&lt;b&gt;<a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udfff</a> end&lt;/b&gt;</p>\n",
+      "candidateDOM": "<p>&lt;b&gt;<a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udfff</a> end&lt;/b&gt;</p>\n"
+    },
+    {
+      "id": "110",
+      "text": "[x](https://example.org/\udfff\udfff)",
+      "original": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/%EF%BF%BD%EF%BF%BD\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">x</a></p>\n"
+    },
+    {
+      "id": "111",
+      "text": "`https://example.org/\udfff\udfff`",
+      "original": "<p><code>https://example.org/\udfff\udfff</code></p>\n",
+      "candidate": "<p><code>https://example.org/\udfff\udfff</code></p>\n",
+      "code": 200,
+      "originalDOM": "<p><code>https://example.org/\udfff\udfff</code></p>\n",
+      "candidateDOM": "<p><code>https://example.org/\udfff\udfff</code></p>\n"
+    },
+    {
+      "id": "112",
+      "text": "[https://example.org/\udfff\udfff](https://example.org/ok)",
+      "original": "<p><a href=\"https://example.org/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udfff</a></p>\n",
+      "candidate": "<p><a href=\"https://example.org/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udfff</a></p>\n",
+      "code": 200,
+      "originalDOM": "<p><a href=\"https://example.org/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udfff</a></p>\n",
+      "candidateDOM": "<p><a href=\"https://example.org/ok\" target=\"_blank\" rel=\"noopener noreferrer nofollow\">https://example.org/\udfff\udfff</a></p>\n"
+    }
+  ]
+}

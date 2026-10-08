@@ -1,0 +1,18 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- notificaciones del sistema ----------",
+  "marker_end": "// ---------- Modales en medio (2-oct) ----------",
+  "sha256": "ba33a0260dfe83d59bb7954c55baa9b45b7ab2bd497c79a25c2048ed317d6f78",
+  "id": "notificaciones-del-sistema",
+  "exports": [
+    "DESKTOP_POPUPS",
+    "SYSTEM_POPUP_CATS",
+    "loadConf"
+  ],
+  "deps": [
+    "red",
+    "iconos"
+  ]
+}

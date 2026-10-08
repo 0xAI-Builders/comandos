@@ -1,0 +1,91 @@
+{
+  "input": {
+    "case": {
+      "reference": {
+        "source_commit": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+        "files": {
+          "bin/cc-app": "1b535bc6f4463959cc3ab992fa5a4ab859fbdaec43fcf628123cfede68b4ca6b",
+          "lib/work_marks.py": "6176da98aa2d7ac383293a12d44503718a15ccf448eb10f8eb4c12e82b518572",
+          "lib/gtk_workspace.py": "c687b1d25a4eb8ed07816a7f5046fda338f82c963d79cec466a4671ddeaa78f9",
+          "lib/gtk_tabstrip.py": "b9e777cc0bb557555755566b6843c97cd822d3d136796ba230db0168dc622065",
+          "lib/agent_stop.py": "4b17957868dbd0b0b4023cff6cca5354a66d881b3875ecd899843e5aa7bcf666"
+        }
+      },
+      "source": "bin/cc-app",
+      "script_sha256": "a5792d487d9057e9ad19d558bc5b57a0d5d376a0b856dd0f13e49acb857c3c91",
+      "cases": {
+        "sizes": [
+          [
+            800,
+            600
+          ],
+          [
+            220,
+            90
+          ]
+        ],
+        "points": [
+          [
+            2,
+            70
+          ],
+          [
+            55,
+            900
+          ],
+          [
+            56,
+            900
+          ],
+          [
+            844,
+            900
+          ],
+          [
+            845,
+            900
+          ]
+        ],
+        "trays": [
+          [
+            160,
+            450
+          ],
+          [
+            250,
+            500
+          ],
+          [
+            300,
+            45
+          ],
+          [
+            1000,
+            900
+          ]
+        ],
+        "moves": [
+          [
+            6,
+            0
+          ],
+          [
+            7,
+            0
+          ],
+          [
+            0,
+            7
+          ],
+          [
+            4,
+            5
+          ]
+        ]
+      },
+      "mode": null
+    },
+    "before_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "output_b64": "eyJzdGRvdXQiOiJ7XCJyZWN0c1wiOiBbW1tcImZyb3plblwiLCBbMTU4LjAsIDQ1MCwgMTEyLCA3MF1dLCBbXCJhd2FpdGluZ19yZXBseVwiLCBbMjgyLjAsIDQ1MCwgMTEyLCA3MF1dLCBbXCJyZXNvbHZlZFwiLCBbNDA2LjAsIDQ1MCwgMTEyLCA3MF1dLCBbXCJub25lXCIsIFs1MzAuMCwgNDUwLCAxMTIsIDcwXV1dLCBbW1wiZnJvemVuXCIsIFswLCAwLCAxMTIsIDcwXV0sIFtcImF3YWl0aW5nX3JlcGx5XCIsIFsxMjQsIDAsIDExMiwgNzBdXSwgW1wicmVzb2x2ZWRcIiwgWzI0OCwgMCwgMTEyLCA3MF1dLCBbXCJub25lXCIsIFszNzIsIDAsIDExMiwgNzBdXV1dLCBcInNjcm9sbFwiOiBbLTEsIC0xLCAwLCAwLCAxXSwgXCJoaXRzXCI6IFtcImZyb3plblwiLCBcImZyb3plblwiLCBudWxsLCBudWxsXSwgXCJsaWZ0ZWRcIjogW2ZhbHNlLCB0cnVlLCB0cnVlLCBmYWxzZV19XG4iLCJ0cmVlIjp7fX0="
+}

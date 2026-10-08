@@ -1,0 +1,10 @@
+{
+  "input": {
+    "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83",
+    "python": "3.10.12",
+    "target": "/conf",
+    "authorization": "token-nuevo-rotado",
+    "current_token": "otro-token-mas-largo"
+  },
+  "output_b64": "WzQwMSwie1wiZXJyb3JcIjogXCJObyBhdXRvcml6YWRvICh0b2tlbiByZXF1ZXJpZG8gcGFyYSBhY2Nlc28gcmVtb3RvKVwifSJd"
+}

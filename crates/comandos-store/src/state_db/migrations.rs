@@ -57,3 +57,43 @@ pub const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../../migrations/011-news_reading.sql"),
     },
 ];
+
+/// Esquemas publicados sin cambios, seguidos por la base única.
+pub const UNIFIED_MIGRATIONS: &[Migration] = &[
+    MIGRATIONS[0],
+    MIGRATIONS[1],
+    MIGRATIONS[2],
+    MIGRATIONS[3],
+    MIGRATIONS[4],
+    MIGRATIONS[5],
+    MIGRATIONS[6],
+    MIGRATIONS[7],
+    MIGRATIONS[8],
+    MIGRATIONS[9],
+    MIGRATIONS[10],
+    Migration {
+        version: 100,
+        name: "unified-meta",
+        sql: include_str!("../../migrations/unified/100-unified-meta.sql"),
+    },
+    Migration {
+        version: 101,
+        name: "documents",
+        sql: include_str!("../../migrations/unified/101-documents.sql"),
+    },
+    Migration {
+        version: 102,
+        name: "collections",
+        sql: include_str!("../../migrations/unified/102-collections.sql"),
+    },
+    Migration {
+        version: 103,
+        name: "renamed",
+        sql: include_str!("../../migrations/unified/103-renamed.sql"),
+    },
+    Migration {
+        version: 104,
+        name: "session-operations",
+        sql: include_str!("../../migrations/unified/104-session-operations.sql"),
+    },
+];

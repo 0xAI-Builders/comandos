@@ -4,7 +4,7 @@
 //! 6448; GET 8487, 8530, 8539; POST 8662, 8665, 8751).
 //!
 //! `workspace_sync` corre entera en el worker; la identidad de sesión (tmux)
-//! fuera. POST /workspace/close-group sigue en el Python (`close_app_tab`).
+//! fuera. POST /workspace/close-group es del corte `tabs` (`tabs.rs`, 2f-1/T2).
 //!
 //! POST /workspace/sort en modo `by` (Fase 2d) calcula `/state` con la caché
 //! del frente ANTES de su trabajo en la base (excepción 3a de los rulings: la
@@ -68,7 +68,7 @@ const fn entry(verb: Verb, key: Key, route: WorkspaceRoute) -> Entry {
     }
 }
 
-/// POST `/workspace/close-group` NO está: cierra pestañas (`close_app_tab`).
+/// POST `/workspace/close-group` está en `tabs.rs` (corte `tabs`): cierra pestañas.
 pub const ROUTES: &[Entry] = &[
     entry(Verb::Get, Key::Path("/workspace"), WorkspaceRoute::Get),
     entry(
@@ -125,13 +125,48 @@ pub fn read_snapshot(path: &Path) -> Result<Value, Fault> {
     Ok(json!({"version": 2, "sessions": {}}))
 }
 
+fn read_tab_doc(home: Option<&Path>, hooks: &Path) -> Strict {
+    home.map_or_else(
+        || files::read_json_strict(&hooks.join("app-tabs.json")),
+        |home| {
+            files::DomainDocument::new(home, hooks, "app-tabs.json")
+                .map_or(Strict::Unsure, |d| d.strict())
+        },
+    )
+}
+fn prefs_for(home: Option<&Path>, hooks: &Path) -> Result<Map<String, Value>, Fault> {
+    match home {
+        Some(home) => super::light::read_prefs_domain(home, hooks),
+        None => read_prefs(hooks),
+    }
+}
+fn snapshot_for(home: Option<&Path>, hooks: &Path) -> Result<Value, Fault> {
+    let Some(home) = home else {
+        return read_snapshot(&hooks.join("app-sessions-v2.json"));
+    };
+    comandos_store::unified::with_readonly_access(home,"layout",|mode,db| {
+        if !matches!(mode,comandos_store::unified::Mode::Unified|comandos_store::unified::Mode::Sealed) {return Ok(read_snapshot(&hooks.join("app-sessions-v2.json")));}
+        let Some(db)=db else {return Ok(Err(Fault::Decline))};
+        for kind in ["current","previous"] {
+            let bytes=db.prepare("SELECT body FROM layout_snapshots WHERE generation=?1 ORDER BY stamp DESC LIMIT 1")?.query_map([kind],|r|r.get::<_,Vec<u8>>(0))?.next().transpose()?;
+            if let Some(bytes)=bytes {
+                match files::bytes_strict(&bytes) {
+                    Strict::Unsure=>return Ok(Err(Fault::Decline)),
+                    Strict::Value(data)=>match check_snapshot(&data) {Snapshot::Valid=>return Ok(Ok(data)),Snapshot::Exotic=>return Ok(Err(Fault::Decline)),Snapshot::Invalid=>{}},
+                    _=>{},
+                }
+            }
+        }
+        Ok(Ok(json!({"version":2,"sessions":{}})))
+    }).map_err(|_| Fault::Decline)?
+}
+
 /// `(sesión, etiqueta)` en el orden de `workspace_inventory`.
 type Inventory = Vec<(String, Option<String>)>;
 
 /// `workspace_inventory` (6361); `None` = `_RegistryUnreadable`.
-fn inventory(hooks: &Path) -> Result<Option<Inventory>, Fault> {
-    let labels: Vec<(String, String)> = match files::read_json_strict(&hooks.join("app-tabs.json"))
-    {
+fn inventory(home: Option<&Path>, hooks: &Path) -> Result<Option<Inventory>, Fault> {
+    let labels: Vec<(String, String)> = match read_tab_doc(home, hooks) {
         Strict::Missing => Vec::new(),
         Strict::Value(Value::Object(map)) => map
             .into_iter()
@@ -144,7 +179,7 @@ fn inventory(hooks: &Path) -> Result<Option<Inventory>, Fault> {
         Strict::Value(_) | Strict::Unreadable => return Ok(None),
         Strict::Unsure => return Err(Fault::Decline),
     };
-    let favorites = favorites_set(&read_prefs(hooks)?)?;
+    let favorites = favorites_set(&prefs_for(home, hooks)?)?;
     let mut out = vec![("local".to_owned(), Some("⌂ local".to_owned()))];
     for (sess, label) in ordered_tab_keys(&labels, &favorites) {
         if !HIDDEN_SESSIONS.contains(&sess.as_str()) && py::is_session(sess) {
@@ -178,10 +213,11 @@ fn acp_breaks(session: &Value) -> bool {
 
 /// `workspace_panes` (6373).
 fn panes(
+    home: Option<&Path>,
     hooks: &Path,
     inventory: &[(String, Option<String>)],
 ) -> Result<HashMap<String, Vec<(String, Value)>>, Fault> {
-    let snapshot = read_snapshot(&hooks.join("app-sessions-v2.json"))?;
+    let snapshot = snapshot_for(home, hooks)?;
     let sessions = &snapshot["sessions"];
     let mut out = HashMap::new();
     for (tab, _) in inventory {
@@ -212,6 +248,35 @@ pub fn sync(
     hooks: &Path,
     now_seconds: f64,
 ) -> Result<WorkspaceState, Fault> {
+    sync_with_reason(backend, hooks, now_seconds, "auto")
+}
+
+/// `workspace_sync(reason=…)`: `close_app_tab` pasa `"user"` (sin la puerta de
+/// fase `ready` ni la negativa a vaciar el workspace de `"auto"`).
+pub fn sync_with_reason(
+    backend: &StateBackend,
+    hooks: &Path,
+    now_seconds: f64,
+    reason: &str,
+) -> Result<WorkspaceState, Fault> {
+    sync_context(backend, None, hooks, now_seconds, reason)
+}
+pub fn sync_domain(
+    backend: &StateBackend,
+    home: &Path,
+    hooks: &Path,
+    now_seconds: f64,
+    reason: &str,
+) -> Result<WorkspaceState, Fault> {
+    sync_context(backend, Some(home), hooks, now_seconds, reason)
+}
+fn sync_context(
+    backend: &StateBackend,
+    home: Option<&Path>,
+    hooks: &Path,
+    now_seconds: f64,
+    reason: &str,
+) -> Result<WorkspaceState, Fault> {
     let store = store(&backend.conn)?;
     for _ in 0..3 {
         let current = store
@@ -222,10 +287,10 @@ pub fn sync(
                 document: empty_document(),
                 recovered: false,
             });
-        let Some(inventory) = inventory(hooks)? else {
+        let Some(inventory) = inventory(home, hooks)? else {
             return Ok(current);
         };
-        let panes = panes(hooks, &inventory)?;
+        let panes = panes(home, hooks, &inventory)?;
         // Un ValueError de reconcile no se captura en el Python: 500.
         let wanted = reconcile(&current.document, &inventory, &panes).map_err(|_| failure())?;
         if current.revision != 0 && python_eq(&wanted, &current.document) {
@@ -236,7 +301,7 @@ pub fn sync(
             &json!(current.revision),
             &wanted,
             &request_id,
-            "auto",
+            reason,
             now_seconds,
         ) {
             Ok(saved) => return Ok(saved),
@@ -374,8 +439,11 @@ fn group_ids(document: &Value) -> Result<Vec<Value>, Fault> {
 /// `_tab_registry` (6348) dentro del `try` de `workspace_sort`: ausente → vacío;
 /// no-objeto → 400 con su texto. JSON roto u otro `OSError` → 400 con el texto
 /// de Python, que no se reproduce: declina.
-fn sort_registry(hooks: &Path) -> Result<Result<HashMap<String, String>, &'static str>, Fault> {
-    match files::read_json_strict(&hooks.join("app-tabs.json")) {
+fn sort_registry(
+    home: &Path,
+    hooks: &Path,
+) -> Result<Result<HashMap<String, String>, &'static str>, Fault> {
+    match read_tab_doc(Some(home), hooks) {
         Strict::Missing => Ok(Ok(HashMap::new())),
         Strict::Value(Value::Object(map)) => Ok(Ok(map
             .into_iter()
@@ -484,16 +552,23 @@ fn sort_info(
 }
 
 /// El resto de `workspace_sort` en modo `by`, dentro del worker.
-fn sort_by(b: &mut StateBackend, hooks: &Path, now_seconds: f64, by: &str, items: &[Value]) -> Job {
+fn sort_by(
+    b: &mut StateBackend,
+    home: &Path,
+    hooks: &Path,
+    now_seconds: f64,
+    by: &str,
+    items: &[Value],
+) -> Job {
     for _ in 0..3 {
-        let current = sync(b, hooks, now_seconds)?;
+        let current = sync_domain(b, home, hooks, now_seconds, "auto")?;
         let store = store(&b.conn)?;
         let previous = group_ids(&current.document)?;
-        let labels = match sort_registry(hooks)? {
+        let labels = match sort_registry(home, hooks)? {
             Ok(labels) => labels,
             Err(message) => return Ok((StatusCode::BAD_REQUEST, json!({"error": message}))),
         };
-        let favorites = sort_favorites(&read_prefs(hooks)?)?;
+        let favorites = sort_favorites(&prefs_for(Some(home), hooks)?)?;
         let info = sort_info(items, &current.document, &labels, &favorites)?;
         let wanted = match sort_groups(&current.document, by, &info) {
             Ok(w) => w,
@@ -554,11 +629,15 @@ async fn run(
 
 pub async fn answer(native: &Native, route: WorkspaceRoute, request: &Request) -> Answer {
     let hooks = native.options().hooks.clone();
+    let home = native.options().home.clone();
     let now_seconds = (native.options().clock)() as f64 / 1000.0;
     match route {
         WorkspaceRoute::Get => {
             run(native, move |b| {
-                Ok((StatusCode::OK, payload(&sync(b, &hooks, now_seconds)?)))
+                Ok((
+                    StatusCode::OK,
+                    payload(&sync_domain(b, &home, &hooks, now_seconds, "auto")?),
+                ))
             })
             .await
         }
@@ -566,7 +645,7 @@ pub async fn answer(native: &Native, route: WorkspaceRoute, request: &Request) -
             let query = Query::parse(&request.target)?;
             let group = query.first("groupId").unwrap_or("").to_owned();
             let state = native
-                .with_state(move |b| sync(b, &hooks, now_seconds))
+                .with_state(move |b| sync_domain(b, &home, &hooks, now_seconds, "auto"))
                 .await??;
             // Primer pase, puro: qué sesiones preguntaría el Python, en orden,
             // y si es un 404 (sin tocar tmux).
@@ -616,7 +695,7 @@ pub async fn answer(native: &Native, route: WorkspaceRoute, request: &Request) -
                 return Err(Fault::Decline);
             }
             run(native, move |b| {
-                let current = sync(b, &hooks, now_seconds)?;
+                let current = sync_domain(b, &home, &hooks, now_seconds, "auto")?;
                 let store = store(&b.conn)?;
                 if let Err(e) = validate_document(&document) {
                     return Ok((StatusCode::BAD_REQUEST, message_or(e, "Workspace inválido")));
@@ -683,7 +762,7 @@ pub async fn answer(native: &Native, route: WorkspaceRoute, request: &Request) -
                 // El instante tras `/state`, que puede tardar segundos.
                 let now_seconds = (native.options().clock)() as f64 / 1000.0;
                 return run(native, move |b| {
-                    sort_by(b, &hooks, now_seconds, &by, &items)
+                    sort_by(b, &home, &hooks, now_seconds, &by, &items)
                 })
                 .await;
             };
@@ -695,7 +774,7 @@ pub async fn answer(native: &Native, route: WorkspaceRoute, request: &Request) -
                 .ok_or(Fault::Decline)?;
             run(native, move |b| {
                 for _ in 0..3 {
-                    let current = sync(b, &hooks, now_seconds)?;
+                    let current = sync_domain(b, &home, &hooks, now_seconds, "auto")?;
                     let store = store(&b.conn)?;
                     let previous = group_ids(&current.document)?;
                     let wanted = match restore_order(&current.document, &ids) {

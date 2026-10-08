@@ -1,5 +1,8 @@
 //! Complete skill resources with canonical links and loss-checked reinstalls.
-use crate::{Result, config};
+use crate::{
+    Result, config,
+    mutations::{self, Mutation},
+};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
@@ -95,10 +98,15 @@ fn unique_dir(parent: &Path, prefix: &str) -> Result<PathBuf> {
     config::private_dir(parent)?;
     loop {
         let p = config::temporary(parent, prefix);
+        mutations::before(Mutation::Directory {
+            path: &p,
+            mode: 0o700,
+        })?;
         match fs::create_dir(&p) {
             Ok(()) => {
                 fs::set_permissions(&p, fs::Permissions::from_mode(0o700))
                     .map_err(|_| config::err(&p))?;
+                mutations::after(&p)?;
                 return Ok(p);
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
@@ -116,10 +124,20 @@ fn copy_contents(source: &Path, dest: &Path, ancestors: &mut BTreeSet<PathBuf>) 
             let to = dest.join(from.file_name().unwrap());
             let meta = fs::metadata(&from).map_err(|_| config::err(&from))?;
             if meta.is_dir() {
+                mutations::before(Mutation::Directory {
+                    path: &to,
+                    mode: meta.permissions().mode() & 0o7777,
+                })?;
                 fs::create_dir(&to).map_err(|_| config::err(&to))?;
                 copy_contents(&from, &to, ancestors)?;
                 fs::set_permissions(&to, meta.permissions()).map_err(|_| config::err(&to))?;
             } else if meta.is_file() {
+                let bytes = fs::read(&from).map_err(|_| config::err(&from))?;
+                mutations::before(Mutation::File {
+                    path: &to,
+                    bytes: &bytes,
+                    mode: meta.permissions().mode() & 0o7777,
+                })?;
                 fs::copy(&from, &to).map_err(|_| config::err(&from))?;
             } else {
                 return Err(format!("Unsupported skill resource: {}", from.display()));
@@ -133,7 +151,9 @@ fn copy_contents(source: &Path, dest: &Path, ancestors: &mut BTreeSet<PathBuf>) 
 fn prepared(source: &Path, canonical: &Path, prefix: &str) -> Result<PathBuf> {
     let tmp = unique_dir(canonical, prefix)?;
     if let Err(e) = copy_contents(source, &tmp, &mut BTreeSet::new()) {
-        let _ = fs::remove_dir_all(&tmp);
+        if mutations::before(Mutation::Remove { path: &tmp }).is_ok() {
+            let _ = fs::remove_dir_all(&tmp);
+        }
         return Err(e);
     }
     Ok(tmp)
@@ -150,10 +170,15 @@ fn backup_dir(parent: &Path) -> Result<PathBuf> {
         bytes[8] = bytes[8] & 0x3f | 0x80;
         let hex = bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
         let p = parent.join(format!("skill-{hex}"));
+        mutations::before(Mutation::Directory {
+            path: &p,
+            mode: 0o700,
+        })?;
         match fs::create_dir(&p) {
             Ok(()) => {
                 fs::set_permissions(&p, fs::Permissions::from_mode(0o700))
                     .map_err(|_| config::err(&p))?;
+                mutations::after(&p)?;
                 return Ok(p);
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
@@ -164,22 +189,39 @@ fn backup_dir(parent: &Path) -> Result<PathBuf> {
 fn backup(home: &Path, path: &Path) -> Result<PathBuf> {
     let root = backup_dir(&config::state_dir(home).join("backups"))?;
     let backup = root.join(path.file_name().ok_or_else(|| config::err(path))?);
+    mutations::before(Mutation::Move {
+        source: path,
+        target: &backup,
+    })?;
     fs::rename(path, &backup).map_err(|_| config::err(path))?;
     Ok(backup)
 }
 fn rename_new(source: &Path, dest: &Path) -> Result<()> {
+    mutations::before(Mutation::Move {
+        source,
+        target: dest,
+    })?;
     let from = fs::File::open(source.parent().ok_or_else(|| config::err(source))?)
         .map_err(|_| config::err(source))?;
     let to = fs::File::open(dest.parent().ok_or_else(|| config::err(dest))?)
         .map_err(|_| config::err(dest))?;
-    nix::fcntl::renameat2(
+    #[cfg(not(target_os = "macos"))]
+    let renamed = nix::fcntl::renameat2(
         from,
         source.file_name().ok_or_else(|| config::err(source))?,
         to,
         dest.file_name().ok_or_else(|| config::err(dest))?,
         nix::fcntl::RenameFlags::RENAME_NOREPLACE,
-    )
-    .map_err(|_| config::err(dest))
+    );
+    #[cfg(target_os = "macos")]
+    let renamed = rustix::fs::renameat_with(
+        from,
+        source.file_name().ok_or_else(|| config::err(source))?,
+        to,
+        dest.file_name().ok_or_else(|| config::err(dest))?,
+        rustix::fs::RenameFlags::NOREPLACE,
+    );
+    renamed.map_err(|_| config::err(dest))
 }
 fn replace_tree(home: &Path, path: &Path, tmp: &Path) -> Result<()> {
     let displaced = backup(home, path)?;
@@ -197,7 +239,12 @@ fn replace_tree(home: &Path, path: &Path, tmp: &Path) -> Result<()> {
 pub fn sync_skills(home: &Path) -> Result<Vec<PathBuf>> {
     let candidates = roots(home)?;
     let canonical = &candidates[0];
+    mutations::before(Mutation::Directory {
+        path: canonical,
+        mode: 0o777,
+    })?;
     fs::create_dir_all(canonical).map_err(|_| config::err(canonical))?;
+    mutations::after(canonical)?;
     let mut roots = Vec::new();
     let mut seen = BTreeSet::new();
     for root in &candidates {
@@ -250,7 +297,7 @@ pub fn sync_skills(home: &Path) -> Result<Vec<PathBuf>> {
             replace_tree(home, &target, &tmp)?;
             Ok(())
         })();
-        if tmp.exists() {
+        if tmp.exists() && mutations::before(Mutation::Remove { path: &tmp }).is_ok() {
             let _ = fs::remove_dir_all(&tmp);
         }
         result?;
@@ -267,14 +314,16 @@ pub fn sync_skills(home: &Path) -> Result<Vec<PathBuf>> {
                 let before = fingerprint(&skill)?;
                 let tmp = prepared(&skill, canonical, "materialized")?;
                 if fingerprint(&skill)? != before {
-                    let _ = fs::remove_dir_all(tmp);
+                    if mutations::before(Mutation::Remove { path: &tmp }).is_ok() {
+                        let _ = fs::remove_dir_all(tmp);
+                    }
                     return Err(format!(
                         "Skill changed during synchronization: {}",
                         name(&skill)?
                     ));
                 }
                 let result = replace_tree(home, &skill, &tmp);
-                if tmp.exists() {
+                if tmp.exists() && mutations::before(Mutation::Remove { path: &tmp }).is_ok() {
                     let _ = fs::remove_dir_all(tmp);
                 }
                 result?;
@@ -312,7 +361,7 @@ pub fn sync_skills(home: &Path) -> Result<Vec<PathBuf>> {
                     }
                     rename_new(&tmp, &dest)
                 })();
-                if tmp.exists() {
+                if tmp.exists() && mutations::before(Mutation::Remove { path: &tmp }).is_ok() {
                     let _ = fs::remove_dir_all(tmp);
                 }
                 result?;
@@ -325,7 +374,12 @@ pub fn sync_skills(home: &Path) -> Result<Vec<PathBuf>> {
         .filter(|p| valid(p))
         .collect::<Vec<_>>();
     for root in &roots[1..] {
+        mutations::before(Mutation::Directory {
+            path: root,
+            mode: 0o777,
+        })?;
         fs::create_dir_all(root).map_err(|_| config::err(root))?;
+        mutations::after(root)?;
         for stale in list(root)? {
             if stale.is_symlink()
                 && !stale.exists()
@@ -333,6 +387,7 @@ pub fn sync_skills(home: &Path) -> Result<Vec<PathBuf>> {
                     .ok()
                     .is_some_and(|p| p.parent() == Some(canonical))
             {
+                mutations::before(Mutation::Remove { path: &stale })?;
                 fs::remove_file(&stale).map_err(|_| config::err(&stale))?;
                 changed.push(stale);
             }
@@ -347,6 +402,10 @@ pub fn sync_skills(home: &Path) -> Result<Vec<PathBuf>> {
             } else {
                 None
             };
+            mutations::before(Mutation::Link {
+                path: &dest,
+                target: skill,
+            })?;
             if symlink(skill, &dest).is_err() {
                 if let Some(displaced) = displaced
                     && !dest.exists()

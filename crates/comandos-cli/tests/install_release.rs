@@ -8,7 +8,78 @@ fn home(tag: &str) -> std::path::PathBuf {
     let h = std::env::temp_dir().join(format!("cmd-rel-{tag}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&h);
     fs::create_dir_all(&h).unwrap();
+    fs::set_permissions(&h, fs::Permissions::from_mode(0o700)).unwrap();
     h
+}
+
+#[test]
+fn app_hash_domain_is_distinct_and_cli_rollback_never_activates_app() {
+    use comandos_cli::install::release::{WebSource, stage_app, stage_release};
+    let h = home("app-independent");
+    let candidate = h.join("candidate");
+    fs::write(&candidate, b"#!/bin/sh\nexit 93\n").unwrap();
+    fs::set_permissions(&candidate, fs::Permissions::from_mode(0o755)).unwrap();
+    let app = stage_app(&h, &candidate).unwrap();
+    let cli = stage_release(&h, &candidate, &WebSource::None).unwrap();
+    assert_ne!(app.id, cli.id);
+    let app_pointer = h.join(".local/share/comandos/bin/comandos-app");
+    let original_app_pointer = fs::read_link(&app_pointer).unwrap();
+    fs::write(&candidate, b"#!/bin/sh\nexit 94\n").unwrap();
+    stage_release(&h, &candidate, &WebSource::None).unwrap();
+    let previous = h.join(".local/share/comandos/releases/previous");
+    let before = fs::read(&previous).unwrap();
+    let out = run(&h, &["--rollback-release", "--dry-run"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(fs::read(previous).unwrap(), before);
+    assert_eq!(fs::read_link(&app_pointer).unwrap(), original_app_pointer);
+    assert!(run(&h, &["--rollback-release"]).status.success());
+    assert_eq!(
+        fs::read_link(h.join(".local/share/comandos/bin/comandos")).unwrap(),
+        Path::new("../releases").join(cli.id).join("comandos")
+    );
+    assert_eq!(fs::read_link(app_pointer).unwrap(), original_app_pointer);
+    assert!(app.path.is_file());
+    assert!(!h.join(".local/bin/cc-app").exists());
+    fs::remove_dir_all(h).unwrap();
+}
+
+#[test]
+fn dry_run_web_validates_in_place_without_creating_install_tree() {
+    let h = home("dry-web");
+    let web = h.join("source web");
+    fs::create_dir(&web).unwrap();
+    fs::write(web.join("boot.js"), "boot").unwrap();
+    fs::write(
+        web.join("manifest.json"),
+        r#"{"files":{"x_boot.js":"boot.js"}}"#,
+    )
+    .unwrap();
+    let out = run(
+        &h,
+        &["--stage", "--web", web.to_str().unwrap(), "--dry-run"],
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(!h.join(".local").exists());
+    fs::write(web.join("manifest.json"), b"bad").unwrap();
+    assert_eq!(
+        run(
+            &h,
+            &["--stage", "--web", web.to_str().unwrap(), "--dry-run"]
+        )
+        .status
+        .code(),
+        Some(1)
+    );
+    assert!(!h.join(".local").exists());
+    fs::remove_dir_all(h).unwrap();
 }
 fn run(home: &Path, args: &[&str]) -> std::process::Output {
     Command::new(comandos())
@@ -16,6 +87,8 @@ fn run(home: &Path, args: &[&str]) -> std::process::Output {
         .arg("--home")
         .arg(home)
         .args(args)
+        // Sin `web/` (vacío = sin web): el id es el sha12 del binario.
+        .env("COMANDOS_WEB_SOURCE", "")
         .output()
         .unwrap()
 }
@@ -108,6 +181,65 @@ fn releases_lists_current_first_and_prunes_to_five() {
             .unwrap()
             .starts_with(&format!("* {}", sha12(Path::new(comandos()))))
     );
+}
+
+#[test]
+fn keep_releases_stages_and_rolls_back_without_deleting_previous_payloads() {
+    use std::os::unix::{fs::MetadataExt, fs::symlink};
+    let h = home("keep-releases");
+    let rel = h.join(".local/share/comandos/releases");
+    let mut originals = Vec::new();
+    for i in 0..8 {
+        let d = rel.join(format!("{i:012x}"));
+        fs::create_dir_all(&d).unwrap();
+        let binary = d.join("comandos");
+        fs::write(&binary, [i as u8]).unwrap();
+        originals.push((binary.clone(), binary.metadata().unwrap().ino()));
+    }
+    let pointer = h.join(".local/share/comandos/bin/comandos");
+    fs::create_dir_all(pointer.parent().unwrap()).unwrap();
+    let previous = Path::new("../releases/000000000000/comandos");
+    symlink(previous, &pointer).unwrap();
+    let output = run(&h, &["--stage", "--keep-releases"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_link(&pointer).unwrap(),
+        Path::new("../releases")
+            .join(sha12(Path::new(comandos())))
+            .join("comandos")
+    );
+    for (i, (binary, inode)) in originals.iter().enumerate() {
+        assert_eq!(fs::read(binary).unwrap(), vec![i as u8]);
+        assert_eq!(binary.metadata().unwrap().ino(), *inode);
+    }
+    assert!(run(&h, &["--rollback-release"]).status.success());
+    assert_eq!(fs::read_link(pointer).unwrap(), previous);
+    fs::remove_dir_all(h).unwrap();
+}
+
+#[test]
+fn keep_releases_dry_run_is_read_only_and_rejects_unrelated_routes() {
+    let h = home("keep-releases-preview");
+    let output = run(&h, &["--keep-releases", "--stage", "--dry-run"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fs::read_dir(&h).unwrap().count(), 0);
+    for args in [
+        vec!["--keep-releases", "--link", "cc-acp"],
+        vec!["--keep-releases", "--rollback-release"],
+        vec!["--stage", "--keep-releases", "--keep-releases"],
+    ] {
+        assert_eq!(run(&h, &args).status.code(), Some(2));
+        assert_eq!(fs::read_dir(&h).unwrap().count(), 0);
+    }
+    fs::remove_dir_all(h).unwrap();
 }
 
 #[test]

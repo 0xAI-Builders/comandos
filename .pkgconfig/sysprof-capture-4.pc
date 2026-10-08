@@ -1,0 +1,9 @@
+prefix=/usr
+includedir=${prefix}/include
+libdir=${prefix}/lib/x86_64-linux-gnu
+
+Name: sysprof-capture
+Description: pkg-config metadata shim for the GTK SDK libsoup Requires.private entry
+Version: 4.0.0
+Libs:
+Cflags:

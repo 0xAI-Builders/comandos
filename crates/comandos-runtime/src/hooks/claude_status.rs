@@ -42,26 +42,33 @@ fn records(files: &[PathBuf]) -> Vec<u8> {
         if !file.is_file() {
             continue;
         }
-        let Ok(mut bytes) = std::fs::read(file) else {
+        let Ok(bytes) = std::fs::read(file) else {
             continue;
         };
-        // `$(<archivo)`: sin NUL (bash los descarta) ni saltos de línea finales.
-        bytes.retain(|&b| b != 0);
-        let text = jq_lossy(strip_nl(&bytes));
-        let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&text) else {
-            continue;
-        };
-        let ts = map
-            .get("ts")
-            .map_or_else(|| "null".to_string(), super::jq::jq_tostring);
-        let fields = [
-            map.get("project").cloned().unwrap_or(Value::Null),
-            map.get("status").cloned().unwrap_or(Value::Null),
-            Value::String(ts),
-        ];
-        out.extend_from_slice(jq_join(fields.iter(), "|").as_bytes());
-        out.push(0);
+        out.extend(record_bytes(bytes));
     }
+
+    out
+}
+
+fn record_bytes(mut bytes: Vec<u8>) -> Vec<u8> {
+    let mut out = Vec::new();
+    // `$(<archivo)`: sin NUL (bash los descarta) ni saltos de línea finales.
+    bytes.retain(|&b| b != 0);
+    let text = jq_lossy(strip_nl(&bytes));
+    let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&text) else {
+        return out;
+    };
+    let ts = map
+        .get("ts")
+        .map_or_else(|| "null".to_string(), super::jq::jq_tostring);
+    let fields = [
+        map.get("project").cloned().unwrap_or(Value::Null),
+        map.get("status").cloned().unwrap_or(Value::Null),
+        Value::String(ts),
+    ];
+    out.extend_from_slice(jq_join(fields.iter(), "|").as_bytes());
+    out.push(0);
     out
 }
 
@@ -93,6 +100,12 @@ fn mtime_age(cache: &Path, now: i64) -> Option<i64> {
 pub fn run(_args: &[String]) -> i32 {
     let home = PathBuf::from(OsStr::from_bytes(&env_bytes("HOME")));
     let state = home.join(".claude/hooks/state");
+    #[cfg(target_os = "macos")]
+    let runtime = match crate::platform::runtime_directory_from_env(true) {
+        Ok(Some(path)) => path.as_os_str().as_bytes().to_vec(),
+        _ => return 2,
+    };
+    #[cfg(not(target_os = "macos"))]
     let runtime = env_bytes("XDG_RUNTIME_DIR");
     let runtime = if runtime.is_empty() {
         b"/tmp".to_vec()
@@ -107,14 +120,45 @@ pub fn run(_args: &[String]) -> i32 {
         let _ = std::io::stdout().write_all(&std::fs::read(&cache).unwrap_or_default());
         return 0;
     }
-    let files = state_files(&state);
-    if !files.first().is_some_and(|f| f.exists()) {
+    let access = match comandos_store::domains::caller::CallerAccess::open(&home, "session-status")
+    {
+        Ok(access) => access,
+        Err(error) => {
+            eprintln!("comandos hook claude-status: {error}");
+            return 0;
+        }
+    };
+    let stream = if matches!(
+        access.mode(),
+        comandos_store::unified::Mode::Unified | comandos_store::unified::Mode::Sealed
+    ) {
+        let Some(db) = access.db() else { return 0 };
+        let found = (|| -> rusqlite::Result<Vec<(String, Vec<u8>)>> {
+            db.prepare("SELECT file_key,body FROM session_status WHERE file_key NOT LIKE '.%' AND substr(file_key,-5)='.json'")?
+                .query_map([],|r|Ok((r.get(0)?,r.get(1)?)))?.collect()
+        })();
+        let Ok(mut found) = found else { return 0 };
+        let order = super::collate::GlobOrder::from_env(env_bytes);
+        found.sort_by(|a, b| order.compare(a.0.as_bytes(), b.0.as_bytes()));
+        let mut stream = Vec::new();
+        for (_, body) in found {
+            stream.extend(record_bytes(body));
+        }
+        stream
+    } else {
+        let files = state_files(&state);
+        if !files.first().is_some_and(|f| f.exists()) {
+            let _ = std::fs::write(&cache, b"");
+            return 0;
+        }
+        records(&files)
+    };
+    if stream.is_empty() {
         let _ = std::fs::write(&cache, b"");
         return 0;
     }
     let (mut waiting, mut done) = (Vec::new(), Vec::new());
     let mut previous_age: Option<i64> = None;
-    let stream = records(&files);
     for line in stream.split(|&b| b == 0) {
         // El trozo tras el NUL final no es registro; uno vacío tendría `p` vacío.
         if line.is_empty() {

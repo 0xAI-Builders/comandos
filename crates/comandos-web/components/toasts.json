@@ -1,0 +1,15 @@
+{
+  "kind": "region",
+  "source": "dash/index.html",
+  "script_index": 1,
+  "marker_start": "// ---------- toasts ----------",
+  "marker_end": "// ---------- registro LOCAL de uso: cada click, cada pantalla, cuánto tiempo. Nada sale de la máquina. ----------",
+  "sha256": "dcb719f526cec9a5a36a42138777276f6c7ad246e79a210c0e0f48c102bb94ec",
+  "id": "toasts",
+  "exports": [],
+  "deps": [
+    "prelude",
+    "i18n",
+    "red"
+  ]
+}

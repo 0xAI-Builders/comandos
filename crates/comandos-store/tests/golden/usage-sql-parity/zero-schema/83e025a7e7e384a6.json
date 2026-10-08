@@ -1,0 +1,21 @@
+{
+  "input": {
+    "source": "2674f366bb01b9db42f6f64b728929b3acfe8b83:bin/cc_usage.py",
+    "source_sha256": "eef7368bf9172e29b3116168203e6236a3a2ee1be5348dbf2c78241dd4a2e5f8",
+    "run": "capture-hook",
+    "payload": {
+      "provider": "claude",
+      "agent": "claude",
+      "tmux_session": "sess",
+      "tmux_pane": "%1",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "cost_usd": 0,
+      "turn_started_at": 1700000000,
+      "turn_finished_at": 1700000001
+    }
+  },
+  "output_b64": "eyJleGlzdHMiOmZhbHNlLCJkYiI6bnVsbH0="
+}

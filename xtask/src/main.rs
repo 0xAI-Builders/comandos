@@ -1,6 +1,11 @@
+mod app_drift;
+mod app_shot;
 mod parity;
 mod poll;
 mod rss;
+mod state_drill;
+mod test_map;
+mod web;
 
 use std::{io::Write, process::exit};
 
@@ -26,7 +31,13 @@ fn median<T: Ord + Copy>(v: &[T]) -> T {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
+        Some("state-drill") => exit(state_drill::main(&args[1..])),
         Some("rss") => {}
+        Some("test-map") => {
+            let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+            test_map::run(&root).unwrap_or_else(|e| fail(e));
+            return;
+        }
         Some("parity") => {
             // Falla cerrado: sin namespace de red propio no se lanza el oráculo.
             parity::ensure_isolated().unwrap_or_else(|e| fail(e));
@@ -47,8 +58,50 @@ fn main() {
                 Err(e) => fail(e),
             }
         }
+        Some("app-drift") => {
+            // Errores de uso: salida 2, sin tocar nada.
+            let o = app_drift::parse_args(&args[1..]).unwrap_or_else(|e| {
+                eprintln!(
+                    "{}",
+                    if e.starts_with("uso:") {
+                        e
+                    } else {
+                        format!("error: {e}")
+                    }
+                );
+                exit(2);
+            });
+            // Salida 1 es solo deriva; un archivo ilegible o una línea base corrupta sale 2.
+            match app_drift::run(&o.baseline, &o.paths, o.write, &o.accept) {
+                Ok(code) => exit(code),
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    exit(2);
+                }
+            }
+        }
+        Some("app-shot") => exit(app_shot::run(&args[1..])),
+        Some("shots") => exit(web::shots(&args[1..])),
+        Some("png-diff") => exit(web::png_diff(&args[1..])),
+        Some("dom-diff") => exit(web::dom_diff(&args[1..])),
+        Some("fixtures") => exit(web::fixtures(&args[1..])),
+        Some("mac-check") => exit(xtask::mac::main(&args[1..])),
+        Some("mac-bundle") => exit(xtask::mac::bundle_main(&args[1..])),
+        Some("mac-sync") => exit(xtask::mac::sync_main(&args[1..])),
+        Some("web-build") => exit(xtask::web_build::main(&args[1..])),
+        Some("app-layout") => exit(xtask::app_layout::main(&args[1..])),
+        Some("browser-e2e") => exit(xtask::browser_e2e::main(&args[1..])),
+        Some("web-bench") => exit(xtask::web_bench::main(&args[1..])),
+        Some("web-inventory") => exit(xtask::web_inventory::main(&args[1..])),
+        Some("web-port") => exit(xtask::web_port::main(&args[1..])),
+        Some("lint") => exit(xtask::lint::main(&args[1..])),
+        Some("css-orphans") => exit(xtask::css_orphans::main(&args[1..])),
+        Some("cli-catalog") => exit(xtask::cli_catalog::main(&args[1..])),
+        Some("retire-check") => exit(xtask::retire_check::main(&args[1..])),
         _ => {
-            eprintln!("subcomandos: rss, parity, poll");
+            eprintln!(
+                "subcomandos: rss, parity, poll, app-drift, app-shot, app-layout, shots, png-diff, dom-diff, fixtures, web-build, web-bench, web-inventory, web-port, browser-e2e, lint, css-orphans, cli-catalog, mac-check, mac-bundle, mac-sync"
+            );
             exit(2);
         }
     }
