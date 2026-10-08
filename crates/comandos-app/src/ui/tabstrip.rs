@@ -142,13 +142,16 @@ impl TabStripLayout {
         row.pack_start(&start, false, false, 0);
         row.pack_start(&scroller, true, true, 0);
         row.pack_start(&rows_view, true, true, 0);
-        row.pack_start(&end, false, false, 0);
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
         let navigation = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-        navigation.set_halign(gtk::Align::Start);
-        navigation.set_margin_start(6);
+        navigation.set_halign(gtk::Align::Center);
+        navigation.set_margin_top(6);
+        let controls = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        controls.set_valign(gtk::Align::Start);
+        controls.pack_start(&end, false, false, 0);
+        controls.pack_start(&navigation, false, false, 0);
+        row.pack_start(&controls, false, false, 0);
         root.pack_start(&row, false, false, 0);
-        root.pack_start(&navigation, false, false, 0);
         let inner = std::rc::Rc::new(StripLayout {
             root,
             row,

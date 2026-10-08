@@ -38,6 +38,10 @@ fn modal_completions_leave_parent_alive_and_polling_does_not_reset_scroll() {
         button.style_context().add_class("tab-cycle");
         host.pack_start(button, false, false, 0);
     }
+    for label in ["Terminal", "+", "Sort", "Rows"] {
+        let action = gtk::Button::with_label(label);
+        layout.actions().pack_start(&action, false, false, 0);
+    }
     overlay.add(layout.widget());
     window.add(&overlay);
     window.set_default_size(600, 300);
@@ -148,7 +152,24 @@ fn modal_completions_leave_parent_alive_and_polling_does_not_reset_scroll() {
         next.parent(),
         "arrows share their own row"
     );
-    let row = layout.navigation().allocation();
+    let (nav_x, nav_y) = layout
+        .navigation()
+        .translate_coordinates(layout.widget(), 0, 0)
+        .unwrap();
+    let (actions_x, actions_bottom) = layout
+        .actions()
+        .translate_coordinates(layout.widget(), 0, layout.actions().allocated_height())
+        .unwrap();
+    let cards_right = layout
+        .entries()
+        .iter()
+        .map(|(_, w)| {
+            w.translate_coordinates(layout.widget(), w.allocated_width(), 0)
+                .unwrap()
+                .0
+        })
+        .max()
+        .unwrap();
     let cards_bottom = layout
         .entries()
         .iter()
@@ -159,6 +180,17 @@ fn modal_completions_leave_parent_alive_and_polling_does_not_reset_scroll() {
         })
         .max()
         .unwrap();
-    assert!(row.y() >= cards_bottom, "navigation row is below the cards");
+    assert!(
+        nav_x >= actions_x && nav_x >= cards_right,
+        "arrows belong in the right control column"
+    );
+    assert!(
+        nav_y >= actions_bottom,
+        "arrows sit below the action buttons"
+    );
+    assert!(
+        nav_y < cards_bottom,
+        "arrows must not add a row below all cards"
+    );
     window.close();
 }
