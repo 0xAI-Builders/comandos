@@ -1,0 +1,64 @@
+#![allow(dead_code, unused_variables)]
+use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc};
+#[derive(Clone, Copy)]
+enum RunMode { Live, Sandbox, Shadow }
+struct AppConfig(RunMode);
+impl AppConfig {
+    fn mode(&self) -> RunMode { self.0 }
+    fn web_data_dir(&self) -> &Path { Path::new("/isolated/data") }
+    fn web_cache_dir(&self) -> &Path { Path::new("/isolated/cache") }
+}
+#[derive(Debug)]
+enum WebError { Gtk(String) }
+#[derive(Clone, Default)]
+struct WebContext(Rc<RefCell<BTreeMap<String, String>>>);
+impl WebContext {
+    fn with_website_data_manager(_: &webkit2gtk::WebsiteDataManager) -> Self { Self::default() }
+}
+mod webkit2gtk {
+    pub struct WebsiteDataManager;
+    impl WebsiteDataManager {
+        pub fn new_ephemeral() -> Self { Self }
+        pub fn builder() -> Self { Self }
+        pub fn base_data_directory(self, _: &str) -> Self { self }
+        pub fn base_cache_directory(self, _: &str) -> Self { self }
+        pub fn build(self) -> Self { self }
+    }
+    #[derive(Clone, Default)]
+    pub struct UserContentManager(pub std::rc::Rc<std::cell::RefCell<Vec<String>>>);
+    impl UserContentManager {
+        pub fn new() -> Self { Self::default() }
+        pub fn register_script_message_handler(&self, name: &str) -> bool {
+            self.0.borrow_mut().push(name.into()); true
+        }
+    }
+}
+#[derive(Clone)]
+struct WebView { context: WebContext, manager: webkit2gtk::UserContentManager }
+struct Builder { context: Option<WebContext>, manager: Option<webkit2gtk::UserContentManager> }
+impl WebView {
+    fn builder() -> Builder { Builder { context: None, manager: None } }
+    fn context(&self) -> Option<WebContext> { Some(self.context.clone()) }
+}
+impl Builder {
+    fn web_context(mut self, context: &WebContext) -> Self { self.context = Some(context.clone()); self }
+    fn user_content_manager(mut self, manager: &webkit2gtk::UserContentManager) -> Self { self.manager = Some(manager.clone()); self }
+    fn build(self) -> WebView { WebView { context: self.context.unwrap(), manager: self.manager.unwrap() } }
+}
+// Execute the production constructor up to the first GTK widget property.
+// Context and bridge ownership can be checked without a display or web process.
+fn create(cfg: &AppConfig, handler: &str, parent: Option<&WebView>) -> Result<WebView, WebError> {
+    // CONSTRUCTOR
+    Ok(webview)
+}
+fn main() {
+    let main = create(&AppConfig(RunMode::Live), "centro", None).unwrap();
+    main.context.0.borrow_mut().insert("cc-center-panel".into(), "settings".into());
+    let modal = create(&AppConfig(RunMode::Live), "centro", Some(&main)).unwrap();
+    let other = create(&AppConfig(RunMode::Sandbox), "centro", None).unwrap();
+    println!("{{\"shared_context\":{},\"request_visible\":{},\"separate_handlers\":{},\"profiles_isolated\":{}}}",
+        Rc::ptr_eq(&main.context.0, &modal.context.0),
+        modal.context.0.borrow().get("cc-center-panel").is_some_and(|v| v == "settings"),
+        !Rc::ptr_eq(&main.manager.0, &modal.manager.0),
+        !Rc::ptr_eq(&main.context.0, &other.context.0));
+}

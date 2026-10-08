@@ -1,7 +1,7 @@
 // Runs the actual integrated WASM library against the compiled page body, offline.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
 const wasmPath=path.resolve(process.argv[2]||'');
-const scenarios=['early','late','topological','unknown','attach','startup','ack','gradual','content-failed','content-missing','analytics-use','analytics-close','news-use','news-cancel','news-deeplink','app-bridge','usage-deeplink','sound-gesture','models-empty','models-null','models-false'];
+const scenarios=['early','late','topological','unknown','attach','startup','ack','gradual','content-failed','content-missing','analytics-use','analytics-close','news-use','news-cancel','news-deeplink','app-bridge','usage-deeplink','sound-gesture','models-empty','models-null','models-false','http-native','sidebar-live-usage'];
 if(!process.argv[3]){for(const scenario of scenarios){const r=cp.spawnSync(process.execPath,[__filename,wasmPath,scenario],{encoding:'utf8'});process.stdout.write(r.stdout);process.stderr.write(r.stderr);assert.equal(r.status,0,scenario);}console.log('Full native boot: '+scenarios.length+' actual WASM DOM/startup/failure scenarios passed');process.exit(0);}
 const scenario=process.argv[3],{doc,makeEl,parse}=require('./full_native_boot_dom.cjs');
 const registry=fs.readFileSync(path.resolve(__dirname,'../src/registry.rs'),'utf8');
@@ -17,6 +17,7 @@ const calls=[],timers=[],listeners={},storage=new Map(),errors=[],contentLoads=[
 process.on('unhandledRejection',e=>errors.push(String(e)));
 Object.defineProperty(global,'navigator',{configurable:true,writable:true,value:{}});
 Object.assign(global,{window:global,document:doc,location:{protocol:'https:',hostname:'dash.private.invalid',origin:'https://dash.private.invalid',href:'https://dash.private.invalid/?web=native',search:'?web=native',reload(){throw Error('unexpected reload')}},navigator:{platform:'Linux',maxTouchPoints:0,language:'en',onLine:true,sendBeacon:()=>true},innerWidth:1100,innerHeight:800,devicePixelRatio:1,localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,String(v)),removeItem:k=>storage.delete(k)},sessionStorage:{getItem:()=>null,setItem(){}},matchMedia:()=>({matches:false,addEventListener(){},removeEventListener(){}}),getComputedStyle:()=>({getPropertyValue:()=>'',fontSize:'14px'}),addEventListener:(t,f)=>(listeners[t]||=[]).push(f),removeEventListener(){},dispatchEvent(){},setTimeout:(f,ms)=>{timers.push([f,ms]);return timers.length},clearTimeout(){},setInterval:(f,ms)=>{timers.push([f,ms]);return timers.length},clearInterval(){},requestAnimationFrame:f=>{timers.push([f,0]);return timers.length},cancelAnimationFrame(){},ResizeObserver:class{observe(){}disconnect(){}},MutationObserver:class{observe(){}disconnect(){}},Notification:class{static permission='denied'},CustomEvent:class{constructor(type,options){this.type=type;Object.assign(this,options)}},Event:class{constructor(type,options){this.type=type;Object.assign(this,options)}},Element:class{static[Symbol.hasInstance](o){return o?.nodeType===1}},Window:class{static[Symbol.hasInstance](o){return o===global}},HTMLElement:class{static[Symbol.hasInstance](o){return o?.nodeType===1}},HTMLInputElement:class{static[Symbol.hasInstance](o){return o?.tagName==='INPUT'}}});
+if(scenario==='http-native')Object.assign(location,{protocol:'http:',hostname:'127.0.0.1',origin:'http://127.0.0.1:4777',href:'http://127.0.0.1:4777/?web=native'});
 if(scenario==='news-deeplink')location.search='?news=2026-10-06@08:00';
 if(scenario==='usage-deeplink')location.search='?panel=usage&tab=proyectos';
 if(scenario==='app-bridge')global.webkit={messageHandlers:{centro:{postMessage:m=>bridgeMessages.push(typeof m==='string'?JSON.parse(m):m)}}};
@@ -81,6 +82,22 @@ const settle=async()=>{for(let i=0;i<20;i++)await new Promise(r=>setImmediate(r)
   gesture=true;assert.equal(uiSounds.unlock({isTrusted:true}),true);assert.deepEqual(audio,[['context',true],['resume',true]],'context creation/resume must occur inside the original trusted gesture');gesture=false;
   await settle();const handle=uiSounds.play('focus-start',{eventId:'private-event'});assert(handle&&!(handle instanceof Promise));assert.equal(typeof handle.stop,'function');assert(handle.ended instanceof Promise);assert.equal(uiSounds.play('focus-start',{eventId:'private-event'}),null);handle.stop();await handle.ended;
   document.visibilityState='hidden';assert.equal(uiSounds.play('success'),null);document.visibilityState='visible';assert.equal(uiSounds.play('loading'),null);await uiSounds.dispose();assert.equal(contentLoads.length,0,'audio must never import news/analytics');
+ }
+ if(scenario==='http-native'){
+  assert.equal(WEBTERM,true,'native HTTP dashboard must use its same-origin terminal');
+  assert.equal(TERM_BASE,location.origin+'/term');
+  assert(doc.body.classList.contains('app'),'remote/native HTTP layout must include sessions');
+  assert.equal(typeof doc.getElementById('tab-open').onclick,'function');
+  doc.getElementById('tab-open').onclick();
+  assert(!doc.getElementById('sw-ov').classList.contains('hidden'),'all sessions button opens list');
+ }
+ if(scenario==='sidebar-live-usage'){
+  const root=makeEl('div',{},doc.body);doc.body.appendChild(root);let quotaPaints=0;
+  const sidebar=ComandosCommandSidebar.createCommandSidebar({root,storage:localStorage,api:async()=>({}),terminals:()=>[{session:'term-private',label:'Terminal'}],renderLimits:slot=>{quotaPaints++;slot.textContent='Codex main 23%';}});
+  sidebar.state.termsHidden=false;sidebar.render();
+  assert.equal(root.querySelector('.cs-empty-terms').hidden,false,'usage remains visible while quick terminals are shown');
+  assert(quotaPaints>0,'live usage renderer called with quick terminals');
+  assert.equal(root.querySelector('.et-foot').hidden,true,'empty-terminal hint stays hidden while a terminal is shown');
  }
  if(scenario==='app-bridge'){
   const cold=NewsReader.instance;assert.equal(cold.open('2026-10-06@08:00'),undefined);assert.equal(cold.close(),undefined);assert.equal(cold.toggle(),undefined);

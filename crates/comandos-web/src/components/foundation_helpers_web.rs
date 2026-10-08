@@ -765,7 +765,15 @@ pub fn mount() -> Result<(), JsValue> {
     let loopback = hostname.starts_with("127.")
         || hostname.starts_with("localhost")
         || hostname.starts_with("::1");
-    let webterm = (get(&location, "protocol").as_string().as_deref() == Some("https:")
+    let native_page = call(
+        &global("document"),
+        "querySelector",
+        &["meta[name='comandos-web-mode'][content='native']".into()],
+    )
+    .is_ok_and(|meta| !meta.is_null() && !meta.is_undefined());
+    let native_browser = native_page
+        && !invoke(&global("inApp"), &[]).is_ok_and(|value| truthy(&value));
+    let webterm = native_browser || (get(&location, "protocol").as_string().as_deref() == Some("https:")
         && !loopback)
         || (loopback && global("__COMANDOS_DEV_WEBTERM") == JsValue::TRUE);
     for (k, v) in [

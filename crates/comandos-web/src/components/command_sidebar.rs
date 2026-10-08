@@ -531,7 +531,13 @@ mod web {
         }
         fn cmds_info(&self) -> Result<JsValue, JsValue> {
             let mut h = 0.;
-            if let Ok(r) = call(&self.query(".cs-tools"), "getBoundingClientRect", &[])
+            let usage = self.query(".cs-empty-terms");
+            let bottom = if !nullish(&usage) && !truthy(&get(&usage, "hidden")) {
+                usage
+            } else {
+                self.query(".cs-tools")
+            };
+            if let Ok(r) = call(&bottom, "getBoundingClientRect", &[])
                 && truthy(&get(&r, "height"))
             {
                 let win = get(&get(&self.el, "ownerDocument"), "defaultView");
@@ -593,15 +599,21 @@ mod web {
                 set(
                     &box_,
                     "hidden",
-                    &(empty.is_none() || !cur.is_empty()).into(),
+                    &(!cur.is_empty()).into(),
                 )?;
+                // Account usage belongs to the sidebar even while a quick
+                // terminal is visible; only the empty-terminal hint is conditional.
+                set(&query(&box_, ".et-foot"), "hidden", &empty.is_none().into())?;
+                style(&box_, "flex", if empty.is_none() { "0 1 280px" } else { "1 1 auto" });
+                style(&box_, "max-height", if empty.is_none() { "40vh" } else { "none" });
+                style(&box_, "min-height", if empty.is_none() { "150px" } else { "0" });
                 if let Some((text, go, action)) = empty {
                     set(&query(&box_, ".et-t"), "textContent", &text.into())?;
                     let button = query(&box_, ".et-go");
                     set(&button, "textContent", &go.into())?;
                     attr(&button, "data-term-act", action);
-                    self.quiet("renderLimits", &[query(&box_, ".cs-limits")]);
                 }
+                self.quiet("renderLimits", &[query(&box_, ".cs-limits")]);
             }
             if cur == "srv" {
                 self.write_state("srvMounted", true.into())?;

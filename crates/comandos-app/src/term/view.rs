@@ -74,6 +74,7 @@ struct Model {
     selection: Option<Selection>,
     pressed: Option<Point>,
     primary_press: Option<super::links::PrimaryPress>,
+    link_gesture: bool,
     last_motion: Option<(u16, u16, gdk::ModifierType)>,
     ime: Ime,
     preedit: String,
@@ -193,6 +194,7 @@ impl TermView {
                 selection: None,
                 pressed: None,
                 primary_press: None,
+                link_gesture: false,
                 last_motion: None,
                 ime: Ime::default(),
                 preedit: String::new(),
@@ -1199,6 +1201,20 @@ fn connect_events(inner: &Rc<Inner>) {
             return glib::Propagation::Stop;
         }
         let button = mouse_button(event.button());
+        let link = if event.button() == 1 {
+            super::links::link_at(
+                &inner.model.borrow().engine,
+                inner.absolute(col, row),
+                row,
+                col,
+            )
+        } else {
+            None
+        };
+        let link_gesture = link.is_some();
+        if event.button() == 1 {
+            inner.model.borrow_mut().link_gesture = link_gesture;
+        }
         let bytes = encode_mouse(
             button,
             MouseKind::Press,
@@ -1207,24 +1223,22 @@ fn connect_events(inner: &Rc<Inner>) {
             mods,
             &inner.model.borrow().engine.modes(),
         );
-        if let Some(bytes) = bytes.filter(|_| !mods.2) {
+        if let Some(bytes) = bytes.filter(|_| super::links::report_mouse(mods.2, link_gesture)) {
             inner.send_event(&bytes);
             return glib::Propagation::Stop;
         }
         if event.button() == 1 && mods.0 {
             inner.model.borrow_mut().primary_press.take();
-            let link = link_at(&inner.model.borrow(), inner.absolute(col, row), row, col);
-            if let Some(link) = link
+            if let Some(link) = link.as_ref()
                 && let Some(callback) = inner.link_event.borrow().clone()
             {
-                callback(&link, event, (col, row), true);
+                callback(link, event, (col, row), true);
                 return glib::Propagation::Stop;
             }
         }
         if event.button() == 1 {
             let point = inner.absolute(col, row);
             let mut m = inner.model.borrow_mut();
-            let link = link_at(&m, point, row, col);
             let mode = match event.event_type() {
                 gdk::EventType::DoubleButtonPress => SelectMode::Word,
                 gdk::EventType::TripleButtonPress => SelectMode::Line,
@@ -1267,6 +1281,8 @@ fn connect_events(inner: &Rc<Inner>) {
         }
         m.last_motion = Some((col, row, state));
         let button = drag_button(state);
+        let linked = super::links::link_at(&m.engine, point, row, col).is_some();
+        let link_gesture = m.link_gesture || (button == Button::None && linked);
         let bytes = encode_mouse(
             button,
             MouseKind::Move,
@@ -1275,7 +1291,9 @@ fn connect_events(inner: &Rc<Inner>) {
             modifiers(state),
             &m.engine.modes(),
         );
-        if let Some(bytes) = bytes.filter(|_| !state.contains(gdk::ModifierType::SHIFT_MASK)) {
+        if let Some(bytes) = bytes.filter(|_| {
+            super::links::report_mouse(state.contains(gdk::ModifierType::SHIFT_MASK), link_gesture)
+        }) {
             drop(m);
             inner.send_event(&bytes);
             return glib::Propagation::Stop;
@@ -1295,7 +1313,6 @@ fn connect_events(inner: &Rc<Inner>) {
             }
             area.queue_draw();
         }
-        let linked = link_at(&m, point, row, col).is_some();
         drop(m);
         if let Some(window) = area.window() {
             window.set_cursor(
@@ -1315,6 +1332,7 @@ fn connect_events(inner: &Rc<Inner>) {
         let (col, row) = inner.point(x, y);
         let mods = modifiers(event.state());
         let mut m = inner.model.borrow_mut();
+        let link_gesture = std::mem::take(&mut m.link_gesture);
         let press = m
             .primary_press
             .take()
@@ -1327,7 +1345,7 @@ fn connect_events(inner: &Rc<Inner>) {
             mods,
             &m.engine.modes(),
         );
-        if let Some(bytes) = bytes.filter(|_| !mods.2) {
+        if let Some(bytes) = bytes.filter(|_| super::links::report_mouse(mods.2, link_gesture)) {
             drop(m);
             inner.send_event(&bytes);
             return glib::Propagation::Stop;
@@ -1706,36 +1724,6 @@ fn paint_op(
             let _ = context.restore();
         }
     }
-}
-
-fn link_at(m: &Model, point: Point, row: u16, col: u16) -> Option<String> {
-    if let Some(url) = find_urls(m.engine.engine(), point.0)
-        .into_iter()
-        .find(|url| url.start <= point && point <= url.end)
-    {
-        return Some(url.url);
-    }
-    let mut text = String::new();
-    let mut rendered = RowRender::default();
-    let (cols, rows) = m.engine.size();
-    for line in 0..usize::from(rows) {
-        m.engine.render_line(line, &mut rendered);
-        let mut column = 0;
-        for run in &rendered.runs {
-            while column < run.col {
-                text.push(' ');
-                column += 1;
-            }
-            text.push_str(&run.text);
-            column = run.col.saturating_add(run.cells);
-        }
-        while column < cols {
-            text.push(' ');
-            column += 1;
-        }
-        text.push('\n');
-    }
-    super::links::url_from_wrapped_text(&text, "", Some(usize::from(row)), Some(usize::from(col)))
 }
 
 #[cfg(test)]

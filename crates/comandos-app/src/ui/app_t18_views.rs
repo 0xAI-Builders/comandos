@@ -27,7 +27,7 @@ impl App {
                     && self.t18.reader.borrow().is_some();
                 if !reuse {
                     self.reader_close();
-                    let page = ui::webview::create_page(&self.cfg, "centro", &uri)
+                    let page = ui::webview::create_page(&self.cfg, &self.webview, "centro", &uri)
                         .map_err(|e| CommandError::Failed(format!("{e:?}")))?;
                     let ticket = self.t18.reader_scope.ticket();
                     self.bind_aux_bridge(&page.view, &ticket, &uri, "reader");
@@ -271,7 +271,7 @@ impl App {
         let size = ui::modals::modal_size(kind, w, h);
         window.set_default_size(size.0, size.1);
         window.set_position(gtk::WindowPosition::CenterOnParent);
-        let page = ui::webview::create_page(&self.cfg, "centro", uri)
+        let page = ui::webview::create_page(&self.cfg, &self.webview, "centro", uri)
             .map_err(|e| CommandError::Failed(format!("{e:?}")))?;
         let scope = Rc::new(ui::snippets::Scope::default());
         let ticket = scope.ticket();
@@ -383,7 +383,7 @@ impl App {
         if self.t18.web_tabs.borrow().len() >= 40 {
             return Err(CommandError::Refused("web tab limit".into()));
         }
-        let page = ui::webview::create_page(&self.cfg, "centro", uri)
+        let page = ui::webview::create_page(&self.cfg, &self.webview, "centro", uri)
             .map_err(|e| CommandError::Failed(format!("{e:?}")))?;
         let label = if label.is_empty() {
             uri.split('/').nth(2).unwrap_or(uri)

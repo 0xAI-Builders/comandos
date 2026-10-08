@@ -58,6 +58,7 @@ pub fn create_observed(
 ) -> Result<WebView, WebError> {
     create_for_page(
         cfg,
+        None,
         "centro",
         dashboard_uri(cfg.dash_url(), env!("CARGO_PKG_VERSION")).as_deref(),
         observation,
@@ -91,13 +92,14 @@ impl Drop for OwnedPage {
 }
 pub(crate) fn create_page(
     cfg: &AppConfig,
+    parent: &WebView,
     handler: &str,
     uri: &str,
 ) -> Result<OwnedPage, WebError> {
     if !matches!(handler, "centro" | "extensions") {
         return Err(WebError::Gtk("unknown shelf bridge".into()));
     }
-    let (view, (retry, closed)) = create_for_page(cfg, handler, Some(uri), None)?;
+    let (view, (retry, closed)) = create_for_page(cfg, Some(parent), handler, Some(uri), None)?;
     Ok(OwnedPage {
         view,
         retry,
@@ -108,22 +110,27 @@ pub(crate) fn create_page(
 type PageControl = (Rc<RefCell<Option<glib::SourceId>>>, Rc<Cell<bool>>);
 fn create_for_page(
     cfg: &AppConfig,
+    parent: Option<&WebView>,
     handler: &str,
     uri: Option<&str>,
     observation: Option<Rc<RefCell<LoadObservation>>>,
 ) -> Result<(WebView, PageControl), WebError> {
-    let manager = match cfg.mode() {
-        RunMode::Shadow => webkit2gtk::WebsiteDataManager::new_ephemeral(),
-        RunMode::Sandbox => webkit2gtk::WebsiteDataManager::builder()
-            .base_data_directory(cfg.web_data_dir().to_string_lossy().as_ref())
-            .base_cache_directory(cfg.web_cache_dir().to_string_lossy().as_ref())
-            .build(),
-        RunMode::Live => webkit2gtk::WebsiteDataManager::builder()
-            .base_data_directory(cfg.web_data_dir().to_string_lossy().as_ref())
-            .base_cache_directory(cfg.web_cache_dir().to_string_lossy().as_ref())
-            .build(),
+    let context = if let Some(parent) = parent {
+        // The dashboard hands modal requests through localStorage. Reusing its
+        // context keeps that storage live across views, including before disk flush.
+        parent
+            .context()
+            .ok_or_else(|| WebError::Gtk("parent page context unavailable".into()))?
+    } else {
+        let manager = match cfg.mode() {
+            RunMode::Shadow => webkit2gtk::WebsiteDataManager::new_ephemeral(),
+            RunMode::Sandbox | RunMode::Live => webkit2gtk::WebsiteDataManager::builder()
+                .base_data_directory(cfg.web_data_dir().to_string_lossy().as_ref())
+                .base_cache_directory(cfg.web_cache_dir().to_string_lossy().as_ref())
+                .build(),
+        };
+        WebContext::with_website_data_manager(&manager)
     };
-    let context = WebContext::with_website_data_manager(&manager);
     let content = webkit2gtk::UserContentManager::new();
     if !content.register_script_message_handler(handler) {
         return Err(WebError::Gtk("page bridge unavailable".into()));

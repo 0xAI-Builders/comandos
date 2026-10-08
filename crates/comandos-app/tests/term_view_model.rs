@@ -25,6 +25,58 @@ fn wrapped_links_keep_utf8_and_point_coordinates() {
         Some("/home/test/file.rs:22".into())
     );
 }
+
+#[test]
+fn padded_terminal_wrap_returns_the_entire_link_from_either_row() {
+    use comandos_app::term::{
+        engine::{Palette, TermEngine},
+        links::link_at,
+    };
+    let now = std::time::Instant::now();
+    let palette = Palette::xterm_default([255; 3], [0; 3], [255; 3], [0; 3], [255; 3]);
+    let mut engine = TermEngine::new(60, 4, 10, palette, false, now);
+    engine.feed(
+        b"https://example.invalid/very/long/\r\n  resource?id=1",
+        now,
+    );
+    for (row, col) in [(0, 8), (1, 5)] {
+        assert_eq!(
+            link_at(&engine, (i32::from(row), col), row, col),
+            Some("https://example.invalid/very/long/resource?id=1".into())
+        );
+    }
+}
+
+#[test]
+fn link_clicks_and_drags_are_owned_by_the_menu_even_with_mouse_reporting() {
+    use comandos_app::term::links::{PrimaryPress, report_mouse};
+    assert!(
+        report_mouse(false, false),
+        "ordinary mouse events still reach tmux"
+    );
+    assert!(
+        !report_mouse(true, false),
+        "Shift retains terminal selection"
+    );
+    assert!(
+        !report_mouse(false, true),
+        "a link gesture must reach the native menu"
+    );
+    let press = PrimaryPress::new((10., 20.), (1, 2), Some("https://example.invalid/a".into()));
+    assert!(
+        press.clone().release((30., 20.), 1).is_none(),
+        "dragging never opens the menu"
+    );
+    let clicked = press.release((10., 20.), 1).unwrap();
+    assert_eq!(clicked.link.as_deref(), Some("https://example.invalid/a"));
+    let rows = comandos_app::ui::menu::link_rows(false, false);
+    assert_eq!(
+        rows.iter()
+            .map(|(_, _, action)| action.is_some())
+            .collect::<Vec<_>>(),
+        [true, false]
+    );
+}
 #[test]
 fn damage_coalesces_and_blink_stops_without_focus() {
     let mut schedule = PaintSchedule::default();

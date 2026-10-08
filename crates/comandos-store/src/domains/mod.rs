@@ -5,6 +5,7 @@ pub mod commands;
 mod document_dir;
 mod layout;
 mod legacy;
+mod live_reader;
 mod mirror;
 use crate::{
     Error, Result,

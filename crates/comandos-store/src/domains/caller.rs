@@ -10,6 +10,7 @@ pub struct CallerAccess {
     mode: Mode,
     db: Option<Connection>,
     _guard: Option<FileLock>,
+    reader: Option<super::live_reader::Token>,
 }
 /// Runtime readers hold the domain lease while ordinary payload commits continue.
 /// Inspection tools keep using the strict, immutable snapshot reader instead.
@@ -30,24 +31,34 @@ impl CallerAccess {
     }
     fn open_with(home: &Path, domain: &str, reading: bool) -> Result<Self> {
         let path = unified::unified_path(home);
+        let mut reader = None;
         let db = match fs::symlink_metadata(&path) {
+            Ok(_) if reading => {
+                let (db, token) = super::live_reader::open(&path)?;
+                reader = Some(token);
+                Some(db)
+            }
             Ok(_) => Some(unified::open_caller(&path)?),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => return Err(e.into()),
         };
-        let (mode, guard) = if reading {
-            unified::modes::access_runtime_read_mode(home, db.as_ref(), domain)?
-        } else {
-            unified::modes::access_caller_mode(home, db.as_ref(), domain)?
+        let mut access = Self {
+            mode: Mode::Legacy,
+            db,
+            _guard: None,
+            reader,
         };
-        if db.is_none() && path.exists() {
+        let (mode, guard) = if reading {
+            unified::modes::access_runtime_read_mode(home, access.db.as_ref(), domain)?
+        } else {
+            unified::modes::access_caller_mode(home, access.db.as_ref(), domain)?
+        };
+        if access.db.is_none() && path.exists() {
             return Err(Error::Validation("base apareció durante admisión".into()));
         }
-        Ok(Self {
-            mode,
-            db,
-            _guard: guard,
-        })
+        access.mode = mode;
+        access._guard = guard;
+        Ok(access)
     }
     pub fn mode(&self) -> Mode {
         self.mode
@@ -189,6 +200,15 @@ impl CallerAccess {
             write(&body)?;
         }
         Ok(true)
+    }
+}
+impl Drop for CallerAccess {
+    fn drop(&mut self) {
+        if let Some(token) = self.reader.take()
+            && let Some(db) = self.db.take()
+        {
+            super::live_reader::release(db, token);
+        }
     }
 }
 pub fn write(

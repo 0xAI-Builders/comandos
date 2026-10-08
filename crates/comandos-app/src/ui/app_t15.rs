@@ -356,29 +356,24 @@ impl App {
                 )
             })
             .collect();
-        let notebook = self.active_notebook();
-        for index in 0..notebook.n_pages() {
-            if let Some(page) = notebook.nth_page(Some(index)) {
-                let key = if self.workspace_doc.borrow().is_null() {
-                    self.strip.borrow().page_key(&page)
-                } else {
-                    self.workspace.page_key(&page)
-                };
-                if let Some(key) = key {
-                    let label = self
-                        .labels
-                        .borrow()
-                        .get(&key)
-                        .map(|tab| tab.text.text().to_string())
-                        .unwrap_or_else(|| key.clone());
-                    open.push(Candidate {
-                        state: states.get(&key).cloned().unwrap_or_default(),
-                        label,
-                        key,
-                        open: true,
-                    });
-                }
+        // A workspace notebook page can contain several open terminal leaves.
+        // Enumerate registered tabs so each one remains selectable in the overview.
+        for key in self.registry.borrow().ordered_keys() {
+            if self.navigation_index(&key).is_none() {
+                continue;
             }
+            let label = self
+                .labels
+                .borrow()
+                .get(&key)
+                .map(|tab| tab.text.text().to_string())
+                .unwrap_or_else(|| key.clone());
+            open.push(Candidate {
+                state: states.get(&key).cloned().unwrap_or_default(),
+                label,
+                key,
+                open: true,
+            });
         }
         ui::switcher::candidates(&open, &self.state_items.borrow(), &states)
     }

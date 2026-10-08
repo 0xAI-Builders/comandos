@@ -11,7 +11,7 @@ pub use documents::*;
 pub use logs::*;
 pub use modes::{Mode, mode_of, seal_guard_path, set_mode};
 pub use open::{MOVED_SENTINEL, open_unified, unified_path};
-pub(crate) use open::{open_caller, open_existing, validate as validate_schema};
+pub(crate) use open::{open_caller, open_existing, validate as validate_schema, validate_caller};
 pub(crate) use preflight::{readonly_unified_mode, validate_unified_metadata};
 pub use preflight::{with_readonly_db, with_readonly_unified};
 

@@ -1,0 +1,28 @@
+#![allow(dead_code)]
+use std::{cell::RefCell, collections::BTreeMap};
+use serde_json::{Value, json};
+use comandos_app::ui::switcher::Candidate;
+mod ui { pub use comandos_app::ui::switcher; }
+struct Label(String); impl Label { fn text(&self) -> &str { &self.0 } }
+struct Tab { text: Label }
+struct Registry;
+impl Registry { fn ordered_keys(&self) -> Vec<String> { ["term-a", "term-b", "web:docs", "term-closed"].map(String::from).into() } }
+struct Notebook;
+impl Notebook { fn n_pages(&self) -> u32 { 2 } fn nth_page(&self, i: Option<u32>) -> Option<u32> { i.filter(|i| *i < 2) } }
+struct Workspace;
+impl Workspace { fn page_key(&self, page: &u32) -> Option<String> { Some(if *page == 0 { "term-a" } else { "web:docs" }.into()) } }
+struct App {
+    registry: RefCell<Registry>, workspace_doc: RefCell<Value>, workspace: Workspace,
+    strip: RefCell<Workspace>, labels: RefCell<BTreeMap<String, Tab>>, state_items: RefCell<BTreeMap<String, Value>>,
+}
+impl App {
+    fn active_notebook(&self) -> Notebook { Notebook }
+    fn navigation_index(&self, key: &str) -> Option<u32> { match key { "term-a" | "term-b" => Some(0), "web:docs" => Some(1), _ => None } }
+    // ACTUAL_METHOD
+}
+fn main() {
+    let states = ["term-a", "term-b", "term-closed"].map(|key| (key.into(), json!({"project":key,"status":"working","agent":true}))).into();
+    let app = App { registry: RefCell::new(Registry), workspace_doc: RefCell::new(json!({"groups":[]})), workspace: Workspace, strip: RefCell::new(Workspace), labels: RefCell::new(BTreeMap::new()), state_items: RefCell::new(states) };
+    let rows = app.switcher_candidates();
+    println!("{}", json!({"open":rows.iter().filter(|row| row.open).map(|row| &row.key).collect::<Vec<_>>(),"closed":rows.iter().filter(|row| !row.open).map(|row| &row.key).collect::<Vec<_>>()}));
+}

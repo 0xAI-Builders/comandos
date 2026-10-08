@@ -113,3 +113,60 @@ impl PrimaryPress {
             .then_some(self)
     }
 }
+
+pub fn link_at(
+    engine: &super::engine::TermEngine,
+    point: super::engine::Point,
+    row: u16,
+    col: u16,
+) -> Option<String> {
+    use super::engine::{RowRender, find_urls};
+    if let Some(url) = engine.hyperlink_at(row, col) {
+        return Some(url);
+    }
+    let native = find_urls(engine.engine(), point.0)
+        .into_iter()
+        .find(|url| url.start <= point && point <= url.end)
+        .map(|url| url.url);
+    let mut text = String::new();
+    let mut rendered = RowRender::default();
+    let (cols, rows) = engine.size();
+    let first = usize::from(row.saturating_sub(3));
+    for line in first..usize::from(row.saturating_add(5).min(rows)) {
+        engine.render_line(line, &mut rendered);
+        let mut column = 0;
+        for run in &rendered.runs {
+            while column < run.col {
+                text.push(' ');
+                column += 1;
+            }
+            text.push_str(&run.text);
+            column = run.col.saturating_add(run.cells);
+        }
+        while column < cols {
+            text.push(' ');
+            column += 1;
+        }
+        text.push('\n');
+    }
+    let wrapped = url_from_wrapped_text(
+        &text,
+        "",
+        Some(usize::from(row) - first),
+        Some(usize::from(col)),
+    );
+    match (native, wrapped) {
+        (Some(native), Some(wrapped))
+            if wrapped.starts_with(&native) && !text.contains(&wrapped) =>
+        {
+            Some(wrapped)
+        }
+        (Some(native), _) => Some(native),
+        (None, wrapped) => wrapped,
+    }
+}
+
+/// Whether a gesture should be forwarded to the terminal application.
+pub fn report_mouse(shift: bool, link_gesture: bool) -> bool {
+    !shift && !link_gesture
+}

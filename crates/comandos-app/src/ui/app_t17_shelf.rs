@@ -110,7 +110,7 @@ impl App {
             ui::webview::encode_query(env!("CARGO_PKG_VERSION"))
         );
         shelf.close_extension();
-        let page = ui::webview::create_page(&self.cfg, "centro", &uri)
+        let page = ui::webview::create_page(&self.cfg, &self.webview, "centro", &uri)
             .map_err(|e| CommandError::Failed(format!("{e:?}")))?;
         page.view.set_no_show_all(true);
         page.view.set_size_request(-1, extensions::SHELF_MIN);
@@ -284,7 +284,7 @@ impl App {
         let was_open = shelf.extension.borrow().is_some();
         shelf.close_extension();
         shelf.close_notices();
-        let page = match ui::webview::create_page(&self.cfg, "extensions", uri) {
+        let page = match ui::webview::create_page(&self.cfg, &self.webview, "extensions", uri) {
             Ok(page) => page,
             Err(error) => {
                 self.status.set_text(&format!("Extension view: {error:?}"));
