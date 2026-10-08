@@ -45,3 +45,25 @@ Las sesiones de trabajo de Jesús (20+ agentes) viven en el tmux `default` de
   locales al archivo versionado de configuración ni crear nuevos targets para
   esquivar la admisión; usar siempre el runner anterior. Los perfiles dev/test
   ya desactivan debug e incremental, y release elimina símbolos.
+
+## Al entregar: retirar la caché de compilación
+
+- Por instrucción de Jesús, la caché compartida es temporal. Al terminar una
+  entrega, eliminar su contenido regenerable; el límite de 16 GiB es para el
+  trabajo en curso, no una retención permanente entre entregas.
+- Hacerlo después de completar las pruebas y verificar que los binarios y el
+  bundle web instalados están íntegros fuera del target, en las releases de
+  /home/someguy/.local/share/comandos/releases. Verificar también que la app y
+  los servicios activos usan esas releases; conservar la posibilidad de rollback.
+- Antes de limpiar /home/someguy/codebase/0xJesus/ComandOS/.build/target-integration-acp,
+  terminar todas las compilaciones propias, coordinar con los demás agentes y
+  tomar el candado /home/someguy/codebase/0xJesus/ComandOS/.build/rust-build-cache.lock.
+  Revalidar la ruta real y las referencias de procesos: ejecutable, cwd, FDs,
+  mappings y montajes. Un proceso no inspeccionable no demuestra ausencia de
+  referencias; si no se puede descartar su uso del target, conservar la parte
+  afectada y comunicar qué impide terminar la limpieza.
+- Limpiar sólo ese target regenerable y registrar sus bytes antes y después.
+  No borrar releases instaladas, fuentes, worktrees, pruebas o sus fixtures,
+  evidencias de entrega, respaldos, conversaciones, sesiones ni historiales.
+  No detener procesos de trabajo para vaciar la caché. Una nueva compilación
+  volverá a generar los artifacts que necesite en el mismo target compartido.
