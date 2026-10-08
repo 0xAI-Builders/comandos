@@ -1471,6 +1471,7 @@ impl Inner {
         let _ = context.paint();
         context.set_operator(cairo::Operator::Over);
         let layout = self.area.create_pango_layout(None);
+        let mut text_painter = TextPainter::new(&layout, &m.font);
         let (_, rows) = m.engine.size();
         {
             let Model {
@@ -1482,7 +1483,7 @@ impl Inner {
             frame.refresh(engine, geom);
         }
         for op in m.frame.ops() {
-            paint_op(context, &layout, &m.font, &m.geom, op);
+            paint_op(context, &mut text_painter, &m.geom, op);
         }
         if let Some((start, end)) = m.hovered_link {
             let offset = i32::try_from(m.engine.engine().display_offset()).unwrap_or(i32::MAX);
@@ -1594,7 +1595,7 @@ impl Inner {
                                 && cursor.col < col.saturating_add(*cells) =>
                             {
                                 *rgb = m.engine.palette().cursor_accent;
-                                paint_op(context, &layout, &m.font, &m.geom, &op);
+                                paint_op(context, &mut text_painter, &m.geom, &op);
                             }
                             PaintOp::Glyph {
                                 x: cell_x,
@@ -1603,7 +1604,7 @@ impl Inner {
                                 ..
                             } if *row_y == y && *cell_x == x => {
                                 *rgb = m.engine.palette().cursor_accent;
-                                paint_op(context, &layout, &m.font, &m.geom, &op);
+                                paint_op(context, &mut text_painter, &m.geom, &op);
                             }
                             _ => {}
                         }
@@ -1625,13 +1626,76 @@ impl Inner {
         m.schedule.painted(self.ms());
     }
 }
-fn paint_op(
-    context: &cairo::Context,
-    layout: &pango::Layout,
-    font: &pango::FontDescription,
-    g: &CellGeom,
-    op: &PaintOp,
-) {
+
+/// Reuse shaping within one frame while retaining the existing cell positions.
+/// Frame-local ownership also makes font, scale and Pango context changes take
+/// effect immediately. Unusual Unicode output cannot grow the cache unbounded.
+struct TextPainter {
+    template: pango::Layout,
+    fonts: [pango::FontDescription; 4],
+    layouts: [std::collections::HashMap<String, pango::Layout>; 4],
+    entries: usize,
+}
+impl TextPainter {
+    const MAX_LAYOUTS: usize = 512;
+
+    fn new(template: &pango::Layout, font: &pango::FontDescription) -> Self {
+        Self {
+            template: template.clone(),
+            fonts: std::array::from_fn(|style| {
+                let mut font = font.clone();
+                font.set_weight(if style & 1 != 0 {
+                    pango::Weight::Bold
+                } else {
+                    pango::Weight::Normal
+                });
+                font.set_style(if style & 2 != 0 {
+                    pango::Style::Italic
+                } else {
+                    pango::Style::Normal
+                });
+                font
+            }),
+            layouts: std::array::from_fn(|_| std::collections::HashMap::new()),
+            entries: 0,
+        }
+    }
+
+    fn show(
+        &mut self,
+        context: &cairo::Context,
+        text: &str,
+        bold: bool,
+        italic: bool,
+        x: f64,
+        y: f64,
+    ) {
+        let style = usize::from(bold) | (usize::from(italic) << 1);
+        if let Some(layout) = self.layouts[style].get(text) {
+            context.move_to(x, y);
+            pangocairo::functions::show_layout(context, layout);
+            return;
+        }
+        let retain = self.entries < Self::MAX_LAYOUTS;
+        let layout = if retain {
+            self.template.copy()
+        } else {
+            self.template.clone()
+        };
+        layout.set_font_description(Some(&self.fonts[style]));
+        #[cfg(test)]
+        native_paint_tests::TEXT_SHAPES.with(|count| count.set(count.get() + 1));
+        layout.set_text(text);
+        context.move_to(x, y);
+        pangocairo::functions::show_layout(context, &layout);
+        if retain {
+            self.layouts[style].insert(text.to_string(), layout);
+            self.entries += 1;
+        }
+    }
+}
+
+fn paint_op(context: &cairo::Context, text_painter: &mut TextPainter, g: &CellGeom, op: &PaintOp) {
     match op {
         PaintOp::Rect { x, y, w, h, rgb } => {
             color(context, *rgb);
@@ -1648,28 +1712,19 @@ fn paint_op(
             rgb,
             ..
         } => {
-            let mut font = font.clone();
-            font.set_weight(if *bold {
-                pango::Weight::Bold
-            } else {
-                pango::Weight::Normal
-            });
-            font.set_style(if *italic {
-                pango::Style::Italic
-            } else {
-                pango::Style::Normal
-            });
-            layout.set_font_description(Some(&font));
             color(context, *rgb);
             if *cells <= 2 && text.chars().count() != usize::from(*cells) {
-                layout.set_text(text);
-                context.move_to(*x, *y);
-                pangocairo::functions::show_layout(context, layout);
+                text_painter.show(context, text, *bold, *italic, *x, *y);
             } else {
                 for (index, character) in text.chars().enumerate() {
-                    layout.set_text(&character.to_string());
-                    context.move_to(*x + index as f64 * g.cell_w, *y);
-                    pangocairo::functions::show_layout(context, layout);
+                    text_painter.show(
+                        context,
+                        &character.to_string(),
+                        *bold,
+                        *italic,
+                        *x + index as f64 * g.cell_w,
+                        *y,
+                    );
                 }
             }
         }
@@ -1773,12 +1828,171 @@ fn paint_op(
 #[cfg(test)]
 mod native_paint_tests {
     use super::*;
+    thread_local! {
+        pub(super) static TEXT_SHAPES: Cell<usize> = const { Cell::new(0) };
+    }
+    #[test]
+    fn repeated_terminal_cells_are_shaped_once_per_frame() {
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 800).unwrap();
+        let context = cairo::Context::new(&surface).unwrap();
+        let layout = pangocairo::functions::create_layout(&context);
+        let font = pango::FontDescription::from_string("monospace 13");
+        let mut text_painter = TextPainter::new(&layout, &font);
+        let geom = CellGeom {
+            cell_w: 8.,
+            cell_h: 19.,
+            origin_x: 0.,
+            origin_y: 0.,
+            dpr: 1.,
+            font_size: 13.,
+        };
+        let text = "terminal renders text during every keypress and cursor blink. 1234567890 ";
+        TEXT_SHAPES.with(|count| count.set(0));
+        for row in 0..40 {
+            paint_op(
+                &context,
+                &mut text_painter,
+                &geom,
+                &PaintOp::Text {
+                    col: 0,
+                    x: 0.,
+                    y: f64::from(row) * geom.cell_h,
+                    cells: text.len() as u16,
+                    text: text.into(),
+                    rgb: [255; 3],
+                    bold: false,
+                    italic: false,
+                },
+            );
+        }
+        let unique = text.chars().collect::<std::collections::HashSet<_>>().len();
+        assert!(
+            TEXT_SHAPES.with(Cell::get) <= unique,
+            "a frame must reuse identical glyph layouts instead of reshaping every terminal cell"
+        );
+    }
+    #[test]
+    fn text_layout_cache_is_bounded_for_diverse_unicode() {
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 64, 32).unwrap();
+        let context = cairo::Context::new(&surface).unwrap();
+        let layout = pangocairo::functions::create_layout(&context);
+        let mut painter = TextPainter::new(
+            &layout,
+            &pango::FontDescription::from_string("monospace 13"),
+        );
+        for value in 0x4e00..0x4e00 + 2 * TextPainter::MAX_LAYOUTS {
+            let text = char::from_u32(value as u32).unwrap().to_string();
+            painter.show(&context, &text, false, false, 0., 0.);
+        }
+        assert_eq!(painter.entries, TextPainter::MAX_LAYOUTS);
+        assert_eq!(
+            painter
+                .layouts
+                .iter()
+                .map(|cache| cache.len())
+                .sum::<usize>(),
+            TextPainter::MAX_LAYOUTS
+        );
+    }
+    #[test]
+    fn terminal_text_raster_preserves_styles_unicode_and_scale() {
+        fn render(reference: bool, font: &str, scale: f64) -> Vec<u8> {
+            let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 800, 480).unwrap();
+            let context = cairo::Context::new(&surface).unwrap();
+            context.scale(scale, scale);
+            let layout = pangocairo::functions::create_layout(&context);
+            let font = pango::FontDescription::from_string(font);
+            let mut text_painter = TextPainter::new(&layout, &font);
+            let geom = CellGeom {
+                cell_w: 8.25,
+                cell_h: 22.,
+                origin_x: 0.,
+                origin_y: 0.,
+                dpr: scale,
+                font_size: 13.,
+            };
+            let cases = [
+                ("ASCII repeated aa 11", 20),
+                ("áñé→", 4),
+                ("界", 2),
+                ("e\u{301}", 1),
+                ("👩\u{200d}💻", 2),
+            ];
+            for (style, (bold, italic)) in
+                [(false, false), (true, false), (false, true), (true, true)]
+                    .into_iter()
+                    .enumerate()
+            {
+                for (row, (text, cells)) in cases.into_iter().enumerate() {
+                    let x = 2.25 + style as f64 * 90.;
+                    let y = 3.5 + row as f64 * geom.cell_h;
+                    if reference {
+                        let mut font = font.clone();
+                        font.set_weight(if bold {
+                            pango::Weight::Bold
+                        } else {
+                            pango::Weight::Normal
+                        });
+                        font.set_style(if italic {
+                            pango::Style::Italic
+                        } else {
+                            pango::Style::Normal
+                        });
+                        layout.set_font_description(Some(&font));
+                        color(&context, [211, 234, 245]);
+                        if cells <= 2 && text.chars().count() != usize::from(cells) {
+                            layout.set_text(text);
+                            context.move_to(x, y);
+                            pangocairo::functions::show_layout(&context, &layout);
+                        } else {
+                            for (column, character) in text.chars().enumerate() {
+                                layout.set_text(&character.to_string());
+                                context.move_to(x + column as f64 * geom.cell_w, y);
+                                pangocairo::functions::show_layout(&context, &layout);
+                            }
+                        }
+                    } else {
+                        paint_op(
+                            &context,
+                            &mut text_painter,
+                            &geom,
+                            &PaintOp::Text {
+                                col: 0,
+                                x,
+                                y,
+                                cells,
+                                text: text.into(),
+                                rgb: [211, 234, 245],
+                                bold,
+                                italic,
+                            },
+                        );
+                    }
+                }
+            }
+            drop(text_painter);
+            drop(layout);
+            drop(context);
+            surface.flush();
+            surface.data().unwrap().to_vec()
+        }
+        for font in ["monospace 13", "monospace 16"] {
+            for scale in [1., 2.] {
+                assert_eq!(
+                    render(false, font, scale),
+                    render(true, font, scale),
+                    "{font} at {scale}"
+                );
+            }
+        }
+    }
     #[test]
     fn glyph_device_pixels_convert_to_widget_pixels_once() {
         let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 24, 24).unwrap();
         let context = cairo::Context::new(&surface).unwrap();
         let layout = pangocairo::functions::create_layout(&context);
         let font = pango::FontDescription::from_string("monospace 13");
+        let mut text_painter = TextPainter::new(&layout, &font);
         let geom = CellGeom {
             cell_w: 8.,
             cell_h: 10.,
@@ -1798,8 +2012,9 @@ mod native_paint_tests {
                 h: 20.,
             }],
         };
-        paint_op(&context, &layout, &font, &geom, &op);
+        paint_op(&context, &mut text_painter, &geom, &op);
         drop(context);
+        drop(text_painter);
         drop(layout);
         surface.flush();
         let stride = usize::try_from(surface.stride()).unwrap();
@@ -1815,6 +2030,10 @@ mod native_paint_tests {
             let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 40, 24).unwrap();
             let context = cairo::Context::new(&surface).unwrap();
             let layout = pangocairo::functions::create_layout(&context);
+            let mut text_painter = TextPainter::new(
+                &layout,
+                &pango::FontDescription::from_string("monospace 13"),
+            );
             let geom = CellGeom {
                 cell_w: 8.,
                 cell_h: 19.,
@@ -1825,8 +2044,7 @@ mod native_paint_tests {
             };
             paint_op(
                 &context,
-                &layout,
-                &pango::FontDescription::from_string("monospace 13"),
+                &mut text_painter,
                 &geom,
                 &PaintOp::Line {
                     x: 0.,
@@ -1837,6 +2055,7 @@ mod native_paint_tests {
                 },
             );
             drop(context);
+            drop(text_painter);
             drop(layout);
             surface.flush();
             surface.data().unwrap().to_vec()
