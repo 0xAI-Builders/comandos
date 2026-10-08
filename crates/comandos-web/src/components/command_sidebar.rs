@@ -607,6 +607,7 @@ mod web {
                 style(&box_, "flex", if empty.is_none() { "0 1 280px" } else { "1 1 auto" });
                 style(&box_, "max-height", if empty.is_none() { "40vh" } else { "none" });
                 style(&box_, "min-height", if empty.is_none() { "150px" } else { "0" });
+                style(&box_, "order", "1");
                 if let Some((text, go, action)) = empty {
                     set(&query(&box_, ".et-t"), "textContent", &text.into())?;
                     let button = query(&box_, ".et-go");

@@ -36,13 +36,40 @@ fn padded_terminal_wrap_returns_the_entire_link_from_either_row() {
     let palette = Palette::xterm_default([255; 3], [0; 3], [255; 3], [0; 3], [255; 3]);
     let mut engine = TermEngine::new(60, 4, 10, palette, false, now);
     engine.feed(
-        b"https://example.invalid/very/long/\r\n  resource?id=1",
+        b"https://example.invalid/very/long/\r\n  resource?id=1\r\nNext step",
         now,
     );
     for (row, col) in [(0, 8), (1, 5)] {
         assert_eq!(
             link_at(&engine, (i32::from(row), col), row, col),
             Some("https://example.invalid/very/long/resource?id=1".into())
+        );
+    }
+}
+
+#[test]
+fn terminal_links_do_not_consume_the_following_prose_line() {
+    use comandos_app::term::{
+        engine::{Palette, TermEngine},
+        links::link_at,
+    };
+    for next in ["Next step", "  Next step", "    Done"] {
+        let now = std::time::Instant::now();
+        let palette = Palette::xterm_default([255; 3], [0; 3], [255; 3], [0; 3], [255; 3]);
+        let mut engine = TermEngine::new(60, 4, 10, palette, false, now);
+        engine.feed(
+            format!("https://example.invalid/docs\r\n{next}").as_bytes(),
+            now,
+        );
+        assert_eq!(
+            link_at(&engine, (0, 8), 0, 8),
+            Some("https://example.invalid/docs".into()),
+            "{next}"
+        );
+        assert_eq!(
+            link_at(&engine, (1, 5), 1, 5),
+            None,
+            "prose is not a link: {next}"
         );
     }
 }

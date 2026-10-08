@@ -88,7 +88,9 @@ const settle=async()=>{for(let i=0;i<20;i++)await new Promise(r=>setImmediate(r)
   assert.equal(TERM_BASE,location.origin+'/term');
   assert(doc.body.classList.contains('app'),'remote/native HTTP layout must include sessions');
   assert.equal(typeof doc.getElementById('tab-open').onclick,'function');
+  S.list=Array.from({length:25},(_,i)=>({session:'term-fixture-'+i,project:'Session '+i,agent:'codex',alive:true,tabbed:true,status:'idle'}));
   doc.getElementById('tab-open').onclick();
+  assert.equal(doc.querySelectorAll('#sw-list .sw-row').length,25,'all sessions must not truncate at twelve');
   assert(!doc.getElementById('sw-ov').classList.contains('hidden'),'all sessions button opens list');
  }
  if(scenario==='sidebar-live-usage'){

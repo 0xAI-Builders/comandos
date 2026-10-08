@@ -297,6 +297,20 @@ impl TermEngine {
         Some(&grid[point][..])
     }
 
+    pub fn hyperlink_at(&self, row: u16, col: u16) -> Option<String> {
+        self.row_cells(usize::from(row))?
+            .get(usize::from(col))?
+            .hyperlink()
+            .map(|link| link.uri().to_string())
+            .filter(|url| url.starts_with("https://") || url.starts_with("http://"))
+    }
+
+    pub fn row_wraps(&self, row: usize) -> bool {
+        self.row_cells(row)
+            .and_then(|cells| cells.last())
+            .is_some_and(|cell| cell.flags.contains(Flags::WRAPLINE))
+    }
+
     /// El color de primer plano de la celda es RGB directo (VTE no lo atenúa).
     pub fn fg_is_rgb(&self, line: usize, col: u16) -> bool {
         self.row_cells(line)

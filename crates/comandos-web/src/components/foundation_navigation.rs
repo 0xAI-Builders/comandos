@@ -221,7 +221,11 @@ mod web {
             };
             diff.partial_cmp(&0.0).unwrap_or(Ordering::Equal)
         });
-        rows.truncate(12);
+        // The empty query is the "all sessions" view; do not hide sessions
+        // beyond the quick-search result limit.
+        if truthy(&query) {
+            rows.truncate(12);
+        }
         let items = Array::new();
         for row in &rows {
             items.push(&row.value);

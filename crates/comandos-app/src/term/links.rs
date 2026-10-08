@@ -149,12 +149,41 @@ pub fn link_at(
         }
         text.push('\n');
     }
-    let wrapped = url_from_wrapped_text(
-        &text,
-        "",
-        Some(usize::from(row) - first),
-        Some(usize::from(col)),
-    );
+    let lines: Vec<_> = text.split_inclusive('\n').collect();
+    let continues = |index: usize| {
+        if engine.row_wraps(first + index) {
+            return true;
+        }
+        let Some((previous, next)) = lines.get(index).zip(lines.get(index + 1)) else {
+            return false;
+        };
+        let mut words = next.split_whitespace();
+        let fragment = words.next().unwrap_or_default();
+        let has_component = fragment
+            .trim_end_matches(['.', ',', ';', '!'])
+            .contains(['/', '?', '&', '=', '#', '%', '_', '-', '.', ':']);
+        // A TUI may wrap inside a padded column. Require an indented URL
+        // component, rather than treating every hard newline as a soft wrap.
+        next.starts_with([' ', '\t'])
+            && !fragment.starts_with("http://")
+            && !fragment.starts_with("https://")
+            && (has_component
+                || (words.next().is_none()
+                    && previous
+                        .trim_end()
+                        .ends_with(['/', '?', '&', '=', '#', '%', '_', '-', '.'])))
+    };
+    let clicked = usize::from(row) - first;
+    let mut top = clicked;
+    let mut bottom = clicked;
+    while top > 0 && continues(top - 1) {
+        top -= 1;
+    }
+    while bottom + 1 < lines.len() && continues(bottom) {
+        bottom += 1;
+    }
+    let joined = lines.get(top..=bottom).unwrap_or_default().concat();
+    let wrapped = url_from_wrapped_text(&joined, "", Some(clicked - top), Some(usize::from(col)));
     match (native, wrapped) {
         (Some(native), Some(wrapped))
             if wrapped.starts_with(&native) && !text.contains(&wrapped) =>
