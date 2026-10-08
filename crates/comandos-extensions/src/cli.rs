@@ -129,7 +129,7 @@ pub(crate) fn server_spec(path: &std::path::Path, name: &str) -> Result<Value> {
 fn broker_session(name: &str, spec: &Value, catalog: &std::path::Path) -> Option<i32> {
     use crate::broker::{attach_request, client, socket_path};
     let socket = socket_path();
-    if !socket.exists() {
+    if !socket.exists() && !client::broker_holds_lock(&socket) {
         return None;
     }
     // Sin cwd válido, el proxy directo da el error de siempre.
@@ -140,7 +140,9 @@ fn broker_session(name: &str, spec: &Value, catalog: &std::path::Path) -> Option
         .ok()?;
     let relayed = runtime.block_on(async {
         let conn = client::connect(&socket, &request).await?;
-        client::relay(conn, &socket, &request).await
+        // Tras comenzar relay solo hay un código de salida, nunca permiso de fallback:
+        // el lector concurrente de stdin puede haber consumido bytes durante reattach.
+        Ok::<_, String>(client::relay(conn, &socket, &request).await)
     });
     // El hilo bloqueado en stdin no debe retrasar la salida.
     runtime.shutdown_timeout(std::time::Duration::from_millis(100));

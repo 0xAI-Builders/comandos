@@ -153,7 +153,17 @@ async fn connection(stream: UnixStream, ctx: Arc<Ctx>) {
     } = match registry::attach(&ctx, &buf).await {
         Ok(attached) => attached,
         Err(e) => {
-            let reply = format!("{}\n", json!({"error": e}));
+            // Recoger un grupo fallido no autoriza N proxies directos: sus N clientes
+            // deben recuperarse mediante el mismo registro. Solo una sesión ajena al
+            // broker (p. ej. catálogo distinto o modo dedicado) puede salir por directo.
+            let (error, direct) = match e {
+                registry::AttachError::Direct(error) => (error, true),
+                registry::AttachError::Retry(error) => (error, false),
+            };
+            let reply = format!(
+                "{}\n",
+                json!({"error": error, "fallback_safe": direct, "retryable": !direct})
+            );
             let _ = writer.write_all(reply.as_bytes()).await;
             return;
         }

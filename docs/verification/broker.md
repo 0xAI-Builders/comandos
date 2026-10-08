@@ -1,7 +1,10 @@
 # Broker compartido de servidores MCP (`comandos ext broker`)
 
-Fecha: 2026-10-04 (ronda de correcciones 1). Prueba:
-`crates/comandos-extensions/tests/broker_daemon.rs`.
+El broker conserva un único arranque por clave mientras los clientes esperan, incluso ante
+errores recuperables. Esta descripción corresponde al código de
+`/home/someguy/codebase/0xJesus/ComandOS/crates/comandos-extensions/src/broker/` y sus pruebas en
+`/home/someguy/codebase/0xJesus/ComandOS/crates/comandos-extensions/tests/broker_daemon.rs`.
+La activación de un binario instalado se distingue de la verificación de estas fuentes.
 
 ## Qué hace
 
@@ -27,8 +30,8 @@ La sesión envía, en una línea:
 - `path` (opcional, protocolo anterior): el `PATH` del proceso `serve`. Con `environ` ya no
   hace falta; el cliente lo sigue mandando solo para un daemon anterior que no entienda
   `environ`, y el daemon lo ignora si llega `environ`.
-- `catalog` y `home`: si no coinciden con los del daemon, la respuesta es
-  `{"error":"catálogo distinto"}` o `{"error":"home distinto"}`.
+- `catalog` y `home`: si no coinciden con los del daemon, la respuesta incluye el error,
+  `"fallback_safe":true` y `"retryable":false`. Esa sesión puede usar proxy directo.
 
 El daemon responde `{"ok":true}` solo cuando el upstream ya contestó su primer `initialize`
 (o en seguida, si el upstream ya estaba inicializado). Un upstream nuevo lo inicializa el
@@ -37,12 +40,29 @@ caché del `Mux`. Si el upstream muere antes de contestar o en los 500 ms siguie
 lanzarlo, rechaza `initialize` o no contesta en 30 s, la respuesta es un error
 (`upstream murió al arrancar: <estado>`, `upstream rechazó initialize`,
 `upstream no respondió a initialize`) y esa clave queda 30 s en enfriamiento: toda alta recibe
-el mismo error y no se relanza. El daemon espera el alta como mucho 5 s; la sesión, 6 s.
+el mismo error y no se relanza. El actor recoge el grupo antes de liberar sus altas o
+permitir su reemplazo. El registro y el cliente esperan ese resultado sin otro plazo que
+abandone el arranque compartido.
+
+Los errores se clasifican en
+`/home/someguy/codebase/0xJesus/ComandOS/crates/comandos-extensions/src/broker/registry.rs`:
+
+- Fallo de arranque, cooldown, retirada del actor o lectura fallida del catálogo:
+  `{"error":"...","fallback_safe":false,"retryable":true}`. Los clientes reintentan
+  `attach` contra el mismo registro. Incluso después de recoger el proceso fallido,
+  lanzar un proxy por cliente produciría duplicados durante la recuperación.
+- Validación de `attach`, identidad de catálogo/HOME diferente o modo no compartible:
+  `{"error":"...","fallback_safe":true,"retryable":false}`. El broker autoriza directo.
+
+Un cliente actualizado trata un error sin esos campos como resultado ambiguo de un daemon
+anterior. Reintenta con esperas crecientes de 200 ms hasta 5 s, conservando al dueño conocido.
+El límite de 5 s del daemon recibe solamente la primera línea `attach` de una conexión nueva.
+El límite de 6 s del cliente corresponde al `initialize` cacheado durante la reanudación.
 
 ## Versión de protocolo
 
 El `initialize` de calentamiento del daemon pide `LATEST_PROTOCOL_VERSION` (`2025-11-25`,
-`serve/normalize.rs`) con capacidades `{}`; el upstream contesta la mayor que soporta (`U`) y
+`/home/someguy/codebase/0xJesus/ComandOS/crates/comandos-extensions/src/serve/normalize.rs`) con capacidades `{}`; el upstream contesta la mayor que soporta (`U`) y
 ese `InitializeResult` queda en caché. A cada cliente se le entrega una copia con
 `protocolVersion` negociada contra `U`:
 
@@ -55,11 +75,7 @@ El resto del resultado (`capabilities`, `serverInfo`, `instructions`) es idénti
 Los clientes que esperaban la primera respuesta reciben cada uno su versión. Si `U` no es una
 cadena, el resultado va sin tocar.
 
-Razón: es lo que el cliente obtendría hablando directo con el upstream (un servidor MCP
-devuelve la versión pedida si la soporta y, si no, la suya). Antes el daemon calentaba con
-`2025-06-18` y repetía esa versión a todos; Claude Code 2.1.289 sondea con `2025-11-25`, lo
-tomaba como un servidor antiguo («version negotiation probe closed the stdio server …
-respawning pinned legacy») y reconectaba más lento. Supuesto: el upstream soporta todas las
+La negociación supone que el upstream soporta todas las
 versiones de la lista anteriores a `U`; uno que solo hable `U` respondería directo `U` a un
 cliente que pide una anterior, y por el broker ese cliente recibe la anterior.
 
@@ -95,20 +111,27 @@ Sin `environ` (cliente anterior) se conserva el comportamiento previo: entorno d
 el `path` del `attach` como `PATH` del upstream y para resolver el comando.
 
 El stderr del upstream va a `/dev/null`, como en el proxy directo y en el Python
-(`lib/extension_proxy.py`): los servidores escriben ahí tokens y URLs de autorización que no
+(`/home/someguy/codebase/0xJesus/ComandOS/lib/extension_proxy.py`): los servidores escriben ahí tokens y URLs de autorización que no
 deben acabar en el journal del daemon.
 
 ## Respaldo al proxy directo
 
-- Sin socket: proxy directo y stderr vacío (broker no instalado).
-- Con socket y cualquier error de `attach` (conexión rechazada, daemon muerto, error del
-  daemon, plazo vencido): proxy directo, en silencio como el Python. Con `COMANDOS_DEBUG=1`, una
-  línea `broker no disponible, proxy directo` en stderr.
-- Si el broker cierra antes de que la sesión haya leído un byte de stdin (y sin haber escrito
-  nada en stdout), también se vuelve al proxy directo.
+- Antes del alta, daemon ausente sin dueño conocido ni candado retenido: proxy directo y
+  stderr vacío. Un archivo de candado huérfano y desbloqueado permite ese respaldo.
+- Un candado `broker.lock` retenido conserva la espera aunque falte el socket durante
+  arranque o parada. Una cola de conexiones llena tampoco acredita ausencia del daemon.
+- Un rechazo con `fallback_safe:true` autoriza directo antes de iniciar el lector de stdin.
+  Con `COMANDOS_DEBUG=1`, el cliente escribe `broker no disponible, proxy directo` en stderr.
+- Un EOF ambiguo durante el alta reintenta contra el dueño conocido. Tras `{"ok":true}`,
+  el cliente puede reanudar o terminar la sesión, sin volver a directo: su lector de stdin
+  puede consumir bytes durante la espera. El tipo de retorno de `relay` es un código de salida.
 - Al cerrar stdin, la sesión cierra su mitad de escritura y sale cuando el broker cierra o a
   los 2 s.
 - Con `--home` o `--catalog` explícitos, `serve` usa siempre el proxy directo.
+
+Estas decisiones están en
+`/home/someguy/codebase/0xJesus/ComandOS/crates/comandos-extensions/src/broker/client.rs` y
+`/home/someguy/codebase/0xJesus/ComandOS/crates/comandos-extensions/src/cli.rs`.
 
 ## Reinicio del daemon con sesiones vivas
 
@@ -127,12 +150,13 @@ recibir EOF del daemon decide si fue un reinicio:
 En un reinicio, cada petición en vuelo recibe en seguida
 `{"code":-32603,"message":"broker reiniciado"}` con su id, y el cliente intenta hasta cinco
 veces (tras 200 ms, 1 s, 3 s, 6 s y 10 s: un reinicio real espera hasta 5 s por cada upstream
-que tarda en morir) un `attach` nuevo con la misma línea. Si lo consigue, reenvía el
+que tarda en morir) un `attach` nuevo con la misma línea. Cada intento puede esperar al dueño
+o a su recuperación; esas cinco esperas no constituyen un plazo total. Si lo consigue, reenvía el
 `initialize` original (si ya tenía respuesta), descarta su respuesta, reenvía
 `notifications/initialized` (si se había mandado) y sigue. La sesión solo nota el error de sus
 peticiones en vuelo; el estado del servidor es el de un upstream nuevo. Sin daemon tras los
 cinco intentos, la sesión sale como antes (ya no puede volver al proxy directo: habló con el
-broker).
+broker). Las peticiones de herramientas en vuelo no se repiten automáticamente.
 
 ## Límites
 
@@ -162,10 +186,21 @@ broker).
 - Sin daemon, proxy directo con stderr vacío.
 - Socket presente con el daemon muerto: proxy directo con stderr vacío; con `COMANDOS_DEBUG=1`,
   una línea en stderr.
-- Upstream que muere al arrancar: error, proxy directo, y el segundo `attach` dentro de los
-  30 s recibe el error sin relanzar (un solo `spawn` en el registro).
-- Upstream colgado: el `attach` vence a los 5 s y cae al proxy directo; otro servidor responde
-  mientras tanto en menos de 3 s.
+- Upstream que muere al arrancar: error recuperable, sin proxy directo; el segundo `attach`
+  dentro del cooldown recibe el mismo error (un solo `spawn` en el registro).
+- Upstream colgado: vence el initialize del actor a los 30 s; otro servidor responde mientras
+  tanto en menos de 3 s.
+- Tres clientes con arranque de 7 s comparten un upstream y reciben sus propios ids.
+- Rechazo inicial y proceso resistente a TERM: tres clientes esperan la recuperación;
+  se observan dos arranques secuenciales y como máximo un proceso vivo. Tres mutaciones
+  encoladas antes del alta se ejecutan una vez por nonce.
+- EOF ambiguo antes de `ok`, y EOF después de `ok` antes de stdin, conservan al dueño.
+  La variante posterior retira temporalmente el socket: tres clientes reanudan sin proxies directos.
+- Candado retenido sin socket y cola de conexiones llena: los clientes esperan al broker.
+- Catálogo incompleto durante una escritura: la sesión activa continúa y el siguiente cliente
+  conserva el mismo upstream cuando vuelve el catálogo. Dedicated y catálogo distinto permiten directo.
+- Llamada de 3 s con idle configurado en 1 s: termina sobre el mismo upstream; otra alta
+  no espera a esa llamada y la mutación se ejecuta una sola vez.
 - Peticiones concurrentes con los mismos ids desde dos sesiones: cada respuesta vuelve a su
   sesión con su id (el fake devuelve los `params` en `echo`).
 - Al cerrar una sesión la otra sigue; si el upstream muere (pasados los 500 ms) la sesión
@@ -192,16 +227,18 @@ broker).
 - Versión de protocolo: dos `attach` crudos que piden `2025-11-25` y `2025-06-18` al mismo
   upstream reciben cada uno la suya; con `FAKE_MCP_MAX_PROTOCOL=2025-06-18` (el fake contesta
   `min(pedida, máxima)`), el que pide `2025-11-25` recibe `2025-06-18`. Las pruebas del `Mux`
-  (`tests/broker_mux.rs`) cubren versión desconocida, ausente, no cadena, posterior al upstream
+  (`/home/someguy/codebase/0xJesus/ComandOS/crates/comandos-extensions/tests/broker_mux.rs`) cubren versión desconocida, ausente, no cadena, posterior al upstream
   y dos clientes en espera con peticiones distintas.
 
-`systemd-analyze --user verify systemd/comandos-broker.service` solo señala que el binario
-`%h/.local/share/comandos/bin/comandos` no existe (no se instala en esta tarea); ningún aviso de
-ciclo de orden tras quitar `After=default.target`.
+La suite se ejecuta desde `/home/someguy/codebase/0xJesus/ComandOS` con
+`cargo test -p comandos-extensions --test broker_daemon --test broker_mux`.
+Las pruebas usan HOME, sockets y servidores sintéticos aislados; sus resultados no acreditan
+por sí mismos el estado de las aplicaciones externas ni la versión del daemon instalado.
 
-## Memoria
+## Medición histórica de memoria
 
-Medido con `cargo xtask rss --samples 3` sobre el binario release, upstream `fake_mcp_stdio`
+El registro de memoria siguiente se conserva como medición histórica, sin repetirlo para este cambio.
+Se midió con `cargo xtask rss --samples 3` sobre el binario release, upstream `fake_mcp_stdio`
 (release). Medianas de tres muestras, KiB:
 
 | Árbol medido | Procesos | RSS | PSS |
@@ -235,6 +272,14 @@ En la tercera medición, un bucle en segundo plano conectaba un cliente (`serve 
 - El upstream compartido se inicializa con capacidades de cliente vacías: un servidor que
   dependa de `roots`, `sampling` o `elicitation` del cliente se comporta como con un cliente
   que no las declara. Si eso importa, hay que marcarlo `"shared": false`.
-- Del entorno de la sesión solo cuenta el `env` del catálogo; el resto de variables viene del
-  daemon.
-- `systemd/comandos-broker.service` está en el repositorio pero no se instala en esta tarea.
+- El entorno completo de la primera sesión determina el upstream, pero sólo el `env` del
+  catálogo entra en la clave. Sesiones con distinto `environ` pueden compartir proceso.
+- Un daemon vivo bloqueado, o un servidor que falla repetidamente, puede mantener un alta
+  esperando hasta que el supervisor termine el cliente. No hay un plazo total de recuperación.
+- Antes del primer `attach` exitoso no se lee stdin, para conservar la entrada de un eventual
+  proxy directo. Por ello, cerrar sólo stdin durante esa espera no cancela el proceso fino.
+  Tampoco se atiende ese EOF mientras el bucle espera reattach. Un supervisor que cierre
+  stdin sin terminar el proceso puede dejar ese cliente esperando; el candado no es un recolector de huérfanos.
+- Los procesos ya cargados conservan su ejecutable. Cambiar la release activa afecta a nuevos
+  clientes; el daemon necesita un arranque posterior para cargar su código nuevo. Reiniciar
+  una unidad con `KillMode=control-group` termina también sus upstreams y puede cortar llamadas.

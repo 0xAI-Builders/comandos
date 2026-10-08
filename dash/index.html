@@ -2222,7 +2222,7 @@ function mdStrip(s){ return (s||"").replace(/\*\*|`|^#{1,6} /g, ""); }
 	  return (MT && MT.tiers && MT.tiers[tier]) || null;
 	}
 	// ---- Wizard "+": nueva sesion (carpeta + agente + cuenta) en 3 clicks.
-	const NS = {harness:"claude", motor:"claude", routeId:"claude:claude", model:"", effort:"high", harnessAccount:"main", motorAccount:"main"};
+	const NS = {harness:"codex", motor:"codex", routeId:"codex:codex", model:"gpt-6.1-sol", effort:"high", harnessAccount:"main", motorAccount:"main"};
 	const nsMatrix = ()=> (PROVIDERS && PROVIDERS.matrix) || [];
 	const nsHarness = id => (((PROVIDERS||{}).harnesses||{})[id]||{});
 	const nsMotor = id => (((PROVIDERS||{}).motors||{})[id]||{});

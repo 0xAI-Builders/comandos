@@ -12,16 +12,12 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::{Mutex, PoisonError},
-    time::Duration,
 };
 use tokio::{
     sync::{mpsc, oneshot},
     task::JoinHandle,
     time::Instant,
 };
-
-/// Espera máxima a que el actor dé el alta (incluye el `initialize` de un upstream nuevo).
-pub(super) const JOIN_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Default)]
 pub(super) struct Registry {
@@ -46,6 +42,15 @@ pub(super) struct Attached {
     pub lines: mpsc::Sender<(ClientId, Vec<u8>)>,
 }
 
+/// El fallo de un arranque compartido sigue bajo la autoridad del registro: todos sus
+/// clientes deben esperar el mismo siguiente intento, incluso después de recoger el grupo.
+pub(super) enum AttachError {
+    /// Esta sesión no pertenece a este broker (identidad del catálogo o modo dedicado).
+    Direct(String),
+    /// Arranque fallido, cooldown o actor retirándose: reintentar attach al mismo registro.
+    Retry(String),
+}
+
 struct Request {
     name: String,
     cwd: PathBuf,
@@ -58,23 +63,28 @@ struct Request {
 
 /// Valida `{"attach","cwd","env","catalog","home"[,"environ"][,"path"]}` y da de alta al cliente en el actor de
 /// su clave. Si el actor se está cerrando, reintenta con uno nuevo (hasta tres veces).
-pub(super) async fn attach(ctx: &Ctx, line: &[u8]) -> Result<Attached> {
-    let req = parse(ctx, line)?;
-    let spec = crate::cli::server_spec(&ctx.catalog, &req.name)?;
+pub(super) async fn attach(ctx: &Ctx, line: &[u8]) -> std::result::Result<Attached, AttachError> {
+    let req = parse(ctx, line).map_err(AttachError::Direct)?;
+    // Una lectura fallida no demuestra que la sesión sea ajena: el catálogo puede estar
+    // actualizándose mientras el actor de su configuración anterior sigue sirviendo.
+    let spec = crate::cli::server_spec(&ctx.catalog, &req.name).map_err(AttachError::Retry)?;
     if !brokerable(&spec, &req.name) {
-        return Err(format!("Servidor no compartible: {}", req.name));
+        return Err(AttachError::Direct(format!(
+            "Servidor no compartible: {}",
+            req.name
+        )));
     }
     let key = Key::new(&req.name, &req.cwd, &spec, &req.env);
     for _ in 0..3 {
-        let (ctl, lines) = actor_for(ctx, &key, &spec, &req)?;
+        let (ctl, lines) = actor_for(ctx, &key, &spec, &req).map_err(AttachError::Retry)?;
         let (reply, joined) = oneshot::channel::<Joined>();
         if ctl.send(Ctl::Join(reply)).await.is_err() {
             continue;
         }
-        // Al vencer, el receptor se suelta: el actor ve el alta huérfana y no la registra.
-        match tokio::time::timeout(JOIN_TIMEOUT, joined).await {
-            Err(_) => return Err("upstream sin respuesta a initialize en 5 s".into()),
-            Ok(Ok(Ok((id, out)))) => {
+        // El actor posee el plazo de initialize y recoge su grupo antes de rechazar.
+        // Abandonar aquí antes crearía un proxy directo junto al upstream aún arrancando.
+        match joined.await {
+            Ok(Ok((id, out))) => {
                 return Ok(Attached {
                     id,
                     out,
@@ -82,11 +92,14 @@ pub(super) async fn attach(ctx: &Ctx, line: &[u8]) -> Result<Attached> {
                     lines,
                 });
             }
-            Ok(Ok(Err(JoinError::Failed(msg)))) => return Err(msg),
-            Ok(Ok(Err(JoinError::Retry)) | Err(_)) => continue,
+            Ok(Err(JoinError::Failed(msg))) => return Err(AttachError::Retry(msg)),
+            Ok(Err(JoinError::Retry)) | Err(_) => continue,
         }
     }
-    Err(format!("Servidor no disponible: {}", req.name))
+    Err(AttachError::Retry(format!(
+        "Servidor no disponible: {}",
+        req.name
+    )))
 }
 
 fn parse(ctx: &Ctx, line: &[u8]) -> Result<Request> {

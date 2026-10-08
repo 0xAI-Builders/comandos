@@ -177,21 +177,15 @@ impl Actor {
         // Edad al terminar, antes de los 5 s de gracia de `terminate`.
         let lived = spawned.elapsed();
         let early = !(self.ready && lived >= EARLY_DEATH);
-        // Si el upstream murió solo, su estado de salida va en el mensaje; en los demás
-        // casos se cierra después de rechazar las altas, para no hacerlas esperar.
-        let mut status = None;
-        if matches!(end, End::Eof) {
-            status = Some(upstream::terminate(&mut up).await);
-        }
+        // Conserva el inbox abierto mientras se recoge el grupo: las nuevas altas esperan
+        // este mismo actor. Solo después se permite su reemplazo o el fallback directo.
+        let status = upstream::terminate(&mut up).await;
         let reason = match end {
             End::Stop => "parada del broker".to_string(),
             End::Idle => "inactividad".into(),
             End::Closed => "registro cerrado".into(),
             End::Eof if !early => "fin del upstream".into(),
-            End::Eof => format!(
-                "upstream murió al arrancar: {}",
-                status.as_deref().unwrap_or("desconocido")
-            ),
+            End::Eof => format!("upstream murió al arrancar: {}", status),
             End::InitTimeout => "upstream no respondió a initialize".into(),
             End::InitRejected => "upstream rechazó initialize".into(),
         };
@@ -226,10 +220,6 @@ impl Actor {
         }
         let clients = self.clients.len();
         self.clients.clear(); // EOF a todos sus clientes.
-        let status = match status {
-            Some(status) => status,
-            None => upstream::terminate(&mut up).await,
-        };
         eprintln!(
             "broker: exit {} pid {} ({reason}; {clients} clientes; estado {status})",
             self.key, up.pid
