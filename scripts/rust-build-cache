@@ -1,0 +1,80 @@
+#!/bin/sh
+# Development-only admission guard. It never deletes artifacts or signals jobs.
+set -eu
+task_workspace=$(pwd -P)
+if [ "${1:-}" = --workspace ]; then
+  task_workspace=$2
+  shift 2
+fi
+task_common=$(git -C "$task_workspace" rev-parse --path-format=absolute --git-common-dir)
+task_repository=$(CDPATH= cd -- "$(dirname -- "$task_common")" && pwd -P)
+task_target="$task_repository/.build/target-integration-acp"
+if [ "$(realpath -m -- "$task_target")" != "$task_target" ]; then
+  echo "Refusing build cache through a symlink: $task_target" >&2
+  exit 64
+fi
+if [ -n "${CARGO_TARGET_DIR:-}" ] && [ "$CARGO_TARGET_DIR" != "$task_target" ]; then
+  echo "Use the shared build cache: $task_target" >&2
+  exit 64
+fi
+task_max=${COMANDOS_BUILD_CACHE_MAX_KIB:-33554432}
+task_min_free=${COMANDOS_BUILD_MIN_FREE_KIB:-16777216}
+case "$task_max" in
+  ''|*[!0-9]*) echo 'Invalid build cache budget.' >&2; exit 64 ;;
+esac
+case "$task_min_free" in
+  ''|*[!0-9]*) echo 'Invalid free-space budget.' >&2; exit 64 ;;
+esac
+if [ "${#task_max}" -gt 8 ] || [ "${#task_min_free}" -gt 14 ] ||
+   [ "$task_max" -le 0 ] || [ "$task_max" -gt 33554432 ] ||
+   [ "$task_min_free" -lt 16777216 ]; then
+  echo 'Build budgets may tighten the 32 GiB cache / 16 GiB free defaults.' >&2
+  exit 64
+fi
+mkdir -p -m 700 -- "$task_target"
+task_check_budget() {
+  if ! task_usage=$(du -sk -- "$task_target"); then
+    echo 'Cannot measure build cache usage.' >&2
+    return 75
+  fi
+  task_usage=${task_usage%%[[:space:]]*}
+  if ! task_free=$(df -Pk -- "$task_target"); then
+    echo 'Cannot measure build filesystem free space.' >&2
+    return 75
+  fi
+  task_free=$(printf '%s\n' "$task_free" | awk 'NR == 2 {print $4}')
+  case "$task_usage" in
+    ''|*[!0-9]*) echo 'Cannot measure build cache budget.' >&2; return 75 ;;
+  esac
+  case "$task_free" in
+    ''|*[!0-9]*) echo 'Cannot measure filesystem free space.' >&2; return 75 ;;
+  esac
+  if [ "$task_usage" -gt "$task_max" ] || [ "$task_free" -lt "$task_min_free" ]; then
+    echo "Build cache admission refused: $task_target, ${task_usage} KiB used, ${task_free} KiB free; limits ${task_max} / ${task_min_free} KiB. Preserve active artifacts before cleaning." >&2
+    return 75
+  fi
+}
+task_check_budget
+case "${1:-}" in
+  --path) printf '%s\n' "$task_target"; exit 0 ;;
+  --check) printf '%s\n' "cache=$task_target allocated_KiB=$task_usage max_KiB=$task_max free_KiB=$task_free minimum_free_KiB=$task_min_free"; exit 0 ;;
+  --) shift ;;
+  *) echo 'Usage: rust-build-cache [--workspace PATH] --check | --path | -- COMMAND ARGS...' >&2; exit 64 ;;
+esac
+[ "$#" -gt 0 ] || exit 64
+for task_argument in "$@"; do
+  case "$task_argument" in
+    --target-dir|--target-dir=*|--config|--config=*)
+      echo 'Build output/configuration overrides are not admitted by the shared-cache runner.' >&2
+      exit 64 ;;
+  esac
+done
+export CARGO_TARGET_DIR="$task_target"
+task_status=0
+"$@" || task_status=$?
+task_budget_status=0
+task_check_budget || task_budget_status=$?
+if [ "$task_status" -ne 0 ]; then
+  exit "$task_status"
+fi
+exit "$task_budget_status"

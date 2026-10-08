@@ -2,13 +2,13 @@
 import hashlib
 import json
 import math
+import os
 import pathlib
 import random
 import struct
 import subprocess
 
-ROOT=pathlib.Path('/work')
-BIN=ROOT/'.migration-build/target/debug/examples/python_json_contract'
+BIN=pathlib.Path(os.environ['CARGO_TARGET_DIR'])/'debug/examples/python_json_contract'
 values=[None,True,False,0,-1,2**256+7,-(2**512+11),0.0,-0.0,1e-7,1e-6,1e-5,1e-4,1e15,1e16,1e20,
         2.0**-25,-(2.0**-25),
         float.fromhex('0x0.0000000000001p-1022'),float.fromhex('0x1.fffffffffffffp+1023'),
