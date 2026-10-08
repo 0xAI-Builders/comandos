@@ -531,6 +531,27 @@ pub fn load_domain(home: &Path, hooks: &Path, name: &str) -> Result<Option<Value
     value_from(doc.strict())
 }
 
+// These entrypoints are for the state/workspace blocking workers only.
+fn load_domain_in_worker(home: &Path, hooks: &Path, name: &str) -> Result<Option<Value>, Fault> {
+    let doc = DomainDocument::new(home, hooks, name).map_err(|_| Fault::Decline)?;
+    value_from(doc.strict_in_worker())
+}
+pub(crate) fn read_prefs_in_worker(home: &Path, hooks: &Path) -> Result<Map<String, Value>, Fault> {
+    prefs_from(load_domain_in_worker(home, hooks, "prefs.json")?)
+}
+pub(crate) fn tab_labels_in_worker(
+    home: &Path,
+    hooks: &Path,
+) -> Result<Vec<(String, String)>, Fault> {
+    tab_labels_from(load_domain_in_worker(home, hooks, "app-tabs.json")?)
+}
+pub(crate) fn tab_history_in_worker(
+    home: &Path,
+    hooks: &Path,
+) -> Result<Vec<Map<String, Value>>, Fault> {
+    tab_history_from(load_domain_in_worker(home, hooks, "app-tabs-history.json")?)
+}
+
 // ---------------------------------------------------------------- pestañas
 
 pub const HIDDEN_SESSIONS: [&str; 3] = ["hub", "local", "control"];

@@ -130,13 +130,13 @@ fn read_tab_doc(home: Option<&Path>, hooks: &Path) -> Strict {
         || files::read_json_strict(&hooks.join("app-tabs.json")),
         |home| {
             files::DomainDocument::new(home, hooks, "app-tabs.json")
-                .map_or(Strict::Unsure, |d| d.strict())
+                .map_or(Strict::Unsure, |d| d.strict_in_worker())
         },
     )
 }
 fn prefs_for(home: Option<&Path>, hooks: &Path) -> Result<Map<String, Value>, Fault> {
     match home {
-        Some(home) => super::light::read_prefs_domain(home, hooks),
+        Some(home) => super::light::read_prefs_in_worker(home, hooks),
         None => read_prefs(hooks),
     }
 }
@@ -144,7 +144,7 @@ fn snapshot_for(home: Option<&Path>, hooks: &Path) -> Result<Value, Fault> {
     let Some(home) = home else {
         return read_snapshot(&hooks.join("app-sessions-v2.json"));
     };
-    comandos_store::domains::caller::read(home,"layout",|mode,db| {
+    files::read_domain(home,"layout",|mode,db| {
         if !matches!(mode,comandos_store::unified::Mode::Unified|comandos_store::unified::Mode::Sealed) {return Ok(read_snapshot(&hooks.join("app-sessions-v2.json")));}
         let Some(db)=db else {return Ok(Err(Fault::Decline))};
         for kind in ["current","previous"] {

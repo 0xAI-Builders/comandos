@@ -12,6 +12,36 @@ use std::{
     time::Duration,
 };
 
+/// Blocking-worker admission only: short mode-lease contention is normal while
+/// other processes write. Retry admission, never the read callback or any effect.
+fn read_access_in_worker(
+    home: &Path,
+    domain: &str,
+) -> comandos_store::Result<comandos_store::domains::caller::CallerAccess> {
+    let deadline = std::time::Instant::now() + Duration::from_millis(100);
+    loop {
+        match comandos_store::domains::caller::CallerAccess::open_read(home, domain) {
+            Err(comandos_store::Error::ModeBusy) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            result => return result,
+        }
+    }
+}
+
+/// Call only from a blocking worker, as with native JSON file reads.
+pub fn read_domain<T>(
+    home: &Path,
+    domain: &str,
+    body: impl FnOnce(
+        comandos_store::unified::Mode,
+        Option<&rusqlite::Connection>,
+    ) -> comandos_store::Result<T>,
+) -> comandos_store::Result<T> {
+    let access = read_access_in_worker(home, domain)?;
+    body(access.mode(), access.db())
+}
+
 pub enum Strict {
     /// `FileNotFoundError`.
     Missing,
@@ -53,8 +83,20 @@ impl DomainDocument {
             .document(&self.name, self.domain, self.file.clone())
             .read_live()
     }
+    /// Only call in a blocking worker; HTTP-thread reads use read_bytes.
+    pub fn read_bytes_in_worker(&self) -> comandos_store::Result<Option<Vec<u8>>> {
+        let access = read_access_in_worker(&self.home, self.domain)?;
+        access.read_document(&self.name, &self.file)
+    }
     pub fn strict(&self) -> Strict {
         match self.read_bytes() {
+            Ok(Some(bytes)) => bytes_strict(&bytes),
+            Ok(None) => Strict::Missing,
+            Err(_) => Strict::Unsure,
+        }
+    }
+    pub fn strict_in_worker(&self) -> Strict {
+        match self.read_bytes_in_worker() {
             Ok(Some(bytes)) => bytes_strict(&bytes),
             Ok(None) => Strict::Missing,
             Err(_) => Strict::Unsure,

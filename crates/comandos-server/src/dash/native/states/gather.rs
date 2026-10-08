@@ -98,7 +98,7 @@ struct Scan {
 /// (la memoria del Python es desconocida).
 pub(crate) fn motor_results(home: &Path, hooks: &Path) -> Result<Map<String, Value>, StateFault> {
     match files::DomainDocument::new(home, hooks, "motor-results.json")
-        .map_or(Strict::Unsure, |d| d.strict())
+        .map_or(Strict::Unsure, |d| d.strict_in_worker())
     {
         Strict::Missing => Ok(Map::new()),
         Strict::Value(Value::Object(map)) if map.values().all(Value::is_object) => Ok(map),
@@ -171,8 +171,8 @@ fn scan(
     // `PaneInspector()` se crea al empezar `read_states`.
     let inspector = PaneInspector::new(&opts.home, opts.proc_root.as_path()).map_err(unsure)?;
     let (maps, external) = agent_maps(opts, &registry, &panes)?;
-    let tabs = light::tab_labels_domain(&opts.home, &opts.hooks)?;
-    let history = light::read_tab_history_domain(&opts.home, &opts.hooks)?;
+    let tabs = light::tab_labels_in_worker(&opts.home, &opts.hooks)?;
+    let history = light::tab_history_in_worker(&opts.home, &opts.hooks)?;
     let records = cache
         .records
         .scan_domain(&opts.home, &opts.hooks.join("state"))?;
