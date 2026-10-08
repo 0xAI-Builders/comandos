@@ -516,6 +516,7 @@ impl App {
                 && !app.closed.load(Ordering::Acquire)
                 && !instance.load(Ordering::Acquire)
             {
+                app.interacted.set(true);
                 *app.t18.focused.borrow_mut() = Some(view.clone());
                 app.side_focus_js(&key, kind == "side");
             }

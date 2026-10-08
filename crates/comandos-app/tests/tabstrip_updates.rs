@@ -5,7 +5,7 @@ mod native;
 use serde_json::json;
 
 #[test]
-fn actual_set_items_keeps_stable_widgets_but_reflows_changed_widths() {
+fn actual_set_items_keeps_cards_stable_when_labels_change() {
     let source = include_str!("../src/ui/tabstrip.rs");
     let methods =
         native::body(source, "pub fn set_items(") + &native::body(source, "pub fn reflow(");
@@ -25,8 +25,8 @@ fn actual_set_items_keeps_stable_widgets_but_reflows_changed_widths() {
     assert_eq!(result["empty_attach"], 5);
     assert_eq!(result["rows_stable_attach"], 1);
     assert_eq!(result["rows_stable_rebuild"], 2);
-    assert_eq!(result["rows_width_rebuild"], 3);
-    assert_eq!(result["rows_allocation_rebuild"], 5);
+    assert_eq!(result["rows_width_rebuild"], 2);
+    assert_eq!(result["rows_allocation_rebuild"], 4);
     assert_eq!(result["rows_replaced_attach"], 2);
     assert_eq!(result["height"], 42);
 }
@@ -39,7 +39,9 @@ fn rows_mode_reveals_the_tab_container_and_preserves_all_tabs() {
         + &native::body(source, "pub fn set_rows(");
     let probe = include_str!("support/tabstrip_updates.rs.txt")
         .replace("// ACTUAL_METHODS", &methods)
-        .replace("// ROWS_VISIBILITY_PROBE", r#"
+        .replace(
+            "// ROWS_VISIBILITY_PROBE",
+            r#"
     let v = make(false);
     v.set_items((0..21).map(|i| (format!("tab-{i}"), Widget::new(100+i, 60))).collect());
     v.set_rows(true);
@@ -53,6 +55,7 @@ fn rows_mode_reveals_the_tab_container_and_preserves_all_tabs() {
     assert_eq!(v.0.items.borrow().len(), 21);
     v.set_rows(true);
     assert!(v.0.flow.0.visible.get());
-"#);
+"#,
+        );
     native::execute_source(&probe, &json!({}));
 }

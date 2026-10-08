@@ -168,6 +168,14 @@ impl App {
                                            _index: u32| {
                     if let Some(app) = weak.upgrade().filter(|a| !a.closed.load(Ordering::Acquire))
                     {
+                        // Only a real page switch moves keyboard focus. Polling MRU
+                        // metadata must not dismiss popovers or leave a sidebar PTY.
+                        if !app.workspace.is_applying()
+                            && notebook == *app.workspace.widget()
+                            && notebook == *app.active_notebook()
+                        {
+                            app.workspace.focus_page(&page);
+                        }
                         app.remember_navigation_page(&notebook, &page);
                     }
                 }),
@@ -202,7 +210,6 @@ impl App {
                 .ok()
                 .and_then(|strip| strip.page_key(page))
         } else {
-            self.workspace.focus_page(page);
             self.workspace.page_key(page)
         };
         if let Some(key) = key {

@@ -139,6 +139,10 @@ pub fn execute() -> serde_json::Value {
     }
     let t16 = include_str!("../../src/ui/app_t16.rs");
     app_methods += &body(t16, "fn instance(");
+    app_methods += &body(
+        include_str!("../../src/ui/app_t18.rs"),
+        "fn owns_term_instance(",
+    );
     app_methods += &body(t16, "fn defer_copy_key(");
     for needle in [
         "fn attach_term_t16(",

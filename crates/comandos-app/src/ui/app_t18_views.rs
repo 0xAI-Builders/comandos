@@ -121,9 +121,9 @@ impl App {
             };
             if !ticket.current()
                 || !app.writable()
-                || view.uri().is_none_or(|u| {
-                    !ui::extensions::message_owned(u.as_str(), &frozen, &base, 0, 0)
-                })
+                || view
+                    .uri()
+                    .is_none_or(|u| !ui::reader::message_owned(u.as_str(), &frozen, &base, kind))
             {
                 return;
             }

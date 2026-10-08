@@ -17,6 +17,7 @@ impl Widget {
  fn show_all(&self) {self.show();for child in self.children(){child.show_all();}}
  fn set_visible(&self,on:bool) {self.0.visible.set(on);}
  fn set_valign(&self,_align:gtk::Align) {}
+ fn set_homogeneous(&self,_on:bool) {}
  fn style_context(&self)->Style {Style}
 }
 struct Style;

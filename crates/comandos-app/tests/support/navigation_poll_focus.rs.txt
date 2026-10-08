@@ -1,0 +1,32 @@
+
+use std::cell::{Cell, RefCell};
+use serde_json::{Value, json};
+mod gtk {
+    #[derive(PartialEq)] pub struct Notebook;
+    pub struct Widget(pub &'static str);
+}
+struct Workspace { focus_calls: Cell<usize> }
+impl Workspace {
+    fn is_applying(&self) -> bool { false }
+    fn focus_page(&self, _: &gtk::Widget) { self.focus_calls.set(self.focus_calls.get()+1); }
+    fn page_key(&self, page: &gtk::Widget) -> Option<String> { Some(page.0.into()) }
+}
+struct Strip;
+impl Strip { fn page_key(&self, page: &gtk::Widget) -> Option<String> { Some(page.0.into()) } }
+struct App {
+    workspace: Workspace, workspace_doc: RefCell<Value>, strip: RefCell<Strip>,
+    notebook: gtk::Notebook, mru_pages: RefCell<Vec<String>>,
+}
+impl App {
+    fn active_notebook(&self) -> &gtk::Notebook { &self.notebook }
+    fn navigation_index(&self, key: &str) -> Option<u32> { Some(if key=="a" {0} else {1}) }
+    // ACTUAL_METHOD
+}
+fn main() {
+    let app = App { workspace: Workspace {focus_calls:Cell::new(0)},
+        workspace_doc: RefCell::new(json!({"groups":[]})), strip:RefCell::new(Strip),
+        notebook:gtk::Notebook, mru_pages:RefCell::new(vec![]) };
+    app.remember_navigation_page(&app.notebook, &gtk::Widget("a"));
+    for _ in 0..500 { app.remember_navigation_page(&app.notebook, &gtk::Widget("b")); }
+    println!("{}",json!({"focus_calls":app.workspace.focus_calls.get(),"mru":*app.mru_pages.borrow()}));
+}

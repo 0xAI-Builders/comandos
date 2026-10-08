@@ -17,3 +17,17 @@ pub fn reader_uri(base: &str, id: &str, version: &str) -> Result<String, String>
         }
     ))
 }
+
+/// Only the exact local auxiliary page that owns this bridge may dispatch.
+pub fn message_owned(current: &str, owned: &str, base: &str, kind: &str) -> bool {
+    if current != owned || crate::config::loopback_only(base).is_err() {
+        return false;
+    }
+    let panel = match kind {
+        "reader" => "news",
+        "chains" => "chains",
+        _ => return false,
+    };
+    let prefix = format!("{}/?panel={panel}&", base.trim_end_matches('/'));
+    owned.starts_with(&prefix)
+}

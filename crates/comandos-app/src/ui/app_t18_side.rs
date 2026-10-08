@@ -535,11 +535,12 @@ impl App {
         self.queue_side_layout();
     }
     fn side_from_web(self: &Rc<Self>, data: &Value) {
-        let before = {
-            let state = self.t18.state.borrow();
-            (state.session.clone(), state.hidden)
-        };
+        let before_state = self.t18.state.borrow().clone();
+        let before = (before_state.session.clone(), before_state.hidden);
         self.t18.state.borrow_mut().adopt_web(data);
+        if *self.t18.state.borrow() == before_state {
+            return;
+        }
         let changed = {
             let state = self.t18.state.borrow();
             (state.session.clone(), state.hidden) != before
@@ -558,8 +559,6 @@ impl App {
             self.queue_side_layout();
             return;
         }
-        self.t18.state.borrow_mut().collapsed = true;
-        self.queue_side_layout();
         let keep = self
             .t18
             .state
@@ -597,6 +596,8 @@ impl App {
             self.show_side_client(&id, &widget);
             return;
         }
+        self.t18.state.borrow_mut().collapsed = true;
+        self.queue_side_layout();
         if self.t18.side_loading.replace(true) {
             return;
         }

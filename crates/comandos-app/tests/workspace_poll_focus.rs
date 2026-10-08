@@ -15,3 +15,17 @@ fn metadata_refresh_keeps_popover_focus_and_changed_layout_restores_terminal_foc
         serde_json::json!({"cases":4})
     );
 }
+
+#[test]
+fn repeated_navigation_bookkeeping_never_moves_keyboard_focus() {
+    let method = native::body(
+        include_str!("../src/ui/app_t13.rs"),
+        "fn remember_navigation_page(",
+    );
+    let source =
+        include_str!("support/navigation_poll_focus.rs.txt").replace("// ACTUAL_METHOD", &method);
+    assert_eq!(
+        native::execute_source(&source, &serde_json::json!({})),
+        serde_json::json!({"focus_calls":0,"mru":["a","b"]})
+    );
+}

@@ -155,14 +155,10 @@ impl TabStripLayout {
             signature: std::cell::RefCell::new(None),
         });
         let weak = std::rc::Rc::downgrade(&inner);
-        inner.rows_view.connect_size_allocate(move |view, alloc| {
+        inner.rows_view.connect_size_allocate(move |_, _| {
             if let Some(s) = weak.upgrade()
                 && s.rows.get()
             {
-                if alloc.height() > s.height.get() {
-                    s.height.set(alloc.height());
-                    view.set_size_request(-1, alloc.height());
-                }
                 Self(s).reflow();
             }
         });
@@ -262,8 +258,9 @@ impl TabStripLayout {
     pub fn set_current(&self, key: &str) {
         for (k, item) in self.0.items.borrow().iter() {
             if k == key {
+                let changed = !item.style_context().has_class("cur");
                 item.style_context().add_class("cur");
-                if !self.rows() {
+                if changed && !self.rows() {
                     self.reveal(item);
                 }
             } else {
@@ -329,10 +326,7 @@ impl TabStripLayout {
             return;
         }
         let items = self.0.items.borrow();
-        let widths = items
-            .iter()
-            .map(|(_, w)| w.preferred_width().1)
-            .collect::<Vec<_>>();
+        let widths = items.iter().map(|_| 240).collect::<Vec<_>>();
         let signature = (width + 12, widths.clone());
         if self.0.signature.borrow().as_ref() == Some(&signature) {
             return;
@@ -346,15 +340,24 @@ impl TabStripLayout {
                 self.0.flow.remove(&line);
             }
         }
-        for indices in crate::workspace_view::wrap_rows(width, &widths) {
+        let rows = crate::workspace_view::wrap_rows(width, &widths);
+        let columns = rows.first().map_or(0, Vec::len);
+        for indices in rows {
+            let missing = columns.saturating_sub(indices.len());
             let line = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+            line.set_homogeneous(true);
             self.0.flow.pack_start(&line, false, false, 0);
             for index in indices {
                 if let Some((_, item)) = items.get(index) {
                     detach_item(item);
-                    line.pack_start(item, false, false, 0);
+                    line.pack_start(item, true, true, 0);
                     item.show_all();
                 }
+            }
+            for _ in 0..missing {
+                let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+                line.pack_start(&spacer, true, true, 0);
+                spacer.show();
             }
             line.show();
         }

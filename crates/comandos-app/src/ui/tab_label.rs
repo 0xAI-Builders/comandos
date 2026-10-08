@@ -45,11 +45,13 @@ impl TabLabel {
         row.pack_start(&dot, false, false, 0);
         let text = gtk::Label::new(Some(text));
         text.set_xalign(0.);
+        text.set_ellipsize(pango::EllipsizeMode::End);
+        text.set_max_width_chars(24);
         text.style_context().add_class("tab-name");
         let name = gtk::EventBox::new();
         name.set_visible_window(false);
         name.add(&text);
-        row.pack_start(&name, false, false, 0);
+        row.pack_start(&name, true, true, 0);
         let model_icon = gtk::Image::new();
         model_icon.set_no_show_all(true);
         row.pack_start(&model_icon, false, false, 0);

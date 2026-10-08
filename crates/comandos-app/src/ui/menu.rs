@@ -210,10 +210,21 @@ pub fn clean_local_path(url: &str) -> Option<PathBuf> {
     } else {
         stripped.into()
     };
-    let raw = raw
-        .rsplit_once(':')
-        .filter(|(_, line)| !line.is_empty() && line.bytes().all(|b| b.is_ascii_digit()))
-        .map_or(raw.as_str(), |(path, _)| path);
+    // Keep real filenames ending in digits; otherwise remove line[:column].
+    let mut raw = raw.as_str();
+    for _ in 0..2 {
+        if std::path::Path::new(raw).exists() {
+            break;
+        }
+        if let Some((path, _)) = raw
+            .rsplit_once(':')
+            .filter(|(_, number)| !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit()))
+        {
+            raw = path;
+        } else {
+            break;
+        }
+    }
     let path = if let Some(tail) = raw.strip_prefix("~/") {
         PathBuf::from(std::env::var_os("HOME")?).join(tail)
     } else if raw == "~" {

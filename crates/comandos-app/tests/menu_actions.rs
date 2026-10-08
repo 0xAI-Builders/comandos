@@ -51,6 +51,16 @@ fn paths_decode_utf8_once_strip_line_and_open_with_argv() {
         clean_local_path(&format!("{}:42", path.display())),
         Some(path.clone())
     );
+    assert_eq!(
+        clean_local_path(&format!("{}:42:7", path.display())),
+        Some(path.clone())
+    );
+    let colon_path = root.join("report:2026");
+    std::fs::write(&colon_path, "fixture").unwrap();
+    assert_eq!(
+        clean_local_path(colon_path.to_str().unwrap()),
+        Some(colon_path)
+    );
     let uri = glib::filename_to_uri(&path, None).unwrap();
     assert_eq!(clean_local_path(&uri), Some(path.clone()));
     let plan = open_plan(&uri, OpenIntent::Open).unwrap();

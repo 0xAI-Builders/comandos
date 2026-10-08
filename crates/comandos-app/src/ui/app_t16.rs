@@ -98,7 +98,8 @@ impl App {
         let key_ = key.to_string();
         let instance = term.cleanup_cancellation();
         term.clipboard().set_valid(Rc::new(move || {
-            weak.upgrade().is_some_and(|a| a.instance(&key_, &instance))
+            weak.upgrade()
+                .is_some_and(|a| a.writable() && a.owns_term_instance(&key_, &instance))
         }));
         let weak = Rc::downgrade(self);
         let key_ = key.to_string();
@@ -1064,7 +1065,7 @@ impl App {
         let (x, y) = event.position();
         popover.set_pointing_to(&gdk::Rectangle::new(x as i32, y as i32, 1, 1));
         popover.set_position(gtk::PositionType::Bottom);
-        let box_ = gtk::Box::new(gtk::Orientation::Vertical, 3);
+        let box_ = gtk::Box::new(gtk::Orientation::Vertical, 6);
         box_.set_margin_start(8);
         box_.set_margin_end(8);
         box_.set_margin_top(8);
@@ -1106,8 +1107,13 @@ impl App {
         for (icon, label, intent) in ui::menu::link_rows(local, self.english) {
             let button = gtk::Button::new();
             button.set_relief(gtk::ReliefStyle::None);
-            button.style_context().add_class("tabplus");
-            let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            button.style_context().add_class("link-action");
+            button.set_size_request(-1, 36);
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+            row.set_margin_top(6);
+            row.set_margin_bottom(6);
+            row.set_margin_start(8);
+            row.set_margin_end(8);
             row.pack_start(&ui::icons::image(icon, 15, &color), false, false, 0);
             let text = gtk::Label::new(Some(label));
             text.set_xalign(0.);
