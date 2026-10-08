@@ -18,16 +18,30 @@ Las sesiones de trabajo de Jesús (20+ agentes) viven en el tmux `default` de
 ## Compilaciones: caché compartida con presupuesto
 
 - Todas las compilaciones de migración en Linux pasan por
-  /home/someguy/codebase/0xJesus/ComandOS/.worktrees/rust-integration-acp/scripts/rust-build-cache.
+  /home/someguy/codebase/0xJesus/ComandOS/scripts/rust-build-cache.
   El runner aislado ya incorpora esa comprobación.
 - Los worktrees comparten /home/someguy/codebase/0xJesus/ComandOS/.build/target-integration-acp.
   No crear un target por agente, revisión o intento ni cambiar de target para
   saltarse un rechazo del presupuesto. Ejecutar un solo Cargo a la vez.
 - El runner rechaza opciones de salida o configuración que puedan cambiar ese
   target; no pasar `--target-dir` ni `--config` a las comprobaciones.
-- Se comprueba la caché antes y después de cada comando. Con más de 32 GiB
+- Se comprueba la caché antes y después de cada comando. Con más de 16 GiB
   asignados o menos de 16 GiB libres se rechazan nuevas compilaciones. Es un
   control de admisión; una compilación puede exceder el límite mientras corre.
-- Este control no borra artefactos ni detiene procesos. La limpieza requiere
-  comprobar referencias y montajes de procesos activos y conservar binarios finales fuera
-  de los targets. Preservar siempre sesiones, datos e historiales del usuario.
+- El runner serializa las compilaciones con un candado común. Antes de admitir
+  una nueva, si falta espacio o se supera el presupuesto, recicla únicamente
+  archivos no ejecutables `.rlib`, `.rmeta` y `.d` de variantes antiguas de
+  dependencias: mínimo siete días sin cambios y dos variantes más recientes
+  conservadas por crate y perfil. Conserva enlaces duros, archivos abiertos o
+  mapeados, binarios finales y directorios de perfiles completos. Nunca envía
+  señales ni limpia releases, fuentes, worktrees, sesiones o historiales.
+- El GC falla de forma conservadora si encuentra un compilador activo, una
+  referencia o un montaje no verificable, o un proceso desconocido que no pueda
+  inspeccionarse. Zombies no tienen archivos abiertos; los helpers protegidos de
+  PAM y ssh-agent sólo se reconocen por su ejecutable padre del sistema. Si no
+  hay suficientes artifacts reciclables, el presupuesto sigue rechazando builds.
+- Ejecutar Cargo directamente evita este contrato: Cargo no resuelve la raíz
+  común de los worktrees en su configuración TOML. No añadir rutas absolutas
+  locales al archivo versionado de configuración ni crear nuevos targets para
+  esquivar la admisión; usar siempre el runner anterior. Los perfiles dev/test
+  ya desactivan debug e incremental, y release elimina símbolos.

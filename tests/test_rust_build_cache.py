@@ -1,7 +1,10 @@
 """Exercise build admission in private Git worktrees without starting a compiler."""
 import shutil
+import os
+import mmap
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -16,12 +19,20 @@ class BuildCache(unittest.TestCase):
         self.main = self.root / "main"
         self.main.mkdir()
         self.git("init", "-q")
+        # A private process census includes the real test process, so open FDs
+        # and mappings are exercised without unrelated host/container processes.
+        self.proc = self.root / "proc"
+        self.proc.mkdir()
+        (self.proc / str(os.getpid())).symlink_to(Path("/proc") / str(os.getpid()))
         scripts = self.main / "scripts"
         scripts.mkdir()
-        for name in ["rust-sandbox", "rust-build-cache", "rust-python-oracle"]:
+        for name in ["rust-sandbox", "rust-build-cache", "rust-python-oracle", "rust-cache-gc"]:
             source = SOURCE / "scripts" / name
             if source.exists():
                 shutil.copyfile(source, scripts / name)
+                if name == "rust-cache-gc":
+                    helper = scripts / name
+                    helper.write_text(helper.read_text().replace('PROC_ROOT = Path("/proc")', 'PROC_ROOT = Path(' + repr(str(self.proc)) + ')'))
                 (scripts / name).chmod(0o700)
         self.git("add", "scripts")
         self.git("-c", "user.name=fixture", "-c", "user.email=fixture@localhost", "commit", "-qm", "fixture")
@@ -79,10 +90,87 @@ class BuildCache(unittest.TestCase):
     def test_child_exit_status_is_preserved(self):
         self.assertEqual(self.run_sandbox(FIXTURE_EXIT="7").returncode, 7)
 
-    def test_malformed_budget_cannot_disable_admission(self):
-        result = self.run_sandbox(COMANDOS_BUILD_CACHE_MAX_KIB="1:2")
+    def stale_variants(self):
+        deps = self.cache / "debug/deps"
+        deps.mkdir(parents=True)
+        variants = []
+        for index in range(4):
+            artifact = deps / ("libfixture-%016x.rlib" % index)
+            artifact.write_bytes(b"x" * (1024 * 1024))
+            age = time.time() - (12 - index) * 86400
+            os.utime(artifact, (age, age))
+            variants.append(artifact)
+        return variants
+
+    def test_pressure_recycles_only_old_superseded_hashes(self):
+        variants = self.stale_variants()
+        current = self.cache / "debug/fixture"
+        current.write_text("keep current binary")
+        result = self.run_sandbox(COMANDOS_BUILD_CACHE_MAX_KIB="3072")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(variants[0].exists())
+        self.assertFalse(variants[1].exists())
+        self.assertTrue(all(path.exists() for path in variants[2:]))
+        self.assertEqual(current.read_text(), "keep current binary")
+
+    def test_gc_preserves_hardlinked_and_open_artifacts(self):
+        variants = self.stale_variants()
+        (self.cache / "debug/current").hardlink_to(variants[0])
+        with variants[1].open("rb"):
+            result = self.run_sandbox(COMANDOS_BUILD_CACHE_MAX_KIB="3072")
         self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(all(path.exists() for path in variants))
         self.assertFalse((self.root / "receipt").exists())
+
+    def test_gc_preserves_recent_variants_even_under_pressure(self):
+        variants = self.stale_variants()
+        for path in variants:
+            path.touch()
+        result = self.run_sandbox(COMANDOS_BUILD_CACHE_MAX_KIB="3072")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(all(path.exists() for path in variants))
+
+    def test_gc_preserves_mapped_artifact_after_its_fd_is_closed(self):
+        variants = self.stale_variants()
+        (self.cache / "debug/current").hardlink_to(variants[0])
+        with variants[1].open("rb") as source:
+            mapped = mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_READ)
+        try:
+            result = self.run_sandbox(COMANDOS_BUILD_CACHE_MAX_KIB="3072")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertTrue(all(path.exists() for path in variants))
+        finally:
+            mapped.close()
+
+    def test_compiler_outside_repository_with_explicit_target_blocks_gc(self):
+        variants = self.stale_variants()
+        proc = self.proc / "999999999"
+        proc.mkdir()
+        (proc / "status").write_text("State:\tS (sleeping)\nPPid:\t1\n")
+        (proc / "comm").write_text("cargo\n")
+        (proc / "cwd").symlink_to(self.root)
+        (proc / "environ").write_bytes(b"")
+        (proc / "cmdline").write_bytes(b"cargo\0build\0--target-dir=" + os.fsencode(self.cache) + b"\0")
+        result = self.run_sandbox(COMANDOS_BUILD_CACHE_MAX_KIB="3072")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"a compiler is using this repository", result.stdout)
+        self.assertTrue(all(path.exists() for path in variants))
+
+    def test_build_commands_from_two_worktrees_are_serialized(self):
+        script = self.root / "exclusive"
+        script.write_text("#!/bin/sh\nmkdir \"$HOME/build-running\" || exit 44\nsleep 0.2\nrmdir \"$HOME/build-running\"\n")
+        script.chmod(0o700)
+        processes = [subprocess.Popen([str(worktree / "scripts/rust-build-cache"), "--", str(script)], cwd=worktree, env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE) for worktree in [self.a, self.b]]
+        results = [(process, process.communicate(timeout=10)[1]) for process in processes]
+        for process, error in results:
+            self.assertEqual(process.returncode, 0, error)
+
+    def test_malformed_budget_cannot_disable_admission(self):
+        for budget in ("1:2", "16777217", "33554432"):
+            with self.subTest(budget=budget):
+                result = self.run_sandbox(COMANDOS_BUILD_CACHE_MAX_KIB=budget)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse((self.root / "receipt").exists())
 
     def test_other_target_override_is_rejected(self):
         protected = self.root / "user-target"

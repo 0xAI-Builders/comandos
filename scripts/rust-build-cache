@@ -1,5 +1,5 @@
 #!/bin/sh
-# Development-only admission guard. It never deletes artifacts or signals jobs.
+# Development-only build serialization, safe cache maintenance and admission.
 set -eu
 task_workspace=$(pwd -P)
 if [ "${1:-}" = --workspace ]; then
@@ -17,7 +17,7 @@ if [ -n "${CARGO_TARGET_DIR:-}" ] && [ "$CARGO_TARGET_DIR" != "$task_target" ]; 
   echo "Use the shared build cache: $task_target" >&2
   exit 64
 fi
-task_max=${COMANDOS_BUILD_CACHE_MAX_KIB:-33554432}
+task_max=${COMANDOS_BUILD_CACHE_MAX_KIB:-16777216}
 task_min_free=${COMANDOS_BUILD_MIN_FREE_KIB:-16777216}
 case "$task_max" in
   ''|*[!0-9]*) echo 'Invalid build cache budget.' >&2; exit 64 ;;
@@ -26,9 +26,9 @@ case "$task_min_free" in
   ''|*[!0-9]*) echo 'Invalid free-space budget.' >&2; exit 64 ;;
 esac
 if [ "${#task_max}" -gt 8 ] || [ "${#task_min_free}" -gt 14 ] ||
-   [ "$task_max" -le 0 ] || [ "$task_max" -gt 33554432 ] ||
+   [ "$task_max" -le 0 ] || [ "$task_max" -gt 16777216 ] ||
    [ "$task_min_free" -lt 16777216 ]; then
-  echo 'Build budgets may tighten the 32 GiB cache / 16 GiB free defaults.' >&2
+  echo 'Build budgets may tighten the 16 GiB cache / 16 GiB free defaults.' >&2
   exit 64
 fi
 mkdir -p -m 700 -- "$task_target"
@@ -54,10 +54,9 @@ task_check_budget() {
     return 75
   fi
 }
-task_check_budget
 case "${1:-}" in
   --path) printf '%s\n' "$task_target"; exit 0 ;;
-  --check) printf '%s\n' "cache=$task_target allocated_KiB=$task_usage max_KiB=$task_max free_KiB=$task_free minimum_free_KiB=$task_min_free"; exit 0 ;;
+  --check) task_check_budget; printf '%s\n' "cache=$task_target allocated_KiB=$task_usage max_KiB=$task_max free_KiB=$task_free minimum_free_KiB=$task_min_free"; exit 0 ;;
   --) shift ;;
   *) echo 'Usage: rust-build-cache [--workspace PATH] --check | --path | -- COMMAND ARGS...' >&2; exit 64 ;;
 esac
@@ -69,9 +68,20 @@ for task_argument in "$@"; do
       exit 64 ;;
   esac
 done
+python3 "$task_repository/scripts/rust-cache-gc" --workspace "$task_workspace" \
+  --max-kib "$task_max" --min-free-kib "$task_min_free"
+# Maintenance and every build use the same lock. The child does not inherit the
+# descriptor, so an intentionally detached test process cannot retain the lock.
+if [ -L "$task_repository/.build/rust-build-cache.lock" ]; then
+  echo 'Refusing build cache lock through a symlink.' >&2
+  exit 64
+fi
+exec 9>>"$task_repository/.build/rust-build-cache.lock"
+flock -x 9
+task_check_budget
 export CARGO_TARGET_DIR="$task_target"
 task_status=0
-"$@" || task_status=$?
+"$@" 9>&- || task_status=$?
 task_budget_status=0
 task_check_budget || task_budget_status=$?
 if [ "$task_status" -ne 0 ]; then
