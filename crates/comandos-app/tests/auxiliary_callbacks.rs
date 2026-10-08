@@ -29,7 +29,7 @@ fn actual_mosaic_fill_close_cancels_stale_replay_and_twenty_cycles_release_clien
     );
 }
 #[test]
-fn actual_tabs_layout_hides_arrows_paints_accent_and_persist_false_does_not_post() {
+fn actual_tabs_layout_keeps_arrows_paints_accent_and_persist_false_does_not_post() {
     let methods = native::body(
         include_str!("../src/ui/app_foundation.rs"),
         "fn apply_tabs_layout(",

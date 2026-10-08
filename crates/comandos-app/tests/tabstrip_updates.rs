@@ -59,3 +59,18 @@ fn rows_mode_reveals_the_tab_container_and_preserves_all_tabs() {
         );
     native::execute_source(&probe, &json!({}));
 }
+
+#[test]
+fn arrow_navigation_starts_at_local_and_keeps_the_other_sessions_in_order() {
+    use comandos_app::ui::tabstrip::cycle_page;
+    // Notebook stores Local last; the visible card order is Local, A, B, C.
+    assert_eq!(cycle_page(4, Some(3), Some(3), 1), Some(0));
+    assert_eq!(cycle_page(4, Some(0), Some(3), -1), Some(3));
+    assert_eq!(cycle_page(4, Some(1), Some(3), 1), Some(2));
+    assert_eq!(cycle_page(4, Some(2), Some(3), 1), Some(3));
+    assert_eq!(cycle_page(4, Some(3), Some(3), -1), Some(2));
+    assert_eq!(cycle_page(4, None, Some(3), 1), Some(3));
+    assert_eq!(cycle_page(1, Some(0), Some(0), -1), Some(0));
+    assert_eq!(cycle_page(0, None, None, 1), None);
+    assert_eq!(cycle_page(3, Some(0), None, -1), Some(2));
+}

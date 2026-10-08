@@ -77,7 +77,7 @@ impl App {
         for row in [self.tab_layout.start(), self.tab_layout.actions()] {
             for child in row.children() {
                 match child.widget_name().as_str() {
-                    "tab-cycle-prev" | "tab-cycle-next" => child.set_visible(mode == "row"),
+                    "tab-cycle-prev" | "tab-cycle-next" => child.set_visible(true),
                     "tabs-layout-rows" => {
                         if let Ok(button) = child.downcast::<gtk::Button>() {
                             let color = self
@@ -328,6 +328,21 @@ impl App {
         self.group_labels
             .borrow_mut()
             .retain(|key, _| group_keys.contains(key));
+        // Local is the first card even when the saved notebook places it last.
+        let local_group = doc
+            .get("groups")
+            .and_then(Value::as_array)
+            .and_then(|groups| {
+                groups
+                    .iter()
+                    .find(|group| {
+                        comandos_core::workspace::tab_ids(&group["tree"])
+                            .is_ok_and(|ids| ids.iter().any(|id| id == "local"))
+                    })
+                    .and_then(|group| group["id"].as_str())
+                    .map(|id| format!("group:{id}"))
+            });
+        entries.sort_by_key(|(key, _)| key != "local" && Some(key) != local_group.as_ref());
         self.tab_layout.set_items(entries);
         self.paint_favorites();
         if let Some(key) = self.current_session() {

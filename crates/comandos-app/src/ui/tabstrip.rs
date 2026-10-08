@@ -219,7 +219,7 @@ impl TabStripLayout {
         for b in [&self.0.start, &self.0.end] {
             for child in b.children() {
                 if child.style_context().has_class("tab-cycle") {
-                    child.set_visible(!rows);
+                    child.set_visible(true);
                 }
             }
             b.set_valign(if rows {
@@ -370,4 +370,18 @@ fn detach_item(widget: &gtk::Widget) {
     {
         parent.remove(widget);
     }
+}
+
+/// Navigate notebook pages with Local first, preserving all other page positions.
+pub fn cycle_page(count: u32, current: Option<u32>, local: Option<u32>, delta: i32) -> Option<u32> {
+    let mut pages = (0..count).collect::<Vec<_>>();
+    if let Some(local) = local.filter(|index| *index < count) {
+        pages.retain(|index| *index != local);
+        pages.insert(0, local);
+    }
+    let position = pages.iter().position(|index| Some(*index) == current);
+    let position = position.map_or(0, |p| {
+        (p as i64 + i64::from(delta)).rem_euclid(i64::from(count)) as usize
+    });
+    pages.get(position).copied()
 }

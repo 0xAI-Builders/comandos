@@ -253,13 +253,7 @@ impl App {
             let weak = Rc::downgrade(self);
             button.connect_clicked(move |_| {
                 if let Some(app) = weak.upgrade() {
-                    let notebook = app.active_notebook();
-                    let n = notebook.n_pages();
-                    if n > 0 {
-                        let current = notebook.current_page().unwrap_or(0) as i32;
-                        notebook
-                            .set_current_page(Some((current + delta).rem_euclid(n as i32) as u32));
-                    }
+                    app.cycle_navigation_page(delta);
                 }
             });
             if delta < 0 {

@@ -193,6 +193,17 @@ impl App {
             self.workspace.widget()
         }
     }
+    pub(super) fn cycle_navigation_page(&self, delta: i32) {
+        let notebook = self.active_notebook();
+        if let Some(index) = ui::tabstrip::cycle_page(
+            notebook.n_pages(),
+            notebook.current_page(),
+            self.navigation_index("local"),
+            delta,
+        ) {
+            notebook.set_current_page(Some(index));
+        }
+    }
     pub(super) fn navigation_index(&self, key: &str) -> Option<u32> {
         if self.workspace_doc.borrow().is_null() {
             self.strip.borrow().page_index(key)
@@ -327,15 +338,7 @@ impl App {
                 })?;
             }
             "next_tab" | "prev_tab" => {
-                let notebook = self.active_notebook();
-                let n = notebook.n_pages();
-                if n > 0 {
-                    let current = notebook.current_page().unwrap_or(0) as i64;
-                    notebook.set_current_page(Some(
-                        (current + if name == "next_tab" { 1 } else { -1 }).rem_euclid(i64::from(n))
-                            as u32,
-                    ));
-                }
+                self.cycle_navigation_page(if name == "next_tab" { 1 } else { -1 });
             }
             "mru_toggle" => {
                 self.remember_current_navigation_page();

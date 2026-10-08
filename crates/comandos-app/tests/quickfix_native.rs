@@ -29,6 +29,12 @@ fn modal_completions_leave_parent_alive_and_polling_does_not_reset_scroll() {
     let overlay = gtk::Overlay::new();
     let strip = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     let layout = TabStripLayout::new(&strip);
+    let previous = gtk::Button::with_label("‹");
+    let next = gtk::Button::with_label("›");
+    for (button, host) in [(&previous, layout.start()), (&next, layout.actions())] {
+        button.style_context().add_class("tab-cycle");
+        host.pack_start(button, false, false, 0);
+    }
     overlay.add(layout.widget());
     window.add(&overlay);
     window.set_default_size(600, 300);
@@ -111,6 +117,10 @@ fn modal_completions_leave_parent_alive_and_polling_does_not_reset_scroll() {
         );
     }
     layout.set_rows(true);
+    assert!(
+        previous.is_visible() && next.is_visible(),
+        "arrows stay visible with all session cards"
+    );
     // GTK may need a frame after changing the number of rows.
     let frame = glib::MainLoop::new(None, false);
     glib::timeout_add_local_once(Duration::from_millis(80), {
