@@ -99,9 +99,24 @@ impl Jobs {
 /// Canal hacia el hilo de GLib: lo que se envíe llega a `done` una vez.
 pub fn to_main<T: Send + 'static>(done: impl FnOnce(T) + 'static) -> async_channel::Sender<T> {
     let (tx, rx) = async_channel::bounded::<T>(1);
-    glib::MainContext::ref_thread_default().spawn_local(async move {
+    let context = glib::MainContext::ref_thread_default();
+    let delivery_context = context.clone();
+    context.spawn_local(async move {
         if let Ok(value) = rx.recv().await {
-            done(value);
+            // A completion can run a modal MainLoop. Leave the future executor
+            // before calling it, so jobs arriving inside that loop can be polled.
+            let mut completion = Some(glib::thread_guard::ThreadGuard::new(move || done(value)));
+            let source = glib::idle_source_new(
+                Some("comandos-job-completion"),
+                glib::Priority::DEFAULT,
+                move || {
+                    if let Some(completion) = completion.take() {
+                        completion.into_inner()();
+                    }
+                    glib::ControlFlow::Break
+                },
+            );
+            source.attach(Some(&delivery_context));
         }
     });
     tx
