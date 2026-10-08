@@ -32,11 +32,12 @@ use std::{
 /// Directorio de artefactos web que `--stage` copia a la release (T4).
 const WEB_SOURCE_ENV: &str = "COMANDOS_WEB_SOURCE";
 const HOOK_NAMES: &[&str] = &["cc-notify.sh", "cc-status.sh", "cc-usage-tool.sh"];
-const USAGE: &str = "uso: comandos install [--home DIR] [--dry-run] (--stage [--web DIR] [--keep-releases] | --stage-app RUTA_ABSOLUTA | --link NOMBRE | --darwin-agent [--no-launchctl] | --app RUTA.app | --rollback NOMBRE [--no-launchctl] | --rollback-release | --releases)";
+const USAGE: &str = "uso: comandos install [--home DIR] [--dry-run] (--stage [--web DIR] [--keep-releases] | --stage-app RUTA_ABSOLUTA | --extensions-bin RUTA_ABSOLUTA | --link NOMBRE | --darwin-agent [--no-launchctl] | --app RUTA.app | --rollback NOMBRE [--no-launchctl] | --rollback-release | --releases)";
 
 enum Action {
     Stage(Option<PathBuf>, bool),
     StageApp(PathBuf),
+    ExtensionsBin(PathBuf),
     DarwinAgent,
     DarwinApp(PathBuf),
     Link(String),
@@ -66,6 +67,14 @@ pub fn run(args: &[String]) -> Result<i32, String> {
     match action {
         Action::DarwinAgent => darwin::agent(&home, dry_run, no_launchctl)?,
         Action::DarwinApp(source) => darwin::install_app(&home, &source, dry_run)?,
+        Action::ExtensionsBin(source) => {
+            let target = components::stage(&home, "comandos-extensions", &source, dry_run)?;
+            if dry_run {
+                preview_link(&home, &target, "cc-extensions")?;
+            } else {
+                link(&home, &target, "cc-extensions")?;
+            }
+        }
         Action::Stage(flag, keep_releases) => {
             let me = std::env::current_exe()
                 .map_err(|e| format!("no se pudo ubicar el ejecutable: {e}"))?;
@@ -139,6 +148,11 @@ pub fn run(args: &[String]) -> Result<i32, String> {
         }
         Action::Link(name) => {
             let name = valid(&name)?;
+            let staged = if name == "cc-extensions" {
+                components::installed_alias(&home, "comandos-extensions", name)?.unwrap_or(staged)
+            } else {
+                staged
+            };
             if name == "cc-app" {
                 link_app(&home, dry_run)?;
             } else if dry_run {
@@ -232,6 +246,13 @@ fn parse(args: &[String]) -> Option<(PathBuf, Action, bool, bool)> {
                 }
                 Action::StageApp(p)
             }
+            "--extensions-bin" => {
+                let p = PathBuf::from(it.next()?);
+                if !p.is_absolute() {
+                    return None;
+                }
+                Action::ExtensionsBin(p)
+            }
             "--link" => Action::Link(it.next()?.clone()),
             "--rollback-release" => Action::RollbackRelease,
             "--releases" => Action::Releases,
@@ -250,7 +271,7 @@ fn parse(args: &[String]) -> Option<(PathBuf, Action, bool, bool)> {
         (other, None) => other,
     };
     let home = home?;
-    let app_action = matches!(&action, Action::StageApp(_))
+    let app_action = matches!(&action, Action::StageApp(_) | Action::ExtensionsBin(_))
         || matches!(&action, Action::DarwinAgent | Action::DarwinApp(_))
         || matches!(&action, Action::Link(n) | Action::Rollback(n) if n == "cc-app" || n == darwin::AGENT_NAME || n == "ComandOS.app");
     let agent_action = matches!(&action, Action::DarwinAgent)

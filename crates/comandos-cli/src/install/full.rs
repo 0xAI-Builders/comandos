@@ -16,6 +16,7 @@ pub fn handles(args: &[String]) -> bool {
             arg.as_str(),
             "--stage"
                 | "--stage-app"
+                | "--extensions-bin"
                 | "--link"
                 | "--rollback"
                 | "--rollback-release"
@@ -195,6 +196,21 @@ pub fn run_with(
     } else {
         Some(super::transaction::installation_lock(&home)?)
     };
+    // Immutable payloads survive a failed install. Prepare them before the
+    // transaction captures parent directories; aliases remain untouched here.
+    let extension_source = source.join("comandos-extensions");
+    let extension_target = match extension_source.symlink_metadata() {
+        Ok(_) => Some(super::components::stage(
+            &home,
+            "comandos-extensions",
+            &extension_source,
+            dry,
+        )?),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            super::components::installed_alias(&home, "comandos-extensions", "cc-extensions")?
+        }
+        Err(e) => return Err(e.to_string()),
+    };
     let mut initial_actions = plan::plan(&home, platform, &source);
     if extensions {
         initial_actions.extend(super::extensions::actions(&home, platform));
@@ -257,6 +273,15 @@ pub fn run_with(
             )?;
         }
         let mut actions = plan::plan(&home, platform, &source);
+        if let Some(extension_target) = extension_target {
+            for action in &mut actions {
+                if let Action::Link { name, target, .. } = action
+                    && name == "cc-extensions"
+                {
+                    *target = extension_target.clone();
+                }
+            }
+        }
         if let Some(target) = proxy {
             actions.retain(
                 |action| !matches!(action, Action::Link { name, .. } if name == "cc-model-proxy"),

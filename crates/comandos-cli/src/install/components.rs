@@ -11,7 +11,11 @@ use std::{
 fn artifact(name: &str) -> Result<(), String> {
     if matches!(
         name,
-        "comandos-notifyd" | "cc-model-proxy" | "comandos-app-mac" | "comandos-broker-mac"
+        "comandos-notifyd"
+            | "cc-model-proxy"
+            | "comandos-app-mac"
+            | "comandos-broker-mac"
+            | "comandos-extensions"
     ) {
         Ok(())
     } else {
@@ -79,6 +83,51 @@ impl Drop for Temporary {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
     }
+}
+
+/// Keep a previously installed dedicated payload only after checking its content
+/// address and manifest. A damaged managed component must never be downgraded
+/// silently to the multicall executable during an ordinary upgrade.
+pub fn installed_alias(home: &Path, name: &str, alias: &str) -> Result<Option<PathBuf>, String> {
+    artifact(name)?;
+    let link = home.join(".local/bin").join(alias);
+    super::release::check_app_parents(&link)?;
+    let target = match fs::read_link(&link) {
+        Ok(target) => target,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => return Ok(None),
+        Err(e) => return Err(e.to_string()),
+    };
+    let parent = home.join(".local/share/comandos/components").join(name);
+    let Ok(relative) = target.strip_prefix(&parent) else {
+        return Ok(None);
+    };
+    let parts: Vec<_> = relative.components().collect();
+    if parts.len() != 2 || target.file_name().and_then(|v| v.to_str()) != Some(name) {
+        return Err("invalid installed component path".into());
+    }
+    let hash = parts[0]
+        .as_os_str()
+        .to_str()
+        .ok_or("invalid component hash")?;
+    if hash.len() != 64
+        || !hash
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err("invalid installed component hash".into());
+    }
+    let bytes = read_binary(&target)?;
+    if format!("{:x}", Sha256::digest(&bytes)) != hash {
+        return Err("installed component hash mismatch".into());
+    }
+    verified(
+        target.parent().ok_or("component directory absent")?,
+        name,
+        &bytes,
+        &manifest(name, hash),
+    )?;
+    Ok(Some(target))
 }
 
 /// Preview validates the source and any existing installation, without writes.
