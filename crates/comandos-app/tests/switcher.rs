@@ -97,7 +97,7 @@ fn fuzzy_scores_and_status_palette_match_actual_original_ast() {
 }
 
 #[test]
-fn candidates_priority_hints_and_twelve_rows_match_original_nested_callbacks() {
+fn candidates_priority_hints_and_search_results_match_original_nested_callbacks() {
     use comandos_app::{
         proc::{ProcSpec, run},
         ui::switcher::{Candidate, candidates, dot_color, hint, search},
@@ -168,7 +168,14 @@ fn candidates_priority_hints_and_twelve_rows_match_original_nested_callbacks() {
                 String::from_utf8_lossy(&out.stderr)
             );
             let expected: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-            let native = search(query, &candidates(&open, &items, &states));
+            let all_candidates = candidates(&open, &items, &states);
+            let mut native = search(query, &all_candidates);
+            if query.trim().is_empty() {
+                // Intentional change: an empty query now lists every session.
+                // The original oracle still checks ordering and hints for its first twelve.
+                assert_eq!(native.len(), all_candidates.len());
+                native.truncate(12);
+            }
             let actual=serde_json::json!(native.iter().map(|r|serde_json::json!({"key":r.key,"label":r.label,"open":r.open,"hint":hint(&r.state,r.open,english),"dot":format!("<span size=\"9000\" foreground=\"{}\">●</span>",dot_color(&r.state))})).collect::<Vec<_>>());
             assert_eq!(actual, expected, "{english}/{query}");
         }

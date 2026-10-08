@@ -76,6 +76,7 @@ struct Model {
     primary_press: Option<super::links::PrimaryPress>,
     link_gesture: bool,
     last_motion: Option<(u16, u16, gdk::ModifierType)>,
+    hovered_link: Option<(Point, Point)>,
     ime: Ime,
     preedit: String,
     cursor_shape: CursorShape,
@@ -141,6 +142,7 @@ impl TermView {
                 | gdk::EventMask::BUTTON_PRESS_MASK
                 | gdk::EventMask::BUTTON_RELEASE_MASK
                 | gdk::EventMask::POINTER_MOTION_MASK
+                | gdk::EventMask::LEAVE_NOTIFY_MASK
                 | gdk::EventMask::SCROLL_MASK
                 | gdk::EventMask::SMOOTH_SCROLL_MASK
                 | gdk::EventMask::FOCUS_CHANGE_MASK,
@@ -196,6 +198,7 @@ impl TermView {
                 primary_press: None,
                 link_gesture: false,
                 last_motion: None,
+                hovered_link: None,
                 ime: Ime::default(),
                 preedit: String::new(),
                 cursor_shape: CursorShape::Block,
@@ -671,6 +674,10 @@ impl Inner {
             lines.extend(0..usize::from(m.engine.size().1));
         }
         m.schedule.damage(self.ms(), &lines);
+        if !lines.is_empty() {
+            m.hovered_link = None;
+            m.last_motion = None;
+        }
         drop(m);
         if !drained.replies.is_empty() {
             self.send_event(&drained.replies);
@@ -1282,6 +1289,19 @@ fn connect_events(inner: &Rc<Inner>) {
         m.last_motion = Some((col, row, state));
         let button = drag_button(state);
         let linked = super::links::link_at(&m.engine, point, row, col).is_some();
+        let hovered = (linked && button == Button::None)
+            .then(|| word_at(m.engine.engine(), point))
+            .flatten();
+        if m.hovered_link != hovered {
+            m.hovered_link = hovered;
+            area.queue_draw();
+        }
+        if let Some(window) = area.window() {
+            window.set_cursor(
+                gdk::Cursor::from_name(&window.display(), if linked { "pointer" } else { "text" })
+                    .as_ref(),
+            );
+        }
         let link_gesture = m.link_gesture || (button == Button::None && linked);
         let bytes = encode_mouse(
             button,
@@ -1314,13 +1334,18 @@ fn connect_events(inner: &Rc<Inner>) {
             area.queue_draw();
         }
         drop(m);
-        if let Some(window) = area.window() {
-            window.set_cursor(
-                gdk::Cursor::from_name(&window.display(), if linked { "pointer" } else { "text" })
-                    .as_ref(),
-            );
-        }
         glib::Propagation::Stop
+    });
+    let weak = Rc::downgrade(inner);
+    inner.area.connect_leave_notify_event(move |area, _| {
+        if let Some(inner) = weak.upgrade() {
+            let mut model = inner.model.borrow_mut();
+            model.last_motion = None;
+            if model.hovered_link.take().is_some() {
+                area.queue_draw();
+            }
+        }
+        glib::Propagation::Proceed
     });
     let weak = Rc::downgrade(inner);
     inner.area.connect_button_release_event(move |_, event| {
@@ -1458,6 +1483,25 @@ impl Inner {
         }
         for op in m.frame.ops() {
             paint_op(context, &layout, &m.font, &m.geom, op);
+        }
+        if let Some((start, end)) = m.hovered_link {
+            let offset = i32::try_from(m.engine.engine().display_offset()).unwrap_or(i32::MAX);
+            let (cols, rows) = m.engine.size();
+            let rgb = m.engine.palette().fg;
+            context.set_source_rgba(
+                f64::from(rgb[0]) / 255.,
+                f64::from(rgb[1]) / 255.,
+                f64::from(rgb[2]) / 255.,
+                0.65,
+            );
+            context.set_line_width(1.);
+            for (row, col, cells) in super::hover::lines(start, end, cols, rows, offset) {
+                let x = m.geom.origin_x + f64::from(col) * m.geom.cell_w;
+                let y = m.geom.origin_y + f64::from(row + 1) * m.geom.cell_h - 1.5;
+                context.move_to(x, y);
+                context.line_to(x + f64::from(cells) * m.geom.cell_w, y);
+            }
+            let _ = context.stroke();
         }
         if let Some(selection) = m.selection
             && let Some((start, end)) = selection_bounds(m.engine.engine(), &selection)

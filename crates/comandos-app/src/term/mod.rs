@@ -7,6 +7,7 @@ pub mod settle;
 
 pub mod keys;
 pub mod links;
+pub mod hover;
 pub mod schedule;
 
 pub mod lifecycle;

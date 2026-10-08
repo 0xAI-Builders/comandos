@@ -1,0 +1,50 @@
+#![allow(dead_code, unused_variables, unused_mut)]
+use std::{cell::{Cell, RefCell}, collections::BTreeMap, rc::Rc};
+#[derive(Clone, Copy, PartialEq)] enum ModalKind { Url, Chains, Analytics }
+mod glib { pub enum Propagation { Stop, Proceed } pub fn markup_escape_text(s:&str)->String{s.into()} }
+mod pango { pub enum EllipsizeMode { End } }
+mod gdk { pub mod keys { pub mod constants { #[allow(non_upper_case_globals)] pub const Escape:u32=27; } } }
+#[derive(Default)] struct Event;
+impl Event { fn keyval(&self)->u32 { 27 } }
+type Callback=Rc<dyn Fn(&Window,&Event)->glib::Propagation>;
+#[derive(Clone,Default)] struct Window { keys:Rc<RefCell<Vec<Callback>>>, focus:Rc<RefCell<Vec<Callback>>> }
+impl Window {
+ fn connect_key_press_event(&self,f:impl Fn(&Window,&Event)->glib::Propagation+'static)->usize{self.keys.borrow_mut().push(Rc::new(f));0}
+ fn connect_delete_event(&self,_:impl Fn(&Window,&Event)->glib::Propagation+'static)->usize{1}
+ fn connect_focus_out_event(&self,f:impl Fn(&Window,&Event)->glib::Propagation+'static)->usize{self.focus.borrow_mut().push(Rc::new(f));2}
+ fn upcast(self)->Self{self}
+}
+#[derive(Clone,Default)] struct Button(Rc<RefCell<Option<Rc<dyn Fn(&Button)>>>>);
+impl Button { fn connect_clicked(&self,f:impl Fn(&Button)+'static){*self.0.borrow_mut()=Some(Rc::new(f));} fn click(&self){if let Some(f)=self.0.borrow().clone(){f(self)}} }
+thread_local!{static BUTTONS:RefCell<Vec<Button>>=const{RefCell::new(Vec::new())};}
+mod ui { pub mod icons { pub fn button(_: &str,_:i32,_:&str)->super::super::Button { let b=super::super::Button::default();super::super::BUTTONS.with_borrow_mut(|v|v.push(b.clone()));b } } }
+struct Style;impl Style{fn add_class(&self,_:&str){}}
+mod gtk {
+ pub type Window=super::Window;pub enum Orientation{Vertical,Horizontal}
+ pub struct Box;impl Box {pub fn new(_:Orientation,_:i32)->Self{Self}pub fn style_context(&self)->super::Style{super::Style}pub fn pack_start<T>(&self,_:&T,_:bool,_:bool,_:u32){}pub fn pack_end<T>(&self,_:&T,_:bool,_:bool,_:u32){}}
+ pub struct Label;impl Label{pub fn new(_:Option<&str>)->Self{Self}pub fn set_ellipsize(&self,_:super::pango::EllipsizeMode){}pub fn set_markup(&self,_:&str){}pub fn set_xalign(&self,_:f32){}}
+}
+struct Owner { closing:Cell<bool>, signals:Vec<(Window,usize)> }
+struct T18 { windows:RefCell<BTreeMap<String,Owner>> }
+struct App { t18:T18, english:bool, closed:RefCell<Vec<String>> }
+impl App {
+ fn close_window(&self,name:&str){self.closed.borrow_mut().push(name.into());}
+ fn zoom_out(&self){self.close_window("zoom");}
+ fn header(self:&Rc<Self>,kind:ModalKind,name:&'static str,window:&Window){
+  let label="";let uri="http://localhost/";
+  // HEADER
+  // BIND
+ }
+ // METHOD
+}
+fn main(){
+ let mut counts=Vec::new();let mut button_closes=Vec::new();let mut focus_closes=0;let mut escape_closes=0;
+ for (kind,name) in [(ModalKind::Url,"link"),(ModalKind::Chains,"chains"),(ModalKind::Analytics,"analytics")] {
+  let window=Window::default();let app=Rc::new(App{t18:T18{windows:RefCell::new(BTreeMap::from([(name.into(),Owner{closing:Cell::new(false),signals:vec![]})]))},english:false,closed:RefCell::new(vec![])});
+  BUTTONS.with_borrow_mut(Vec::clear);app.header(kind,name,&window);let buttons=BUTTONS.with_borrow(|v|v.clone());counts.push(buttons.len());
+  for f in window.focus.borrow().iter(){f(&window,&Event);}focus_closes+=app.closed.borrow().len();app.closed.borrow_mut().clear();
+  for button in buttons{button.click();}button_closes.extend(app.closed.borrow_mut().drain(..));
+  for f in window.keys.borrow().iter(){f(&window,&Event);}escape_closes+=app.closed.borrow().len();
+ }
+ println!("{{\"buttons\":{:?},\"focus_closes\":{},\"button_closes\":{:?},\"escape_closes\":{}}}",counts,focus_closes,button_closes,escape_closes);
+}

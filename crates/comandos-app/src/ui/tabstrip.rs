@@ -214,6 +214,7 @@ impl TabStripLayout {
             self.0.row.style_context().add_class("rows");
             self.0.scroller.hide();
             self.0.rows_view.show();
+            self.0.flow.show();
         } else {
             self.0.row.style_context().remove_class("rows");
             self.0.rows_view.hide();

@@ -298,7 +298,19 @@ impl GtkWorkspace {
         *self.document.borrow_mut() = doc.clone();
         self.root.show_all();
         self.applying.set(false);
+        self.restore_focus_after_apply(doc, same_shapes);
+    }
+    fn restore_focus_after_apply(&self, doc: &Value, same_shapes: bool) {
         let previous = self.focused();
+        // Metadata refreshes must leave focus with an open popover or modal.
+        // Structural rebuilds and removed terminals still restore valid focus.
+        if same_shapes
+            && previous
+                .as_deref()
+                .is_some_and(|key| self.page_index(key).is_some())
+        {
+            return;
+        }
         if previous.as_deref().is_none_or(|key| !self.select(key)) {
             *self.focus.borrow_mut() = None;
             let first = doc

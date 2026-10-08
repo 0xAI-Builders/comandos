@@ -1,0 +1,33 @@
+use serde_json::{Value, json};
+use std::{cell::RefCell, collections::HashMap};
+struct GtkWorkspace {
+    pages: RefCell<HashMap<String, ()>>,
+    focus: RefCell<Option<String>>,
+    selected: RefCell<Vec<String>>,
+}
+impl GtkWorkspace {
+    fn focused(&self) -> Option<String> { self.focus.borrow().clone() }
+    fn page_index(&self, key: &str) -> Option<u32> { self.pages.borrow().contains_key(key).then_some(0) }
+    fn select(&self, key: &str) -> bool {
+        if !self.pages.borrow().contains_key(key) { return false; }
+        self.selected.borrow_mut().push(key.into());
+        *self.focus.borrow_mut() = Some(key.into());
+        true
+    }
+    // ACTUAL_METHOD
+}
+fn main() {
+    let doc = json!({"groups":[{"tree":{"type":"tab","tabId":"a"}}]});
+    for (same_shapes, previous, expected) in [
+        (true, Some("a"), vec![]),
+        (false, Some("a"), vec!["a"]),
+        (true, Some("removed"), vec!["a"]),
+        (true, None, vec!["a"]),
+    ] {
+        let ws = GtkWorkspace { pages: RefCell::new(HashMap::from([("a".into(), ())])), focus: RefCell::new(previous.map(str::to_owned)), selected: RefCell::new(Vec::new()) };
+        ws.restore_focus_after_apply(&doc, same_shapes);
+        assert_eq!(*ws.selected.borrow(), expected, "an unchanged layout must leave GTK focus with its popover");
+        assert_eq!(ws.focused().as_deref(), Some("a"));
+    }
+    println!("{}", json!({"cases":4}));
+}

@@ -164,6 +164,9 @@ impl Default for Owned {
         head.pack_start(&next, false, false, 0);
         head.pack_start(&plus, false, false, 0);
         head.pack_end(&toggle, false, false, 0);
+        // The host deliberately skips window.show_all(); reveal its header
+        // children now so controls remain available when the host is shown.
+        head_event.show_all();
         let reader_paned = gtk::Paned::new(gtk::Orientation::Horizontal);
         reader_paned.style_context().add_class("cc-paned");
         reader_paned.set_wide_handle(true);
@@ -237,7 +240,11 @@ impl Default for Owned {
     }
 }
 pub(super) fn side_button(label: &str, classes: &[&str], tip: &str) -> gtk::Button {
-    let button = gtk::Button::with_label(label);
+    let button = if label.is_empty() {
+        gtk::Button::new()
+    } else {
+        gtk::Button::with_label(label)
+    };
     button.set_relief(gtk::ReliefStyle::None);
     button.set_can_focus(false);
     for name in std::iter::once("side-btn").chain(classes.iter().copied()) {

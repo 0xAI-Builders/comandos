@@ -277,16 +277,30 @@ impl App {
         let ticket = scope.ticket();
         let view = page.view.clone();
         let container = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        if kind == ModalKind::Url {
+        {
             container.style_context().add_class("mosaic-zoom");
             let head = gtk::Box::new(gtk::Orientation::Horizontal, 8);
             head.style_context().add_class("mosaic-head");
             let title = gtk::Label::new(None);
             title.set_ellipsize(pango::EllipsizeMode::End);
-            let text = if label.is_empty() { uri } else { label }
-                .chars()
-                .take(80)
-                .collect::<String>();
+            let title_text = match kind {
+                ModalKind::Analytics => {
+                    if self.english {
+                        "Usage"
+                    } else {
+                        "Uso"
+                    }
+                }
+                ModalKind::Chains => "ComandOS",
+                _ => {
+                    if label.is_empty() {
+                        uri
+                    } else {
+                        label
+                    }
+                }
+            };
+            let text = title_text.chars().take(80).collect::<String>();
             title.set_markup(&format!("<span weight=\"bold\"> 🌐 {}</span><span foreground=\"#8A8F98\" size=\"small\">  · Esc {}</span>",glib::markup_escape_text(&text),if self.english{"closes"}else{"cierra"}));
             title.set_xalign(0.0);
             head.pack_start(&title, true, true, 8);
@@ -294,7 +308,7 @@ impl App {
             let weak = Rc::downgrade(self);
             close.connect_clicked(move |_| {
                 if let Some(app) = weak.upgrade() {
-                    app.close_window("link");
+                    app.close_window(name);
                 }
             });
             head.pack_end(&close, false, false, 4);
@@ -314,17 +328,11 @@ impl App {
             },
         );
         self.bind_aux_bridge(&view, &ticket, uri, name);
-        self.bind_window_close(name, &window, kind == ModalKind::Analytics, false);
+        self.bind_window_close(name, &window, false);
         window.show_all();
         Ok(())
     }
-    fn bind_window_close(
-        self: &Rc<Self>,
-        name: &'static str,
-        window: &gtk::Window,
-        focus_out: bool,
-        fade: bool,
-    ) {
+    fn bind_window_close(self: &Rc<Self>, name: &'static str, window: &gtk::Window, fade: bool) {
         let weak = Rc::downgrade(self);
         let signal = window.connect_key_press_event(move |_, event| {
             if event.keyval() == gdk::keys::constants::Escape
@@ -349,20 +357,10 @@ impl App {
             }
             glib::Propagation::Proceed
         });
-        let mut signals = vec![
+        let signals = vec![
             (window.clone().upcast(), signal),
             (window.clone().upcast(), signal2),
         ];
-        if focus_out {
-            let weak = Rc::downgrade(self);
-            let id = window.connect_focus_out_event(move |_, _| {
-                if let Some(app) = weak.upgrade() {
-                    app.close_window(name);
-                }
-                glib::Propagation::Proceed
-            });
-            signals.push((window.clone().upcast(), id));
-        }
         if let Some(owner) = self.t18.windows.borrow_mut().get_mut(name) {
             owner.signals.extend(signals);
         }
@@ -829,7 +827,7 @@ impl App {
         if self.t18.mosaic.borrow().on {
             let _ = self.t18.mosaic.borrow_mut().zoom(session);
         }
-        self.bind_window_close("zoom", &window, false, true);
+        self.bind_window_close("zoom", &window, true);
         window.set_opacity(0.0);
         window.show_all();
         overlay.term.widget().grab_focus();

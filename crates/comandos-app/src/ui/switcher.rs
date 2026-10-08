@@ -80,10 +80,10 @@ pub fn search(query: &str, candidates: &[Candidate]) -> Vec<Candidate> {
         (a.0, a.1, &a.2, &a.3.label, &a.3.key, &a.3.state, a.3.open)
             .cmp(&(b.0, b.1, &b.2, &b.3.label, &b.3.key, &b.3.state, b.3.open))
     });
-    rows.into_iter()
-        .take(12)
-        .map(|(_, _, _, r)| r.clone())
-        .collect()
+    if !q.is_empty() {
+        rows.truncate(12);
+    }
+    rows.into_iter().map(|(_, _, _, r)| r.clone()).collect()
 }
 fn priority(state: &str) -> i32 {
     match state {
@@ -143,6 +143,7 @@ impl Panel {
         activate: RowCallback,
         close: RowCallback,
         query: QueryCallback,
+        dismiss: Rc<dyn Fn()>,
     ) -> Self {
         let frame = gtk::Frame::new(None);
         frame.set_size_request(
@@ -162,6 +163,7 @@ impl Panel {
                 outer.set_margin_bottom(12)
             }
         }
+        let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         let entry = if kind == Kind::Switcher {
             let entry = gtk::Entry::new();
             entry.set_placeholder_text(Some(if english {
@@ -170,7 +172,7 @@ impl Panel {
                 "Salta a...  (parte del nombre, Enter va a la primera)"
             }));
             entry.connect_changed(move |e| query(e.text().as_str()));
-            outer.pack_start(&entry, false, false, 0);
+            header.pack_start(&entry, true, true, 0);
             Some(entry)
         } else {
             let title = gtk::Label::new(Some(if english {
@@ -180,20 +182,24 @@ impl Panel {
             }));
             title.set_xalign(0.);
             title.style_context().add_class("help-sec");
-            outer.pack_start(&title, false, false, 0);
+            header.pack_start(&title, true, true, 0);
             None
         };
+        let dismiss_button = super::icons::button("close", 14, "Cerrar (Esc)");
+        dismiss_button.connect_clicked(move |_| dismiss());
+        header.pack_end(&dismiss_button, false, false, 0);
+        outer.pack_start(&header, false, false, 0);
         let list = gtk::ListBox::new();
         list.set_activate_on_single_click(true);
+        let scroll = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
+        scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+        scroll.set_propagate_natural_height(true);
+        scroll.set_max_content_height(420);
         if kind == Kind::Overview {
-            let scroll = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
-            scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
             scroll.set_min_content_height(320);
-            scroll.add(&list);
-            outer.pack_start(&scroll, true, true, 0);
-        } else {
-            outer.pack_start(&list, true, true, 0);
         }
+        scroll.add(&list);
+        outer.pack_start(&scroll, true, true, 0);
         frame.add(&outer);
         let rows: Rc<RefCell<Vec<Candidate>>> = Rc::new(RefCell::new(vec![]));
         let weak = Rc::downgrade(&rows);

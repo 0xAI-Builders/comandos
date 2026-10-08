@@ -157,7 +157,23 @@ impl App {
             pop.set_position(gtk::PositionType::Bottom);
             pop.style_context().add_class("cc-popover");
             view.set_size_request(width, height);
-            pop.add(&view);
+            let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let head = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            head.style_context().add_class("mosaic-head");
+            let title = gtk::Label::new(Some("Pomodoro"));
+            title.set_xalign(0.0);
+            head.pack_start(&title, true, true, 8);
+            let close = ui::icons::button("close", 14, "Cerrar (Esc)");
+            let weak = pop.downgrade();
+            close.connect_clicked(move |_| {
+                if let Some(pop) = weak.upgrade() {
+                    pop.popdown();
+                }
+            });
+            head.pack_end(&close, false, false, 4);
+            content.pack_start(&head, false, false, 0);
+            content.pack_start(&view, true, true, 0);
+            pop.add(&content);
             view.load_uri(&format!(
                 "{base}/?panel={panel}&v={}",
                 env!("CARGO_PKG_VERSION")

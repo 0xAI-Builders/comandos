@@ -1026,7 +1026,7 @@
   #sw-in{width:100%;background:var(--bg);border:1px solid var(--line2);border-radius:8px;
     padding:9px 12px;font-family:var(--mono);font-size:13px;color:var(--text)}
   #sw-in:focus{outline:none;border-color:var(--brand)}
-  #sw-list{margin-top:8px;display:flex;flex-direction:column}
+#sw-list{margin-top:8px;display:flex;flex-direction:column;max-height:65vh;overflow-y:auto;overscroll-behavior:contain}
   .sw-row{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:7px;
     cursor:pointer;font-family:var(--mono);font-size:13px;color:var(--dim)}
   .sw-row.sel,.sw-row:hover{background:var(--line);color:var(--text)}

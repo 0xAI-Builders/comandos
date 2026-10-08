@@ -7,6 +7,43 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 static SEQ: AtomicU64 = AtomicU64::new(0);
+
+#[allow(clippy::disallowed_methods)]
+#[test]
+fn live_tab_snapshot_uses_its_exact_guarded_lock_without_widening_access() {
+    let root = std::env::temp_dir().join(format!(
+        "comandos-app-live-tab-snapshot-{}-{}",
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+    for sub in ["home/.claude/hooks", "run", "tmp"] {
+        fs::DirBuilder::new().recursive(true).mode(0o700).create(root.join(sub)).unwrap();
+    }
+    let env = |name: &str| match name {
+        "HOME" => Some(root.join("home")),
+        "XDG_RUNTIME_DIR" => Some(root.join("run")),
+        "TMPDIR" => Some(root.join("tmp")),
+        _ => None,
+    }.map(|p| p.to_string_lossy().into_owned());
+    let config = config::parse_args(&["--mode".into(), "live".into()], false, &env).unwrap();
+    let guard = WriteGuard::from_config(&config, ":private-snapshot");
+    let files = StateFiles::new(config.clone(), guard.clone());
+    let snapshot = json!({"local":{"agent":"codex","resume_id":"preserved-conversation"}});
+    files.write_snapshot_when("app-tabs-snapshot.json", &snapshot, || true).unwrap();
+    assert_eq!(files.read("app-tabs-snapshot.json").unwrap(), snapshot);
+    let lock = config.hooks_dir().join("app-tabs-snapshot.json.lock");
+    assert!(lock.is_file());
+    assert!(matches!(guard.open_lock(&config.hooks_dir().join("unrelated.json.lock")),
+        Err(comandos_app::guard::GuardError::Outside(_))));
+    fs::remove_file(&lock).unwrap();
+    let outside = root.join("untouched");
+    fs::write(&outside, b"original").unwrap();
+    symlink(&outside, &lock).unwrap();
+    assert!(files.write_snapshot_when("app-tabs-snapshot.json", &json!({}), || true).is_err());
+    assert_eq!(fs::read(&outside).unwrap(), b"original");
+    assert_eq!(files.read("app-tabs-snapshot.json").unwrap(), snapshot);
+    fs::remove_dir_all(root).unwrap();
+}
 // These writes construct corruption and symlink fixtures outside the app guard.
 #[allow(clippy::disallowed_methods)]
 #[test]

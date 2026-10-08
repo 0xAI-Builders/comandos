@@ -330,7 +330,23 @@ impl App {
                 app.refill_switcher();
             }
         });
-        let panel = Rc::new(Panel::new(kind, self.english, activate, close, query));
+        let weak = Rc::downgrade(self);
+        let dismiss = Rc::new(move || {
+            if let Some(app) = weak
+                .upgrade()
+                .filter(|a| a.modal_generation.get() == generation)
+            {
+                app.close_modal();
+            }
+        });
+        let panel = Rc::new(Panel::new(
+            kind,
+            self.english,
+            activate,
+            close,
+            query,
+            dismiss,
+        ));
         let frame = panel.frame.clone();
         self.mount_modal(&frame, kind, Some(panel));
         self.refill_switcher();

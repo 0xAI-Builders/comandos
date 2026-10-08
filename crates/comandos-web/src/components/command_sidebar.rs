@@ -532,12 +532,11 @@ mod web {
         fn cmds_info(&self) -> Result<JsValue, JsValue> {
             let mut h = 0.;
             let usage = self.query(".cs-empty-terms");
-            let bottom = if !nullish(&usage) && !truthy(&get(&usage, "hidden")) {
-                usage
-            } else {
-                self.query(".cs-tools")
-            };
-            if let Ok(r) = call(&bottom, "getBoundingClientRect", &[])
+            let usage_visible = !nullish(&usage) && !truthy(&get(&usage, "hidden"));
+            // Quotas fill the user's saved sidebar share. Reporting their own
+            // bottom as a pinned height creates a resize feedback loop in GTK.
+            if !usage_visible
+                && let Ok(r) = call(&self.query(".cs-tools"), "getBoundingClientRect", &[])
                 && truthy(&get(&r, "height"))
             {
                 let win = get(&get(&self.el, "ownerDocument"), "defaultView");
@@ -604,9 +603,10 @@ mod web {
                 // Account usage belongs to the sidebar even while a quick
                 // terminal is visible; only the empty-terminal hint is conditional.
                 set(&query(&box_, ".et-foot"), "hidden", &empty.is_none().into())?;
-                style(&box_, "flex", if empty.is_none() { "0 1 280px" } else { "1 1 auto" });
-                style(&box_, "max-height", if empty.is_none() { "40vh" } else { "none" });
-                style(&box_, "min-height", if empty.is_none() { "150px" } else { "0" });
+                let native = invoke(&global("inApp"), &[]).is_ok_and(|v| truthy(&v));
+                style(&box_, "flex", if empty.is_none() && !native { "0 1 48%" } else { "1 1 auto" });
+                style(&box_, "max-height", "none");
+                style(&box_, "min-height", if empty.is_none() && !native { "180px" } else { "0" });
                 style(&box_, "order", "1");
                 if let Some((text, go, action)) = empty {
                     set(&query(&box_, ".et-t"), "textContent", &text.into())?;

@@ -94,12 +94,18 @@ const settle=async()=>{for(let i=0;i<20;i++)await new Promise(r=>setImmediate(r)
   assert(!doc.getElementById('sw-ov').classList.contains('hidden'),'all sessions button opens list');
  }
  if(scenario==='sidebar-live-usage'){
-  const root=makeEl('div',{},doc.body);doc.body.appendChild(root);let quotaPaints=0;
-  const sidebar=ComandosCommandSidebar.createCommandSidebar({root,storage:localStorage,api:async()=>({}),terminals:()=>[{session:'term-private',label:'Terminal'}],renderLimits:slot=>{quotaPaints++;slot.textContent='Codex main 23%';}});
+  const root=makeEl('div',{},doc.body);doc.body.appendChild(root);let quotaPaints=0,termInfo;
+  const sidebar=ComandosCommandSidebar.createCommandSidebar({root,storage:localStorage,api:async()=>({}),terminals:()=>[{session:'term-private',label:'Terminal'}],mountTerm:(_session,_host,info)=>{termInfo=info;},renderLimits:slot=>{quotaPaints++;slot.textContent='Codex main 23%';}});
   sidebar.state.termsHidden=false;sidebar.render();
   assert.equal(root.querySelector('.cs-empty-terms').hidden,false,'usage remains visible while quick terminals are shown');
   assert(quotaPaints>0,'live usage renderer called with quick terminals');
   assert.equal(root.querySelector('.et-foot').hidden,true,'empty-terminal hint stays hidden while a terminal is shown');
+  assert.equal(termInfo.cmds.h,0,'quota height must not pin GTK to its own previous viewport');
+  global.webkit={messageHandlers:{centro:{postMessage(){}}}};
+  sidebar.render();
+  assert.equal(root.querySelector('.cs-empty-terms').style.flex,'1 1 auto','native usage fills the saved sidebar share');
+  assert.equal(root.querySelector('.cs-empty-terms').style['max-height'],'none','native quota scrolling must not shrink to 40% of its own viewport');
+  delete global.webkit;
  }
  if(scenario==='app-bridge'){
   const cold=NewsReader.instance;assert.equal(cold.open('2026-10-06@08:00'),undefined);assert.equal(cold.close(),undefined);assert.equal(cold.toggle(),undefined);
