@@ -247,6 +247,11 @@ impl LaneBackend for UsageBackend {
         let backend = Self { conn };
         backend.admit()?;
         usage::ensure_schema(&backend.conn).map_err(|e| Refusal::Unopened(e.to_string()))?;
+        // Optional acceleration must not retire a healthy usage lane if the
+        // index cannot be installed (for example, a transient write lock).
+        if let Err(error) = usage::ensure_read_indexes(&backend.conn) {
+            eprintln!("usage read index unavailable; using existing queries: {error}");
+        }
         Ok(backend)
     }
 

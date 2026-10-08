@@ -428,6 +428,24 @@ pub fn ensure_schema(conn: &Connection) -> Result<()> {
     init_db(conn)
 }
 
+/// Additive dashboard optimization, separate from the released hook schema.
+/// Cover provider/time/token aggregates without fetching large history rows;
+/// existing binaries still read and write the same v11 records.
+pub fn ensure_read_indexes(conn: &Connection) -> Result<()> {
+    with_transaction(conn, || {
+        if user_version(conn)? != SCHEMA_VERSION {
+            return Err(Error::Validation(
+                "usage read indexes require the current schema".into(),
+            ));
+        }
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_usage_turns_provider_finished_tokens
+             ON usage_turns(provider, turn_finished_at, total_tokens)",
+        )?;
+        Ok(())
+    })
+}
+
 /// `read_focus_settings` = `set_focus_settings(db, {})`: `init_db` y las filas
 /// en el orden de la tabla (misma consulta, sin ORDER BY). Un valor que no es
 /// texto se entrega como `None` para que quien llama decida.
