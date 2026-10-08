@@ -498,3 +498,40 @@ fn absent_home_read_and_invalid_layout_candidate_do_not_publish() {
         assert!(!f.layout().file.with_extension("json.history").exists());
     }
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn repeated_live_layout_saves_do_not_copy_unrelated_wal_payloads() {
+    fn io_bytes() -> (u64, u64) {
+        let io = fs::read_to_string("/proc/thread-self/io").unwrap();
+        let count = |name: &str| {
+            io.lines()
+                .find_map(|line| line.strip_prefix(name))
+                .unwrap()
+                .parse::<u64>()
+                .unwrap()
+        };
+        (count("rchar: "), count("wchar: "))
+    }
+    let f = Fixture::new();
+    let db = unified::open_unified(&f.path()).unwrap();
+    db.execute_batch("PRAGMA wal_autocheckpoint=0; CREATE TABLE unrelated_payload(body BLOB); INSERT INTO unrelated_payload VALUES(zeroblob(2097152));").unwrap();
+    unified::set_mode(&db, "layout", Mode::Sealed, "fixture", 1).unwrap();
+    let snapshot = |stamp| json!({"version":2,"sessions":{},"saved_at":stamp});
+    f.layout().write_when(&snapshot(600), 600, || true).unwrap();
+    let before = io_bytes();
+    for stamp in 601..607 {
+        let value = snapshot(stamp);
+        f.layout().write_when(&value, stamp, || true).unwrap();
+        assert_eq!(f.layout().read_live().unwrap(), value);
+    }
+    let after = io_bytes();
+    let read = after.0 - before.0;
+    let written = after.1 - before.1;
+    eprintln!("six_layout_saves_read_bytes={read} written_bytes={written}");
+    assert!(read < 512 * 1024, "six tiny layout saves read {read} bytes");
+    assert!(
+        written < 512 * 1024,
+        "six tiny layout saves wrote {written} bytes"
+    );
+}

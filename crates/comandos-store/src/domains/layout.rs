@@ -79,19 +79,9 @@ impl LayoutSnapshot<'_> {
         if !allowed() {
             return Ok(false);
         }
-        let path = unified::unified_path(self.home);
-        let existing = super::caller::read(self.home, "layout", |_, db| Ok(db.is_some()))?;
-        let db = if existing {
-            Some(unified::open_existing(&path)?)
-        } else {
-            None
-        };
-        let (mode, _mode_lock) = unified::modes::access_mode(self.home, db.as_ref(), "layout")?;
-        if db.is_none() && path.exists() {
-            return Err(Error::Validation(
-                "base apareció durante escritura de layout".into(),
-            ));
-        }
+        let access = super::caller::CallerAccess::open_exclusive(self.home, "layout")?;
+        let db = access.db();
+        let mode = access.mode();
         let _file_lock = if mode == Mode::Sealed {
             None
         } else {
@@ -102,8 +92,7 @@ impl LayoutSnapshot<'_> {
         }
         let old = if matches!(mode, Mode::Unified | Mode::Sealed) {
             generation(
-                db.as_ref()
-                    .ok_or_else(|| Error::Validation("estado único sin base".into()))?,
+                db.ok_or_else(|| Error::Validation("estado único sin base".into()))?,
                 "current",
             )?
         } else {
@@ -123,7 +112,7 @@ impl LayoutSnapshot<'_> {
         };
         mirror::write(
             mode,
-            db.as_ref(),
+            db,
             || {
                 if may_publish() {
                     snapshot_files::apply_with(backend, &self.file, &plan, policy)?;

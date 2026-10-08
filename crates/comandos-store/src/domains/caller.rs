@@ -12,6 +12,11 @@ pub struct CallerAccess {
     _guard: Option<FileLock>,
     reader: Option<super::live_reader::Token>,
 }
+enum Lease {
+    Shared,
+    RuntimeRead,
+    Exclusive,
+}
 /// Runtime readers hold the domain lease while ordinary payload commits continue.
 /// Inspection tools keep using the strict, immutable snapshot reader instead.
 pub fn read<T>(
@@ -24,12 +29,16 @@ pub fn read<T>(
 }
 impl CallerAccess {
     pub fn open(home: &Path, domain: &str) -> Result<Self> {
-        Self::open_with(home, domain, false)
+        Self::open_with(home, domain, Lease::Shared)
     }
     pub fn open_read(home: &Path, domain: &str) -> Result<Self> {
-        Self::open_with(home, domain, true)
+        Self::open_with(home, domain, Lease::RuntimeRead)
     }
-    fn open_with(home: &Path, domain: &str, reading: bool) -> Result<Self> {
+    /// Owned layout plans keep their existing exclusive lease through commit.
+    pub(super) fn open_exclusive(home: &Path, domain: &str) -> Result<Self> {
+        Self::open_with(home, domain, Lease::Exclusive)
+    }
+    fn open_with(home: &Path, domain: &str, lease: Lease) -> Result<Self> {
         let path = unified::unified_path(home);
         let mut reader = None;
         let db = match fs::symlink_metadata(&path) {
@@ -47,10 +56,12 @@ impl CallerAccess {
             _guard: None,
             reader,
         };
-        let (mode, guard) = if reading {
-            unified::modes::access_runtime_read_mode(home, access.db.as_ref(), domain)?
-        } else {
-            unified::modes::access_caller_mode(home, access.db.as_ref(), domain)?
+        let (mode, guard) = match lease {
+            Lease::Shared => unified::modes::access_caller_mode(home, access.db.as_ref(), domain)?,
+            Lease::RuntimeRead => {
+                unified::modes::access_runtime_read_mode(home, access.db.as_ref(), domain)?
+            }
+            Lease::Exclusive => unified::modes::access_mode(home, access.db.as_ref(), domain)?,
         };
         if access.db.is_none() && path.exists() {
             return Err(Error::Validation("base apareció durante admisión".into()));
