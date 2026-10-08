@@ -16,7 +16,10 @@ use crate::{
 use comandos_core::text::{is_space, splitlines, strip};
 use nix::{errno::Errno, sys::signal, unistd::Pid};
 use std::{
-    io::Read,
+    fs,
+    io::{Read, Write},
+    os::unix::fs::OpenOptionsExt,
+    path::PathBuf,
     process::{Command, Stdio},
     sync::mpsc,
     thread,
@@ -165,6 +168,11 @@ pub fn restore_shell_tty(env: &Env, pane: &str) -> Result<(), String> {
 /// `_send_shell_line(pane, command)`: teclea el comando y Enter (sin
 /// `paste-buffer -p`, que zsh mostraría como `^[[200~`).
 pub fn send_shell_line(env: &Env, pane: &str, command: &str) -> Result<(), String> {
+    // tmux's command protocol has a much smaller limit than execve. Preserve
+    // complete launch lines (including large -c overrides) outside its argv.
+    if command.len() > 4096 {
+        return send_buffered_shell_line(env, pane, command);
+    }
     let r = tmux(env, &["send-keys", "-t", pane, "-l", "--", command])?;
     if r.returncode != 0 {
         let message = strip(&r.stderr);
@@ -176,6 +184,65 @@ pub fn send_shell_line(env: &Env, pane: &str, command: &str) -> Result<(), Strin
     }
     tmux(env, &["send-keys", "-t", pane, "Enter"])?;
     Ok(())
+}
+
+struct ShellBuffer<'a> {
+    env: &'a Env,
+    name: String,
+    path: PathBuf,
+}
+impl Drop for ShellBuffer<'_> {
+    fn drop(&mut self) {
+        // Also attempt cleanup after an ambiguous load/paste failure. The name
+        // belongs exclusively to this invocation; no user buffer is touched.
+        let _ = tmux(self.env, &["delete-buffer", "-b", &self.name]);
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+fn checked_tmux(env: &Env, args: &[&str]) -> Result<(), String> {
+    let result = tmux(env, args)?;
+    if result.returncode == 0 {
+        Ok(())
+    } else {
+        let message = strip(&result.stderr);
+        Err(if message.is_empty() {
+            "tmux shell transport failed".into()
+        } else {
+            message.into()
+        })
+    }
+}
+
+fn send_buffered_shell_line(env: &Env, pane: &str, command: &str) -> Result<(), String> {
+    let mut nonce = [0u8; 16];
+    getrandom::fill(&mut nonce).map_err(|e| e.to_string())?;
+    let name = format!("comandos-shell-{:032x}", u128::from_ne_bytes(nonce));
+    let path = std::env::temp_dir().join(&name);
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&path)
+        .map_err(|e| e.to_string())?;
+    let buffer = ShellBuffer { env, name, path };
+    file.write_all(command.as_bytes())
+        .map_err(|e| e.to_string())?;
+    drop(file);
+    let path = buffer
+        .path
+        .to_str()
+        .ok_or("temporary command path is not UTF-8")?;
+    checked_tmux(env, &["load-buffer", "-b", &buffer.name, path])?;
+    // -r preserves literal LF bytes; deliberately omit -p, which would add
+    // bracketed-paste control codes to the shell launch line.
+    checked_tmux(
+        env,
+        &["paste-buffer", "-d", "-r", "-b", &buffer.name, "-t", pane],
+    )?;
+    drop(buffer);
+    // Never execute a partially delivered line after a transport failure.
+    checked_tmux(env, &["send-keys", "-t", pane, "Enter"])
 }
 
 /// `_send_configuration_command(pane, command)` (2691): limpia la pantalla
