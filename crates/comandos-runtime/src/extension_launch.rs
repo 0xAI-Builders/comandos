@@ -1651,6 +1651,19 @@ pub fn internal_inventory(
     }
     for row in &mut mcps {
         let name = row["name"].as_str().ok_or(LaunchError::Other)?.to_owned();
+        if matches!(harness, "codex" | "claude")
+            && !truthy(&row["plugin"])
+            && (harness != "codex" || !name.contains('.'))
+            && shared
+                .get(&name)
+                .is_some_and(|spec| spec["enabled"] != false)
+        {
+            // The shared catalog owns provider configuration. A stale CLI
+            // disable is not a per-pane exclusion, and launches must use the
+            // catalog proxy rather than retain an old private command.
+            row["enabled"] = true.into();
+            row["synthetic"] = true.into();
+        }
         let toggle = !truthy(&row["plugin"]) && !truthy(&row["unavailable"]);
         row["toggleable"] = toggle.into();
         row["reason"] = if toggle {
@@ -1900,6 +1913,25 @@ fn proxy_entry(harness: &str, name: &str, home: &Path) -> Value {
     }
     result
 }
+const MCP_SESSION_BINDING: &str = "COMANDOS_MCP_SESSION_BINDING";
+
+fn managed_proxy(spec: &Value) -> bool {
+    let command = spec["command"].as_str().unwrap_or_default();
+    let executable = Path::new(command).file_name().and_then(OsStr::to_str);
+    let args = &spec["args"];
+    match executable {
+        Some("cc-extensions" | "comandos-extensions") => args[0] == "serve",
+        Some("comandos") => args[0] == "ext" && args[1] == "serve",
+        _ => false,
+    }
+}
+
+fn bind_proxy(spec: &mut Value, binding: Option<&str>) -> Result<(), LaunchError> {
+    if let Some(binding) = binding.filter(|_| managed_proxy(spec)) {
+        object_mut(spec, "env")?.insert(MCP_SESSION_BINDING.into(), binding.into());
+    }
+    Ok(())
+}
 struct LaunchFiles {
     private: PathBuf,
     artifacts: Map<String, Value>,
@@ -2019,6 +2051,32 @@ pub fn prepare_launch(
     operation_id: &str,
     paths: &crate::capabilities::Paths,
 ) -> Result<Value, LaunchError> {
+    prepare_launch_with_binding(
+        registry,
+        harness,
+        account,
+        cwd,
+        selection,
+        runtime_dir,
+        operation_id,
+        paths,
+        None,
+    )
+}
+
+/// Bind managed MCP proxies to a pane even when the CLI launches them through a daemon.
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_launch_with_binding(
+    registry: &Value,
+    harness: &str,
+    account: &str,
+    cwd: &Path,
+    selection: &Value,
+    runtime_dir: &Path,
+    operation_id: &str,
+    paths: &crate::capabilities::Paths,
+    session_binding: Option<&str>,
+) -> Result<Value, LaunchError> {
     use crate::{capabilities as c, session_profiles as p};
     use std::os::unix::fs::PermissionsExt;
     if operation_id.is_empty()
@@ -2072,6 +2130,7 @@ pub fn prepare_launch(
     let mut selected_mcps = Map::new();
     let mut selected_skills = Vec::new();
     let mut synthetic = Map::new();
+    let live_binding = session_binding.filter(|_| matches!(harness, "codex" | "claude"));
     for row in c::list(&inv["mcps"]) {
         let name = row["name"].as_str().ok_or(LaunchError::Other)?.to_owned();
         let id = row["id"].as_str().ok_or(LaunchError::Other)?;
@@ -2080,8 +2139,17 @@ pub fn prepare_launch(
         {
             selected_mcps.insert(name.clone(), chosen["mcps"][id].clone());
         }
-        if truthy(&row["synthetic"]) && chosen["mcps"][id] == true {
-            synthetic.insert(name.clone(), proxy_entry(harness, &name, &paths.home));
+        let keep_connected =
+            live_binding.is_some() && truthy(&row["synthetic"]) && !truthy(&row["enforceDisabled"]);
+        if truthy(&row["synthetic"]) && (chosen["mcps"][id] == true || keep_connected) {
+            let mut spec = proxy_entry(harness, &name, &paths.home);
+            if matches!(harness, "codex" | "claude") {
+                bind_proxy(&mut spec, session_binding)?;
+            }
+            synthetic.insert(name.clone(), spec);
+        }
+        if keep_connected {
+            selected_mcps.insert(name, true.into());
         }
     }
     for row in c::list(&inv["skills"]) {
@@ -2098,6 +2166,38 @@ pub fn prepare_launch(
                     "-c".into(),
                     format!("mcp_servers.{name}={}", launch_toml(spec)?),
                 ]);
+            }
+            if let Some(binding) = session_binding {
+                // The public inventory intentionally removes command/args from TOML.
+                // Read private declarations to recognize existing managed proxies.
+                let mut native = Map::new();
+                for layer in &ctx.layers {
+                    let data = read_configuration(&layer.path)?;
+                    for (name, spec) in c::object(&data["mcp_servers"]) {
+                        let target = native.entry(name).or_insert_with(|| json!({}));
+                        target
+                            .as_object_mut()
+                            .ok_or(LaunchError::Other)?
+                            .extend(c::object(&spec));
+                    }
+                }
+                for (name, spec) in native {
+                    if !synthetic.contains_key(&name) && managed_proxy(&spec) {
+                        args.extend([
+                            "-c".into(),
+                            format!(
+                                "mcp_servers.{name}.env.{MCP_SESSION_BINDING}={}",
+                                launch_toml(&json!(binding))?
+                            ),
+                        ]);
+                        if !c::list(&inv["mcps"])
+                            .iter()
+                            .any(|row| row["name"] == name && truthy(&row["enforceDisabled"]))
+                        {
+                            selected_mcps.insert(name, true.into());
+                        }
+                    }
+                }
             }
             let configs = p::codex_configs(&home).map_err(discovery_fault)?;
             let mut entries = p::overrides(&configs);
@@ -2122,9 +2222,9 @@ pub fn prepare_launch(
             for layer in &ctx.layers {
                 servers.extend(c::object(&layer.data["mcpServers"]));
             }
-            servers.extend(synthetic);
             let project = ctx.project.to_str().ok_or(LaunchError::Unsure)?;
             servers.extend(c::object(&ctx.user_data["projects"][project]["mcpServers"]));
+            servers.extend(synthetic);
             if c::list(&inv["mcps"]).iter().any(|r| {
                 truthy(&r["plugin"])
                     && r["enabled"] != false
@@ -2134,7 +2234,17 @@ pub fn prepare_launch(
             }) {
                 return Err(LaunchError::Value("Claude strict no puede conservar este MCP de plugin; requiere un adaptador del plugin.".into()));
             }
-            servers.retain(|n, _| chosen["mcps"][n] != false);
+            servers.retain(|n, spec| {
+                chosen["mcps"][n] != false
+                    || (live_binding.is_some()
+                        && managed_proxy(spec)
+                        && !c::list(&inv["mcps"])
+                            .iter()
+                            .any(|row| row["name"] == *n && truthy(&row["enforceDisabled"])))
+            });
+            for spec in servers.values_mut() {
+                bind_proxy(spec, session_binding)?;
+            }
             if response_dumps(&json!(servers))
                 .map_err(|_| LaunchError::Unsure)?
                 .contains("${")
@@ -2322,6 +2432,16 @@ pub fn prepare_launch(
     }
     if !files.mounts.is_empty() {
         namespace_preflight(&private, &paths.home)?;
+    }
+    if let Some(binding) = live_binding {
+        let initial = crate::pane_extensions::gate_selection(&inv, &chosen, &json!({}));
+        comandos_store::extension_gate::initialize(&paths.home, binding, &initial).map_err(
+            |_| {
+                LaunchError::Value(
+                    "No se pudo preparar el permiso MCP del panel; el agente sigue abierto.".into(),
+                )
+            },
+        )?;
     }
     let manifest = private.join("manifest.json");
     let bundle = json!({"manifest":manifest,"selection":chosen,"operationId":operation_id,"harness":harness,"method":if files.mounts.is_empty(){"native"}else{"namespace"},"verification":{"marker":MARKER,"evidence":"manifest+process-configuration"}});

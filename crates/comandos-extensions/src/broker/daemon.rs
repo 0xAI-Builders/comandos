@@ -19,7 +19,7 @@ use tokio::{
     io::{AsyncWriteExt, BufReader},
     net::{UnixListener, UnixStream},
     signal::unix::{SignalKind, signal},
-    sync::watch,
+    sync::{mpsc, watch},
 };
 
 /// Plazo para que un cliente recién conectado envíe su línea `attach`.
@@ -108,7 +108,7 @@ fn bind(path: &Path) -> Result<(File, UnixListener)> {
     let dir = path.parent().ok_or("Ruta de socket inválida")?;
     crate::config::private_dir(dir)?;
     check_private_dir(dir).map_err(|_| format!("Directorio inseguro: {}", dir.display()))?;
-    let lock_path = dir.join("broker.lock");
+    let lock_path = path.with_extension("lock");
     let lock = OpenOptions::new()
         .write(true)
         .create(true)
@@ -138,6 +138,13 @@ fn bind(path: &Path) -> Result<(File, UnixListener)> {
 }
 
 async fn connection(stream: UnixStream, ctx: Arc<Ctx>) {
+    let Ok(peer) = stream.peer_cred() else {
+        return;
+    };
+    if peer.uid() != nix::unistd::getuid().as_raw() {
+        return;
+    }
+    let peer_pid = peer.pid();
     let (reader, mut writer) = stream.into_split();
     let mut reader = BufReader::new(reader);
     let mut buf = Vec::new();
@@ -145,6 +152,16 @@ async fn connection(stream: UnixStream, ctx: Arc<Ctx>) {
     if !matches!(first, Ok(Ok(true))) {
         return;
     }
+    let attach = serde_json::from_slice::<serde_json::Value>(&buf).unwrap_or_default();
+    let server = attach["attach"].as_str().unwrap_or_default();
+    let access = super::session_access::Access::for_peer(
+        &ctx.home,
+        &ctx.catalog,
+        peer_pid,
+        server,
+        attach.get("session_binding"),
+    )
+    .await;
     let Attached {
         id,
         mut out,
@@ -168,13 +185,34 @@ async fn connection(stream: UnixStream, ctx: Arc<Ctx>) {
             return;
         }
     };
+    if ctl.send(Ctl::Access(id, access.clone())).await.is_err() {
+        return;
+    }
     if writer.write_all(b"{\"ok\":true}\n").await.is_err() {
         let _ = ctl.send(Ctl::Leave(id)).await;
         return;
     }
     // Termina cuando el actor suelta la cola (desconexión, upstream muerto, cierre).
+    let (local_tx, mut local_rx) = mpsc::channel::<Vec<u8>>(64);
+    let outbound_access = access.clone();
+    let outbound_lines = lines.clone();
     let mut write_task = tokio::spawn(async move {
-        while let Some(mut line) = out.recv().await {
+        loop {
+            let next = tokio::select! {
+                line = out.recv() => {
+                    if let Some(line) = line {
+                        if let Some(reply) = outbound_access.intercept_upstream(&line) {
+                            if let Some(reply) = reply { let _ = outbound_lines.send((id, reply)).await; }
+                            continue;
+                        }
+                        Some(line)
+                    } else { None }
+                },
+                line = local_rx.recv() => line,
+            };
+            let Some(mut line) = next else {
+                break;
+            };
             line.push(b'\n');
             if writer.write_all(&line).await.is_err() {
                 break;
@@ -188,6 +226,12 @@ async fn connection(stream: UnixStream, ctx: Arc<Ctx>) {
             read = read_line(&mut reader, &mut buf) => match read {
                 Ok(true) if blank(&buf) => {}
                 Ok(true) => {
+                    if let Some(reply) = access.intercept(&buf) {
+                        if let Some(reply) = reply {
+                            if local_tx.send(reply).await.is_err() { break; }
+                        }
+                        continue;
+                    }
                     if lines.send((id, buf.clone())).await.is_err() {
                         break;
                     }

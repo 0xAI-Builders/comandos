@@ -65,4 +65,4 @@ pub const TMUX_UNIT: &[u8] = include_bytes!("../../../../systemd/tmux.service");
 pub const DASH_UNIT: &[u8] = include_bytes!("../../../../systemd/cc-dash.service");
 pub const NOTIFY_UNIT: &[u8] = include_bytes!("../../../../systemd/cc-notifyd.service");
 pub const PROXY_UNIT: &[u8] = include_bytes!("../../../../systemd/cc-proxy.service");
-pub const BROKER_UNIT: &[u8] = include_bytes!("../../../../systemd/comandos-broker.service");
+pub const BROKER_UNIT: &[u8] = include_bytes!("../../../../systemd/comandos-broker-v2.service");

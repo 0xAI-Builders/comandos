@@ -220,7 +220,17 @@ impl Shelf {
                 .into_iter()
                 .flatten()
             {
-                if on != field(field(field(s, "loaded"), kind), id) {
+                let changed = if kind == "mcps" && !field(s, "mcpGate").is_null() {
+                    on.as_bool()
+                        != Some(
+                            field(field(field(s, "mcpGate"), "selection"), id)
+                                .as_bool()
+                                .unwrap_or(true),
+                        )
+                } else {
+                    on != field(field(field(s, "loaded"), kind), id)
+                };
+                if changed {
                     if yes(on) { add += 1 } else { remove += 1 }
                 }
             }
@@ -257,7 +267,7 @@ impl Shelf {
         } else if suffix == "/template" && !field(extra, "name").is_null() {
             self.message = "Plantilla guardada.".into();
         }
-        if suffix == "/apply" {
+        if suffix == "/apply" && field(&data, "inventory").is_null() {
             let mut op = data;
             if let Some(m) = op.as_object_mut() {
                 m.entry("state").or_insert(json!("validating"));
@@ -314,9 +324,15 @@ impl Shelf {
             format!("{} usos", text(n))
         };
         let unknown = !field(field(field(s, "desired"), k), &id).is_boolean();
-        let changed = !field(s, "loaded").is_null()
-            && !unknown
-            && json!(on) != *field(field(field(s, "loaded"), k), &id);
+        let changed = !unknown
+            && if k == "mcps" && !field(s, "mcpGate").is_null() {
+                on != field(field(field(s, "mcpGate"), "selection"), &id)
+                    .as_bool()
+                    .unwrap_or(true)
+            } else {
+                !field(s, "loaded").is_null()
+                    && json!(on) != *field(field(field(s, "loaded"), k), &id)
+            };
         let tokens = field(field(r, "size"), "tokens")
             .as_f64()
             .filter(|n| n.is_finite() && *n >= 0.0 && n.fract() == 0.0);
@@ -457,14 +473,19 @@ impl Shelf {
                 } else {
                     "verified"
                 });
-        let process = match configuration {
-            "external" => {
-                "Este proceso se inició fuera del selector de extensiones. La selección guardada se aplica desde los controles de este panel."
-            }
-            "not_started" => "La selección se usará si eliges Iniciar con este set.",
-            "verified" => "Configuración comprobada en este proceso.",
-            _ => {
-                "La selección está guardada; no hay una comprobación válida de la configuración de este proceso."
+        let live_gate = !field(s, "mcpGate").is_null();
+        let process = if live_gate {
+            "Guardar controla las próximas llamadas de MCP conectados al nuevo servicio global. Las conexiones anteriores necesitan reconectarse. Habilitar herramientas que el CLI no cargó al iniciar también requiere reanudar. Las skills requieren reanudar; las instrucciones ya presentes en el historial se conservan."
+        } else {
+            match configuration {
+                "external" => {
+                    "Este proceso se inició fuera del selector de extensiones. La selección guardada se aplica desde los controles de este panel."
+                }
+                "not_started" => "La selección se usará si eliges Iniciar con este set.",
+                "verified" => "Configuración comprobada en este proceso.",
+                _ => {
+                    "La selección está guardada; no hay una comprobación válida de la configuración de este proceso."
+                }
             }
         };
         let stage = stage(&op_state);
@@ -527,12 +548,19 @@ impl Shelf {
             disabled(
                 locked
                     || field(s, "applySupported").as_bool() == Some(false)
+                    || (live_gate
+                        && !text(field(s, "conversationId")).is_empty()
+                        && field(s, "skillsRestartRequired").as_bool() == Some(false))
                     || (!pending && !field(s, "loaded").is_null())
             ),
             if active(s) {
                 "Aplicando…"
             } else if text(field(s, "conversationId")).is_empty() {
                 "Iniciar con este set"
+            } else if live_gate && field(s, "skillsRestartRequired").as_bool() == Some(false) {
+                "MCP guardados · sin reinicio"
+            } else if live_gate {
+                "Aplicar skills y reanudar"
             } else if yes(field(s, "busy")) {
                 "Aplicar al terminar"
             } else {
@@ -564,6 +592,7 @@ impl Shelf {
             (
                 yes(field(s, "busy"))
                     && !locked
+                    && (!live_gate || field(s, "skillsRestartRequired").as_bool() != Some(false))
                     && field(s, "applySupported").as_bool() != Some(false),
                 "interrupt",
                 "Interrumpir turno y aplicar",

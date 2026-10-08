@@ -1,0 +1,16 @@
+[Unit]
+Description=ComandOS global MCP services
+
+[Service]
+Environment=PATH=%h/.local/bin:%h/.bun/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+Environment=XDG_RUNTIME_DIR=%t
+WorkingDirectory=%h
+ExecStart=%h/.local/share/comandos/bin/comandos ext broker
+Restart=on-failure
+RestartSec=2
+UMask=0077
+LimitNOFILE=65536
+ManagedOOMPreference=avoid
+
+[Install]
+WantedBy=default.target

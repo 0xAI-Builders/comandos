@@ -1670,7 +1670,7 @@ impl SessionConfiguration {
         let launch = if self.probing {
             None
         } else {
-            Some(extension_launch::prepare_launch(
+            Some(extension_launch::prepare_launch_with_binding(
                 &self.env.registry,
                 &harness,
                 &account,
@@ -1679,6 +1679,7 @@ impl SessionConfiguration {
                 &self.env.hooks.join("extension-launches"),
                 &self.request_id,
                 &paths,
+                Some(&identity_key(&self.identity)),
             )?)
         };
         let environment = if self.frm == "opencode" && !self.probing {
@@ -2239,7 +2240,7 @@ impl SessionConfiguration {
         if self.probing {
             return Ok(());
         }
-        let launch = extension_launch::prepare_launch(
+        let launch = extension_launch::prepare_launch_with_binding(
             &self.env.registry,
             &harness,
             &account,
@@ -2248,6 +2249,7 @@ impl SessionConfiguration {
             &self.env.hooks.join("extension-launches"),
             &self.request_id,
             &paths,
+            Some(&identity_key(&self.identity)),
         )?;
         let command = extension_launch::wrap_command(
             &as_text(get(plan, "command"))?,

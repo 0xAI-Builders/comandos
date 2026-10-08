@@ -175,7 +175,7 @@ pub fn plan(home: &Path, platform: Platform, release: &Path) -> Vec<Action> {
         ));
         result.push(unit(
             home,
-            "comandos-broker.service",
+            "comandos-broker-v2.service",
             assets::BROKER_UNIT,
             "%h/.local/share/comandos/bin/comandos ext broker",
             "%h/.local/share/comandos/bin/comandos ext broker",

@@ -1,5 +1,6 @@
 //! Native persistence adapters. Callers own connections and transactions.
 pub mod domains;
+pub mod extension_gate;
 pub mod files;
 pub mod intake;
 pub mod marks;

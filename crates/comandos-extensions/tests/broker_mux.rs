@@ -148,6 +148,57 @@ fn upstream_request_goes_to_capable_client_and_answer_returns_with_original_id()
 }
 
 #[test]
+fn server_requests_skip_disabled_clients_and_preserve_inflight_reply_owners() {
+    let mut mux = Mux::new();
+    let older = ready(&mut mux, json!({"sampling":{},"elicitation":{}}));
+    let recent = mux.add_client();
+    let _ = mux.from_client(
+        recent,
+        &init_with_caps(1, json!({"sampling":{},"elicitation":{}})),
+    );
+    let pending = mux.from_client(
+        recent,
+        &j(json!({"jsonrpc":"2.0","id":"pending","method":"tools/call","params":{"name":"echo"}})),
+    );
+    let upstream_id = up_line(&pending[0])["id"].clone();
+    mux.set_client_allowed(recent, false);
+
+    let request = mux.from_upstream(&j(
+        json!({"jsonrpc":"2.0","id":"callback","method":"sampling/createMessage","params":{}}),
+    ));
+    let [Outbound::ToClient(owner, bytes)] = request.as_slice() else {
+        panic!("expected an eligible client")
+    };
+    assert_eq!(
+        *owner, older,
+        "a disabled recent pane must not break another pane's callback"
+    );
+    let reply = mux.from_client(
+        older,
+        &j(json!({"jsonrpc":"2.0","id":parse(bytes)["id"],"result":{}})),
+    );
+    assert_eq!(up_line(&reply[0])["id"], "callback");
+
+    let completed = mux.from_upstream(&j(
+        json!({"jsonrpc":"2.0","id":upstream_id,"result":{"content":[]}}),
+    ));
+    assert!(
+        matches!(completed.as_slice(), [Outbound::ToClient(owner, bytes)] if *owner == recent && parse(bytes)["id"] == "pending"),
+        "accepted calls keep their original reply owner after disabling"
+    );
+    mux.set_client_allowed(older, false);
+    let rejected = mux.from_upstream(&j(
+        json!({"jsonrpc":"2.0","id":8,"method":"elicitation/create","params":{}}),
+    ));
+    assert_eq!(up_line(&rejected[0])["error"]["code"], -32601);
+    mux.set_client_allowed(recent, true);
+    let restored = mux.from_upstream(&j(
+        json!({"jsonrpc":"2.0","id":9,"method":"elicitation/create","params":{}}),
+    ));
+    assert!(matches!(restored.as_slice(), [Outbound::ToClient(owner, _)] if *owner == recent));
+}
+
+#[test]
 fn upstream_request_without_any_client_gets_error_and_departure_cancels_it() {
     let mut m = Mux::new();
     let out = m.from_upstream(&j(

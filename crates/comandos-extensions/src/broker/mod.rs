@@ -6,6 +6,7 @@ pub mod daemon;
 pub mod mux;
 mod registry;
 mod scan;
+mod session_access;
 mod translate;
 mod upstream;
 
@@ -25,14 +26,13 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 /// error (ver `upstream::read_upstream`), sin cerrar el upstream compartido.
 const MAX_LINE: usize = crate::transport::MAX_RESPONSE;
 
-/// Un upstream solo se comparte si el proceso sería idéntico: mismo servidor, mismo
-/// directorio de trabajo y mismo spec efectivo (`command`, `args`, `cwd`, `env` ya expandido…).
+/// Un upstream solo se comparte con el mismo nombre, directorio y configuración efectiva.
+/// `env` contiene TODO el entorno que recibirá el proceso, incluidos los overrides.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct Key {
     name: String,
     cwd: PathBuf,
-    /// sha256 del JSON canónico (claves ordenadas a todos los niveles) del spec con su `env`
-    /// sustituido por el expandido de la sesión y sin `shared` (no cambia el proceso).
+    /// Hash del spec canónico con el entorno efectivo completo y sin `shared`.
     spec_hash: String,
 }
 
@@ -82,47 +82,54 @@ impl std::fmt::Display for Key {
     }
 }
 
-/// Línea `attach` de la sesión: lo que el proxy directo habría usado para lanzar el proceso.
-/// `None` si el directorio de trabajo no existe: el proxy directo da el error de siempre.
-pub fn attach_request(name: &str, spec: &Value, catalog: &Path) -> Option<Value> {
+/// Las conexiones nuevas usan la cuenta, entorno y cwd globales del catálogo/daemon.
+/// El cwd del cliente se conserva como contexto; no determina el proceso compartido.
+/// No se transmite el entorno heredado del cliente ni se expanden sus credenciales.
+pub fn attach_request(name: &str, _spec: &Value, catalog: &Path) -> Option<Value> {
     let here = std::env::current_dir().ok()?;
-    let cwd = match spec
-        .get("cwd")
-        .and_then(Value::as_str)
-        .filter(|c| !c.is_empty())
-    {
-        Some(cwd) => here.join(crate::expand_user(cwd)),
-        None => here,
-    };
-    if !cwd.is_dir() {
+    if !here.is_dir() {
         return None;
     }
-    let env: Map<String, Value> = (crate::spec_env(spec).ok()?.into_iter())
-        .map(|(k, v)| (k, Value::String(v)))
-        .collect();
     let home = crate::home_dir().ok()?;
     let catalog = std::path::absolute(catalog).ok()?;
-    // Entorno completo de la sesión (solo pares UTF-8): el daemon lanza el upstream con él,
-    // no con el suyo, igual que el proxy directo hereda el de la sesión.
-    let environ: Map<String, Value> = (std::env::vars_os())
-        .filter_map(|(k, v)| Some((k.into_string().ok()?, Value::String(v.into_string().ok()?))))
-        .collect();
-    let mut attach = json!({"attach": name, "cwd": cwd, "env": env, "catalog": catalog, "home": home, "environ": environ});
-    // Redundante con `environ`; solo para un daemon anterior que aún no lo entienda.
-    if let Some(path) = std::env::var("PATH").ok().filter(|p| !p.is_empty()) {
-        attach["path"] = Value::String(path);
-    }
-    Some(attach)
+    let mut request =
+        json!({"attach":name,"cwd":here,"env":{},"catalog":catalog,"home":home,"global":true});
+    add_session_binding(
+        &mut request,
+        std::env::var_os("COMANDOS_MCP_SESSION_BINDING"),
+    );
+    Some(request)
 }
 
-/// `$XDG_RUNTIME_DIR/comandos/broker.sock`, o `/tmp/comandos-<uid>/broker.sock` sin él.
-pub fn socket_path() -> PathBuf {
-    match std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()) {
-        Some(run) => PathBuf::from(run).join("comandos/broker.sock"),
-        None => {
-            PathBuf::from(format!("/tmp/comandos-{}", nix::unistd::getuid())).join("broker.sock")
-        }
+fn add_session_binding(request: &mut Value, binding: Option<std::ffi::OsString>) {
+    if let Some(binding) = binding {
+        // An invalid inherited value must remain present so the receiver fails closed.
+        request["session_binding"] = binding
+            .into_string()
+            .map(Value::String)
+            .unwrap_or(Value::Null);
     }
+}
+
+/// v2 no se adjunta a un daemon antiguo que ignore la autoridad global del catálogo.
+/// Codex omite XDG_RUNTIME_DIR: se descubre el runtime privado del mismo usuario.
+pub fn socket_path() -> PathBuf {
+    let uid = nix::unistd::getuid().as_raw();
+    socket_path_for(
+        std::env::var_os("XDG_RUNTIME_DIR").as_deref(),
+        uid,
+        &PathBuf::from(format!("/run/user/{uid}")),
+    )
+}
+
+fn socket_path_for(runtime: Option<&std::ffi::OsStr>, uid: u32, system_run: &Path) -> PathBuf {
+    if let Some(runtime) = runtime.filter(|r| !r.is_empty()) {
+        return PathBuf::from(runtime).join("comandos/broker-v2.sock");
+    }
+    if check_private_dir_for_uid(system_run, uid).is_ok() {
+        return system_run.join("comandos/broker-v2.sock");
+    }
+    PathBuf::from(format!("/tmp/comandos-{uid}")).join("broker-v2.sock")
 }
 
 /// Servidor stdio sin filtro de herramientas: el mismo caso que `serve` ejecuta directo.
@@ -133,15 +140,21 @@ pub fn direct_stdio(spec: &Value) -> bool {
         && !spec.get("disabled_tools").is_some_and(crate::py_truthy)
 }
 
-/// Lo que el broker acepta compartir: stdio directo y compartible según el catálogo.
+/// Stdio y HTTP comparten el broker; la fachada preserva filtros y autenticación HTTP.
 pub fn brokerable(spec: &Value, name: &str) -> bool {
-    direct_stdio(spec) && crate::config::is_shared(spec, name)
+    (spec["command"].as_str().is_some_and(|s| !s.is_empty())
+        || spec["url"].as_str().is_some_and(|s| !s.is_empty()))
+        && crate::config::is_shared(spec, name)
 }
 
 /// El directorio del socket debe ser nuestro, real (no un enlace) y sin permisos para otros.
 fn check_private_dir(dir: &Path) -> io::Result<()> {
+    check_private_dir_for_uid(dir, nix::unistd::getuid().as_raw())
+}
+
+fn check_private_dir_for_uid(dir: &Path, uid: u32) -> io::Result<()> {
     let meta = std::fs::symlink_metadata(dir)?;
-    let mine = meta.uid() == nix::unistd::getuid().as_raw();
+    let mine = meta.uid() == uid;
     if !meta.is_dir() || !mine || meta.permissions().mode() & 0o077 != 0 {
         return Err(io::Error::other("directorio del broker inseguro"));
     }
@@ -193,9 +206,9 @@ fn blank(line: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::Key;
+    use super::{Key, socket_path_for};
     use serde_json::json;
-    use std::path::Path;
+    use std::{fs, os::unix::fs::PermissionsExt, path::Path};
 
     fn key(spec: serde_json::Value, env: &[(&str, &str)]) -> Key {
         let env: Vec<_> = env
@@ -203,6 +216,22 @@ mod tests {
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
         Key::new("eco", Path::new("/w"), &spec, &env)
+    }
+
+    #[test]
+    fn optional_pane_binding_preserves_absence_and_invalid_explicit_values() {
+        use std::os::unix::ffi::OsStringExt;
+        let mut request = json!({"global":true,"env":{}});
+        super::add_session_binding(&mut request, None);
+        assert!(request.get("session_binding").is_none());
+        let binding = "/private/tmux.sock|123|456|$7|%8|901";
+        super::add_session_binding(&mut request, Some(binding.into()));
+        assert_eq!(request["session_binding"], binding);
+        assert_eq!(request["env"], json!({}));
+        super::add_session_binding(&mut request, Some("".into()));
+        assert_eq!(request["session_binding"], "");
+        super::add_session_binding(&mut request, Some(std::ffi::OsString::from_vec(vec![0xff])));
+        assert!(request.get("session_binding").unwrap().is_null());
     }
 
     #[test]
@@ -238,5 +267,45 @@ mod tests {
             base,
             key(json!({"command":"a","args":["1"]}), &[("X", "/g")])
         );
+    }
+
+    #[test]
+    fn socket_discovery_uses_only_an_owned_private_system_runtime() {
+        let uid = nix::unistd::getuid().as_raw();
+        let root = std::env::temp_dir().join(format!("cc-socket-discovery-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let fallback = std::path::PathBuf::from(format!("/tmp/comandos-{uid}/broker-v2.sock"));
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(
+            socket_path_for(None, uid, &root),
+            root.join("comandos/broker-v2.sock")
+        );
+        assert_eq!(
+            socket_path_for(Some(std::ffi::OsStr::new("")), uid, &root),
+            root.join("comandos/broker-v2.sock")
+        );
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(socket_path_for(None, uid, &root), fallback);
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(
+            socket_path_for(None, uid.wrapping_add(1), &root),
+            std::path::PathBuf::from(format!(
+                "/tmp/comandos-{}/broker-v2.sock",
+                uid.wrapping_add(1)
+            ))
+        );
+        let link = root.join("linked");
+        std::os::unix::fs::symlink(&root, &link).unwrap();
+        assert_eq!(socket_path_for(None, uid, &link), fallback);
+        assert_eq!(socket_path_for(None, uid, &root.join("missing")), fallback);
+        assert_eq!(
+            socket_path_for(
+                Some(std::ffi::OsStr::new("/private/custom-runtime")),
+                uid,
+                &root
+            ),
+            Path::new("/private/custom-runtime/comandos/broker-v2.sock")
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 }

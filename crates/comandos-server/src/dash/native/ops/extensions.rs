@@ -143,28 +143,36 @@ fn with_operations<T>(
     Ok(f(&store)?)
 }
 fn canonical(inventory: &Value, desired: &Value) -> Value {
-    let mut result = Map::new();
-    for kind in ["mcps", "skills"] {
-        let rows = inventory[kind]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|r| r["enabled"].is_boolean())
-            .filter_map(|r| {
-                let id = r["id"].as_str()?;
-                Some((
-                    id.to_owned(),
-                    if truthy(&r["toggleable"]) {
-                        desired[kind].get(id).cloned().unwrap_or(false.into())
-                    } else {
-                        r["enabled"].clone()
-                    },
-                ))
-            })
-            .collect();
-        result.insert(kind.into(), Value::Object(rows));
-    }
-    Value::Object(result)
+    drafts::canonical_selection(inventory, desired)
+}
+fn live_gate(opts: &NativeOptions, harness: &str) -> bool {
+    opts.standalone && matches!(harness, "codex" | "claude")
+}
+fn save_selection(
+    store: &ExtensionStore<'_>,
+    opts: &NativeOptions,
+    env: &Env,
+    target: &Target,
+    revision: &Value,
+    desired: &Value,
+) -> Result<Value> {
+    Ok(store.save_with(text(&target.draft["key"]), revision, desired, || {
+        if live_gate(opts, &target.harness) {
+            let identity = sc::identity_key(&target.identity);
+            let failure = || drafts::Fault::Conflict(
+                "No se pudo publicar la selección MCP del panel; el borrador no se guardó y el agente sigue abierto.".into()
+            );
+            let previous = comandos_store::extension_gate::selection(&env.home, &identity)
+                .map_err(|_| failure())?.unwrap_or_else(|| json!({}));
+            let selected = drafts::gate_selection(&target.inventory, desired, &previous);
+            comandos_store::extension_gate::save(
+                &env.home,
+                &identity,
+                &selected,
+            ).map_err(|_| failure())?;
+        }
+        Ok(())
+    })?)
 }
 struct Target {
     identity: Map<String, Value>,
@@ -176,6 +184,14 @@ struct Target {
     draft: Value,
     conversation: String,
     active: bool,
+}
+fn skills_changed(target: &Target) -> bool {
+    let configured = if target.loaded.is_null() {
+        canonical(&target.inventory, &json!({}))
+    } else {
+        target.loaded.clone()
+    };
+    target.draft["desired"]["skills"] != configured["skills"]
 }
 fn valid_target(data: &Value) -> Result<(String, String)> {
     let sess = string(&data["session"]);
@@ -298,6 +314,14 @@ fn target(env: &Env, opts: &NativeOptions, data: &Value) -> Result<Target> {
         store.state(&identity_key, &conversation, &harness, &defaults)?
     };
     draft["desired"] = canonical(&inventory, &draft["desired"]);
+    if live_gate(opts, &harness)
+        && let Some(selected) = comandos_store::extension_gate::selection(&env.home, &identity_key)
+            .map_err(|_| {
+                err("No se pudo leer la selección MCP del panel; el agente sigue abierto.")
+            })?
+    {
+        draft["desired"]["mcps"] = canonical(&inventory, &json!({"mcps":selected}))["mcps"].clone();
+    }
     Ok(Target {
         identity,
         info,
@@ -389,7 +413,7 @@ async fn state(native: &Arc<Native>, env: Env, data: Value) -> Result<Value> {
         let templates = ExtensionStore::new(&conn, &clock)?.templates()?;
         let busy = t.info.is_some() && sc::harness_pane_busy(&env, sess, pane, &t.harness)?;
         let pid = t.info.as_ref().and_then(|i| u32::try_from(i.pid).ok());
-        let body = json!({
+        let mut body = json!({
             "ok": true,
             "session": input["session"],
             "pane": input["pane"],
@@ -411,6 +435,17 @@ async fn state(native: &Arc<Native>, env: Env, data: Value) -> Result<Value> {
                 "La conversación exacta todavía no está identificada; el agente sigue abierto."
             },
         });
+        if live_gate(&opts, &t.harness) {
+            let selection = comandos_store::extension_gate::selection(
+                &env.home, &sc::identity_key(&t.identity),
+            ).map_err(|_| err("No se pudo leer la selección MCP del panel; el agente sigue abierto."))?;
+            body["mcpGate"] = json!({
+                "mode":"managed_calls",
+                "selection":canonical(&t.inventory, &json!({"mcps":selection.unwrap_or_else(|| json!({}))}))["mcps"],
+                "note":"Los MCP se permiten o bloquean al guardar para las próximas llamadas de conectores gestionados. Las skills se aplican al reanudar; las instrucciones ya presentes en el historial se conservan."
+            });
+            body["skillsRestartRequired"] = skills_changed(&t).into();
+        }
         Ok((body, operation))
     })
     .await?;
@@ -488,10 +523,29 @@ async fn write(
         match action {
             Action::Save => {
                 launch::normalize(&t.inventory, &input["desired"])?;
-                store.save(key, revision, &canonical(&t.inventory, &input["desired"]))?;
+                save_selection(
+                    &store,
+                    &opts,
+                    &env_for_work,
+                    &t,
+                    revision,
+                    &canonical(&t.inventory, &input["desired"]),
+                )?;
                 Ok(Next::State(None))
             }
             Action::Apply => {
+                if live_gate(&opts, &t.harness) && t.info.is_some() && !skills_changed(&t) {
+                    // MCP-only changes never enter the CLI stop/resume path.
+                    save_selection(
+                        &store,
+                        &opts,
+                        &env_for_work,
+                        &t,
+                        revision,
+                        &t.draft["desired"],
+                    )?;
+                    return Ok(Next::State(None));
+                }
                 if t.info.is_some() && t.conversation.is_empty() {
                     return Err(err(
                         "no se identificó la conversación exacta; el agente sigue abierto",
@@ -569,7 +623,7 @@ async fn write(
                     }
                 }
                 let desired = launch::normalize(&t.inventory, &canonical(&t.inventory, &desired))?;
-                store.save(key, revision, &desired)?;
+                save_selection(&store, &opts, &env_for_work, &t, revision, &desired)?;
                 Ok(Next::State(Some(
                     json!({"missing": missing, "unavailable": unavailable}),
                 )))

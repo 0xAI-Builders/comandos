@@ -23,6 +23,7 @@ pub enum Outbound {
 struct Client {
     initialized: bool,
     caps: Value,
+    server_requests_disabled: bool,
 }
 
 /// Request de cliente en vuelo hacia el upstream.
@@ -105,6 +106,14 @@ impl Mux {
         self.next_client += 1;
         self.clients.insert(self.next_client, Client::default());
         self.next_client
+    }
+
+    /// Live access only changes eligibility for new server-initiated requests. It must
+    /// not discard replies, progress ownership or calls already accepted for this client.
+    pub fn set_client_allowed(&mut self, id: ClientId, allowed: bool) {
+        if let Some(client) = self.clients.get_mut(&id) {
+            client.server_requests_disabled = !allowed;
+        }
     }
 
     /// Desconecta al cliente. Devuelve `notifications/cancelled` al upstream por cada request
@@ -384,7 +393,7 @@ impl Mux {
             _ => None,
         };
         let target = (self.clients.iter().rev())
-            .filter(|(_, c)| c.initialized)
+            .filter(|(_, c)| c.initialized && !c.server_requests_disabled)
             .find(|(_, c)| cap.is_none_or(|k| c.caps.get(k).is_some()))
             .map(|(id, _)| *id);
         let Some(target) = target else {

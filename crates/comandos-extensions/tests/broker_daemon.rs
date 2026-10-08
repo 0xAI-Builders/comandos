@@ -7,7 +7,7 @@ use std::{
     fs,
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
-    process::{Child, ChildStdin, Command, ExitStatus, Output, Stdio},
+    process::{Child, ChildStdin, Command, ExitStatus, Stdio},
     sync::mpsc,
     thread,
     time::{Duration, Instant},
@@ -16,9 +16,6 @@ use std::{
 const BIN: &str = env!("CARGO_BIN_EXE_comandos-extensions");
 const FAKE: &str = env!("CARGO_BIN_EXE_fake_mcp_stdio");
 const WAIT: Duration = Duration::from_secs(5);
-/// Aviso del respaldo al proxy directo; solo con `COMANDOS_DEBUG=1` (por omisión, silencio
-/// como el Python).
-const FALLBACK: &str = "broker no disponible, proxy directo\n";
 const INIT: &str = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#;
 
 fn home_with(name: &str, server: &str) -> PathBuf {
@@ -87,21 +84,6 @@ fn command(home: &Path, args: &[&str]) -> Command {
     c
 }
 
-/// `serve <name>` con `input` en stdin (cerrado después); salida completa.
-fn serve_once(home: &Path, name: &str, input: &str) -> Output {
-    let mut c = command(home, &["serve", name]);
-    let mut child = (c
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped()))
-    .spawn()
-    .unwrap();
-    // Un upstream que muere al arrancar (`muere`) puede cerrar la tubería antes de que
-    // escribamos: EPIPE no es un fallo; lo que cuenta es la salida y el código del proceso.
-    let _ = writeln!(child.stdin.take().unwrap(), "{input}");
-    child.wait_with_output().unwrap()
-}
-
 struct Daemon {
     child: Child,
     home: PathBuf,
@@ -135,7 +117,7 @@ impl Daemon {
         d
     }
     fn socket(&self) -> PathBuf {
-        self.home.join("run/comandos/broker.sock")
+        self.home.join("run/comandos/broker-v2.sock")
     }
     fn log(&self) -> String {
         fs::read_to_string(self.home.join("daemon.log")).unwrap_or_default()
@@ -161,6 +143,55 @@ impl Drop for Daemon {
             let _ = signal::kill(Pid::from_raw(pid as i32), signal::Signal::SIGKILL);
         }
         let _ = fs::remove_dir_all(&self.home);
+    }
+}
+
+/// An automatically started fixture daemon has no Child handle in this test process.
+/// Identify it through this private socket and verify executable/HOME before cleanup.
+struct AutoDaemon(PathBuf);
+
+impl AutoDaemon {
+    fn pid(&self) -> Option<i32> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .ok()?;
+        runtime.block_on(async {
+            let stream = tokio::time::timeout(
+                Duration::from_millis(200),
+                tokio::net::UnixStream::connect(self.0.join("run/comandos/broker-v2.sock")),
+            )
+            .await
+            .ok()?
+            .ok()?;
+            stream.peer_cred().ok()?.pid()
+        })
+    }
+
+    fn owns(&self, pid: i32) -> bool {
+        let expected_home = format!("HOME={}", self.0.display());
+        pid > 1
+            && fs::read_link(format!("/proc/{pid}/exe")).ok() == fs::canonicalize(BIN).ok()
+            && fs::read(format!("/proc/{pid}/environ")).is_ok_and(|env| {
+                env.split(|byte| *byte == 0)
+                    .any(|entry| entry == expected_home.as_bytes())
+            })
+    }
+}
+
+impl Drop for AutoDaemon {
+    fn drop(&mut self) {
+        let Some(pid) = self.pid().filter(|pid| self.owns(*pid)) else {
+            return;
+        };
+        let _ = signal::kill(Pid::from_raw(pid), signal::Signal::SIGTERM);
+        let until = Instant::now() + Duration::from_secs(8);
+        while self.owns(pid) && Instant::now() < until {
+            thread::sleep(Duration::from_millis(10));
+        }
+        if self.owns(pid) {
+            let _ = signal::kill(Pid::from_raw(pid), signal::Signal::SIGKILL);
+        }
     }
 }
 
@@ -266,17 +297,23 @@ fn two_clients_share_one_upstream_and_dedicated_is_not_shared() {
 }
 
 #[test]
-fn serve_falls_back_to_direct_proxy_without_daemon() {
-    let home = home_with(
-        "nodaemon",
-        r#"{"enabled":true,"command":"sh","args":["-c","echo direct"]}"#,
+fn serve_without_daemon_starts_a_shared_broker() {
+    let home = fake_home("nodaemon");
+    let daemon = AutoDaemon(home.clone());
+    let mut first = Session::open(&home, "eco");
+    let first_pid = first.pid(1, "initialize");
+    let daemon_pid = daemon.pid().expect("serve started the private broker");
+    assert!(daemon.owns(daemon_pid));
+    let mut second = Session::open(&home, "eco");
+    assert_eq!(second.pid(1, "initialize"), first_pid);
+    assert_eq!(
+        daemon.pid(),
+        Some(daemon_pid),
+        "both clients use the same daemon"
     );
-    let out = command(&home, &["serve", "eco"]).output().unwrap();
-    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "direct");
-    assert!(
-        out.stderr.is_empty(),
-        "sin broker instalado, el respaldo es silencioso"
-    );
+    second.close();
+    first.close();
+    drop(daemon);
     let _ = fs::remove_dir_all(&home);
 }
 
@@ -364,7 +401,7 @@ fn idle_upstream_ends_second_daemon_refuses_and_stale_socket_is_replaced() {
 }
 
 #[test]
-fn sharing_key_includes_cwd() {
+fn global_sessions_share_one_upstream_across_client_directories() {
     let home = fake_home("cwd");
     let (w1, w2) = (home.join("w1"), home.join("w2"));
     fs::create_dir_all(&w1).unwrap();
@@ -378,9 +415,12 @@ fn sharing_key_includes_cwd() {
         b.pid(1, "initialize"),
         c.pid(1, "initialize"),
     );
-    assert_ne!(pa, pb, "distinto cwd ⇒ distinto upstream");
-    assert_eq!(pa, pc, "mismo cwd y env ⇒ mismo upstream");
-    assert_eq!(pids(&home).len(), 2);
+    assert_eq!(
+        pa, pb,
+        "el servicio global usa el cwd del catálogo, no el proyecto"
+    );
+    assert_eq!(pa, pc, "el mismo servicio global conserva su upstream");
+    assert_eq!(pids(&home).len(), 1);
     assert!(daemon.stop().success());
 }
 
@@ -466,16 +506,16 @@ fn eof_after_attach_ok_before_stdin_rejoins_the_live_owner_without_direct_proxie
     let dir = home.join("run/comandos");
     fs::create_dir(&dir).unwrap();
     fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
-    let socket = dir.join("broker.sock");
+    let socket = dir.join("broker-v2.sock");
+    let lock = fs::File::create(dir.join("broker-v2.lock")).unwrap();
+    lock.try_lock().unwrap();
     let listener = UnixListener::bind(&socket).unwrap();
     let (closed_tx, closed_rx) = mpsc::channel();
     let server = thread::spawn(move || {
+        let _lock = lock;
         let mut initial = Vec::new();
         for _ in 0..3 {
-            let (stream, _) = listener.accept().unwrap();
-            stream.set_read_timeout(Some(WAIT)).unwrap();
-            let _attach = read_one(&stream);
-            initial.push(stream);
+            initial.push(accept_attach(&listener).expect("attach inicial"));
         }
         for stream in &mut initial {
             writeln!(stream, "{{\"ok\":true}}").unwrap();
@@ -487,21 +527,10 @@ fn eof_after_attach_ok_before_stdin_rejoins_the_live_owner_without_direct_proxie
         closed_tx.send(()).unwrap();
         thread::sleep(Duration::from_secs(1));
         let listener = UnixListener::bind(&socket).unwrap();
-        listener.set_nonblocking(true).unwrap();
         for _ in 0..3 {
-            let mut accepted = None;
-            if !until(|| match listener.accept() {
-                Ok((s, _)) => {
-                    accepted = Some(s);
-                    true
-                }
-                Err(_) => false,
-            }) {
+            let Some(mut stream) = accept_attach(&listener) else {
                 return false;
-            }
-            let mut stream = accepted.unwrap();
-            stream.set_read_timeout(Some(WAIT)).unwrap();
-            let _attach = read_one(&stream);
+            };
             writeln!(stream, "{{\"ok\":true}}").unwrap();
             let request: Value = serde_json::from_str(&read_one(&stream)).unwrap();
             writeln!(
@@ -540,27 +569,16 @@ fn a_held_broker_lock_prevents_direct_fallback_before_the_socket_exists() {
     let dir = home.join("run/comandos");
     fs::create_dir(&dir).unwrap();
     fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
-    let lock = fs::File::create(dir.join("broker.lock")).unwrap();
+    let lock = fs::File::create(dir.join("broker-v2.lock")).unwrap();
     lock.try_lock().unwrap();
     let server = thread::spawn(move || {
         let _lock = lock;
         thread::sleep(Duration::from_secs(1));
-        let listener = UnixListener::bind(dir.join("broker.sock")).unwrap();
-        listener.set_nonblocking(true).unwrap();
+        let listener = UnixListener::bind(dir.join("broker-v2.sock")).unwrap();
         for _ in 0..3 {
-            let mut accepted = None;
-            if !until(|| match listener.accept() {
-                Ok((s, _)) => {
-                    accepted = Some(s);
-                    true
-                }
-                Err(_) => false,
-            }) {
+            let Some(mut stream) = accept_attach(&listener) else {
                 return false;
-            }
-            let mut stream = accepted.unwrap();
-            stream.set_read_timeout(Some(WAIT)).unwrap();
-            let _attach = read_one(&stream);
+            };
             writeln!(stream, "{{\"ok\":true}}").unwrap();
             let request: Value = serde_json::from_str(&read_one(&stream)).unwrap();
             writeln!(
@@ -618,24 +636,14 @@ fn ambiguous_attach_rejoins(tag: &str, rejection: Option<&str>) {
     let dir = home.join("run/comandos");
     fs::create_dir(&dir).unwrap();
     fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
-    let listener = UnixListener::bind(dir.join("broker.sock")).unwrap();
+    let listener = UnixListener::bind(dir.join("broker-v2.sock")).unwrap();
     listener.set_nonblocking(true).unwrap();
     let rejection = rejection.map(str::to_owned);
     let server = thread::spawn(move || {
         for attempt in 0..2 {
-            let mut accepted = None;
-            if !until(|| match listener.accept() {
-                Ok((s, _)) => {
-                    accepted = Some(s);
-                    true
-                }
-                Err(_) => false,
-            }) {
+            let Some(mut stream) = accept_attach(&listener) else {
                 return false;
-            }
-            let mut stream = accepted.unwrap();
-            stream.set_read_timeout(Some(WAIT)).unwrap();
-            let _attach = read_one(&stream);
+            };
             if attempt == 0 {
                 if let Some(error) = &rejection {
                     writeln!(stream, "{}", json!({"error":error})).unwrap();
@@ -667,6 +675,8 @@ fn an_overloaded_live_socket_waits_instead_of_starting_a_direct_proxy() {
     let dir = home.join("run/comandos");
     fs::create_dir(&dir).unwrap();
     fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
+    let lock = fs::File::create(dir.join("broker-v2.lock")).unwrap();
+    lock.try_lock().unwrap();
     // Una conexión pendiente llena la cola de accept, sin paralizar todo el proceso test.
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -674,27 +684,18 @@ fn an_overloaded_live_socket_waits_instead_of_starting_a_direct_proxy() {
         .unwrap();
     let _entered = runtime.enter();
     let socket = tokio::net::UnixSocket::new_stream().unwrap();
-    socket.bind(dir.join("broker.sock")).unwrap();
+    socket.bind(dir.join("broker-v2.sock")).unwrap();
     let listener = socket.listen(0).unwrap().into_std().unwrap();
-    let filler = UnixStream::connect(dir.join("broker.sock")).unwrap();
+    let filler = UnixStream::connect(dir.join("broker-v2.sock")).unwrap();
     let mut session = Session::open(&home, "eco");
     session.request(1, "initialize", json!({}));
     thread::sleep(Duration::from_millis(800));
     let premature = pids(&home).len();
     drop(listener.accept().unwrap());
     drop(filler);
-    listener.set_nonblocking(true).unwrap();
-    let mut accepted = None;
-    let connected = until(|| match listener.accept() {
-        Ok((s, _)) => {
-            accepted = Some(s);
-            true
-        }
-        Err(_) => false,
-    });
+    let accepted = accept_attach(&listener);
+    let connected = accepted.is_some();
     if let Some(mut stream) = accepted {
-        stream.set_read_timeout(Some(WAIT)).unwrap();
-        let _attach = read_one(&stream);
         writeln!(stream, "{{\"ok\":true}}").unwrap();
         let request: Value = serde_json::from_str(&read_one(&stream)).unwrap();
         writeln!(
@@ -964,27 +965,32 @@ fn a_catalog_read_failure_does_not_bypass_an_existing_shared_upstream() {
 }
 
 #[test]
-fn socket_of_dead_daemon_falls_back_silently() {
+fn socket_of_dead_daemon_is_replaced_by_a_new_shared_broker() {
     let home = fake_home("dead");
     let mut daemon = Daemon::start(&home, "600");
+    let old_pid = daemon.child.id() as i32;
     daemon.child.kill().unwrap();
     daemon.child.wait().unwrap();
-    let out = serve_once(&home, "eco", INIT);
-    assert_eq!(
-        String::from_utf8_lossy(&out.stderr),
-        "",
-        "silencio por omisión"
-    );
-    let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(reply["id"], 1, "respondió el proxy directo");
+    assert!(daemon.socket().exists(), "crash leaves the socket behind");
+    let replacement = AutoDaemon(home.clone());
+    let mut first = Session::open(&home, "eco");
+    let first_pid = first.pid(1, "initialize");
+    let new_pid = replacement.pid().expect("private replacement broker");
+    assert_ne!(new_pid, old_pid);
+    assert!(replacement.owns(new_pid));
+    let mut second = Session::open(&home, "eco");
+    assert_eq!(second.pid(1, "initialize"), first_pid);
+    second.close();
     let mut c = command(&home, &["serve", "eco"]);
     c.env("COMANDOS_DEBUG", "1").stdin(Stdio::null());
     let out = c.output().unwrap();
-    assert_eq!(
-        String::from_utf8_lossy(&out.stderr),
-        FALLBACK,
-        "con COMANDOS_DEBUG=1"
+    assert!(out.status.success());
+    assert!(
+        out.stderr.is_empty(),
+        "there is no direct fallback even in debug mode"
     );
+    first.close();
+    drop(replacement);
 }
 
 #[test]
@@ -1092,11 +1098,52 @@ fn raw_attach_server(
         attach["path"] = json!(p);
     }
     let mut stream =
-        std::os::unix::net::UnixStream::connect(home.join("run/comandos/broker.sock")).unwrap();
+        std::os::unix::net::UnixStream::connect(home.join("run/comandos/broker-v2.sock")).unwrap();
     stream.set_read_timeout(Some(wait)).unwrap();
     writeln!(stream, "{attach}").unwrap();
     let reply = read_one(&stream);
     (stream, reply)
+}
+
+/// Las comprobaciones de disponibilidad abren y cierran sin enviar `attach`.
+/// Solo ese EOF vacío se ignora; un attach parcial o inválido sigue siendo un fallo.
+fn accept_attach(
+    listener: &std::os::unix::net::UnixListener,
+) -> Option<std::os::unix::net::UnixStream> {
+    listener.set_nonblocking(true).unwrap();
+    let deadline = Instant::now() + WAIT;
+    while Instant::now() < deadline {
+        let (stream, _) = match listener.accept() {
+            Ok(accepted) => accepted,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                thread::sleep(Duration::from_millis(20));
+                continue;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => panic!("accept del fixture: {e}"),
+        };
+        stream.set_nonblocking(false).unwrap();
+        stream.set_read_timeout(Some(WAIT)).unwrap();
+        let mut first = [0u8; 1];
+        let received = loop {
+            match std::io::Read::read(&mut &stream, &mut first) {
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                result => break result.unwrap(),
+            }
+        };
+        if received == 0 {
+            continue;
+        }
+        let mut line = first.to_vec();
+        if first[0] != b'\n' {
+            line.extend_from_slice(read_one(&stream).as_bytes());
+        }
+        let attach: Value = serde_json::from_slice(&line).expect("attach JSON completo");
+        assert_eq!(attach["attach"], "eco", "attach del servicio esperado");
+        assert_eq!(attach["global"], true, "contrato de clientes v2");
+        return Some(stream);
+    }
+    None
 }
 
 /// Lee exactamente una línea sin adelantar bytes de la siguiente (lectura de a uno).
@@ -1313,7 +1360,7 @@ fn raw_attach_environ(home: &Path, environ: Value) -> String {
     let env = spec["servers"]["eco"]["env"].clone();
     let attach = json!({"attach":"eco","cwd":home,"env":env,"catalog":catalog,"home":home,"environ":environ});
     let mut stream =
-        std::os::unix::net::UnixStream::connect(home.join("run/comandos/broker.sock")).unwrap();
+        std::os::unix::net::UnixStream::connect(home.join("run/comandos/broker-v2.sock")).unwrap();
     stream.set_read_timeout(Some(WAIT)).unwrap();
     writeln!(stream, "{attach}").unwrap();
     read_one(&stream)
@@ -1368,7 +1415,7 @@ fn spec_own_path_wins_over_attach_environ() {
 }
 
 #[test]
-fn a_session_variable_reaches_the_shared_upstream() {
+fn a_session_variable_does_not_override_the_global_environment() {
     let home = fake_home("shadow");
     let env_dump = home.join("dump-env");
     let catalog = home.join(".config/comandos/extensions/catalog.json");
@@ -1396,7 +1443,10 @@ fn a_session_variable_reaches_the_shared_upstream() {
         .unwrap();
     assert!(line.contains(r#""id":1"#), "{line}");
     let seen = fs::read_to_string(&env_dump).unwrap();
-    assert!(seen.lines().any(|l| l == "SHADOW_ONLY=1"), "{seen}");
+    assert!(
+        !seen.lines().any(|l| l == "SHADOW_ONLY=1"),
+        "global env must come from the daemon"
+    );
     let _ = child.kill();
     let _ = child.wait();
     assert!(daemon.stop().success());

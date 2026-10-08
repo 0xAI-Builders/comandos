@@ -63,6 +63,17 @@ fn downstream(name: &str, method: &str, id: Value, mut upstream: Value) -> Value
 }
 
 pub async fn serve(home: &Path, name: &str, spec: &Value) -> Result<()> {
+    serve_with_catalog_spec(home, name, spec, spec).await
+}
+
+/// Broker adapters already have an effective environment/cwd. Their connection spec
+/// omits those fields, but size metadata must still describe the original catalog entry.
+pub(crate) async fn serve_with_catalog_spec(
+    home: &Path,
+    name: &str,
+    spec: &Value,
+    catalog_spec: &Value,
+) -> Result<()> {
     let (input_tx, mut input_rx) = mpsc::channel(8);
     let (end_tx, mut end_rx) = watch::channel(false);
     let input = tokio::spawn(async move {
@@ -117,6 +128,7 @@ pub async fn serve(home: &Path, name: &str, spec: &Value) -> Result<()> {
     let mut closed = upstream.closed.clone();
     let upstream = Arc::new(upstream);
     let spec = Arc::new(spec.clone());
+    let catalog_spec = Arc::new(catalog_spec.clone());
     // Salida con contrapresión, como el stream de anyio del Python: si el escritor va atrás,
     // el bucle espera a que haya hueco (no se pierde ni se aborta nada). Un envío fallido
     // significa que el escritor terminó (stdout cerrado): fin limpio, como `output_closed`.
@@ -164,7 +176,7 @@ pub async fn serve(home: &Path, name: &str, spec: &Value) -> Result<()> {
                                 if let Some(tools)=capture.add(cursor.as_str(),result["nextCursor"].as_str(),tools)
                                     && measurements.is_empty()
                                 {
-                                    let home=metadata_home.clone();let name=metadata_name.clone();let spec=spec.clone();
+                                    let home=metadata_home.clone();let name=metadata_name.clone();let spec=catalog_spec.clone();
                                     measurements.spawn(async move {
                                         crate::metadata::record_mcp_size_with_clock(&home,&name,&spec,&tools,crate::metadata::now,&|texts|crate::tokenizer::isolated_token_counts(&home,texts)).await;
                                     });

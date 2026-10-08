@@ -45,6 +45,48 @@ fn decode(s: &str) -> Result<Value> {
     workspace_loads(s).map_err(|e| Fault::Persistence(e.to_string()))
 }
 
+/// Reconcile saved choices with the current catalog. New entries inherit their
+/// configured default; explicit exclusions stay local and global disables win.
+pub fn canonical_selection(inventory: &Value, desired: &Value) -> Value {
+    let mut result = Map::new();
+    for kind in ["mcps", "skills"] {
+        let rows = inventory[kind]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|r| r["enabled"].is_boolean())
+            .filter_map(|r| {
+                let id = r["id"].as_str()?;
+                let enabled = if comandos_core::json::truthy(&r["toggleable"]) {
+                    desired[kind]
+                        .get(id)
+                        .filter(|v| v.is_boolean())
+                        .unwrap_or(&r["enabled"])
+                } else {
+                    &r["enabled"]
+                };
+                Some((id.to_owned(), enabled.clone()))
+            })
+            .collect();
+        result.insert(kind.into(), Value::Object(rows));
+    }
+    Value::Object(result)
+}
+
+/// Global disables suspend access without overwriting a pane's preference.
+pub fn gate_selection(inventory: &Value, desired: &Value, previous: &Value) -> Value {
+    let mut selected = previous.as_object().cloned().unwrap_or_default();
+    for row in inventory["mcps"].as_array().into_iter().flatten() {
+        if row["toggleable"] == true
+            && let Some(id) = row["id"].as_str()
+            && let Some(enabled) = desired["mcps"][id].as_bool()
+        {
+            selected.insert(id.to_owned(), enabled.into());
+        }
+    }
+    Value::Object(selected)
+}
+
 pub fn selection_value(value: &Value) -> Result<Value> {
     let map = value
         .as_object()
@@ -141,6 +183,17 @@ impl<'a> ExtensionStore<'a> {
         Ok(row)
     }
     pub fn save(&self, key: &str, revision: &Value, desired: &Value) -> Result<Value> {
+        self.save_with(key, revision, desired, || Ok(()))
+    }
+    /// Publish external call policy while the revision write lock is held. A
+    /// publication error rolls back the draft instead of reporting it saved.
+    pub fn save_with(
+        &self,
+        key: &str,
+        revision: &Value,
+        desired: &Value,
+        publish: impl FnOnce() -> Result<()>,
+    ) -> Result<Value> {
         let desired = selection_value(desired)?;
         atomic(self.connection, || {
             let row = self.require_revision(key, revision)?;
@@ -149,6 +202,7 @@ impl<'a> ExtensionStore<'a> {
                 return Err(conflict("hay una operación en curso para este panel"));
             }
             self.connection.execute("UPDATE pane_extension_drafts SET desired=?,revision=revision+1,updated=? WHERE key=?",params![encode(&desired)?,(self.clock)(),key])?;
+            publish()?;
             self.row(key)
         })
     }

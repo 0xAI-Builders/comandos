@@ -5,6 +5,7 @@ pub fn run(args: Vec<String>) -> Result<i32> {
     let mut args = args.into_iter();
     let mut home = None;
     let mut catalog = None;
+    let mut direct = false;
     loop {
         match args.next().as_deref() {
             Some("--home") => home = Some(PathBuf::from(args.next().ok_or("Missing home")?)),
@@ -41,6 +42,11 @@ pub fn run(args: Vec<String>) -> Result<i32> {
                 return Ok(i32::from(result?));
             }
             Some("serve") => break,
+            // Internal upstream adapter. Public clients always enter through `serve`.
+            Some("serve-direct") => {
+                direct = true;
+                break;
+            }
             Some("broker") if args.next().is_none() => {
                 let home = home.map(Ok).unwrap_or_else(home_dir)?;
                 let path = catalog.unwrap_or_else(|| crate::config::catalog_path(&home));
@@ -68,18 +74,32 @@ pub fn run(args: Vec<String>) -> Result<i32> {
     if args.next().is_some() {
         return Err("Unexpected arguments".into());
     }
-    // El broker es por usuario: con rutas explícitas se usa siempre el proxy directo.
-    let explicit = home.is_some() || catalog.is_some();
     let home = home.map(Ok).unwrap_or_else(home_dir)?;
     let path = catalog.unwrap_or_else(|| crate::config::catalog_path(&home));
-    let spec = &server_spec(&path, &name)?;
+    let snapshot = direct.then(broker_snapshot).transpose()?.flatten();
+    let preconfigured = snapshot.is_some();
+    let spec = snapshot
+        .map(Ok)
+        .unwrap_or_else(|| server_spec(&path, &name))?;
+    if !direct && crate::config::is_shared(&spec, &name) {
+        return broker_session(&home, &name, &spec, &path);
+    }
+    let mut runtime_spec = spec.clone();
+    if preconfigured {
+        let object = runtime_spec.as_object_mut().ok_or("Invalid server spec")?;
+        object.remove("cwd");
+        object.remove("env");
+    }
+    serve_direct(&home, &name, &runtime_spec, &spec)
+}
+
+fn serve_direct(
+    home: &std::path::Path,
+    name: &str,
+    spec: &Value,
+    catalog_spec: &Value,
+) -> Result<i32> {
     if crate::broker::direct_stdio(spec) {
-        if !explicit
-            && crate::config::is_shared(spec, &name)
-            && let Some(code) = broker_session(&name, spec, &path)
-        {
-            return Ok(code);
-        }
         crate::exec_direct(spec)?;
         return Err("Extension command failed".into());
     }
@@ -89,7 +109,7 @@ pub fn run(args: Vec<String>) -> Result<i32> {
         .build()
         .map_err(|_| "Runtime unavailable")?;
     let result = runtime.block_on(async {
-        let result = crate::serve::serve(&home, &name, spec).await;
+        let result = crate::serve::serve_with_catalog_spec(home, name, spec, catalog_spec).await;
         // A running refresh must persist its rotated token before process exit.
         crate::auth::drain_workers().await;
         result
@@ -97,6 +117,67 @@ pub fn run(args: Vec<String>) -> Result<i32> {
     runtime.shutdown_timeout(std::time::Duration::from_millis(100));
     result?;
     Ok(0)
+}
+
+/// Private snapshot handed to a single broker-owned HTTP/filtered-stdio adapter. It never
+/// appears in argv or logs, and prevents a catalog change from replacing the keyed spec
+/// between registry admission and process startup.
+pub(crate) const BROKER_UPSTREAM_SPEC: &str = "COMANDOS_BROKER_UPSTREAM_SPEC";
+
+fn broker_snapshot() -> Result<Option<Value>> {
+    let Some(raw) = std::env::var_os(BROKER_UPSTREAM_SPEC) else {
+        return Ok(None);
+    };
+    let raw = raw
+        .into_string()
+        .map_err(|_| "Invalid broker upstream snapshot")?;
+    if raw.len() > 8 * 1024 * 1024 {
+        return Err("Broker upstream snapshot too large".into());
+    }
+    let value: Value =
+        serde_json::from_str(&raw).map_err(|_| "Invalid broker upstream snapshot")?;
+    if !value.is_object() {
+        return Err("Invalid broker upstream snapshot".into());
+    }
+    Ok(Some(value))
+}
+
+/// Adapts HTTP and filtered stdio to the broker's stdio multiplexer. The registry keeps
+/// the original spec in its identity, then applies the returned private environment after
+/// resolving the authoritative cwd/environment. The adapter removes cwd/env for execution
+/// while retaining this original snapshot for metadata's catalog configuration digest.
+pub(crate) fn broker_upstream_spec(
+    home: &std::path::Path,
+    catalog: &std::path::Path,
+    name: &str,
+    spec: &Value,
+) -> Result<(Value, Vec<(String, String)>)> {
+    if crate::broker::direct_stdio(spec) {
+        return Ok((spec.clone(), Vec::new()));
+    }
+    let executable = std::env::current_exe().map_err(|_| "Extension executable unavailable")?;
+    let mut args = Vec::new();
+    // The standalone binary consumes extension arguments directly; the multicall CLI
+    // first dispatches `ext`. Both forms are used by private integration fixtures.
+    if executable
+        .file_name()
+        .is_none_or(|name| name != "comandos-extensions")
+    {
+        args.push("ext".to_owned());
+    }
+    args.extend([
+        "--home".into(),
+        home.to_string_lossy().into_owned(),
+        "--catalog".into(),
+        catalog.to_string_lossy().into_owned(),
+        "serve-direct".into(),
+        name.into(),
+    ]);
+    let snapshot = serde_json::to_string(spec).map_err(|_| "Invalid server spec")?;
+    Ok((
+        serde_json::json!({"command":executable,"args":args}),
+        vec![(BROKER_UPSTREAM_SPEC.into(), snapshot)],
+    ))
 }
 /// Servidor `name` del catálogo, habilitado. Lo usan `serve` y el broker.
 pub(crate) fn server_spec(path: &std::path::Path, name: &str) -> Result<Value> {
@@ -124,37 +205,31 @@ pub(crate) fn server_spec(path: &std::path::Path, name: &str) -> Result<Value> {
         .map(Value::take)
         .ok_or_else(|| format!("Server unavailable: {name}"))
 }
-/// Sesión como cliente fino del broker. `None` ⇒ proxy directo, en silencio como el Python
-/// (que no tiene broker): el aviso solo sale con `COMANDOS_DEBUG=1`.
-fn broker_session(name: &str, spec: &Value, catalog: &std::path::Path) -> Option<i32> {
+/// Public shared sessions remain under the broker's authority, including startup and
+/// reconnect. Failure never creates a direct duplicate beside an existing upstream.
+fn broker_session(
+    home: &std::path::Path,
+    name: &str,
+    spec: &Value,
+    catalog: &std::path::Path,
+) -> Result<i32> {
     use crate::broker::{attach_request, client, socket_path};
     let socket = socket_path();
-    if !socket.exists() && !client::broker_holds_lock(&socket) {
-        return None;
-    }
-    // Sin cwd válido, el proxy directo da el error de siempre.
-    let request = attach_request(name, spec, catalog)?;
+    let mut request = attach_request(name, spec, catalog).ok_or("Invalid broker attach")?;
+    request["home"] = serde_json::json!(home);
     let runtime = tokio::runtime::Builder::new_current_thread()
+        .max_blocking_threads(4)
         .enable_all()
         .build()
-        .ok()?;
+        .map_err(|_| "Runtime unavailable")?;
     let relayed = runtime.block_on(async {
-        let conn = client::connect(&socket, &request).await?;
-        // Tras comenzar relay solo hay un código de salida, nunca permiso de fallback:
-        // el lector concurrente de stdin puede haber consumido bytes durante reattach.
-        Ok::<_, String>(client::relay(conn, &socket, &request).await)
+        // The client owns stdin while starting, attaching and reconnecting, so EOF can
+        // cancel an unused session without leaving a waiting wrapper behind.
+        client::serve(home, catalog, &socket, &request).await
     });
     // El hilo bloqueado en stdin no debe retrasar la salida.
     runtime.shutdown_timeout(std::time::Duration::from_millis(100));
-    match relayed {
-        Ok(code) => Some(code),
-        Err(_) => {
-            if std::env::var_os("COMANDOS_DEBUG").is_some_and(|v| v == "1") {
-                eprintln!("broker no disponible, proxy directo");
-            }
-            None
-        }
-    }
+    relayed
 }
 pub fn catalog_command(
     home: &std::path::Path,

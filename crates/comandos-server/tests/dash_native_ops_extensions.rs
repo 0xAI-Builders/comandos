@@ -4,6 +4,109 @@ use serde_json::{Value, json};
 use support::{FakeLegacy, TestHome, front, get, request_body, twin::Twin};
 
 #[tokio::test]
+async fn standalone_mcp_selection_gates_calls_without_restarting_the_private_agent() {
+    let Some(t) = Twin::start_with(
+        "ext-live-gate",
+        |home| {
+            support::ops::seed_fake_codex(home);
+            std::fs::write(
+                home.root.join(".codex/config.toml"),
+                "[mcp_servers.demo]\ncommand='test-only'\n",
+            )
+            .unwrap();
+        },
+        support::twin::TwinOpts {
+            fakebin_extra: vec![(
+                "codex".into(),
+                "#!/bin/sh\nexec \"$HOME/bin/codex\" \"$@\"\n".into(),
+            )],
+            front: Some(Box::new(|opts| opts.standalone = true)),
+            ..Default::default()
+        },
+    )
+    .await
+    else {
+        return;
+    };
+    let before = t
+        .get("/pane-extensions?session=audit&pane=%250")
+        .await
+        .front;
+    assert_eq!(before.status, 200, "{}", before.text());
+    let before: Value = serde_json::from_slice(&before.body).unwrap();
+    let identity = before["identity"].as_str().unwrap();
+    assert!(comandos_store::extension_gate::enabled(&t.a.root, identity, "demo").unwrap());
+    let mut request = json!({
+        "session":"audit", "pane":"%0", "harness":"codex",
+        "expectedIdentity":identity,"expectedConversationId":before["conversationId"],
+        "revision":before["revision"],"desired":{"mcps":{"demo":false},"skills":{}}
+    });
+    let saved = t.post_front("/pane-extensions", &request.to_string()).await;
+    assert_eq!(saved.status, 200, "{}", saved.text());
+    let saved: Value = serde_json::from_slice(&saved.body).unwrap();
+    assert_eq!(saved["mcpGate"]["selection"]["demo"], false);
+    assert!(!comandos_store::extension_gate::enabled(&t.a.root, identity, "demo").unwrap());
+    assert_eq!(saved["skillsRestartRequired"], false);
+    let stale = t.post_front("/pane-extensions", &request.to_string()).await;
+    assert_eq!(stale.status, 409);
+    request.as_object_mut().unwrap().remove("desired");
+    request["revision"] = saved["revision"].clone();
+    request["requestId"] = json!("gate-only");
+    request["interrupt"] = json!(true);
+    let applied = t
+        .post_front("/pane-extensions/apply", &request.to_string())
+        .await;
+    assert_eq!(applied.status, 200, "{}", applied.text());
+    let applied: Value = serde_json::from_slice(&applied.body).unwrap();
+    assert_eq!(applied["identity"], before["identity"]);
+    assert_eq!(applied["conversationId"], before["conversationId"]);
+    assert!(applied["operation"].is_null());
+    let catalog = t.a.root.join(".config/comandos/extensions/catalog.json");
+    std::fs::write(
+        &catalog,
+        r#"{"servers":{"new":{"command":"unused","enabled":false}}}"#,
+    )
+    .unwrap();
+    let off = t
+        .get("/pane-extensions?session=audit&pane=%250")
+        .await
+        .front;
+    assert_eq!(off.status, 200, "{}", off.text());
+    let off: Value = serde_json::from_slice(&off.body).unwrap();
+    assert_eq!(off["desired"]["mcps"]["new"], false);
+    request.as_object_mut().unwrap().remove("requestId");
+    request.as_object_mut().unwrap().remove("interrupt");
+    request["revision"] = off["revision"].clone();
+    request["desired"] = off["desired"].clone();
+    let saved_off = t.post_front("/pane-extensions", &request.to_string()).await;
+    assert_eq!(saved_off.status, 200, "{}", saved_off.text());
+    std::fs::write(
+        &catalog,
+        r#"{"servers":{"new":{"command":"unused","enabled":true}}}"#,
+    )
+    .unwrap();
+    let on = t
+        .get("/pane-extensions?session=audit&pane=%250")
+        .await
+        .front;
+    assert_eq!(on.status, 200, "{}", on.text());
+    let on: Value = serde_json::from_slice(&on.body).unwrap();
+    assert_eq!(
+        on["desired"]["mcps"]["new"], true,
+        "global OFF must not become a pane exclusion"
+    );
+    assert_eq!(
+        on["desired"]["mcps"]["demo"], false,
+        "explicit pane exclusion survives"
+    );
+    assert!(t.tmux_mutations_a().is_empty());
+    assert_eq!(
+        std::fs::read_to_string(t.a.root.join(".codex/config.toml")).unwrap(),
+        "[mcp_servers.demo]\ncommand='test-only'\n"
+    );
+}
+
+#[tokio::test]
 async fn missing_target_and_extra_fields_match_python_without_fallback() {
     let Some(t) = Twin::start("ext-errors", |_| {}).await else {
         return;

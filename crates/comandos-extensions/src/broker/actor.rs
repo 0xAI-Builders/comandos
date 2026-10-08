@@ -4,6 +4,7 @@
 use super::{
     Key,
     mux::{ClientId, Mux, Outbound},
+    session_access::Access,
     upstream::{self, Upstream},
 };
 use crate::serve::normalize::LATEST_PROTOCOL_VERSION;
@@ -58,6 +59,8 @@ pub(super) type Joined = Result<(ClientId, mpsc::Receiver<Vec<u8>>), JoinError>;
 /// Altas y bajas: nunca se frenan por un stdin lleno.
 pub(super) enum Ctl {
     Join(oneshot::Sender<Joined>),
+    /// Register the verified peer policy before the client receives attach success.
+    Access(ClientId, Access),
     Leave(ClientId),
 }
 
@@ -88,6 +91,7 @@ struct Actor {
     key: Key,
     mux: Mux,
     clients: HashMap<ClientId, mpsc::Sender<Vec<u8>>>,
+    policies: HashMap<ClientId, Access>,
     stdin: mpsc::Sender<Vec<u8>>,
     warm: ClientId,
     warm_answered: bool,
@@ -104,6 +108,7 @@ pub(super) fn start(key: Key, up: Upstream, shared: Shared) -> Handle {
         key,
         mux,
         clients: HashMap::new(),
+        policies: HashMap::new(),
         stdin: up.stdin.clone(),
         warm,
         warm_answered: false,
@@ -227,6 +232,10 @@ impl Actor {
     }
 
     async fn upstream_line(&mut self, line: &[u8]) {
+        for (id, access) in &self.policies {
+            self.mux
+                .set_client_allowed(*id, matches!(access.allowed(), Ok(true)));
+        }
         let out = self.mux.from_upstream(line);
         self.dispatch(out).await;
         if !self.ready && self.mux.upstream_initialized() {
@@ -246,12 +255,22 @@ impl Actor {
         match msg {
             Ctl::Join(reply) if self.ready => self.join(reply),
             Ctl::Join(reply) => self.waiting.push(reply),
+            Ctl::Access(id, access) => {
+                if self.clients.contains_key(&id) {
+                    self.mux
+                        .set_client_allowed(id, matches!(access.allowed(), Ok(true)));
+                    self.policies.insert(id, access);
+                }
+            }
             Ctl::Leave(id) => self.detach(id, "desconectado").await,
         }
     }
 
     fn join(&mut self, reply: oneshot::Sender<Joined>) {
         let id = self.mux.add_client();
+        // The connection installs its verified policy before acknowledging attach.
+        // A callback arriving in that short window must not select an unverified peer.
+        self.mux.set_client_allowed(id, false);
         let (tx, rx) = mpsc::channel(CLIENT_QUEUE);
         if reply.send(Ok((id, rx))).is_ok() {
             self.clients.insert(id, tx);
@@ -274,6 +293,7 @@ impl Actor {
     }
 
     async fn detach(&mut self, id: ClientId, why: &str) {
+        self.policies.remove(&id);
         if self.clients.remove(&id).is_some() {
             let n = self.clients.len();
             eprintln!(
@@ -296,6 +316,7 @@ impl Actor {
                 Outbound::ToClient(id, line) => {
                     let sent = self.clients.get(&id).map(|tx| tx.try_send(line).is_ok());
                     if sent == Some(false) && self.clients.remove(&id).is_some() {
+                        self.policies.remove(&id);
                         let n = self.clients.len();
                         eprintln!(
                             "broker: detach {} cliente {id} sin leer su salida ({n} clientes)",

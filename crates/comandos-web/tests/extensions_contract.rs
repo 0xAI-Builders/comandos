@@ -118,6 +118,41 @@ fn save_never_adopts_a_response_from_a_different_conversation() {
     assert!(!shelf.accept_save("", &json!({}), foreign));
     assert_eq!(shelf.guards()["revision"], 4);
 }
+
+#[test]
+fn managed_mcp_only_changes_do_not_offer_an_agent_restart() {
+    let mut shelf = Shelf::new(json!({"session":"s","pane":"%1"}));
+    let mut s = state();
+    s["mcpGate"] = json!({"mode":"managed_calls","selection":{"m":false}});
+    s["skillsRestartRequired"] = json!(false);
+    s["busy"] = json!(true);
+    s["loaded"] = json!({"mcps":{"m":true},"skills":{"a":false,"fixed":true}});
+    shelf.receive(0, s);
+    assert_eq!(shelf.diff(), Some((0, 0)));
+    let html = shelf.html();
+    assert!(html.contains("MCP guardados · sin reinicio"));
+    assert!(html.contains("data-action=\"apply\" disabled"));
+    assert!(!html.contains("Interrumpir turno y aplicar"));
+    assert!(html.contains("próximas llamadas de MCP conectados al nuevo servicio global"));
+    assert!(html.contains("Las conexiones anteriores necesitan reconectarse"));
+    shelf.state.as_mut().unwrap()["skillsRestartRequired"] = json!(true);
+    shelf.state.as_mut().unwrap()["desired"]["skills"]["a"] = json!(true);
+    assert!(shelf.html().contains("Aplicar skills y reanudar"));
+}
+
+#[test]
+fn gate_only_apply_response_does_not_create_a_fake_restart_operation() {
+    let mut shelf = Shelf::new(json!({"session":"s","pane":"%1"}));
+    shelf.receive(0, state());
+    let mut applied = state();
+    applied["mcpGate"] = json!({"mode":"managed_calls","selection":{"m":false}});
+    applied["skillsRestartRequired"] = json!(false);
+    applied["revision"] = json!(5);
+    assert!(shelf.accept_save("/apply", &json!({}), applied));
+    assert!(!shelf.locked());
+    assert!(shelf.state.as_ref().unwrap()["operation"].is_null());
+    assert_eq!(shelf.guards()["revision"], 5);
+}
 #[test]
 fn recovery_and_operation_terminals_preserve_controls() {
     let mut shelf = Shelf::new(json!({}));

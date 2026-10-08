@@ -10,6 +10,7 @@ use nix::{
 };
 use serde_json::Value;
 use std::{
+    collections::BTreeMap,
     io,
     path::{Path, PathBuf},
     process::Stdio,
@@ -55,38 +56,36 @@ pub(super) enum Base<'a> {
     Path(Option<&'a str>),
 }
 
-/// Lanza `spec` como lo habría lanzado el proxy directo de la sesión: en `cwd`, con el entorno
-/// de la sesión (`Base::Environ`, sin nada del daemon) y su `env` expandido encima (el spec
-/// gana). Un `command` sin `/` se resuelve en el `PATH` efectivo: el del spec o el de la sesión.
-/// Con `Base::Path` el entorno es el del daemon con el `PATH` de la sesión.
-pub(super) fn spawn(
-    spec: &Value,
-    cwd: &Path,
-    env: &[(String, String)],
+/// Una única combinación para la clave de compartición y el entorno realmente lanzado.
+/// Ninguna variable desconocida (credencial, perfil, ejecutable…) se descarta como ruido.
+pub(super) fn effective_environment(
+    overrides: &[(String, String)],
     base: Base<'_>,
-) -> Result<Upstream> {
+) -> Vec<(String, String)> {
+    let mut env: BTreeMap<String, String> = match base {
+        Base::Environ(environ) => environ.iter().cloned().collect(),
+        Base::Path(path) => {
+            let mut env: BTreeMap<String, String> = std::env::vars_os()
+                .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
+                .collect();
+            if let Some(path) = path {
+                env.insert("PATH".into(), path.into());
+            }
+            env
+        }
+    };
+    env.extend(overrides.iter().cloned());
+    env.into_iter().collect()
+}
+
+/// El entorno ya está completamente resuelto por el registro y forma parte de su clave.
+/// El adaptador HTTP puede añadir únicamente su snapshot privado después de esa clave.
+pub(super) fn spawn(spec: &Value, cwd: &Path, env: &[(String, String)]) -> Result<Upstream> {
     let mut spec = spec.clone();
     if let Some(o) = spec.as_object_mut() {
         o.remove("cwd");
     }
-    let mut env = env.to_vec();
-    let session_path = match base {
-        Base::Environ(environ) => environ.iter().find(|(k, _)| k == "PATH").map(|(_, v)| &**v),
-        Base::Path(path) => {
-            if let Some(path) = path
-                && !env.iter().any(|(k, _)| k == "PATH")
-            {
-                env.push(("PATH".into(), path.into()));
-            }
-            path
-        }
-    };
-    // PATH efectivo del upstream (el del spec gana): ahí se busca el ejecutable.
-    let effective = env
-        .iter()
-        .find(|(k, _)| k == "PATH")
-        .map(|(_, v)| &**v)
-        .or(session_path);
+    let effective = env.iter().find(|(k, _)| k == "PATH").map(|(_, v)| &**v);
     let command = spec["command"].as_str().map(crate::expand_user);
     if let Some(effective) = effective
         && let Some(name) = command.filter(|c| !c.is_empty() && !c.contains('/'))
@@ -94,13 +93,9 @@ pub(super) fn spawn(
     {
         spec["command"] = Value::String(found.to_string_lossy().into_owned());
     }
-    let mut std_command = crate::command_env(&spec, true, Some(&env))?;
-    if let Base::Environ(environ) = base {
-        // `env_clear` borra también el `env` del spec: se vuelve a poner encima del environ.
-        std_command.env_clear();
-        std_command.envs(environ.iter().map(|(k, v)| (k, v)));
-        std_command.envs(env.iter().map(|(k, v)| (k, v)));
-    }
+    let mut std_command = crate::command_env(&spec, true, Some(env))?;
+    std_command.env_clear();
+    std_command.envs(env.iter().map(|(k, v)| (k, v)));
     std_command
         .current_dir(cwd)
         .stdin(Stdio::piped())

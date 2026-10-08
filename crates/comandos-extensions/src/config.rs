@@ -446,9 +446,8 @@ pub fn parse_json(raw: &[u8]) -> Result<Value> {
     restore(&mut value, &markers)?;
     Ok(value)
 }
-/// Servidores que mantienen estado por sesión (navegador, cuenta, ventana, operaciones
-/// pendientes de confirmar en memoria como `x-suite`) y nunca se
-/// comparten en el broker salvo que el catálogo diga `"shared": true`.
+/// Historical per-session defaults. Retained for callers describing the migration;
+/// global sharing now covers these services too.
 pub const DEDICATED: &[&str] = &[
     "chrome-bg",
     "claude-in-chrome",
@@ -461,12 +460,10 @@ pub const DEDICATED: &[&str] = &[
     "claude-codex",
     "x-suite",
 ];
-/// `shared` del catálogo manda; si falta, se comparte todo lo que no esté en [`DEDICATED`].
-pub fn is_shared(spec: &Value, name: &str) -> bool {
-    match spec.get("shared").and_then(Value::as_bool) {
-        Some(v) => v,
-        None => !DEDICATED.contains(&name),
-    }
+/// Every connector shares the broker by default. An explicit catalog override remains
+/// available for installations that intentionally require a dedicated connection.
+pub fn is_shared(spec: &Value, _name: &str) -> bool {
+    spec.get("shared").and_then(Value::as_bool).unwrap_or(true)
 }
 
 #[cfg(test)]
@@ -475,11 +472,10 @@ mod shared_tests {
     use serde_json::json;
 
     #[test]
-    fn per_session_state_servers_are_dedicated_unless_the_catalog_says_shared() {
+    fn all_services_share_by_default_unless_the_catalog_explicitly_opts_out() {
         let plain = json!({"command": "x"});
-        // x-suite guarda en memoria las operaciones pendientes de confirmar: por sesión.
         for name in ["x-suite", "chrome-bg", "claude-codex"] {
-            assert!(!is_shared(&plain, name), "{name}");
+            assert!(is_shared(&plain, name), "{name}");
             assert!(
                 is_shared(&json!({"command": "x", "shared": true}), name),
                 "{name}"
