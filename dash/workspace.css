@@ -480,10 +480,10 @@ html[data-only-panel="news"] body.only-panel #news-reader[hidden]{display:none!i
 /* Cajón cerrado: no ocupa alto; los flotantes siguen anclados al mismo sitio. */
 #notices.nt-hidden{border-top:0;background:transparent}
 #notices.nt-hidden .nt-strip{display:none}
-body.app #panes{grid-template-rows:44px minmax(0,1fr) auto}
+body.app #panes{grid-template-rows:auto minmax(0,1fr) auto}
 body.app #notices{grid-column:1;grid-row:3}
 @media (min-width:748px){
-  body.app.split #panes{grid-template-rows:44px minmax(0,1fr) auto;grid-template-areas:"panel split tabs" "panel split term" "panel split notices"}
+  body.app.split #panes{grid-template-rows:auto minmax(0,1fr) auto;grid-template-areas:"panel split tabs" "panel split term" "panel split notices"}
   body.app.split #notices{grid-area:notices}
 }
 #notices .nt-icon{width:15px;height:15px;flex:none}

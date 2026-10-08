@@ -521,7 +521,9 @@ impl Inner {
         self.model.borrow_mut().settle.on_alloc(self.ms());
         if self.model.borrow().pty.is_some() {
             let (c, r) = self.dimensions();
-            let _ = self.resize(c, r);
+            if self.model.borrow().engine.size() != (c, r) {
+                let _ = self.resize(c, r);
+            }
         }
         self.arm();
     }

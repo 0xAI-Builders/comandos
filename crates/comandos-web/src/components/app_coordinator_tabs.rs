@@ -225,7 +225,7 @@ fn render_bar() -> Result<(), JsValue> {
         .map(|el| (get(&get(&el, "dataset"), "tabKey"), el))
         .collect::<Vec<_>>();
     let mut wanted = Vec::new();
-    let rows = if truthy(&dock_entries) {
+    let mut rows = if truthy(&dock_entries) {
         values(&dock_entries)
             .into_iter()
             .map(|e| {
@@ -254,6 +254,9 @@ fn render_bar() -> Result<(), JsValue> {
             })
             .collect()
     };
+    rows.sort_by_key(|(_, key, _, _, entry)| {
+        text(&get(entry, "session")) != "local" && text(key) != "term:local"
+    });
     for (label, key, close, status, entry) in rows {
         let t = if let Some(index) = existing.iter().position(|(k, _)| *k == key) {
             existing.remove(index).1
@@ -276,48 +279,21 @@ fn render_bar() -> Result<(), JsValue> {
     }
     navigation()
 }
+// Compatibility hook: CSS owns the row height, including viewport shrinkage.
 fn hold_height() -> Result<(), JsValue> {
     let bar = id("tabbar");
-    if !truthy(&bar) {
-        return Ok(());
-    }
-    let mut hold = global("tabRowsHold");
-    if !has_class(&body(), "tabs-rows") {
-        if truthy(&get(&hold, "h")) {
-            set(&get(&bar, "style"), "minHeight", &"".into())?;
-            put("tabRowsHold", item(&[("n", (-1).into()), ("h", 0.into())])?)?;
-        }
-        return Ok(());
-    }
-    let n = get(&get(&bar, "children"), "length");
-    if n != get(&hold, "n") {
+    if truthy(&bar) {
         set(&get(&bar, "style"), "minHeight", &"".into())?;
-        hold = item(&[("n", n), ("h", 0.into())])?;
-        put("tabRowsHold", hold.clone())?;
-    }
-    let h = number(&get(&bar, "offsetHeight"));
-    if h > number(&get(&hold, "h")) {
-        set(&hold, "h", &h.into())?;
-        set(&get(&bar, "style"), "minHeight", &format!("{h}px").into())?;
     }
     Ok(())
 }
 fn navigation() -> Result<(), JsValue> {
-    hold_height()?;
-    let bar = id("tabbar");
-    let prev = id("tab-prev");
-    let next = id("tab-next");
-    let left = number(&get(&bar, "scrollLeft"));
-    if truthy(&prev) {
-        set(&prev, "disabled", &(left <= 1.0).into())?;
-    }
-    if truthy(&next) {
-        set(
-            &next,
-            "disabled",
-            &(left >= number(&get(&bar, "scrollWidth")) - number(&get(&bar, "clientWidth")) - 1.0)
-                .into(),
-        )?;
+    let count = number(&get(&get(&id("tabbar"), "children"), "length"));
+    for name in ["tab-prev", "tab-next"] {
+        let button = id(name);
+        if truthy(&button) {
+            set(&button, "disabled", &(count < 2.0).into())?;
+        }
     }
     Ok(())
 }
@@ -331,19 +307,20 @@ fn reveal(bar: JsValue) -> Result<(), JsValue> {
             }
             let target = call(&tab, "getBoundingClientRect", &[])?;
             let bounds = call(&bar, "getBoundingClientRect", &[])?;
-            let shift = if number(&get(&target, "left")) < number(&get(&bounds, "left")) {
-                number(&get(&target, "left")) - number(&get(&bounds, "left"))
-            } else if number(&get(&target, "right")) > number(&get(&bounds, "right")) {
-                number(&get(&target, "right")) - number(&get(&bounds, "right"))
+            let (start, end, scroll) = if has_class(&body(), "tabs-rows") {
+                ("top", "bottom", "scrollTop")
+            } else {
+                ("left", "right", "scrollLeft")
+            };
+            let shift = if number(&get(&target, start)) < number(&get(&bounds, start)) {
+                number(&get(&target, start)) - number(&get(&bounds, start))
+            } else if number(&get(&target, end)) > number(&get(&bounds, end)) {
+                number(&get(&target, end)) - number(&get(&bounds, end))
             } else {
                 0.0
             };
             if shift != 0.0 {
-                set(
-                    &bar,
-                    "scrollLeft",
-                    &(number(&get(&bar, "scrollLeft")) + shift).into(),
-                )?;
+                set(&bar, scroll, &(number(&get(&bar, scroll)) + shift).into())?;
             }
             navigation()?;
             Ok(JsValue::UNDEFINED)
@@ -880,23 +857,22 @@ fn init_navigation() -> Result<(), JsValue> {
             item(&[("passive", true.into())])?,
         ],
     )?;
-    for (id_name, multiplier) in [("tab-prev", -0.8), ("tab-next", 0.8)] {
+    for (id_name, delta) in [("tab-prev", -1i64), ("tab-next", 1i64)] {
         let b = bar.clone();
         set(
             &id(id_name),
             "onclick",
             &function(move |_| {
-                call(
-                    &b,
-                    "scrollBy",
-                    &[item(&[
-                        (
-                            "left",
-                            (number(&get(&b, "clientWidth")) * multiplier).into(),
-                        ),
-                        ("behavior", "smooth".into()),
-                    ])?],
-                )?;
+                let tabs = values(&get(&b, "children"));
+                if !tabs.is_empty() {
+                    let current = tabs.iter().position(|tab| has_class(tab, "on"));
+                    let next = current.map_or(0, |index| {
+                        (index as i64 + delta).rem_euclid(tabs.len() as i64) as usize
+                    });
+                    if let Some(tab) = tabs.get(next) {
+                        run("showView", &[get(tab, "_target"), true.into()])?;
+                    }
+                }
                 Ok(JsValue::UNDEFINED)
             }),
         )?;

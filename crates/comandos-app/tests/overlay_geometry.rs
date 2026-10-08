@@ -410,3 +410,23 @@ fn actual_page_cancellation_stops_only_its_handler_retry_once_without_gtk_init()
         serde_json::json!({"closed":true,"retry_empty":true,"fired":false,"stops":1,"unregisters":["extensions"]})
     );
 }
+
+#[test]
+fn hover_follows_current_frame_bounds_without_changing_active_pane() {
+    use comandos_app::ui::overlays::FrameLayout;
+    let mut layout = FrameLayout::default();
+    layout.frames = vec![
+        serde_json::json!([0, 0, 100, 200, true]),
+        serde_json::json!([110, 0, 100, 200, false]),
+    ];
+    assert_eq!(layout.frame_at(20., 40.), Some(0));
+    assert_eq!(layout.frame_at(120., 40.), Some(1));
+    assert_eq!(layout.frame_at(105., 40.), None);
+    assert_eq!(layout.frame_at(210., 40.), None);
+    assert_eq!(layout.frame_at(20., 200.), None);
+    assert_eq!(layout.frames[0][4], true);
+    assert_eq!(layout.frames[1][4], false);
+    layout.frames[1] = serde_json::json!([80, 0, 70, 200, false]);
+    assert_eq!(layout.frame_at(170., 40.), None);
+    assert_eq!(layout.frame_at(120., 40.), Some(1));
+}

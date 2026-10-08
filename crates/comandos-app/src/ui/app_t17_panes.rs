@@ -145,6 +145,27 @@ impl App {
         });
         let weak = Rc::downgrade(self);
         let d = Rc::downgrade(&owner);
+        let hover_owner = Rc::downgrade(&owner);
+        term.widget().connect_motion_notify_event(move |_, event| {
+            if let Some(owner) = hover_owner.upgrade() {
+                owner.hover_at(Some(event.position()));
+            }
+            glib::Propagation::Proceed
+        });
+        let hover_owner = Rc::downgrade(&owner);
+        term.widget().connect_leave_notify_event(move |_, _| {
+            if let Some(owner) = hover_owner.upgrade() {
+                owner.hover_at(None);
+            }
+            glib::Propagation::Proceed
+        });
+        let focus_owner = Rc::downgrade(&owner);
+        term.widget().connect_focus_out_event(move |_, _| {
+            if let Some(owner) = focus_owner.upgrade() {
+                owner.reposition(false);
+            }
+            glib::Propagation::Proceed
+        });
         let epoch = std::time::Instant::now();
         term.on_key_observer(Rc::new(move |event| {
             if let (Some(app), Some(owner)) = (weak.upgrade(), d.upgrade()) {
@@ -309,7 +330,7 @@ impl App {
         let weak = Rc::downgrade(self);
         let d = Rc::downgrade(owner);
         *owner.timer.borrow_mut() = Some(glib::timeout_add_local_once(
-            Duration::from_millis(40),
+            Duration::from_millis(16),
             move || {
                 if let (Some(app), Some(owner)) = (weak.upgrade(), d.upgrade()) {
                     owner.timer.borrow_mut().take();

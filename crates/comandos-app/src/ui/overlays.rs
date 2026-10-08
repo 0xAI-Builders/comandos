@@ -240,6 +240,14 @@ pub struct FrameLayout {
     pub rows: BTreeMap<String, (f64, f64, f64, f64)>,
     pub gutters: Vec<Gutter>,
 }
+impl FrameLayout {
+    pub fn frame_at(&self, x: f64, y: f64) -> Option<usize> {
+        self.frames.iter().position(|frame| {
+            let n = |i| frame.get(i).and_then(Value::as_f64).unwrap_or(0.0);
+            x >= n(0) && x < n(0) + n(2) && y >= n(1) && y < n(1) + n(3)
+        })
+    }
+}
 pub fn frame_layout(
     panes: &[PaneGeometry],
     g: &CellGeom,
@@ -518,6 +526,7 @@ pub(crate) struct PaneOverlay {
     pub prefix_timer: RefCell<Option<glib::SourceId>>,
     pub prefix_until: Cell<f64>,
     pub hot: Cell<Option<usize>>,
+    pub hovered_frame: Cell<Option<usize>>,
     pub drag: RefCell<Option<Drag>>,
     pub wanted: RefCell<Option<ResizeWish>>,
     pub sent: RefCell<Option<ResizeWish>>,
@@ -559,6 +568,7 @@ impl PaneOverlay {
             prefix_timer: RefCell::new(None),
             prefix_until: Cell::new(0.0),
             hot: Cell::new(None),
+            hovered_frame: Cell::new(None),
             drag: RefCell::new(None),
             wanted: RefCell::new(None),
             sent: RefCell::new(None),
@@ -678,6 +688,13 @@ impl PaneOverlay {
         *self.layout.borrow_mut() = layout;
         self.widget.queue_draw();
     }
+    /// Hover only changes paint; it never selects a tmux pane or moves keyboard focus.
+    pub fn hover_at(&self, point: Option<(f64, f64)>) {
+        let hovered = point.and_then(|(x, y)| self.layout.borrow().frame_at(x, y));
+        if self.hovered_frame.replace(hovered) != hovered {
+            self.widget.queue_draw();
+        }
+    }
     pub fn paint_ai(&self, state: &str, seconds: f64, english: bool) {
         use comandos_core::work_marks as marks;
         let state = marks::ai_status(state);
@@ -719,9 +736,12 @@ impl PaneOverlay {
             return;
         };
         let layout = self.layout.borrow();
-        for frame in &layout.frames {
+        for (index, frame) in layout.frames.iter().enumerate() {
             let get = |index| frame.get(index).and_then(Value::as_f64).unwrap_or(0.0);
-            let active = frame.get(4).and_then(Value::as_bool).unwrap_or(false);
+            let active = self.hovered_frame.get().map_or_else(
+                || frame.get(4).and_then(Value::as_bool).unwrap_or(false),
+                |hovered| hovered == index,
+            );
             let c = if active { brand } else { line };
             cr.set_source_rgba(c.red(), c.green(), c.blue(), if active { 0.9 } else { 1.0 });
             cr.set_line_width(1.0);

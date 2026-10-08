@@ -256,13 +256,10 @@ impl App {
                     app.cycle_navigation_page(delta);
                 }
             });
-            if delta < 0 {
-                self.tab_layout.start().pack_start(&button, false, false, 0);
-            } else {
-                self.tab_layout
-                    .actions()
-                    .pack_start(&button, false, false, 0);
-            }
+            button.set_size_request(36, 30);
+            self.tab_layout
+                .navigation()
+                .pack_start(&button, false, false, 0);
         }
         self.tab_layout.widget().show_all();
         let weak = Rc::downgrade(self);

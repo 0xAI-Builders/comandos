@@ -97,7 +97,9 @@ impl TabStripNotebook {
 #[derive(Clone)]
 pub struct TabStripLayout(std::rc::Rc<StripLayout>);
 struct StripLayout {
+    root: gtk::Box,
     row: gtk::Box,
+    navigation: gtk::Box,
     strip: gtk::Box,
     flow: gtk::Box,
     scroller: gtk::ScrolledWindow,
@@ -141,8 +143,16 @@ impl TabStripLayout {
         row.pack_start(&scroller, true, true, 0);
         row.pack_start(&rows_view, true, true, 0);
         row.pack_start(&end, false, false, 0);
+        let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let navigation = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        navigation.set_halign(gtk::Align::Start);
+        navigation.set_margin_start(6);
+        root.pack_start(&row, false, false, 0);
+        root.pack_start(&navigation, false, false, 0);
         let inner = std::rc::Rc::new(StripLayout {
+            root,
             row,
+            navigation,
             strip: strip.clone(),
             flow,
             scroller,
@@ -183,12 +193,15 @@ impl TabStripLayout {
             }
             glib::Propagation::Stop
         });
-        inner.row.show_all();
+        inner.root.show_all();
         inner.rows_view.hide();
         Self(inner)
     }
     pub fn widget(&self) -> &gtk::Box {
-        &self.0.row
+        &self.0.root
+    }
+    pub fn navigation(&self) -> &gtk::Box {
+        &self.0.navigation
     }
     pub fn start(&self) -> &gtk::Box {
         &self.0.start

@@ -31,7 +31,10 @@ fn modal_completions_leave_parent_alive_and_polling_does_not_reset_scroll() {
     let layout = TabStripLayout::new(&strip);
     let previous = gtk::Button::with_label("‹");
     let next = gtk::Button::with_label("›");
-    for (button, host) in [(&previous, layout.start()), (&next, layout.actions())] {
+    for (button, host) in [
+        (&previous, layout.navigation()),
+        (&next, layout.navigation()),
+    ] {
         button.style_context().add_class("tab-cycle");
         host.pack_start(button, false, false, 0);
     }
@@ -62,6 +65,8 @@ fn modal_completions_leave_parent_alive_and_polling_does_not_reset_scroll() {
         .widget()
         .children()
         .into_iter()
+        .filter_map(|w| w.downcast::<gtk::Box>().ok())
+        .flat_map(|row| row.children())
         .find_map(|w| w.downcast::<gtk::ScrolledWindow>().ok())
         .unwrap();
     layout.scroll_by(280.);
@@ -138,5 +143,22 @@ fn modal_completions_leave_parent_alive_and_polling_does_not_reset_scroll() {
         widths.iter().max().unwrap() - widths.iter().min().unwrap() <= 1,
         "cards, including the last row, must have uniform widths: {widths:?}"
     );
+    assert_eq!(
+        previous.parent(),
+        next.parent(),
+        "arrows share their own row"
+    );
+    let row = layout.navigation().allocation();
+    let cards_bottom = layout
+        .entries()
+        .iter()
+        .map(|(_, w)| {
+            w.translate_coordinates(layout.widget(), 0, w.allocated_height())
+                .unwrap()
+                .1
+        })
+        .max()
+        .unwrap();
+    assert!(row.y() >= cards_bottom, "navigation row is below the cards");
     window.close();
 }

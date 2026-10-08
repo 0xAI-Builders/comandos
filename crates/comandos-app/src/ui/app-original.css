@@ -72,7 +72,7 @@ notebook > header > tabs > arrow {
 .tabnav:disabled { opacity: .35; }
 .mosaic-head { background: @BAR@; border-bottom: 1px solid @LINE@; min-height: 30px; }
 .mosaic-cell { background: @BG@; border: 1px solid @LINE@; border-radius: 8px;
-  transition: border-color 160ms ease, background 160ms ease; }
+  transition: none; }
 .mosaic-cell.focused { border-color: @BRAND@; }
 .mosaic-cell.tap { background: shade(@BG@, 1.18); }
 .mosaic-ph { color: @FAINT@; font-size: 18px; }

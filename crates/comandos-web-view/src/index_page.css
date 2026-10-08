@@ -1026,7 +1026,7 @@
   #sw-in{width:100%;background:var(--bg);border:1px solid var(--line2);border-radius:8px;
     padding:9px 12px;font-family:var(--mono);font-size:13px;color:var(--text)}
   #sw-in:focus{outline:none;border-color:var(--brand)}
-#sw-list{margin-top:8px;display:flex;flex-direction:column;max-height:65vh;overflow-y:auto;overscroll-behavior:contain}
+  #sw-list{margin-top:8px;display:flex;flex-direction:column}
   .sw-row{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:7px;
     cursor:pointer;font-family:var(--mono);font-size:13px;color:var(--dim)}
   .sw-row.sel,.sw-row:hover{background:var(--line);color:var(--text)}
@@ -1054,7 +1054,7 @@
   .tab-nav-btn:hover{color:var(--text);background:var(--line)}
   .tab-nav-btn:disabled{opacity:.3;cursor:default}
   body.app.split #tab-panel{display:none}
-  @media(pointer:coarse){.tab-step{display:none}.tab-nav-btn{flex-basis:44px;min-width:44px}}
+  @media(pointer:coarse){.tab-nav-btn{flex-basis:44px;min-width:44px}}
   body.app.dragging{user-select:none;cursor:col-resize}
   /* Pestañas = prototipo aprobado y escritorio (30-sep): 44 px, nombre Inter 600 13 px, modelo mono 10 px
      tenue, separador de 1 px, activa con fondo levantado + línea de acento; ★/✕ solo al pasar.
@@ -1063,14 +1063,16 @@
     height:44px;min-height:44px;padding:0 12px;font-family:var(--sans);font-size:13px;color:var(--dim);
     cursor:pointer;flex:none;max-width:none;border-right:1px solid var(--line);
     box-shadow:none;transition:color .15s,background .15s,box-shadow .15s}
-  /* ⊞ varias filas (pref tabs_layout=rows): las MISMAS pestañas como chips de 28 px, envueltas; sin ‹ ›. */
-  body.app.tabs-rows #app-navigation{height:auto;min-height:44px;align-items:flex-start}
-  body.app.tabs-rows #tabbar{flex-wrap:wrap;gap:4px;height:auto;overflow:visible;padding:6px;align-items:center;align-content:flex-start}
-  body.app.tabs-rows .apptab{height:28px;min-height:28px;padding:0 10px;gap:6px;border-right:0;border-radius:8px;
+  /* ⊞ varias filas (pref tabs_layout=rows): las MISMAS pestañas como tarjetas uniformes, con navegación visible. */
+  body.app.tabs-rows #app-navigation{height:auto;min-height:44px;flex-wrap:wrap;align-items:flex-start;align-content:flex-start}
+  body.app.tabs-rows #tabbar{order:2;flex:1 0 100%;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(210px,100%),1fr));gap:4px;height:auto;max-height:40dvh;overflow-x:hidden;overflow-y:auto;padding:6px;align-items:center;align-content:start;scrollbar-width:thin;touch-action:pan-y}
+  body.app.tabs-rows .apptab{height:32px;min-height:32px;min-width:0;max-width:100%;overflow:hidden;padding:0 10px;gap:6px;border-right:0;border-radius:8px;
     background:color-mix(in srgb,var(--panel) 82%,var(--line2))}
   body.app.tabs-rows .apptab:hover{background:color-mix(in srgb,var(--panel) 65%,var(--line2))}
   body.app.tabs-rows .apptab .tab-fav{height:26px}
-  body.app.tabs-rows .tab-step{display:none}
+  body.app.tabs-rows .tab-step{display:grid}
+  body.app.tabs-rows .tab-nav-btn{height:44px}
+  body.app.tabs-rows .apptab .lbl{flex:1;min-width:0}
   body.app.tabs-rows :is(#tab-left,#tab-panel,#tab-term,#tab-new,#tab-sort,#tab-rows,#tab-open){align-self:flex-start}
   body.app.tabs-rows :is(#tab-left,#tab-panel){height:44px}
   .apptab:hover{color:var(--text)}
@@ -1103,7 +1105,7 @@
   /* --- ANGOSTO (celular): tabs arriba a todo lo ancho; panel O terminal a
          pantalla completa, se cambia con las tabs --- */
   body.app #panes{height:100%;width:100%;min-width:0;min-height:0;overflow:hidden;overflow:clip;display:grid;
-    grid-template-columns:minmax(0,1fr);grid-template-rows:44px minmax(0,1fr);
+    grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);
     padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
   body.app #app-navigation{grid-column:1;grid-row:1;position:relative;inset:auto}
   body.app #view-panel,body.app #term-area{
@@ -1124,7 +1126,7 @@
          abajo a la derecha. --- */
   @media (min-width:748px){
     body.app.split #panes{display:grid;
-      grid-template-columns:minmax(0,var(--split-left,380px)) 8px minmax(0,1fr);grid-template-rows:44px minmax(0,1fr);
+      grid-template-columns:minmax(0,var(--split-left,380px)) 8px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);
       grid-template-areas:"panel split tabs" "panel split term"}
     body.app.split #app-navigation{grid-area:tabs;position:relative;inset:auto;top:auto}
     body.app.split #view-panel{grid-area:panel;position:relative;inset:auto;top:auto;
