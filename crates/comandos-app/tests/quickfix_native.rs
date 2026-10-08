@@ -31,6 +31,8 @@ fn modal_completions_leave_parent_alive_and_polling_does_not_reset_scroll() {
     let layout = TabStripLayout::new(&strip);
     let previous = gtk::Button::with_label("‹");
     let next = gtk::Button::with_label("›");
+    previous.set_widget_name("tab-cycle-prev");
+    next.set_widget_name("tab-cycle-next");
     for (button, host) in [
         (&previous, layout.navigation()),
         (&next, layout.navigation()),
@@ -50,13 +52,19 @@ fn modal_completions_leave_parent_alive_and_polling_does_not_reset_scroll() {
         let destroyed = destroyed.clone();
         move |_| destroyed.set(true)
     });
+    let labels = (0..13)
+        .map(|i| {
+            comandos_app::ui::tab_label::TabLabel::new(
+                &format!("Session {i} with a complete descriptive name"),
+                false,
+                true,
+            )
+        })
+        .collect::<Vec<_>>();
+    layout.set_rows(false);
     layout.set_items(
         (0..13)
-            .map(|i| {
-                let b = gtk::Button::with_label(&format!("session {i}"));
-                b.set_size_request(160, 32);
-                (format!("s{i}"), b.upcast())
-            })
+            .map(|i| (format!("s{i}"), labels[i].widget()))
             .collect(),
     );
     window.show_all();
@@ -191,6 +199,36 @@ fn modal_completions_leave_parent_alive_and_polling_does_not_reset_scroll() {
     assert!(
         nav_y < cards_bottom,
         "arrows must not add a row below all cards"
+    );
+    layout.set_rows(false);
+    let frame = glib::MainLoop::new(None, false);
+    glib::timeout_add_local_once(Duration::from_millis(80), {
+        let frame = frame.clone();
+        move || frame.quit()
+    });
+    frame.run();
+    assert_ne!(
+        previous.parent(),
+        next.parent(),
+        "compact arrows sit on opposite sides"
+    );
+    assert!(!layout.navigation().is_visible());
+    assert!(
+        layout.widget().children()[0].allocated_height() <= 50,
+        "compact header stays one short row: {}",
+        layout.widget().children()[0].allocated_height()
+    );
+    for label in &labels {
+        assert_eq!(label.text.ellipsize(), pango::EllipsizeMode::None);
+        assert!(
+            !label.text.layout().unwrap().is_ellipsized(),
+            "compact names remain complete"
+        );
+    }
+    assert_eq!(
+        layout.navigation_buttons().len(),
+        2,
+        "boundary controls remain accessible after reparenting"
     );
     window.close();
 }

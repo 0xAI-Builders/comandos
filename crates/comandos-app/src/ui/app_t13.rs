@@ -218,7 +218,7 @@ impl App {
         };
         let notebook = self.active_notebook();
         let current = notebook.current_page();
-        for button in self.tab_layout.navigation().children() {
+        for button in self.tab_layout.navigation_buttons() {
             let delta = match button.widget_name().as_str() {
                 "tab-cycle-prev" => -1,
                 "tab-cycle-next" => 1,

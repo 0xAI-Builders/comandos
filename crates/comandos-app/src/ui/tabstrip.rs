@@ -144,6 +144,7 @@ impl TabStripLayout {
         row.pack_start(&rows_view, true, true, 0);
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
         let navigation = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        navigation.set_no_show_all(true);
         navigation.set_halign(gtk::Align::Center);
         navigation.set_margin_top(6);
         let controls = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -206,6 +207,34 @@ impl TabStripLayout {
     pub fn navigation(&self) -> &gtk::Box {
         &self.0.navigation
     }
+    pub fn navigation_buttons(&self) -> Vec<gtk::Widget> {
+        [&self.0.start, &self.0.end, &self.0.navigation]
+            .into_iter()
+            .flat_map(|host| host.children())
+            .filter(|child| child.style_context().has_class("tab-cycle"))
+            .collect()
+    }
+    fn arrange_navigation(&self, rows: bool) {
+        for button in self.navigation_buttons() {
+            let previous = button.widget_name() == "tab-cycle-prev";
+            let host = if rows {
+                &self.0.navigation
+            } else if previous {
+                &self.0.start
+            } else {
+                &self.0.end
+            };
+            if button.parent().as_ref() != Some(host.upcast_ref()) {
+                detach_item(&button);
+                host.pack_start(&button, false, false, 0);
+            }
+            if previous || !rows {
+                host.reorder_child(&button, 0);
+            }
+            button.show();
+        }
+        self.0.navigation.set_visible(rows);
+    }
     pub fn start(&self) -> &gtk::Box {
         &self.0.start
     }
@@ -216,6 +245,7 @@ impl TabStripLayout {
         self.0.rows.get()
     }
     pub fn set_rows(&self, rows: bool) {
+        self.arrange_navigation(rows);
         if self.0.rows.replace(rows) == rows {
             return;
         }
@@ -310,6 +340,7 @@ impl TabStripLayout {
     fn attach(&self) {
         for (_, item) in self.0.items.borrow().iter() {
             detach_item(item);
+            configure_name(item, self.rows());
             item.set_size_request(-1, if self.rows() { 28 } else { -1 });
             if let Some(child) = item
                 .clone()
@@ -376,6 +407,23 @@ impl TabStripLayout {
                 spacer.show();
             }
             line.show();
+        }
+    }
+}
+fn configure_name(widget: &gtk::Widget, rows: bool) {
+    if widget.style_context().has_class("tab-name")
+        && let Some(label) = widget.downcast_ref::<gtk::Label>()
+    {
+        label.set_ellipsize(if rows {
+            pango::EllipsizeMode::End
+        } else {
+            pango::EllipsizeMode::None
+        });
+        label.set_max_width_chars(if rows { 24 } else { -1 });
+    }
+    if let Some(container) = widget.downcast_ref::<gtk::Container>() {
+        for child in container.children() {
+            configure_name(&child, rows);
         }
     }
 }

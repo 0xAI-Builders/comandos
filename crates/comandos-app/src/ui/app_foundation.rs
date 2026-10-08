@@ -28,7 +28,11 @@ impl App {
             .get("dim")
             .and_then(Value::as_str)
             .unwrap_or("#AAAAAA");
-        for row in [self.tab_layout.start(), self.tab_layout.actions()] {
+        for row in [
+            self.tab_layout.start(),
+            self.tab_layout.actions(),
+            self.tab_layout.navigation(),
+        ] {
             for child in row.children() {
                 if let Ok(button) = child.downcast::<gtk::Button>() {
                     let widget_name = button.widget_name();
@@ -74,7 +78,11 @@ impl App {
     pub(super) fn apply_tabs_layout(self: &Rc<Self>, mode: &str, persist: bool) {
         let mode = if mode == "rows" { "rows" } else { "row" };
         self.tab_layout.set_rows(mode == "rows");
-        for row in [self.tab_layout.start(), self.tab_layout.actions()] {
+        for row in [
+            self.tab_layout.start(),
+            self.tab_layout.actions(),
+            self.tab_layout.navigation(),
+        ] {
             for child in row.children() {
                 match child.widget_name().as_str() {
                     "tab-cycle-prev" | "tab-cycle-next" => child.set_visible(true),

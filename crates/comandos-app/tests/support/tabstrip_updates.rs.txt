@@ -41,6 +41,7 @@ struct TabStripLayout(Rc<StripLayout>);
 impl TabStripLayout {
  fn rows(&self)->bool {self.0.rows.get()}
  fn attach(&self) {self.0.attach.set(self.0.attach.get()+1);if self.rows(){self.reflow();}}
+ fn arrange_navigation(&self, _: bool) {}
  // ACTUAL_METHODS
 }
 fn make(rows:bool)->TabStripLayout {TabStripLayout(Rc::new(StripLayout{items:RefCell::new(vec![]),rows:Cell::new(rows),height:Cell::new(42),rows_view:Widget::new(0,112),signature:RefCell::new(None),flow:Widget::new(1,0),attach:Cell::new(0),row:Widget::new(8,0),scroller:Widget::new(9,0),start:Widget::new(10,0),end:Widget::new(11,0)}))}
