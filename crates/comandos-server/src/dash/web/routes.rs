@@ -17,6 +17,10 @@ pub async fn handle(
     }
     match route {
         WebRoute::Index => index(state, request).await,
+        WebRoute::Extensions if native_requested(state, request) => {
+            super::native_extensions_page::serve(state)
+        }
+        WebRoute::Extensions => statics::serve(&state.config.dash_dir, request).await,
         WebRoute::NativeWorker => super::native_worker::serve(&state.web),
         WebRoute::Gate => gate(state, request).await,
         WebRoute::Ready => ready(state, request),
@@ -204,6 +208,13 @@ fn ready(state: &DashState, request: &Request) -> Result<Reply, HandlerError> {
                         .into_iter()
                         .collect::<std::collections::BTreeSet<_>>()
                 })
+        } else if k.starts_with("native-extensions-") {
+            state
+                .web
+                .manifest()
+                .check_files(&state.web.web_dir)
+                .ok()
+                .map(|_| std::collections::BTreeSet::from(["extensions".to_string()]))
         } else {
             super::native_page::admit(
                 &state.web.registry,

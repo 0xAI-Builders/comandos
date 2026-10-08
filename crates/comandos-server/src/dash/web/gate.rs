@@ -37,6 +37,9 @@ impl Gate {
     pub fn insert_native_term(&self) -> Inserted {
         self.insert_mode("native-term-")
     }
+    pub fn insert_native_extensions(&self) -> Inserted {
+        self.insert_mode("native-extensions-")
+    }
     fn insert_mode(&self, prefix: &str) -> Inserted {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         inner.sweep();

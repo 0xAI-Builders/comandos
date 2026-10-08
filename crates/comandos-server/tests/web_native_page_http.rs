@@ -204,6 +204,58 @@ fn nonce(page: &str) -> &str {
 }
 
 #[tokio::test]
+async fn standalone_extensions_uses_wasm_without_legacy_source_and_its_own_readiness() {
+    let front = Front::start_config(false, true).await;
+    let legacy = front.root.join(".claude/hooks/dash/extensions.html");
+    std::fs::write(
+        &legacy,
+        "legacy extensions<script src=\"/extensions.js\"></script>",
+    )
+    .unwrap();
+    let off = front.http("GET", "/extensions.html?web=off", "", "").await;
+    assert!(
+        off.starts_with("HTTP/1.1 200") && off.contains("/extensions.js"),
+        "{off}"
+    );
+    std::fs::remove_file(&legacy).unwrap();
+    let page = front
+        .http("GET", "/extensions.html?tab=session&pane=%251", "", "")
+        .await;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert!(page.contains("<main id=\"extensions\""));
+    assert!(page.contains("name=\"comandos-web\" content=\"extensions\""));
+    assert!(page.contains("/extensions.css") && page.contains("/buttons.css"));
+    assert!(page.contains("src=\"/web/fedcba987654/boot.js\""));
+    assert!(!page.contains("/extensions.js") && !page.contains("gate.js"));
+    let k = nonce(&page);
+    assert!(k.starts_with("native-extensions-"));
+    for mounted in [
+        serde_json::json!([]),
+        serde_json::json!(["extensions", "extensions"]),
+        serde_json::json!(["app"]),
+    ] {
+        let denied = front
+            .http(
+                "POST",
+                "/web/ready",
+                &serde_json::json!({"k": k, "mounted": mounted, "failed": []}).to_string(),
+                "",
+            )
+            .await;
+        assert!(denied.starts_with("HTTP/1.1 400"), "{denied}");
+    }
+    let payload = serde_json::json!({"k": k, "mounted": ["extensions"], "failed": []}).to_string();
+    let ready = front.http("POST", "/web/ready", &payload, "").await;
+    assert!(ready.starts_with("HTTP/1.1 200"), "{ready}");
+    let replay = front.http("POST", "/web/ready", &payload, "").await;
+    assert!(replay.starts_with("HTTP/1.1 400"), "{replay}");
+    std::fs::remove_file(front.root.join("web/fedcba987654/boot.js")).unwrap();
+    let missing = front.http("GET", "/extensions.html", "", "").await;
+    assert!(missing.starts_with("HTTP/1.1 503"), "{missing}");
+    front.stop().await;
+}
+
+#[tokio::test]
 async fn embedded_native_viewport_uses_supported_keys_and_browser_keeps_keyboard_resize() {
     let front = Front::start().await;
     std::fs::remove_file(front.root.join(".claude/hooks/dash/index.html")).unwrap();

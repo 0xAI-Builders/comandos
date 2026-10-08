@@ -4,6 +4,7 @@ pub mod compose;
 mod file_stamp;
 pub mod gate;
 pub mod markdown;
+pub mod native_extensions_page;
 pub mod native_page;
 pub mod native_precache;
 pub mod native_term_page;
@@ -28,6 +29,7 @@ pub use compose::{ComponentState, Composed, Selection};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WebRoute {
     Index,
+    Extensions,
     Gate,
     Ready,
     Markdown,
@@ -46,6 +48,7 @@ impl WebRoute {
         let path = crate::dash::router::path_of(target);
         match (method, path) {
             (&Method::GET, "/") | (&Method::GET, "/index.html") => Some(Self::Index),
+            (&Method::GET, "/extensions.html") => Some(Self::Extensions),
             (&Method::GET, "/web/gate.js") => Some(Self::Gate),
             (&Method::POST, "/web/ready") => Some(Self::Ready),
             (&Method::POST, "/web/markdown") => Some(Self::Markdown),
