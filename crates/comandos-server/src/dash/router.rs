@@ -149,6 +149,7 @@ const DYNAMIC_GET: &[Match] = &[
     RawPrefix("/active-tab"),
     RawPrefix("/dedication"),
     RawPrefix("/analytics/week"),
+    PathExact("/analytics/resources"),
     RawPrefix("/pomodoro/report"),
     RawExact("/pomodoro"),
     RawExact("/sovereignty"),

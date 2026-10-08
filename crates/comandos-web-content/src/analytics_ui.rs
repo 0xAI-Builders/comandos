@@ -1,6 +1,8 @@
 use crate::web_support::*;
 use comandos_web_dom::port::utf16_string as string;
-use comandos_web_dom::port::{from_utf16_json as from_json, utf16_get as get, utf16_set as set};
+use comandos_web_dom::port::{
+    from_utf16_json as from_json, to_utf16_json as to_json, utf16_get as get, utf16_set as set,
+};
 use comandos_web_dom::{bridge::global_set, port::*};
 use comandos_web_view::escape::text as esc;
 use serde_json::json;
@@ -36,6 +38,22 @@ impl UI {
         }
         let phone = self.phone();
         classes(&self.el, "phone", phone);
+        if string(&get(&self.state, "tab")) == "recursos" {
+            let html = comandos_web_view::analytics_resources::html(
+                &to_json(&get(&self.state, "resources")),
+                &string(&get(&self.state, "resourcesError")),
+                truthy(&get(&self.state, "resourcesLoading")),
+            );
+            set(&self.el, "innerHTML", &utf16_value(&html))?;
+            let time = query(&self.el, "[data-resource-sampled-at]");
+            let sampled = get(&get(&self.state, "resources"), "sampledAt");
+            if truthy(&time) && number(&sampled) > 0. {
+                let date = JsValue::from(js_sys::Date::new(&sampled));
+                let label = call(&date, "toLocaleString", &[])?;
+                set(&time, "textContent", &label)?;
+            }
+            return Ok(());
+        }
         let model = get(&self.state, "model");
         if !truthy(&model) {
             let err = get(&self.state, "error");
@@ -43,7 +61,8 @@ impl UI {
                 &self.el,
                 "innerHTML",
                 &utf16_value(&format!(
-                    "<div class=\"mhead\"><h2>Analytics</h2></div><p class=\"dim\">{}</p>",
+                    "<div class=\"mhead\"><h2>Analytics</h2><div class=\"tabs\" role=\"tablist\">{}</div></div><p class=\"dim\">{}</p>",
+                    comandos_web_view::analytics_resources::tabs(&string(&get(&self.state, "tab"))),
                     esc(&if truthy(&err) {
                         string(&err)
                     } else {
@@ -105,6 +124,11 @@ impl UI {
         Ok(())
     }
     fn load(self: &Rc<Self>) -> JsValue {
+        // The coordinator refreshes usage every minute. Resource snapshots are
+        // deliberately on demand so /proc and disk scans never become polling.
+        if string(&get(&self.state, "tab")) == "recursos" {
+            return JsValue::UNDEFINED;
+        }
         let state = self.clone();
         let offset = get(&state.state, "offset");
         let response = invoke(
@@ -144,6 +168,39 @@ impl UI {
             Ok(JsValue::UNDEFINED)
         });
         let _ = set(&self.state, "loading", &job);
+        job
+    }
+    fn load_resources(self: &Rc<Self>) -> JsValue {
+        if truthy(&get(&self.state, "resourcesLoading")) {
+            return get(&self.state, "resourcesJob");
+        }
+        let _ = set(&self.state, "resourcesLoading", &true.into());
+        let _ = set(&self.state, "resourcesError", &"".into());
+        let _ = self.paint();
+        let response = invoke(&get(&self.opts, "fetchResources"), &[]);
+        let ui = self.clone();
+        let job = promise(async move {
+            match wait(response).await {
+                Ok(snapshot) => {
+                    set(&ui.state, "resources", &snapshot)?;
+                    set(&ui.state, "resourcesError", &"".into())?;
+                }
+                Err(error) => {
+                    let message = get(&error, "message");
+                    set(
+                        &ui.state,
+                        "resourcesError",
+                        &utf16_value(&string(if truthy(&message) { &message } else { &error })),
+                    )?;
+                }
+            }
+            set(&ui.state, "resourcesLoading", &false.into())?;
+            if string(&get(&ui.state, "tab")) == "recursos" {
+                ui.paint()?;
+            }
+            Ok(JsValue::UNDEFINED)
+        });
+        let _ = set(&self.state, "resourcesJob", &job);
         job
     }
     fn pop(&self, btn: JsValue) -> Result<(), JsValue> {
@@ -218,7 +275,7 @@ fn closest(t: &JsValue, sel: &str) -> JsValue {
 }
 fn create(el: JsValue, opts: JsValue) -> Result<JsValue, JsValue> {
     let state = from_json(
-        &json!({"tab":crate::tab_name(&string(&get(&opts,"tab"))),"offset":0,"phoneDay":null,"model":null,"error":"","loading":null}),
+        &json!({"tab":crate::tab_name(&string(&get(&opts,"tab"))),"offset":0,"phoneDay":null,"model":null,"error":"","loading":null,"resources":null,"resourcesError":"","resourcesLoading":false,"resourcesJob":null}),
     )?;
     let ui = Rc::new(UI {
         el,
@@ -241,7 +298,11 @@ fn create(el: JsValue, opts: JsValue) -> Result<JsValue, JsValue> {
             set(&u.state, "tab", &crate::tab_name(&string(&a.get(0))).into())?;
         }
         u.paint()?;
-        Ok(u.load())
+        Ok(if string(&get(&u.state, "tab")) == "recursos" {
+            u.load_resources()
+        } else {
+            u.load()
+        })
     })?;
     let u = ui.clone();
     listen(
@@ -259,6 +320,15 @@ fn create(el: JsValue, opts: JsValue) -> Result<JsValue, JsValue> {
                     invoke(&cb, &[name.into()])?;
                 }
                 u.paint()?;
+                if name == "recursos" {
+                    u.load_resources();
+                } else if !truthy(&get(&u.state, "model")) {
+                    u.load();
+                }
+                return Ok(JsValue::UNDEFINED);
+            }
+            if truthy(&closest(&t, "[data-resource-refresh]")) {
+                u.load_resources();
                 return Ok(JsValue::UNDEFINED);
             }
             let week = closest(&t, "[data-w]");
@@ -372,7 +442,7 @@ pub fn mount() -> Result<(), JsValue> {
     set(
         &api,
         "TABS",
-        &from_json(&json!(["cuentas", "comparar", "pomodoro"]))?,
+        &from_json(&json!(["cuentas", "comparar", "pomodoro", "recursos"]))?,
     )?;
     method(&api, "tabName", |a| {
         Ok(crate::tab_name(&string(&a.get(0))).into())

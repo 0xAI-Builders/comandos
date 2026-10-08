@@ -3,6 +3,7 @@ pub fn tab_name(name: &str) -> &'static str {
     match name.to_lowercase().as_str() {
         "comparar" | "proyectos" | "proveedores" => "comparar",
         "pomodoro" => "pomodoro",
+        "recursos" => "recursos",
         _ => "cuentas",
     }
 }

@@ -1638,14 +1638,7 @@ impl Renderer {
             }
             _ => self.pomodoro(),
         };
-        let tabs = [
-            ("cuentas", "Cuentas"),
-            ("comparar", "Comparar"),
-            ("pomodoro", "Pomodoro"),
-        ]
-        .iter()
-        .map(|(k, label)| t!(87, if *k == tab { "on" } else { "" }, *k == tab, k, label))
-        .collect::<String>();
+        let tabs = crate::analytics_resources::tabs(tab);
         let offset = n(at(&self.model, "week"), "offset");
         let min = at(&self.view, "minOffset").as_f64().unwrap_or(-1.);
         let out = t!(

@@ -26,6 +26,7 @@ pub mod query;
 pub mod quick;
 pub mod remote;
 pub mod residue;
+pub mod resources;
 pub mod retired;
 pub mod sessions;
 pub mod settings;
@@ -681,6 +682,7 @@ pub struct Native {
     pub(crate) prefs_lock: tokio::sync::Mutex<()>,
     /// `_FONT_CACHE`: familias de `fc-list` y cuándo se leyeron.
     pub(crate) fonts: Mutex<Option<(std::time::Instant, std::collections::HashSet<String>)>>,
+    pub(crate) resources: Arc<resources::Cache>,
     /// La revisión de avisos que comparten las esperas de `/notices/watch`.
     pub(crate) notice_feed: notices::RevisionFeed,
     /// Carril de la base de uso (`GET /pomodoro`, `GET /sovereignty`,
@@ -743,6 +745,7 @@ impl Native {
             worker: Mutex::new(None),
             prefs_lock: tokio::sync::Mutex::new(()),
             fonts: Mutex::new(None),
+            resources: Arc::default(),
             notice_feed: notices::RevisionFeed::default(),
             typing: Arc::default(),
             states: states::Engine::default(),

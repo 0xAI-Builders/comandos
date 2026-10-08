@@ -595,6 +595,11 @@ mod web {
         )?;
         set(
             &opts,
+            "fetchResources",
+            &function(|_| exported("api", &["/analytics/resources".into()])),
+        )?;
+        set(
+            &opts,
             "onTab",
             &function(|a| {
                 let _ = call(

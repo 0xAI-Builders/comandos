@@ -13,7 +13,9 @@ pub fn mount() -> Result<(), JsValue> {
     set(
         &api,
         "TABS",
-        &from_json(&serde_json::json!(["cuentas", "comparar", "pomodoro"]))?,
+        &from_json(&serde_json::json!([
+            "cuentas", "comparar", "pomodoro", "recursos"
+        ]))?,
     )?;
     method(&api, "tabName", |args| {
         Ok(super::tab_name(&string(&args.get(0))).into())

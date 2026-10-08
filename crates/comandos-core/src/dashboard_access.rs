@@ -117,6 +117,7 @@ pub const API_GET: &[&str] = &[
     "/workspace",
     "/notices",
     "/analytics/week",
+    "/analytics/resources",
     "/tab-history",
     "/remote-state",
     "/remote-qr.png",

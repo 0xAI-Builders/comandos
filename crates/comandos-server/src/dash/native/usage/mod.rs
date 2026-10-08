@@ -20,6 +20,7 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UsageRoute {
+    Resources,
     Week,
     Extensions,
     Providers,
@@ -29,6 +30,11 @@ pub enum UsageRoute {
 }
 
 pub const ROUTES: &[Entry] = &[
+    Entry {
+        verb: Verb::Get,
+        key: Key::Path("/analytics/resources"),
+        route: NativeRoute::Usage(UsageRoute::Resources),
+    },
     Entry {
         verb: Verb::Get,
         key: Key::Path("/analytics/week"),
@@ -63,6 +69,7 @@ pub const ROUTES: &[Entry] = &[
 
 pub async fn answer(native: &Arc<Native>, route: UsageRoute, request: &Request) -> Answer {
     match route {
+        UsageRoute::Resources => super::resources::answer(native).await,
         UsageRoute::State => usage_state(native).await,
         UsageRoute::Week => week::answer(native, request).await,
         UsageRoute::Extensions => extensions::answer(native, request).await,
