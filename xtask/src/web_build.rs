@@ -241,11 +241,13 @@ impl WasmCrate {
     }
 }
 
-/// Los tres crates de la Fase 3 y sus presupuestos gzip (600/250/64 KiB).
+/// Los tres crates de la Fase 3 y sus presupuestos gzip (600/252/64 KiB).
 pub fn known_crates() -> Vec<WasmCrate> {
     vec![
         WasmCrate::new("comandos-web", BindgenTarget::Web, 600 * 1024),
-        WasmCrate::new("comandos-term-web", BindgenTarget::Web, 250 * 1024),
+        // Cursor preferences add about 2 KiB raw WASM after sharing HTTP code.
+        // Keep a bounded 252 KiB gzip budget for the terminal module.
+        WasmCrate::new("comandos-term-web", BindgenTarget::Web, 252 * 1024),
         WasmCrate::new("comandos-web-sw", BindgenTarget::NoModules, 64 * 1024),
     ]
 }

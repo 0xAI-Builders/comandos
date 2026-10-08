@@ -43,7 +43,7 @@ fn known_crates_have_their_budgets_and_targets() {
     let by = |n: &str| k.iter().find(|c| c.name == n).cloned().unwrap();
     assert_eq!(by("comandos-web").budget_gzip, 600 * 1024);
     assert_eq!(by("comandos-web").target, BindgenTarget::Web);
-    assert_eq!(by("comandos-term-web").budget_gzip, 250 * 1024);
+    assert_eq!(by("comandos-term-web").budget_gzip, 252 * 1024);
     assert_eq!(by("comandos-term-web").target, BindgenTarget::Web);
     assert_eq!(by("comandos-web-sw").budget_gzip, 64 * 1024);
     assert_eq!(by("comandos-web-sw").target, BindgenTarget::NoModules);
