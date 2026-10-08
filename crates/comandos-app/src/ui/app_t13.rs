@@ -204,6 +204,32 @@ impl App {
             notebook.set_current_page(Some(index));
         }
     }
+    fn update_navigation_buttons(&self) {
+        if self.workspace.is_applying() {
+            return;
+        }
+        let local = if self.workspace_doc.borrow().is_null() {
+            let Ok(strip) = self.strip.try_borrow() else {
+                return;
+            };
+            strip.page_index("local")
+        } else {
+            self.workspace.page_index("local")
+        };
+        let notebook = self.active_notebook();
+        let current = notebook.current_page();
+        for button in self.tab_layout.navigation().children() {
+            let delta = match button.widget_name().as_str() {
+                "tab-cycle-prev" => -1,
+                "tab-cycle-next" => 1,
+                _ => continue,
+            };
+            let target = ui::tabstrip::cycle_page(notebook.n_pages(), current, local, delta);
+            button.set_sensitive(
+                target.is_some() && target != current && (delta > 0 || current.is_some()),
+            );
+        }
+    }
     pub(super) fn navigation_index(&self, key: &str) -> Option<u32> {
         if self.workspace_doc.borrow().is_null() {
             self.strip.borrow().page_index(key)
@@ -215,6 +241,7 @@ impl App {
         if self.workspace.is_applying() || notebook != self.active_notebook() {
             return;
         }
+        self.update_navigation_buttons();
         let key = if self.workspace_doc.borrow().is_null() {
             self.strip
                 .try_borrow()
@@ -235,6 +262,7 @@ impl App {
         }
     }
     pub(super) fn remember_current_navigation_page(&self) {
+        self.update_navigation_buttons();
         let notebook = self.active_notebook();
         if let Some(page) = notebook
             .current_page()

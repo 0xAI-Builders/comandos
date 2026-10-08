@@ -67,10 +67,10 @@ fn arrow_navigation_starts_at_local_and_keeps_the_other_sessions_in_order() {
     assert_eq!(cycle_page(4, Some(3), Some(3), 1), Some(0));
     assert_eq!(cycle_page(4, Some(0), Some(3), -1), Some(3));
     assert_eq!(cycle_page(4, Some(1), Some(3), 1), Some(2));
-    assert_eq!(cycle_page(4, Some(2), Some(3), 1), Some(3));
-    assert_eq!(cycle_page(4, Some(3), Some(3), -1), Some(2));
+    assert_eq!(cycle_page(4, Some(2), Some(3), 1), Some(2));
+    assert_eq!(cycle_page(4, Some(3), Some(3), -1), Some(3));
     assert_eq!(cycle_page(4, None, Some(3), 1), Some(3));
     assert_eq!(cycle_page(1, Some(0), Some(0), -1), Some(0));
     assert_eq!(cycle_page(0, None, None, 1), None);
-    assert_eq!(cycle_page(3, Some(0), None, -1), Some(2));
+    assert_eq!(cycle_page(3, Some(0), None, -1), Some(0));
 }

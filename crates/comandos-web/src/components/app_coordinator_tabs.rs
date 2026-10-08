@@ -288,11 +288,18 @@ fn hold_height() -> Result<(), JsValue> {
     Ok(())
 }
 fn navigation() -> Result<(), JsValue> {
-    let count = number(&get(&get(&id("tabbar"), "children"), "length"));
-    for name in ["tab-prev", "tab-next"] {
+    let tabs = values(&get(&id("tabbar"), "children"));
+    let current = tabs.iter().position(|tab| has_class(tab, "on"));
+    for (name, disabled) in [
+        ("tab-prev", current.is_none_or(|index| index == 0)),
+        (
+            "tab-next",
+            tabs.is_empty() || current.is_some_and(|index| index + 1 >= tabs.len()),
+        ),
+    ] {
         let button = id(name);
         if truthy(&button) {
-            set(&button, "disabled", &(count < 2.0).into())?;
+            set(&button, "disabled", &disabled.into())?;
         }
     }
     Ok(())
@@ -867,9 +874,11 @@ fn init_navigation() -> Result<(), JsValue> {
                 if !tabs.is_empty() {
                     let current = tabs.iter().position(|tab| has_class(tab, "on"));
                     let next = current.map_or(0, |index| {
-                        (index as i64 + delta).rem_euclid(tabs.len() as i64) as usize
+                        (index as i64 + delta).clamp(0, tabs.len() as i64 - 1) as usize
                     });
-                    if let Some(tab) = tabs.get(next) {
+                    if current != Some(next)
+                        && let Some(tab) = tabs.get(next)
+                    {
                         run("showView", &[get(tab, "_target"), true.into()])?;
                     }
                 }

@@ -390,6 +390,9 @@ fn detach_item(widget: &gtk::Widget) {
 
 /// Navigate notebook pages with Local first, preserving all other page positions.
 pub fn cycle_page(count: u32, current: Option<u32>, local: Option<u32>, delta: i32) -> Option<u32> {
+    if count == 0 {
+        return None;
+    }
     let mut pages = (0..count).collect::<Vec<_>>();
     if let Some(local) = local.filter(|index| *index < count) {
         pages.retain(|index| *index != local);
@@ -397,7 +400,7 @@ pub fn cycle_page(count: u32, current: Option<u32>, local: Option<u32>, delta: i
     }
     let position = pages.iter().position(|index| Some(*index) == current);
     let position = position.map_or(0, |p| {
-        (p as i64 + i64::from(delta)).rem_euclid(i64::from(count)) as usize
+        (p as i64 + i64::from(delta)).clamp(0, i64::from(count) - 1) as usize
     });
     pages.get(position).copied()
 }
