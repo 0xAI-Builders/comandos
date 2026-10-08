@@ -29,6 +29,9 @@ impl Front {
         Self::start_readonly(false).await
     }
     async fn start_readonly(readonly: bool) -> Self {
+        Self::start_config(readonly, false).await
+    }
+    async fn start_config(readonly: bool, native_default: bool) -> Self {
         let mut nonce = [0u8; 8];
         getrandom::fill(&mut nonce).unwrap();
         let root = std::env::temp_dir().join(format!(
@@ -49,7 +52,12 @@ impl Front {
         for name in ["boot.js", "comandos_web.js", "comandos_web_bg.wasm"] {
             std::fs::write(root.join("web/fedcba987654").join(name), b"fixture").unwrap();
         }
-        let mut cfg = dash::parse_args(&[], &root, None).unwrap();
+        let args = if native_default {
+            vec!["--web-native".into()]
+        } else {
+            vec![]
+        };
+        let mut cfg = dash::parse_args(&args, &root, None).unwrap();
         cfg.native = false;
         cfg.shadow_readonly = readonly;
         cfg.token = b"fixture-token".to_vec();
@@ -698,5 +706,22 @@ async fn dedicated_compiled_terminal_needs_no_main_wasm_or_source_and_validates_
     let missing = front.http("GET", "/term/?web=native", "", "").await;
     assert!(missing.starts_with("HTTP/1.1 503"));
     assert!(!missing.contains("legacy-exact"));
+    front.stop().await;
+}
+
+#[tokio::test]
+async fn native_default_serves_compiled_page_and_status_without_legacy_sources() {
+    let front = Front::start_config(false, true).await;
+    let original = front.http("GET", "/?web=off", "", "").await;
+    assert!(original.starts_with("HTTP/1.1 200") && original.ends_with(PAGE));
+    std::fs::remove_file(front.root.join(".claude/hooks/dash/index.html")).unwrap();
+    let page = front.http("GET", "/?app=1", "", "").await;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert!(nonce(&page).starts_with("native-"));
+    let status = front.http("GET", "/web/status", "", "").await;
+    assert!(status.starts_with("HTTP/1.1 200"), "{status}");
+    let status: serde_json::Value =
+        serde_json::from_str(status.split_once("\r\n\r\n").unwrap().1).unwrap();
+    assert_eq!(status["mode"], "native");
     front.stop().await;
 }

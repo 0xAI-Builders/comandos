@@ -538,5 +538,5 @@ pub fn notif_key(it: &Value) -> String {
     )
 }
 pub fn ns_defaults() -> Value {
-    json!({"harness":"claude","motor":"claude","routeId":"claude:claude","model":"","effort":"high","harnessAccount":"main","motorAccount":"main"})
+    json!({"harness":"codex","motor":"codex","routeId":"codex:codex","model":"gpt-6.1-sol","effort":"high","harnessAccount":"main","motorAccount":"main"})
 }

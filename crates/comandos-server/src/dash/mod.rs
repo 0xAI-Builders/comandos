@@ -47,6 +47,8 @@ pub const CUTS_OFF_ENV: &str = "COMANDOS_DASH_CUTS_OFF";
 
 #[derive(Clone)]
 pub struct DashConfig {
+    /// Serve the compiled Rust dashboard by default; explicit web queries still override.
+    pub native_web: bool,
     pub term: term::TermMode,
     pub webterm_compat: Vec<u16>,
     pub shadow_readonly: bool,
@@ -96,6 +98,7 @@ impl fmt::Debug for DashConfig {
             .field("token", &"<oculto>")
             .field("token_file", &self.token_file)
             .field("native", &self.native)
+            .field("native_web", &self.native_web)
             .field("state_db", &self.state_db)
             .field("trace_forward", &self.trace_forward)
             .field("repo_root", &self.repo_root)
@@ -108,7 +111,7 @@ impl fmt::Debug for DashConfig {
 }
 
 /// `[puerto] [--no-open] [--legacy-port N] [--no-native] [--no-usage-effects]
-/// [--background=legacy|front] [--cuts-off=a,b]`.
+/// [--background=legacy|front] [--cuts-off=a,b] [--web-native]`.
 /// Como el Python, el primer argumento numérico es el puerto y los demás
 /// argumentos se ignoran; `--no-open` se acepta y no hace nada (nunca se abre
 /// navegador). `--no-native` reenvía todo lo no estático, como en la Fase 2a;
@@ -136,6 +139,7 @@ pub fn parse_args_env(
     let mut cuts_flag = None;
     let mut legacy_flag = None;
     let mut native = true;
+    let mut native_web = false;
     let mut usage_effects = true;
     let mut term = term::TermMode::Off;
     let mut webterm_compat = Vec::new();
@@ -144,7 +148,9 @@ pub fn parse_args_env(
     let mut term_replay_dir = None;
     let mut words = args.iter();
     while let Some(word) = words.next() {
-        if word == "--term" || word.starts_with("--term=") {
+        if word == "--web-native" {
+            native_web = true;
+        } else if word == "--term" || word.starts_with("--term=") {
             let value = word
                 .strip_prefix("--term=")
                 .map(String::from)
@@ -219,6 +225,7 @@ pub fn parse_args_env(
         ));
     }
     Ok(DashConfig {
+        native_web,
         term,
         webterm_compat,
         shadow_readonly,

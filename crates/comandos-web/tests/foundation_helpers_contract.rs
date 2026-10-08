@@ -80,3 +80,12 @@ fn selection_respects_clicked_pane_timestamp_and_operable_filter() {
     assert!(helpers::pick_sel(&items, "hidden", 0.0, &json!({})).is_null());
     assert!(helpers::pick_sel(&items, "", 0.0, &json!({"session":"s","pane":"missing"})).is_null());
 }
+
+#[test]
+fn new_sessions_preserve_the_users_codex_default() {
+    let defaults = helpers::ns_defaults();
+    assert_eq!(defaults["harness"], "codex");
+    assert_eq!(defaults["motor"], "codex");
+    assert_eq!(defaults["routeId"], "codex:codex");
+    assert_eq!(defaults["model"], "gpt-6.1-sol");
+}

@@ -12,10 +12,7 @@ pub async fn handle(
     route: WebRoute,
     request: &Request,
 ) -> Result<Reply, HandlerError> {
-    if matches!(
-        &route,
-        WebRoute::Index | WebRoute::Ready | WebRoute::Status
-    ) {
+    if matches!(&route, WebRoute::Index | WebRoute::Ready | WebRoute::Status) {
         state.web.refresh_selection().await;
     }
     match route {
@@ -24,7 +21,7 @@ pub async fn handle(
         WebRoute::Gate => gate(state, request).await,
         WebRoute::Ready => ready(state, request),
         WebRoute::Markdown => super::markdown::handle(request),
-        WebRoute::Status if query_value(&request.target, "web").as_deref() == Some("native") => {
+        WebRoute::Status if native_requested(state, request) => {
             native_status(&state.web, state.term_control.status())
         }
         WebRoute::Status => status_with_term(&state.web, state.term_control.status()),
@@ -49,9 +46,17 @@ pub async fn handle(
     }
 }
 
+fn native_requested(state: &DashState, request: &Request) -> bool {
+    match query_value(&request.target, "web").as_deref() {
+        Some("native") => true,
+        Some(_) => false,
+        None => state.config.native_web,
+    }
+}
+
 async fn index(state: &DashState, request: &Request) -> Result<Reply, HandlerError> {
     let web = &state.web;
-    if query_value(&request.target, "web").as_deref() == Some("native") {
+    if native_requested(state, request) {
         let manifest = web.manifest();
         let plan = match super::native_page::admit(
             &web.registry,

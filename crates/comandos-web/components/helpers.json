@@ -5,7 +5,7 @@
   "marker_start": "// ---------- helpers ----------",
   "marker_end": "// ---------- App combinada: panel + pestanas de terminal (como el escritorio) ----------",
   "script_index": 1,
-  "sha256": "2eb87df4f3cc76a6d50f218548525cb5207205047a3169b570dd273bd3e5ba9e",
+  "sha256": "57d41ddf6f85de8e674862c03e09c1cac1045a4851545f03665cbd63052c8979",
   "exports": [
     "ACTIVE_TAB",
     "FS_HOME_RE",

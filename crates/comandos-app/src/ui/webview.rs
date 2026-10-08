@@ -41,7 +41,7 @@ impl LoadObservation {
 pub fn dashboard_uri(base: Option<&str>, version: &str) -> Option<String> {
     let base = base?.trim_end_matches('/');
     Some(format!(
-        "{base}/?app=1&anwin=1&version={}",
+        "{base}/?web=native&app=1&anwin=1&version={}",
         encode_query(version)
     ))
 }
