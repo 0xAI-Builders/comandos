@@ -711,7 +711,12 @@ impl Inner {
             id.remove();
         }
         let now = self.ms();
-        let m = self.model.borrow();
+        let mut m = self.model.borrow_mut();
+        // Request this GTK frame directly: rearming the maintenance timeout on
+        // every PTY read can otherwise postpone painting under continuous output.
+        if m.schedule.queue_due_paint(now, self.area.is_mapped()) {
+            self.area.queue_draw();
+        }
         // fd readiness drives IO; the low-rate fallback observes exit status.
         let mut delay = if m.drain.has_exited() && m.drain.finished().is_none() {
             1

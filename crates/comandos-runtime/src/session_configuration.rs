@@ -1614,28 +1614,7 @@ impl SessionConfiguration {
         {
             return Err(py("el borrador no pertenece a este panel y conversación"));
         }
-        let mut desired = Map::new();
-        for kind in ["mcps", "skills"] {
-            let rows = inv[kind].as_array().ok_or(Fail::Unsure)?;
-            let mut selection = Map::new();
-            for row in rows {
-                if row["enabled"].is_boolean() {
-                    let id = row["id"].as_str().ok_or(Fail::Unsure)?;
-                    let enabled = if truthy(&row["toggleable"]) {
-                        draft["desired"][kind]
-                            .get(id)
-                            .cloned()
-                            .unwrap_or(Value::Bool(false))
-                    } else {
-                        row["enabled"].clone()
-                    };
-                    selection.insert(id.into(), enabled);
-                }
-            }
-            desired.insert(kind.into(), Value::Object(selection));
-        }
-        let desired = Value::Object(desired);
-        let chosen = extension_launch::normalize(&inv, &desired)?;
+        let desired = resolve_extension_draft(&inv, &draft["desired"])?;
         if !["shell", "claude", "codex", "grok", "opencode", "agy"].contains(&self.frm.as_str()) {
             return Err(py("CLI no compatible con extensiones por proceso"));
         }
@@ -1744,7 +1723,7 @@ impl SessionConfiguration {
         }
         let unchanged = !reconnect
             && bundle.is_some()
-            && loaded.as_ref().is_some_and(|v| python_eq(v, &chosen));
+            && loaded.as_ref().is_some_and(|v| python_eq(v, &desired));
         let mut plan=json!({"opencodeEnvironment":environment,"to":harness,"motor":motor,"model":model,"effort":effort,"harnessAccount":account,"motorAccount":or_text(get(&observed,"motorAccount"),&account),"command":command,"previous":observed,"routeId":format!("{harness}:{motor}"),"expectedSid":sid,"sameConversation":self.frm!="shell","extensionsOnly":true,"extensionLaunch":launch,"unchanged":unchanged,"continuity":{"continuity":if sid.is_empty(){"new-conversation"}else{"resumed"},"handoffRequired":false}}).as_object().cloned().ok_or(Fail::Unsure)?;
         if unchanged {
             plan.insert("extensionLaunch".into(), bundle.unwrap_or(Value::Null));
@@ -3753,4 +3732,49 @@ fn refresh_inner(env: &Env, row: &Value) -> Result<Option<Refreshed>, Fail> {
         _ => None,
     };
     Ok(Some(Refreshed { row, confirmed }))
+}
+
+/// Apply the current catalog defaults before validating an older saved draft.
+fn resolve_extension_draft(inv: &Value, desired: &Value) -> Result<Value, Fail> {
+    let desired = crate::pane_extensions::canonical_selection(inv, desired);
+    Ok(extension_launch::normalize(inv, &desired)?)
+}
+
+#[cfg(test)]
+mod extension_draft_tests {
+    use super::*;
+
+    #[test]
+    fn applying_old_drafts_inherits_new_defaults_and_keeps_explicit_exclusions() {
+        let inventory = json!({
+            "mcps":[
+                {"id":"new-mcp","name":"new","enabled":true,"toggleable":true},
+                {"id":"excluded-mcp","name":"excluded","enabled":true,"toggleable":true},
+                {"id":"globally-off","name":"off","enabled":false,"toggleable":false}
+            ],
+            "skills":[
+                {"id":"shared:new","name":"new","enabled":true,"toggleable":true},
+                {"id":"shared:excluded","name":"excluded","enabled":true,"toggleable":true},
+                {"id":"shared:off","name":"off","enabled":false,"toggleable":true}
+            ]
+        });
+        let draft = json!({"mcps":{"excluded-mcp":false,"globally-off":true},"skills":{"shared:excluded":false}});
+        let original = draft.clone();
+        let selected = resolve_extension_draft(&inventory, &draft).unwrap();
+        assert_eq!(
+            selected,
+            json!({
+                "mcps":{"new-mcp":true,"excluded-mcp":false,"globally-off":false},
+                "skills":{"shared:new":true,"shared:excluded":false,"shared:off":false}
+            })
+        );
+        assert_eq!(
+            selected,
+            crate::pane_extensions::canonical_selection(&inventory, &draft)
+        );
+        assert_eq!(
+            draft, original,
+            "resolving defaults must not rewrite saved choices"
+        );
+    }
 }

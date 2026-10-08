@@ -1,0 +1,43 @@
+#![allow(dead_code)]
+use std::{cell::{Cell,RefCell},rc::Rc,time::{Duration,Instant}};
+mod schedule {
+// ACTUAL_SCHEDULE
+}
+use schedule::PaintSchedule;
+mod glib {
+ use std::time::Duration;
+ pub enum ControlFlow { Break }
+ pub struct SourceId;
+ impl SourceId {pub fn remove(self) {}}
+ pub fn timeout_add_local(_delay:Duration,_f:impl FnMut()->ControlFlow+'static)->SourceId {SourceId}
+}
+use glib::{SourceId,ControlFlow};
+#[derive(PartialEq)] enum RunMode{Native,Shadow}
+struct Drain;
+impl Drain{fn has_exited(&self)->bool{false}fn finished(&self)->Option<i32>{None}}
+struct Settle;impl Settle{fn next_check_ms(&self,_now:u64)->Option<u64>{None}}
+struct Engine;impl Engine{fn next_deadline(&self)->Option<Instant>{None}}
+struct Area{mapped:bool,draws:Cell<usize>}
+impl Area{fn is_mapped(&self)->bool{self.mapped}fn queue_draw(&self){self.draws.set(self.draws.get()+1)}}
+struct Model{drain:Drain,schedule:PaintSchedule,pty:Option<()>,respawn_at:Option<u64>,settle:Settle,ssh_at:Option<u64>,engine:Engine}
+struct Options{mode:RunMode}
+struct Inner{closed:Cell<bool>,timer:RefCell<Option<SourceId>>,epoch:Instant,now:Cell<u64>,model:RefCell<Model>,area:Area,options:Options}
+impl Inner{
+ fn ms(&self)->u64{self.now.get()}
+ fn tick(&self){panic!("paint must not wait for a cancellable timer")}
+ // ACTUAL_ARM
+}
+fn make(mapped:bool)->Rc<Inner>{
+ let mut schedule=PaintSchedule::default();schedule.painted(4);schedule.damage(5,&[2]);
+ Rc::new(Inner{closed:Cell::new(false),timer:RefCell::new(None),epoch:Instant::now(),now:Cell::new(5),model:RefCell::new(Model{drain:Drain,schedule,pty:Some(()),respawn_at:None,settle:Settle,ssh_at:None,engine:Engine}),area:Area{mapped,draws:Cell::new(0)},options:Options{mode:RunMode::Native}})
+}
+fn main(){
+ let visible=make(true);visible.arm();let first=visible.area.draws.get();
+ for now in 6..1006{visible.now.set(now);visible.model.borrow_mut().schedule.damage(now,&[3]);visible.arm();}
+ let repeated=visible.area.draws.get();let hidden=make(false);hidden.arm();
+ println!("first={first} repeated={repeated} hidden={}",hidden.area.draws.get());
+ assert_eq!(first,1,"arm must enqueue GTK draw immediately before another PTY read can cancel its timer");
+ assert_eq!(repeated,1,"only one GTK frame may be pending");
+ assert_eq!(hidden.area.draws.get(),0);
+ assert_eq!(visible.model.borrow().schedule.pending_lines(),vec![2,3]);
+}

@@ -3,7 +3,6 @@ use std::collections::BTreeSet;
 #[derive(Default)]
 pub struct PaintSchedule {
     lines: BTreeSet<usize>,
-    last_paint: Option<u64>,
     focused: bool,
     synchronized: bool,
     blink_at: u64,
@@ -16,11 +15,11 @@ impl PaintSchedule {
     pub fn pending_lines(&self) -> Vec<usize> {
         self.lines.iter().copied().collect()
     }
-    pub fn next_delay_ms(&self, now_ms: u64) -> Option<u64> {
-        (!self.lines.is_empty() && !self.queued).then(|| {
-            self.last_paint
-                .map_or(0, |t| t.saturating_add(16).saturating_sub(now_ms))
-        })
+    pub fn next_delay_ms(&self, _now_ms: u64) -> Option<u64> {
+        // GTK coalesces queue_draw() against its frame clock. Waiting another
+        // 16 ms after draw() would skip the next frame; `queued` alone keeps
+        // one request in flight, including damage received before that frame.
+        (!self.lines.is_empty() && !self.queued).then_some(0)
     }
     /// Unmapped widgets retain damage but cannot acknowledge a GTK draw.
     pub fn next_delay_ms_if_mapped(&self, now_ms: u64, mapped: bool) -> Option<u64> {
@@ -42,8 +41,7 @@ impl PaintSchedule {
     pub fn reset_queued_paint(&mut self) {
         self.queued = false;
     }
-    pub fn painted(&mut self, now_ms: u64) {
-        self.last_paint = Some(now_ms);
+    pub fn painted(&mut self, _now_ms: u64) {
         self.lines.clear();
         self.queued = false;
     }

@@ -23,12 +23,12 @@ fn hidden_terminal_damage_does_not_arm_a_paint_timer() {
 }
 
 #[test]
-fn remapping_retains_the_visible_frame_deadline() {
+fn remapping_requests_the_next_gtk_frame_without_extra_delay() {
     let mut schedule = PaintSchedule::default();
     schedule.painted(10);
     schedule.damage(11, &[7]);
     assert_eq!(schedule.next_delay_ms_if_mapped(12, false), None);
-    assert_eq!(schedule.next_delay_ms_if_mapped(12, true), Some(14));
+    assert_eq!(schedule.next_delay_ms_if_mapped(12, true), Some(0));
     assert_eq!(schedule.next_delay_ms_if_mapped(26, true), Some(0));
     assert_eq!(schedule.pending_lines(), vec![7]);
 }
@@ -50,6 +50,30 @@ fn queued_paint_waits_for_gtk_without_losing_new_damage() {
     schedule.painted(10_000);
     assert_eq!(schedule.next_delay_ms_if_mapped(10_000, true), None);
     schedule.damage(10_001, &[3]);
-    assert!(!schedule.queue_due_paint(10_001, true));
-    assert!(schedule.queue_due_paint(10_016, true));
+    assert!(schedule.queue_due_paint(10_001, true));
+    assert!(!schedule.queue_due_paint(10_016, true));
+}
+
+#[test]
+fn echoed_input_can_reach_the_next_gtk_frame_after_recent_output() {
+    // GTK already owns the frame clock. A frame starting at t=0 finishes
+    // painting at t=4; the next echoed input arrives at t=5. An additional
+    // 16 ms wait would miss even a 60 Hz frame, and worse at 120/144 Hz.
+    for next_frame_ms in [17, 8, 7] {
+        let mut schedule = PaintSchedule::default();
+        schedule.painted(4);
+        schedule.damage(5, &[3]);
+        let request_at = 5 + schedule.next_delay_ms_if_mapped(5, true).unwrap();
+        assert!(
+            request_at < next_frame_ms,
+            "echo queued at {request_at} ms misses GTK frame at {next_frame_ms} ms"
+        );
+        assert!(schedule.queue_due_paint(request_at, true));
+        schedule.damage(6, &[4]);
+        assert!(
+            !schedule.queue_due_paint(6, true),
+            "GTK already has a frame queued"
+        );
+        assert_eq!(schedule.pending_lines(), vec![3, 4]);
+    }
 }
