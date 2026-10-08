@@ -168,10 +168,10 @@ pub fn restore_shell_tty(env: &Env, pane: &str) -> Result<(), String> {
 /// `_send_shell_line(pane, command)`: teclea el comando y Enter (sin
 /// `paste-buffer -p`, que zsh mostraría como `^[[200~`).
 pub fn send_shell_line(env: &Env, pane: &str, command: &str) -> Result<(), String> {
-    // tmux's command protocol has a much smaller limit than execve. Preserve
-    // complete launch lines (including large -c overrides) outside its argv.
-    if command.len() > 4096 {
-        return send_buffered_shell_line(env, pane, command);
+    // Both tmux's command protocol and a terminal reset to ICANON have small
+    // line limits. Keep the complete launch outside argv and outside the TTY.
+    if command.len() >= 4096 {
+        return send_scripted_shell_line(env, pane, command);
     }
     let r = tmux(env, &["send-keys", "-t", pane, "-l", "--", command])?;
     if r.returncode != 0 {
@@ -186,17 +186,12 @@ pub fn send_shell_line(env: &Env, pane: &str, command: &str) -> Result<(), Strin
     Ok(())
 }
 
-struct ShellBuffer<'a> {
-    env: &'a Env,
-    name: String,
-    path: PathBuf,
-}
-impl Drop for ShellBuffer<'_> {
+struct ShellScript(PathBuf);
+impl Drop for ShellScript {
     fn drop(&mut self) {
-        // Also attempt cleanup after an ambiguous load/paste failure. The name
-        // belongs exclusively to this invocation; no user buffer is touched.
-        let _ = tmux(self.env, &["delete-buffer", "-b", &self.name]);
-        let _ = fs::remove_file(&self.path);
+        // Success is acknowledged by the sourced script unlinking itself.
+        // On failure/timeout invalidate only this invocation's pending script.
+        let _ = fs::remove_file(&self.0);
     }
 }
 
@@ -214,35 +209,51 @@ fn checked_tmux(env: &Env, args: &[&str]) -> Result<(), String> {
     }
 }
 
-fn send_buffered_shell_line(env: &Env, pane: &str, command: &str) -> Result<(), String> {
+fn send_scripted_shell_line(env: &Env, pane: &str, command: &str) -> Result<(), String> {
     let mut nonce = [0u8; 16];
     getrandom::fill(&mut nonce).map_err(|e| e.to_string())?;
     let name = format!("comandos-shell-{:032x}", u128::from_ne_bytes(nonce));
-    let path = std::env::temp_dir().join(&name);
+    let path = std::env::temp_dir()
+        .canonicalize()
+        .map_err(|e| e.to_string())?
+        .join(name);
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o600)
         .open(&path)
         .map_err(|e| e.to_string())?;
-    let buffer = ShellBuffer { env, name, path };
-    file.write_all(command.as_bytes())
-        .map_err(|e| e.to_string())?;
-    drop(file);
-    let path = buffer
-        .path
+    let script = ShellScript(path);
+    let path = script
+        .0
         .to_str()
         .ok_or("temporary command path is not UTF-8")?;
-    checked_tmux(env, &["load-buffer", "-b", &buffer.name, path])?;
-    // -r preserves literal LF bytes; deliberately omit -p, which would add
-    // bracketed-paste control codes to the shell launch line.
-    checked_tmux(
-        env,
-        &["paste-buffer", "-d", "-r", "-b", &buffer.name, "-t", pane],
-    )?;
-    drop(buffer);
-    // Never execute a partially delivered line after a transport failure.
-    checked_tmux(env, &["send-keys", "-t", pane, "Enter"])
+    let quoted = comandos_core::text::shlex_quote(path);
+    let source = format!(". {quoted}");
+    if source.len() >= 4096 {
+        return Err("temporary source command exceeds terminal line limit".into());
+    }
+    // The current shell keeps the opened source descriptor after unlink. This
+    // is the acknowledgement that it can read the entire original command;
+    // no payload bytes travel through the terminal's canonical input buffer.
+    write!(
+        file,
+        "command /bin/rm -f -- {quoted} || return $?\n{command}\n"
+    )
+    .map_err(|e| e.to_string())?;
+    drop(file);
+    checked_tmux(env, &["send-keys", "-t", pane, "-l", "--", &source])?;
+    checked_tmux(env, &["send-keys", "-t", pane, "Enter"])?;
+    // Keep the source alive until the shell opens it. Never remove it directly
+    // after send-keys: tmux acknowledging input does not mean zsh consumed it.
+    for _ in 0..50 {
+        match script.0.symlink_metadata() {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e.to_string()),
+            Ok(_) => sleep(env, 0.1),
+        }
+    }
+    Err("el shell no abrió el archivo temporal del comando".into())
 }
 
 /// `_send_configuration_command(pane, command)` (2691): limpia la pantalla
