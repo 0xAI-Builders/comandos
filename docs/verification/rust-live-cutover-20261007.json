@@ -1,17 +1,19 @@
 {
   "date": "2026-10-07",
-  "runtime_source_commit": "31b206cba1cb7f1f57279766609464e467b544dc",
+  "runtime_source_commit": "deee8e3bf952008c90e9c6cb4c790ebd267d0d61",
   "merged_to": "main",
   "installed": {
     "comandos": {
-      "path": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/artifacts-31b206cb/comandos",
-      "sha256": "c092e9efa0eda8f8bd9df1e46f80311965c275ba6e0b832af394738bc10b149c",
-      "installed_path": "/home/someguy/.local/share/comandos/releases/307f32b17500/comandos"
+      "source_commit": "deee8e3bf952008c90e9c6cb4c790ebd267d0d61",
+      "path": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/artifacts-deee8e3b/comandos",
+      "sha256": "5933c1cce3bd4dc7a688ac1a5f54a88b317196dd11058b1d188a1a17173cb110",
+      "installed_path": "/home/someguy/.local/share/comandos/releases/a0dda277603b/comandos"
     },
     "comandos-app": {
       "path": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/artifacts-31b206cb/comandos-app",
       "sha256": "fbd41a8ef23681a013fada05c49681292fb57a0e329bc7741b739320648a59cb",
-      "installed_path": "/home/someguy/.local/share/comandos/releases/09f65cf5960c/comandos-app"
+      "installed_path": "/home/someguy/.local/share/comandos/releases/09f65cf5960c/comandos-app",
+      "source_commit": "31b206cba1cb7f1f57279766609464e467b544dc"
     }
   },
   "native_web_default": true,
@@ -33,37 +35,37 @@
     {
       "path": "/state",
       "status": 200,
-      "ms": 5,
-      "bytes": 413946
+      "ms": 490,
+      "bytes": 413399
     },
     {
       "path": "/prefs",
       "status": 200,
-      "ms": 40,
+      "ms": 38,
       "bytes": 1659
     },
     {
       "path": "/tabs",
       "status": 200,
-      "ms": 81,
+      "ms": 63,
       "bytes": 1069
     },
     {
       "path": "/workspace",
       "status": 200,
-      "ms": 123,
+      "ms": 92,
       "bytes": 9215
     },
     {
       "path": "/active-tab",
       "status": 200,
-      "ms": 45,
+      "ms": 35,
       "bytes": 67
     },
     {
       "path": "/pomodoro",
       "status": 200,
-      "ms": 39,
+      "ms": 32,
       "bytes": 1383
     },
     {
@@ -75,7 +77,7 @@
     {
       "path": "/web/status",
       "status": 200,
-      "ms": 43,
+      "ms": 42,
       "bytes": 973
     }
   ],
@@ -98,7 +100,9 @@
     "mounted_components": 48,
     "failed_components": [],
     "wizard": "Codex CLI -> Codex, gpt-6.1-sol, high, main",
-    "terminal_frame": "loaded via separate 4779 SSH forward"
+    "terminal_frame": "loaded via separate 4779 SSH forward",
+    "post_restart_state_http": 200,
+    "post_restart_cards": 272
   },
   "tests": [
     {
@@ -477,17 +481,114 @@
           "ignored": 0
         }
       ]
+    },
+    {
+      "name": "standalone-suggestions-verified",
+      "passed": 20,
+      "failed": 0,
+      "ignored": 3,
+      "coverage": [
+        "optional suggestion failure on first request and recompute after cache expiry",
+        "legacy decline behavior",
+        "state worker mode lease contention",
+        "domain authority reads"
+      ],
+      "receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/standalone-suggestions-verified-result.json",
+      "red_receipt": "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/standalone-suggestions-red-valid-result.json"
     }
   ],
   "wasm_boot_scenarios": 21,
   "wasm_helpers": "38 original outputs and live state/account/profile/race/notification/operation fixtures passed",
   "build_receipts": [
     "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/complete-web-build-result.json",
-    "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/complete-native-build-result.json"
+    "/home/someguy/codebase/0xJesus/ComandOS/.scratch/rust-live-cutover-20261008/complete-native-build-result.json",
+    {
+      "head": "deee8e3bf952008c90e9c6cb4c790ebd267d0d61",
+      "worktree_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dirty_files": [
+        "?? .playwright-mcp/",
+        "?? .scratch/",
+        "?? dash/prototypes/prototype-analytics.html",
+        "?? dash/prototypes/prototype-usage-cards.html",
+        "?? json",
+        "?? libxdo3_1%3a3.20160805.1-4_amd64.deb",
+        "?? subprocess",
+        "?? xdotool_1%3a3.20160805.1-4_amd64.deb",
+        "?? ~/"
+      ],
+      "started_utc": "2026-10-08T01:43:18.885756+00:00",
+      "private_root": "/tmp/cct-z679d4k5",
+      "env_keys": [
+        "BINARYEN_CORES",
+        "CARGO_BUILD_JOBS",
+        "CARGO_HOME",
+        "CARGO_NET_OFFLINE",
+        "CARGO_TARGET_DIR",
+        "COMANDOS_CC_APP_ORACLE",
+        "COMANDOS_SMOKE_WEB_DIR",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "PATH",
+        "PKG_CONFIG_PATH",
+        "RUSTUP_HOME",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+        "XDG_CACHE_HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_RUNTIME_DIR",
+        "XDG_STATE_HOME"
+      ],
+      "tmux_environment_removed": true,
+      "display_removed": true,
+      "no_live_cutover": true,
+      "command": [
+        "/home/someguy/codebase/0xJesus/ComandOS/scripts/rust-build-cache",
+        "--workspace",
+        "/home/someguy/codebase/0xJesus/ComandOS",
+        "--",
+        "cargo",
+        "build",
+        "--release",
+        "-p",
+        "comandos-cli",
+        "--offline",
+        "--locked",
+        "-j2"
+      ],
+      "requested_command": [
+        "cargo",
+        "build",
+        "--release",
+        "-p",
+        "comandos-cli",
+        "--offline",
+        "--locked",
+        "-j2"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 151.82838667789474,
+      "ended_utc": "2026-10-08T01:45:50.715396+00:00",
+      "head_after": "deee8e3bf952008c90e9c6cb4c790ebd267d0d61",
+      "worktree_diff_sha256_after": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
   ],
   "limits": [
     "Existing Python ACP/MCP child processes were preserved to avoid interrupting work; future ComandOS entrypoints use Rust.",
     "Historical source oracles and rollback backups remain for regression checks and recovery.",
-    "One 500 ms timing assertion failed in a parallel test batch; it passed unchanged in isolation and in earlier batches."
-  ]
+    "One 500 ms timing assertion failed in a parallel test batch; it passed unchanged in isolation and in earlier batches.",
+    "When optional usage recommendation context is unavailable, the standalone dashboard omits suggestions while continuing to display sessions."
+  ],
+  "last_verified_utc": "2026-10-08T01:46:25.021337+00:00",
+  "standalone_state": {
+    "optional_suggestion_failure": "preserve session cards and tab models, omit suggestions, retry later",
+    "legacy_mode": "unchanged",
+    "repeated_live_checks": 40,
+    "failed_live_checks": 0,
+    "max_response_ms": 628,
+    "server_pid": 3710081,
+    "unchanged_gui_pid": 3517871
+  }
 }
