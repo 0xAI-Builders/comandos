@@ -509,6 +509,8 @@ pub struct NativeOptions {
     pub zone: Arc<dyn LocalZone + Send + Sync>,
     /// Qué hilos de fondo arranca el frente (D6); `legacy` en toda la 2f.
     pub background: Background,
+    /// Complete native dashboard: optional recommendation failures must not hide sessions.
+    pub standalone: bool,
     /// Cortes desactivados (D3): sus rutas declinan sin evaluar nada.
     pub cuts_off: BTreeSet<Cut>,
     /// Archivo del censo de declinaciones (D7). `None`: no se escribe (las
@@ -635,6 +637,7 @@ impl NativeOptions {
             ),
             zone: Arc::new(chrono::Local),
             background: Background::legacy(),
+            standalone: false,
             cuts_off: BTreeSet::new(),
             census_path: None,
             xdg_state_home: env_path("XDG_STATE_HOME"),

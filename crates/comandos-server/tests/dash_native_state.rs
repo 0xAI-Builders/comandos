@@ -843,3 +843,36 @@ async fn state_persistent_decline_is_cached_for_the_ttl() {
     assert!(!home.hooks().join("app-tab-models.json").exists());
     front.stop().await;
 }
+
+#[tokio::test]
+async fn standalone_state_survives_unavailable_optional_suggestions() {
+    let home = TestHome::new("state-standalone-suggestions");
+    let Some(wrapper) = seed_needing_context(&home) else {
+        return;
+    };
+    support::seed_usage(&home, &turn_sql(BLOB_TURN, NOW_MS));
+    let legacy = SwitchLegacy::start("{}").await;
+    let clock = Arc::new(AtomicI64::new(NOW_MS));
+    let mut opts = home.options();
+    opts.tmux.program.path = wrapper;
+    opts.standalone = true;
+    let shared = clock.clone();
+    opts.clock = Arc::new(move || shared.load(Ordering::SeqCst));
+    let front = front(&home, legacy.port, opts).await;
+    let mut previous_calls = 0;
+    for _ in 0..2 {
+        let response = get(front.port, "/state").await;
+        assert_eq!(response.status, 200);
+        let body: Value = serde_json::from_str(&response.text()).unwrap();
+        assert!(body.as_array().is_some_and(|items| !items.is_empty()));
+        let calls = tmux_calls(&home);
+        assert!(calls > previous_calls, "cada solicitud debía recalcular");
+        previous_calls = calls;
+        clock.fetch_add(1_200, Ordering::SeqCst);
+    }
+    assert!(
+        !legacy.requests().iter().any(|line| line.starts_with("GET /state"))
+    );
+    assert!(home.hooks().join("app-tab-models.json").exists());
+    front.stop().await;
+}

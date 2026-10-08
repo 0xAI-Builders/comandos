@@ -615,6 +615,7 @@ fn assemble(
             o
         });
         o.dash_dir = Some(cfg.dash_dir.clone());
+        o.standalone |= cfg.native_web;
         // El contexto de sugerencias habla con el MISMO heredado al que se reenvía.
         o.legacy = SocketAddr::from((Ipv4Addr::LOCALHOST, cfg.legacy_port));
         o.legacy_token = cfg.token.clone();

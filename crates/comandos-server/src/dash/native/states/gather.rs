@@ -247,7 +247,7 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
     // `/proc`, para que una guardia que el frente no reproduce (o la primera
     // lectura de límites aún pendiente) no lo repita en cada sondeo.
     *phase = "fallo del contexto de sugerencias recordado";
-    if native.states.context.failing((opts.clock)()) {
+    if !opts.standalone && native.states.context.failing((opts.clock)()) {
         return Err(StateFault::Decline);
     }
     let now = (opts.clock)() as f64 / 1000.0;
@@ -302,16 +302,25 @@ async fn steps(native: &Native, phase: &mut &'static str) -> Result<States, Stat
     let motor = scanned.motor;
     *phase = "contexto de sugerencias";
     let context = if suggest::needs_context(&items, &motor)? {
-        native
+        match native
             .states
             .context
             .get(native, &registry, (opts.clock)())
-            .await?
+            .await
+        {
+            Ok(context) => Some(context),
+            // El panel completo sigue mostrando sesiones cuando falta el
+            // contexto opcional; no inventar sugerencias con límites vacíos.
+            Err(_) if opts.standalone => None,
+            Err(error) => return Err(error),
+        }
     } else {
-        Arc::new(SuggestContext::default())
+        Some(Arc::new(SuggestContext::default()))
     };
     *phase = "sugerencias";
-    suggest::annotate_all(&mut items, &context, &motor, now)?;
+    if let Some(context) = context {
+        suggest::annotate_all(&mut items, &context, &motor, now)?;
+    }
     // 6. Orden final y proyección de modelos.
     *phase = "orden y modelos de pestaña";
     cards::sort_items(&mut items)?;
