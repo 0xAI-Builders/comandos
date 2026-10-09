@@ -400,6 +400,41 @@ pub(crate) async fn fetch(
     }
     Ok(data)
 }
+async fn select_touched_pane(rc: Shared, pane: Value, selected_at: f64) {
+    let (session, auth) = {
+        let s = rc.borrow();
+        (s.session.clone(), s.token.clone())
+    };
+    let result = fetch(auth, "/terminal-panes", Some(json!({"session":session,"action":"select","scope":"client","pane":pane["id"],"identity":pane["identity"]})), None, None).await;
+    let s = rc.borrow();
+    if s.disposed || s.local_at != selected_at || s.local.as_deref() != pane["id"].as_str() {
+        return;
+    }
+    let term = s.term.clone();
+    drop(s);
+    let mut delivered = false;
+    if let Ok(result) = result {
+        if let Some(keys) = result["clientKeys"].as_str() {
+            if call(&term, "sendInput", &[keys.into(), false.into()])
+                .ok()
+                .and_then(|v| v.as_bool())
+                == Some(true)
+            {
+                delivered = true;
+                if let Ok(Some(parent)) = w().parent() {
+                    let _ = parent.post_message(&js(&json!({"source":"comandos-term","type":"pane-selected","pane":pane["id"]})), &w().location().origin().unwrap_or_default());
+                }
+            }
+        }
+    }
+    if !delivered {
+        // A disconnected client must be able to retry the same pane.
+        rc.borrow_mut().local = None;
+        draw(&rc);
+    }
+    delayed_refresh(&rc, 80);
+}
+
 fn refresh(rc: &Shared) {
     if rc.borrow().busy || rc.borrow().disposed || doc().hidden() {
         return;
@@ -431,7 +466,17 @@ fn refresh(rc: &Shared) {
                 if let Some(p) = list["panes"].as_array() {
                     s.panes = p.clone();
                     let remote = text(&list, "remoteFocus");
-                    if !remote.is_empty() && t0 >= s.local_at {
+                    let local_gone = s
+                        .local
+                        .as_ref()
+                        .is_some_and(|id| !s.panes.iter().any(|p| text(p, "id") == *id));
+                    if local_gone {
+                        s.local = None;
+                    }
+                    if !remote.is_empty()
+                        && t0 >= s.local_at
+                        && (s.local.is_none() || s.local.as_deref() == Some(remote.as_str()))
+                    {
                         s.remote = Some(remote);
                         s.local = None
                     } else if remote.is_empty() {
@@ -981,7 +1026,7 @@ pub fn attach() -> Result<(), JsValue> {
     listen(
         &rc,
         term_el.as_ref(),
-        "mousedown",
+        "pointerdown",
         true,
         false,
         move |event| {
@@ -1010,8 +1055,16 @@ pub fn attach() -> Result<(), JsValue> {
                 if let Some(id) = pane
                     && Some(&id) != active(&s.panes, &s.local, &s.remote).as_ref()
                 {
-                    s.local = Some(id);
+                    s.local = Some(id.clone());
                     s.local_at = now();
+                    let chosen = s.panes.iter().find(|p| text(p, "id") == id).cloned();
+                    if let Some(chosen) = chosen {
+                        let selected_at = s.local_at;
+                        let owner = state.clone();
+                        spawn_local(async move {
+                            select_touched_pane(owner, chosen, selected_at).await;
+                        });
+                    }
                 }
                 drop(s);
                 draw(&state);

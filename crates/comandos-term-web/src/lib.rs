@@ -35,6 +35,7 @@ pub mod canvas;
 pub mod connection;
 pub mod controls;
 pub mod keyboard;
+mod link_menu;
 pub mod links;
 pub mod metrics;
 pub mod mouse;
@@ -419,6 +420,7 @@ struct Inner {
     ignore_scroll: bool,
     /// Último punto del dedo (desplazamiento táctil de xterm.js).
     touch_y: Option<f64>,
+    touch_link: Option<(UrlSpan, f64, f64)>,
     links: links::LinkCache,
     /// Sube con cada cambio de la rejilla (caché de enlaces).
     link_gen: u64,
@@ -494,7 +496,7 @@ struct Outbox {
     data: Vec<Vec<u8>>,
     focus: Option<Focus>,
     copy: Option<String>,
-    open: Option<String>,
+    open: Option<(String, f64, f64)>,
 }
 
 impl Outbox {
@@ -613,8 +615,8 @@ impl Delivery {
         if let Some(text) = self.outbox.copy {
             write_clipboard(&self.window, &self.document, &self.textarea, text);
         }
-        if let Some(url) = self.outbox.open {
-            links::open_web_link(&self.document, &url);
+        if let Some((url, x, y)) = self.outbox.open {
+            link_menu::show(&self.window, &self.document, &self.textarea, &url, x, y);
         }
     }
 }
@@ -1408,6 +1410,7 @@ impl Inner {
 
 impl Drop for Inner {
     fn drop(&mut self) {
+        link_menu::close();
         if let Some(cb) = self.restored_cb.take() {
             for canvas in [self.painter.element(), self.painter.cursor_element()] {
                 let _ = canvas.remove_event_listener_with_callback(
@@ -1562,6 +1565,7 @@ impl WebTerm {
             drag: None,
             ignore_scroll: false,
             touch_y: None,
+            touch_link: None,
             links: links::LinkCache::default(),
             link_gen: 0,
             hover: None,
@@ -2065,7 +2069,7 @@ impl Inner {
         let root: EventTarget = self.dom.root.clone().into();
         let screen: EventTarget = self.dom.screen.clone().into();
         let viewport: EventTarget = self.dom.viewport.clone().into();
-        let table: [Handler<'_>; 21] = [
+        let table: [Handler<'_>; 23] = [
             (&textarea, "keydown", None, Inner::on_keydown),
             (
                 &textarea,
@@ -2092,6 +2096,8 @@ impl Inner {
             (&root, "wheel", Some(false), Inner::on_wheel),
             (&root, "touchstart", Some(true), Inner::on_touch_start),
             (&root, "touchmove", Some(false), Inner::on_touch_move),
+            (&root, "touchend", Some(false), Inner::on_touch_end),
+            (&root, "touchcancel", Some(true), Inner::on_touch_cancel),
             // `bindMouse` escucha en la raíz: la franja que deja `fit` también
             // da el foco e informa (acotado a la última celda).
             (&root, "mousedown", None, Inner::on_mouse_down),

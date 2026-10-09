@@ -797,7 +797,8 @@ mod web {
                 && self.link_under(x, y).as_ref() == Some(&down)
                 && links::is_web_url(&down.url)
             {
-                self.outbox.open = Some(down.url);
+                self.outbox.open =
+                    Some((down.url, f64::from(me.client_x()), f64::from(me.client_y())));
             }
         }
 
@@ -974,6 +975,13 @@ mod web {
             let Some(me) = e.dyn_ref::<MouseEvent>() else {
                 return;
             };
+            let (x, y) = self.screen_xy(me);
+            if let Some(link) = self.link_under(x, y) {
+                e.prevent_default();
+                self.outbox.open =
+                    Some((link.url, f64::from(me.client_x()), f64::from(me.client_y())));
+                return;
+            }
             self.textarea_under(me);
             self.outbox.focus = Some(Focus::Select(self.selection_text()));
         }
@@ -1069,6 +1077,16 @@ mod web {
             let Some(te) = e.dyn_ref::<TouchEvent>() else {
                 return;
             };
+            self.touch_link = None;
+            if te.touches().length() == 1
+                && let Some(t) = te.touches().get(0)
+            {
+                let rect = self.dom.screen.get_bounding_client_rect();
+                let (x, y) = (f64::from(t.client_x()), f64::from(t.client_y()));
+                self.touch_link = self
+                    .link_under(x - rect.left(), y - rect.top())
+                    .map(|link| (link, x, y));
+            }
             if self.engine.modes().mouse != MouseMode::Off {
                 return;
             }
@@ -1079,6 +1097,16 @@ mod web {
             let Some(te) = e.dyn_ref::<TouchEvent>() else {
                 return;
             };
+            if let Some((_, x, y)) = &self.touch_link {
+                if te.touches().length() != 1
+                    || te.touches().get(0).is_none_or(|t| {
+                        (f64::from(t.client_x()) - x).abs() > 8.
+                            || (f64::from(t.client_y()) - y).abs() > 8.
+                    })
+                {
+                    self.touch_link = None;
+                }
+            }
             if self.engine.modes().mouse != MouseMode::Off {
                 return;
             }
@@ -1089,6 +1117,26 @@ mod web {
                 return;
             };
             self.local_scroll(e, last - y);
+        }
+
+        pub(crate) fn on_touch_cancel(&mut self, _: &Event) {
+            self.touch_link = None;
+        }
+        pub(crate) fn on_touch_end(&mut self, e: &Event) {
+            let Some((link, x, y)) = self.touch_link.take() else {
+                return;
+            };
+            let Some(te) = e.dyn_ref::<TouchEvent>() else {
+                return;
+            };
+            if te.touches().length() != 0 {
+                return;
+            }
+            let rect = self.dom.screen.get_bounding_client_rect();
+            if self.link_under(x - rect.left(), y - rect.top()).as_ref() == Some(&link) {
+                e.prevent_default();
+                self.outbox.open = Some((link.url, x, y));
+            }
         }
 
         /// La barra de desplazamiento: `_handleScroll`.

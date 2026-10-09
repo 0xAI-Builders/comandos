@@ -1,0 +1,63 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Private terminal link and pane regression</title><style>html,body{max-width:100%;overflow:hidden}body{margin:0;background:#101724;color:#eee}#term{width:100%;overflow:hidden;height:440px;position:relative}.xterm{position:relative;height:100%}.xterm-screen{position:relative}.xterm-viewport{position:absolute;inset:0;overflow-y:auto}#pane-chrome{position:absolute;inset:0;pointer-events:none}.pc-frame{position:absolute;border:1px solid #345}.pc-frame.on{border-color:#0ef}</style><div style="position:relative;width:100%;height:440px;overflow:hidden"><div id="term"></div><div id="pane-chrome"></div></div>
+<script type="module">
+import init,{WebTerm,attach_pane_chrome} from './assets/comandos_term_web.js';
+await init();
+history.replaceState(null,'','?arg=private-regression&auth=private-token');
+window.rejectInput=false;window.requests=[];window.sent=[];window.opened=[];window.copied=[];
+const nativeFetch=window.fetch;
+const panes=[{id:'%1',left:0,top:1,width:39,height:23,active:true,index:0,identity:'one'},{id:'%2',left:40,top:1,width:40,height:23,active:false,index:1,identity:'two'}];
+window.fetch=async(url,opts)=>{
+ if(url==='/terminal-panes'){const body=JSON.parse(opts.body);requests.push(body);return new Response(JSON.stringify({ok:true,panes,remoteFocus:'%1',clientKeys:body.action==='select'?'fixture-focus-'+body.pane:undefined}));}
+ if(String(url).startsWith('/tab-models'))return new Response('{"panes":[]}');
+ return nativeFetch(url,opts);
+};
+Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{copied.push(text)}}});
+document.addEventListener('click',e=>{const a=e.target.closest('a');if(a){e.preventDefault();opened.push(a.href);}});
+const host=document.getElementById('term');
+window.t=new WebTerm(host,{cols:80,rows:24,fontFamily:'monospace',fontSize:14,lineHeight:1.2,ligatures:false});
+window.url='https://example.com/'+ 'wrapped-path/'.repeat(8);
+t.write(new TextEncoder().encode('\r\n'+url+'\r\nPane fixture'));
+const d=t.dimensions(),screen=host.querySelector('.xterm-screen');
+window.__comandosTerm={screen,cols:d.cols,rows:d.rows,cellWidth:d.cssCellWidth,cellHeight:d.cssCellHeight,onData:()=>({dispose(){}}),onResize:()=>({dispose(){}}),sendInput:(keys)=>{sent.push(keys);return !window.rejectInput;}};
+attach_pane_chrome();
+window.point=(col,row)=>{const r=screen.getBoundingClientRect();return {clientX:r.x+(col+.5)*d.cssCellWidth,clientY:r.y+(row+.5)*d.cssCellHeight,bubbles:true,cancelable:true,button:0,buttons:1,detail:1}};
+window.clickLink=()=>{screen.dispatchEvent(new MouseEvent('mousedown',point(5,1)));screen.dispatchEvent(new MouseEvent('mouseup',{...point(5,1),buttons:0}));};
+window.touchPane=()=>screen.dispatchEvent(new PointerEvent('pointerdown',{...point(55,7),pointerType:'touch',isPrimary:true,pointerId:1}));
+// Serve this fixture with a built terminal bundle at ./assets/ (no live sessions).
+window.runRegression=async()=>{
+ const checks={};const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+ const menu=()=>document.querySelector('#comandos-link-menu');
+ clickLink();await wait(40);checks.clickMenu=!!menu();checks.noAutomaticOpen=opened.length===0;
+ if(!menu())return checks;
+ t.write(new TextEncoder().encode(' additional output'));await wait(180);
+ checks.survivesOutput=!!menu();checks.fullWrappedUrl=menu()?.querySelector('a')?.href===url;
+ menu().querySelector('a').click();checks.openAction=opened.at(-1)===url;
+ menu().querySelector('button').click();await wait(20);checks.copyAction=copied.at(-1)===url&&!menu();
+ clickLink();document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));checks.escapeCloses=!menu();
+ clickLink();menu()?.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));checks.outsideCloses=!menu();
+ const screen=document.querySelector('.xterm-screen'),p=point(5,1);
+ const touch=new Touch({identifier:1,target:screen,clientX:p.clientX,clientY:p.clientY});
+ screen.dispatchEvent(new TouchEvent('touchstart',{bubbles:true,cancelable:true,touches:[touch],changedTouches:[touch]}));
+ screen.dispatchEvent(new TouchEvent('touchend',{bubbles:true,cancelable:true,touches:[],changedTouches:[touch]}));
+ checks.touchLink=!!menu();menu()?.querySelector('button').click();
+ screen.dispatchEvent(new TouchEvent('touchstart',{bubbles:true,cancelable:true,touches:[touch],changedTouches:[touch]}));
+ const moved=new Touch({identifier:1,target:screen,clientX:p.clientX+30,clientY:p.clientY});
+ screen.dispatchEvent(new TouchEvent('touchmove',{bubbles:true,cancelable:true,touches:[moved],changedTouches:[moved]}));
+ screen.dispatchEvent(new TouchEvent('touchend',{bubbles:true,cancelable:true,touches:[],changedTouches:[moved]}));checks.dragDoesNotOpen=!menu();
+ touchPane();await wait(400);
+ checks.selectsTouchedPane=requests.some(r=>r.action==='select'&&r.pane==='%2'&&r.scope==='client'&&r.identity==='two');
+ checks.sendsClientSelection=sent.includes('fixture-focus-%2');
+ checks.stalePollCannotResetFocus=[...document.querySelectorAll('.pc-frame')][1]?.classList.contains('on')===true;
+ screen.dispatchEvent(new PointerEvent('pointerdown',{...point(15,7),pointerType:'touch',isPrimary:true,pointerId:2}));await wait(200);
+ checks.canReturnToFirst=sent.at(-1)==='fixture-focus-%1';
+ window.rejectInput=true;touchPane();await wait(200);
+ checks.failedSelectionRollsBack=[...document.querySelectorAll('.pc-frame')][0]?.classList.contains('on')===true;
+ const attempts=requests.filter(r=>r.action==='select').length;
+ window.rejectInput=false;touchPane();await wait(200);
+ checks.canRetryFailedSelection=requests.filter(r=>r.action==='select').length>attempts&&[...document.querySelectorAll('.pc-frame')][1]?.classList.contains('on')===true;
+ clickLink();const bounds=menu().querySelector('section').getBoundingClientRect();checks.menuFitsViewport=bounds.x>=0&&bounds.right<=innerWidth&&bounds.bottom<=innerHeight;
+ document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+ return checks;
+};
+window.testReady=true;
+</script>
