@@ -696,11 +696,17 @@ mod web {
             // `Linkifier._handleMouseDown`: el enlace bajo el ratón; se abre si
             // se suelta sobre él. La pulsación sigue su camino (tmux o
             // selección), como en xterm.js.
+            self.word_generation = self.word_generation.wrapping_add(1);
+            self.word_press = None;
             self.link_down = None;
             if in_screen {
                 self.update_hover(x, y);
                 if button == 0 {
                     self.link_down = self.hover.clone();
+                    if self.link_down.is_none() {
+                        self.word_press =
+                            self.word_at(f64::from(me.client_x()), f64::from(me.client_y()));
+                    }
                 }
             }
             self.down_ts = me.time_stamp();
@@ -790,6 +796,9 @@ mod web {
                 return;
             };
             let Some(down) = self.link_down.take() else {
+                if me.button() == 0 {
+                    self.release_word(f64::from(me.client_x()), f64::from(me.client_y()));
+                }
                 return;
             };
             let (x, y) = self.screen_xy(me);
@@ -1077,6 +1086,8 @@ mod web {
             let Some(te) = e.dyn_ref::<TouchEvent>() else {
                 return;
             };
+            self.word_generation = self.word_generation.wrapping_add(1);
+            self.word_press = None;
             self.touch_link = None;
             if te.touches().length() == 1
                 && let Some(t) = te.touches().get(0)
@@ -1086,6 +1097,9 @@ mod web {
                 self.touch_link = self
                     .link_under(x - rect.left(), y - rect.top())
                     .map(|link| (link, x, y));
+                if self.touch_link.is_none() {
+                    self.word_press = self.word_at(x, y);
+                }
             }
             if self.engine.modes().mouse != MouseMode::Off {
                 return;
@@ -1120,10 +1134,19 @@ mod web {
         }
 
         pub(crate) fn on_touch_cancel(&mut self, _: &Event) {
+            self.word_press = None;
+            self.word_generation = self.word_generation.wrapping_add(1);
             self.touch_link = None;
         }
         pub(crate) fn on_touch_end(&mut self, e: &Event) {
             let Some((link, x, y)) = self.touch_link.take() else {
+                if let Some(te) = e.dyn_ref::<TouchEvent>()
+                    && te.touches().length() == 0
+                    && let Some(end) = te.changed_touches().get(0)
+                    && self.release_word(f64::from(end.client_x()), f64::from(end.client_y()))
+                {
+                    e.prevent_default();
+                }
                 return;
             };
             let Some(te) = e.dyn_ref::<TouchEvent>() else {

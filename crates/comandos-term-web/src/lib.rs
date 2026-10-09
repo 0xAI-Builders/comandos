@@ -48,6 +48,7 @@ pub mod paint;
 pub mod pane_chrome;
 pub mod parent;
 pub mod theme;
+mod word_links;
 
 use canvas::{Canvas2d, CanvasTheme};
 use comandos_term::select::{Selection, UrlSpan, selected_text};
@@ -433,6 +434,8 @@ struct Inner {
     /// Último punto del dedo (desplazamiento táctil de xterm.js).
     touch_y: Option<f64>,
     touch_link: Option<(UrlSpan, f64, f64)>,
+    word_press: Option<word_links::Request>,
+    word_generation: u64,
     links: links::LinkCache,
     /// Sube con cada cambio de la rejilla (caché de enlaces).
     link_gen: u64,
@@ -509,11 +512,16 @@ struct Outbox {
     focus: Option<Focus>,
     copy: Option<String>,
     open: Option<(String, f64, f64)>,
+    word: Option<(Weak<RefCell<Inner>>, word_links::Request)>,
 }
 
 impl Outbox {
     fn is_empty(&self) -> bool {
-        self.data.is_empty() && self.focus.is_none() && self.copy.is_none() && self.open.is_none()
+        self.data.is_empty()
+            && self.focus.is_none()
+            && self.copy.is_none()
+            && self.open.is_none()
+            && self.word.is_none()
     }
 }
 
@@ -626,6 +634,9 @@ impl Delivery {
         }
         if let Some(text) = self.outbox.copy {
             write_clipboard(&self.window, &self.document, &self.textarea, text);
+        }
+        if let Some((weak, request)) = self.outbox.word {
+            word_links::resolve(weak, request);
         }
         if let Some((url, x, y)) = self.outbox.open {
             link_menu::show(&self.window, &self.document, &self.textarea, &url, x, y);
@@ -1575,6 +1586,8 @@ impl WebTerm {
             ignore_scroll: false,
             touch_y: None,
             touch_link: None,
+            word_press: None,
+            word_generation: 0,
             links: links::LinkCache::default(),
             link_gen: 0,
             hover: None,

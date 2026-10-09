@@ -341,6 +341,8 @@ mod web {
 
     impl Inner {
         pub(crate) fn on_keydown(&mut self, e: &Event) {
+            self.word_generation = self.word_generation.wrapping_add(1);
+            self.word_press = None;
             let Some(ke) = e.dyn_ref::<KeyboardEvent>() else {
                 return;
             };

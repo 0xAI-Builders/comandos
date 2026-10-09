@@ -830,6 +830,11 @@ fn history_root(agent: &str) -> Option<(&'static str, &'static str, &'static str
 
 /// `_snapshot_transcript(origin)` (2366): la ruta del historial exacto.
 pub fn snapshot_transcript(env: &Env, origin: &Map<String, Value>) -> Result<String, Fail> {
+    snapshot_transcript_at(&env.home, origin)
+}
+
+/// Resolve the exact live agent transcript without constructing a migration environment.
+pub fn snapshot_transcript_at(home: &Path, origin: &Map<String, Value>) -> Result<String, Fail> {
     let agent = get(origin, "agent");
     if is(agent, "opencode") || is(agent, "agy") {
         let path = as_text(get(origin, "transcriptPath"))?;
@@ -848,7 +853,7 @@ pub fn snapshot_transcript(env: &Env, origin: &Map<String, Value>) -> Result<Str
     }
     let root = match get(origin, root_key) {
         v if truthy(v) => as_text(v)?,
-        _ => expanduser(env, default)?,
+        _ => claude_trust::expanduser(default, home.to_str().ok_or(Fail::Unsure)?)?,
     };
     let matches = glob_history(&root, agent, &sid)?;
     match matches.as_slice() {

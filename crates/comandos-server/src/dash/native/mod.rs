@@ -37,6 +37,7 @@ pub mod states;
 pub mod tabs;
 pub mod target;
 pub mod terminal;
+mod terminal_links;
 pub mod tmux;
 pub mod typing;
 pub mod ui_log;

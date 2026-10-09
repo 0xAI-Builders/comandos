@@ -40,11 +40,17 @@ static PANES_GATE: Semaphore = Semaphore::const_new(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalRoute {
+    Link,
     History,
     Panes,
 }
 
 pub const ROUTES: &[Entry] = &[
+    Entry {
+        verb: Verb::Post,
+        key: Key::Raw("/terminal-link"),
+        route: NativeRoute::Terminal(TerminalRoute::Link),
+    },
     Entry {
         verb: Verb::Post,
         key: Key::Raw("/terminal-history"),
@@ -128,6 +134,7 @@ fn call(
 pub async fn answer(native: &Native, route: TerminalRoute, request: &Request) -> Answer {
     let data = Value::Object(data(request)?.clone());
     match route {
+        TerminalRoute::Link => super::terminal_links::answer(native, request).await,
         TerminalRoute::History => history(native, data).await,
         TerminalRoute::Panes => panes(native, data).await,
     }
