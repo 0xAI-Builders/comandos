@@ -280,6 +280,18 @@ impl Dom {
         let viewport = div("xterm-viewport")?;
         let scroll_area = div("xterm-scroll-area")?;
         let screen = div("xterm-screen")?;
+        // The page no longer loads xterm.css. Keep history out of document flow:
+        // otherwise every scroll-area update shifts the canvas under the pointer.
+        set_styles(&root, &[("position", "relative"), ("height", "100%")]);
+        set_styles(
+            &viewport,
+            &[
+                ("position", "absolute"),
+                ("inset", "0"),
+                ("overflow-y", "scroll"),
+            ],
+        );
+        set_styles(&scroll_area, &[("visibility", "hidden")]);
         // Las capas (`overlay`) se colocan encima del canvas del texto.
         set_styles(&screen, &[("position", "relative")]);
         // `.xterm-helpers` con el `<textarea>` y la vista de composición,
@@ -858,12 +870,10 @@ impl Inner {
         let scrolled = self.engine.scrolled_up();
         let lines = scrolled.wrapping_sub(self.scrolled_seen);
         self.scrolled_seen = scrolled;
-        // El contenido subió de fila absoluta: el enlace y su pulsación ya
-        // no están donde se guardaron (con la vista desplazada, alacritty
-        // sube `display_offset` y un enlace que cruza el borde inferior no
-        // cae por el repintado).
+        // Refresh hover after scrolling. Keep the pressed link until release:
+        // tmux may clear/repaint an identical viewport and advance history too.
+        // mouseup checks its destination and span against the current cells.
         if lines > 0 {
-            self.link_down = None;
             if self.hover.is_some() {
                 self.forget_hover();
             }
@@ -903,9 +913,8 @@ impl Inner {
             span.as_ref()
                 .is_some_and(|s| links::repainted(s, offset, range))
         };
-        if stale(&self.link_down) {
-            self.link_down = None;
-        }
+        // A repaint (including tmux focus feedback) does not cancel a click.
+        // mouseup revalidates both the URL and its exact span against fresh cells.
         if stale(&self.hover) {
             self.forget_hover();
         }

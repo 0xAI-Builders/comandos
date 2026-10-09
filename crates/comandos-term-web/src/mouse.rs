@@ -784,7 +784,7 @@ mod web {
         }
 
         /// `Linkifier._handleMouseUp`: el enlace se abre al soltar sobre el
-        /// mismo enlace que se pulsó (si no se repintó mientras tanto).
+        /// mismo enlace que se pulsó, incluso si tmux repintó esas celdas.
         pub(crate) fn on_mouse_up(&mut self, e: &Event) {
             let Some(me) = e.dyn_ref::<MouseEvent>() else {
                 return;
@@ -1130,6 +1130,16 @@ mod web {
                 return;
             };
             if te.touches().length() != 0 {
+                return;
+            }
+            // The page's capture-phase scroll controller can consume touchmove.
+            // Validate the release coordinates too, so scrolling never opens a link.
+            let Some(end) = te.changed_touches().get(0) else {
+                return;
+            };
+            if (f64::from(end.client_x()) - x).abs() > 8.
+                || (f64::from(end.client_y()) - y).abs() > 8.
+            {
                 return;
             }
             let rect = self.dom.screen.get_bounding_client_rect();

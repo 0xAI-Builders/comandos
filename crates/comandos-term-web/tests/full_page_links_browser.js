@@ -1,0 +1,45 @@
+// Run against production terminal markup/boot with an isolated fake WebSocket.
+// The harness provides fixtureWrite(text); no input reaches a live session.
+window.runFullLinkRegression = async () => {
+  const term = window.__comandosTerm;
+  const frame = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const url = 'https://example.com/' + 'complete-destination/'.repeat(8);
+  const menu = () => document.querySelector('#comandos-link-menu');
+  const close = () => document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape'}));
+  const paint = text => fixtureWrite('\x1b[?1003h\x1b[?1006h\x1b[2J\x1b[2;1H' + text);
+  const label = '\x1b]8;;' + url + '\x1b\\Abrir prototipo\x1b]8;;\x1b\\';
+  const point = (col,row) => { const r=term.screen.getBoundingClientRect(); return {clientX:r.x+(col+.5)*term.cellWidth,clientY:r.y+(row+.5)*term.cellHeight,bubbles:true,cancelable:true,button:0,detail:1}; };
+  const checks = {};
+  checks.terminalUsesAvailableWidth=term.cols>15;
+  const initialTop=term.screen.getBoundingClientRect().top;
+  close();paint(label);await frame();
+  let p=point(4,1),el=document.elementFromPoint(p.clientX,p.clientY);
+  el.dispatchEvent(new MouseEvent('mousedown',{...p,buttons:1}));paint(label);await frame();await wait(130);
+  el.dispatchEvent(new MouseEvent('mouseup',{...p,buttons:0}));
+  checks.historyDoesNotMoveCanvas=term.screen.getBoundingClientRect().top===initialTop;
+  checks.wordClickSurvivesRepaint=menu()?.querySelector('a')?.href===url;close();
+  paint(label);await frame();
+  p=point(4,1);el=document.elementFromPoint(p.clientX,p.clientY);
+  let finger=new Touch({identifier:7,target:el,clientX:p.clientX,clientY:p.clientY});
+  el.dispatchEvent(new TouchEvent('touchstart',{bubbles:true,cancelable:true,touches:[finger],changedTouches:[finger]}));
+  await wait(650);
+  el.dispatchEvent(new TouchEvent('touchend',{bubbles:true,cancelable:true,touches:[],changedTouches:[finger]}));
+  checks.deliberateTouchOnWord=menu()?.querySelector('a')?.href===url;
+  checks.historyDidNotStealTouch=document.querySelector('#terminal-history').hidden;
+  let copied=null;Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{copied=text}}});
+  menu()?.querySelector('button')?.click();await wait(20);checks.copiesFullDestination=copied===url;close();
+  paint(url);await frame();
+  p=point(4,2);el=document.elementFromPoint(p.clientX,p.clientY);
+  finger=new Touch({identifier:8,target:el,clientX:p.clientX,clientY:p.clientY});
+  el.dispatchEvent(new TouchEvent('touchstart',{bubbles:true,cancelable:true,touches:[finger],changedTouches:[finger]}));await wait(100);
+  el.dispatchEvent(new TouchEvent('touchend',{bubbles:true,cancelable:true,touches:[],changedTouches:[finger]}));
+  checks.touchWrappedContinuation=menu()?.querySelector('a')?.href===url;
+  const rect=menu()?.querySelector('section').getBoundingClientRect();checks.menuFitsMobile=!!rect&&rect.left>=0&&rect.right<=innerWidth;close();
+  el.dispatchEvent(new TouchEvent('touchstart',{bubbles:true,cancelable:true,touches:[finger],changedTouches:[finger]}));
+  const moved=new Touch({identifier:8,target:el,clientX:p.clientX,clientY:p.clientY+40});
+  el.dispatchEvent(new TouchEvent('touchmove',{bubbles:true,cancelable:true,touches:[moved],changedTouches:[moved]}));
+  el.dispatchEvent(new TouchEvent('touchend',{bubbles:true,cancelable:true,touches:[],changedTouches:[moved]}));
+  checks.scrollDoesNotOpenLink=!menu();
+  return checks;
+};

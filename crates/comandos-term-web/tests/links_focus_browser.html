@@ -1,4 +1,4 @@
-<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Private terminal link and pane regression</title><style>html,body{max-width:100%;overflow:hidden}body{margin:0;background:#101724;color:#eee}#term{width:100%;overflow:hidden;height:440px;position:relative}.xterm{position:relative;height:100%}.xterm-screen{position:relative}.xterm-viewport{position:absolute;inset:0;overflow-y:auto}#pane-chrome{position:absolute;inset:0;pointer-events:none}.pc-frame{position:absolute;border:1px solid #345}.pc-frame.on{border-color:#0ef}</style><div style="position:relative;width:100%;height:440px;overflow:hidden"><div id="term"></div><div id="pane-chrome"></div></div>
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Private terminal link and pane regression</title><style>html,body{max-width:100%;overflow:hidden}body{margin:0;background:#101724;color:#eee}#term{width:100%;overflow:hidden;height:456px;position:relative}.xterm{position:relative;height:100%}.xterm-screen{position:relative}.xterm-viewport{position:absolute;inset:0;overflow-y:auto}#pane-chrome{position:absolute;inset:0;pointer-events:none}.pc-frame{position:absolute;border:1px solid #345}.pc-frame.on{border-color:#0ef}</style><div style="position:relative;width:100%;height:456px;overflow:hidden"><div id="term"></div><div id="pane-chrome"></div></div>
 <script type="module">
 import init,{WebTerm,attach_pane_chrome} from './assets/comandos_term_web.js';
 await init();
@@ -58,6 +58,26 @@ window.runRegression=async()=>{
  clickLink();const bounds=menu().querySelector('section').getBoundingClientRect();checks.menuFitsViewport=bounds.x>=0&&bounds.right<=innerWidth&&bounds.bottom<=innerHeight;
  document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
  return checks;
+};
+window.runRepaintRegression=async()=>{
+ const wait=ms=>new Promise(r=>setTimeout(r,ms)),frame=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))),screen=t.screen();
+ const write=text=>t.write(new TextEncoder().encode(text));
+ const close=()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));
+ const paint=text=>write('\x1b[2J\x1b[2;1H'+text);
+ const press=()=>screen.dispatchEvent(new MouseEvent('mousedown',point(5,1)));
+ const release=()=>screen.dispatchEvent(new MouseEvent('mouseup',{...point(5,1),buttons:0}));
+ close();write('\x1b[?1003h\x1b[?1006h');paint(url);await frame();
+ press();paint(url);await frame();await wait(130);release();
+ const survivesSameUrlRepaint=!!document.querySelector('#comandos-link-menu');close();
+ press();paint('https://different.example/'+ 'other-text/'.repeat(10));await frame();await wait(130);release();
+ const rejectsChangedUrl=!document.querySelector('#comandos-link-menu');close();paint(url);
+ await frame();
+ screen.dispatchEvent(new MouseEvent('mousedown',point(5,2)));paint(url);await frame();screen.dispatchEvent(new MouseEvent('mouseup',{...point(5,2),buttons:0}));
+ const wrappedSecondLine=document.querySelector('#comandos-link-menu a')?.href===url;close();
+ const label='Abrir prototipo',osc='\x1b]8;;'+url+'\x1b\\'+label+'\x1b]8;;\x1b\\';
+ paint(osc);await frame();press();paint(osc);await frame();release();
+ const linkedWord=document.querySelector('#comandos-link-menu a')?.href===url;close();
+ return {survivesSameUrlRepaint,rejectsChangedUrl,wrappedSecondLine,linkedWord};
 };
 window.testReady=true;
 </script>

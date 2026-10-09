@@ -76,7 +76,7 @@ fn selected(ui: &Ui) -> bool {
 }
 fn owned(e: &JsValue) -> bool {
     let own = |node: JsValue| {
-        call(&node,"closest",&["#term-toolbar, #selection-toolbar, #pane-dialog, #paste-dialog, #mobile-compose, #terminal-history".into()]).is_ok_and(|v|truthy(&v))
+        call(&node,"closest",&["#term-toolbar, #selection-toolbar, #pane-dialog, #paste-dialog, #mobile-compose, #terminal-history, #comandos-link-menu".into()]).is_ok_and(|v|truthy(&v))
     };
     if own(get(e, "target")) {
         return true;
@@ -347,6 +347,17 @@ fn hold(ui: Ui, g: Rc<RefCell<Gesture>>, mouse: bool) {
         return;
     }
     let t = g.borrow().touch.clone();
+    // Links own a stationary touch, including a deliberate/slow tap on their label.
+    // Do not replace the terminal with history while the finger is still down.
+    if call(
+        &terminal(&ui),
+        "linkAt",
+        &[get(&t, "clientX"), get(&t, "clientY")],
+    )
+    .is_ok_and(|link| truthy(&link))
+    {
+        return;
+    }
     let Some(c) = cell(&ui, &t) else {
         return;
     };

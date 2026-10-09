@@ -47,6 +47,22 @@ pub(super) fn publish(page: &Rc<RefCell<Page>>) -> Result<JsValue, JsValue> {
         })?;
     }
     let weak = Rc::downgrade(page);
+    method(&adapter, "linkAt", move |a| {
+        let Some(t) = alive(&weak).and_then(|p| term(&p)) else {
+            return Ok(JsValue::NULL);
+        };
+        let (Some(x), Some(y)) = (a.get(0).as_f64(), a.get(1).as_f64()) else {
+            return Ok(JsValue::NULL);
+        };
+        Ok(t.borrow()
+            .with(|i| {
+                let rect = i.dom.screen.get_bounding_client_rect();
+                i.link_under(x - rect.left(), y - rect.top())
+                    .map_or(JsValue::NULL, |link| link.url.into())
+            })
+            .unwrap_or(JsValue::NULL))
+    })?;
+    let weak = Rc::downgrade(page);
     method(&adapter, "cellChar", move |a| {
         let Some(t) = alive(&weak).and_then(|p| term(&p)) else {
             return Ok("".into());
