@@ -187,10 +187,34 @@ impl Controller {
         };
         wait(invoke(&cb, &args)).await
     }
+    fn delivery_enabled(&self, n: &JsValue) -> bool {
+        let prefs = get(&self.state, "prefs");
+        !truthy(&get(&prefs, "muted"))
+            && !rows(&get(&prefs, "disabledCategories")).contains(&utf16_value(&category(n)))
+    }
+    fn apply_prefs(&self, prefs: &JsValue) -> Result<(), JsValue> {
+        set(&self.state, "prefs", &norm(prefs))?;
+        let float = get(&self.state, "float");
+        let ids = rows(&get(&float, "eventIds"));
+        let allowed: Vec<_> = ids
+            .iter()
+            .filter(|id| self.delivery_enabled(&self.by_id.get(id)))
+            .cloned()
+            .collect();
+        if truthy(&float) && allowed.len() != ids.len() {
+            if allowed.is_empty() {
+                self.clear_float();
+                set(&self.state, "float", &JsValue::NULL)?;
+            } else {
+                set(&float, "eventIds", &arr(allowed))?;
+            }
+        }
+        Ok(())
+    }
     fn apply_meta(&self, r: &JsValue) -> Result<(), JsValue> {
         let prefs = get(r, "prefs");
         if truthy(&prefs) {
-            set(&self.state, "prefs", &norm(&prefs))?;
+            self.apply_prefs(&prefs)?;
         }
         set(
             &self.state,
@@ -319,7 +343,7 @@ impl Controller {
     }
     fn maybe_float(self: &Rc<Self>, n: &JsValue) -> Result<(), JsValue> {
         let config = get(n, "float");
-        if !truthy(&config) || !truthy(&get(&config, "show")) {
+        if !self.delivery_enabled(n) || !truthy(&config) || !truthy(&get(&config, "show")) {
             return Ok(());
         }
         let ms = get(&config, "ms");
@@ -380,6 +404,7 @@ impl Controller {
             .into_iter()
             .filter(|n| {
                 !truthy(&get(n, "read"))
+                    && self.delivery_enabled(n)
                     && string(&get(&get(&prefs, "modes"), &category(n))) == "sound"
             })
             .collect();
@@ -666,6 +691,11 @@ impl Controller {
         if !r.is_object() {
             return Ok(());
         }
+        let changed = self
+            .watch_rev
+            .try_borrow()
+            .map(|s| get(r, "rev").is_string() && *s != string(&get(r, "rev")))
+            .unwrap_or(false);
         if get(r, "rev").is_string()
             && let Ok(mut s) = self.watch_rev.try_borrow_mut()
         {
@@ -687,7 +717,7 @@ impl Controller {
             }
         }
         self.emit();
-        if number(&get(r, "latest")) > self.after.get() {
+        if changed || number(&get(r, "latest")) > self.after.get() {
             self.poll();
         }
         Ok(())
@@ -912,7 +942,7 @@ fn controller(opts: JsValue) -> Result<(JsValue, Rc<Controller>), JsValue> {
                 )?
             };
             let prefs = norm(&src);
-            set(&c.state, "prefs", &prefs)?;
+            c.apply_prefs(&prefs)?;
             c.emit();
             Ok(prefs)
         }))

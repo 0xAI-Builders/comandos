@@ -824,3 +824,64 @@ async fn sound_device_matches_across_rust_and_python() {
     }
     front.stop().await;
 }
+
+#[tokio::test]
+async fn disabled_event_switches_suppress_floats_but_preserve_history() {
+    let home = TestHome::new("notice-switches");
+    seed_event(&home, "done-disabled", "turn_completed", json!({}));
+    seed_permission(&home, "attention-disabled");
+    home.write(
+        "cc-notify.conf",
+        "NOTIFY_ON_DONE=0\nNOTIFY_ON_ATTENTION=0\n",
+    );
+    let front = front(&home, dead_port(), home.options()).await;
+    let page = parse(&get(front.port, "/notices").await.text());
+    assert_eq!(page["notices"].as_array().unwrap().len(), 2);
+    for notice in page["notices"].as_array().unwrap() {
+        assert_eq!(notice["float"]["show"], false, "{notice}");
+    }
+    let sound = request_body(
+        front.port,
+        "POST",
+        "/notices/sound",
+        "",
+        r#"{"eventId":"attention-disabled","deviceId":"local-speaker"}"#,
+    )
+    .await;
+    assert_eq!(parse(&sound.text())["play"], false);
+    let revision = parse(&get(front.port, "/notices/watch?wait=0").await.text())["rev"].clone();
+    home.write(
+        "cc-notify.conf",
+        "NOTIFY_ON_DONE=1\nNOTIFY_ON_ATTENTION=0\n",
+    );
+    let updated_revision =
+        parse(&get(front.port, "/notices/watch?wait=0").await.text())["rev"].clone();
+    assert_ne!(
+        revision, updated_revision,
+        "switch changes wake the other device without new events"
+    );
+    let enabled = parse(&get(front.port, "/notices").await.text());
+    assert_eq!(enabled["notices"][0]["float"]["show"], true);
+    assert_eq!(enabled["notices"][1]["float"]["show"], false);
+    let muted = request_body(
+        front.port,
+        "POST",
+        "/notices/prefs",
+        "",
+        r#"{"muted":true}"#,
+    )
+    .await;
+    assert_eq!(muted.status, 200);
+    home.write(
+        "cc-notify.conf",
+        "NOTIFY_ON_DONE=1\nNOTIFY_ON_ATTENTION=1\n",
+    );
+    let page = parse(&get(front.port, "/notices").await.text());
+    assert!(
+        page["notices"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|n| n["float"]["show"] == false)
+    );
+}

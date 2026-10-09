@@ -19,6 +19,8 @@ use http::StatusCode;
 use serde_json::{Map, Value, json};
 use std::{
     collections::HashSet,
+    hash::{Hash, Hasher},
+    path::Path,
     time::{Duration, Instant},
 };
 use tokio::sync::watch;
@@ -245,10 +247,51 @@ async fn wait_for_change(native: &Native, seen: &str, deadline: Instant) -> Resu
     Ok(rev)
 }
 
+/// Resolve the existing global switches at delivery time. History is always retained.
+fn delivery_prefs(conn: &rusqlite::Connection, hooks: &Path) -> comandos_store::Result<Value> {
+    let mut prefs = nd::load_prefs(conn)?;
+    let conf =
+        comandos_runtime::providers::read_conf(&hooks.join("cc-notify.conf")).map_err(|_| {
+            StoreError::Io(std::io::Error::other(
+                "No se pudieron leer los ajustes de avisos",
+            ))
+        })?;
+    let mut disabled = vec![];
+    for (key, category) in [
+        ("NOTIFY_ON_DONE", "done"),
+        ("NOTIFY_ON_ATTENTION", "attention"),
+    ] {
+        if conf.iter().any(|(k, v)| k == key && v == "0") {
+            disabled.push(category);
+        }
+    }
+    if !disabled.is_empty() {
+        prefs["disabledCategories"] = json!(disabled);
+    }
+    Ok(prefs)
+}
+
+fn delivery_enabled(prefs: &Value, category: &Value) -> bool {
+    !truthy(&prefs["muted"])
+        && !prefs["disabledCategories"]
+            .as_array()
+            .is_some_and(|rows| rows.contains(category))
+}
+
 /// `notification_delivery.revision(conn)`, un trabajo corto del worker.
 async fn revision(native: &Native) -> Result<String, Fault> {
+    let hooks = native.options().hooks.clone();
     native
-        .with_state(|b| nd::revision(&b.conn))
+        .with_state(move |b| {
+            let rev = nd::revision(&b.conn)?;
+            let prefs = delivery_prefs(&b.conn, &hooks)?;
+            if prefs == comandos_core::notifications::default_prefs() {
+                return Ok(rev);
+            }
+            let mut hash = std::collections::hash_map::DefaultHasher::new();
+            prefs.to_string().hash(&mut hash);
+            Ok::<_, StoreError>(format!("{rev}.{:x}", hash.finish()))
+        })
         .await?
         .map_err(|_| Fault::Decline)
 }
@@ -256,6 +299,7 @@ async fn revision(native: &Native) -> Result<String, Fault> {
 pub async fn answer(native: &Native, route: NoticesRoute, request: &Request) -> Answer {
     let tmux = &native.options().tmux;
     let clock = &native.options().clock;
+    let hooks = native.options().hooks.clone();
     match route {
         NoticesRoute::List => {
             let query = Query::parse(&request.target)?;
@@ -285,6 +329,15 @@ pub async fn answer(native: &Native, route: NoticesRoute, request: &Request) -> 
                                 focus,
                                 check,
                             )?;
+                            let prefs = delivery_prefs(&b.conn, &hooks)?;
+                            if let Some(notices) = page["notices"].as_array_mut() {
+                                for notice in notices {
+                                    if !delivery_enabled(&prefs, &notice["category"]) {
+                                        notice["float"]["show"] = json!(false);
+                                    }
+                                }
+                            }
+                            page["prefs"] = prefs;
                             // El mismo número de la campana en todas las superficies.
                             let badge = nd::badge_count(&b.conn, check)?;
                             if let Some(map) = page.as_object_mut() {
@@ -296,7 +349,11 @@ pub async fn answer(native: &Native, route: NoticesRoute, request: &Request) -> 
                     .await?,
             )
         }
-        NoticesRoute::Prefs => read_reply(native.with_state(|b| nd::load_prefs(&b.conn)).await?),
+        NoticesRoute::Prefs => read_reply(
+            native
+                .with_state(move |b| delivery_prefs(&b.conn, &hooks))
+                .await?,
+        ),
         NoticesRoute::Watch => {
             let query = Query::parse(&request.target)?;
             let seen = query.first("rev").unwrap_or("").to_owned();
@@ -423,6 +480,15 @@ pub async fn answer(native: &Native, route: NoticesRoute, request: &Request) -> 
             write_reply(
                 native
                     .with_state(move |b| {
+                        let prefs = delivery_prefs(&b.conn, &hooks)?;
+                        if let Some(event_row) = comandos_store::get_event(&b.conn, &event)? {
+                            let category =
+                                comandos_core::notifications::classify(&event_row)["category"]
+                                    .clone();
+                            if !delivery_enabled(&prefs, &category) {
+                                return Ok(json!({"play":false,"reason":"Avisos desactivados"}));
+                            }
+                        }
                         let focus = nd::focus_block_active(&b.conn);
                         nd::claim_sound(&b.conn, &event, &device, now, Some(focus))
                     })
@@ -437,7 +503,10 @@ pub async fn answer(native: &Native, route: NoticesRoute, request: &Request) -> 
             let update = Value::Object(data.clone());
             write_reply(
                 native
-                    .with_state(move |b| nd::save_prefs(&b.conn, &update))
+                    .with_state(move |b| {
+                        nd::save_prefs(&b.conn, &update)?;
+                        delivery_prefs(&b.conn, &hooks)
+                    })
                     .await?,
             )
         }
