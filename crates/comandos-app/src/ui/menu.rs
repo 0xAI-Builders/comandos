@@ -236,6 +236,29 @@ pub fn clean_local_path(url: &str) -> Option<PathBuf> {
     };
     (!raw.contains('\0') && path.exists()).then_some(path)
 }
+/// Relative references must be resolved against the clicked pane, never the GUI cwd.
+pub fn relative_file_reference(url: &str) -> bool {
+    !url.starts_with(['/', '~'])
+        && !url.contains("://")
+        && !url.starts_with("file:")
+        && url.contains('/')
+        && !url.chars().any(char::is_control)
+}
+pub fn open_plan_in(
+    url: &str,
+    intent: OpenIntent,
+    cwd: &std::path::Path,
+) -> Result<OpenPlan, String> {
+    if relative_file_reference(url) {
+        if !cwd.is_absolute() {
+            return Err("Carpeta del panel inválida".into());
+        }
+        let path = cwd.join(url);
+        open_plan(path.to_str().ok_or("Ruta no UTF-8")?, intent)
+    } else {
+        open_plan(url, intent)
+    }
+}
 pub fn open_plan(url: &str, intent: OpenIntent) -> Result<OpenPlan, String> {
     if let Some(path) = clean_local_path(url) {
         let path = if intent == OpenIntent::Reveal && !path.is_dir() {

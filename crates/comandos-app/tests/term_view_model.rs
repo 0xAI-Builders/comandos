@@ -247,3 +247,41 @@ fn synchronized_update_freezes_blink_until_end() {
     schedule.set_synchronized(false);
     assert!(schedule.blink_due(800));
 }
+
+#[test]
+fn project_relative_file_links_keep_the_first_component() {
+    for path in [
+        "outputs/screenwright-etapa3-20261009-v001/index.html",
+        "./outputs/index.html",
+        "../outputs/index.html",
+        "/home/test/outputs/index.html:42:7",
+    ] {
+        let text = format!("  {path}");
+        for col in [3, text.len() - 2] {
+            assert_eq!(
+                url_from_wrapped_text(&text, "", Some(0), Some(col)),
+                Some(path.into()),
+                "{path} at {col}"
+            );
+        }
+    }
+}
+
+#[test]
+fn visible_relative_path_is_clickable_from_its_first_and_last_words() {
+    use comandos_app::term::{
+        engine::{Palette, TermEngine},
+        links::link_at,
+    };
+    let now = std::time::Instant::now();
+    let palette = Palette::xterm_default([255; 3], [0; 3], [255; 3], [0; 3], [255; 3]);
+    let mut engine = TermEngine::new(100, 4, 10, palette, false, now);
+    let path = "outputs/screenwright-etapa3-20261009-v001/index.html";
+    engine.feed(
+        format!("  {path}\r\nNo están demostrados todos los criterios").as_bytes(),
+        now,
+    );
+    for col in [3, 15, 48] {
+        assert_eq!(link_at(&engine, (0, col), 0, col), Some(path.into()));
+    }
+}

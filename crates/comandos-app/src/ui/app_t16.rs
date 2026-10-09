@@ -994,7 +994,7 @@ impl App {
             }
         }
     }
-    fn open_link(self: &Rc<Self>, key: &str, url: &str, intent: OpenIntent) {
+    fn open_link(self: &Rc<Self>, key: &str, url: &str, intent: OpenIntent, point: (u16, u16)) {
         let Some(instance) = self
             .term_for_action(key)
             .as_ref()
@@ -1004,17 +1004,39 @@ impl App {
         };
         let key = key.to_string();
         let cancel = instance.clone();
-        let plan = match ui::menu::open_plan(url, intent) {
-            Ok(p) => p,
-            Err(e) => {
-                self.status.set_text(&e);
-                return;
-            }
-        };
+        let url = url.to_string();
+        let tty = self
+            .term_for_action(&key)
+            .as_ref()
+            .and_then(TermView::child_tty);
+        let tmux = self.tmux.clone();
         let closed = self.closed.clone();
         let weak = Rc::downgrade(self);
         self.jobs.spawn(
             move || {
+                let cancelled = || closed.load(Ordering::Acquire) || cancel.load(Ordering::Acquire);
+                let plan = if ui::menu::relative_file_reference(&url) {
+                    let context = ui::menu::capture_click(&tmux, tty.as_deref(), point, cancelled)?;
+                    let pane = context
+                        .pane
+                        .as_deref()
+                        .ok_or("No se encuentra el panel del archivo")?;
+                    let cwd = tmux
+                        .read(&["display-message", "-p", "-t", pane, "#{pane_current_path}"])
+                        .map_err(|e| format!("{e:?}"))?;
+                    if !cwd.ok()
+                        || !ui::menu::context_current(&tmux, &context, tty.as_deref(), cancelled)
+                    {
+                        return Err("El panel del archivo cambió".into());
+                    }
+                    ui::menu::open_plan_in(
+                        &url,
+                        intent,
+                        std::path::Path::new(cwd.stdout.trim_end_matches(['\r', '\n'])),
+                    )?
+                } else {
+                    ui::menu::open_plan(&url, intent)?
+                };
                 ui::menu::launch(
                     &plan,
                     || !closed.load(Ordering::Acquire) && !cancel.load(Ordering::Acquire),
@@ -1043,11 +1065,14 @@ impl App {
             self.open_link(
                 key,
                 url,
-                if ui::menu::clean_local_path(url).is_some() {
+                if ui::menu::clean_local_path(url).is_some()
+                    || ui::menu::relative_file_reference(url)
+                {
                     OpenIntent::Reveal
                 } else {
                     OpenIntent::Open
                 },
+                point,
             );
             return;
         }
@@ -1095,7 +1120,8 @@ impl App {
         );
         let local = ui::menu::clean_local_path(url).is_some()
             || url.starts_with('/')
-            || url.starts_with('~');
+            || url.starts_with('~')
+            || ui::menu::relative_file_reference(url);
         let color = self
             .applied_theme
             .borrow()
@@ -1130,7 +1156,7 @@ impl App {
                         pop.popdown();
                     }
                     if let Some(intent) = intent {
-                        app.open_link(&key, &url, intent);
+                        app.open_link(&key, &url, intent, point);
                     } else if let Some(term) = app.term_for_action(&key).as_ref() {
                         term.clipboard().copy(
                             Target::Clipboard,

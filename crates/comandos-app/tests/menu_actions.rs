@@ -410,3 +410,38 @@ fn primary_capture_is_readonly_and_release_selects_only_original_pane_identity()
     assert!(select_captured_click(&io, &context, Some("/private/tty"), || true).is_err());
     assert!(io.calls.borrow().is_empty());
 }
+
+#[test]
+fn relative_files_resolve_against_the_clicked_pane_directory() {
+    use comandos_app::ui::menu::open_plan_in;
+    let root = std::env::temp_dir().join(format!("t16-relative-files-{}", std::process::id()));
+    let dir = root.join("outputs/screenwright-etapa3-20261009-v001");
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("index.html");
+    std::fs::write(&file, "private fixture").unwrap();
+    for reference in [
+        "outputs/screenwright-etapa3-20261009-v001/index.html",
+        "./outputs/screenwright-etapa3-20261009-v001/index.html:42:7",
+    ] {
+        let opened = open_plan_in(reference, OpenIntent::Open, &root).unwrap();
+        assert_eq!(std::fs::canonicalize(&opened.args[0]).unwrap(), file);
+        let revealed = open_plan_in(reference, OpenIntent::Reveal, &root).unwrap();
+        assert_eq!(std::fs::canonicalize(&revealed.args[0]).unwrap(), dir);
+        assert_eq!(
+            std::fs::canonicalize(revealed.reveal.unwrap()).unwrap(),
+            file
+        );
+        assert!(open_plan_in(reference, OpenIntent::Open, &root.join("wrong-pane")).is_err());
+    }
+    assert_eq!(
+        open_plan_in(
+            file.to_str().unwrap(),
+            OpenIntent::Open,
+            &root.join("wrong-pane")
+        )
+        .unwrap()
+        .args,
+        vec![file.as_os_str()]
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
