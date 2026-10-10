@@ -122,7 +122,7 @@ fn header(u: &Ui, v: &JsValue) -> Result<(), JsValue> {
             "innerHTML",
             &format!(
                 "{}<span class=\"pomo-mini\"></span>",
-                art::asset("clock", &text(&style_), "pm-header-clock")
+                r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M9 2h6m-3 3v3m0 5 3-3M18 6l2-2"/></svg>"#
             )
             .into(),
         )?;

@@ -217,16 +217,9 @@ mod web {
         set(
             &options,
             "showFloat",
-            &function(|args| {
-                Ok((!(app()?
-                    && truthy(&global("DESKTOP_POPUPS"))
-                    && truthy(&call(
-                        &global("SYSTEM_POPUP_CATS"),
-                        "has",
-                        &[get(&args.get(0), "category")],
-                    )?)))
-                .into())
-            }),
+            // The sidebar is a file workspace. Notification history and native
+            // desktop delivery keep their existing settings and dedicated UI.
+            &function(|_| Ok(false.into())),
         )?;
         let captured = notices.clone();
         set(
@@ -424,7 +417,7 @@ export async function tail_contracts(source,attach){
  for(const n of [{category:'news'},{},{projectKey:'Key',sessionKey:'none'},{project:'Terminal',sessionKey:'live',paneId:'%2'},{project:'Project',sessionKey:'live',paneId:'%3'},{project:'😀\ud800',sessionKey:'live',paneId:'%999'},{sessionKey:'orphan',paneId:'%3'}])eq(o.describe(n),ref.describe(n),'original describe');
  for(const s of ['',null,'live','orphan','missing'])eq(o.isSessionLive(s),ref.isSessionLive(s),'live set predicate');S.liveSess=null;for(const s of ['live','orphan','missing'])eq(o.isSessionLive(s),ref.isSessionLive(s),'live map fallback');S.liveSess=new Set(['live']);
  o.onBadge(4);eq(tailNodes['notif-badge'].textContent,'4','badge');ok(!tailNodes['notif-badge'].classList.hidden,'badge visible');o.onBadge(0);ok(tailNodes['notif-badge'].classList.hidden,'badge zero hidden');
- for(const native of [false,true])for(const pop of [false,true])for(const category of ['permission','other']){tailNative=native;DESKTOP_POPUPS=pop;context.DESKTOP_POPUPS=pop;eq(o.showFloat({category}),ref.showFloat({category}),'float category');}tailNative=false;DESKTOP_POPUPS=true;
+ for(const native of [false,true])for(const pop of [false,true])for(const category of ['permission','other']){tailNative=native;DESKTOP_POPUPS=pop;context.DESKTOP_POPUPS=pop;eq(o.showFloat({category}),false,'sidebar does not float notices');}tailNative=false;DESKTOP_POPUPS=true;
  selectPaneInFrame('missing','%1');eq(tailCalls,[],'missing frame silent');selectPaneInFrame('live','%2');eq(tailCalls.pop(),['post',{source:'comandos',type:'select-pane',pane:'%2'},location.origin],'ready iframe selection');
  for(const kind of ['loading','blank','security']){const f=tailFrame(kind!=='loading',kind==='blank'?'about:blank':undefined);if(kind==='security')Object.defineProperty(f.contentWindow,'location',{get(){throw Error('cross origin')}});openTerms.set('pending',{frame:f});selectPaneInFrame('pending','%9');eq(f.events.load.length,1,'wait for '+kind);eq(f.events.load[0].o,{once:true},'once load '+kind);eq(tailCalls,[],'no premature post '+kind);f.events.load[0].f();eq(tailCalls.pop()[1].pane,'%9','deferred post '+kind);}
  tailNative=true;o.openSource({sessionKey:'live',project:'Project',paneId:'%2'});eq(tailCalls.slice(0,2),[['native','live','claude','Terminal'],['api','/terminal-panes',{session:'live',action:'list'}]],'native order synchronously');await drain();eq(tailCalls.pop(),['api','/terminal-panes',{session:'live',action:'select',pane:'%2',identity:{pid:42,birth:17}}],'native identity select');tailCalls=[];

@@ -1066,7 +1066,7 @@ pub(super) fn mount() -> Result<(), JsValue> {
             function(|_| {
                 let slot = query(
                     &doc(),
-                    "#command-sidebar .cs-empty-terms:not([hidden]) .cs-limits",
+                    "#command-sidebar .cs-empty-terms:not([hidden]) .et-lim:not([hidden]) .cs-limits",
                 );
                 if truthy(&slot) && text(&get(&doc(), "visibilityState")) == "visible" {
                     limits(&slot)?;

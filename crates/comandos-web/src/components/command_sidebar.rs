@@ -1,4 +1,7 @@
 //! Callback-based command sidebar; state and event decisions are Rust.
+#[cfg(target_arch = "wasm32")]
+#[path = "sidebar_browser.rs"]
+mod browser;
 #[cfg(not(target_arch = "wasm32"))]
 pub fn mount() -> Result<(), wasm_bindgen::JsValue> {
     Ok(())
@@ -61,6 +64,7 @@ mod web {
         el: JsValue,
         state: JsValue,
         timer: RefCell<JsValue>,
+        browser: Rc<super::browser::Browser>,
     }
     impl Sidebar {
         fn callback(&self, name: &str, args: &[JsValue]) -> Result<JsValue, JsValue> {
@@ -170,6 +174,13 @@ mod web {
             self.render()
         }
         fn refresh(self: &Rc<Self>) -> JsValue {
+            self.browser.sync(if truthy(&self.state("sheet")) {
+                ""
+            } else if self.state("view") == "usage" {
+                "usage"
+            } else {
+                "files"
+            });
             let owner = self.clone();
             let started = (|| -> Result<JsValue, JsValue> {
                 let t = owner.target();
@@ -559,7 +570,7 @@ mod web {
             )?;
             Ok(info)
         }
-        fn paint_sheet(&self, count: usize) -> Result<(), JsValue> {
+        fn paint_sheet(self: &Rc<Self>, count: usize) -> Result<(), JsValue> {
             let cur = s(&self.state("sheet"));
             classes(&self.el, "sheet-open", !cur.is_empty());
             attr(&self.el, "data-panel", &cur);
@@ -595,18 +606,30 @@ mod web {
             let empty = view::empty_terms(count, truthy(&self.state("termsHidden")));
             let box_ = self.query(".cs-empty-terms");
             if !nullish(&box_) {
-                set(
-                    &box_,
-                    "hidden",
-                    &(!cur.is_empty()).into(),
-                )?;
+                set(&box_, "hidden", &(!cur.is_empty()).into())?;
                 // Account usage belongs to the sidebar even while a quick
                 // terminal is visible; only the empty-terminal hint is conditional.
                 set(&query(&box_, ".et-foot"), "hidden", &empty.is_none().into())?;
                 let native = invoke(&global("inApp"), &[]).is_ok_and(|v| truthy(&v));
-                style(&box_, "flex", if empty.is_none() && !native { "0 1 48%" } else { "1 1 auto" });
+                style(
+                    &box_,
+                    "flex",
+                    if empty.is_none() && !native {
+                        "0 1 48%"
+                    } else {
+                        "1 1 auto"
+                    },
+                );
                 style(&box_, "max-height", "none");
-                style(&box_, "min-height", if empty.is_none() && !native { "180px" } else { "0" });
+                style(
+                    &box_,
+                    "min-height",
+                    if empty.is_none() && !native {
+                        "180px"
+                    } else {
+                        "0"
+                    },
+                );
                 style(&box_, "order", "1");
                 if let Some((text, go, action)) = empty {
                     set(&query(&box_, ".et-t"), "textContent", &text.into())?;
@@ -614,7 +637,22 @@ mod web {
                     set(&button, "textContent", &go.into())?;
                     attr(&button, "data-term-act", action);
                 }
-                self.quiet("renderLimits", &[query(&box_, ".cs-limits")]);
+                let usage = self.state("view") == "usage";
+                set(&query(&box_, ".et-lim"), "hidden", &(!usage).into())?;
+                set(&query(&box_, ".cs-explorer"), "hidden", &usage.into())?;
+                for button in all(&self.el, "[data-sidebar-view]") {
+                    let on = get(&get(&button, "dataset"), "sidebarView") == self.state("view");
+                    classes(&button, "on", on);
+                    attr(&button, "aria-selected", if on { "true" } else { "false" });
+                }
+                if usage && cur.is_empty() {
+                    self.quiet("renderLimits", &[query(&box_, ".cs-limits")]);
+                }
+                self.browser.sync(if cur.is_empty() {
+                    if usage { "usage" } else { "files" }
+                } else {
+                    ""
+                });
             }
             if cur == "srv" {
                 self.write_state("srvMounted", true.into())?;
@@ -755,6 +793,10 @@ mod web {
                     ),
                 )?;
                 self.wire_track()?;
+                let clock = id("clock");
+                if !nullish(&clock) {
+                    let _ = call(&self.query(".cs-footer"), "appendChild", &[clock]);
+                }
             }
             let track = or(self.query(".cs-terms .tabs"), self.query(".cs-terms"));
             if !nullish(&track) {
@@ -852,6 +894,7 @@ mod web {
                 ("[data-run-next]", "next"),
                 ("[data-run-stop]", "stop"),
                 ("[data-open-builder]", "builder"),
+                ("[data-sidebar-view]", "view"),
                 ("[data-sheet]", "sheet"),
                 ("[data-sheet-close]", "sheet-close"),
                 ("[data-term-act]", "term-act"),
@@ -868,6 +911,14 @@ mod web {
                 }
                 let data = get(&n, "dataset");
                 match action {
+                    "view" => {
+                        let view = get(&data, "sidebarView");
+                        if view == "files" || view == "usage" {
+                            self.write_state("view", view)?;
+                            self.write_state("sheet", "".into())?;
+                            self.render()?;
+                        }
+                    }
                     "next" => {
                         self.next()?;
                     }
@@ -876,6 +927,7 @@ mod web {
                         self.callback("openBuilder", &[])?;
                     }
                     "sheet" => {
+                        let _ = set(&self.query(".cs-more"), "open", &false.into());
                         let key = s(&get(&data, "sheet"));
                         self.set_sheet(if key == s(&self.state("sheet")) {
                             ""
@@ -1006,10 +1058,11 @@ mod web {
         fn create(opts: JsValue) -> Result<JsValue, JsValue> {
             let el = get(&opts, "root");
             let state = from_json(
-                &json!({"catalog":null,"cliInPane":"","catalogTarget":null,"chains":[],"run":null,"curTerm":"","typing":null,"q":"","firstRender":true,"appliedTarget":null,"sheet":""}),
+                &json!({"catalog":null,"cliInPane":"","catalogTarget":null,"chains":[],"run":null,"curTerm":"","typing":null,"q":"","firstRender":true,"appliedTarget":null,"sheet":"","view":"files"}),
             )?;
             set(&state, "open", &constructor("Set", &[])?)?;
             let owner = Rc::new(Self {
+                browser: super::browser::Browser::new(opts.clone(), el.clone()),
                 opts,
                 el,
                 state,

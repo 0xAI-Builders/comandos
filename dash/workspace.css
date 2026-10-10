@@ -1102,3 +1102,52 @@ body.app.split:not(.inapp) #tab-left[aria-pressed="true"]{color:var(--brand)}
 /* Modales en medio (2-oct, Jesús): en el remoto partido los .modal, el asistente de sesión nueva (+),
    Uso de skills y MCPs / Perfiles (.sc-modal) y el Pomodoro se abren sobre TODA la ventana, centrados,
    nunca dentro de la columna izquierda. (En la app de escritorio van a la ventana centrada de la app.) */
+
+/* Approved sidebar A: files first, secondary tools, static controls. */
+#command-sidebar .cs-tools{position:relative;align-items:center;gap:4px;padding:7px 8px;background:var(--cs-panel)}
+#command-sidebar .cs-tools button[data-flat].tb{height:34px;border-radius:6px}
+#command-sidebar .cs-tools .cs-server-button{flex:0 0 32px!important}
+#command-sidebar .cs-more{position:relative;flex:none;color:var(--cs-dim)}
+#command-sidebar .cs-more summary{list-style:none;display:grid;place-items:center;width:30px;height:34px;cursor:pointer;font-size:22px;border-radius:6px}
+#command-sidebar .cs-more summary::-webkit-details-marker{display:none}
+#command-sidebar .cs-more summary:hover{background:var(--cs-hover);color:var(--cs-text)}
+#command-sidebar .cs-more>div{position:absolute;right:0;top:39px;z-index:15;min-width:160px;padding:5px;background:var(--cs-panel2);border:1px solid var(--cs-line);border-radius:8px;box-shadow:0 8px 20px #0006}
+#command-sidebar .cs-more button{display:block;width:100%;min-height:36px;text-align:left;background:transparent;border:0;padding:8px 12px;color:var(--cs-text)}
+#command-sidebar .cs-more button:hover{background:var(--cs-hover)}
+#command-sidebar .cs-explorer{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;overflow:hidden;color:var(--cs-text);font:12px/1.5 "Ubuntu Sans",system-ui,sans-serif}
+#command-sidebar .cs-explorer[hidden],#command-sidebar .et-lim[hidden]{display:none!important}
+#command-sidebar .sf-heading{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 0;gap:8px}
+#command-sidebar .sf-heading strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+#command-sidebar .sf-heading button{display:grid;place-items:center;min-height:28px;min-width:28px;padding:4px;border:0;background:transparent;color:var(--cs-dim)}
+#command-sidebar .sf-root{padding:3px 12px 10px;color:var(--cs-dim);font:10px/1.5 var(--mono);overflow-wrap:anywhere;max-height:60px;overflow:auto;user-select:text}
+#command-sidebar .sf-tree{min-height:0;flex:1;overflow:auto;overscroll-behavior:contain;padding:4px 0}
+#command-sidebar button.sf-row{display:flex;align-items:center;gap:7px;min-height:29px;width:100%;border:0;border-radius:0;padding-top:3px;padding-bottom:3px;padding-right:10px;text-align:left;background:transparent;color:var(--cs-text);box-shadow:none;font:12px/1.5 "Ubuntu Sans",system-ui,sans-serif;transform:none;transition:none}
+#command-sidebar button.sf-row:hover,#command-sidebar button.sf-row.selected{background:var(--cs-hover)}
+#command-sidebar button.sf-row:focus-visible{outline:1px solid var(--cs-brand);outline-offset:-1px}
+#command-sidebar .sf-caret{width:9px;flex:none;color:var(--cs-dim)}
+#command-sidebar .sf-type{display:inline-grid;place-items:center;width:16px;flex:none;font:700 9px/16px var(--mono)}
+#command-sidebar .sf-row svg{flex:none;color:var(--cs-brand)}
+#command-sidebar .sf-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#command-sidebar .sf-selection{flex:none;padding:9px 12px;border-top:1px solid var(--cs-line)}
+#command-sidebar .sf-selection code{display:block;font:10px/1.5 var(--mono);overflow-wrap:anywhere;user-select:text;max-height:60px;overflow:auto}
+#command-sidebar .sf-selection>div{display:flex;gap:8px;padding:7px 0 3px;flex-wrap:wrap}
+#command-sidebar .sf-selection button,#command-sidebar .cs-credits button{min-height:28px;padding:4px 9px;background:var(--cs-panel2);border:1px solid var(--cs-line);border-radius:5px;font-size:11px;color:var(--cs-text)}
+#command-sidebar .sf-selection small{display:block;color:var(--cs-dim);font-size:10px;line-height:1.4}
+#command-sidebar .sf-message{padding:12px;color:var(--cs-dim);font-size:12px;overflow-wrap:anywhere}
+#command-sidebar .cs-footer{display:flex;align-items:center;justify-content:space-between;flex:none;order:4;padding:7px 12px;border-top:1px solid var(--cs-line);color:var(--cs-dim);font:10px/1.5 var(--mono)}
+#command-sidebar .cs-footer #clock{margin:0;font:inherit;letter-spacing:0;color:inherit}
+#command-sidebar .cs-credits{padding:12px;margin:10px;border:1px solid var(--cs-line);border-radius:9px;background:var(--cs-panel)}
+#command-sidebar .cs-credits:empty{display:none}
+#command-sidebar .sf-credit-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px}
+#command-sidebar .sf-credit-numbers{display:flex;gap:12px;flex-wrap:wrap;padding-top:8px}
+#command-sidebar .sf-credit-numbers>div{display:flex;flex-direction:column;gap:3px}
+#command-sidebar .sf-credit-numbers>div:first-child{flex:1 1 100%}
+#command-sidebar .sf-credit-numbers strong{font:600 23px/1.3 var(--mono);color:var(--cs-brand)}
+#command-sidebar .cs-credits p,#command-sidebar .cs-credits small{color:var(--cs-dim);font-size:11px;line-height:1.5}
+#command-sidebar .cs-credits label,#command-sidebar .cs-credits small{display:block;margin:8px 0}
+#command-sidebar .cs-credits input{box-sizing:border-box;width:100%;min-width:0;margin:6px 0;padding:8px;color:var(--cs-text);background:var(--cs-panel2);border:1px solid var(--cs-line);border-radius:5px}
+#command-sidebar .cs-credits summary{cursor:pointer;font-size:12px;color:var(--cs-brand)}
+#command-sidebar button[data-terms-toggle]{color:var(--cs-dim)!important;background:transparent!important;border:1px solid var(--cs-line)!important;border-radius:5px!important;box-shadow:none!important}
+#command-sidebar button[data-terms-toggle]:hover{color:var(--cs-text)!important;background:var(--cs-hover)!important}
+#btn-pomo svg{width:18px;height:18px;flex:none}
+@media(max-width:600px){#command-sidebar .sf-row{min-height:34px!important}#command-sidebar .cs-tools button[data-flat].tb{height:38px}}

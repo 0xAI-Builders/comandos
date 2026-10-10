@@ -21,7 +21,6 @@ pub struct Header {
     controls: Vec<(gtk::Button, &'static str)>,
     pub badge: gtk::Label,
     pub actions: Vec<(gtk::Button, &'static str)>,
-    pub hourglass: gtk::Image,
     pub notice_wrap: gtk::Overlay,
 }
 impl Header {
@@ -97,10 +96,6 @@ impl Header {
             b.style_context().add_class(&format!("cc-key-{key}"));
             actions.push((b, key));
         }
-        let hourglass = gtk::Image::new();
-        if let Some((button, _)) = actions.iter().find(|(_, k)| *k == "pomo") {
-            button.set_image(Some(&hourglass));
-        }
         let notice_wrap = gtk::Overlay::new();
         if let Some((button, _)) = actions.iter().find(|(_, k)| *k == "notif") {
             notice_wrap.add(button);
@@ -115,7 +110,6 @@ impl Header {
             controls,
             badge,
             actions,
-            hourglass,
             notice_wrap,
         }
     }
@@ -137,7 +131,7 @@ impl Header {
         for (b, name) in &self.controls {
             b.set_image(Some(&super::icons::image(name, 16, dim)));
         }
-        for (b, key) in self.actions.iter().filter(|(_, k)| *k != "pomo") {
+        for (b, key) in &self.actions {
             let name = match *key {
                 "notif" => "bell",
                 "news" => "sparkles",

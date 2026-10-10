@@ -72,11 +72,6 @@ pub struct App {
     marks: RefCell<BTreeMap<String, Value>>,
     work_marks: RefCell<ui::marks::Marks>,
     marks_fetching: Cell<bool>,
-    hourglass: RefCell<ui::hourglass::Hourglass>,
-    hourglass_sprites: RefCell<ui::hourglass::Sprites>,
-    hourglass_fetching: Cell<bool>,
-    hourglass_polled: Cell<Option<std::time::Instant>>,
-    hourglass_frame: Cell<Option<(usize, bool, i32)>>,
     header: ui::header::Header,
     popovers: RefCell<BTreeMap<String, (gtk::Popover, webkit2gtk::WebView)>>,
     favorite_pending: RefCell<BTreeMap<String, bool>>,
@@ -521,11 +516,6 @@ impl App {
             marks: RefCell::new(BTreeMap::new()),
             work_marks: RefCell::new(ui::marks::Marks::default()),
             marks_fetching: Cell::new(false),
-            hourglass: RefCell::new(ui::hourglass::Hourglass::default()),
-            hourglass_sprites: RefCell::new(ui::hourglass::Sprites::default()),
-            hourglass_fetching: Cell::new(false),
-            hourglass_polled: Cell::new(None),
-            hourglass_frame: Cell::new(None),
             header: ui::header::Header::new(&window, english),
             popovers: RefCell::new(BTreeMap::new()),
             favorite_pending: RefCell::new(BTreeMap::new()),
@@ -2023,7 +2013,6 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
                             tab.paint(epoch.elapsed().as_secs_f64());
                         }
                     }
-                    app.tick_hourglass();
                     app.paint_pane_indicators(epoch.elapsed().as_secs_f64());
                     if let Some(key) = app.current_session() {
                         app.paint_selected(&key);

@@ -31,6 +31,7 @@ pub mod retired;
 pub mod sessions;
 pub mod settings;
 pub mod snippets;
+pub mod sidebar;
 pub mod ssh;
 pub mod state;
 pub mod states;
@@ -100,6 +101,7 @@ pub enum NativeRoute {
     QuickTerminal,
     Usage(usage::UsageRoute),
     Retired,
+    Sidebar,
     // Cortes de la 2f (D2): cada variante pertenece a un `Cut` (ver `cut`).
     Tabs(tabs::TabsRoute),
     Sessions(sessions::SessionsRoute),
@@ -169,7 +171,8 @@ impl NativeRoute {
             | NativeRoute::State
             | NativeRoute::QuickTerminal
             | NativeRoute::Usage(_)
-            | NativeRoute::Retired => Cut::Base,
+            | NativeRoute::Retired
+            | NativeRoute::Sidebar => Cut::Base,
         }
     }
 }
@@ -292,6 +295,7 @@ const TABLES: &[&[Entry]] = &[
     quick::ROUTES,
     usage::ROUTES,
     retired::ROUTES,
+    sidebar::ROUTES,
     // Cortes de la 2f. `residue` va la última: sus prefijos no deben tapar
     // ninguna entrada exacta.
     tabs::ROUTES,
@@ -310,7 +314,7 @@ const TABLES: &[&[Entry]] = &[
 /// Cuántas tablas de `TABLES` son de la base (2b–2e): las primeras, antes de
 /// las de los cortes de la 2f. Quien añada una tabla de base lo sube aquí.
 #[cfg(test)]
-const BASE_TABLES: usize = 15;
+const BASE_TABLES: usize = 16;
 
 pub fn route(method: &Method, target: &str) -> Option<NativeRoute> {
     if *method == Method::GET
@@ -673,6 +677,7 @@ fn env_path(name: &str) -> Option<PathBuf> {
 
 pub struct Native {
     opts: NativeOptions,
+    pub(crate) credits: Arc<sidebar::CreditsCache>,
     enabled: AtomicBool,
     pub(crate) news_scheduler_started: AtomicBool,
     background_owner: Mutex<Option<background::Owner>>,
@@ -738,6 +743,7 @@ impl Native {
             pane_accounts: Arc::default(),
             journal: lanes::Lane::new(opts.journal_db.clone()),
             opts,
+            credits: Arc::default(),
             enabled: AtomicBool::new(true),
             news_scheduler_started: AtomicBool::new(false),
             background_owner: Mutex::new(None),
@@ -1011,6 +1017,7 @@ impl Native {
 
     async fn answer(self: &Arc<Self>, route: NativeRoute, request: &Request) -> Answer {
         match route {
+            NativeRoute::Sidebar => sidebar::answer(self, request).await,
             NativeRoute::Light(route) => light::answer(self, route, request).await,
             NativeRoute::Events => events::answer(self, request).await,
             NativeRoute::Notices(route) => notices::answer(self, route, request).await,
@@ -1123,7 +1130,7 @@ mod scaffold_tests {
         // la apaga) y toda entrada de las tablas de la 2f, a su corte. La lista
         // explícita cubre las tablas de ambos carriles (2f-1 y 2f-3/2f-4); el
         // recuento debe igualar `TABLES.len()`.
-        let base: [&[Entry]; 15] = [
+        let base: [&[Entry]; 16] = [
             light::ROUTES,
             events::ROUTES,
             notices::ROUTES,
@@ -1139,6 +1146,7 @@ mod scaffold_tests {
             quick::ROUTES,
             usage::ROUTES,
             retired::ROUTES,
+            sidebar::ROUTES,
         ];
         let cuts: [&[Entry]; 11] = [
             tabs::ROUTES,

@@ -756,23 +756,7 @@ pub fn catalog_pill(catalog: &Value, here: &str) -> String {
     }
 }
 pub fn tools_html() -> String {
-    let mut html = String::new();
-    for (k, l) in [
-        ("cmds", "Comandos"),
-        ("chains", "Cadenas"),
-        ("srv", "Servidores"),
-    ] {
-        let icon = if k == "srv" {
-            "<span class=\"sic\" data-icon=\"server\" data-size=\"15\" aria-hidden=\"true\"></span>"
-                .into()
-        } else {
-            icon(if k == "cmds" { "book" } else { "chain" }, "s20")
-        };
-        html.push_str(&format!("<button type=\"button\" data-flat class=\"tb\" data-sheet=\"{k}\" aria-pressed=\"false\">{icon}<span class=\"lb\">{l}</span>{}</button>",if k=="chains"{"<small class=\"n\"></small>"}else{""}));
-    }
-    format!(
-        "<div class=\"cs-tools\" role=\"toolbar\" aria-label=\"Comandos, cadenas y servidores\">{html}</div>"
-    )
+    r#"<div class="cs-tools" role="toolbar" aria-label="Barra lateral"><button type="button" data-flat class="tb" data-sidebar-view="files" role="tab" aria-selected="true"><span data-icon="folder" data-size="15"></span><span class="lb">Archivos</span></button><button type="button" data-flat class="tb" data-sidebar-view="usage" role="tab" aria-selected="false"><span data-icon="chart" data-size="15"></span><span class="lb">Consumos</span></button><details class="cs-more"><summary title="Herramientas" aria-label="Herramientas">⋯</summary><div><button data-flat data-sheet="cmds">Comandos</button><button data-flat data-sheet="chains">Cadenas <small class="n"></small></button></div></details><button type="button" data-flat class="tb cs-server-button" data-sheet="srv" aria-label="Servidores" title="Servidores"><span data-icon="server" data-size="15"></span></button></div>"#.into()
 }
 pub fn head_html(title: &str, pill: &str, q: &str) -> String {
     format!(
@@ -784,7 +768,7 @@ pub fn head_html(title: &str, pill: &str, q: &str) -> String {
 }
 pub fn shell_html(head: &str, body: &str, chains: &str) -> String {
     format!(
-        "{}<div class=\"sec-cmds cs-sheet\" role=\"dialog\" aria-label=\"Comandos, cadenas y servidores\">{head}<div class=\"cs-body\">{body}</div><div class=\"cs-chains-body\">{chains}</div><div class=\"cs-srv\"><div class=\"cs-srv-slot\"></div></div></div><div class=\"cs-empty-terms\"><div class=\"et-lim\"><div class=\"et-h\"><b>Uso de tus cuentas</b><small>% usado</small></div><div class=\"cs-limits\"></div></div><div class=\"et-foot\"><span class=\"et-t\"></span><button type=\"button\" data-flat class=\"et-go\"></button></div></div><div class=\"sec-terms\"><div class=\"cs-terms tt\" role=\"group\" aria-label=\"Terminales de la barra\"><span class=\"grip\" aria-hidden=\"true\"></span><button type=\"button\" data-flat class=\"arr\" data-tscroll=\"-1\" aria-label=\"Terminales anteriores\" hidden>‹</button><div class=\"tabs\"></div><button type=\"button\" data-flat class=\"arr\" data-tscroll=\"1\" aria-label=\"Más terminales\" hidden>›</button><button type=\"button\" data-flat class=\"t plus\" data-new-term aria-label=\"Nueva terminal\" title=\"Nueva terminal\">+</button><div class=\"tog-slot\"></div></div><div class=\"mini\"></div></div>",
+        "{}<div class=\"sec-cmds cs-sheet\" role=\"dialog\" aria-label=\"Comandos, cadenas y servidores\">{head}<div class=\"cs-body\">{body}</div><div class=\"cs-chains-body\">{chains}</div><div class=\"cs-srv\"><div class=\"cs-srv-slot\"></div></div></div><div class=\"cs-empty-terms\"><div class=\"cs-explorer\"></div><div class=\"et-lim\" hidden><div class=\"cs-credits\"></div><div class=\"et-h\"><b>Uso de tus cuentas</b><small>% usado</small></div><div class=\"cs-limits\"></div></div><div class=\"et-foot\"><span class=\"et-t\"></span><button type=\"button\" data-flat class=\"et-go\"></button></div></div><div class=\"cs-footer\"><span>ComandOS</span></div><div class=\"sec-terms\"><div class=\"cs-terms tt\" role=\"group\" aria-label=\"Terminales de la barra\"><span class=\"grip\" aria-hidden=\"true\"></span><button type=\"button\" data-flat class=\"arr\" data-tscroll=\"-1\" aria-label=\"Terminales anteriores\" hidden>‹</button><div class=\"tabs\"></div><button type=\"button\" data-flat class=\"arr\" data-tscroll=\"1\" aria-label=\"Más terminales\" hidden>›</button><button type=\"button\" data-flat class=\"t plus\" data-new-term aria-label=\"Nueva terminal\" title=\"Nueva terminal\">+</button><div class=\"tog-slot\"></div></div><div class=\"mini\"></div></div>",
         tools_html()
     )
 }
