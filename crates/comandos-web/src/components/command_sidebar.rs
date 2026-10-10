@@ -609,7 +609,12 @@ mod web {
                 set(&box_, "hidden", &(!cur.is_empty()).into())?;
                 // Account usage belongs to the sidebar even while a quick
                 // terminal is visible; only the empty-terminal hint is conditional.
-                set(&query(&box_, ".et-foot"), "hidden", &empty.is_none().into())?;
+                // Hidden terminals reopen from the arrow in their bar; the footer only offers a new one.
+                set(
+                    &query(&box_, ".et-foot"),
+                    "hidden",
+                    &empty.is_none_or(|e| e.2 == "toggle").into(),
+                )?;
                 let native = invoke(&global("inApp"), &[]).is_ok_and(|v| truthy(&v));
                 style(
                     &box_,
