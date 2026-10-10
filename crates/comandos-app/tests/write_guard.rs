@@ -137,6 +137,22 @@ fn live_guard_has_a_closed_file_list() {
 }
 
 #[test]
+fn live_guard_lets_the_app_publish_its_active_tab() {
+    // `/active-tab` feeds the dashboard explorer; its domain write takes a sidecar lock.
+    let f = TestTmux::for_mode(RunMode::Live).unwrap();
+    f.guard
+        .open_lock(&f.config.hooks_dir().join("app-tab-active.json.lock"))
+        .unwrap();
+    f.guard
+        .write_atomic(
+            &f.config.hooks_dir().join("app-tab-active.json"),
+            br#"{"session":"term-a","ts":1}"#,
+            "active.",
+        )
+        .unwrap();
+}
+
+#[test]
 fn final_symlink_is_never_followed() {
     let f = TestTmux::for_mode(RunMode::Sandbox).unwrap();
     f.guard.create_dir_all(f.config.hooks_dir(), 0o700).unwrap();

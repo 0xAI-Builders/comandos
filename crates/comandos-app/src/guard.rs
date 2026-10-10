@@ -89,6 +89,7 @@ impl WriteGuard {
                     "app-sessions-v2.json.bak",
                     "app-sessions-v2.json.history",
                     "app-tab-active.json",
+                    "app-tab-active.json.lock",
                     "app-tab-models.json",
                     "app-extension-shelf.json",
                     "app-extension-shelf.json.lock",

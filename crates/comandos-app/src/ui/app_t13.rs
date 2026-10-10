@@ -560,6 +560,47 @@ impl App {
         );
     }
 
+    /// Publishes the focused session to `app-tab-active.json`, which `/active-tab` serves to
+    /// the dashboard (file explorer, command target). Tab switches and split focus both count.
+    fn install_active_tab_report(self: &Rc<Self>) {
+        let reported = Rc::new(RefCell::new(String::new()));
+        let weak = Rc::downgrade(self);
+        glib::timeout_add_local(Duration::from_millis(400), move || {
+            let Some(app) = weak.upgrade().filter(|a| !a.closed.load(Ordering::Acquire)) else {
+                return glib::ControlFlow::Break;
+            };
+            let session = app
+                .current_session()
+                .and_then(|key| key.split(':').next().map(str::to_owned))
+                .unwrap_or_default();
+            if session.is_empty() || !app.writable() || *reported.borrow() == session {
+                return glib::ControlFlow::Continue;
+            }
+            *reported.borrow_mut() = session.clone();
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0., |d| d.as_secs_f64());
+            let state = app.state.clone();
+            let closed = app.closed.clone();
+            app.jobs.spawn(
+                move || {
+                    if closed.load(Ordering::Acquire) {
+                        return Ok(());
+                    }
+                    state
+                        .write("app-tab-active.json", &json!({"session": session, "ts": ts}))
+                        .map_err(|e| format!("{e:?}"))
+                },
+                |result: Result<(), String>| {
+                    if let Err(e) = result {
+                        eprintln!("save active tab: {e}");
+                    }
+                },
+            );
+            glib::ControlFlow::Continue
+        });
+    }
+
     pub(in crate::ui) fn install_presence(self: &Rc<Self>) -> glib::SourceId {
         let key = gtk::EventControllerKey::new(&self.window);
         key.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -604,6 +645,7 @@ impl App {
         self.protocol_signals
             .borrow_mut()
             .push((self.window.clone().upcast(), signal));
+        self.install_active_tab_report();
         let weak = Rc::downgrade(self);
         glib::timeout_add_local(Duration::from_secs(30), move || {
             if let Some(app) = weak.upgrade().filter(|a| !a.closed.load(Ordering::Acquire)) {
