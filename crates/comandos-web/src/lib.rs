@@ -58,6 +58,7 @@ pub mod components {
     pub mod analytics;
     pub mod app_coordinator;
     pub mod chain_builder;
+    pub mod chat_view;
     pub mod command_sidebar;
     #[cfg(target_arch = "wasm32")]
     pub(crate) mod content_runtime;

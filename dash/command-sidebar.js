@@ -658,7 +658,7 @@
     // Sin terminal que mostrar (escondidas o ninguna): la columna no se queda vacía.
     function emptyTerms() {
       if (!termList().length) return { t: 'Sin terminales en la barra', go: '+ Nueva terminal', act: 'new' };
-      if (state.termsHidden) return { t: 'Terminales escondidas', go: 'Mostrar terminal', act: 'toggle' };
+      if (state.termsHidden) return { t: '', go: 'Mostrar terminal', act: 'toggle' };
       return null;
     }
     function paintSheet(n) {

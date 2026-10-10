@@ -356,7 +356,7 @@ impl Browser {
         } else {
             &*selected
         };
-        out.push_str(&format!("<div class=\"sf-selection\"><code>{}</code><div><button data-flat data-sf-open=\"{}\">Abrir en equipo</button><button data-flat data-sf-copy=\"{}\">Copiar ruta</button></div><small>Abrir utiliza las aplicaciones del equipo donde corre ComandOS.</small></div>",esc(path),esc(path),esc(path)));
+        out.push_str(&format!("<div class=\"sf-selection\"><code>{}</code><div><button data-flat data-sf-open=\"{}\">Abrir en equipo</button><button data-flat data-sf-copy=\"{}\">Copiar ruta</button></div></div>",esc(path),esc(path),esc(path)));
         html(&self.q(".sf-body"), &out);
     }
     fn results(&self, query: &str, out: &mut String) {

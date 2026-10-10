@@ -768,7 +768,7 @@ pub fn head_html(title: &str, pill: &str, q: &str) -> String {
 }
 pub fn shell_html(head: &str, body: &str, chains: &str) -> String {
     format!(
-        "{}<div class=\"sec-cmds cs-sheet\" role=\"dialog\" aria-label=\"Comandos, cadenas y servidores\">{head}<div class=\"cs-body\">{body}</div><div class=\"cs-chains-body\">{chains}</div><div class=\"cs-srv\"><div class=\"cs-srv-slot\"></div></div></div><div class=\"cs-empty-terms\"><div class=\"cs-explorer\"></div><div class=\"et-lim\" hidden><div class=\"cs-credits\"></div><div class=\"et-h\"><b>Uso de tus cuentas</b><small>% usado</small></div><div class=\"cs-limits\"></div></div><div class=\"et-foot\"><span class=\"et-t\"></span><button type=\"button\" data-flat class=\"et-go\"></button></div></div><div class=\"cs-footer\"><span>ComandOS</span></div><div class=\"sec-terms\"><div class=\"cs-terms tt\" role=\"group\" aria-label=\"Terminales de la barra\"><span class=\"grip\" aria-hidden=\"true\"></span><button type=\"button\" data-flat class=\"arr\" data-tscroll=\"-1\" aria-label=\"Terminales anteriores\" hidden>‹</button><div class=\"tabs\"></div><button type=\"button\" data-flat class=\"arr\" data-tscroll=\"1\" aria-label=\"Más terminales\" hidden>›</button><button type=\"button\" data-flat class=\"t plus\" data-new-term aria-label=\"Nueva terminal\" title=\"Nueva terminal\">+</button><div class=\"tog-slot\"></div></div><div class=\"mini\"></div></div>",
+        "{}<div class=\"sec-cmds cs-sheet\" role=\"dialog\" aria-label=\"Comandos, cadenas y servidores\">{head}<div class=\"cs-body\">{body}</div><div class=\"cs-chains-body\">{chains}</div><div class=\"cs-srv\"><div class=\"cs-srv-slot\"></div></div></div><div class=\"cs-empty-terms\"><div class=\"cs-explorer\"></div><div class=\"et-lim\" hidden><div class=\"cs-credits\"></div><div class=\"et-h\"><b>Uso de tus cuentas</b><small>% usado</small></div><div class=\"cs-limits\"></div></div><div class=\"et-foot\"><span class=\"et-t\"></span><button type=\"button\" data-flat class=\"et-go\"></button></div></div><div class=\"cs-footer\"><span>ComandOS</span></div><div class=\"sec-terms\"><div class=\"cs-terms tt\" role=\"group\" aria-label=\"Terminales de la barra\"><button type=\"button\" data-flat class=\"arr\" data-tscroll=\"-1\" aria-label=\"Terminales anteriores\" hidden>‹</button><div class=\"tabs\"></div><button type=\"button\" data-flat class=\"arr\" data-tscroll=\"1\" aria-label=\"Más terminales\" hidden>›</button><button type=\"button\" data-flat class=\"t plus\" data-new-term aria-label=\"Nueva terminal\" title=\"Nueva terminal\">+</button><div class=\"tog-slot\"></div></div><div class=\"mini\"></div></div>",
         tools_html()
     )
 }
@@ -779,7 +779,7 @@ pub fn empty_terms(
     if count == 0 {
         Some(("Sin terminales en la barra", "+ Nueva terminal", "new"))
     } else if hidden {
-        Some(("Terminales escondidas", "Mostrar terminal", "toggle"))
+        Some(("", "Mostrar terminal", "toggle"))
     } else {
         None
     }
@@ -971,7 +971,7 @@ mod tests {
         );
         assert_eq!(
             empty_terms(1, true),
-            Some(("Terminales escondidas", "Mostrar terminal", "toggle"))
+            Some(("", "Mostrar terminal", "toggle"))
         );
         assert!(empty_terms(1, false).is_none());
     }

@@ -41,6 +41,7 @@ pub struct App {
     pub window: gtk::ApplicationWindow,
     english: bool,
     t16: app_t16::Owned,
+    chat: app_chat::Owned,
     t17: app_t17::Owned,
     t18: app_t18::Owned,
     modal_overlay: gtk::Overlay,
@@ -474,6 +475,7 @@ impl App {
         Rc::new(Self {
             english,
             t16,
+            chat: app_chat::Owned::default(),
             t17: app_t17::Owned::default(),
             t18: app_t18::Owned::default(),
             modal_overlay: gtk::Overlay::new(),
@@ -1896,6 +1898,7 @@ pub fn run(args: &[String], default_live: bool) -> ExitCode {
         let terminals = gtk::Box::new(gtk::Orientation::Vertical, 0);
         terminals.pack_start(app.tab_layout.widget(), false, false, 0);
         terminals.pack_start(&notebook, true, true, 0);
+        app.install_chat(&terminals, &notebook);
         terminals.pack_start(app.workspace.widget(), true, true, 0);
         terminals.pack_start(&app.status, false, false, 0);
         app.t18.side.pack1(&webview, true, false);
@@ -2179,3 +2182,5 @@ mod app_t18;
 mod app_t18_side;
 #[path = "app_t18_views.rs"]
 mod app_t18_views;
+#[path = "app_chat.rs"]
+mod app_chat;

@@ -1058,6 +1058,7 @@ fn init_app() -> Result<(), JsValue> {
         return Ok(());
     }
     classes(&body(), "app", true);
+    crate::components::chat_view::install()?;
     run("restoreSplitLeft", &[])?;
     run("initSplitDrag", &[])?;
     init_navigation()?;

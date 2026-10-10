@@ -4,10 +4,13 @@ pub fn image(name: &str, pixels: i32, color: &str) -> gtk::Image {
     let svg = match name {
         "plus" => include_str!("../../../../dash/icons/plus.svg"),
         "terminal" => include_str!("../../../../dash/icons/terminal.svg"),
+        "chat" => include_str!("../../../../dash/icons/chat.svg"),
         "arrow-up-down" => include_str!("../../../../dash/icons/arrow-up-down.svg"),
         "rows" => include_str!("../../../../dash/icons/rows.svg"),
         "chevron-left" => include_str!("../../../../dash/icons/chevron-left.svg"),
         "chevron-right" => include_str!("../../../../dash/icons/chevron-right.svg"),
+        "chevron-up" => include_str!("../../../../dash/icons/chevron-up.svg"),
+        "chevron-down" => include_str!("../../../../dash/icons/chevron-down.svg"),
         "panel-left" => include_str!("../../../../dash/icons/panel-left.svg"),
         "close" => include_str!("../../../../dash/icons/close.svg"),
         "minimize" => include_str!("../../../../dash/icons/minimize.svg"),

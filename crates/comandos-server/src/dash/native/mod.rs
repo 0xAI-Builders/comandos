@@ -32,6 +32,7 @@ pub mod sessions;
 pub mod settings;
 pub mod snippets;
 pub mod sidebar;
+mod chat;
 pub mod ssh;
 pub mod state;
 pub mod states;
@@ -102,6 +103,7 @@ pub enum NativeRoute {
     Usage(usage::UsageRoute),
     Retired,
     Sidebar,
+    Chat,
     // Cortes de la 2f (D2): cada variante pertenece a un `Cut` (ver `cut`).
     Tabs(tabs::TabsRoute),
     Sessions(sessions::SessionsRoute),
@@ -172,7 +174,8 @@ impl NativeRoute {
             | NativeRoute::QuickTerminal
             | NativeRoute::Usage(_)
             | NativeRoute::Retired
-            | NativeRoute::Sidebar => Cut::Base,
+            | NativeRoute::Sidebar
+            | NativeRoute::Chat => Cut::Base,
         }
     }
 }
@@ -296,6 +299,7 @@ const TABLES: &[&[Entry]] = &[
     usage::ROUTES,
     retired::ROUTES,
     sidebar::ROUTES,
+    chat::ROUTES,
     // Cortes de la 2f. `residue` va la última: sus prefijos no deben tapar
     // ninguna entrada exacta.
     tabs::ROUTES,
@@ -314,7 +318,7 @@ const TABLES: &[&[Entry]] = &[
 /// Cuántas tablas de `TABLES` son de la base (2b–2e): las primeras, antes de
 /// las de los cortes de la 2f. Quien añada una tabla de base lo sube aquí.
 #[cfg(test)]
-const BASE_TABLES: usize = 16;
+const BASE_TABLES: usize = 17;
 
 pub fn route(method: &Method, target: &str) -> Option<NativeRoute> {
     if *method == Method::GET
@@ -1018,6 +1022,7 @@ impl Native {
     async fn answer(self: &Arc<Self>, route: NativeRoute, request: &Request) -> Answer {
         match route {
             NativeRoute::Sidebar => sidebar::answer(self, request).await,
+            NativeRoute::Chat => chat::answer(self, request).await,
             NativeRoute::Light(route) => light::answer(self, route, request).await,
             NativeRoute::Events => events::answer(self, request).await,
             NativeRoute::Notices(route) => notices::answer(self, route, request).await,
@@ -1130,7 +1135,7 @@ mod scaffold_tests {
         // la apaga) y toda entrada de las tablas de la 2f, a su corte. La lista
         // explícita cubre las tablas de ambos carriles (2f-1 y 2f-3/2f-4); el
         // recuento debe igualar `TABLES.len()`.
-        let base: [&[Entry]; 16] = [
+        let base: [&[Entry]; 17] = [
             light::ROUTES,
             events::ROUTES,
             notices::ROUTES,
@@ -1147,6 +1152,7 @@ mod scaffold_tests {
             usage::ROUTES,
             retired::ROUTES,
             sidebar::ROUTES,
+    chat::ROUTES,
         ];
         let cuts: [&[Entry]; 11] = [
             tabs::ROUTES,

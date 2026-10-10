@@ -832,6 +832,8 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 #command-sidebar .cs-limits .wait{font-size:12px;color:var(--cs-dim);padding:12px 2px}
 #command-sidebar .cs-empty-terms .et-foot{flex:none;display:flex;align-items:center;gap:8px;padding:7px 10px;border-top:1px solid var(--cs-line);font-size:11px;color:var(--cs-dim)}
 #command-sidebar .cs-empty-terms button[data-flat].et-go{margin-left:auto;min-height:0;height:26px;padding:0 12px;border-radius:8px;border:1px solid var(--cs-brand);background:color-mix(in srgb,var(--cs-brand) 11%,transparent);color:var(--cs-brand);font-weight:600;font-size:11px}
+#command-sidebar .cs-empty-terms .et-t:empty{display:none}
+@media (max-width:600px){#command-sidebar .cs-empty-terms .et-foot{padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px))}#command-sidebar .cs-empty-terms button[data-flat].et-go{flex:1;margin-left:0;height:44px;border-radius:12px;font-size:14px}}
 /* Medidor LED: dimensiones y dibujo del diseño aprobado. */
 @font-face{font-family:"Ubuntu Sans";font-style:normal;font-weight:100 800;font-display:swap;src:url("assets/fonts/UbuntuSans/UbuntuSans-latin.woff2") format("woff2")}
 @font-face{font-family:"Ubuntu Sans Mono";font-style:normal;font-weight:400 700;font-display:swap;src:url("assets/fonts/UbuntuSansMono/UbuntuSansMono-latin.woff2") format("woff2")}
@@ -957,13 +959,10 @@ body.ws-dragging #command-sidebar .sb-term{pointer-events:none}
 /* Una sola cabecera de terminales = asa de altura (se arrastra fuera de los botones).
    Píldoras con flechas (grill ronda 2, 1-oct): píldoras redondas en una pista que se
    desplaza; ‹ › redondas solo si no caben; el borde se desvanece donde hay más. */
-#command-sidebar .cs-terms{display:flex;align-items:center;gap:6px;min-height:42px;padding:0 0 0 2px;border-top:1px solid var(--cs-line);border-bottom:1px solid var(--cs-line);background:var(--cs-panel);flex:none;cursor:row-resize;touch-action:pan-x;user-select:none;-webkit-user-select:none}
+#command-sidebar .cs-terms{display:flex;align-items:center;gap:6px;min-height:42px;padding:0 0 0 10px;border-top:1px solid var(--cs-line);border-bottom:1px solid var(--cs-line);background:var(--cs-panel);flex:none;cursor:row-resize;touch-action:pan-x;user-select:none;-webkit-user-select:none}
 #command-sidebar .cs-terms button{cursor:pointer}
-#command-sidebar .cs-terms .grip{align-self:stretch;flex:none;box-sizing:border-box;width:18px;padding:13px 5px;touch-action:none;background:radial-gradient(circle,var(--cs-dim) 1.2px,transparent 1.6px) 0 0/4px 5px;background-origin:content-box;background-clip:content-box;opacity:.6;transition:opacity .15s}
-#command-sidebar .cs-terms:hover .grip,#command-sidebar.terms-dragging .grip{opacity:1}
 #command-sidebar.terms-dragging .cs-terms{border-top-color:var(--cs-brand)}
 #command-sidebar.terms-hidden .cs-terms{cursor:default}
-#command-sidebar.terms-hidden .cs-terms .grip{visibility:hidden}
 #command-sidebar .cs-terms .tabs{display:flex;align-items:center;gap:6px;flex:1 1 auto;min-width:0;padding:6px 0;overflow-x:auto;overflow-y:hidden;scroll-behavior:smooth;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%)}
 #command-sidebar .cs-terms .tabs::-webkit-scrollbar{display:none}
 #command-sidebar .cs-terms .tabs.at-start{-webkit-mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 18px),transparent 100%);mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 18px),transparent 100%)}

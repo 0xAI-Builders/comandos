@@ -1364,6 +1364,45 @@
 	/* escritorio: la terminal de la barra y su cabecera son nativas (debajo del webview) */
 html[data-native-side-term] #command-sidebar .sec-terms{display:none}
 html[data-native-side-term] #command-sidebar .sec-cmds{flex:1 1 auto!important}
+/* Vista Chat (grill móvil 10-oct): conversación del agente sobre la terminal, ‹ › y deslizar
+   cambian de sesión. La terminal sigue conectada detrás pero no se pinta. */
+#chat-view{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;background:var(--bg);color:var(--text)}
+#chat-view[hidden]{display:none}
+body.chat-on .termpane{visibility:hidden}
+#tab-chat[aria-pressed=true]{color:var(--brand)}
+#chat-view .cv-head{flex:none;display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid var(--line);background:var(--panel)}
+#chat-view .cv-head button{flex:none;width:40px;height:40px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--text);font:22px/1 var(--sans);cursor:pointer}
+#chat-view .cv-title{flex:1;min-width:0;text-align:center;display:flex;flex-direction:column;gap:1px}
+#chat-view .cv-title b{font:600 15px var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#chat-view .cv-title span{font:600 10px var(--mono);color:var(--faint)}
+#chat-view .cv-feed{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:12px;display:flex;flex-direction:column;gap:10px;touch-action:pan-y;-webkit-overflow-scrolling:touch}
+#chat-view .cv-empty{margin:auto;color:var(--dim);font-size:14px;text-align:center;max-width:32ch}
+#chat-view .cv-me{align-self:flex-end;max-width:85%;padding:9px 13px;border-radius:16px 16px 4px 16px;background:var(--brand);color:#fff;font:14px/1.45 var(--sans);overflow-wrap:anywhere}
+#chat-view .cv-me.pending{opacity:.6}
+#chat-view .cv-ai{align-self:flex-start;max-width:94%;padding:10px 13px;border-radius:16px 16px 16px 4px;background:var(--panel);border:1px solid var(--line);font:14px/1.5 var(--sans);overflow-wrap:anywhere}
+#chat-view .cv-ai code,#chat-view .cv-me code{font:12.5px var(--mono);padding:1px 4px;border-radius:4px;background:color-mix(in srgb,var(--line2) 55%,transparent)}
+#chat-view .cv-ai pre{margin:6px 0;padding:8px 10px;border-radius:8px;background:var(--bg);border:1px solid var(--line);font:12px/1.45 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
+#chat-view .cv-tool{align-self:flex-start;display:flex;flex-direction:column;gap:2px;max-width:100%;padding:2px 4px 2px 10px;border-left:2px solid var(--line2)}
+#chat-view .cv-tool span{font:11.5px var(--mono);color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#chat-view .cv-keys{flex:none;display:flex;gap:6px;padding:6px 8px;overflow-x:auto;scrollbar-width:none;border-top:1px solid var(--line);background:var(--panel)}
+#chat-view .cv-keys::-webkit-scrollbar{display:none}
+#chat-view .cv-keys button{flex:none;min-width:44px;height:36px;padding:0 12px;border:1px solid var(--line2);border-radius:10px;background:var(--bg);color:var(--text);font:600 13px var(--mono);cursor:pointer}
+#chat-view .cv-keys .y{color:var(--done,#3ccf7e)}
+#chat-view .cv-keys .n{color:#f2727a}
+#chat-view .cv-compose{flex:none;display:flex;gap:8px;align-items:flex-end;padding:6px 8px calc(8px + env(safe-area-inset-bottom,0px));background:var(--panel)}
+#chat-view .cv-compose textarea{flex:1;min-width:0;min-height:44px;max-height:30dvh;resize:none;field-sizing:content;padding:11px 14px;border-radius:14px;border:1px solid var(--line2);background:var(--bg);color:var(--text);font:16px/1.3 var(--sans)}
+#chat-view .cv-compose textarea:focus{outline:none;border-color:var(--brand)}
+#chat-view .cv-compose button{flex:none;width:44px;height:44px;border:0;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;cursor:pointer}
+/* Carrusel en celular: aunque la preferencia sea «varias filas», la lista no se come la
+   pantalla; las sesiones son una tira de píldoras que se desliza de lado. */
+@media (max-width:747px){
+  body.app.tabs-rows #app-navigation{flex-wrap:nowrap;align-items:center}
+  body.app.tabs-rows #tabbar{order:0;flex:1 1 auto;display:flex;max-height:none;overflow-x:auto;overflow-y:hidden;gap:6px;padding:6px 4px;scroll-snap-type:x proximity;touch-action:pan-x}
+  body.app.tabs-rows .apptab{height:34px;min-height:34px;width:auto;flex:none;border-radius:999px;scroll-snap-align:center}
+  body.app.tabs-rows :is(#tab-left,#tab-panel,#tab-term,#tab-new,#tab-sort,#tab-rows,#tab-open){align-self:center}
+  body.app #app-navigation :is(#tab-sort,#tab-rows){display:none}
+  body.app .apptab:not(.on) .x{display:none}
+}
 </style>
 <link rel="stylesheet" href="/workspace.css?v=sin-ia1">
 <link rel="stylesheet" href="/buttons.css?v=2">

@@ -138,10 +138,6 @@ impl Default for Owned {
         head.set_size_request(-1, 40);
         head_event.add(&head);
         host.pack_start(&head_event, false, false, 0);
-        let grip = gtk::Label::new(Some("⠿"));
-        grip.style_context().add_class("side-grip");
-        grip.set_tooltip_text(Some("Arrastra para cambiar la altura"));
-        head.pack_start(&grip, false, false, 0);
         let tabs = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         let tabs_scroll = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
         tabs_scroll.set_policy(gtk::PolicyType::External, gtk::PolicyType::Never);

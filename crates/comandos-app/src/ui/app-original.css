@@ -90,8 +90,6 @@ notebook stack { background: @BG@; }
    «+ Terminal» + ▾, la misma que pinta la web en el remoto; arrastrarla fuera de
    los botones cambia la altura (el separador del Paned queda invisible). */
 .side-head { background-color: @BAR@; border-top: 1px solid @LINE@; border-bottom: 1px solid @LINE@; }
-.side-grip { color: @FAINT@; font-size: 13px; padding: 0 4px 0 6px; }
-.side-head:hover .side-grip, .side-head.dragging .side-grip { color: @TEXT@; }
 .side-head.dragging { border-top-color: @BRAND@; }
 /* Píldoras con flechas (grill ronda 2, 1-oct): píldoras redondas en una pista que se
    desplaza con ‹ › redondas (solo si no caben) y con la rueda; «+» redondo punteado. */
@@ -145,3 +143,20 @@ paned separator { background: @LINE@; min-width: 2px; }
 .help-key { color: #FFAE1A; font-family: 'Ubuntu Sans Mono', monospace; font-size: 13px; }
 .help-desc { color: @DIM@; font-size: 13px; }
 .help-hint { color: @FAINT@; }
+/* Vista chat (escritorio): la conversación del agente en lugar de la terminal. */
+.cv-root { background-color: @BG@; }
+.cv-title { padding: 8px 14px; color: @TEXT@; font-weight: 600; border-bottom: 1px solid @LINE@; background-color: @BAR@; }
+.cv-list { padding: 14px 18px; }
+.cv-me { background-color: @BRAND@; color: #ffffff; padding: 9px 13px; border-radius: 14px; }
+.cv-ai { background-color: @BAR@; color: @TEXT@; padding: 10px 13px; border-radius: 14px; border: 1px solid @LINE@; }
+.cv-tool { color: @FAINT@; font-family: monospace; font-size: 11px; padding: 2px 10px; border-left: 2px solid @LINE2@; }
+.cv-keys { padding: 6px 10px; border-top: 1px solid @LINE@; background-color: @BAR@; }
+.cv-key { background-image: none; background-color: @BG@; color: @TEXT@; border: 1px solid @LINE2@; border-radius: 8px; min-height: 30px; min-width: 40px; padding: 0 10px; font-family: monospace; font-weight: 600; }
+.cv-key:hover { border-color: @BRAND@; }
+.cv-key.cv-yes label { color: #3ccf7e; }
+.cv-key.cv-no label { color: #f2727a; }
+.cv-compose { padding: 8px 10px 10px; background-color: @BAR@; }
+.cv-input, .cv-input text { background-color: @BG@; color: @TEXT@; }
+.cv-input { border: 1px solid @LINE2@; border-radius: 10px; padding: 8px 10px; min-height: 40px; font-size: 14px; }
+.cv-send { background-image: none; background-color: @BRAND@; color: #ffffff; border: 0; border-radius: 10px; padding: 0 16px; font-weight: 600; }
+.cc-key.cv-on { background-color: mix(@BAR@, @BRAND@, 0.22); }
