@@ -91,6 +91,44 @@ pub fn url_from_wrapped_text(
     (!frag.is_empty()).then_some(frag)
 }
 
+/// Completes a clicked link fragment from its own pane's text (`capture-pane -J`, which
+/// joins tmux soft wraps and excludes neighbouring panes). Agent hard wraps are joined
+/// too, but a local path is only extended when `exists` confirms the longer path, so an
+/// unrelated next line never gets glued on. `None` keeps the caller's fragment.
+pub fn complete_from_pane(
+    text: &str,
+    fragment: &str,
+    exists: impl Fn(&str) -> bool,
+) -> Option<String> {
+    let (Some(patterns), Some(wrap)) = (patterns(), wrap()) else {
+        return None;
+    };
+    let frag = normalize_wrapped_url_text(fragment).trim().to_owned();
+    if frag.is_empty() {
+        return None;
+    }
+    let mut best: Option<String> = None;
+    for (index, pattern) in patterns.iter().enumerate() {
+        for m in pattern.find_iter(text) {
+            let joined = wrap.replace_all(m.as_str(), "").into_owned();
+            if !joined.contains(&frag) {
+                continue;
+            }
+            let accepted = index == 0 || {
+                let body = joined
+                    .split_once(|c: char| c == ':')
+                    .filter(|(_, n)| n.split(':').all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())))
+                    .map_or(joined.as_str(), |(body, _)| body);
+                exists(body)
+            };
+            if accepted && best.as_ref().is_none_or(|b| joined.len() > b.len()) {
+                best = Some(joined);
+            }
+        }
+    }
+    best
+}
+
 /// One primary press owns its URL and cell until the matching release.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PrimaryPress {

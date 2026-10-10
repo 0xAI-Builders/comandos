@@ -27,10 +27,11 @@
 //! siempre después de soltar el estado (la página puede volver a llamar a la
 //! terminal desde ella).
 //!
-//! **OSC 52** (la aplicación pide copiar al portapapeles) no llega nunca al
-//! portapapeles del sistema: `dash/term.html` lo ignora (xterm.js 5.5 sin
-//! `ClipboardAddon`) y aquí igual. [`WebTerm::take_clipboard`] lo deja a la
-//! página, que tendría que pedir un gesto del usuario antes de escribir.
+//! **OSC 52** (la aplicación pide copiar al portapapeles; Claude Code en
+//! pantalla completa copia así su propia selección) se escribe con
+//! `navigator.clipboard.writeText`. Si el navegador lo rechaza por no haber
+//! gesto, [`WebTerm::get_selection`] lo devuelve durante dos minutos para que
+//! el botón «Copiar» lo escriba dentro del toque.
 pub mod canvas;
 pub mod connection;
 pub mod controls;
@@ -409,6 +410,9 @@ struct Inner {
     title: Option<String>,
     bell: bool,
     clipboard: Option<(ClipboardTarget, String)>,
+    /// Last OSC 52 text and when it arrived, so "Copiar" can retry it inside a tap
+    /// when the browser refused the automatic write (Safari outside a gesture).
+    app_copied: Option<(f64, String)>,
     scroll_sync: ScrollSync,
     // --- entrada, selección y enlaces (A7/A8) ---
     /// Lo que sale de un evento; se entrega al soltar el estado.
@@ -511,6 +515,9 @@ struct Outbox {
     data: Vec<Vec<u8>>,
     focus: Option<Focus>,
     copy: Option<String>,
+    /// Text an agent copied with OSC 52 (Claude Code full screen copies its own
+    /// selections this way); written with the async Clipboard API only.
+    app_copy: Option<String>,
     open: Option<(String, f64, f64)>,
     word: Option<(Weak<RefCell<Inner>>, word_links::Request)>,
 }
@@ -520,6 +527,7 @@ impl Outbox {
         self.data.is_empty()
             && self.focus.is_none()
             && self.copy.is_none()
+            && self.app_copy.is_none()
             && self.open.is_none()
             && self.word.is_none()
     }
@@ -634,6 +642,17 @@ impl Delivery {
         }
         if let Some(text) = self.outbox.copy {
             write_clipboard(&self.window, &self.document, &self.textarea, text);
+        }
+        if let Some(text) = self.outbox.app_copy {
+            // No `execCommand` fallback here: it would need the input textarea and a gesture.
+            let navigator = self.window.navigator();
+            if js_sys::Reflect::get(&navigator, &"clipboard".into()).is_ok_and(|c| c.is_object()) {
+                let promise = navigator.clipboard().write_text(&text);
+                let ignore = Closure::<dyn FnMut(JsValue)>::once_into_js(|_: JsValue| {});
+                promise
+                    .unchecked_ref::<PromiseThen>()
+                    .then2(&ignore, &ignore);
+            }
         }
         if let Some((weak, request)) = self.outbox.word {
             word_links::resolve(weak, request);
@@ -1111,6 +1130,10 @@ impl Inner {
         }
         self.bell |= d.bell;
         if let (Some(target), Some(text)) = (d.clipboard_target, d.clipboard) {
+            if !text.is_empty() {
+                self.outbox.app_copy = Some(text.clone());
+                self.app_copied = Some((self.now(), text.clone()));
+            }
             self.clipboard = Some((target, text));
         }
     }
@@ -1570,6 +1593,7 @@ impl WebTerm {
             title: None,
             bell: false,
             clipboard: None,
+            app_copied: None,
             scroll_sync: ScrollSync::default(),
             outbox: Outbox::default(),
             on_data: None,
@@ -1978,10 +2002,21 @@ impl WebTerm {
     }
 
     /// Texto seleccionado (`term.getSelection()`).
+    /// Without a local selection, the agent's own recent copy (OSC 52, last two
+    /// minutes) is returned, so the "Copiar" button works for full-screen agents.
     pub fn get_selection(&self) -> String {
         self.inner
             .try_borrow()
-            .map(|i| i.selection_text())
+            .map(|i| {
+                let local = i.selection_text();
+                if !local.is_empty() {
+                    return local;
+                }
+                match &i.app_copied {
+                    Some((at, text)) if i.now() - at < 120_000.0 => text.clone(),
+                    _ => String::new(),
+                }
+            })
             .unwrap_or_default()
     }
 

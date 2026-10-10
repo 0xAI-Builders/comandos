@@ -285,3 +285,29 @@ fn visible_relative_path_is_clickable_from_its_first_and_last_words() {
         assert_eq!(link_at(&engine, (0, col), 0, col), Some(path.into()));
     }
 }
+
+#[test]
+fn link_split_across_two_lines_is_completed_from_the_clicked_pane() {
+    use comandos_app::term::links::complete_from_pane;
+    let file = "/home/test/MVPS/CATALOGOS/demos/signara__2026-10-10__v009/exports/signara-es.mp4";
+    let exists = |p: &str| p == file;
+    // `capture-pane -J` joins tmux soft wraps: the full path is on one line.
+    let joined = format!("• Español: {file}\n");
+    // Clicking either half yields only that half from the window grid.
+    for half in [&file[..40], &file[40..]] {
+        assert_eq!(complete_from_pane(&joined, half, exists), Some(file.into()), "{half}");
+    }
+    // The agent hard-wrapped the path itself (indented continuation).
+    let hard = format!("  - {}\n    {} (69 MB)\n", &file[..50], &file[50..]);
+    assert_eq!(complete_from_pane(&hard, &file[50..], exists), Some(file.into()));
+    // URLs split across two lines.
+    let url = "https://example.org/a/very/long/path?with=query&and=more";
+    let text = format!("ver {}\n  {} listo\n", &url[..30], &url[30..]);
+    assert_eq!(complete_from_pane(&text, &url[..30], |_| false), Some(url.into()));
+    // A local path is never extended into something that does not exist.
+    let wrong = "  /home/test/notes.md\n  src/other.rs\n";
+    assert_eq!(complete_from_pane(wrong, "/home/test/notes.md", |_| false), None);
+    // Line suffixes survive the existence check.
+    let with_line = format!("{file}:12\n");
+    assert_eq!(complete_from_pane(&with_line, &file[..30], exists), Some(format!("{file}:12")));
+}

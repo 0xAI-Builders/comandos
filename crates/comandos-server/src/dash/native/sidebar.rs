@@ -150,6 +150,95 @@ fn listing(
         json!({"root":root.to_str().ok_or("Unsupported root name")?,"path":rel,"pane":pane,"entries":entries.into_iter().map(|(_,_,v)|v).collect::<Vec<_>>(),"truncated":truncated}),
     )
 }
+/// Folders that are rebuilt by tools and would drown real matches.
+const SEARCH_SKIP: &[&str] = &[
+    ".git",
+    "node_modules",
+    "target",
+    ".build",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".next",
+    ".cache",
+];
+/// Bounded path search under the pane root: every word of `query` must appear in the
+/// relative path. Accepts an absolute path printed inside the root. Never follows symlinks.
+fn search(root: &Path, query: &str) -> Result<Value, &'static str> {
+    let root = root
+        .canonicalize()
+        .map_err(|_| "Working directory unavailable")?;
+    let root_text = root.to_str().ok_or("Unsupported root name")?;
+    let query = query.trim();
+    if query.is_empty() || query.len() > 300 {
+        return Err("Search needs between 1 and 300 characters");
+    }
+    let mut query = query.trim_start_matches("./").to_owned();
+    if let Some(rest) = query.strip_prefix(root_text) {
+        query = rest.trim_start_matches('/').to_owned();
+    } else if Path::new(&query).is_absolute() {
+        // Outside this root: keep the tail, which is what usually identifies the file.
+        let tail: Vec<_> = Path::new(&query)
+            .components()
+            .rev()
+            .take(2)
+            .filter_map(|c| c.as_os_str().to_str())
+            .collect();
+        query = tail.into_iter().rev().collect::<Vec<_>>().join("/");
+    }
+    let terms: Vec<String> = query
+        .to_lowercase()
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect();
+    let Some(last) = terms.last().cloned() else {
+        return Ok(json!({"root":root_text,"entries":[],"truncated":false}));
+    };
+    let deadline = Instant::now() + Duration::from_millis(1500);
+    let mut queue = std::collections::VecDeque::from([PathBuf::new()]);
+    let mut found = Vec::new();
+    let mut scanned = 0usize;
+    let mut truncated = false;
+    'walk: while let Some(rel_dir) = queue.pop_front() {
+        let Ok(items) = fs::read_dir(root.join(&rel_dir)) else {
+            continue;
+        };
+        for item in items.flatten() {
+            scanned += 1;
+            if scanned > 40_000 || Instant::now() > deadline {
+                truncated = true;
+                break 'walk;
+            }
+            let Ok(name) = item.file_name().into_string() else {
+                continue;
+            };
+            let Ok(meta) = fs::symlink_metadata(item.path()) else {
+                continue;
+            };
+            let symlink = meta.file_type().is_symlink();
+            let dir = meta.is_dir() || (symlink && item.path().is_dir());
+            let rel = rel_dir.join(&name);
+            let Some(rel_text) = rel.to_str() else {
+                continue;
+            };
+            if meta.is_dir() && !SEARCH_SKIP.contains(&name.as_str()) {
+                queue.push_back(rel.clone());
+            }
+            let lower = rel_text.to_lowercase();
+            if terms.iter().all(|t| lower.contains(t.as_str())) {
+                let rank = (!name.to_lowercase().contains(&last), rel_text.len());
+                let absolute = root.join(&rel);
+                found.push((rank, rel_text.to_owned(), json!({"name":name,"path":absolute.to_str().unwrap_or_default(),"relative":rel_text,"directory":dir,"symlink":symlink})));
+            }
+        }
+    }
+    found.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    if found.len() > 100 {
+        truncated = true;
+        found.truncate(100);
+    }
+    Ok(json!({"root":root_text,"entries":found.into_iter().map(|(_,_,v)|v).collect::<Vec<_>>(),"truncated":truncated}))
+}
 fn credit_data(value: &Value, at: i64) -> Result<Value, &'static str> {
     let credits = value["data"]["total_credits"]
         .as_f64()
@@ -280,6 +369,11 @@ pub async fn answer(native: &Arc<Native>, request: &Request) -> Answer {
         if path.len() > 4096 {
             return error(StatusCode::BAD_REQUEST, "Path too long");
         }
+        let query = match body.get("query") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(v)) => Some(v.clone()),
+            _ => return error(StatusCode::BAD_REQUEST, "Invalid search"),
+        };
         // All sessions are listed so tmux's fuzzy target matching cannot select another session.
         let _permit = gate()
             .acquire_owned()
@@ -293,7 +387,10 @@ pub async fn answer(native: &Arc<Native>, request: &Request) -> Answer {
         let path = path.to_owned();
         let result = tokio::task::spawn_blocking(move || {
             let _permit = _permit;
-            listing(Path::new(&cwd), &path, expected.as_deref(), &pane)
+            match query {
+                Some(query) => search(Path::new(&cwd), &query),
+                None => listing(Path::new(&cwd), &path, expected.as_deref(), &pane),
+            }
         })
         .await
         .map_err(|_| super::Fault::Error(crate::HandlerError::Failure))?;
@@ -427,6 +524,37 @@ mod tests {
         let v = listing(&root, "", None, "%1").unwrap();
         assert_eq!(v["entries"].as_array().unwrap().len(), 300);
         assert_eq!(v["truncated"], true);
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn sidebar_search_finds_partial_paths_inside_the_pane_root() {
+        let root = temp();
+        fs::create_dir_all(root.join("src/ui")).unwrap();
+        fs::create_dir_all(root.join("node_modules/pkg")).unwrap();
+        fs::write(root.join("src/ui/sidebar_browser.rs"), "").unwrap();
+        fs::write(root.join("src/ui/header.rs"), "").unwrap();
+        fs::write(root.join("node_modules/pkg/sidebar_browser.rs"), "").unwrap();
+        let names = |v: &Value| -> Vec<String> {
+            v["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|e| e["relative"].as_str().unwrap().to_owned())
+                .collect()
+        };
+        // Fragment of a path, several words, case-insensitive; dependency folders skipped.
+        let v = search(&root, "UI/sidebar").unwrap();
+        assert_eq!(names(&v), ["src/ui/sidebar_browser.rs"]);
+        assert_eq!(names(&search(&root, "ui browser").unwrap()), ["src/ui/sidebar_browser.rs"]);
+        // An absolute path the AI printed is matched relative to the root.
+        let absolute = root.join("src/ui/header.rs");
+        let v = search(&root, absolute.to_str().unwrap()).unwrap();
+        assert_eq!(names(&v), ["src/ui/header.rs"]);
+        assert_eq!(v["entries"][0]["path"], absolute.to_str().unwrap());
+        // Folders match too and sort before deeper files.
+        assert_eq!(names(&search(&root, "src/ui").unwrap())[0], "src/ui");
+        assert!(search(&root, "").is_err());
+        assert!(names(&search(&root, "nothing-here").unwrap()).is_empty());
         fs::remove_dir_all(root).unwrap();
     }
     #[test]

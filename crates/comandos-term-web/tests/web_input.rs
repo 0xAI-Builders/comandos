@@ -339,7 +339,7 @@ async fn wheel_scrolls_history_or_reports() {
 }
 
 #[wasm_bindgen_test]
-async fn links_show_a_pointer_and_osc52_never_reaches_the_clipboard() {
+async fn links_show_a_pointer_and_osc52_is_offered_to_copy() {
     let h = host(600, 200);
     let (mut t, sent) = term(&h);
     t.write(b"ver https://ejemplo.mx/a ok\r\n\x1b]52;c;aG9sYQ==\x07");
@@ -360,7 +360,8 @@ async fn links_show_a_pointer_and_osc52_never_reaches_the_clipboard() {
             .unwrap_or_default(),
         ""
     );
-    // OSC 52 se queda en la terminal: la página decide (hoy lo ignora).
+    // Sin selección local, «Copiar» toma lo que copió la aplicación (OSC 52).
+    assert_eq!(t.get_selection(), "hola");
     assert_eq!(t.take_clipboard().as_deref(), Some("hola"));
     assert!(take(&sent).is_empty());
     h.remove();

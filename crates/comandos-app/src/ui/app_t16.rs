@@ -1015,6 +1015,7 @@ impl App {
         self.jobs.spawn(
             move || {
                 let cancelled = || closed.load(Ordering::Acquire) || cancel.load(Ordering::Acquire);
+                let url = complete_link(&tmux, tty.as_deref(), point, &url, cancelled);
                 let plan = if ui::menu::relative_file_reference(&url) {
                     let context = ui::menu::capture_click(&tmux, tty.as_deref(), point, cancelled)?;
                     let pane = context
@@ -1173,4 +1174,41 @@ impl App {
         *self.t16.link.borrow_mut() = Some(popover);
         let _ = point;
     }
+}
+
+/// A link the agent printed across two lines is seen half at a time in the window grid.
+/// Completes it from the clicked pane alone (`capture-pane -J` joins tmux soft wraps);
+/// on any failure the clicked fragment is kept, so opening never gets worse.
+fn complete_link(
+    tmux: &impl ui::clipboard::TmuxIo,
+    tty: Option<&str>,
+    point: (u16, u16),
+    url: &str,
+    cancelled: impl Fn() -> bool,
+) -> String {
+    let attempt = || -> Option<String> {
+        let context = ui::menu::capture_click(tmux, tty, point, &cancelled).ok()?;
+        let pane = context.pane.as_deref()?;
+        let text = tmux
+            .read(&["capture-pane", "-p", "-J", "-t", pane])
+            .ok()
+            .filter(|out| out.ok())?
+            .stdout;
+        let cwd = tmux
+            .read(&["display-message", "-p", "-t", pane, "#{pane_current_path}"])
+            .ok()
+            .filter(|out| out.ok())
+            .map(|out| out.stdout.trim_end_matches(['\r', '\n']).to_owned())
+            .unwrap_or_default();
+        let home = std::env::var("HOME").unwrap_or_default();
+        crate::term::links::complete_from_pane(&text, url, |body| {
+            let path = if let Some(rest) = body.strip_prefix("~/") {
+                std::path::Path::new(&home).join(rest)
+            } else {
+                std::path::Path::new(&cwd).join(body)
+            };
+            path.exists()
+        })
+    };
+    attempt().unwrap_or_else(|| url.to_owned())
 }

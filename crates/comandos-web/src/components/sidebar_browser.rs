@@ -23,6 +23,11 @@ pub struct Browser {
     selected: RefCell<String>,
     credits_at: Cell<f64>,
     credits_busy: Cell<bool>,
+    /// `Some(query)` while the path search is open; `found` holds its last answer.
+    search: RefCell<Option<String>>,
+    found: RefCell<Option<Value>>,
+    search_generation: Cell<u32>,
+    top_signature: RefCell<String>,
 }
 fn text(v: &JsValue) -> String {
     v.as_string().unwrap_or_default()
@@ -34,6 +39,22 @@ fn svg(path: &str) -> String {
     format!(
         r#"<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">{path}</svg>"#
     )
+}
+/// Light placeholder rows while the pane's folder is read.
+fn skeleton(rows: usize) -> String {
+    let widths = [58, 44, 70, 38, 62, 50, 66, 41];
+    let mut out = String::from(
+        "<div class=\"sf-skeleton\" role=\"status\" aria-label=\"Cargando archivos\">",
+    );
+    for i in 0..rows {
+        out.push_str(&format!(
+            "<span style=\"width:{}%;margin-left:{}px\"></span>",
+            widths[i % widths.len()],
+            if i % 3 == 1 { 16 } else { 0 }
+        ));
+    }
+    out.push_str("</div>");
+    out
 }
 fn file_icon(name: &str, dir: bool) -> String {
     if dir {
@@ -85,7 +106,29 @@ impl Browser {
             selected: RefCell::new(String::new()),
             credits_at: Cell::new(0.),
             credits_busy: Cell::new(false),
+            search: RefCell::new(None),
+            found: RefCell::new(None),
+            search_generation: Cell::new(0),
+            top_signature: RefCell::new(String::new()),
         });
+        let owner = b.clone();
+        listen(
+            &b.el,
+            "input",
+            function(move |args| {
+                owner.typed(&get(&args.get(0), "target"));
+                Ok(JsValue::UNDEFINED)
+            }),
+        );
+        let owner = b.clone();
+        listen(
+            &b.el,
+            "keydown",
+            function(move |args| {
+                owner.search_key(args.get(0));
+                Ok(JsValue::UNDEFINED)
+            }),
+        );
         let owner = b.clone();
         listen(
             &b.el,
@@ -152,15 +195,17 @@ impl Browser {
     }
     fn reset(&self) {
         self.generation.set(self.generation.get().wrapping_add(1));
+        self.search_generation
+            .set(self.search_generation.get().wrapping_add(1));
+        *self.search.borrow_mut() = None;
+        *self.found.borrow_mut() = None;
+        self.top_signature.borrow_mut().clear();
         self.root.borrow_mut().clear();
         self.folders.borrow_mut().clear();
         self.expanded.borrow_mut().clear();
         self.pending.borrow_mut().clear();
         self.selected.borrow_mut().clear();
-        html(
-            &self.q(".cs-explorer"),
-            "<p class=\"sf-message\">Cargando archivos…</p>",
-        );
+        html(&self.q(".cs-explorer"), &skeleton(8));
     }
     fn load_folder(self: &Rc<Self>, path: String) {
         if self.pending.borrow().contains(&path) {
@@ -243,7 +288,14 @@ impl Browser {
                 let action = if dir { "dir" } else { "file" };
                 out.push_str(&format!("<button type=\"button\" data-flat class=\"sf-row{}\" data-sf-{action}=\"{}\" data-path=\"{}\" title=\"{}\" style=\"padding-left:{}px\" {}><span class=\"sf-caret\">{}</span>{}<span class=\"sf-name\">{}</span>{}</button>",if *self.selected.borrow()==absolute{" selected"}else{""},esc(rel),esc(absolute),esc(absolute),8+depth*14,if dir{format!("aria-expanded=\"{open}\"")}else{String::new()},if dir{if open{"⌄"}else{"›"}}else{""},file_icon(name,dir),esc(name),if entry["symlink"]==true{"<span aria-label=\"Enlace simbólico\">↗</span>"}else{""}));
                 if dir && open {
-                    self.rows(rel, depth + 1, out, ancestors);
+                    if folders.contains_key(rel) {
+                        self.rows(rel, depth + 1, out, ancestors);
+                    } else if self.pending.borrow().contains(rel) {
+                        out.push_str(&format!(
+                            "<div class=\"sf-pending\" role=\"status\" aria-label=\"Cargando carpeta\" style=\"padding-left:{}px\"><i></i><i></i><i></i></div>",
+                            30 + (depth + 1) * 14
+                        ));
+                    }
                 }
             }
         }
@@ -255,20 +307,48 @@ impl Browser {
         }
     }
     fn paint(&self) {
-        let root = self.root.borrow();
-        let title = root
-            .rsplit('/')
-            .next()
-            .filter(|s| !s.is_empty())
-            .unwrap_or("/");
-        let mut out = format!(
-            "<div class=\"sf-heading\"><strong>{}</strong><button data-flat data-sf-refresh title=\"Actualizar archivos\" aria-label=\"Actualizar archivos\">{}</button></div><div class=\"sf-root\" title=\"{}\">{}</div><div class=\"sf-tree\" role=\"group\" aria-label=\"Archivos de la sesión\">",
-            esc(title),
-            svg(r#"<path d="M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 4M18 18a8 8 0 0 1-13-4"/>"#),
-            esc(&root),
-            esc(&root)
-        );
-        self.rows("", 0, &mut out, &mut BTreeSet::new());
+        let root = self.root.borrow().clone();
+        let query = self.search.borrow().clone();
+        // The header holds the search box: rebuild it only when it really changes, so
+        // typing never loses focus while results or folders repaint underneath.
+        let signature = format!("{root}|{}", query.is_some());
+        if !truthy(&self.q(".sf-top")) || *self.top_signature.borrow() != signature {
+            let title = root
+                .rsplit('/')
+                .next()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("/");
+            let search_box = query.as_ref().map_or(String::new(), |q| {
+                format!(
+                    "<div class=\"sf-search\"><input class=\"sf-query\" type=\"search\" value=\"{}\" placeholder=\"Buscar por nombre o ruta…\" aria-label=\"Buscar archivos por nombre o ruta\" autocomplete=\"off\" spellcheck=\"false\"></div>",
+                    esc(q)
+                )
+            });
+            html(
+                &self.q(".cs-explorer"),
+                &format!(
+                    "<div class=\"sf-top\"><div class=\"sf-heading\"><strong>{}</strong><div class=\"sf-actions\"><button data-flat data-sf-search title=\"Buscar archivo por ruta\" aria-label=\"Buscar archivo por ruta\" aria-pressed=\"{}\">{}</button><button data-flat data-sf-refresh title=\"Actualizar archivos\" aria-label=\"Actualizar archivos\">{}</button></div></div><div class=\"sf-root\" title=\"{}\">{}</div>{search_box}</div><div class=\"sf-body\"></div>",
+                    esc(title),
+                    query.is_some(),
+                    svg(r#"<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>"#),
+                    svg(r#"<path d="M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 4M18 18a8 8 0 0 1-13-4"/>"#),
+                    esc(&root),
+                    esc(&root)
+                ),
+            );
+            *self.top_signature.borrow_mut() = signature;
+            let input = self.q(".sf-query");
+            if truthy(&input) {
+                let _ = call(&input, "focus", &[]);
+                let end = JsValue::from(query.as_deref().unwrap_or("").encode_utf16().count() as u32);
+                let _ = call(&input, "setSelectionRange", &[end.clone(), end]);
+            }
+        }
+        let mut out = String::from("<div class=\"sf-tree\" role=\"group\" aria-label=\"Archivos de la sesión\">");
+        match &query {
+            Some(q) => self.results(q, &mut out),
+            None => self.rows("", 0, &mut out, &mut BTreeSet::new()),
+        }
         out.push_str("</div>");
         let selected = self.selected.borrow();
         let path = if selected.is_empty() {
@@ -277,11 +357,138 @@ impl Browser {
             &*selected
         };
         out.push_str(&format!("<div class=\"sf-selection\"><code>{}</code><div><button data-flat data-sf-open=\"{}\">Abrir en equipo</button><button data-flat data-sf-copy=\"{}\">Copiar ruta</button></div><small>Abrir utiliza las aplicaciones del equipo donde corre ComandOS.</small></div>",esc(path),esc(path),esc(path)));
-        html(&self.q(".cs-explorer"), &out);
+        html(&self.q(".sf-body"), &out);
+    }
+    fn results(&self, query: &str, out: &mut String) {
+        if query.trim().is_empty() {
+            out.push_str("<p class=\"sf-message\">Escribe parte del nombre o de la ruta, por ejemplo <code>ui/header</code>. También puedes pegar una ruta completa.</p>");
+            return;
+        }
+        let found = self.found.borrow();
+        let Some(v) = found.as_ref() else {
+            out.push_str(&skeleton(4));
+            return;
+        };
+        if let Some(e) = v["error"].as_str() {
+            out.push_str(&format!("<p class=\"sf-message\">{}</p>", esc(e)));
+            return;
+        }
+        let entries = v["entries"].as_array().map(Vec::as_slice).unwrap_or_default();
+        if entries.is_empty() {
+            out.push_str(&format!(
+                "<p class=\"sf-message\">Sin resultados para «{}».</p>",
+                esc(query.trim())
+            ));
+            return;
+        }
+        for entry in entries {
+            let name = entry["name"].as_str().unwrap_or("");
+            let rel = entry["relative"].as_str().unwrap_or("");
+            let absolute = entry["path"].as_str().unwrap_or("");
+            let dir = entry["directory"].as_bool().unwrap_or(false);
+            let parent = rel.rsplit_once('/').map_or("./", |(p, _)| p);
+            out.push_str(&format!(
+                "<button type=\"button\" data-flat class=\"sf-row sf-hit{}\" data-sf-file=\"{}\" data-path=\"{}\" title=\"{}\">{}<span class=\"sf-hit-text\"><span class=\"sf-name\">{}</span><small>{}</small></span></button>",
+                if *self.selected.borrow() == absolute { " selected" } else { "" },
+                esc(rel),
+                esc(absolute),
+                esc(absolute),
+                file_icon(name, dir),
+                esc(name),
+                esc(parent)
+            ));
+        }
+        if v["truncated"] == true {
+            out.push_str("<p class=\"sf-message\">Se muestran los primeros resultados; escribe más de la ruta para afinar.</p>");
+        }
+    }
+    fn typed(self: &Rc<Self>, target: &JsValue) {
+        let is_query = call(target, "matches", &[".sf-query".into()])
+            .map(|v| truthy(&v))
+            .unwrap_or(false);
+        if !is_query || self.search.borrow().is_none() {
+            return;
+        }
+        let query = text(&get(target, "value"));
+        *self.search.borrow_mut() = Some(query);
+        *self.found.borrow_mut() = None;
+        let generation = self.search_generation.get().wrapping_add(1);
+        self.search_generation.set(generation);
+        self.paint();
+        // Debounce: only the last keystroke in a short pause reaches the server.
+        let owner = self.clone();
+        let _ = invoke(
+            &global("setTimeout"),
+            &[
+                function(move |_| {
+                    if owner.search_generation.get() == generation {
+                        owner.run_search(generation);
+                    }
+                    Ok(JsValue::UNDEFINED)
+                }),
+                220.into(),
+            ],
+        );
+    }
+    fn run_search(self: &Rc<Self>, generation: u32) {
+        let Some(query) = self.search.borrow().clone() else {
+            return;
+        };
+        if query.trim().is_empty() {
+            return;
+        }
+        let t = self.target_value();
+        let body = json!({"session":text(&get(&t,"session")),"pane":text(&get(&t,"pane")),"query":query});
+        let b = self.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let r = b.api("/fs/explorer", Some(body)).await;
+            if b.search_generation.get() != generation || b.search.borrow().is_none() {
+                return;
+            }
+            *b.found.borrow_mut() = Some(match r {
+                Ok(v) => v,
+                Err(e) => json!({"error": format!("No se pudo buscar: {}", error_text(&e))}),
+            });
+            b.paint();
+        });
+    }
+    fn search_key(self: &Rc<Self>, e: JsValue) {
+        let target = get(&e, "target");
+        let is_query = call(&target, "matches", &[".sf-query".into()])
+            .map(|v| truthy(&v))
+            .unwrap_or(false);
+        if !is_query {
+            return;
+        }
+        match text(&get(&e, "key")).as_str() {
+            "Escape" => {
+                stop(&e);
+                self.close_search();
+            }
+            "Enter" => {
+                stop(&e);
+                let first = self.found.borrow().as_ref().and_then(|v| {
+                    v["entries"].get(0).and_then(|e| e["path"].as_str().map(str::to_owned))
+                });
+                if let Some(first) = first {
+                    *self.selected.borrow_mut() = first;
+                    self.paint();
+                }
+            }
+            _ => {}
+        }
+    }
+    fn close_search(&self) {
+        self.search_generation
+            .set(self.search_generation.get().wrapping_add(1));
+        *self.search.borrow_mut() = None;
+        *self.found.borrow_mut() = None;
+        self.paint();
     }
     fn click(self: &Rc<Self>, e: JsValue) {
         let t = get(&e, "target");
         for action in [
+            "search",
             "dir",
             "file",
             "refresh",
@@ -301,6 +508,15 @@ impl Browser {
                     .unwrap_or_default(),
             );
             match action {
+                "search" => {
+                    if self.search.borrow().is_some() {
+                        self.close_search();
+                    } else {
+                        *self.search.borrow_mut() = Some(String::new());
+                        *self.found.borrow_mut() = None;
+                        self.paint();
+                    }
+                }
                 "refresh" => {
                     self.reset();
                     self.sync("files");
