@@ -147,8 +147,11 @@ paned separator { background: @LINE@; min-width: 2px; }
 .cv-root { background-color: @BG@; }
 .cv-title { padding: 8px 14px; color: @TEXT@; font-weight: 600; border-bottom: 1px solid @LINE@; background-color: @BAR@; }
 .cv-list { padding: 14px 18px; }
-.cv-me { background-color: @BRAND@; color: #ffffff; padding: 9px 13px; border-radius: 14px; }
-.cv-ai { background-color: @BAR@; color: @TEXT@; padding: 10px 13px; border-radius: 14px; border: 1px solid @LINE@; }
+.cv-me { background-color: @BRAND@; padding: 9px 14px; border-radius: 16px 16px 4px 16px; margin-left: 80px; }
+.cv-me .cv-text { color: #ffffff; }
+.cv-ai { background-color: @BAR@; padding: 11px 15px; border-radius: 16px 16px 16px 4px; border: 1px solid @LINE@; margin-right: 60px; }
+.cv-text { color: @TEXT@; font-size: 14px; }
+.cv-code { font-family: monospace; font-size: 12px; color: @TEXT@; background-color: @BG@; border: 1px solid @LINE@; border-radius: 8px; padding: 8px 10px; }
 .cv-tool { color: @FAINT@; font-family: monospace; font-size: 11px; padding: 2px 10px; border-left: 2px solid @LINE2@; }
 .cv-keys { padding: 6px 10px; border-top: 1px solid @LINE@; background-color: @BAR@; }
 .cv-key { background-image: none; background-color: @BG@; color: @TEXT@; border: 1px solid @LINE2@; border-radius: 8px; min-height: 30px; min-width: 40px; padding: 0 10px; font-family: monospace; font-weight: 600; }

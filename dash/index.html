@@ -1381,6 +1381,9 @@ body.chat-on .termpane{visibility:hidden}
 #chat-view .cv-me.pending{opacity:.6}
 #chat-view .cv-ai{align-self:flex-start;max-width:94%;padding:10px 13px;border-radius:16px 16px 16px 4px;background:var(--panel);border:1px solid var(--line);font:14px/1.5 var(--sans);overflow-wrap:anywhere}
 #chat-view .cv-ai code,#chat-view .cv-me code{font:12.5px var(--mono);padding:1px 4px;border-radius:4px;background:color-mix(in srgb,var(--line2) 55%,transparent)}
+#chat-view .cv-h{display:block;margin:8px 0 2px;font-size:15.5px}
+#chat-view .cv-li{display:inline-block;padding-left:14px;position:relative}
+#chat-view .cv-li::before{content:"•";position:absolute;left:2px;color:var(--brand)}
 #chat-view .cv-ai pre{margin:6px 0;padding:8px 10px;border-radius:8px;background:var(--bg);border:1px solid var(--line);font:12px/1.45 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
 #chat-view .cv-tool{align-self:flex-start;display:flex;flex-direction:column;gap:2px;max-width:100%;padding:2px 4px 2px 10px;border-left:2px solid var(--line2)}
 #chat-view .cv-tool span{font:11.5px var(--mono);color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1396,8 +1399,16 @@ body.chat-on .termpane{visibility:hidden}
 /* Carrusel en celular: aunque la preferencia sea «varias filas», la lista no se come la
    pantalla; las sesiones son una tira de píldoras que se desliza de lado. */
 @media (max-width:747px){
-  body.app.tabs-rows #app-navigation{flex-wrap:nowrap;align-items:center}
-  body.app.tabs-rows #tabbar{order:0;flex:1 1 auto;display:flex;max-height:none;overflow-x:auto;overflow-y:hidden;gap:6px;padding:6px 4px;scroll-snap-type:x proximity;touch-action:pan-x}
+  body.app #app-navigation{flex-wrap:wrap;height:auto;align-items:center}
+  body.app #app-navigation{gap:6px;padding:4px 8px 0}
+body.app #app-navigation > :is(#tab-panel,#tab-term,#tab-new,#tab-chat,#tab-open){width:42px;height:42px;margin:2px 0;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text)}
+body.app #app-navigation > #tab-chat{margin-left:auto}
+body.chat-on #app-navigation > #tab-chat{background:var(--brand);border-color:var(--brand);color:#fff}
+body.app #app-navigation #tabbar{order:9;flex:1 0 100%;display:flex;height:auto;max-height:none;overflow-x:auto;overflow-y:hidden;gap:6px;padding:4px 6px 6px;border-top:1px solid var(--line);scroll-snap-type:x proximity;touch-action:pan-x}
+  body.app #app-navigation .tab-step{display:none}
+  body.app #tabbar .apptab{height:36px;min-height:36px;border:1px solid var(--line);border-radius:999px;scroll-snap-align:center;padding:0 12px}
+  body.app #tabbar .apptab.on{border-color:var(--brand);box-shadow:none}
+  body.app #tabbar .apptab :is(.mdl,.wm-sticker,.wm-suggest,.tab-fav:not(.on)){display:none}
   body.app.tabs-rows .apptab{height:34px;min-height:34px;width:auto;flex:none;border-radius:999px;scroll-snap-align:center}
   body.app.tabs-rows :is(#tab-left,#tab-panel,#tab-term,#tab-new,#tab-sort,#tab-rows,#tab-open){align-self:center}
   body.app #app-navigation :is(#tab-sort,#tab-rows){display:none}

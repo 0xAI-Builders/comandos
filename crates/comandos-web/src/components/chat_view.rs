@@ -64,11 +64,14 @@ impl Chat {
         let row = all(&id("tabbar"), ".apptab")
             .into_iter()
             .find(|t| text(&get(t, "_target")) == format!("term:{session}"));
-        let model = row
-            .as_ref()
-            .map(|r| text(&get(&query(r, ".mdl"), "textContent")))
-            .unwrap_or_default();
-        let _ = set(&query(&el(), ".cv-title b"), "textContent", &session.into());
+        let field = |sel: &str| {
+            row.as_ref()
+                .map(|r| text(&get(&query(r, sel), "textContent")).trim().to_owned())
+                .unwrap_or_default()
+        };
+        let model = field(".mdl");
+        let name = Some(field(".lbl")).filter(|n| !n.is_empty()).unwrap_or(session);
+        let _ = set(&query(&el(), ".cv-title b"), "textContent", &name.into());
         let _ = set(&query(&el(), ".cv-title span"), "textContent", &model.into());
     }
     fn show(self: &Rc<Self>, on: bool) {
@@ -263,7 +266,9 @@ pub fn install() -> Result<(), JsValue> {
         Ok(JsValue::UNDEFINED)
     }));
     let saved = call(&global("localStorage"), "getItem", &[STORE.into()]).ok().map(|v| text(&v));
-    if saved.as_deref() == Some("chat") {
+    // Phones open in chat unless the person chose the terminal before.
+    let phone = global("innerWidth").as_f64().is_some_and(|w| w <= 747.);
+    if saved.as_deref() == Some("chat") || phone && saved.as_deref().unwrap_or("").is_empty() {
         chat.show(true);
     }
     Ok(())
@@ -273,7 +278,26 @@ fn has_term() -> bool {
 }
 }
 
-/// Escaped text with fenced code, `code`, **bold** and line breaks; nothing else.
+/// Inline markdown of one escaped line: `code`, **bold**.
+fn inline(line: &str) -> String {
+    let mut out = String::new();
+    for (j, seg) in line.split('`').enumerate() {
+        if j % 2 == 1 {
+            out.push_str(&format!("<code>{seg}</code>"));
+            continue;
+        }
+        for (k, b) in seg.split("**").enumerate() {
+            if k % 2 == 1 {
+                out.push_str(&format!("<b>{b}</b>"));
+            } else {
+                out.push_str(b);
+            }
+        }
+    }
+    out
+}
+
+/// Escaped text with fenced code, headings, bullets, `code`, **bold** and line breaks.
 pub fn render_text(raw: &str) -> String {
     let mut out = String::new();
     for (i, part) in raw.split("```").enumerate() {
@@ -282,18 +306,19 @@ pub fn render_text(raw: &str) -> String {
             out.push_str(&format!("<pre>{}</pre>", esc(body.trim_end())));
             continue;
         }
-        for (j, seg) in esc(part).split('`').enumerate() {
-            if j % 2 == 1 {
-                out.push_str(&format!("<code>{seg}</code>"));
+        let escaped = esc(part);
+        for (n, line) in escaped.split('\n').enumerate() {
+            let t = line.trim_start();
+            if let Some(h) = t.strip_prefix("### ").or(t.strip_prefix("## ")).or(t.strip_prefix("# ")) {
+                out.push_str(&format!("<b class=\"cv-h\">{}</b>", inline(h)));
                 continue;
             }
-            for (k, b) in seg.split("**").enumerate() {
-                let b = b.replace('\n', "<br>");
-                if k % 2 == 1 {
-                    out.push_str(&format!("<b>{b}</b>"));
-                } else {
-                    out.push_str(&b);
-                }
+            if n > 0 {
+                out.push_str("<br>");
+            }
+            match t.strip_prefix("- ").or(t.strip_prefix("* ")) {
+                Some(item) => out.push_str(&format!("<span class=\"cv-li\">{}</span>", inline(item))),
+                None => out.push_str(&inline(line)),
             }
         }
     }
@@ -333,6 +358,10 @@ mod tests {
             "&lt;b&gt;x&lt;/b&gt; <b>ok</b> <code>a&lt;b</code><br>fin"
         );
         assert_eq!(render_text("ver:\n```rust\nlet a = 1;\n```"), "ver:<br><pre>let a = 1;</pre>");
+        assert_eq!(
+            render_text("## Plan\n- uno\n- **dos**"),
+            "<b class=\"cv-h\">Plan</b><br><span class=\"cv-li\">uno</span><br><span class=\"cv-li\"><b>dos</b></span>"
+        );
     }
     #[test]
     fn roles_render_as_bubbles_and_tool_lines() {
